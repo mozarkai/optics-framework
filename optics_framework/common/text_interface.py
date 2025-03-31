@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 
 class TextInterface(ABC):
@@ -14,7 +14,7 @@ class TextInterface(ABC):
     and reference data as needed.
     """
 
-    def element_exist(self, input_data, reference_data) -> Optional[Tuple[int, int]]:
+    def element_exist(self, input_data: Any, reference_data: Any) -> Optional[Tuple[int, int]]:
         """
         Find the location of a reference image within the input data.
 
