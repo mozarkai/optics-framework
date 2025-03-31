@@ -1,42 +1,54 @@
 from abc import ABC, abstractmethod
+from typing import Optional, Tuple, Any
+
 
 class ElementSourceInterface(ABC):
     """
-    Abstract base class for application drivers.
+    Abstract base class for element source drivers.
 
-    This interface enforces the implementation of essential methods
-    for interacting with applications.
+    This interface defines methods for capturing and interacting with screen elements
+    (e.g., images, UI components) within an application or environment, implementing
+    the :class:`ElementSourceInterface`.
+
+    Implementers should handle specific element types (e.g., image bytes, templates)
+    as needed.
     """
 
     @abstractmethod
-    def capture(self):
+    def capture(self) -> None:
         """
         Capture the current screen state.
 
         :return: None
         :rtype: None
         """
-
+        pass
 
     @abstractmethod
     def locate(self, element, index=None, strategy=None) -> tuple:
         """
-        Locate a template image within a larger image.
+        Locate an element within the current screen state.
 
-        :param image: The image to search.
-        :param template: The template to search for.
-        :return: A tuple containing the coordinates of the located template.
-        :rtype: tuple
+        :param element: The element to search for (e.g., template image, UI component).
+        :type element: Any
+        :return: A tuple (x, y) representing the center of the element, or None if not found.
+        :rtype: Optional[Tuple[int, int]]
         """
         pass
 
     @abstractmethod
-    def assert_elements(self, elements, timeout=30, rule='any') -> None:
+    def assert_elements(self, elements: Any, timeout: int = 30, rule: str = 'any') -> None:
         """
         Assert the presence of elements on the screen.
-        :param elements: The elements to be asserted.
-        :raises NotImplementedError: If the method is not implemented in a subclass.
+
+        :param elements: The elements to check for presence (e.g., list of templates).
+        :type elements: Any
+        :param timeout: Time in seconds to wait for elements to appear (default: 30).
+        :type timeout: int
+        :param rule: Assertion rule ('any' for at least one, 'all' for all; default: 'any').
+        :type rule: str
         :return: None
         :rtype: None
+        :raises AssertionError: If the assertion fails based on the rule.
         """
         pass

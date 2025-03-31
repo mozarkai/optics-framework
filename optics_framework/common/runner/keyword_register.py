@@ -1,3 +1,4 @@
+from typing import Callable, Dict, Optional
 from optics_framework.common.logging_config import logger, apply_logger_format_to_all
 
 
@@ -17,9 +18,9 @@ class KeywordRegistry:
         Sets up an empty dictionary to store the mapping between keyword function
         names and their methods.
         """
-        self.keyword_map = {}
+        self.keyword_map: Dict[str, Callable[..., object]] = {}
 
-    def register(self, instance):
+    def register(self, instance: object) -> None:
         """
         Register all public callable methods of an instance.
 
@@ -28,7 +29,6 @@ class KeywordRegistry:
         name is encountered, a warning is logged.
 
         :param instance: The instance whose methods are to be registered.
-        :type instance: object
         """
         for method_name in dir(instance):
             if not method_name.startswith("_"):
@@ -40,7 +40,7 @@ class KeywordRegistry:
                         )
                     self.keyword_map[method_name] = method
 
-    def get_method(self, func_name):
+    def get_method(self, func_name: str) -> Optional[Callable[..., object]]:
         """
         Retrieve a method by its function name.
 
@@ -48,8 +48,6 @@ class KeywordRegistry:
         If no such method exists, None is returned.
 
         :param func_name: The name of the function to retrieve.
-        :type func_name: str
         :return: The callable method if found; otherwise, None.
-        :rtype: callable or None
         """
         return self.keyword_map.get(func_name)

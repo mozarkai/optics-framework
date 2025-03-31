@@ -1,7 +1,9 @@
+from typing import Optional, Any, List
 from optics_framework.common.logging_config import logger, apply_logger_format_to_all
 from optics_framework.common import utils
 from optics_framework.common.optics_builder import OpticsBuilder
 import time
+
 
 @apply_logger_format_to_all("internal")
 class Verifier:
@@ -9,6 +11,7 @@ class Verifier:
     Provides methods to verify elements, screens, and data integrity.
     """
     _instance = None
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(Verifier, cls).__new__(cls)
@@ -24,66 +27,65 @@ class Verifier:
         element: str,
         timeout: int = 10,
         rule: str = "all",
-        event_name: str | None = None,
+        event_name: Optional[str] = None,
     ) -> None:
         """
         Verifies the specified element.
 
         :param element: The element to be verified (Image template, OCR template, or XPath).
-        :type element: str
-        :param timeout: The time to wait for verification.
-        :type timeout: int
-        :param rule: The rule used for verification.
-        :type rule: str
-        :param event_name: The name of the event associated with the verification.
-        :type event_name: str
+        :param timeout: The time to wait for verification in seconds.
+        :param rule: The rule used for verification ("all" or "any").
+        :param event_name: The name of the event associated with the verification, if any.
         """
         logger.debug(f"Validating element: {element}")
         logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         self.assert_presence(element, timeout, rule, event_name)
 
-
     def is_element(
-        self, element: str, element_state: str, timeout: int, event_name: str
+        self,
+        element: str,
+        element_state: str,
+        timeout: int,
+        event_name: Optional[str] = None,
     ) -> None:
         """
-        Checks if the specified element is Enabled/Disabled/Visible/Invisible.
+        Checks if the specified element is in a given state (e.g., Enabled/Disabled/Visible/Invisible).
 
         :param element: The element to be checked (Image template, OCR template, or XPath).
-        :type element: str
-        :param element_state: The state of the element (visible, invisible, enabled, disabled).
-        :type element_state: str
-        :param timeout: The time to wait for the element.
-        :type timeout: int
-        :param event_name: The name of the event associated with the check.
-        :type event_name: str
+        :param element_state: The state to verify (visible, invisible, enabled, disabled).
+        :param timeout: The time to wait for the element in seconds.
+        :param event_name: The name of the event associated with the check, if any.
         """
         pass
 
-    def assert_equality(self, output, expression) -> None:
+    def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> None:
         """
         Compares two values for equality.
 
         :param output: The first value to be compared.
-        :type output: any
         :param expression: The second value to be compared.
-        :type expression: any
-        :param event_name: The name of the event associated with the comparison.
-        :type event_name: str
+        :param event_name: The name of the event associated with the comparison, if any.
         """
         pass
 
-    def vision_search(self, elements: list[str], timeout: int, rule: str) -> bool:
+    def vision_search(self, elements: List[str], timeout: int, rule: str) -> bool:
         """
-        Vision based search for elements
+        Performs a vision-based search for elements.
+
+        :param elements: List of elements to search for (Image templates or OCR templates).
+        :param timeout: The time to wait for elements to appear in seconds.
+        :param rule: The rule for verification ("any" or "all").
+        :return: True if the rule is satisfied, False otherwise.
         """
         rule = rule.lower()
         timeout = int(timeout)
         found_text = False
         found_image = False
         # Group elements by type
-        texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
-        images = [el for el in elements if utils.determine_element_type(el) == 'Image']
+        texts = [
+            el for el in elements if utils.determine_element_type(el) == 'Text']
+        images = [
+            el for el in elements if utils.determine_element_type(el) == 'Image']
 
         # Shared resources
         element_status = {
@@ -93,9 +95,9 @@ class Verifier:
         start_time = time.time()
 
         while (time.time() - start_time) < timeout:
-
             # Capture a screenshot
-            timestamp = utils.get_current_time_for_events() # Get timestamp when the screenshot is taken
+            # Get timestamp when the screenshot is taken
+            timestamp = utils.get_current_time_for_events()
             frame = self.element_source.capture()
 
             if frame is None:
@@ -106,11 +108,13 @@ class Verifier:
 
             # Search for text elements
             if texts:
-                found_text = self.assert_texts_vision(frame, texts, element_status, rule)
+                found_text = self.assert_texts_vision(
+                    frame, texts, element_status, rule)
 
             # Search for image elements
             if images:
-                found_image = self.assert_images_vision(frame, images, element_status, rule)
+                found_image = self.assert_images_vision(
+                    frame, images, element_status, rule)
 
             # If rule is 'any' and either text or image is found, stop early
             if rule == 'any' and (found_text or found_image):
@@ -121,24 +125,24 @@ class Verifier:
             if rule == 'all' and all(
                 item['found'] for status in element_status.values() for item in status.values()
             ):
+                utils.annotate_and_save(frame, element_status)
                 return True
 
             time.sleep(0.5)
-            # Final annotation before returning
-        utils.annotate_and_save(frame, element_status)
 
+        # Final annotation before returning
+        utils.annotate_and_save(frame, element_status)
         return any(item['found'] for status in element_status.values() for item in status.values())
 
-    def assert_texts_vision(self, frame, texts, element_status, rule):
+    def assert_texts_vision(self, frame: Any, texts: List[str], element_status: dict, rule: str) -> bool:
         """
         Searches for the given texts in a single frame using OCR.
 
-        Args:
-            frame (numpy.ndarray): The image frame to search in.
-            texts (list): List of text elements to search for.
-            element_status (dict): Dictionary storing found element statuses.
-        Returns:
-            bool: True if an element is found (for 'any' rule), False otherwise.
+        :param frame: The image frame to search in (e.g., numpy.ndarray).
+        :param texts: List of text elements to search for.
+        :param element_status: Dictionary storing found element statuses.
+        :param rule: The rule for verification ("any" or "all").
+        :return: True if the rule is satisfied, False otherwise.
         """
         found_any = False
 
@@ -149,7 +153,8 @@ class Verifier:
 
             if found:
                 if not element_status['texts'][text]['found']:
-                    element_status['texts'][text] = {'found': True, 'bbox': bbox}
+                    element_status['texts'][text] = {
+                        'found': True, 'bbox': bbox}
 
                 logger.debug(f"Text '{text}' found at bbox: {bbox}.")
                 found_any = True
@@ -163,18 +168,15 @@ class Verifier:
             item['found'] for item in element_status['texts'].values()
         )
 
-
-    def assert_images_vision(self, frame, images, element_status, rule):
+    def assert_images_vision(self, frame: Any, images: List[str], element_status: dict, rule: str) -> bool:
         """
         Searches for the given images in a single frame using template matching.
 
-        Args:
-            frame (numpy.ndarray): The image frame to search in.
-            images (list): List of image templates to search for.
-            element_status (dict): Dictionary storing found element statuses.
-            rule (str): 'any' (stop when one is found) or 'all' (search all).
-        Returns:
-            bool: True if an element is found (for 'any' rule), False otherwise.
+        :param frame: The image frame to search in (e.g., numpy.ndarray).
+        :param images: List of image templates to search for.
+        :param element_status: Dictionary storing found element statuses.
+        :param rule: The rule for verification ("any" or "all").
+        :return: True if the rule is satisfied, False otherwise.
         """
         found_any = False
 
@@ -199,60 +201,60 @@ class Verifier:
             item['found'] for item in element_status['images'].values()
         )
 
-    def assert_presence(self, elements, timeout=30, rule='any', event_name=None) -> bool:
+    def assert_presence(self, elements: str, timeout: int = 30, rule: str = 'any', event_name: Optional[str] = None) -> bool:
         """
         Asserts the presence of elements.
 
-        :param elements: The elements to be checked (Image template, OCR template, or XPath).
-        :type elements: list
-        :param timeout: The time to wait for the elements.
-        :type timeout: int
-        :param rule: The rule used for verification.
-        :type rule: str
-        :param event_name: The name of the event associated with the assertion.
-        :type event_name: str
+        :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
+        :param timeout: The time to wait for the elements in seconds.
+        :param rule: The rule for verification ("any" or "all").
+        :param event_name: The name of the event associated with the assertion, if any.
+        :return: True if the rule is satisfied, False otherwise.
         """
-        element_source_type = type(self.element_source.current_instance).__name__
+        element_source_type = type(
+            self.element_source.current_instance).__name__
         rule = rule.lower()
         timeout = int(timeout)
-        elements = elements.split(',')
+        elements_list = elements.split(',')
         # Group elements by type
-        texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
-        xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
-        images = [el for el in elements if utils.determine_element_type(el) == 'Image']
+        texts = [
+            el for el in elements_list if utils.determine_element_type(el) == 'Text']
+        xpaths = [
+            el for el in elements_list if utils.determine_element_type(el) == 'XPath']
+        images = [
+            el for el in elements_list if utils.determine_element_type(el) == 'Image']
 
         if 'appium' in element_source_type.lower():
-            # calls assert presence from appium driver
+            # Calls assert presence from appium driver
             if images:
-                logger.error("Image search is not supported for Appium based search")
+                logger.error(
+                    "Image search is not supported for Appium based search")
                 return False
             texts_xpaths = texts + xpaths
-            result = self.element_source.assert_elements(texts_xpaths, timeout, rule)
-
+            result = self.element_source.assert_elements(
+                texts_xpaths, timeout, rule)
         else:
-            # vision search
+            # Vision search
             if xpaths:
-                logger.error("XPath search is not supported for Vision based search")
+                logger.error(
+                    "XPath search is not supported for Vision based search")
                 return False
             texts_images = texts + images
             result = self.vision_search(texts_images, timeout, rule)
+
         if event_name:
-            # Trigger event
+            # Trigger event (placeholder)
             pass
 
         return result
 
-    def validate_screen(self, elements, timeout=30, rule='any', event_name=None) -> None:
+    def validate_screen(self, elements: str, timeout: int = 30, rule: str = 'any', event_name: Optional[str] = None) -> None:
         """
-        Verifies the specified screen.
+        Verifies the specified screen by checking element presence.
 
-        :param elements: The elements to be verified (Image template, OCR template, or XPath).
-        :type elements: list
-        :param timeout: The time to wait for verification.
-        :type timeout: int
-        :param rule: The rule used for verification.
-        :type rule: str
-        :param event_name: The name of the event associated with the verification.
-        :type event_name: str
+        :param elements: Comma-separated string of elements to verify (Image templates, OCR templates, or XPaths).
+        :param timeout: The time to wait for verification in seconds.
+        :param rule: The rule for verification ("any" or "all").
+        :param event_name: The name of the event associated with the verification, if any.
         """
         self.assert_presence(elements, timeout, rule, event_name)

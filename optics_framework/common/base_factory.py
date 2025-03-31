@@ -3,9 +3,11 @@ from types import ModuleType
 import importlib
 import pkgutil
 import inspect
+from pydantic import BaseModel, Field
 from optics_framework.common.logging_config import logger, apply_logger_format_to_all
 
 T = TypeVar("T")
+S = TypeVar("S")  # New TypeVar for FactoryState
 
 
 @apply_logger_format_to_all("internal")
@@ -13,9 +15,17 @@ class GenericFactory(Generic[T]):
     """
     A generic factory class for discovering and instantiating modules dynamically.
     """
-    _MODULES: Dict[str, str] = {}
-    _INSTANCES: Dict[str, T] = {}
-    _DISCOVERED: bool = False
+    class FactoryState(BaseModel, Generic[S]):
+        """Pydantic model to manage factory state."""
+        modules: Dict[str, str] = Field(
+            default_factory=dict)  # {name: module_path}
+        instances: Dict[str, S] = Field(
+            default_factory=dict)  # {name: instance}
+
+        class Config:
+            arbitrary_types_allowed = True  # Allow generic S
+
+    _state: FactoryState[T] = FactoryState()  # Bind to T from GenericFactory
 
     @classmethod
     def discover(cls, package: str) -> None:
@@ -43,7 +53,7 @@ class GenericFactory(Generic[T]):
         """
         for _, module_name, is_pkg in pkgutil.iter_modules(package_paths):
             full_module_name = f"{base_package}.{module_name}"
-            cls._MODULES[module_name] = full_module_name
+            cls._state.modules[module_name] = full_module_name
             logger.debug(f"Registered module: {full_module_name}")
             if is_pkg:
                 cls._discover_subpackage(full_module_name)
@@ -59,7 +69,7 @@ class GenericFactory(Generic[T]):
                 f"Failed to import subpackage '{full_module_name}': {e}")
 
     @staticmethod
-    def _find_class(module, interface: Type[T]) -> Optional[Type[T]]:
+    def _find_class(module: ModuleType, interface: Type[T]) -> Optional[Type[T]]:
         """
         Find a class in the module that implements the specified interface.
         """
@@ -76,12 +86,15 @@ class GenericFactory(Generic[T]):
         cls._ensure_discovery(interface)
         if isinstance(name, (list, dict)):
             return cls._get_fallback_instance(name, interface)
+        if name is None:
+            raise ValueError(
+                "Name cannot be None for single instance retrieval")
         return cls._get_single_instance(name, interface)
 
     @classmethod
     def _ensure_discovery(cls, interface: Type[T]) -> None:
         """Ensure modules have been discovered."""
-        if not cls._MODULES:
+        if not cls._state.modules:
             raise RuntimeError(
                 f"No modules discovered for {interface.__name__}. Call `discover` first.")
 
@@ -115,11 +128,11 @@ class GenericFactory(Generic[T]):
     @classmethod
     def _get_single_instance(cls, name: str, interface: Type[T]) -> T:
         """Retrieve or create a single instance for a module name."""
-        if name in cls._INSTANCES:
+        if name in cls._state.instances:
             logger.debug(f"Returning cached instance for: {name}")
-            return cls._INSTANCES[name]
+            return cls._state.instances[name]
 
-        module_path = cls._MODULES.get(name)
+        module_path = cls._state.modules.get(name)  # pylint: disable=no-member
         if not module_path:
             raise ValueError(f"Unknown module requested: '{name}'")
 
@@ -130,8 +143,7 @@ class GenericFactory(Generic[T]):
                 f"No valid class found in '{module_path}' implementing {interface.__name__}")
 
         instance = cls_obj()
-        if name is not None:
-            cls._INSTANCES[name] = instance
+        cls._state.instances[name] = instance
         logger.debug(
             f"Successfully instantiated {cls_obj.__name__} from {module_path}")
         return instance
@@ -139,12 +151,20 @@ class GenericFactory(Generic[T]):
     @classmethod
     def clear_cache(cls) -> None:
         """Clear cached instances."""
-        cls._INSTANCES.clear()
+        cls._state.instances.clear()  # pylint: disable=no-member
         logger.debug("Cleared instance cache.")
 
-class FallbackProxy(Generic[T]):
-    def __init__(self, instances: List[T]):
-        self.instances = instances
+
+class FallbackProxy(BaseModel, Generic[T]):
+    """Pydantic-based proxy for fallback instances."""
+    instances: List[T] = Field(default_factory=list)
+    current_instance: Optional[T] = None
+
+    class Config:
+        arbitrary_types_allowed = True  # Allow generic T
+
+    def __init__(self, instances: List[T], **data):
+        super().__init__(instances=instances, **data)
         self.current_instance = instances[0] if instances else None
 
     def __getattr__(self, attr):

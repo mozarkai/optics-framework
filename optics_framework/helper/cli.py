@@ -1,5 +1,7 @@
 import argparse
 import sys
+from typing import Optional
+from pydantic import BaseModel
 from optics_framework.common.logging_config import apply_logger_format_to_all
 from optics_framework.helper.list_keyword import main as list_main
 from optics_framework.helper.config_manager import main as config_main
@@ -7,6 +9,7 @@ from optics_framework.helper.initialize import create_project
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
+
 
 class Command:
     """
@@ -26,66 +29,43 @@ class Command:
         :type subparsers: argparse._SubParsersAction
         :raises NotImplementedError: If the subclass does not implement this method.
         """
-        raise NotImplementedError("Subclasses must implement the `register` method.")
+        raise NotImplementedError(
+            "Subclasses must implement the `register` method.")
 
-    def execute(self, args: argparse.Namespace):
+    def execute(self, args):
         """
         Execute the command using the provided arguments.
 
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        :raises NotImplementedError: If the subclass does not implement this method.
+        :param args: The parsed command-line arguments (Pydantic model or argparse.Namespace).
         """
-        raise NotImplementedError("Subclasses must implement the `execute` method.")
+        raise NotImplementedError(
+            "Subclasses must implement the `execute` method.")
 
 
 @apply_logger_format_to_all("user")
 class ListCommand(Command):
-    """
-    Command to list all available methods in the API.
-
-    This command calls the :func:`list_main` function to display the available methods.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the list command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
         parser = subparsers.add_parser(
             "list", help="List all available methods in the API"
         )
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the list command.
-
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
+    def execute(self, args):
         list_main()
+
+
+class GenerateArgs(BaseModel):
+    """Arguments for the generate command."""
+    project_path: str
+    output_file: str = "generated_test.py"
+
 
 @apply_logger_format_to_all("user")
 class GenerateCommand(Command):
-    """
-    Command to generate test framework code.
-
-    This command generates test framework code using the provided options.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the generate command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
-        parser = subparsers.add_parser("generate", help="Generate test framework code")
-        parser.add_argument("project_path",
-                            help="Project name (required)")
+        parser = subparsers.add_parser(
+            "generate", help="Generate test framework code")
+        parser.add_argument("project_path", help="Project name (required)")
         parser.add_argument(
             "output_file",
             help="Path to the output file where the code will be generated",
@@ -94,59 +74,37 @@ class GenerateCommand(Command):
         )
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the generate command.
+    def execute(self, args):
+        generate_args = GenerateArgs(
+            project_path=args.project_path, output_file=args.output_file)
+        generate_framework_code(
+            generate_args.project_path, generate_args.output_file)
 
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
-        generate_framework_code(args.project_path, args.output_file)
 
 class ConfigCommand(Command):
-    """
-    Command to manage configuration.
-
-    This command delegates to the :func:`config_main` function for configuration management.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the config command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
         parser = subparsers.add_parser("config", help="Manage configuration")
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the config command.
-
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
+    def execute(self, args):
         config_main()
+
+
+class InitArgs(BaseModel):
+    """Arguments for the init command."""
+    name: str
+    path: Optional[str] = None
+    force: bool = False
+    template: Optional[str] = None
+    git_init: bool = False
 
 
 @apply_logger_format_to_all("user")
 class InitCommand(Command):
-    """
-    Command to initialize a new project.
-
-    This command creates a new project using the provided options.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the init command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
         parser = subparsers.add_parser("init", help="Initialize a new project")
-        parser.add_argument("--name", required=True, help="Project name (required)")
+        parser.add_argument("--name", required=True,
+                            help="Project name (required)")
         parser.add_argument(
             "--path", help="Directory where the project will be created"
         )
@@ -163,31 +121,26 @@ class InitCommand(Command):
         )
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the init command.
+    def execute(self, args):
+        init_args = InitArgs(
+            name=args.name,
+            path=args.path,
+            force=args.force,
+            template=args.template,
+            git_init=args.git_init
+        )
+        create_project(init_args)
 
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
-        create_project(args)
+
+class DryRunArgs(BaseModel):
+    """Arguments for the dry_run command."""
+    folder_path: str
+    test_name: str = ""
 
 
 @apply_logger_format_to_all("user")
 class DryRunCommand(Command):
-    """
-    Command to generate a dry run report.
-
-    This command generates a dry run report using CSV files for test cases, modules, and elements.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the dry run command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
         parser = subparsers.add_parser(
             "dry_run", help="Execute test cases from CSV files"
         )
@@ -203,32 +156,21 @@ class DryRunCommand(Command):
         )
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the dry run command.
+    def execute(self, args):
+        dry_run_args = DryRunArgs(
+            folder_path=args.folder_path, test_name=args.test_name)
+        dryrun_main(dry_run_args.folder_path, dry_run_args.test_name)
 
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
-        dryrun_main(args.folder_path, args.test_name)
 
+class ExecuteArgs(BaseModel):
+    """Arguments for the execute command."""
+    folder_path: str
+    test_name: str = ""
 
 
 @apply_logger_format_to_all("user")
 class ExecuteCommand(Command):
-    """
-    Command to execute test cases from CSV files.
-
-    This command runs test cases located in a specified folder, optionally filtering by test name.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the execute command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
         parser = subparsers.add_parser(
             "execute", help="Execute test cases from CSV files"
         )
@@ -244,39 +186,20 @@ class ExecuteCommand(Command):
         )
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the test cases.
-
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
-        execute_main(args.folder_path, args.test_name)
+    def execute(self, args):
+        execute_args = ExecuteArgs(
+            folder_path=args.folder_path, test_name=args.test_name)
+        execute_main(execute_args.folder_path, execute_args.test_name)
 
 
 @apply_logger_format_to_all("user")
 class VersionCommand(Command):
-    """
-    Command to display the current version of the Optics Framework.
-    """
-
     def register(self, subparsers: argparse._SubParsersAction):
-        """
-        Register the version command with the provided subparsers.
-
-        :param subparsers: The argparse subparsers object.
-        :type subparsers: argparse._SubParsersAction
-        """
-        parser = subparsers.add_parser("version", help="Print the current version")
+        parser = subparsers.add_parser(
+            "version", help="Print the current version")
         parser.set_defaults(func=self.execute)
 
-    def execute(self, args: argparse.Namespace):
-        """
-        Execute the version command.
-
-        :param args: The parsed command-line arguments.
-        :type args: argparse.Namespace
-        """
+    def execute(self, args):
         print(f"Optics Framework {VERSION}")
 
 
@@ -287,7 +210,8 @@ def main():
     This function sets up the argument parser, registers all commands, parses the
     command-line arguments, and dispatches the appropriate command function.
     """
-    parser = argparse.ArgumentParser(prog="optics", description="Optics Framework CLI")
+    parser = argparse.ArgumentParser(
+        prog="optics", description="Optics Framework CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Register all commands.

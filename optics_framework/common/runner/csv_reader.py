@@ -1,5 +1,6 @@
 import csv
 from abc import ABC, abstractmethod
+from typing import Optional
 from optics_framework.common.logging_config import logger, use_logger_format
 
 
@@ -45,13 +46,13 @@ class DataReader(ABC):
         pass
 
     @abstractmethod
-    def read_elements(self, file_path: str) -> dict:
+    def read_elements(self, file_path: Optional[str]) -> dict:
         """
         Read a file containing element information and return a dictionary mapping
         element names to their corresponding element IDs.
 
-        :param file_path: Path to the file.
-        :type file_path: str
+        :param file_path: Path to the file, or None if elements are not provided.
+        :type file_path: Optional[str]
         :return: A dictionary where keys are element names and values are element IDs.
         :rtype: dict
         """
@@ -138,18 +139,20 @@ class CSVDataReader(DataReader):
             modules[module_name].append((keyword, params))
         return modules
 
-    def read_elements(self, file_path: str) -> dict:
+    def read_elements(self, file_path: Optional[str]) -> dict:
         """
         Read a CSV file containing element information and return a dictionary mapping
-        element names to their corresponding element IDs.
+        element names to their corresponding element IDs. Returns an empty dict if file_path is None.
 
         The CSV file is expected to have columns 'Element_Name' and 'Element_ID'.
 
-        :param file_path: Path to the elements CSV file.
-        :type file_path: str
+        :param file_path: Path to the elements CSV file, or None if not provided.
+        :type file_path: Optional[str]
         :return: A dictionary where keys are element names and values are element IDs.
         :rtype: dict
         """
+        if not file_path:
+            return {}
         rows = self.read_file(file_path)
         elements = {}
         for row in rows:

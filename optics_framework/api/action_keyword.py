@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable
+from typing import Callable, Optional, Any
 from optics_framework.common.logging_config import logger, apply_logger_format_to_all
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
@@ -7,9 +7,8 @@ from optics_framework.common import utils
 from .verifier import Verifier
 import time
 
+
 # Action Executor Decorator
-
-
 def with_self_healing(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(self, element, *args, **kwargs):
@@ -54,8 +53,8 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element, repeat=1, offset_x=0, offset_y=0, event_name=None, *, located
-    ):
+        self, element: str, repeat: int = 1, offset_x: int = 0, offset_y: int = 0, event_name: Optional[str] = None, *, located: Any
+    ) -> None:
         """
         Press a specified element.
 
@@ -75,7 +74,7 @@ class ActionKeyword:
             logger.debug(f"Pressing element '{element}'")
             self.driver.press_element(located, repeat, event_name)
 
-    def press_by_percentage(self, percent_x, percent_y, repeat=1, event_name=None):
+    def press_by_percentage(self, percent_x: float, percent_y: float, repeat: int = 1, event_name: Optional[str] = None) -> None:
         """
         Press an element by percentage coordinates.
 
@@ -99,7 +98,7 @@ class ActionKeyword:
             y_coor = int(screen_height * percent_y)
             self.driver.press_coordinates(x_coor, y_coor, event_name)
 
-    def press_by_coordinates(self, coor_x, coor_y, repeat=1, event_name=None):
+    def press_by_coordinates(self, coor_x: int, coor_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
         """
         Press an element by absolute coordinates.
 
@@ -111,7 +110,7 @@ class ActionKeyword:
         utils.capture_screenshot("press_by_coordinates")
         self.driver.press_coordinates(coor_x, coor_y, event_name)
 
-    def press_element_with_index(self, element, index=0, event_name=None):
+    def press_element_with_index(self, element: str, index: int = 0, event_name: Optional[str] = None) -> None:
         """
         Press a specified text at a given index.
 
@@ -154,7 +153,7 @@ class ActionKeyword:
                 'XPath is not supported for index based location. Provide the attribute as text.')
 
     @with_self_healing
-    def detect_and_press(self, element, timeout, event_name=None, *, located):
+    def detect_and_press(self, element: str, timeout: int, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Detect and press a specified element.
 
@@ -174,11 +173,12 @@ class ActionKeyword:
                     x, y, event_name=event_name)
             else:
                 logger.debug(f"Pressing detected element '{element}'")
-                self.driver.press_element(located, repeat=1, event_name=event_name)
+                self.driver.press_element(
+                    located, repeat=1, event_name=event_name)
 
     @DeprecationWarning
     @with_self_healing
-    def press_checkbox(self, element, event_name=None, *, located):
+    def press_checkbox(self, element: str, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Press a specified checkbox element.
 
@@ -189,7 +189,7 @@ class ActionKeyword:
 
     @DeprecationWarning
     @with_self_healing
-    def press_radio_button(self, element, event_name=None, *, located):
+    def press_radio_button(self, element: str, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Press a specified radio button.
 
@@ -198,7 +198,7 @@ class ActionKeyword:
         """
         self.press_element(element, event_name=event_name, located=located)
 
-    def select_dropdown_option(self, element, option, event_name=None):
+    def select_dropdown_option(self, element: str, option: str, event_name: Optional[str] = None) -> None:
         """
         Select a specified dropdown option.
 
@@ -209,7 +209,7 @@ class ActionKeyword:
         pass
 
     # Swipe and Scroll actions
-    def swipe(self, coor_x, coor_y, direction='right', swipe_length=50, event_name=None):
+    def swipe(self, coor_x: int, coor_y: int, direction: str = 'right', swipe_length: int = 50, event_name: Optional[str] = None) -> None:
         """
         Perform a swipe action in a specified direction.
 
@@ -223,7 +223,7 @@ class ActionKeyword:
         self.driver.swipe(coor_x, coor_y, direction, swipe_length, event_name)
 
     @DeprecationWarning
-    def swipe_seekbar_to_right_android(self, element, event_name=None):
+    def swipe_seekbar_to_right_android(self, element: str, event_name: Optional[str] = None) -> None:
         """
         Swipe a seekbar to the right.
 
@@ -232,7 +232,7 @@ class ActionKeyword:
         utils.capture_screenshot("swipe_seekbar_to_right_android")
         self.driver.swipe_element(element, 'right', 50, event_name)
 
-    def swipe_until_element_appears(self, element, direction, timeout, event_name=None):
+    def swipe_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None) -> None:
         """
         Swipe in a specified direction until an element appears.
 
@@ -252,18 +252,14 @@ class ActionKeyword:
             time.sleep(3)
 
     @with_self_healing
-    def swipe_from_element(self, element, direction, swipe_length, event_name=None, *, located):
+    def swipe_from_element(self, element: str, direction: str, swipe_length: int, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Perform a swipe action starting from a specified element.
 
         :param element: The element to swipe from (Image template, OCR template, or XPath).
-        :type element: str
         :param direction: The swipe direction (up, down, left, right).
-        :type direction: str
         :param swipe_length: The length of the swipe.
-        :type swipe_length: int or float
         :param event_name: The event triggering the swipe.
-        :type event_name: str
         """
         if isinstance(located, tuple):
             x, y = located
@@ -274,54 +270,45 @@ class ActionKeyword:
             self.driver.swipe_element(
                 located, direction, swipe_length, event_name)
 
-    def scroll(self, direction, event_name=None):
+    def scroll(self, direction: str, event_name: Optional[str] = None) -> None:
         """
         Perform a scroll action in a specified direction.
 
         :param direction: The scroll direction (up, down, left, right).
-        :type direction: str
         :param event_name: The event triggering the scroll.
-        :type event_name: str
         """
         utils.capture_screenshot("scroll")
         self.driver.scroll(direction, 1000, event_name)
 
     @with_self_healing
-    def scroll_until_element_appears(self, element, direction, timeout, event_name=None, *, located):
+    def scroll_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Scroll in a specified direction until an element appears.
 
         :param element: The target element (Image template, OCR template, or XPath).
-        :type element: str
         :param direction: The scroll direction (up, down, left, right).
-        :type direction: str
         :param timeout: Timeout for the scroll operation.
-        :type timeout: int or float
         :param event_name: The event triggering the scroll.
-        :type event_name: str
         """
         utils.capture_screenshot("scroll_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
-            result = self.verifier.assert_presence(element, timeout=3, rule="any")
+            result = self.verifier.assert_presence(
+                element, timeout=3, rule="any")
             if result:
                 break
-            self.driver.scroll(direction,1000, event_name)
+            self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
 
     @with_self_healing
-    def scroll_from_element(self, element, direction, scroll_length, event_name, *, located):
+    def scroll_from_element(self, element: str, direction: str, scroll_length: int, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Perform a scroll action starting from a specified element.
 
         :param element: The element to scroll from (Image template, OCR template, or XPath).
-        :type element: str
         :param direction: The scroll direction (up, down, left, right).
-        :type direction: str
         :param scroll_length: The length of the scroll.
-        :type scroll_length: int or float
         :param event_name: The event triggering the scroll.
-        :type event_name: str
         """
         utils.capture_screenshot("scroll_from_element")
         self.swipe_from_element(
@@ -329,16 +316,13 @@ class ActionKeyword:
 
     # Text input actions
     @with_self_healing
-    def enter_text(self, element, text, event_name=None, *, located):
+    def enter_text(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Enter text into a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
-        :type element: str
         :param text: The text to be entered.
-        :type text: str
         :param event_name: The event triggering the input.
-        :type event_name: str
         """
         if isinstance(located, tuple):
             x, y = located
@@ -350,54 +334,45 @@ class ActionKeyword:
             self.driver.enter_text_element(located, text, event_name)
 
     @DeprecationWarning
-    def enter_text_using_keyboard_android(self, text, event_name=None):
+    def enter_text_using_keyboard_android(self, text: str, event_name: Optional[str] = None) -> None:
         """
         Enter text using the keyboard.
 
         :param text: The text to be entered.
-        :type text: str
         :param event_name: The event triggering the input.
-        :type event_name: str
         """
         utils.capture_screenshot("enter_text_using_keyboard_android")
         self.driver.enter_text_using_keyboard(text, event_name)
 
     @with_self_healing
-    def enter_number(self, element, number, event_name=None, *, located):
+    def enter_number(self, element: str, number: float, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Enter a specified number into an element.
 
         :param element: The target element (Image template, OCR template, or XPath).
-        :type element: str
         :param number: The number to be entered.
-        :type number: int or float
         :param event_name: The event triggering the input.
-        :type event_name: str
         """
         utils.capture_screenshot("enter_number")
         self.enter_text(element, str(number), event_name, located=located)
 
-    def press_keycode(self, keycode, event_name):
+    def press_keycode(self, keycode: int, event_name: str) -> None:
         """
         Press a specified keycode.
 
         :param keycode: The keycode to be pressed.
-        :type keycode: int
         :param event_name: The event triggering the press.
-        :type event_name: str
         """
         utils.capture_screenshot("press_keycode")
         self.driver.press_keycode(keycode, event_name)
 
     @with_self_healing
-    def clear_element_text(self, element, event_name=None, *, located):
+    def clear_element_text(self, element: str, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Clear text from a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
-        :type element: str
         :param event_name: The event triggering the action.
-        :type event_name: str
         """
         if isinstance(located, tuple):
             x, y = located
@@ -409,32 +384,34 @@ class ActionKeyword:
             logger.debug(f"Clearing text from element '{element}'")
             self.driver.clear_text_element(located, event_name)
 
-    def get_text(self, element):
+    def get_text(self, element: str) -> Optional[str]:
         """
         Get the text from a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
-        :type element: str
-        :return: The text from the element.
-        :rtype: str
+        :return: The text from the element or None if not supported.
         """
         utils.capture_screenshot("get_text")
-        element_source_type = type(self.element_source.current_instance).__name__
+        element_source_type = type(
+            self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)
         if element_type in ["Text", "XPath"]:
             if 'appium' in element_source_type.lower():
                 element = self.element_source.locate(element)
                 return self.driver.get_text_element(element)
             else:
-                logger.error('Get Text is not supported for vision based search yet.')
+                logger.error(
+                    'Get Text is not supported for vision based search yet.')
+                return None
         else:
-            logger.error('Get Text is not supported for image based search yet.')
+            logger.error(
+                'Get Text is not supported for image based search yet.')
+            return None
 
-    def sleep(self, duration):
+    def sleep(self, duration: int) -> None:
         """
         Sleep for a specified duration.
 
-        :param duration: The duration of the sleep.
-        :type duration: int or float
+        :param duration: The duration of the sleep in seconds.
         """
         time.sleep(int(duration))

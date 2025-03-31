@@ -1,181 +1,206 @@
-import curses
-import curses.textpad
+from textual.app import App, ComposeResult
+from textual.widgets import Header, Footer, ListView, ListItem, Label, Input, Button
+from textual.containers import Vertical, Horizontal, Container
+from textual.screen import ModalScreen
+from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
 import ast
-# Import updated ConfigHandler
-from optics_framework.common.config_handler import ConfigHandler
 
 
-class LoggerTUI:
+class QuitConfirmScreen(ModalScreen[bool]):
+    """Modal screen to confirm quitting without saving."""
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Label("Quit without saving? (y/n)", classes="modal-title"),
+            Horizontal(
+                Button("Yes", variant="error", id="yes"),
+                Button("No", variant="primary", id="no"),
+                classes="modal-buttons"
+            ),
+            classes="modal"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes")
+
+
+class ErrorScreen(ModalScreen[None]):
+    """Modal screen to display error messages."""
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Label(self.message, classes="error-message"),
+            Button("OK", variant="primary", id="ok"),
+            classes="modal"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            self.dismiss(None)
+
+
+class LoggerTUI(App):
+    """A Textual-based UI for editing logger configuration."""
+    CSS = """
+    Screen {
+        align: center middle;
+        background: $background;
+    }
+    Header {
+        background: $primary;
+    }
+    Footer {
+        background: $secondary;
+    }
+    ListView {
+        height: 80%;
+        width: 80%;
+        border: solid $accent;
+        padding: 1;
+    }
+    ListItem {
+        padding: 0 1;
+    }
+    ListItem.--highlight {
+        background: $primary-darken-1;
+    }
+    .option-label {
+        color: $text;
+    }
+    .editing {
+        height: 3;
+        margin: 1 0;
+    }
+    .modal {
+        width: 40;
+        height: 10;
+        background: $panel;
+        border: solid $accent;
+        padding: 1;
+    }
+    .modal-title {
+        color: $warning;
+        text-align: center;
+    }
+    .modal-buttons {
+        margin-top: 1;
+        align: center middle;
+    }
+    .error-message {
+        color: $error;
+        text-align: center;
+    }
     """
-    A text-based UI for editing logger configuration.
-    """
 
-    def __init__(self, stdscr):
-        self.stdscr = stdscr
-        # Use the updated singleton instance of ConfigHandler
+    BINDINGS = [
+        ("up", "move_up", "Move up"),
+        ("down", "move_down", "Move down"),
+        ("space", "edit", "Edit value"),
+        ("s", "save", "Save config"),
+        ("q", "quit", "Quit"),
+    ]
+
+    def __init__(self):
+        super().__init__()
         self.config_handler = ConfigHandler.get_instance()
-        self.options = list(self.config_handler.config.keys())
-        self.current_index = 0
-        self.init_curses()
-        self.run()
+        self.options = list(self.config_handler.config.model_fields.keys())
+        self.selected_index = 0  # Changed to plain int
 
-    def init_curses(self):
-        curses.curs_set(0)
-        curses.start_color()
-        curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
-        curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-        curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield ListView(*[ListItem(Label(f"{key}: {self.get_value(key)}", classes="option-label"))
+                       for key in self.options], id="config-list")
+        yield Footer()
 
-    def confirm_quit(self):
-        height, width = self.stdscr.getmaxyx()
-        win = curses.newwin(5, 50, height // 2 - 2, width // 2 - 25)
-        win.box()
-        win.addstr(1, 2, "Quit without saving? (y/n)", curses.color_pair(2))
-        win.refresh()
+    def on_mount(self) -> None:
+        self.query_one("#config-list").focus()
 
-        while True:
-            key = win.getch()
-            if key in [ord("y"), ord("Y")]:
-                return True
-            elif key in [ord("n"), ord("N")]:
-                return False
+    def get_value(self, key: str) -> str:
+        """Fetch and format the current config value."""
+        value = getattr(self.config_handler.config, key)
+        if key in self.config_handler.DEPENDENCY_KEYS:
+            return str(self.config_handler.get(key))
+        return str(value)
 
-    def run(self):
-        while True:
-            self.stdscr.clear()
-            self.display_menu()
-            key = self.stdscr.getch()
+    def action_move_up(self) -> None:
+        self.selected_index = max(0, self.selected_index - 1)
+        self.refresh_list()
 
-            if key == curses.KEY_UP:
-                self.current_index = (
-                    self.current_index - 1) % len(self.options)
-            elif key == curses.KEY_DOWN:
-                self.current_index = (
-                    self.current_index + 1) % len(self.options)
-            elif key == ord(" "):
-                self.modify_value()
-            elif key == ord("s"):
-                try:
-                    self.config_handler.save_config()
-                except Exception as e:
-                    self.show_error_message(f"Error saving config: {e}")
-                exit(0)
-            elif key == ord("q"):
-                if self.confirm_quit():
-                    exit(0)
+    def action_move_down(self) -> None:
+        self.selected_index = min(
+            len(self.options) - 1, self.selected_index + 1)
+        self.refresh_list()
 
-    def display_menu(self):
-        height, width = self.stdscr.getmaxyx()
-        title = "Logger Configuration"
-        self.stdscr.addstr(
-            1,
-            (width // 2 - len(title) // 2),
-            title,
-            curses.A_BOLD | curses.color_pair(2),
-        )
-
-        # Always fetch the latest config dynamically
-        config = self.config_handler.config
-
+    def refresh_list(self) -> None:
+        list_view = self.query_one("#config-list", ListView)
         for idx, key in enumerate(self.options):
-            prefix = "> " if idx == self.current_index else "  "
-            value = str(config[key])  # Fetch latest value
-            color = (
-                curses.color_pair(
-                    1) if idx == self.current_index else curses.A_NORMAL
-            )
-            self.stdscr.addstr(idx + 3, 2, f"{prefix}{key}: {value}", color)
+            list_view.children[idx].query_one(Label).update(
+                f"{key}: {self.get_value(key)}")
+        list_view.index = self.selected_index
 
-        footer = "[SPACE] Edit  [S] Save  [Q] Quit"
-        self.stdscr.addstr(
-            height - 2, (width // 2 - len(footer) //
-                         2), footer, curses.color_pair(3)
-        )
+    async def action_edit(self) -> None:
+        key = self.options[self.selected_index]
+        current_value = getattr(self.config_handler.config, key)
 
-    def modify_value(self):
-        key = self.options[self.current_index]
-        config = self.config_handler.config  # Fetch latest config
-
-        if isinstance(config[key], bool):
-            config[key] = not config[key]
+        if isinstance(current_value, bool):
+            setattr(self.config_handler.config, key, not current_value)
+            self.refresh_list()
         else:
-            new_value = self.get_validated_input(config[key])
-            if new_value is not None:
-                config[key] = new_value
+            input_widget = Input(placeholder=str(
+                current_value), id="edit-input")
+            confirm_button = Button(
+                "Confirm", variant="success", id="confirm-edit")
+            self.mount(
+                Container(input_widget, confirm_button, classes="editing"))
 
-    def get_text_input(self, current_value):
-        height, width = self.stdscr.getmaxyx()
-        win = curses.newwin(5, 50, height // 2 - 2, width // 2 - 25)
-        win.box()
-        win.addstr(1, 2, "Enter new value:", curses.color_pair(2))
-        win.addstr(2, 2, f"[Current: {current_value}]", curses.color_pair(1))
-        win.refresh()
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.handle_edit_confirm(event.value)
 
-        curses.echo()
-        input_value = ""
-        cursor_x = 2
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm-edit":
+            input_value = self.query_one("#edit-input", Input).value
+            self.handle_edit_confirm(input_value)
 
-        while True:
-            win.addstr(3, cursor_x, input_value)
-            win.refresh()
-            key = win.getch()
+    def handle_edit_confirm(self, new_value: str) -> None:
+        key = self.options[self.selected_index]
+        current_value = getattr(self.config_handler.config, key)
 
-            if key in [10, 13]:  # Enter key
-                break
-            elif key in [127, curses.KEY_BACKSPACE]:
-                if input_value:
-                    input_value = input_value[:-1]
-                    win.addstr(3, cursor_x, " " * 48)
-            elif key == ord("q"):
-                curses.noecho()
-                if self.confirm_quit():
-                    exit(0)
-                else:
-                    win.clear()
-                    win.box()
-                    win.addstr(1, 2, "Enter new value:", curses.color_pair(2))
-                    win.addstr(
-                        2, 2, f"[Current: {current_value}]", curses.color_pair(
-                            1)
-                    )
-                    win.refresh()
+        try:
+            if isinstance(current_value, list) and key in self.config_handler.DEPENDENCY_KEYS:
+                parsed = ast.literal_eval(new_value)
+                if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
+                    raise ValueError("Must be a list of strings")
+                setattr(self.config_handler.config, key,
+                        [{"name": DependencyConfig(enabled=True)} for name in parsed])
             else:
-                input_value += chr(key)
+                parsed = type(current_value)(new_value)
+                setattr(self.config_handler.config, key, parsed)
+            self.refresh_list()
+        except Exception as e:
+            self.push_screen(ErrorScreen(
+                f"Invalid input: {e}"), lambda _: None)
+        finally:
+            self.query_one(".editing").remove()
 
-        curses.noecho()
-        return input_value.strip() if input_value else current_value
+    def action_save(self) -> None:
+        try:
+            self.config_handler.save_config()
+            self.exit(0)
+        except Exception as e:
+            self.push_screen(ErrorScreen(
+                f"Error saving config: {e}"), lambda _: None)
 
-    def get_validated_input(self, current_value):
-        while True:
-            new_value = self.get_text_input(current_value)
-            try:
-                # For list types, use ast.literal_eval to parse user input
-                if isinstance(current_value, list):
-                    parsed = ast.literal_eval(new_value)
-                    if isinstance(parsed, list):
-                        return parsed
-                    else:
-                        raise ValueError
-                else:
-                    # Attempt to cast new_value to the type of the current value
-                    return type(current_value)(new_value)
-            except Exception:
-                self.show_error_message("Invalid input!")
+    async def action_quit(self) -> None:
+        self.push_screen(QuitConfirmScreen(), self.handle_quit)
 
-    def show_error_message(self, message):
-        height, width = self.stdscr.getmaxyx()
-        win = curses.newwin(
-            3, len(message) + 6, height // 2, width // 2 - (len(message) // 2)
-        )
-        win.box()
-        win.addstr(1, 2, message, curses.color_pair(2))
-        win.refresh()
-        curses.napms(1500)
+    def handle_quit(self, confirmed: bool | None) -> None:
+        if confirmed is True:
+            self.exit(0)
 
 
 def main():
-    curses.wrapper(LoggerTUI)
-
-
-if __name__ == "__main__":
-    main()
+    LoggerTUI().run()

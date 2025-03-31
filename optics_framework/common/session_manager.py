@@ -2,14 +2,14 @@ import uuid
 import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
-from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 
 
 class SessionHandler(ABC):
     """Abstract interface for session management."""
     @abstractmethod
-    def create_session(self, config: dict) -> str:
+    def create_session(self, config: Config) -> str:
         pass
 
     @abstractmethod
@@ -24,12 +24,10 @@ class SessionHandler(ABC):
 class Session:
     """Represents a single execution session with config and optics."""
 
-    def __init__(self, session_id: str, config: dict, project_path: str):
+    def __init__(self, session_id: str, config: Config):
         self.session_id = session_id
         self.config_handler = ConfigHandler.get_instance()
-        self.config_handler.set_project(project_path)
-        self.config_handler.load()
-        self.config = self.config_handler.config
+        self.config = config
 
         # Fetch enabled dependency names
         driver_sources = self.config_handler.get("driver_sources", [])
@@ -56,11 +54,10 @@ class SessionManager(SessionHandler):
     def __init__(self):
         self.sessions: Dict[str, Session] = {}
 
-    def create_session(self, config: dict) -> str:
+    def create_session(self, config: Config) -> str:
         """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
-        project_path = config.get("project_path", "")
-        self.sessions[session_id] = Session(session_id, config, project_path)
+        self.sessions[session_id] = Session(session_id, config)
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Session]:

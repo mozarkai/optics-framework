@@ -1,9 +1,10 @@
 import os
 import yaml
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict, field
+from pydantic import BaseModel, Field
 from collections.abc import Mapping
 import logging
+
 
 def deep_merge(d1: dict, d2: dict) -> dict:
     """
@@ -18,30 +19,29 @@ def deep_merge(d1: dict, d2: dict) -> dict:
     return merged
 
 
-@dataclass
-class DependencyConfig:
+class DependencyConfig(BaseModel):
     """Configuration for all dependency types."""
     enabled: bool
     url: Optional[str] = None
-    capabilities: Optional[Dict[str, Any]] = None
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
 
-    def __post_init__(self):
-        if self.capabilities is None:
-            self.capabilities = {}
+    class Config:
+        """Pydantic V2 configuration."""
+        # Allow arbitrary types for capabilities (e.g., Any)
+        arbitrary_types_allowed = True
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     """Default configuration structure."""
     console: bool = True
     driver_sources: List[Dict[str, DependencyConfig]
-                         ] = field(default_factory=list)
+                         ] = Field(default_factory=list)
     elements_sources: List[Dict[str, DependencyConfig]
-                           ] = field(default_factory=list)
+                           ] = Field(default_factory=list)
     text_detection: List[Dict[str, DependencyConfig]
-                         ] = field(default_factory=list)
+                         ] = Field(default_factory=list)
     image_detection: List[Dict[str, DependencyConfig]
-                          ] = field(default_factory=list)
+                          ] = Field(default_factory=list)
     file_log: bool = False
     json_log: bool = False
     json_path: Optional[str] = None
@@ -49,27 +49,22 @@ class Config:
     log_path: Optional[str] = None
     project_path: Optional[str] = None
 
-    def __post_init__(self):
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Post-init logic from the original dataclass
         if not self.driver_sources:
             self.driver_sources = [
                 {"appium": DependencyConfig(
                     enabled=False,
                     url="http://127.0.0.1:4723",
-                    capabilities={
-                        "deviceName": None,
-                        "platformName": None,
-                        "automationName": None,
-                        "appPackage": None,
-                        "appActivity": None
-                    }
-                )},
+                    capabilities={})},
                 {"ble": DependencyConfig(
                     enabled=False, url=None, capabilities={})}
             ]
         if not self.elements_sources:
             self.elements_sources = [
                 {"appium_find_element": DependencyConfig(
-                    enabled=True, url=None, capabilities={})},
+                    enabled=False, url=None, capabilities={})},
                 {"appium_page_source": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
                 {"device_screenshot": DependencyConfig(
@@ -91,6 +86,11 @@ class Config:
                 {"templatematch": DependencyConfig(
                     enabled=False, url=None, capabilities={})}
             ]
+
+    class Config:
+        """Pydantic V2 configuration."""
+        # Allow arbitrary types in capabilities
+        arbitrary_types_allowed = True
 
 
 class ConfigHandler:
@@ -133,13 +133,14 @@ class ConfigHandler:
             os.makedirs(os.path.dirname(
                 self.global_config_path), exist_ok=True)
             with open(self.global_config_path, "w", encoding="utf-8") as f:
-                yaml.dump(asdict(self.config), f, default_flow_style=False)
+                yaml.dump(self.config.model_dump(),
+                          f, default_flow_style=False)
 
     def load(self) -> Config:
         global_config = self._load_yaml(self.global_config_path) or {}
         project_config = self._load_yaml(
             self.project_config_path) if self.project_config_path else {}
-        default_dict = asdict(self.config)
+        default_dict = self.config.model_dump()
         merged = deep_merge(default_dict, global_config)
         merged = deep_merge(merged, project_config)
         self.config = Config(**merged)
@@ -164,15 +165,17 @@ class ConfigHandler:
                 for name, details in item.items():
                     if isinstance(details, dict) and details.get("enabled", False):
                         enabled_names.append(name)
+                    elif isinstance(details, DependencyConfig) and details.enabled:
+                        enabled_names.append(name)
             self._enabled_configs[key] = enabled_names  # Store just the names
 
     def get_dependency_config(self, dependency_type: str, name: str) -> Optional[Dict[str, Any]]:
         # Still available if detailed config is needed elsewhere
         for item in getattr(self.config, dependency_type):
-            if name in item and item[name].get("enabled", False):
+            if name in item and item[name].enabled:
                 return {
-                    "url": item[name].get("url"),
-                    "capabilities": item[name].get("capabilities", {})
+                    "url": item[name].url,
+                    "capabilities": item[name].capabilities
                 }
         return None
 
@@ -184,7 +187,8 @@ class ConfigHandler:
     def save_config(self) -> None:
         try:
             with open(self.global_config_path, "w", encoding="utf-8") as f:
-                yaml.dump(asdict(self.config), f, default_flow_style=False)
+                yaml.dump(self.config.model_dump(),
+                          f, default_flow_style=False)
         except Exception as e:
             raise e
 

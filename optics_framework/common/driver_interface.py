@@ -32,9 +32,8 @@ class DriverInterface(ABC):
         """
         pass
 
-
     @abstractmethod
-    def press_coordinates(self,coor_x, coor_y, event_name) -> None:
+    def press_coordinates(self, coor_x, coor_y, event_name) -> None:
         """
         Press an element by absolute coordinates.
         :param coor_x: X coordinate of the press.
@@ -48,7 +47,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def press_element(self, element,repeat, event_name) -> None:
+    def press_element(self, element, repeat, event_name) -> None:
         """
         Press an element using Appium.
         :param element: The element to be pressed.
@@ -204,7 +203,6 @@ class DriverInterface(ABC):
         :rtype: None
         """
         pass
-
 
     @abstractmethod
     def get_text_element(self, element) -> str:
