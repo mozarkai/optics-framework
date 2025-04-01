@@ -9,7 +9,7 @@ from optics_framework.common.logging_config import logger
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.engines.elementsources.device_screenshot import DeviceScreenshot
 from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot
-
+from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
 
 
 def determine_element_type(element):
@@ -196,6 +196,17 @@ def save_page_source(tree, time_stamp):
     logger.debug(f"Page source saved to: {page_source_file_path}")
 
 def capture_screenshot(name=None):
+    """
+    Capture a screenshot using the DeviceScreenshot class.
+    If the screenshot is None or a black screen, fall back to CameraScreenshot.
+    """
+    try:
+        screenshot = SeleniumScreenshot().capture()
+        return screenshot
+    except Exception as e:
+        logger.debug(f"Error capturing screenshot from Selenium: {e}")
+        screenshot = None
+    # If Selenium screenshot is None or a black screen, switch to DeviceScreenshot
     try:
         screenshot = DeviceScreenshot().capture()
     except Exception as e:

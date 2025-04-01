@@ -1,4 +1,3 @@
-import logging
 import subprocess # nosec
 from typing import Any, Dict, Optional
 from appium import webdriver
@@ -13,7 +12,7 @@ from optics_framework.engines.drivers.appium_driver_manager import set_appium_dr
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 
 # Hotfix: Disable debug logs from Appium to prevent duplicates on live logs
-logging.disable(logging.DEBUG)
+# logging.disable(logging.DEBUG)
 
 @apply_logger_format_to_all("internal")
 class Appium(DriverInterface):

@@ -223,7 +223,6 @@ class FlowControl:
                 raise ValueError(
                     f"Variable '{var_name}' not found for condition resolution.")
             try:
-                float(value)
                 return value
             except ValueError:
                 return f"'{value}'"
@@ -356,9 +355,10 @@ class FlowControl:
         """Safely evaluates an expression with restricted operations."""
         try:
             node = ast.parse(expression, mode='eval')
-            allowed_nodes = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare,
-                             ast.IfExp, ast.NameConstant, ast.Constant, ast.Load,
-                             ast.Num, ast.Str, ast.List, ast.Tuple)
+            allowed_nodes = (
+                ast.Expression, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare,
+                ast.IfExp, ast.Constant, ast.Name, ast.Load,
+                ast.List, ast.Tuple)
             allowed_operators = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod,
                                  ast.Pow, ast.Lt, ast.Gt, ast.Eq, ast.NotEq,
                                  ast.LtE, ast.GtE, ast.And, ast.Or, ast.Not)
