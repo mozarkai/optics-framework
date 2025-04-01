@@ -118,6 +118,8 @@ class CSVDataReader(DataReader):
         :return: A dictionary where keys are module names and values are lists of (module_step, params) tuples.
         :rtype: dict
         """
+
+
         rows = self.read_file(file_path)
         modules = {}
         for row in rows:
@@ -132,7 +134,10 @@ class CSVDataReader(DataReader):
             params = [
                 row[key].strip()
                 for key in row
-                if key.startswith("param_") and row[key] and row[key].strip()
+                if key is not None  # Add this check
+                and key.startswith("param_")
+                and row[key]  # Ensure the value is not empty or None
+                and row[key].strip()  # Ensure it’s not just whitespace
             ]
             if module_name not in modules:
                 modules[module_name] = []

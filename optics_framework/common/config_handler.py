@@ -58,8 +58,11 @@ class Config(BaseModel):
                     enabled=False,
                     url="http://127.0.0.1:4723",
                     capabilities={})},
+                {"selenium": DependencyConfig(
+                    enabled=False, url=None, capabilities={})},
                 {"ble": DependencyConfig(
-                    enabled=False, url=None, capabilities={})}
+                    enabled=False, url=None, capabilities={})},
+
             ]
         if not self.elements_sources:
             self.elements_sources = [
@@ -70,7 +73,11 @@ class Config(BaseModel):
                 {"device_screenshot": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
                 {"webcam_screenshot": DependencyConfig(
-                    enabled=False, url=None, capabilities={})}
+                    enabled=False, url=None, capabilities={})},
+                {"selenium_find_element": DependencyConfig(
+                    enabled=False, url=None, capabilities={})},
+                {"selenium_screenshot": DependencyConfig(
+                    enabled=False, url=None, capabilities={})},
             ]
         if not self.text_detection:
             self.text_detection = [

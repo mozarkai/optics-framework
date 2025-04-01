@@ -171,5 +171,5 @@ def dryrun_main(folder_path: str, test_name: str = ""):
 
 
 if __name__ == "__main__":
-    folder_path = "/Users/dhruvmenon/Documents/optics-framework/Optics_Framework/optics_framework/samples/youtube/"
+    folder_path = "/Users/dhruvmenon/Documents/optics-framework-1/optics_framework/samples/icici/"
     execute_main(folder_path, "")

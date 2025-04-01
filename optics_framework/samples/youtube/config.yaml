@@ -1,52 +1,62 @@
 driver_sources:
-  - appium:
-      enabled: true
-      url: "http://localhost:4723"
-      capabilities:
-        appActivity: "com.google.android.youtube.app.honeycomb.Shell$HomeActivity"
-        appPackage: "com.google.android.youtube"
-        automationName: "UiAutomator2"
-        deviceName: "emulator-5554"
-        platformName: "Android"
-  - ble_helper:
-      enabled: false
-      url: null
-      capabilities: {}
+    - appium:
+        enabled: true
+        url: "http://localhost:4723"
+        capabilities:
+            appActivity: "com.google.android.youtube.app.honeycomb.Shell$HomeActivity"
+            appPackage: "com.google.android.youtube"
+            automationName: "UiAutomator2"
+            deviceName: "emulator-5554"
+            platformName: "Android"
+    - selenium:
+        enabled: true
+        url: "http://localhost:4444/wd/hub"
+        capabilities: {}
+    - ble:
+        enabled: false
+        url: null
+        capabilities: {}
 
 elements_sources:
-  - appium_find_element:
-      enabled: true
-      url: null
-      capabilities: {}
-  - appium_page_source:
-      enabled: false
-      url: null
-      capabilities: {}
-  - device_screenshot:
-      enabled: true
-      url: null
-      capabilities: {}
-  - webcam_screenshot:
-      enabled: false
-      url: null
-      capabilities: {}
+    - appium_find_element:
+        enabled: true
+        url: null
+        capabilities: {}
+    - appium_page_source:
+        enabled: false
+        url: null
+        capabilities: {}
+    - device_screenshot:
+        enabled: true
+        url: null
+        capabilities: {}
+    - webcam_screenshot:
+        enabled: false
+        url: null
+        capabilities: {}
+    - selenium_find_element:
+        enabled: false
+        capabilities: {}
+    - selenium_screenshot:
+        enabled: false
+        capabilities: {}
 
 text_detection:
-  - easyocr:
-      enabled: true
-      url: null
-      capabilities: {}
-  - pytesseract:
-      enabled: false
-      url: null
-      capabilities: {}
-  - google_vision:
-      enabled: false
-      url: null
-      capabilities: {}
+    - easyocr:
+        enabled: true
+        url: null
+        capabilities: {}
+    - pytesseract:
+        enabled: false
+        url: null
+        capabilities: {}
+    - google_vision:
+        enabled: false
+        url: null
+        capabilities: {}
 
 image_detection:
-  - templatematch:
-      enabled: true
-      url: null
-      capabilities: {}
+    - templatematch:
+        enabled: true
+        url: null
+        capabilities: {}
