@@ -178,3 +178,4 @@ cython_debug/
 *.jpg
 *.json
 *.log
+.DS_Store

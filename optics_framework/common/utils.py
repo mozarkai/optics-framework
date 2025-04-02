@@ -202,6 +202,7 @@ def capture_screenshot(name=None):
     """
     try:
         screenshot = SeleniumScreenshot().capture()
+        save_screenshot(screenshot, name)
         return screenshot
     except Exception as e:
         logger.debug(f"Error capturing screenshot from Selenium: {e}")
