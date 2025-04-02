@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 
 class TextInterface(ABC):

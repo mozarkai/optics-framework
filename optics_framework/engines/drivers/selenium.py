@@ -60,7 +60,7 @@ class SeleniumDriver(DriverInterface):
                 raise
         return self.driver
 
-    def end_session(self):
+    def terminate(self):
         """End the current Selenium session."""
         if self.driver is not None:
             try:

@@ -75,7 +75,9 @@ class DeviceScreenshot(ElementSourceInterface):
             return None
 
     def assert_elements(self, elements):
-        return super().assert_elements(elements)
+        logger.exception("AppiumScreenshot does not support asserting elements.")
+        raise NotImplementedError(
+            "AppiumScreenshot does not support asserting elements.")
 
 
     def locate(self, image: np.ndarray, template: np.ndarray) -> Optional[tuple]:

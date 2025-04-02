@@ -223,17 +223,19 @@ class Verifier:
             el for el in elements_list if utils.determine_element_type(el) == 'XPath']
         images = [
             el for el in elements_list if utils.determine_element_type(el) == 'Image']
-
-        if 'appium' in element_source_type.lower():
-            # Calls assert presence from appium driver
-            if images:
-                logger.error(
-                    "Image search is not supported for Appium based search")
-                return False
-            texts_xpaths = texts + xpaths
-            result = self.element_source.assert_elements(
-                texts_xpaths, timeout, rule)
-        else:
+        result = False  # Initialize result with a default value
+        try:
+            if 'appium' in element_source_type.lower() or 'selenium' in element_source_type.lower():
+                # Calls assert presence from appium driver
+                if images:
+                    logger.error(
+                        "Image search is not supported for Appium based search")
+                    return False
+                texts_xpaths = texts + xpaths
+                result = self.element_source.assert_elements(
+                    texts_xpaths, timeout, rule)
+        except Exception as e:
+            logger.error(f"Exception occurred: {e}")
             # Vision search
             if xpaths:
                 logger.error(
@@ -246,7 +248,7 @@ class Verifier:
             # Trigger event (placeholder)
             pass
 
-        return result
+        return bool(result)
 
     def validate_screen(self, elements: str, timeout: int = 30, rule: str = 'any', event_name: Optional[str] = None) -> None:
         """
