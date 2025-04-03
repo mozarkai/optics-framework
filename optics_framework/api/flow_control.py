@@ -7,8 +7,7 @@ import json
 import csv
 import requests
 from optics_framework.common.logging_config import logger
-from optics_framework.common.runner.test_runnner import TestRunner
-
+from optics_framework.common.runner.test_runnner import Runner
 
 
 def raw_params(*indices):
@@ -23,53 +22,73 @@ def raw_params(*indices):
 
 
 class FlowControl:
-    """Manages control flow operations (loops, conditions, data) for a TestRunner."""
+    """Manages control flow operations (loops, conditions, data) for a Runner."""
 
-    def __init__(self, runner: Optional[TestRunner] = None):
-        self.runner: Optional[TestRunner] = runner
+    def __init__(self, runner: Optional[Runner] = None, modules: Optional[Dict[str, List[Tuple[str, List[str]]]]] = None) -> None:
+        self.runner: Optional[Runner] = runner
+        self.modules: Dict[str, List[Tuple[str, List[str]]]
+                           ] = modules if modules is not None else {}
 
     def _ensure_runner(self) -> None:
-        """Ensures a TestRunner instance is set."""
+        """Ensures a Runner instance is set."""
         if self.runner is None:
             raise ValueError(
                 "FlowControl.runner is not set. Please assign a valid runner instance before using FlowControl.")
 
-    def execute_module(self, module_name: str) -> List[Any]:
-        """Executes a module's keywords with resolved parameters."""
-        self._ensure_runner()
-        if self.runner is None:  # Explicit check instead of assert
-            raise ValueError("Runner is None after ensure_runner call.")
-        if module_name not in self.runner.modules:
-            raise ValueError(f"Module '{module_name}' not found.")
+    def _resolve_param(self, param: str) -> str:
+        """Resolve ${variable} references from runner.elements."""
+        if not isinstance(param, str) or not param.startswith("${") or not param.endswith("}"):
+            return str(param)
+        if self.runner is None:
+            raise ValueError("Runner is None in resolve_param.")
+        runner_elements = getattr(self.runner, 'elements', {})
+        var_name = param[2:-1].strip()
+        # Fallback to raw if not found
+        value = runner_elements.get(var_name, param)
+        return str(value)
 
+    def execute_module(self, module_name: str) -> List[Any]:
+        """Executes a module's keywords using the runner's keyword_map."""
+        self._ensure_runner()
+        if self.runner is None:
+            raise ValueError("Runner is None after ensure_runner call.")
+        if module_name not in self.modules:
+            raise ValueError(f"Module '{module_name}' not found in modules.")
         results = []
-        for keyword, params in self.runner.modules[module_name]:
-            try:
-                resolved_params = [self.runner.resolve_param(
-                    param) for param in params]
-            except Exception as e:
-                raise ValueError(
-                    f"Parameter resolution failed in module '{module_name}': {e}")
+
+        for keyword, params in self.modules[module_name]:
             func_name = "_".join(keyword.split()).lower()
             method = self.runner.keyword_map.get(func_name)
             if method is None:
                 raise ValueError(
-                    f"Keyword '{keyword}' not found in module '{module_name}'.")
-            result = method(*resolved_params)
-            results.append(result)
+                    f"Keyword '{keyword}' not found in keyword_map.")
+            try:
+                raw_indices = getattr(method, '_raw_param_indices', [])
+                resolved_params = [
+                    param if i in raw_indices else self._resolve_param(param)
+                    for i, param in enumerate(params)
+                ]
+                logger.debug(
+                    f"Executing {keyword} with params: {resolved_params}")
+                result = method(*resolved_params)
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Error executing keyword '{keyword}': {e}")
+                raise  # Propagate exception to fail the test
         return results
 
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
     def run_loop(self, target: str, *args: str) -> List[Any]:
         """Runs a loop over a target module, either by count or with variables."""
         self._ensure_runner()
-        if self.runner is None:  # Explicit check instead of assert
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
         if len(args) == 1:
             return self._loop_by_count(target, args[0])
         return self._loop_with_variables(target, args)
 
     def _loop_by_count(self, target: str, count_str: str) -> List[Any]:
+        """Runs a loop a specified number of times."""
         try:
             iterations = int(count_str)
             if iterations < 1:
@@ -89,6 +108,7 @@ class FlowControl:
         return results
 
     def _loop_with_variables(self, target: str, args: Tuple[str, ...]) -> List[Any]:
+        """Runs a loop with variable-iterable pairs."""
         if len(args) % 2 != 0:
             raise ValueError(
                 "Expected an even number of arguments for variable-iterable pairs.")
@@ -98,11 +118,12 @@ class FlowControl:
         var_names, parsed_iterables = self._parse_variable_iterable_pairs(
             variables, iterables)
         min_length = min(len(lst) for lst in parsed_iterables)
-        if self.runner is None:  # Explicit check instead of assert
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
-        if not isinstance(self.runner.elements, dict):
-            self.runner.elements = {}
-        runner_elements: Dict[str, Any] = self.runner.elements
+        runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
+        if not isinstance(runner_elements, dict):
+            runner_elements = {}
+            setattr(self.runner, 'elements', runner_elements)
 
         results = []
         for i in range(min_length):
@@ -168,7 +189,7 @@ class FlowControl:
     def condition(self, *args: str) -> Optional[List[Any]]:
         """Evaluates conditions and executes corresponding targets."""
         self._ensure_runner()
-        if self.runner is None:  # Explicit check instead of assert
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
         if not args:
             raise ValueError("No condition-target pairs provided.")
@@ -176,6 +197,7 @@ class FlowControl:
         return self._evaluate_conditions(pairs, else_target)
 
     def _split_condition_args(self, args: Tuple[str, ...]) -> Tuple[List[Tuple[str, str]], Optional[str]]:
+        """Splits args into condition-target pairs and an optional else target."""
         pairs = []
         else_target = None
         if len(args) % 2 == 1:
@@ -188,6 +210,7 @@ class FlowControl:
         return pairs, else_target
 
     def _evaluate_conditions(self, pairs: List[Tuple[str, str]], else_target: Optional[str]) -> Optional[List[Any]]:
+        """Evaluates conditions and executes the first true target's module."""
         for cond, target in pairs:
             cond_str = cond.strip()
             if not cond_str:
@@ -204,6 +227,7 @@ class FlowControl:
         return None
 
     def _is_condition_true(self, cond: str) -> bool:
+        """Evaluates if a condition is true."""
         try:
             resolved_cond = self._resolve_condition(cond)
             return bool(self._safe_eval(resolved_cond))
@@ -211,9 +235,10 @@ class FlowControl:
             raise ValueError(f"Error evaluating condition '{cond}': {e}")
 
     def _resolve_condition(self, cond: str) -> str:
-        if self.runner is None:  # Explicit check instead of assert
+        """Resolves variables in a condition string."""
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
-        runner_elements: Dict[str, Any] = self.runner.elements
+        runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
         pattern = re.compile(r"\$\{([^}]+)\}")
 
         def replacer(match):
@@ -222,23 +247,21 @@ class FlowControl:
             if value is None:
                 raise ValueError(
                     f"Variable '{var_name}' not found for condition resolution.")
-            try:
-                return value
-            except ValueError:
-                return f"'{value}'"
+            return f"'{value}'" if isinstance(value, str) else str(value)
         return pattern.sub(replacer, cond)
 
     @raw_params(0)
     def read_data(self, input_element: str, file_path: Union[str, List[Any]], index: Optional[int] = None) -> List[Any]:
         """Reads data from a file, API, or list and stores it in runner.elements."""
         self._ensure_runner()
-        if self.runner is None:  # Explicit check instead of assert
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
         elem_name = self._extract_element_name(input_element)
         data = self._load_data(file_path, index)
-        if not isinstance(self.runner.elements, dict):
-            self.runner.elements = {}
-        runner_elements: Dict[str, Any] = self.runner.elements
+        runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
+        if not isinstance(runner_elements, dict):
+            runner_elements = {}
+            setattr(self.runner, 'elements', runner_elements)
         runner_elements[elem_name] = data
         return data
 
@@ -253,48 +276,33 @@ class FlowControl:
 
     def _load_data(self, file_path: Union[str, List[Any]], index: Optional[int]) -> List[Any]:
         """Loads data from a list, API, or CSV file."""
-        # Direct list input
         if isinstance(file_path, list):
             return file_path
-
-        # API call
         elif file_path.lower().startswith("http"):
             try:
                 response = requests.get(file_path, timeout=(5, 30))
-                if response.status_code != 200:
-                    raise ValueError(
-                        f"Failed to fetch data from API: {file_path}")
+                response.raise_for_status()
                 json_data = response.json()
-
                 if not isinstance(json_data, list):
                     raise ValueError("API response must be a JSON list.")
-
                 if not isinstance(index, str):
                     raise ValueError(
                         "For API data, 'index' must be a string (JSON key).")
-
                 extracted_data = [item[index]
                                   for item in json_data if index in item]
                 return extracted_data
-            except requests.Timeout:
-                raise ValueError(f"Request to {file_path} timed out.")
             except requests.RequestException as e:
                 raise ValueError(f"Failed to fetch data from {file_path}: {e}")
-
-        # File input (only CSV supported)
         else:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"File '{file_path}' not found.")
-
             file_extension = os.path.splitext(file_path)[-1].lower()
-
             if file_extension == '.csv':
                 with open(file_path, newline='') as csvfile:
                     reader = csv.reader(csvfile)
                     data = list(reader)
                     if not data:
                         raise ValueError(f"CSV file '{file_path}' is empty.")
-                    # Assume first row is headers if index is a string
                     if isinstance(index, str):
                         headers = data[0]
                         if index not in headers:
@@ -319,11 +327,14 @@ class FlowControl:
     def evaluate(self, param1: str, param2: str) -> Any:
         """Evaluates an expression and stores the result in runner.elements."""
         self._ensure_runner()
-        if self.runner is None:  # Explicit check instead of assert
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
         var_name = self._extract_variable_name(param1)
         result = self._compute_expression(param2)
-        runner_elements: Dict[str, Any] = self.runner.elements
+        runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
+        if not isinstance(runner_elements, dict):
+            runner_elements = {}
+            setattr(self.runner, 'elements', runner_elements)
         runner_elements[var_name] = str(result)
         return result
 
@@ -338,9 +349,9 @@ class FlowControl:
 
     def _compute_expression(self, param2: str) -> Any:
         """Computes an expression by resolving variables and evaluating it."""
-        if self.runner is None:  # Explicit check instead of assert
+        if self.runner is None:
             raise ValueError("Runner is None after ensure_runner call.")
-        runner_elements: Dict[str, Any] = self.runner.elements
+        runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
 
         def replace_var(match):
             var_name = match.group(1)
@@ -359,14 +370,21 @@ class FlowControl:
                 ast.Expression, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare,
                 ast.IfExp, ast.Constant, ast.Name, ast.Load,
                 ast.List, ast.Tuple)
-            allowed_operators = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod,
-                                 ast.Pow, ast.Lt, ast.Gt, ast.Eq, ast.NotEq,
-                                 ast.LtE, ast.GtE, ast.And, ast.Or, ast.Not)
-            for node in ast.walk(node):
-                if not isinstance(node, allowed_nodes) and not isinstance(node, allowed_operators):
+            allowed_operators = (
+                ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow,
+                ast.Lt, ast.Gt, ast.Eq, ast.NotEq, ast.LtE, ast.GtE,
+                ast.And, ast.Or, ast.Not)
+            for n in ast.walk(node):
+                if not isinstance(n, allowed_nodes) and not isinstance(n, allowed_operators):
                     raise ValueError(
                         f"Unsafe expression detected: {expression}")
-            return eval(expression, {"__builtins__": None}, {})  # nosec
+            if self.runner is None:
+                raise ValueError("Runner is None after ensure_runner call.")
+            runner_elements = getattr(self.runner, 'elements', {})
+            return eval(expression, {"__builtins__": None}, {k: str(v) for k, v in runner_elements.items()})  # nosec B307 # pylint: disable=eval-used
+            # Note: eval() is used here for simplicity, i know it should be should be avoided in production code.
+            # In some time, i will replace it with a safer alternative.
+            # For now, we are using it with a restricted environment.
         except Exception as e:
             raise ValueError(
                 f"Error evaluating expression '{expression}': {e}")

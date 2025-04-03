@@ -6,7 +6,7 @@ from optics_framework.common.logging_config import logger, apply_logger_format_t
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.runner.csv_reader import CSVDataReader
 from optics_framework.common.session_manager import SessionManager
-from optics_framework.common.execution import ExecutionEngine
+from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData
 
 
 @apply_logger_format_to_all("user")
@@ -119,15 +119,17 @@ class BaseRunner:
     async def run(self, mode: str):
         """Run the specified mode using ExecutionEngine."""
         try:
-            await self.engine.execute(
+            params = ExecutionParams(
                 session_id=self.session_id,
                 mode=mode,
                 test_case=self.test_name if self.test_name else None,
                 event_queue=None,  # Local mode uses TreeResultPrinter
-                test_cases=self.test_cases_data,
-                modules=self.modules_data,
-                elements=self.elements_data
+                test_cases=TestCaseData(test_cases=self.test_cases_data),
+                modules=ModuleData(modules=self.modules_data),
+                elements=ElementData(elements=self.elements_data),
+                runner_type="test_runner"  # Default; could be configurable
             )
+            await self.engine.execute(params)
         except Exception as e:
             logger.error(f"{mode.capitalize()} failed: {e}")
             raise

@@ -9,7 +9,7 @@ driver_sources:
             deviceName: "emulator-5554"
             platformName: "Android"
     - selenium:
-        enabled: true
+        enabled: false
         url: "http://localhost:4444/wd/hub"
         capabilities: {}
     - ble:
