@@ -1,0 +1,45 @@
+name: pre-commit
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensures we have the history for comparison
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Pre-Commit
+        run: pip install pre-commit
+
+      - name: Get Changed Files
+        id: changed-files
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "Found changed files: $CHANGED_FILES"
+            echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+          else
+            echo "No changed files detected"
+            echo "CHANGED_FILES=" >> $GITHUB_ENV
+          fi
+
+      - name: Run Pre-Commit Hooks on Changed Files
+        run: |
+          if [ -n "${{ env.CHANGED_FILES }}" ]; then
+            echo "Running pre-commit on: ${{ env.CHANGED_FILES }}"
+            echo "${{ env.CHANGED_FILES }}" | xargs pre-commit run --files
+          else
+            echo "No changed files to check."
+          fi
