@@ -112,7 +112,7 @@ class Appium(DriverInterface):
             logger.debug(f"Failed to start Appium session: {e}")
             raise
 
-    def end_session(self):
+    def terminate(self):
         """End the Appium session if active."""
         if self.driver:
             self.driver.quit()

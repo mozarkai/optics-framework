@@ -215,3 +215,13 @@ class DriverInterface(ABC):
         :rtype: str
         """
         pass
+
+
+    @abstractmethod
+    def terminate(self) -> None:
+        """
+        Terminate the application.
+        :return: None
+        :rtype: None
+        """
+        pass

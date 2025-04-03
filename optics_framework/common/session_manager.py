@@ -69,4 +69,5 @@ class SessionManager(SessionHandler):
 
     def terminate_session(self, session_id: str) -> None:
         """Terminates a session and cleans up resources."""
-        self.sessions.pop(session_id, None)
+        session = self.sessions.pop(session_id, None)
+        session.driver.terminate()
