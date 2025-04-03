@@ -2,63 +2,36 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field, ConfigDict
+from uuid import uuid4
+
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.runner.test_runnner import TestRunner, TreeResultPrinter, TerminalWidthProvider, IResultPrinter, TestCaseResult
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter, TestCaseResult
+from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner
 
-
-class NullResultPrinter(IResultPrinter):
-    """A no-op implementation of IResultPrinter for cases where no output is needed."""
-
-    def __init__(self):
-        self._test_state: Dict[str, TestCaseResult] = {}
-
-    @property
-    def test_state(self) -> Dict[str, TestCaseResult]:
-        return self._test_state
-
-    @test_state.setter
-    def test_state(self, value: Dict[str, TestCaseResult]) -> None:
-        self._test_state = value
-
-    def print_tree_log(self, test_case_result: TestCaseResult) -> None:
-        pass
-
-    def start_live(self) -> None:
-        pass
-
-    def stop_live(self) -> None:
-        pass
-
-    def start_run(self, total_test_cases: int) -> None:
-        pass
-
-
+# Data Models
 class TestCaseData(BaseModel):
-    """Structure for test cases loaded from CSV."""
-    test_cases: Dict[str, List[str]] = Field(
-        default_factory=dict)  # {test_case: [test_steps]}
+    """Structure for test cases."""
+    test_cases: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 class ModuleData(BaseModel):
-    """Structure for modules loaded from CSV."""
-    modules: Dict[str, List[tuple[str, List[str]]]] = Field(
-        default_factory=dict)  # {module_name: [(module_step, [params])]}
+    """Structure for modules."""
+    modules: Dict[str, List[tuple[str, List[str]]]
+                  ] = Field(default_factory=dict)
 
 
 class ElementData(BaseModel):
-    """Structure for elements loaded from CSV."""
-    elements: Dict[str, str] = Field(
-        default_factory=dict)  # {element_name: element_id}
+    """Structure for elements."""
+    elements: Dict[str, str] = Field(default_factory=dict)
 
 
 class ExecutionParams(BaseModel):
-    """Parameters for ExecutionEngine.execute."""
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True)  # Allow asyncio.Queue
+    """Execution parameters with Pydantic validation."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    session_id: str
+    session_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: str
     test_case: Optional[str] = None
     keyword: Optional[str] = None
@@ -67,38 +40,36 @@ class ExecutionParams(BaseModel):
     test_cases: TestCaseData = Field(default_factory=TestCaseData)
     modules: ModuleData = Field(default_factory=ModuleData)
     elements: ElementData = Field(default_factory=ElementData)
+    runner_type: str = "test_runner"
 
 
+# Abstract Executor
 class Executor(ABC):
     """Abstract base class for execution strategies."""
     @abstractmethod
-    async def execute(self, session: Session, runner: TestRunner, event_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         pass
 
 
+# Concrete Executors
 class BatchExecutor(Executor):
-    """Executes a batch test case from preloaded CSV data."""
+    """Executes batch test cases."""
 
     def __init__(self, test_case: Optional[str] = None):
         self.test_case = test_case
 
-    async def execute(self, session: Session, runner: TestRunner, event_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
-            status = "ERROR"
-            message = "No test cases loaded"
-            if event_queue:
-                await event_queue.put({"execution_id": session.session_id, "status": status, "message": message})
-            raise ValueError(message)
+            await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
+            raise ValueError("No test cases loaded")
 
         if self.test_case:
             if self.test_case not in runner.test_cases:
-                status = "ERROR"
-                message = f"Test case {self.test_case} not found in loaded data"
-                if event_queue:
-                    await event_queue.put({"execution_id": session.session_id, "status": status, "message": message})
-                raise ValueError(message)
+                await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
+                raise ValueError(f"Test case {self.test_case} not found")
             result = runner.execute_test_case(self.test_case)
-            status = "PASS" if result.status == "PASS" else "FAIL"
+            status = "PASS" if isinstance(result, TestCaseResult) and result.status == "PASS" else result.get(
+                "status", "FAIL") if isinstance(result, dict) else "FAIL"
             message = f"Test case {self.test_case} completed with status {status}"
         else:
             runner.run_all()
@@ -106,33 +77,31 @@ class BatchExecutor(Executor):
                 tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
             message = "All test cases completed"
 
-        if event_queue:
-            await event_queue.put({"execution_id": session.session_id, "status": status, "message": message})
+        await self._send_event(event_queue, session.session_id, status, message)
+
+    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
+        if queue:
+            await queue.put({"execution_id": session_id, "status": status, "message": message})
 
 
 class DryRunExecutor(Executor):
-    """Performs a dry run of a test case from preloaded CSV data."""
+    """Performs dry run of test cases."""
 
     def __init__(self, test_case: Optional[str] = None):
         self.test_case = test_case
 
-    async def execute(self, session: Session, runner: TestRunner, event_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
-            status = "ERROR"
-            message = "No test cases loaded"
-            if event_queue:
-                await event_queue.put({"execution_id": session.session_id, "status": status, "message": message})
-            raise ValueError(message)
+            await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
+            raise ValueError("No test cases loaded")
 
         if self.test_case:
             if self.test_case not in runner.test_cases:
-                status = "ERROR"
-                message = f"Test case {self.test_case} not found in loaded data"
-                if event_queue:
-                    await event_queue.put({"execution_id": session.session_id, "status": status, "message": message})
-                raise ValueError(message)
+                await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
+                raise ValueError(f"Test case {self.test_case} not found")
             result = runner.dry_run_test_case(self.test_case)
-            status = "PASS" if result.status == "PASS" else "FAIL"
+            status = "PASS" if isinstance(result, TestCaseResult) and result.status == "PASS" else result.get(
+                "status", "FAIL") if isinstance(result, dict) else "FAIL"
             message = f"Dry run for test case {self.test_case} completed with status {status}"
         else:
             runner.dry_run_all()
@@ -140,8 +109,11 @@ class DryRunExecutor(Executor):
                 tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
             message = "All test cases dry run completed"
 
-        if event_queue:
-            await event_queue.put({"execution_id": session.session_id, "status": status, "message": message})
+        await self._send_event(event_queue, session.session_id, status, message)
+
+    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
+        if queue:
+            await queue.put({"execution_id": session_id, "status": status, "message": message})
 
 
 class KeywordExecutor(Executor):
@@ -151,137 +123,119 @@ class KeywordExecutor(Executor):
         self.keyword = keyword
         self.params = params
 
-    async def execute(self, session: Session, runner: TestRunner, event_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
         if method:
             method(*self.params)
-            if event_queue:
-                await event_queue.put({
-                    "execution_id": session.session_id,
-                    "status": "PASS",
-                    "keyword": self.keyword,
-                    "message": "Keyword executed successfully"
-                })
+            await self._send_event(event_queue, session.session_id, "PASS", "Keyword executed successfully", self.keyword)
         else:
-            if event_queue:
-                await event_queue.put({
-                    "execution_id": session.session_id,
-                    "status": "FAIL",
-                    "keyword": self.keyword,
-                    "message": "Keyword not found"
-                })
+            await self._send_event(event_queue, session.session_id, "FAIL", "Keyword not found", self.keyword)
             raise ValueError(f"Keyword {self.keyword} not found")
 
+    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str, keyword: Optional[str] = None) -> None:
+        if queue:
+            event = {"execution_id": session_id,
+                     "status": status, "message": message}
+            if keyword:
+                event["keyword"] = keyword
+            await queue.put(event)
 
+
+# Factory
 class RunnerFactory:
-    """Sets up a TestRunner with keywords and preloaded data."""
+    """Creates runners with dependency injection."""
     @staticmethod
     def create_runner(
         session: Session,
+        runner_type: str,
         use_printer: bool,
         test_cases: Dict[str, List[str]],
         modules: Dict[str, List[tuple[str, List[str]]]],
         elements: Dict[str, str]
-    ) -> TestRunner:
-        result_printer = TreeResultPrinter(
-            TerminalWidthProvider()) if use_printer else NullResultPrinter()
-        runner = TestRunner(
-            test_cases=test_cases,
-            modules=modules,
-            elements=elements,
-            keyword_map={},  # Initialize with empty dict
-            result_printer=result_printer
-        )
+        ) -> Runner:
         registry = KeywordRegistry()
-        flow_control = FlowControl(runner)
         action_keyword = session.optics.build(ActionKeyword)
         app_management = session.optics.build(AppManagement)
         verifier = session.optics.build(Verifier)
+
+        if runner_type == "test_runner":
+            result_printer = TreeResultPrinter(
+                TerminalWidthProvider()) if use_printer else NullResultPrinter()
+            runner = TestRunner(test_cases, modules,
+                                elements, {}, result_printer)
+            flow_control = FlowControl(runner, modules)  # Pass modules here
+        elif runner_type == "pytest":
+            runner = PytestRunner(session, test_cases, modules, elements, {})
+            flow_control = FlowControl(runner, modules)  # Pass modules here
+        else:
+            raise ValueError(f"Unknown runner type: {runner_type}")
+
         registry.register(action_keyword)
         registry.register(app_management)
         registry.register(flow_control)
         registry.register(verifier)
-        runner.keyword_map = registry.keyword_map  # No type hint needed now
+        runner.keyword_map = registry.keyword_map
         return runner
 
-
+# Engine
 class ExecutionEngine:
-    """Orchestrates execution using session management and executor strategies."""
+    """Orchestrates execution."""
 
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
 
-    async def execute(
-        self,
-        session_id: str,
-        mode: str,
-        test_case: Optional[str] = None,
-        keyword: Optional[str] = None,
-        params: Optional[List[str]] = None,
-        event_queue: Optional[asyncio.Queue] = None,
-        test_cases: Optional[Dict[str, List[str]]] = None,
-        modules: Optional[Dict[str, List[tuple[str, List[str]]]]] = None,
-        elements: Optional[Dict[str, str]] = None
-    ) -> None:
-        if params is None:
-            params = []
-        params_model = ExecutionParams(
-            session_id=session_id,
-            mode=mode,
-            test_case=test_case,
-            keyword=keyword,
-            params=params,
-            event_queue=event_queue,
-            test_cases=TestCaseData(test_cases=test_cases or {}),
-            modules=ModuleData(modules=modules or {}),
-            elements=ElementData(elements=elements or {})
-        )
-
-        session = self.session_manager.get_session(params_model.session_id)
+    async def execute(self, params: ExecutionParams) -> None:
+        session = self.session_manager.get_session(params.session_id)
         if not session:
-            if params_model.event_queue:
-                await params_model.event_queue.put({"status": "ERROR", "message": "Session not found"})
+            await self._send_event(params.event_queue, params.session_id, "ERROR", "Session not found")
             raise ValueError("Session not found")
 
         runner = RunnerFactory.create_runner(
-            session,
-            use_printer=params_model.event_queue is None,
-            # Pylint suppression for false positives on Pydantic field access
-            test_cases=params_model.test_cases.test_cases,  # pylint: disable=no-member
-            modules=params_model.modules.modules,  # pylint: disable=no-member
-            elements=params_model.elements.elements  # pylint: disable=no-member
+            session, params.runner_type, params.event_queue is None,
+            params.test_cases.test_cases, params.modules.modules, params.elements.elements
         )
-        if runner.result_printer:
+        if hasattr(runner, 'result_printer') and runner.result_printer:
             runner.result_printer.start_live()
 
-        if params_model.mode == "batch":
-            executor = BatchExecutor(params_model.test_case)
-        elif params_model.mode == "dry_run":
-            executor = DryRunExecutor(params_model.test_case)
-        elif params_model.mode == "keyword":
-            if not params_model.keyword:
-                if params_model.event_queue:
-                    await params_model.event_queue.put({"status": "ERROR", "message": "Keyword mode requires a keyword"})
+        if params.mode == "batch":
+            executor = BatchExecutor(params.test_case)
+        elif params.mode == "dry_run":
+            executor = DryRunExecutor(params.test_case)
+        elif params.mode == "keyword":
+            if not params.keyword:
+                await self._send_event(params.event_queue, params.session_id, "ERROR", "Keyword mode requires a keyword")
                 raise ValueError("Keyword mode requires a keyword")
-            executor = KeywordExecutor(
-                params_model.keyword, params_model.params)
+            executor = KeywordExecutor(params.keyword, params.params)
         else:
-            if params_model.event_queue:
-                await params_model.event_queue.put({"status": "ERROR", "message": f"Unknown mode: {params_model.mode}"})
-            raise ValueError(f"Unknown mode: {params_model.mode}")
+            await self._send_event(params.event_queue, params.session_id, "ERROR", f"Unknown mode: {params.mode}")
+            raise ValueError(f"Unknown mode: {params.mode}")
 
         try:
-            if params_model.event_queue:
-                await params_model.event_queue.put({
-                    "execution_id": params_model.session_id,
-                    "status": "RUNNING",
-                    "message": f"Starting {params_model.mode} execution"
-                })
-            await executor.execute(session, runner, params_model.event_queue)
+            await self._send_event(params.event_queue, params.session_id, "RUNNING", f"Starting {params.mode} execution")
+            await executor.execute(session, runner, params.event_queue)
         except Exception as e:
-            if params_model.event_queue:
-                await params_model.event_queue.put({"status": "FAIL", "message": f"Execution failed: {str(e)}"})
+            await self._send_event(params.event_queue, params.session_id, "FAIL", f"Execution failed: {str(e)}")
             raise
         finally:
-            if runner.result_printer:
+            if hasattr(runner, 'result_printer') and runner.result_printer:
                 runner.result_printer.stop_live()
+
+    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
+        if queue:
+            await queue.put({"execution_id": session_id, "status": status, "message": message})
+
+
+# Main execution example
+async def main():
+    session_manager = SessionManager()
+    engine = ExecutionEngine(session_manager)
+    params = ExecutionParams(
+        mode="batch",
+        test_cases=TestCaseData(test_cases={"test1": ["step1"]}),
+        modules=ModuleData(modules={"step1": [("click", ["button"])]}),
+        elements=ElementData(elements={"button": "btn1"})
+    )
+    await engine.execute(params)
+
+if __name__ == "__main__":
+    asyncio.run(main())
