@@ -6,7 +6,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from lxml import etree
 import time
-import re
+
 
 class AppiumPageSource(ElementSourceInterface):
     """
@@ -28,16 +28,15 @@ class AppiumPageSource(ElementSourceInterface):
     def _get_appium_driver(self):
         if self.driver is None:
             self.driver = get_appium_driver()
-        return self.driver
-
+        return self.driver  
+    
     def capture(self):
         """
         Capture the current screen state.
 
         return """
         logger.exception('Appium Find Element does not support capturing the screen state.')
-        raise NotImplementedError(
-            'Appium Find Element does not support capturing the screen state.')
+        raise ValueError('Appium Find Element does not support capturing the screen state.')
 
     def get_page_source(self) -> str:
         """
@@ -58,9 +57,9 @@ class AppiumPageSource(ElementSourceInterface):
         logger.debug(f'Page source fetched at: {time_stamp}')
         logger.debug('\n==========================================\n')
         return page_source
+    
 
-
-    def locate(self, element: str):
+    def locate(self, element: str, index=None, strategy=None) -> dict:
         """
         Find the specified element on the current page.
 
@@ -82,8 +81,11 @@ class AppiumPageSource(ElementSourceInterface):
             return None
         else:
             if element_type == 'Text':
-                # Find the element by text
-                xpath = self.find_xpath_from_text(element)
+                if index is not None:
+                    xpath = self.find_xpath_from_text_index(element, index, strategy)
+                else:
+                    xpath = self.find_xpath_from_text(element)
+
                 try:
                     element = driver.find_element(AppiumBy.XPATH, xpath)
                 except Exception as e:
@@ -98,10 +100,10 @@ class AppiumPageSource(ElementSourceInterface):
                     logger.exception(f"Error finding element by xpath: {e}")
                     raise Exception (f"Error finding element by xpath: {e}")
                 return element
-
+            
 
     def locate_using_index(self, element, index, strategy=None) -> dict:
-        locators = self.get_locator_and_strategy_using_index(element, index, strategy)
+        locators = self.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
         if locators:
             strategy = locators['strategy']
             locator = locators['locator']
@@ -195,12 +197,21 @@ class AppiumPageSource(ElementSourceInterface):
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
-
+    
+    def find_xpath_from_text_index(self, text, index, strategy=None):
+        locators = self.ui_helper.get_locator_and_strategy_using_index(text, index, strategy)
+        if locators:
+            strategy = locators['strategy']
+            locator = locators['locator']
+            xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
+            return xpath
+        return None
+    
 
     def ui_text_search(self, texts, rule='any'):
         """
         Checks if any or all given texts exist in the UI tree.
-
+        
         Args:
             texts (list): List of text strings to search for.
             rule (str): Rule for matching ('any' or 'all').
@@ -209,111 +220,28 @@ class AppiumPageSource(ElementSourceInterface):
             bool: True if the condition is met, otherwise False.
         """
         strategies = ["text", "resource-id", "content-desc", "name", "value", "label"]
-
+        
         found_texts = set()
 
         for text in texts:
             logger.debug(f'Searching for text: {text}')
-
+            
             for attrib in strategies:
                 matching_elements = self.tree.xpath(f"//*[@{attrib}]")
-
+                
                 for elem in matching_elements:
                     attrib_value = elem.attrib.get(attrib, '').strip()
-
+                    
                     if attrib_value and utils.compare_text(attrib_value, text):
                         logger.debug(f"Match found using {attrib} for '{text}'")
                         found_texts.add(text)  # Mark this text as found
                         break  # Stop searching other elements for this text
-
+                
                 if text in found_texts:  # Stop checking other strategies if already found
                     break
-
+            
             if rule == 'any' and text in found_texts:
                 return True  # Early exit if at least one match is found
-
+        
         return len(found_texts) == len(texts) if rule == 'all' else False
 
-
-    def get_locator_and_strategy_using_index(self, element, index, strategy=None) -> dict:
-        """
-        Perform a linear search across all strategies (resource-id, text, content-desc, etc.) in the UI tree,
-        match against the input, and index the found matches.
-
-        Args:
-            element (str): The element identifier to search for.
-            index (int): zero indexing
-            strategy (str): supported attributes in string, 'resource-id', 'text', 'content-desc', 'name', 'value', 'label'
-
-        Returns:
-            list: A list of dictionaries, each containing the strategy, value, and index of the match.
-        """
-        self.get_page_source()
-        tree = self.tree
-
-        # Collect all elements in positional order
-        all_strategies = ['resource-id', 'text', 'content-desc', 'name', 'value', 'label']  # Supported attributes
-        all_elements = []
-
-        strategies = [strategy] if strategy else all_strategies
-
-        # If a specific strategy is provided, ensure it's valid
-        if strategy and strategy not in strategies:
-            raise ValueError(f"Invalid strategy '{strategy}'. Supported strategies: {strategies}")
-
-        for strategy in strategies:
-            elements = tree.xpath(f"//*[@{strategy}]")
-            for elem in elements:
-                attr_value = elem.attrib.get(strategy, '').strip()
-                bounds = elem.attrib.get('bounds', '')  # Parse bounds if available
-                position = self.parse_bounds(bounds)
-                all_elements.append({
-                    "strategy": strategy,
-                    "value": attr_value,
-                    "position": position
-                })
-
-        # Perform a linear match against all elements
-        matches = []
-        for idx, elem in enumerate(all_elements):
-            if utils.compare_text(elem["value"], element):
-                matches.append({
-                    "index": idx,
-                    "strategy": elem["strategy"],
-                    "value": elem["value"],
-                    "position": elem["position"]
-                })
-
-        # Log matches
-        logger.debug(f"Found {len(matches)} matches for '{element}': {matches}")
-
-        if index >= len(matches):
-            raise   IndexError(f"Index {index} is out of range for the matches found. Total matches: {len(matches)}.")
-
-        desired_match = matches[index]
-        logger.debug(f'Found the matches for {element} and returning {index} index match: {desired_match} ')
-
-        strategy = desired_match["strategy"]
-        locator = desired_match["value"]
-
-        logger.debug(f"Returning strategy: {strategy}, locator: {locator}")
-        return {"strategy": strategy, "locator": locator}
-
-    def parse_bounds(self, bounds):
-        """
-        Parse the 'bounds' attribute to extract position information.
-        Args:
-            bounds (str): Bounds string in the format "[x1,y1][x2,y2]".
-        Returns:
-            dict: A dictionary with coordinates {x1, y1, x2, y2}.
-        """
-        try:
-            numbers = re.findall(r'\d+', bounds)  # Extract all numbers from the string
-            if len(numbers) == 4:
-                x1, y1, x2, y2 = map(int, numbers)
-                return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-            else:
-                raise ValueError(f"Unexpected bounds format: {bounds}")
-        except Exception as e:
-            logger.debug(f"Error parsing bounds: {bounds} - {e}")
-            return {"x1": 0, "y1": 0, "x2": 0, "y2": 0}

@@ -81,8 +81,3 @@ class DeviceScreenshot(ElementSourceInterface):
     def locate(self, image: np.ndarray, template: np.ndarray) -> Optional[tuple]:
         logger.exception("CameraScreenshot does not support locating elements.")
         raise NotImplementedError("CameraScreenshot does not support locating elements.")
-
-
-    def locate_using_index(self, element, index):
-        logger.exception("CameraScreenshot does not support locating elements using index.")
-        raise NotImplementedError("CameraScreenshot does not support locating elements using index.")

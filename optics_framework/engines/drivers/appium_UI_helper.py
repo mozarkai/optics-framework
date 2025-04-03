@@ -1,3 +1,4 @@
+import re
 from fuzzywuzzy import fuzz
 from lxml import etree
 from optics_framework.common.logging_config import logger
@@ -36,8 +37,8 @@ class UIHelper:
         logger.debug('\n==========================================\n')
         utils.save_page_source(page_source, time_stamp)
         return page_source, time_stamp
-
-    # fetching page source and handling UI tree
+    
+    # fetching page source and handling UI tree    
     def get_distinct_page_source(self):
         """
         Fetch the current UI tree (page source) from the Appium driver continuously.
@@ -48,7 +49,7 @@ class UIHelper:
         page_source = driver.page_source
         # Compute hash
         new_hash = utils.compute_hash(page_source)
-
+        
         # Compare with previous hash
         if self.prev_hash == new_hash:
             logger.debug("\nPage source unchanged. Skipping further processing.\n")
@@ -65,9 +66,9 @@ class UIHelper:
         logger.debug(f'Page source fetched at: {time_stamp}')
         logger.debug('\n==========================================\n')
         return page_source, time_stamp
+    
 
-
-
+    
     def find_xpath_from_text(self, text):
         """
         Find the XPath of an element based on the text content.
@@ -86,8 +87,8 @@ class UIHelper:
             xpath = self.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
-
-
+    
+    
     def find_xpath(self, xpath):
         """
         Process the given XPath and return the exact path from the UI tree after applying various matching strategies.
@@ -144,7 +145,7 @@ class UIHelper:
             logger.error(
                 f"Unexpected error in find_xpath for XPath '{xpath}': {str(e)}")
             return None, None
-
+        
     def find_exact(self, xpath):
         """Attempts an exact match for the given XPath."""
         try:
@@ -155,7 +156,7 @@ class UIHelper:
         except Exception as e:
             logger.debug(f"Exact match error: {e}")
         return None
-
+    
     def find_relative(self, xpath):
         """Attempts to match a simplified, relative XPath."""
         relative_xpath = self.make_relative(xpath)
@@ -169,7 +170,7 @@ class UIHelper:
         except Exception as e:
             logger.debug(f"Relative match error: {e}")
         return None
-
+    
     def make_relative(self, xpath):
         """
         Simplifies the XPath by removing intermediate elements,
@@ -194,7 +195,7 @@ class UIHelper:
 
         # Join the parts back into a single simplified XPath
         return "/".join(simplified)
-
+    
     def make_partial_match(self, xpath):
         """
         Converts the XPath for partial matching using `contains()` for specified attributes,
@@ -239,7 +240,7 @@ class UIHelper:
         except Exception as e:
             logger.debug(f"Partial match error: {e}")
         return None
-
+    
     def fuzzy_match_prefix(self, prefix1, prefix2):
         """Performs a fuzzy comparison of two prefixes."""
         return fuzz.ratio(prefix1, prefix2) >= 80
@@ -257,7 +258,7 @@ class UIHelper:
         # If no attributes are found, return None
         if not any(input_attributes.values()):
             return None
-
+        
         best_match = None
         best_fuzzy_score = 0
 
@@ -277,7 +278,7 @@ class UIHelper:
                 elem_value = element.get(attr)
                 if not elem_value:
                     continue
-
+                
                 # Handle splitting logic for attributes with `/`
                 input_prefix, input_suffix = self.split_element(input_value)
                 elem_prefix, elem_suffix = self.split_element(elem_value)
@@ -323,7 +324,7 @@ class UIHelper:
             return xpath[start:end]
         except ValueError:
             return None
-
+        
     def simplify_xpath(self, element):
         """
         Simplify the XPath by focusing on key attributes like resource-id, content-desc, text, or class.
@@ -358,19 +359,19 @@ class UIHelper:
     def extract_key_attributes(self, element):
         """
         Extracts the key attributes from an element for both Android and iOS.
-
+        
         Android attributes:
             - resource-id
             - content-desc
             - text
             - class (widget class)
-
+        
         iOS attributes:
             - name
             - value
             - label
             - class (XCUIElementType)
-
+        
         :param element: XML element from the UI tree.
         :return: Dictionary containing extracted attributes.
         """
@@ -387,8 +388,8 @@ class UIHelper:
         # Remove empty attributes for cleaner output
         attributes = {k: v for k, v in attributes.items() if v}
         return attributes
-
-
+    
+    
     def get_locator_and_strategy(self, element):
         """
         Determines the best strategy and locator for the given element identifier.
@@ -433,7 +434,7 @@ class UIHelper:
 
         logger.debug(f"No matching element found in any of the locator strategies for '{element}'.")
         return None
-
+    
 
     def get_view_locator(self, strategy, locator):
         """
@@ -506,6 +507,89 @@ class UIHelper:
             logger.debug(f"Error getting view locator from tree: {e}")
             return None
 
+    def get_locator_and_strategy_using_index(self, element, index, strategy=None) -> dict:
+        """
+        Perform a linear search across all strategies (resource-id, text, content-desc, etc.) in the UI tree,
+        match against the input, and index the found matches.
+
+        Args:
+            element (str): The element identifier to search for.
+            index (int): zero indexing
+            strategy (str): supported attributes in string, 'resource-id', 'text', 'content-desc', 'name', 'value', 'label'
+
+        Returns:
+            list: A list of dictionaries, each containing the strategy, value, and index of the match.
+        """
+        self.get_page_source()
+        tree = self.tree
+
+        # Collect all elements in positional order
+        all_strategies = ['resource-id', 'text', 'content-desc', 'name', 'value', 'label']  # Supported attributes
+        all_elements = []
+
+        strategies = [strategy] if strategy else all_strategies
+
+        # If a specific strategy is provided, ensure it's valid
+        if strategy and strategy not in strategies:
+            raise ValueError(f"Invalid strategy '{strategy}'. Supported strategies: {strategies}")
+
+        for strategy in strategies:
+            elements = tree.xpath(f"//*[@{strategy}]")
+            for elem in elements:
+                attr_value = elem.attrib.get(strategy, '').strip()
+                bounds = elem.attrib.get('bounds', '')  # Parse bounds if available
+                position = self.parse_bounds(bounds)
+                all_elements.append({
+                    "strategy": strategy,
+                    "value": attr_value,
+                    "position": position
+                })
+
+        # Perform a linear match against all elements
+        matches = []
+        for idx, elem in enumerate(all_elements):
+            if utils.compare_text(elem["value"], element):
+                matches.append({
+                    "index": idx,
+                    "strategy": elem["strategy"],
+                    "value": elem["value"],
+                    "position": elem["position"]
+                })
+
+        # Log matches
+        logger.debug(f"Found {len(matches)} matches for '{element}': {matches}")
+
+        if index >= len(matches):
+            raise   IndexError(f"Index {index} is out of range for the matches found. Total matches: {len(matches)}.")
+
+        desired_match = matches[index]
+        logger.debug(f'Found the matches for {element} and returning {index} index match: {desired_match} ')
+
+        strategy = desired_match["strategy"]
+        locator = desired_match["value"]
+        
+        logger.debug(f"Returning strategy: {strategy}, locator: {locator}")
+        return {"strategy": strategy, "locator": locator}
+
+
+    def parse_bounds(self, bounds):
+        """
+        Parse the 'bounds' attribute to extract position information.
+        Args:
+            bounds (str): Bounds string in the format "[x1,y1][x2,y2]".
+        Returns:
+            dict: A dictionary with coordinates {x1, y1, x2, y2}.
+        """
+        try:
+            numbers = re.findall(r'\d+', bounds)  # Extract all numbers from the string
+            if len(numbers) == 4:
+                x1, y1, x2, y2 = map(int, numbers)
+                return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+            else:
+                raise ValueError(f"Unexpected bounds format: {bounds}")
+        except Exception as e:
+            logger.debug(f"Error parsing bounds: {bounds} - {e}")
+            return {"x1": 0, "y1": 0, "x2": 0, "y2": 0}
 
     def get_bounding_box_for_text(self,attributes):
         """

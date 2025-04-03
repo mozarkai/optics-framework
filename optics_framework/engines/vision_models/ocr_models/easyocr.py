@@ -2,9 +2,8 @@ from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import logger
 import easyocr
-import numpy as np
 import cv2
-from typing import Optional, List, Tuple, Union
+
 
 
 class EasyOCRHelper(TextInterface):
@@ -31,113 +30,22 @@ class EasyOCRHelper(TextInterface):
             logger.error(f"Failed to initialize EasyOCR: {e}")
             raise RuntimeError("EasyOCR initialization failed.") from e
 
-    def detect(
-        self, input_data: Union[str, np.ndarray], reference_data: Optional[str] = None
-    ) -> Optional[List[Tuple[int, int, int, int]]]:
-        """
-        Detects text in an input image and optionally searches for a specific reference text.
 
-        :param input_data: Path to the image file or a NumPy array of the image.
-        :type input_data: Union[str, np.ndarray]
-        :param reference_data: Text to search for in the detected results (optional).
-        :type reference_data: Optional[str]
-
-        :return: A list of bounding boxes [(x_min, y_min, x_max, y_max)] for the detected text,
-                 or None if no match is found.
-        :rtype: Optional[List[Tuple[int, int, int, int]]]
-
-        :raises ValueError: If `input_data` is not a valid image path or NumPy array.
-        """
-        try:
-            # Run OCR on the image (path or array)
-            if isinstance(input_data, str):
-                results = self.reader.readtext(input_data)
-            elif isinstance(input_data, np.ndarray):
-                results = self.reader.readtext(input_data, detail=1)
-            else:
-                raise ValueError("Input must be an image path or a NumPy array.")
-
-            detected_boxes = []
-
-            for bbox, text, confidence in results:
-                if reference_data:
-                    if reference_data.lower() in text.lower():
-                        detected_boxes.append(tuple(map(int, bbox[0] + bbox[2])))
-                else:
-                    detected_boxes.append(tuple(map(int, bbox[0] + bbox[2])))
-
-            if detected_boxes:
-                return detected_boxes
-            else:
-                logger.error(f"No matching text '{reference_data}' found.")
-                return None
-
-        except Exception as e:
-            logger.error(f"Error during text detection: {e}")
-            return None
-
-    def locate(self, frame, text):
-        result, coor, bbox = self.find_element(frame, text)
+    def locate(self, frame, text, index=None):
+        result, coor, bbox = self.find_element(frame, text, index)
         if not result:
             logger.exception(f"Text '{text}' not found in the frame.")
             raise Exception(f"Text '{text}' not found in the frame.")
-
+        
         # annotate the frame
         annotated_frame = utils.annotate_element(frame, coor, bbox)
         utils.save_screenshot(annotated_frame, "annotated_frame")
         return coor
-
-    def locate_using_index(self, frame, text, index):
-        result, coor, bbox = self.find_element_index(frame, text, index)
-        if not result:
-            logger.exception(f"Text '{text}' not found at index {index} in the frame.")
-            raise Exception(f"Text '{text}' not found at index {index} in the frame.")
-        # annotate the frame
-        annotated_frame = utils.annotate_element(frame, coor, bbox)
-        utils.save_screenshot(annotated_frame, "annotated_frame")
-        return coor
-
-    def find_element(self, frame, text):
-
+    
+    
+    def find_element(self, frame, text, index=None):
         """
-        Locate a specific text in the given frame using OCR and return the center coordinates with an optional offset.
-
-        Parameters:
-        - frame (np.array): Image data of the frame.
-        - text (str): The text to locate in the frame.
-
-        Returns:
-        - bool: True if the text is found in the frame, False otherwise.
-        - tuple: (x, y) coordinates of the center of the text in the frame or (None, None) if no match is found.
-        - tuple: Bounding box coordinates of the detected text.
-        """
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, ocr_results = self.detect_text_easyocr(gray_frame)
-
-        # Iterate over each detected text
-        for (bbox, detected_text, confidence) in ocr_results:
-            detected_text = detected_text.strip()
-            if text in detected_text:
-                # logger.debug(f"MATCHED detected_text : {detected_text}")
-                # Get the bounding box coordinates of the detected text
-                (top_left, top_right, bottom_right, bottom_left) = bbox
-                x, y = int(top_left[0]), int(top_left[1])
-                w = int(bottom_right[0] - top_left[0])
-                h = int(bottom_right[1] - top_left[1])
-
-                # Calculate the center coordinates
-                center_x = x + w // 2
-                center_y = y + h // 2
-
-
-                bbox = (top_left, bottom_right)
-                return True, (center_x, center_y), bbox
-
-        return False, (None, None),bbox
-
-    def find_element_index(self, frame, text, index):
-        """
-        Locate multiple instances of a specific text in the given frame using OCR and return the center coordinates
+        Locate multiple instances of a specific text in the given frame using OCR and return the center coordinates 
         of the text at the given index with bounding box coordinates.
 
         Parameters:
@@ -152,9 +60,9 @@ class EasyOCRHelper(TextInterface):
         """
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         _, ocr_results = self.detect_text_easyocr(gray_frame)
-
+        
         detected_texts = []
-
+        
         # Iterate over each detected text
         for (bbox, detected_text, confidence) in ocr_results:
             detected_text = detected_text.strip()
@@ -163,22 +71,26 @@ class EasyOCRHelper(TextInterface):
                 x, y = int(top_left[0]), int(top_left[1])
                 w = int(bottom_right[0] - top_left[0])
                 h = int(bottom_right[1] - top_left[1])
-
+                
                 # Calculate the center coordinates
                 center_x = x + w // 2
                 center_y = y + h // 2
-
+                
                 detected_texts.append((True, (center_x, center_y), (top_left, bottom_right)))
-
+                
                 # Draw bounding box around the detected text
                 cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
                 cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
-
-        # Return the requested index
-        if 0 <= index < len(detected_texts):
-            return detected_texts[index]
-
-        return False, (None, None), None
+        
+        if not detected_texts:
+            return False, (None, None), None
+        if index is not None:
+            # Return the requested index
+            if 0 <= index < len(detected_texts):
+                return detected_texts[index]
+            return False, (None, None), None
+        
+        return detected_texts[0]
 
 
     def detect_text_easyocr(self, image):
@@ -186,7 +98,7 @@ class EasyOCRHelper(TextInterface):
         results = reader.readtext(image)
         detected_text = ' '.join(result[1] for result in results)
         return detected_text, results
-
+    
 
     def element_exist(self, input_data, reference_data):
         return super().element_exist(input_data, reference_data)

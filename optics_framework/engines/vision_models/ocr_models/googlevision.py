@@ -1,10 +1,10 @@
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common.logging_config import logger
 import cv2
+from optics_framework.common import utils
 import numpy as np
 from google.cloud import vision
 from google.cloud.vision_v1 import ImageAnnotatorClient
-from typing import Optional, List, Tuple, Union
 
 
 class GoogleVisionHelper(TextInterface):
@@ -26,52 +26,21 @@ class GoogleVisionHelper(TextInterface):
         """
         pass
 
-    def detect(
-        self, input_data: Union[str, np.ndarray], reference_data: Optional[str] = None
-    ) -> Optional[List[Tuple[int, int, int, int]]]:
+    def locate(self, frame, text, index=None):
         """
-        Detects text in an input image and optionally searches for a specific reference text.
-
-        :param input_data: Path to the image file or a NumPy array of the image.
-        :type input_data: Union[str, np.ndarray]
-        :param reference_data: Text to search for in the detected results (optional).
-        :type reference_data: Optional[str]
-
-        :return: A list of bounding boxes [(x_min, y_min, x_max, y_max)] for the detected text,
-                 or None if no match is found.
-        :rtype: Optional[List[Tuple[int, int, int, int]]]
-
-        :raises ValueError: If `input_data` is not a valid image path or NumPy array.
+        Find the location of text within the input data.
         """
-        try:
-            # Run OCR on the image (path or array)
-            if isinstance(input_data, str):
-                results = self.reader.readtext(input_data)
-            elif isinstance(input_data, np.ndarray):
-                results = self.reader.readtext(input_data, detail=1)
-            else:
-                raise ValueError("Input must be an image path or a NumPy array.")
+        result, coor, bbox = self.find_element(frame, text, index)
+        if not result:
+            logger.exception(f"Text '{text}' not found in the frame.")
+            raise Exception(f"Text '{text}' not found in the frame.")
+        # annotate the frame
+        annotated_frame = utils.annotate_element(frame, coor, bbox)
+        utils.save_screenshot(annotated_frame, name='annotated_frame')
+        return coor
 
-            detected_boxes = []
 
-            for bbox, text, confidence in results:
-                if reference_data:
-                    if reference_data.lower() in text.lower():
-                        detected_boxes.append(tuple(map(int, bbox[0] + bbox[2])))
-                else:
-                    detected_boxes.append(tuple(map(int, bbox[0] + bbox[2])))
-
-            if detected_boxes:
-                return detected_boxes
-            else:
-                logger.error(f"No matching text '{reference_data}' found.")
-                return None
-
-        except Exception as e:
-            logger.error(f"Error during text detection: {e}")
-            return None
-
-    def locate(self, frame, text):
+    def find_element(self, frame, text, index=None):
         """
         Locate a specific text in the given frame using OCR and return the center coordinates with an optional offset.
 
@@ -88,6 +57,7 @@ class GoogleVisionHelper(TextInterface):
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         _, ocr_results = self.detect_text_google(gray_frame)
 
+        matches = []
         # Iterate over each detected text
         for (bbox, detected_text, confidence) in ocr_results:
             detected_text = detected_text.strip()
@@ -103,15 +73,19 @@ class GoogleVisionHelper(TextInterface):
                 center_x = x + w // 2
                 center_y = y + h // 2
 
-                # Annotation: Draw the bounding box around the text
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                matches.append(((center_x, center_y), (top_left, bottom_right)))
 
-                # Draw a small circle at the center of the bounding box (optional)
-                cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
-                bbox = (top_left, bottom_right)
-                return True, (center_x, center_y), bbox, frame
+        if not matches:
+            return False, (None, None), None
 
-        return False, (None, None),bbox, frame
+        if index is not None:
+            if 0 <= index < len(matches):
+                selected_centre, selected_bbox = matches[index]
+            else:
+                return False, (None, None), None
+        else:
+            selected_centre, selected_bbox = matches[0]
+        return True, selected_centre, selected_bbox
 
 
     def element_exist(self, input_data, reference_data):

@@ -19,7 +19,7 @@ class ElementSourceInterface(ABC):
 
 
     @abstractmethod
-    def locate(self, element) -> tuple:
+    def locate(self, element, index=None, strategy=None) -> tuple:
         """
         Locate a template image within a larger image.
 
@@ -41,13 +41,3 @@ class ElementSourceInterface(ABC):
         """
         pass
 
-    @abstractmethod
-    def locate_using_index(self, element, index) -> tuple:
-        """
-        Locate an element by index.
-        :param element: The element to locate.
-        :param index: The index of the element.
-        :return: A tuple containing the coordinates of the located element.
-        :rtype: tuple
-        """
-        pass

@@ -119,6 +119,7 @@ class ActionKeyword:
         :param index: The index of the element.
         :param event_name: The event triggering the press.
         """
+        index = int(index)
         utils.capture_screenshot("press_element_with_index")
         element_source_type = type(
             self.element_source.current_instance).__name__
@@ -128,7 +129,7 @@ class ActionKeyword:
                 logger.exception(
                     'Appium Find Element does not support finding text by index.')
             elif element_source_type == 'AppiumPageSource':
-                appium_element = self.element_source.locate_using_index(
+                appium_element = self.element_source.locate(
                     element, index)
                 self.driver.press_element(
                     appium_element, repeat=1, event_name=event_name)
@@ -136,7 +137,7 @@ class ActionKeyword:
                 if 'screenshot' not in element_source_type.lower():
                     logger.error(self.SCREENSHOT_DISABLED_MSG)
                 screenshot_image = self.element_source.capture()
-                x_coor, y_coor = self.text_detection.locate_using_index(
+                x_coor, y_coor = self.text_detection.locate(
                     screenshot_image, element, index)
                 self.driver.press_coordinates(
                     x_coor, y_coor, event_name=event_name)
@@ -144,7 +145,7 @@ class ActionKeyword:
             if 'screenshot' not in element_source_type.lower():
                 logger.error(self.SCREENSHOT_DISABLED_MSG)
             screenshot_image = self.element_source.capture()
-            x_coor, y_coor = self.image_detection.locate_using_index(
+            x_coor, y_coor = self.image_detection.locate(
                 screenshot_image, element, index)
             self.driver.press_coordinates(
                 x_coor, y_coor, event_name=event_name)
