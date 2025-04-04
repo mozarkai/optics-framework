@@ -60,7 +60,7 @@ class AppiumFindElement(ElementSourceInterface):
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
         self.root = self.tree.getroot()
         return page_source
-    
+
 
     def locate(self, element: str, index = None, strategy=None):
         """
@@ -80,7 +80,7 @@ class AppiumFindElement(ElementSourceInterface):
 
         if index is not None:
             raise ValueError('Appium Find Element does not support locating elements using index.')
-        
+
         if element_type == 'Image':
             # Find the element by image
             # logger.debug(f'Appium Find Element does not support finding images.')
@@ -123,7 +123,7 @@ class AppiumFindElement(ElementSourceInterface):
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
 
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             found_elements = [self.locate(element) for element in elements]
 

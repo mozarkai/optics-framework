@@ -40,4 +40,3 @@ class ElementSourceInterface(ABC):
         :rtype: None
         """
         pass
-

@@ -37,8 +37,8 @@ class UIHelper:
         logger.debug('\n==========================================\n')
         utils.save_page_source(page_source, time_stamp)
         return page_source, time_stamp
-    
-    # fetching page source and handling UI tree    
+
+    # fetching page source and handling UI tree
     def get_distinct_page_source(self):
         """
         Fetch the current UI tree (page source) from the Appium driver continuously.
@@ -49,7 +49,7 @@ class UIHelper:
         page_source = driver.page_source
         # Compute hash
         new_hash = utils.compute_hash(page_source)
-        
+
         # Compare with previous hash
         if self.prev_hash == new_hash:
             logger.debug("\nPage source unchanged. Skipping further processing.\n")
@@ -66,9 +66,9 @@ class UIHelper:
         logger.debug(f'Page source fetched at: {time_stamp}')
         logger.debug('\n==========================================\n')
         return page_source, time_stamp
-    
 
-    
+
+
     def find_xpath_from_text(self, text):
         """
         Find the XPath of an element based on the text content.
@@ -87,8 +87,8 @@ class UIHelper:
             xpath = self.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
-    
-    
+
+
     def find_xpath(self, xpath):
         """
         Process the given XPath and return the exact path from the UI tree after applying various matching strategies.
@@ -145,7 +145,7 @@ class UIHelper:
             logger.error(
                 f"Unexpected error in find_xpath for XPath '{xpath}': {str(e)}")
             return None, None
-        
+
     def find_exact(self, xpath):
         """Attempts an exact match for the given XPath."""
         try:
@@ -156,7 +156,7 @@ class UIHelper:
         except Exception as e:
             logger.debug(f"Exact match error: {e}")
         return None
-    
+
     def find_relative(self, xpath):
         """Attempts to match a simplified, relative XPath."""
         relative_xpath = self.make_relative(xpath)
@@ -170,7 +170,7 @@ class UIHelper:
         except Exception as e:
             logger.debug(f"Relative match error: {e}")
         return None
-    
+
     def make_relative(self, xpath):
         """
         Simplifies the XPath by removing intermediate elements,
@@ -195,7 +195,7 @@ class UIHelper:
 
         # Join the parts back into a single simplified XPath
         return "/".join(simplified)
-    
+
     def make_partial_match(self, xpath):
         """
         Converts the XPath for partial matching using `contains()` for specified attributes,
@@ -240,7 +240,7 @@ class UIHelper:
         except Exception as e:
             logger.debug(f"Partial match error: {e}")
         return None
-    
+
     def fuzzy_match_prefix(self, prefix1, prefix2):
         """Performs a fuzzy comparison of two prefixes."""
         return fuzz.ratio(prefix1, prefix2) >= 80
@@ -258,7 +258,7 @@ class UIHelper:
         # If no attributes are found, return None
         if not any(input_attributes.values()):
             return None
-        
+
         best_match = None
         best_fuzzy_score = 0
 
@@ -278,7 +278,7 @@ class UIHelper:
                 elem_value = element.get(attr)
                 if not elem_value:
                     continue
-                
+
                 # Handle splitting logic for attributes with `/`
                 input_prefix, input_suffix = self.split_element(input_value)
                 elem_prefix, elem_suffix = self.split_element(elem_value)
@@ -324,7 +324,7 @@ class UIHelper:
             return xpath[start:end]
         except ValueError:
             return None
-        
+
     def simplify_xpath(self, element):
         """
         Simplify the XPath by focusing on key attributes like resource-id, content-desc, text, or class.
@@ -359,19 +359,19 @@ class UIHelper:
     def extract_key_attributes(self, element):
         """
         Extracts the key attributes from an element for both Android and iOS.
-        
+
         Android attributes:
             - resource-id
             - content-desc
             - text
             - class (widget class)
-        
+
         iOS attributes:
             - name
             - value
             - label
             - class (XCUIElementType)
-        
+
         :param element: XML element from the UI tree.
         :return: Dictionary containing extracted attributes.
         """
@@ -388,8 +388,8 @@ class UIHelper:
         # Remove empty attributes for cleaner output
         attributes = {k: v for k, v in attributes.items() if v}
         return attributes
-    
-    
+
+
     def get_locator_and_strategy(self, element):
         """
         Determines the best strategy and locator for the given element identifier.
@@ -434,7 +434,7 @@ class UIHelper:
 
         logger.debug(f"No matching element found in any of the locator strategies for '{element}'.")
         return None
-    
+
 
     def get_view_locator(self, strategy, locator):
         """
@@ -567,7 +567,7 @@ class UIHelper:
 
         strategy = desired_match["strategy"]
         locator = desired_match["value"]
-        
+
         logger.debug(f"Returning strategy: {strategy}, locator: {locator}")
         return {"strategy": strategy, "locator": locator}
 

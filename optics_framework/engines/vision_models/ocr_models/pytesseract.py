@@ -38,7 +38,7 @@ class PytesseractHelper(TextInterface):
         annotated_frame = utils.annotate_element(frame, coor, bbox)
         utils.save_screenshot(annotated_frame, name='annotated_frame')
         return coor
-        
+
 
     def find_element(self, frame, text, index=None):
         """
@@ -69,7 +69,7 @@ class PytesseractHelper(TextInterface):
 
         if not matches:
             return False, (None, None), None
-        
+
         if index is not None:
             if 0 <= index < len(matches):
                 selected_center, selected_bbox = matches[index]

@@ -1,7 +1,6 @@
 import cv2
 import os
 import numpy as np
-from typing import Optional, List, Tuple
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.logging_config import logger
 from optics_framework.common.config_handler import ConfigHandler
@@ -13,7 +12,7 @@ class TemplateMatchingHelper(ImageInterface):
     This class uses OpenCV's :func:`cv2.matchTemplate` function to locate instances
     of a template (reference image) within a larger image.
     """
-    
+
     def load_template(self, element: str) -> np.ndarray:
         """
         Load a template image from the input_templates folder.
@@ -122,16 +121,16 @@ class TemplateMatchingHelper(ImageInterface):
 
                 # Draw a small circle at the center
                 cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
-        
+
         if not centers:
             return False, (None, None), frame
-        
+
         if index is not None:
             if 0 <= index < len(centers):
                 return True, centers[index], frame
             else:
                 return False, (None, None), frame
-            
+
         return True, centers[0], frame
 
 

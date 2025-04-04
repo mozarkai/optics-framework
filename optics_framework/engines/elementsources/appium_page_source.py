@@ -28,8 +28,8 @@ class AppiumPageSource(ElementSourceInterface):
     def _get_appium_driver(self):
         if self.driver is None:
             self.driver = get_appium_driver()
-        return self.driver  
-    
+        return self.driver
+
     def capture(self):
         """
         Capture the current screen state.
@@ -57,7 +57,7 @@ class AppiumPageSource(ElementSourceInterface):
         logger.debug(f'Page source fetched at: {time_stamp}')
         logger.debug('\n==========================================\n')
         return page_source
-    
+
 
     def locate(self, element: str, index=None, strategy=None) -> dict:
         """
@@ -100,7 +100,7 @@ class AppiumPageSource(ElementSourceInterface):
                     logger.exception(f"Error finding element by xpath: {e}")
                     raise Exception (f"Error finding element by xpath: {e}")
                 return element
-            
+
 
     def locate_using_index(self, element, index, strategy=None) -> dict:
         locators = self.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
@@ -197,7 +197,7 @@ class AppiumPageSource(ElementSourceInterface):
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
-    
+
     def find_xpath_from_text_index(self, text, index, strategy=None):
         locators = self.ui_helper.get_locator_and_strategy_using_index(text, index, strategy)
         if locators:
@@ -206,12 +206,12 @@ class AppiumPageSource(ElementSourceInterface):
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
-    
+
 
     def ui_text_search(self, texts, rule='any'):
         """
         Checks if any or all given texts exist in the UI tree.
-        
+
         Args:
             texts (list): List of text strings to search for.
             rule (str): Rule for matching ('any' or 'all').
@@ -220,28 +220,27 @@ class AppiumPageSource(ElementSourceInterface):
             bool: True if the condition is met, otherwise False.
         """
         strategies = ["text", "resource-id", "content-desc", "name", "value", "label"]
-        
+
         found_texts = set()
 
         for text in texts:
             logger.debug(f'Searching for text: {text}')
-            
+
             for attrib in strategies:
                 matching_elements = self.tree.xpath(f"//*[@{attrib}]")
-                
+
                 for elem in matching_elements:
                     attrib_value = elem.attrib.get(attrib, '').strip()
-                    
+
                     if attrib_value and utils.compare_text(attrib_value, text):
                         logger.debug(f"Match found using {attrib} for '{text}'")
                         found_texts.add(text)  # Mark this text as found
                         break  # Stop searching other elements for this text
-                
+
                 if text in found_texts:  # Stop checking other strategies if already found
                     break
-            
+
             if rule == 'any' and text in found_texts:
                 return True  # Early exit if at least one match is found
-        
-        return len(found_texts) == len(texts) if rule == 'all' else False
 
+        return len(found_texts) == len(texts) if rule == 'all' else False
