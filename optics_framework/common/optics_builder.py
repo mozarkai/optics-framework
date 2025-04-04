@@ -1,8 +1,5 @@
 from typing import Union, List, Dict, Optional, Type, TypeVar
-from optics_framework.common.driver_factory import DeviceFactory
-from optics_framework.common.elementsource_factory import ElementSourceFactory
-from optics_framework.common.image_factory import ImageFactory
-from optics_framework.common.text_factory import TextFactory
+from optics_framework.common.factories import DeviceFactory, ElementSourceFactory, ImageFactory, TextFactory
 
 T = TypeVar('T')  # Generic type for the build method
 
