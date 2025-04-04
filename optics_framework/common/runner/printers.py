@@ -7,7 +7,7 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.progress import Progress, TaskID
 from rich.console import Group
-from optics_framework.common.logging_config import apply_logger_format_to_all
+
 import shutil
 
 
@@ -79,7 +79,6 @@ class TerminalWidthProvider:
         return shutil.get_terminal_size((default, 20)).columns
 
 
-@apply_logger_format_to_all("user")
 class TreeResultPrinter(IResultPrinter):
     STATUS_COLORS: Dict[str, str] = {
         "NOT RUN": "grey50", "RUNNING": "yellow", "PASS": "green", "FAIL": "red"

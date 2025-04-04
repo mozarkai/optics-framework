@@ -3,7 +3,7 @@ import pandas as pd
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Optional
 from optics_framework.common.runner.csv_reader import CSVDataReader
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import user_logger
 
 # Type aliases for clarity
 TestCases = Dict[str, List[str]]
@@ -127,7 +127,7 @@ def find_csv_files(folder_path: str) -> Tuple[Optional[str], Optional[str], Opti
                 df = pd.read_csv(file_path, nrows=1)
                 headers = [h.strip() for h in df.columns]
             except Exception as e:
-                logger.exception(f"Error reading {file_path}: {e}")
+                user_logger.exception(f"Error reading {file_path}: {e}")
                 continue
 
             if "test_case" in headers and "test_step" in headers:

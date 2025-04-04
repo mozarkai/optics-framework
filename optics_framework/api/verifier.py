@@ -1,11 +1,10 @@
 from typing import Optional, Any, List
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.optics_builder import OpticsBuilder
 import time
 
 
-@apply_logger_format_to_all("internal")
 class Verifier:
     """
     Provides methods to verify elements, screens, and data integrity.
@@ -37,8 +36,8 @@ class Verifier:
         :param rule: The rule used for verification ("all" or "any").
         :param event_name: The name of the event associated with the verification, if any.
         """
-        logger.debug(f"Validating element: {element}")
-        logger.debug(f"Timeout: {timeout} and Rule: {rule}")
+        internal_logger.debug(f"Validating element: {element}")
+        internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         self.assert_presence(element, timeout, rule, event_name)
 
     def is_element(
@@ -101,10 +100,10 @@ class Verifier:
             frame = self.element_source.capture()
 
             if frame is None:
-                logger.debug("Screenshot capture failed. Skipping iteration.")
+                internal_logger.debug("Screenshot capture failed. Skipping iteration.")
                 continue
 
-            logger.debug(f"Screenshot captured at {timestamp}.")
+            internal_logger.debug(f"Screenshot captured at {timestamp}.")
 
             # Search for text elements
             if texts:
@@ -156,13 +155,13 @@ class Verifier:
                     element_status['texts'][text] = {
                         'found': True, 'bbox': bbox}
 
-                logger.debug(f"Text '{text}' found at bbox: {bbox}.")
+                internal_logger.debug(f"Text '{text}' found at bbox: {bbox}.")
                 found_any = True
 
                 if rule == 'any':
                     return True  # Stop processing if 'any' rule is met
             else:
-                logger.debug(f"Text '{text}' not found in screenshot.")
+                internal_logger.debug(f"Text '{text}' not found in screenshot.")
 
         return found_any if rule == 'any' else all(
             item['found'] for item in element_status['texts'].values()
@@ -189,13 +188,13 @@ class Verifier:
             if result:
                 element_status['images'][image] = {'found': True, 'bbox': bbox}
 
-                logger.debug(f"Image '{image}' found at bbox: {bbox}.")
+                internal_logger.debug(f"Image '{image}' found at bbox: {bbox}.")
                 found_any = True
 
                 if rule == 'any':
                     return True  # Stop processing if 'any' rule is met
             else:
-                logger.debug(f"Image '{image}' not found.")
+                internal_logger.debug(f"Image '{image}' not found.")
 
         return found_any if rule == 'any' else all(
             item['found'] for item in element_status['images'].values()
@@ -228,17 +227,17 @@ class Verifier:
             if 'appium' in element_source_type.lower() or 'selenium' in element_source_type.lower():
                 # Calls assert presence from appium driver
                 if images:
-                    logger.error(
+                    internal_logger.error(
                         "Image search is not supported for Appium based search")
                     return False
                 texts_xpaths = texts + xpaths
                 result = self.element_source.assert_elements(
                     texts_xpaths, timeout, rule)
         except Exception as e:
-            logger.error(f"Exception occurred: {e}")
+            internal_logger.error(f"Exception occurred: {e}")
             # Vision search
             if xpaths:
-                logger.error(
+                internal_logger.error(
                     "XPath search is not supported for Vision based search")
                 return False
             texts_images = texts + images

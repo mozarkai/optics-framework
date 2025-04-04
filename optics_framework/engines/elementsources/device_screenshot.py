@@ -9,7 +9,7 @@ import base64
 import numpy as np
 from typing import Optional
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
 from selenium.common.exceptions import ScreenshotException
 
@@ -56,7 +56,7 @@ class DeviceScreenshot(ElementSourceInterface):
         try:
             # Use Base64 encoding for faster processing
             driver = self._get_appium_driver()
-            # logger.debug(f'{driver}, type(driver): {type(driver)}')
+            # internal_logger.debug(f'{driver}, type(driver): {type(driver)}')
             screenshot_base64 = driver.get_screenshot_as_base64()
             screenshot_bytes = base64.b64decode(screenshot_base64)
 
@@ -66,20 +66,28 @@ class DeviceScreenshot(ElementSourceInterface):
             return numpy_image
 
         except ScreenshotException as se:
-            # logger.debug(f'ScreenshotException: {se}. Using external camera')
-            logger.warning(f'ScreenshotException : {se}. Using external camera.')
+            # internal_logger.debug(f'ScreenshotException: {se}. Using external camera')
+            internal_logger.warning(f'ScreenshotException : {se}. Using external camera.')
             return None
         except Exception as e:
             # Log the error and fallback to external camera
-            logger.warning(f"Error capturing Appium screenshot: {e}. Using external camera.")
+            internal_logger.warning(f"Error capturing Appium screenshot: {e}. Using external camera.")
             return None
 
     def assert_elements(self, elements):
-        logger.exception("AppiumScreenshot does not support asserting elements.")
+        internal_logger.exception("AppiumScreenshot does not support asserting elements.")
         raise NotImplementedError(
             "AppiumScreenshot does not support asserting elements.")
 
 
     def locate(self, image: np.ndarray, template: np.ndarray) -> Optional[tuple]:
-        logger.exception("CameraScreenshot does not support locating elements.")
-        raise NotImplementedError("CameraScreenshot does not support locating elements.")
+        internal_logger.exception("AppiumScreenshot does not support locating elements.")
+        raise NotImplementedError(
+            "AppiumScreenshot does not support locating elements.")
+
+
+    def locate_using_index(self, element, index):
+        internal_logger.exception(
+            "AppiumScreenshot does not support locating elements using index.")
+        raise NotImplementedError(
+            "AppiumScreenshot does not support locating elements using index.")

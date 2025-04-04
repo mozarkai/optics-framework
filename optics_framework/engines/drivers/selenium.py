@@ -4,10 +4,10 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from typing import Any, Dict, Optional
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.selenium_driver_manager import set_selenium_driver
 
-@apply_logger_format_to_all("internal")
+
 class SeleniumDriver(DriverInterface):
     _instance = None
     DEPENDENCY_TYPE = "driver_sources"
@@ -26,7 +26,7 @@ class SeleniumDriver(DriverInterface):
         config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
             self.DEPENDENCY_TYPE, self.NAME)
         if not config:
-            logger.error(
+            internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
             raise ValueError("Selenium driver not enabled in config")
         self.selenium_server_url: str = config.get(
@@ -53,10 +53,10 @@ class SeleniumDriver(DriverInterface):
                     options=options
                 )
                 set_selenium_driver(self.driver)
-                logger.debug(
+                internal_logger.debug(
                     f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name}")
             except Exception as e:
-                logger.error(f"Failed to start Selenium session: {e}")
+                internal_logger.error(f"Failed to start Selenium session: {e}")
                 raise
         return self.driver
 
@@ -65,9 +65,9 @@ class SeleniumDriver(DriverInterface):
         if self.driver is not None:
             try:
                 self.driver.quit()
-                logger.debug("Selenium session ended")
+                internal_logger.debug("Selenium session ended")
             except Exception as e:
-                logger.error(f"Failed to end Selenium session: {e}")
+                internal_logger.error(f"Failed to end Selenium session: {e}")
             finally:
                 self.driver = None
 
@@ -77,10 +77,10 @@ class SeleniumDriver(DriverInterface):
             self.start_session()
         try:
             self.driver.get(self.browser_url)
-            logger.debug(
+            internal_logger.debug(
                 f"Launched web app at {self.browser_url} with event: {event_name}")
         except Exception as e:
-            logger.error(f"Failed to launch app at {self.browser_url}: {e}")
+            internal_logger.error(f"Failed to launch app at {self.browser_url}: {e}")
             raise
 
 
@@ -96,10 +96,10 @@ class SeleniumDriver(DriverInterface):
         try:
             for _ in range(repeat):
                 element.click()
-            logger.debug(
+            internal_logger.debug(
                 f"Pressed element {repeat} times with event: {event_name}")
         except Exception as e:
-            logger.error(f"Failed to press element: {e}")
+            internal_logger.error(f"Failed to press element: {e}")
             raise
 
     def enter_text_element(self, element, text: str, event_name: str | None = None) -> None:
@@ -110,10 +110,10 @@ class SeleniumDriver(DriverInterface):
         try:
             element.clear()  # Clear existing text first
             element.send_keys(text)
-            logger.debug(
+            internal_logger.debug(
                 f"Entered text '{text}' into element with event: {event_name}")
         except Exception as e:
-            logger.error(f"Failed to enter text into element: {e}")
+            internal_logger.error(f"Failed to enter text into element: {e}")
             raise
 
     # Placeholder implementations for remaining abstract methods

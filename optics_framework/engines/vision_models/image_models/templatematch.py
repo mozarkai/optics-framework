@@ -2,7 +2,7 @@ import cv2
 import os
 import numpy as np
 from optics_framework.common.image_interface import ImageInterface
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 
 class TemplateMatchingHelper(ImageInterface):
@@ -41,7 +41,7 @@ class TemplateMatchingHelper(ImageInterface):
         if found:
             return coor
         else:
-            logger.exception(f'Failed to locate image template: {element}')
+            internal_logger.exception(f'Failed to locate image template: {element}')
             raise Exception(f'Failed to locate image template: {element}')
 
 
@@ -162,7 +162,7 @@ class TemplateMatchingHelper(ImageInterface):
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         if reference_data is None or frame is None:
-            # logger.debug("Error: Cannot read the images.")
+            # internal_logger.debug("Error: Cannot read the images.")
             return False, (None, None), None
 
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -173,20 +173,20 @@ class TemplateMatchingHelper(ImageInterface):
         kp_template, des_template = sift.detectAndCompute(template_gray, None)
 
         if des_template is None or des_frame is None:
-            # logger.debug("Error: No descriptors found in template or frame.")
+            # internal_logger.debug("Error: No descriptors found in template or frame.")
             return False, (None, None), None
 
         try:
             matches = flann.knnMatch(des_template, des_frame, k=2)
         except cv2.error as e:
-            logger.debug(f"Error in FLANN matching: {e}")
+            internal_logger.debug(f"Error in FLANN matching: {e}")
             return False, (None, None), None
 
         # Apply Lowe's ratio test to filter good matches
         good_matches = [m for m, n in matches if m.distance < confidence_level * n.distance]
 
         if len(good_matches) < min_inliers:
-            # logger.debug(f"Not enough good matches found: {len(good_matches)} (min required: {min_inliers})")
+            # internal_logger.debug(f"Not enough good matches found: {len(good_matches)} (min required: {min_inliers})")
             return False, (None, None), None
 
         # Extract matched keypoints
@@ -196,14 +196,14 @@ class TemplateMatchingHelper(ImageInterface):
         # Compute homography matrix
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if M is None:
-            # logger.debug("Homography matrix computation failed.")
+            # internal_logger.debug("Homography matrix computation failed.")
             return False, (None, None), None
 
         matches_mask = mask.ravel().tolist()
         inliers = np.sum(matches_mask)
 
         if inliers < min_inliers:
-            # logger.debug(f"Not enough inliers: {inliers} (min required: {min_inliers})")
+            # internal_logger.debug(f"Not enough inliers: {inliers} (min required: {min_inliers})")
             return False, (None, None), None
 
         # Find center of the template in the frame
@@ -224,9 +224,9 @@ class TemplateMatchingHelper(ImageInterface):
             top_left = bbox_corners[0]
             bottom_right = bbox_corners[2]
         except cv2.error as e:
-            logger.debug(f"Error in perspective transformation: {e}")
+            internal_logger.debug(f"Error in perspective transformation: {e}")
             return False, (None, None), None
 
-        # logger.debug(f"Template found at center: ({center_x}, {center_y}) with bbox: {top_left} -> {bottom_right}")
+        # internal_logger.debug(f"Template found at center: ({center_x}, {center_y}) with bbox: {top_left} -> {bottom_right}")
 
         return True, (center_x, center_y), [top_left, bottom_right]

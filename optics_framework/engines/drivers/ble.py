@@ -1,8 +1,7 @@
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 
 
-@apply_logger_format_to_all("internal")
 class BLEDriver(DriverInterface):
     """
     BLE-based implementation of the :class:`DriverInterface`.
@@ -17,4 +16,4 @@ class BLEDriver(DriverInterface):
         :param event_name: The event triggering the app launch.
         :type event_name: str
         """
-        logger.debug("Launching the BLE application.")
+        internal_logger.debug("Launching the BLE application.")

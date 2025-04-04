@@ -5,7 +5,7 @@ import re
 import os
 import cv2
 import numpy as np
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.engines.elementsources.device_screenshot import DeviceScreenshot
 from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot
@@ -31,7 +31,7 @@ def get_current_time_for_events():
         formatted_time = current_time_in_desired_timezone.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
         return formatted_time[:-2] + ":" + formatted_time[-2:]
     except Exception as e:
-        logger.error('Unable to get current time', exc_info=e)
+        internal_logger.error('Unable to get current time', exc_info=e)
         return None
 
 
@@ -52,31 +52,31 @@ def compare_text(given_text, target_text):
 
     # Check if either of the strings is empty and return False if so
     if not given_text or not target_text:
-        logger.debug(f"One or both texts are empty: given_text='{given_text}', target_text='{target_text}'")
+        internal_logger.debug(f"One or both texts are empty: given_text='{given_text}', target_text='{target_text}'")
         return False
 
     # 1. Exact Match (return immediately)
     if given_text == target_text:
-        logger.debug(f"Exact match found: '{given_text}' == '{target_text}'")
-        logger.debug(f'Exact match found for text: {given_text}')
+        internal_logger.debug(f"Exact match found: '{given_text}' == '{target_text}'")
+        internal_logger.debug(f'Exact match found for text: {given_text}')
         return True
 
     # 2. Partial Match (substring, return immediately)
     if target_text in given_text:
-        logger.debug(f"Partial match found: '{target_text}' in '{given_text}'")
-        logger.debug(f'Partial match found for text: {target_text}')
+        internal_logger.debug(f"Partial match found: '{target_text}' in '{given_text}'")
+        internal_logger.debug(f'Partial match found for text: {target_text}')
         return True
 
     # 3. Fuzzy Match (only if exact and partial checks fail)
     fuzzy_match_score = fuzz.ratio(given_text, target_text)
-    logger.debug(f"Fuzzy match score for '{given_text}' and '{target_text}': {fuzzy_match_score}")
+    internal_logger.debug(f"Fuzzy match score for '{given_text}' and '{target_text}': {fuzzy_match_score}")
     if fuzzy_match_score >= 80:  # Threshold for "close enough"
-        logger.debug(f"Fuzzy match found: score {fuzzy_match_score}")
-        logger.debug(f"Fuzzy match found for text: {given_text}, matched text '{target_text}' with fuzzy score {fuzzy_match_score} ")
+        internal_logger.debug(f"Fuzzy match found: score {fuzzy_match_score}")
+        internal_logger.debug(f"Fuzzy match found for text: {given_text}, matched text '{target_text}' with fuzzy score {fuzzy_match_score} ")
         return True
 
     # If no matches found, return False
-    logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
+    internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
 
@@ -85,7 +85,7 @@ def save_screenshot(img, name, time_stamp = None):
     Save the screenshot with a timestamp and keyword in the filename.
     """
     if img is None:
-        logger.error("Image is empty. Cannot save screenshot.")
+        internal_logger.error("Image is empty. Cannot save screenshot.")
         return
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
@@ -96,11 +96,11 @@ def save_screenshot(img, name, time_stamp = None):
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
         cv2.imwrite(screenshot_file_path, img)
-        logger.debug(f'Screenshot saved as : {time_stamp}-{name}.jpg')
-        logger.debug(f"Screenshot saved to :{screenshot_file_path}")
+        internal_logger.debug(f'Screenshot saved as : {time_stamp}-{name}.jpg')
+        internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
 
     except Exception as e:
-        logger.debug(f"Error writing screenshot to file : {e}")
+        internal_logger.debug(f"Error writing screenshot to file : {e}")
 
 
 def annotate(annotation_detail):
@@ -108,20 +108,20 @@ def annotate(annotation_detail):
     # Iterate over each bounding box and annotate it on the image
     for bbox in bboxes:
         if bbox is None or len(bbox) != 2:
-            logger.debug(f"Invalid bounding box: {bbox}")
+            internal_logger.debug(f"Invalid bounding box: {bbox}")
             continue
 
         top_left, bottom_right = bbox
         if top_left is None or bottom_right is None:
-            logger.debug(f"Invalid coordinates in bounding box: {bbox}")
+            internal_logger.debug(f"Invalid coordinates in bounding box: {bbox}")
             continue
 
         # Draw a rectangle around the bounding box
         cv2.rectangle(screenshot, tuple(top_left), tuple(
             bottom_right), color=(0, 255, 0), thickness=3)
-        logger.debug(f"Bounding box {top_left} to {bottom_right} annotated.")
+        internal_logger.debug(f"Bounding box {top_left} to {bottom_right} annotated.")
     # Save the annotated screenshot
-    logger.debug(f'annnotated image: {len(screenshot)}')
+    internal_logger.debug(f'annnotated image: {len(screenshot)}')
     save_screenshot(screenshot,screenshot_name)
 
 
@@ -180,20 +180,20 @@ def save_page_source(tree, time_stamp):
     if not os.path.exists(page_source_file_path):
         with open(page_source_file_path, 'w', encoding='utf-8') as f:
             f.write(f"<logs>\n{entry_block}</logs>\n")
-        logger.debug(f"Created new page source log file with first entry at: {time_stamp}")
+        internal_logger.debug(f"Created new page source log file with first entry at: {time_stamp}")
     else:
         with open(page_source_file_path, 'r+', encoding='utf-8') as f:
             content = f.read()
             if not content.strip().endswith("</logs>"):
-                logger.error("Invalid log file: missing closing </logs> tag.")
+                internal_logger.error("Invalid log file: missing closing </logs> tag.")
                 return
 
             f.seek(0)
             updated_content = content.strip()[:-7] + entry_block + "</logs>\n"
             f.write(updated_content)
-        logger.debug(f"Page source appended at: {time_stamp}")
+        internal_logger.debug(f"Page source appended at: {time_stamp}")
 
-    logger.debug(f"Page source saved to: {page_source_file_path}")
+    internal_logger.debug(f"Page source saved to: {page_source_file_path}")
 
 def capture_screenshot(name=None):
     """
@@ -205,26 +205,26 @@ def capture_screenshot(name=None):
         save_screenshot(screenshot, name)
         return screenshot
     except Exception as e:
-        logger.debug(f"Error capturing screenshot from Selenium: {e}")
+        internal_logger.debug(f"Error capturing screenshot from Selenium: {e}")
         screenshot = None
     # If Selenium screenshot is None or a black screen, switch to DeviceScreenshot
     try:
         screenshot = DeviceScreenshot().capture()
     except Exception as e:
-        logger.debug(f"Error capturing screenshot from device: {e}")
+        internal_logger.debug(f"Error capturing screenshot from device: {e}")
         screenshot = None  # Ensure screenshot is None if exception occurs
 
     # If device screenshot is None or a black screen, switch to CameraScreenshot
     if screenshot is None:
-        logger.debug("Device screenshot returned None. Falling back to CameraScreenshot.")
+        internal_logger.debug("Device screenshot returned None. Falling back to CameraScreenshot.")
         screenshot = CameraScreenshot().capture()
     elif is_black_screen(screenshot):
-        logger.debug("Device screenshot is black. Falling back to CameraScreenshot.")
+        internal_logger.debug("Device screenshot is black. Falling back to CameraScreenshot.")
         screenshot = CameraScreenshot().capture()
 
     # Final check: if CameraScreenshot also fails, log and return None
     if screenshot is None or is_black_screen(screenshot):
-        logger.error("Both DeviceScreenshot and CameraScreenshot returned None or a black screen.")
+        internal_logger.error("Both DeviceScreenshot and CameraScreenshot returned None or a black screen.")
         return None
     if name is not None:
         save_screenshot(screenshot, name)

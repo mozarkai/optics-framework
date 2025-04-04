@@ -1,6 +1,6 @@
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 import easyocr
 import cv2
 
@@ -25,16 +25,16 @@ class EasyOCRHelper(TextInterface):
         """
         try:
             self.reader = easyocr.Reader([language])
-            # logger.debug(f"EasyOCR initialized with language: {language}")
+            # internal_logger.debug(f"EasyOCR initialized with language: {language}")
         except Exception as e:
-            logger.error(f"Failed to initialize EasyOCR: {e}")
+            internal_logger.error(f"Failed to initialize EasyOCR: {e}")
             raise RuntimeError("EasyOCR initialization failed.") from e
 
 
     def locate(self, frame, text, index=None):
         result, coor, bbox = self.find_element(frame, text, index)
         if not result:
-            logger.exception(f"Text '{text}' not found in the frame.")
+            internal_logger.exception(f"Text '{text}' not found in the frame.")
             raise Exception(f"Text '{text}' not found in the frame.")
 
         # annotate the frame

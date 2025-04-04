@@ -1,7 +1,7 @@
 import pkgutil
 import inspect
 import importlib
-from optics_framework.common.logging_config import logger, use_logger_format
+from optics_framework.common.logging_config import user_logger
 import optics_framework.api
 
 
@@ -48,13 +48,13 @@ def format_methods(api_methods):
     )
 
 
-@use_logger_format("user")
+
 def main():
     """
     CLI entry point for listing API methods.
     """
     api_methods = list_api_methods(optics_framework.api)
-    logger.info(format_methods(api_methods))
+    user_logger.info(format_methods(api_methods))
 
 
 if __name__ == "__main__":

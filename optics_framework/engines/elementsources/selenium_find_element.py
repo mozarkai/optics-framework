@@ -1,7 +1,7 @@
 from typing import Any, Tuple
 from selenium.common.exceptions import NoSuchElementException
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from selenium.webdriver.common.by import By
 from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
 from lxml import etree
@@ -31,7 +31,7 @@ class SeleniumFindElement(ElementSourceInterface):
         """
         Capture the current screen state.
         """
-        logger.exception('Selenium Find Element does not support capturing the screen state.')
+        internal_logger.exception('Selenium Find Element does not support capturing the screen state.')
         raise NotImplementedError('Selenium Find Element does not support capturing the screen state.')
 
     def get_page_source(self) -> str:
@@ -60,7 +60,7 @@ class SeleniumFindElement(ElementSourceInterface):
 
         if element_type == 'Image':
             # Selenium doesn't natively support finding elements by image
-            logger.debug("Selenium does not support finding elements by image")
+            internal_logger.debug("Selenium does not support finding elements by image")
             return None
         elif element_type == 'XPath':
             try:
@@ -69,10 +69,10 @@ class SeleniumFindElement(ElementSourceInterface):
                     return None
                 return found_element
             except NoSuchElementException as e:
-                logger.error(f"Error finding element by XPath: {element}: {e}")
+                internal_logger.error(f"Error finding element by XPath: {element}: {e}")
                 return None
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Unexpected error finding element by XPath: {element}: {e}")
                 return None
         elif element_type == 'Text':
@@ -83,10 +83,10 @@ class SeleniumFindElement(ElementSourceInterface):
                     return None
                 return found_element
             except NoSuchElementException as e:
-                logger.error(f"Error finding element by ID: {element}: {e}")
+                internal_logger.error(f"Error finding element by ID: {element}: {e}")
                 return None
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Unexpected error finding element by ID: {element}: {e}")
                 return None
 
@@ -121,7 +121,7 @@ class SeleniumFindElement(ElementSourceInterface):
                 element) is not None for element in elements]
 
             if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
-                logger.debug(
+                internal_logger.debug(
                     f"Assertion passed with rule '{rule}' for elements: {elements}")
                 return
 
@@ -131,13 +131,13 @@ class SeleniumFindElement(ElementSourceInterface):
         if rule == "all":
             missing_elements = [elem for elem, found in zip(
                 elements, found_elements) if not found]
-            logger.error(
+            internal_logger.error(
                 f"Timeout reached: Elements not found: {missing_elements}")
             raise TimeoutError(
                 f"Timeout reached: Elements not found: {missing_elements}")
 
         if rule == "any":
-            logger.error(
+            internal_logger.error(
                 f"Timeout reached: None of the elements were found: {elements}")
             raise TimeoutError(
                 "Timeout reached: None of the specified elements were found.")

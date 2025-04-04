@@ -1,234 +1,224 @@
-import json
 import logging
-from typing import Optional, Dict, Any, Callable
-from rich.logging import RichHandler
-from contextlib import contextmanager
+import queue
 import threading
+from rich.logging import RichHandler
+from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pathlib import Path
-from functools import wraps
-from optics_framework.common.config_handler import ConfigHandler, Config
-from pythonjsonlogger.json import JsonFormatter
+import xml.etree.ElementTree as ET  # For JUnit XML generation # nosec B405
+from datetime import datetime
+import atexit
+import sys
 
-# Thread-local variable for temporary configuration
-_log_context = threading.local()
-_log_context.format_type = "internal"  # Default mode is "internal"
+# Import from your separate config_handler module
+from optics_framework.common.config_handler import ConfigHandler
 
-# Get the singleton config instance
+# Initialize ConfigHandler
 config_handler = ConfigHandler.get_instance()
-config: Config = config_handler.config  # Type as Pydantic Config
-logger = logging.getLogger("optics_framework")
+config = config_handler.load()  # Initial load
+
+# Global Queues
+user_log_queue = queue.Queue(-1)
+internal_log_queue = queue.Queue(-1)
+
+# User Logger
+user_logger = logging.getLogger("optics.user")
+user_logger.setLevel(getattr(logging, config.log_level.upper(), logging.INFO))
+user_logger.propagate = False
+
+user_console_handler = RichHandler(
+    rich_tracebacks=False, show_time=False, show_level=False, markup=True)
+user_console_handler.setFormatter(logging.Formatter("%(message)s"))
+user_console_handler.setLevel(
+    getattr(logging, config.log_level.upper(), logging.INFO))
+
+user_queue_handler = QueueHandler(user_log_queue)
+user_logger.addHandler(user_queue_handler)
+
+user_listener = QueueListener(
+    user_log_queue, user_console_handler, respect_handler_level=True)
+user_listener.start()
+
+# Internal Logger
+internal_logger = logging.getLogger("optics.internal")
+internal_logger.setLevel(logging.DEBUG)  # Always DEBUG for internal
+internal_logger.propagate = False
+
+internal_console_handler = RichHandler(
+    rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
+internal_console_handler.setFormatter(logging.Formatter(
+    "%(levelname)s | %(asctime)s | %(message)s", datefmt="%H:%M:%S"))
+internal_console_handler.setLevel(logging.DEBUG)
+
+internal_queue_handler = QueueHandler(internal_log_queue)
+internal_logger.addHandler(internal_queue_handler)
+
+# JUnit Handler
 
 
-class DynamicFilter(logging.Filter):
-    """Filter logs based on mode and configured level."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Filters log records dynamically.
-
-        :param record: The log record to filter.
-        :return: True if the record should be logged, False otherwise.
-        """
-        current = getattr(_log_context, "format_type", "internal")
-        config_level_name = str(config.log_level).upper()  # Use Config field
-        config_level = getattr(logging, config_level_name, logging.INFO)
-        # Apply level filtering only in "user" mode for console; "internal" sees all
-        if current == "user":
-            return record.levelno >= config_level
-        return True  # "internal" mode passes all logs to handlers
-
-
-class UniversalFormatter(logging.Formatter):
-    """Formatter switching between internal and user formats."""
-
-    def __init__(self) -> None:
-        internal_fmt = ("%(message)-65s")
-        user_fmt = "%(message)s"
-        datefmt = "%H:%M:%S"
-        self.datefmt = datefmt
-        self.internal_formatter = logging.Formatter(
-            internal_fmt, datefmt=datefmt)
-        self.user_formatter = logging.Formatter(user_fmt)
-
-    def format(self, record: logging.LogRecord) -> str:
-        """Formats the log record based on current mode.
-
-        :param record: The log record to format.
-        :return: Formatted log string.
-        """
-        fmt = getattr(_log_context, "format_type", "internal")
-        for attr in ["test_case", "test_module", "keyword"]:
-            if not hasattr(record, attr):
-                setattr(record, attr, "N/A")
-        if fmt == "user":
-            return self.user_formatter.format(record)
-        return self.internal_formatter.format(record)
-
-    def __getattr__(self, name: str) -> Any:
-        if name == "_style":
-            fmt = getattr(_log_context, "format_type", "internal")
-            if fmt == "user":
-                return self.user_formatter._style
-            return self.internal_formatter._style
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{name}'")
-
-
-class EnhancedJsonFormatter(JsonFormatter):
-    """JSON formatter with enhanced fields."""
-
-    def add_fields(self, log_record: Dict[str, Any], record: logging.LogRecord, message_dict: Dict[str, Any]) -> None:
-        """Adds custom fields to the JSON log record.
-
-        :param log_record: The dictionary to populate with log data.
-        :param record: The original log record.
-        :param message_dict: The message dictionary from the record.
-        """
-        super().add_fields(log_record, record, message_dict)
-        log_record["timestamp"] = self.formatTime(record)
-        log_record["level"] = record.levelname
-        # Use getMessage() for consistency
-        log_record["message"] = record.getMessage()
-        log_record["test_case"] = getattr(record, "test_case", "N/A")
-        log_record["test_module"] = getattr(record, "test_module", "N/A")
-        log_record["keyword"] = getattr(record, "keyword", "N/A")
-        log_record["logger"] = record.name
-        log_record["function"] = record.funcName
-        log_record["line"] = record.lineno
-        if record.exc_info:
-            log_record["exception"] = self.formatException(record.exc_info)
-
-
-class HierarchicalJsonHandler(logging.Handler):
-    """Custom handler that accumulates logs into a nested JSON structure."""
-
-    def __init__(self, filename: str | Path) -> None:
-        """Initializes the handler with a target file.
-
-        :param filename: Path to the JSON log file.
-        """
+class JUnitHandler(logging.Handler):
+    def __init__(self, filename: Path, buffer_size: int = 100):
         super().__init__()
-        self.filename = str(filename)  # Ensure string for consistency
-        self.logs: Dict[str, Dict[str, Dict[str, list[Dict[str, Any]]]]] = {}
-        self.setFormatter(EnhancedJsonFormatter())
+        self.filename = filename
+        self.buffer = []
+        self.buffer_size = buffer_size
+        self.lock = threading.Lock()
+        self.testsuites = ET.Element("testsuites")
+        self.suite_map = {}
+        self.start_time = datetime.now()
+        self.formatter = logging.Formatter()  # Added formatter for exception handling
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Emits a log record to the nested dictionary.
-
-        :param record: The log record to emit.
-        """
+        if self.lock is None:
+            raise RuntimeError("Lock not initialized")
         try:
-            json_record = self.format(record)
-            log_entry = json.loads(json_record)
-            test_case = log_entry.get("test_case", "N/A")
-            test_module = log_entry.get("test_module", "N/A")
-            keyword = log_entry.get("keyword", "N/A")
-            self.logs.setdefault(test_case, {})
-            self.logs[test_case].setdefault(test_module, {})
-            self.logs[test_case][test_module].setdefault(
-                keyword, []).append(log_entry)
-        except Exception:
+            with self.lock:
+                suite_key = getattr(record, "module", record.name)
+                if suite_key not in self.suite_map:
+                    suite = ET.SubElement(self.testsuites, "testsuite", {
+                        "name": suite_key,
+                        "tests": "0",
+                        "failures": "0",
+                        "errors": "0",
+                        "skipped": "0",
+                        "time": "0"
+                    })
+                    self.suite_map[suite_key] = suite
+                suite = self.suite_map[suite_key]
+
+                testcase = ET.SubElement(suite, "testcase", {
+                    "name": record.getMessage(),
+                    "classname": record.module if hasattr(record, "module") else record.name,
+                    "time": "0"
+                })
+
+                if record.levelno >= logging.ERROR:
+                    failure_type = "Error"
+                    if record.exc_info and record.exc_info[0] is not None:
+                        failure_type = record.exc_info[0].__name__
+                    failure = ET.SubElement(testcase, "failure", {
+                        "message": record.getMessage(),
+                        "type": failure_type
+                    })
+                    if record.exc_info:
+                        if self.formatter:
+                            failure.text = self.formatter.formatException(
+                                record.exc_info)
+                        else:
+                            failure.text = logging.Formatter().formatException(
+                                record.exc_info)
+                    suite.attrib["failures"] = str(
+                        int(suite.attrib["failures"]) + 1)
+                elif record.levelno == logging.WARNING:
+                    ET.SubElement(testcase, "skipped")
+
+                suite.attrib["tests"] = str(int(suite.attrib["tests"]) + 1)
+                self.buffer.append(record)
+
+                if len(self.buffer) >= self.buffer_size:
+                    self.flush()
+        except Exception as e:
             self.handleError(record)
+            print(f"Logging error: {e}", file=sys.stderr)
 
     def flush(self) -> None:
-        """Writes the accumulated logs to the file."""
-        with open(self.filename, 'w', encoding='utf-8') as f:
-            json.dump(self.logs, f, indent=2)
+        if self.lock is None:
+            raise RuntimeError("Lock not initialized")
+        with self.lock:
+            if self.testsuites:
+                elapsed = (datetime.now() - self.start_time).total_seconds()
+                for suite in self.testsuites:
+                    suite.attrib["time"] = str(elapsed / len(self.testsuites))
+                tree = ET.ElementTree(self.testsuites)
+                ET.indent(tree, space="  ")
+                tree.write(self.filename, encoding="utf-8",
+                           xml_declaration=True)
+                self.buffer.clear()
+
+    def close(self) -> None:
+        self.flush()
+        super().close()
 
 
-logging.root.handlers = []
-logger.setLevel(logging.DEBUG)  # Root logger captures all levels
-
-# Console (Rich) Handler
-console_level_name = str(config.log_level).upper()  # Line 172 fix
-console_level = getattr(logging, console_level_name, logging.INFO)
-rich_handler = RichHandler(
-    rich_tracebacks=True,  # Use Config fields
-    tracebacks_show_locals=True,
-    show_time=True,
-    show_level=True,
-)
-rich_handler.setFormatter(UniversalFormatter())
-rich_handler.addFilter(DynamicFilter())
-rich_handler.setLevel(console_level)  # Respect configured log level
-logger.addHandler(rich_handler)
+# Initialize Handlers
+internal_listener = QueueListener(
+    internal_log_queue, internal_console_handler, respect_handler_level=True)
+junit_handler = None  # Global reference for reconfiguration
 
 
-def initialize_additional_handlers() -> None:
-    """Initializes file and JSON handlers based on configuration."""
-    project_path = config_handler.get_project_path()
-    if not project_path:
-        logger.warning("Project path not set; defaulting to ~/.optics")
-        project_path = str(Path.home() / ".optics")
-    else:
-        logger.debug(f"Using project path: {project_path}")
+def initialize_handlers():
+    global config, junit_handler
+    config = config_handler.load()  # Reload config to catch changes
+
+    project_path = config.project_path or Path.home() / ".optics"
+    log_dir = Path(project_path) / "execution_output"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Update logger levels
+    user_logger.setLevel(
+        getattr(logging, config.log_level.upper(), logging.INFO))
+    user_console_handler.setLevel(
+        getattr(logging, config.log_level.upper(), logging.INFO))
+
+    # Clear existing file/JUnit handlers from internal_listener
+    internal_listener.handlers = (internal_console_handler,)
 
     # File Handler
     if config.file_log:
-        default_log_path = Path(project_path) / "execution_output" / "logs.log"
-        log_path = Path(
-            config.log_path if config.log_path is not None else default_log_path).expanduser()
-        logger.debug(f"Log file path: {log_path}")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_path, mode='w')
-        file_handler.setFormatter(UniversalFormatter())
-        file_handler.addFilter(DynamicFilter())
-        file_handler.setLevel(logging.DEBUG)  # File captures all logs
-        logger.addHandler(file_handler)
+        log_path = Path(config.log_path or log_dir /
+                        "internal_logs.log").expanduser()
+        file_handler = RotatingFileHandler(
+            log_path, maxBytes=10*1024*1024, backupCount=10)
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
+        file_handler.setLevel(logging.DEBUG)
+        internal_listener.handlers += (file_handler,)
 
-    # JSON Handler
-    if config.json_log:
-        default_json_path = Path(project_path) / \
-            "execution_output" / "logs.json"
-        json_path = Path(
-            config.json_path if config.json_path is not None else default_json_path).expanduser()
-        logger.debug(f"JSON log file path: {json_path}")
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_handler = HierarchicalJsonHandler(json_path)
-        json_handler.setLevel(logging.DEBUG)  # JSON captures all logs
-        logger.addHandler(json_handler)
-
-
-@contextmanager
-def set_logger_format(fmt: str):
-    """Temporarily sets the logger mode for the duration of a context.
-
-    :param fmt: Logger mode ("internal" or "user").
-    """
-    old_format = getattr(_log_context, "format_type", "internal")
-    _log_context.format_type = fmt
-    try:
-        yield  # Explicit yield for contextmanager
-    finally:
-        _log_context.format_type = old_format
+    # JUnit Handler (shared)
+    if config.json_log:  # Repurposed for JUnit
+        global junit_handler
+        junit_path = Path(config.json_path or log_dir /
+                          "test_results.xml").expanduser()
+        if junit_handler:
+            junit_handler.close()
+            user_logger.handlers = [
+                h for h in user_logger.handlers if not isinstance(h, JUnitHandler)]
+            internal_logger.handlers = [
+                h for h in internal_logger.handlers if not isinstance(h, JUnitHandler)]
+        junit_handler = JUnitHandler(junit_path, buffer_size=100)
+        junit_handler.setLevel(logging.DEBUG)
+        internal_listener.handlers += (junit_handler,)
+        user_logger.addHandler(junit_handler)
 
 
-def use_logger_format(fmt: Optional[str] = None) -> Callable:
-    """Decorator to set the logger mode for a function call.
+initialize_handlers()
+internal_listener.start()
 
-    :param fmt: Logger mode ("internal" or "user"), defaults to None (uses "internal").
-    :return: Decorated function.
-    """
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            with set_logger_format(fmt or "internal"):
-                return func(*args, **kwargs)
-        return wrapper
-    return decorator
+# Shutdown
 
 
-def apply_logger_format_to_all(fmt: Optional[str] = None) -> Callable:
-    """Class decorator to apply a logger mode to all callable methods.
+def shutdown_logging():
+    internal_logger.debug("Shutting down logging system")
+    user_listener.stop()
+    internal_listener.stop()
+    for handler in internal_logger.handlers + user_logger.handlers:
+        if isinstance(handler, JUnitHandler):
+            handler.close()
 
-    :param fmt: Logger mode for all methods in the class, defaults to None (uses "internal").
-    :return: Decorated class.
-    """
-    def decorator(cls: type) -> type:
-        for attr_name in dir(cls):
-            if not attr_name.startswith("__"):
-                attribute = getattr(cls, attr_name)
-                if callable(attribute):
-                    decorated = use_logger_format(fmt)(attribute)
-                    setattr(cls, attr_name, decorated)
-        return cls
-    return decorator
+
+atexit.register(shutdown_logging)
+
+# Dynamic Reconfiguration
+
+
+def reconfigure_logging():
+    """Reinitialize handlers if config changes."""
+    internal_logger.info("Reconfiguring logging due to config change")
+    initialize_handlers()
+
+
+# Exports
+__all__ = ["user_logger", "internal_logger", "reconfigure_logging"]

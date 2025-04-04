@@ -2,7 +2,6 @@ import argparse
 import sys
 from typing import Optional
 from pydantic import BaseModel
-from optics_framework.common.logging_config import apply_logger_format_to_all
 from optics_framework.helper.list_keyword import main as list_main
 from optics_framework.helper.config_manager import main as config_main
 from optics_framework.helper.initialize import create_project
@@ -42,7 +41,6 @@ class Command:
             "Subclasses must implement the `execute` method.")
 
 
-@apply_logger_format_to_all("user")
 class ListCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -60,7 +58,6 @@ class GenerateArgs(BaseModel):
     output_file: str = "generated_test.py"
 
 
-@apply_logger_format_to_all("user")
 class GenerateCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -99,7 +96,6 @@ class InitArgs(BaseModel):
     git_init: bool = False
 
 
-@apply_logger_format_to_all("user")
 class InitCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser("init", help="Initialize a new project")
@@ -138,7 +134,6 @@ class DryRunArgs(BaseModel):
     test_name: str = ""
 
 
-@apply_logger_format_to_all("user")
 class DryRunCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -168,7 +163,6 @@ class ExecuteArgs(BaseModel):
     test_name: str = ""
 
 
-@apply_logger_format_to_all("user")
 class ExecuteCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -192,7 +186,6 @@ class ExecuteCommand(Command):
         execute_main(execute_args.folder_path, execute_args.test_name)
 
 
-@apply_logger_format_to_all("user")
 class VersionCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(

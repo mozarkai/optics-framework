@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from typing import Optional
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 
 class CameraScreenshot(ElementSourceInterface):
     """
@@ -47,5 +47,9 @@ class CameraScreenshot(ElementSourceInterface):
             self.cap.release()
 
     def locate(self, image: np.ndarray, template: np.ndarray) -> Optional[tuple]:
-        logger.exception("CameraScreenshot does not support locating elements.")
+        internal_logger.exception("CameraScreenshot does not support locating elements.")
         raise NotImplementedError("CameraScreenshot does not support locating elements.")
+
+    def locate_using_index(self, element, index):
+        internal_logger.exception("CameraScreenshot does not support locating elements using index.")
+        raise NotImplementedError("CameraScreenshot does not support locating elements using index.")

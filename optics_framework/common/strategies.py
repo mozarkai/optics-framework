@@ -4,7 +4,7 @@ from typing import List, Union, Tuple, Generator, Set
 from optics_framework.common.base_factory import FallbackProxy
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 
 
 class LocatorStrategy(ABC):
@@ -174,7 +174,7 @@ class StrategyManager:
         self.element_source = element_source
         self.factory = StrategyFactory(text_detection, image_detection)
         self.strategies = self._build_strategies()
-        logger.debug(
+        internal_logger.debug(
             f"Built strategies: {[s.__class__.__name__ for s in self.strategies]}")
 
     def _build_strategies(self) -> Set[LocatorStrategy]:
@@ -212,5 +212,5 @@ class StrategyManager:
                 if result:
                     yield LocateResult(result, strategy)
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Strategy {strategy.__class__.__name__} failed: {e}")

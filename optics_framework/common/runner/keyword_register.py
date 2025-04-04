@@ -1,8 +1,7 @@
 from typing import Callable, Dict, Optional
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 
 
-@apply_logger_format_to_all("user")
 class KeywordRegistry:
     """
     Manages a mapping of keyword function names to their methods.
@@ -35,7 +34,7 @@ class KeywordRegistry:
                 method = getattr(instance, method_name)
                 if callable(method):
                     if method_name in self.keyword_map:
-                        logger.warning(
+                        internal_logger.warning(
                             f"Warning: Duplicate method name '{method_name}'"
                         )
                     self.keyword_map[method_name] = method

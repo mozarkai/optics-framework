@@ -1,6 +1,6 @@
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
@@ -35,8 +35,9 @@ class AppiumPageSource(ElementSourceInterface):
         Capture the current screen state.
 
         return """
-        logger.exception('Appium Find Element does not support capturing the screen state.')
-        raise ValueError('Appium Find Element does not support capturing the screen state.')
+        internal_logger.exception('Appium Find Element does not support capturing the screen state.')
+        raise NotImplementedError(
+            'Appium Find Element does not support capturing the screen state.')
 
     def get_page_source(self) -> str:
         """
@@ -53,9 +54,9 @@ class AppiumPageSource(ElementSourceInterface):
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
         self.root = self.tree.getroot()
 
-        logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
-        logger.debug(f'Page source fetched at: {time_stamp}')
-        logger.debug('\n==========================================\n')
+        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
+        internal_logger.debug(f'Page source fetched at: {time_stamp}')
+        internal_logger.debug('\n==========================================\n')
         return page_source
 
 
@@ -77,7 +78,7 @@ class AppiumPageSource(ElementSourceInterface):
 
         if element_type == 'Image':
             # Find the element by image
-            logger.debug('Appium Find Element does not support finding images.')
+            internal_logger.debug('Appium Find Element does not support finding images.')
             return None
         else:
             if element_type == 'Text':
@@ -89,7 +90,7 @@ class AppiumPageSource(ElementSourceInterface):
                 try:
                     element = driver.find_element(AppiumBy.XPATH, xpath)
                 except Exception as e:
-                    logger.exception(f"Error finding element by text: {e}")
+                    internal_logger.exception(f"Error finding element by text: {e}")
                     raise Exception (f"Error finding element by text: {e}")
                 return element
             elif element_type == 'XPath':
@@ -97,7 +98,7 @@ class AppiumPageSource(ElementSourceInterface):
                 try:
                     element = driver.find_element(AppiumBy.XPATH, xpath)
                 except Exception as e:
-                    logger.exception(f"Error finding element by xpath: {e}")
+                    internal_logger.exception(f"Error finding element by xpath: {e}")
                     raise Exception (f"Error finding element by xpath: {e}")
                 return element
 
@@ -111,7 +112,7 @@ class AppiumPageSource(ElementSourceInterface):
             try:
                 element = self.driver.find_element(AppiumBy.XPATH, xpath)
             except Exception as e:
-                logger.exception(f"Error finding element by index: {e}")
+                internal_logger.exception(f"Error finding element by index: {e}")
                 raise Exception (f"Error finding element by index: {e}")
             return element
         return {}
@@ -224,7 +225,7 @@ class AppiumPageSource(ElementSourceInterface):
         found_texts = set()
 
         for text in texts:
-            logger.debug(f'Searching for text: {text}')
+            internal_logger.debug(f'Searching for text: {text}')
 
             for attrib in strategies:
                 matching_elements = self.tree.xpath(f"//*[@{attrib}]")
@@ -233,7 +234,7 @@ class AppiumPageSource(ElementSourceInterface):
                     attrib_value = elem.attrib.get(attrib, '').strip()
 
                     if attrib_value and utils.compare_text(attrib_value, text):
-                        logger.debug(f"Match found using {attrib} for '{text}'")
+                        internal_logger.debug(f"Match found using {attrib} for '{text}'")
                         found_texts.add(text)  # Mark this text as found
                         break  # Stop searching other elements for this text
 

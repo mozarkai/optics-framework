@@ -1,6 +1,6 @@
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 import pytesseract
 import cv2
 
@@ -23,7 +23,7 @@ class PytesseractHelper(TextInterface):
         :raises RuntimeError: If EasyOCR fails to initialize.
         """
         self.pytesseract_config = "--oem 3 --psm 6"
-        # logger.debug(f"Pytesseract initialized with config: {self.pytesseract_config}")
+        # internal_logger.debug(f"Pytesseract initialized with config: {self.pytesseract_config}")
 
 
     def locate(self, frame, text, index=0):
@@ -32,7 +32,7 @@ class PytesseractHelper(TextInterface):
         """
         result, coor, bbox = self.find_element(frame, text, index)
         if not result:
-            logger.exception(f"Text '{text}' not found in the frame.")
+            internal_logger.exception(f"Text '{text}' not found in the frame.")
             raise Exception(f"Text '{text}' not found in the frame.")
         # annotate the frame
         annotated_frame = utils.annotate_element(frame, coor, bbox)
@@ -57,7 +57,7 @@ class PytesseractHelper(TextInterface):
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         _, ocr_results = self.detect_text_pytesseract(gray_frame)
 
-        # logger.debug("Text Detection Results:", ocr_results)
+        # internal_logger.debug("Text Detection Results:", ocr_results)
 
         matches = []
         for detected_text, (x, y, w, h), confidence in ocr_results:
@@ -81,7 +81,6 @@ class PytesseractHelper(TextInterface):
         # Save the annotated frame
         utils.save_screenshot(frame, name='annotated_frame')
 
-        # logger.debug("Returning values:", selected_center, selected_bbox)
         return True, selected_center, selected_bbox
 
 

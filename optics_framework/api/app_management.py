@@ -1,9 +1,8 @@
 from typing import Optional
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 
 
-@apply_logger_format_to_all("internal")
 class AppManagement:
     """
     A high-level API for managing applications.
@@ -18,7 +17,7 @@ class AppManagement:
     def __init__(self, builder: OpticsBuilder):
         self.driver = builder.get_driver()
         if self.driver is None:
-            logger.error("Driver could not be initialized due to not being provided.")
+            internal_logger.error("Driver could not be initialized due to not being provided.")
             # Optionally raise an exception if this should halt execution
             # raise ValueError(f"Driver '{builder.driver_config}' could not be initialized.")
 
@@ -29,7 +28,7 @@ class AppManagement:
         This method should be called before performing any application
         management operations.
         """
-        logger.debug("Initialising setup for AppManagement.")
+        internal_logger.debug("Initialising setup for AppManagement.")
 
     def launch_app(self, event_name: Optional[str] = None) -> None:
         """

@@ -4,13 +4,12 @@ import importlib
 import pkgutil
 import inspect
 from pydantic import BaseModel, Field
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 
 T = TypeVar("T")
 S = TypeVar("S")  # New TypeVar for FactoryState
 
 
-@apply_logger_format_to_all("internal")
 class GenericFactory(Generic[T]):
     """
     A generic factory class for discovering and instantiating modules dynamically.
@@ -32,7 +31,7 @@ class GenericFactory(Generic[T]):
         """
         Recursively discover and register modules within a given package.
         """
-        logger.debug(f"Discovering modules in package: {package}")
+        internal_logger.debug(f"Discovering modules in package: {package}")
         package_obj = cls._import_package(package)
         if package_obj:
             cls._recursive_discover(package_obj.__path__, package)
@@ -43,7 +42,7 @@ class GenericFactory(Generic[T]):
         try:
             return importlib.import_module(package)
         except ModuleNotFoundError as e:
-            logger.error(f"Package '{package}' not found: {e}")
+            internal_logger.error(f"Package '{package}' not found: {e}")
             return None
 
     @classmethod
@@ -54,7 +53,7 @@ class GenericFactory(Generic[T]):
         for _, module_name, is_pkg in pkgutil.iter_modules(package_paths):
             full_module_name = f"{base_package}.{module_name}"
             cls._state.modules[module_name] = full_module_name
-            logger.debug(f"Registered module: {full_module_name}")
+            internal_logger.debug(f"Registered module: {full_module_name}")
             if is_pkg:
                 cls._discover_subpackage(full_module_name)
 
@@ -65,7 +64,7 @@ class GenericFactory(Generic[T]):
             sub_package = importlib.import_module(full_module_name)
             cls._recursive_discover(sub_package.__path__, full_module_name)
         except ModuleNotFoundError as e:
-            logger.error(
+            internal_logger.error(
                 f"Failed to import subpackage '{full_module_name}': {e}")
 
     @staticmethod
@@ -129,7 +128,7 @@ class GenericFactory(Generic[T]):
     def _get_single_instance(cls, name: str, interface: Type[T]) -> T:
         """Retrieve or create a single instance for a module name."""
         if name in cls._state.instances:
-            logger.debug(f"Returning cached instance for: {name}")
+            internal_logger.debug(f"Returning cached instance for: {name}")
             return cls._state.instances[name]
 
         module_path = cls._state.modules.get(name)  # pylint: disable=no-member
@@ -144,7 +143,7 @@ class GenericFactory(Generic[T]):
 
         instance = cls_obj()
         cls._state.instances[name] = instance
-        logger.debug(
+        internal_logger.debug(
             f"Successfully instantiated {cls_obj.__name__} from {module_path}")
         return instance
 
@@ -152,7 +151,7 @@ class GenericFactory(Generic[T]):
     def clear_cache(cls) -> None:
         """Clear cached instances."""
         cls._state.instances.clear()  # pylint: disable=no-member
-        logger.debug("Cleared instance cache.")
+        internal_logger.debug("Cleared instance cache.")
 
 
 class FallbackProxy(BaseModel, Generic[T]):
@@ -170,7 +169,7 @@ class FallbackProxy(BaseModel, Generic[T]):
     def __getattr__(self, attr):
         def fallback_method(*args, **kwargs):
             if not self.instances:
-                logger.warning(
+                internal_logger.warning(
                     f"Attempted to call '{attr}' but no valid instances exist. Passing off the call.")
                 return None
 
@@ -182,7 +181,7 @@ class FallbackProxy(BaseModel, Generic[T]):
                     return method(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    logger.error(f"Error calling '{attr}' on {instance}: {e}")
+                    internal_logger.error(f"Error calling '{attr}' on {instance}: {e}")
             self.current_instance = None
             if last_exception:
                 raise last_exception

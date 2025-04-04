@@ -6,7 +6,7 @@ from appium.options.ios import XCUITestOptions
 from optics_framework.common.config_handler import ConfigHandler
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
@@ -14,7 +14,7 @@ from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 # Hotfix: Disable debug logs from Appium to prevent duplicates on live logs
 # logging.disable(logging.DEBUG)
 
-@apply_logger_format_to_all("internal")
+
 class Appium(DriverInterface):
     _instance = None
     DEPENDENCY_TYPE = "driver_sources"
@@ -33,7 +33,7 @@ class Appium(DriverInterface):
         config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(self.DEPENDENCY_TYPE, self.NAME)
 
         if not config:
-            logger.error(f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
+            internal_logger.error(f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
             raise ValueError("Appium driver not enabled in config")
 
         self.appium_server_url: str = config.get("url", "http://127.0.0.1:4723")
@@ -54,7 +54,7 @@ class Appium(DriverInterface):
         device_serial = self.capabilities.get('deviceName')
         automation_name = self.capabilities.get('automationName')
 
-        logger.debug(f"Appium Server URL: {self.appium_server_url}")
+        internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
         new_comm_timeout = 3600  # Command timeout
 
         if not platform or not device_serial or not automation_name:
@@ -108,7 +108,7 @@ class Appium(DriverInterface):
                 self.ui_helper = UIHelper()
                 return self.driver
         except Exception as e:
-            logger.debug(f"Failed to start Appium session: {e}")
+            internal_logger.debug(f"Failed to start Appium session: {e}")
             raise
 
     def terminate(self):
@@ -133,19 +133,19 @@ class Appium(DriverInterface):
                     # Extract the version string.
                     return line.split("versionName=")[-1].strip()
         except subprocess.CalledProcessError as e:
-            logger.error("Error executing adb command:", e.output)
+            internal_logger.error("Error executing adb command:", e.output)
         return None
 
     def initialise_setup(self) -> None:
         """Initialize the Appium setup by starting the session."""
         self.start_session()
-        logger.debug("Appium setup initialized.")
+        internal_logger.debug("Appium setup initialized.")
 
     def launch_app(self, event_name: str | None = None) -> None:
         """Launch the app using the Appium driver."""
         if self.driver is None:
             self.start_session()
-        logger.debug(f"Launched application with event: {event_name}")
+        internal_logger.debug(f"Launched application with event: {event_name}")
 
     def get_driver(self):
         """Return the Appium driver instance."""
@@ -161,9 +161,9 @@ class Appium(DriverInterface):
             element.click()
             if event_name:
                 # TODO: Trigger event
-                logger.debug(f"Clicked on element: {element} at {timestamp}")
+                internal_logger.debug(f"Clicked on element: {element} at {timestamp}")
         except Exception as e:
-            logger.debug(e)
+            internal_logger.debug(e)
 
     def tap_at_coordinates(self, x, y, event_name=None) -> None:
         """
@@ -174,9 +174,9 @@ class Appium(DriverInterface):
             if event_name:
                 # TODO: Trigger event
                 pass
-            logger.debug(f"Tapped at coordinates ({x}, {y})")
+            internal_logger.debug(f"Tapped at coordinates ({x}, {y})")
         except Exception as e:
-            logger.debug(f"Failed to tap at ({x}, {y}): {e}")
+            internal_logger.debug(f"Failed to tap at ({x}, {y}): {e}")
 
     def swipe(self, start_x, start_y,direction, swipe_length, event_name=None):
         """
@@ -200,7 +200,7 @@ class Appium(DriverInterface):
             end_x = start_x - swipe_length
             end_y = start_y
         elif direction == "right":
-            logger.debug(f'type of swipe_length: {type(swipe_length)}, type of start_x: {type(start_x)}')
+            internal_logger.debug(f'type of swipe_length: {type(swipe_length)}, type of start_x: {type(start_x)}')
             end_x = start_x + swipe_length
             end_y = start_y
         self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
@@ -279,7 +279,7 @@ class Appium(DriverInterface):
             if keycode:
                 self.press_keycode(keycode, event_name)
             else:
-                logger.debug(f"Keycode not found for character: {char}")
+                internal_logger.debug(f"Keycode not found for character: {char}")
         if event_name:
             #TODO: Trigger event
             pass
@@ -302,7 +302,7 @@ class Appium(DriverInterface):
 
     def get_text_element(self, element):
         text = element.get_attribute('text') or element.get_attribute('value')
-        logger.info(f"Text of element: {text}")
+        internal_logger.info(f"Text of element: {text}")
         return text
 
 # helper functions
@@ -312,12 +312,12 @@ class Appium(DriverInterface):
         window_size = self.driver.get_window_size()
         screen_width = window_size['width']
         screen_height = window_size['height']
-        logger.debug(f'Appium Window Size: {screen_width, screen_height}')
+        internal_logger.debug(f'Appium Window Size: {screen_width, screen_height}')
         screenshot_height, screenshot_width = screenshot.shape[:2]
-        logger.debug(f'screenshot size: {screenshot_width, screen_height}')
+        internal_logger.debug(f'screenshot size: {screenshot_width, screen_height}')
         scaled_x = int(x * screen_width / screenshot_width)
         scaled_y = int(y * screen_height / screenshot_height)
-        logger.debug(f'scaled values : {scaled_x, scaled_y}')
+        internal_logger.debug(f'scaled values : {scaled_x, scaled_y}')
         return scaled_x, scaled_y
 
 # action keywords
@@ -331,7 +331,7 @@ class Appium(DriverInterface):
                 raise Exception(f"Error occurred while clicking on element: {e}")
             if event_name:
                 # trigger event
-                logger.debug(f"Clicked on element: {element} at {timestamp}")
+                internal_logger.debug(f"Clicked on element: {element} at {timestamp}")
 
     def press_coordinates(self, x, y, event_name=None):
         """
@@ -365,7 +365,7 @@ class Appium(DriverInterface):
             y_centre = (bbox[1] + bbox[3]) // 2
             self.tap_at_coordinates(x_centre, y_centre, event_name)
         else:
-            logger.debug(f"Bounding box not found for element with xpath: {xpath}")
+            internal_logger.debug(f"Bounding box not found for element with xpath: {xpath}")
 
     def appium_find_element(self, element):
         element_type = utils.determine_element_type(element)

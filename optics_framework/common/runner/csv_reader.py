@@ -1,7 +1,7 @@
 import csv
 from abc import ABC, abstractmethod
 from typing import Optional
-from optics_framework.common.logging_config import logger, use_logger_format
+from optics_framework.common.logging_config import internal_logger
 
 
 class DataReader(ABC):
@@ -103,7 +103,6 @@ class CSVDataReader(DataReader):
             test_cases[test_case].append(test_step)
         return test_cases
 
-    @use_logger_format("user")
     def read_modules(self, file_path: str) -> dict:
         """
         Read a CSV file containing module information and return a dictionary mapping
@@ -124,10 +123,10 @@ class CSVDataReader(DataReader):
         modules = {}
         for row in rows:
             if "module_name" not in row or not row["module_name"]:
-                logger.warning(f"Warning: Row missing 'module_name': {row}\n")
+                internal_logger.warning(f"Warning: Row missing 'module_name': {row}\n")
                 continue
             if "module_step" not in row or not row["module_step"]:
-                logger.warning(f"Warning: Row missing 'module_step': {row}\n")
+                internal_logger.warning(f"Warning: Row missing 'module_step': {row}\n")
                 continue
             module_name = row["module_name"].strip()
             keyword = row["module_step"].strip()

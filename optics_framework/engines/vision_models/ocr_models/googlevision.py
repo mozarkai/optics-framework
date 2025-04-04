@@ -1,5 +1,5 @@
 from optics_framework.common.text_interface import TextInterface
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 import cv2
 from optics_framework.common import utils
 import numpy as np
@@ -32,7 +32,7 @@ class GoogleVisionHelper(TextInterface):
         """
         result, coor, bbox = self.find_element(frame, text, index)
         if not result:
-            logger.exception(f"Text '{text}' not found in the frame.")
+            internal_logger.exception(f"Text '{text}' not found in the frame.")
             raise Exception(f"Text '{text}' not found in the frame.")
         # annotate the frame
         annotated_frame = utils.annotate_element(frame, coor, bbox)

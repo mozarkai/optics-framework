@@ -1,6 +1,6 @@
 from functools import wraps
 from typing import Callable, Optional, Any
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
@@ -20,7 +20,7 @@ def with_self_healing(func: Callable) -> Callable:
             try:
                 return func(self, element, located=result.value, *args, **kwargs)
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Action '{func.__name__}' failed with {result.strategy.__class__.__name__}: {e}")
                 last_exception = e
 
@@ -30,7 +30,6 @@ def with_self_healing(func: Callable) -> Callable:
     return wrapper
 
 
-@apply_logger_format_to_all("internal")
 class ActionKeyword:
     """
     High-Level API for Action Keywords
@@ -66,12 +65,12 @@ class ActionKeyword:
         """
         if isinstance(located, tuple):
             x, y = located
-            logger.debug(
+            internal_logger.debug(
                 f"Pressing at coordinates ({x + offset_x}, {y + offset_y})")
             self.driver.press_coordinates(
                 x + offset_x, y + offset_y, event_name)
         else:
-            logger.debug(f"Pressing element '{element}'")
+            internal_logger.debug(f"Pressing element '{element}'")
             self.driver.press_element(located, repeat, event_name)
 
     def press_by_percentage(self, percent_x: float, percent_y: float, repeat: int = 1, event_name: Optional[str] = None) -> None:
@@ -125,7 +124,7 @@ class ActionKeyword:
         element_type = utils.determine_element_type(element)
         if element_type == 'Text':
             if element_source_type == 'AppiumFindElement':
-                logger.exception(
+                internal_logger.exception(
                     'Appium Find Element does not support finding text by index.')
             elif element_source_type == 'AppiumPageSource':
                 appium_element = self.element_source.locate(
@@ -134,7 +133,7 @@ class ActionKeyword:
                     appium_element, repeat=1, event_name=event_name)
             else:
                 if 'screenshot' not in element_source_type.lower():
-                    logger.error(self.SCREENSHOT_DISABLED_MSG)
+                    internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
                 screenshot_image = self.element_source.capture()
                 x_coor, y_coor = self.text_detection.locate(
                     screenshot_image, element, index)
@@ -142,14 +141,14 @@ class ActionKeyword:
                     x_coor, y_coor, event_name=event_name)
         elif element_type == 'Image':
             if 'screenshot' not in element_source_type.lower():
-                logger.error(self.SCREENSHOT_DISABLED_MSG)
+                internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
             screenshot_image = self.element_source.capture()
             x_coor, y_coor = self.image_detection.locate(
                 screenshot_image, element, index)
             self.driver.press_coordinates(
                 x_coor, y_coor, event_name=event_name)
         elif element_type == 'XPath':
-            logger.debug(
+            internal_logger.debug(
                 'XPath is not supported for index based location. Provide the attribute as text.')
 
     @with_self_healing
@@ -167,12 +166,12 @@ class ActionKeyword:
         if result:
             if isinstance(located, tuple):
                 x, y = located
-                logger.debug(
+                internal_logger.debug(
                     f"Pressing detected element at coordinates ({x}, {y})")
                 self.driver.press_coordinates(
                     x, y, event_name=event_name)
             else:
-                logger.debug(f"Pressing detected element '{element}'")
+                internal_logger.debug(f"Pressing detected element '{element}'")
                 self.driver.press_element(
                     located, repeat=1, event_name=event_name)
 
@@ -263,10 +262,10 @@ class ActionKeyword:
         """
         if isinstance(located, tuple):
             x, y = located
-            logger.debug(f"Swiping from coordinates ({x}, {y})")
+            internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
             self.driver.swipe(x, y, direction, swipe_length, event_name)
         else:
-            logger.debug(f"Swiping from element '{element}'")
+            internal_logger.debug(f"Swiping from element '{element}'")
             self.driver.swipe_element(
                 located, direction, swipe_length, event_name)
 
@@ -326,11 +325,11 @@ class ActionKeyword:
         """
         if isinstance(located, tuple):
             x, y = located
-            logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
+            internal_logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
             self.driver.press_coordinates(x, y, event_name=event_name)
             self.driver.enter_text(text, event_name)
         else:
-            logger.debug(f"Entering text '{text}' into element '{element}'")
+            internal_logger.debug(f"Entering text '{text}' into element '{element}'")
             self.driver.enter_text_element(located, text, event_name)
 
     @DeprecationWarning
@@ -376,12 +375,12 @@ class ActionKeyword:
         """
         if isinstance(located, tuple):
             x, y = located
-            logger.debug(f"Clearing text at coordinates ({x}, {y})")
+            internal_logger.debug(f"Clearing text at coordinates ({x}, {y})")
             self.driver.press_coordinates(
                 x, y, event_name=event_name)
             self.driver.clear_text(event_name)
         else:
-            logger.debug(f"Clearing text from element '{element}'")
+            internal_logger.debug(f"Clearing text from element '{element}'")
             self.driver.clear_text_element(located, event_name)
 
     def get_text(self, element: str) -> Optional[str]:
@@ -400,11 +399,11 @@ class ActionKeyword:
                 element = self.element_source.locate(element)
                 return self.driver.get_text_element(element)
             else:
-                logger.error(
+                internal_logger.error(
                     'Get Text is not supported for vision based search yet.')
                 return None
         else:
-            logger.error(
+            internal_logger.error(
                 'Get Text is not supported for image based search yet.')
             return None
 

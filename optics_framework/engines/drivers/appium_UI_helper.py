@@ -1,7 +1,7 @@
 import re
 from fuzzywuzzy import fuzz
 from lxml import etree
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
 
@@ -32,9 +32,9 @@ class UIHelper:
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
         self.root = self.tree.getroot()
 
-        logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
-        logger.debug(f'Page source fetched at: {time_stamp}')
-        logger.debug('\n==========================================\n')
+        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
+        internal_logger.debug(f'Page source fetched at: {time_stamp}')
+        internal_logger.debug('\n==========================================\n')
         utils.save_page_source(page_source, time_stamp)
         return page_source, time_stamp
 
@@ -52,7 +52,7 @@ class UIHelper:
 
         # Compare with previous hash
         if self.prev_hash == new_hash:
-            logger.debug("\nPage source unchanged. Skipping further processing.\n")
+            internal_logger.debug("\nPage source unchanged. Skipping further processing.\n")
             return None, time_stamp
 
         # Update previous hash
@@ -62,9 +62,9 @@ class UIHelper:
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
         self.root = self.tree.getroot()
 
-        logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
-        logger.debug(f'Page source fetched at: {time_stamp}')
-        logger.debug('\n==========================================\n')
+        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
+        internal_logger.debug(f'Page source fetched at: {time_stamp}')
+        internal_logger.debug('\n==========================================\n')
         return page_source, time_stamp
 
 
@@ -93,56 +93,56 @@ class UIHelper:
         """
         Process the given XPath and return the exact path from the UI tree after applying various matching strategies.
         """
-        logger.debug(f'Finding Xpath {xpath}...')
+        internal_logger.debug(f'Finding Xpath {xpath}...')
         _ , time_stamp = self.get_page_source() # Fetch UI tree when processing the XPath
         try:
             # 1. Exact Match
             try:
-                # logger.debug(f'Finding Xpath using exact match')
+                # internal_logger.debug(f'Finding Xpath using exact match')
                 found_xpath = self.find_exact(xpath)
 
                 if found_xpath:
-                    logger.debug('Xpath found using exact match')
+                    internal_logger.debug('Xpath found using exact match')
                     return found_xpath, time_stamp
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Error in exact match for XPath '{xpath}': {str(e)}")
 
             # 2. Relative Match
             try:
                 found_xpath = self.find_relative(xpath)
                 if found_xpath:
-                    logger.debug('Xpath found using relative match')
+                    internal_logger.debug('Xpath found using relative match')
                     return found_xpath, time_stamp
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Error in relative match for XPath '{xpath}': {str(e)}")
 
             # 3. Partial Match
             try:
                 found_xpath = self.find_partial(xpath)
                 if found_xpath:
-                    logger.debug('Xpath found using partial match')
+                    internal_logger.debug('Xpath found using partial match')
                     return found_xpath, time_stamp
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Error in partial match for XPath '{xpath}': {str(e)}")
 
             # 4. Attribute Match with Fuzzy Prefix and Suffix Handling
             try:
                 found_xpath = self.find_attribute_match(xpath)
                 if found_xpath:
-                    logger.debug('Xpath found using attribute match')
+                    internal_logger.debug('Xpath found using attribute match')
                     return found_xpath, time_stamp
             except Exception as e:
-                logger.error(
+                internal_logger.error(
                     f"Error in attribute match for XPath '{xpath}': {str(e)}")
 
             # If no match is found
-            logger.error(f"No match found for XPath '{xpath}' after applying all strategies.")
+            internal_logger.error(f"No match found for XPath '{xpath}' after applying all strategies.")
             return None, None
         except Exception as e:
-            logger.error(
+            internal_logger.error(
                 f"Unexpected error in find_xpath for XPath '{xpath}': {str(e)}")
             return None, None
 
@@ -151,24 +151,24 @@ class UIHelper:
         try:
             elements = self.root.xpath(xpath)
             if elements:
-                logger.debug(f"Exact XPath: {xpath}")
+                internal_logger.debug(f"Exact XPath: {xpath}")
                 return xpath
         except Exception as e:
-            logger.debug(f"Exact match error: {e}")
+            internal_logger.debug(f"Exact match error: {e}")
         return None
 
     def find_relative(self, xpath):
         """Attempts to match a simplified, relative XPath."""
         relative_xpath = self.make_relative(xpath)
-        logger.debug(f"Relative XPath: {relative_xpath}")
+        internal_logger.debug(f"Relative XPath: {relative_xpath}")
         try:
             elements = self.root.xpath(relative_xpath)
             if elements:
-                logger.debug(f"Relative match found, element type: {type(elements[0])}")
+                internal_logger.debug(f"Relative match found, element type: {type(elements[0])}")
                 # Use ElementTree.getpath()
                 return self.simplify_xpath(elements[0])
         except Exception as e:
-            logger.debug(f"Relative match error: {e}")
+            internal_logger.debug(f"Relative match error: {e}")
         return None
 
     def make_relative(self, xpath):
@@ -230,15 +230,15 @@ class UIHelper:
     def find_partial(self, xpath):
         """Attempts partial matching using `contains()` in XPath."""
         partial_xpath = self.make_partial_match(xpath)
-        logger.debug(f"Partial XPath: {partial_xpath}")
+        internal_logger.debug(f"Partial XPath: {partial_xpath}")
         try:
             elements = self.root.xpath(partial_xpath)
             if elements:
-                logger.debug(f"Partial match found, element type: {type(elements[0])}")
+                internal_logger.debug(f"Partial match found, element type: {type(elements[0])}")
                 # Use ElementTree.getpath()
                 return self.simplify_xpath(elements[0])
         except Exception as e:
-            logger.debug(f"Partial match error: {e}")
+            internal_logger.debug(f"Partial match error: {e}")
         return None
 
     def fuzzy_match_prefix(self, prefix1, prefix2):
@@ -264,7 +264,7 @@ class UIHelper:
 
         # Ensure self.root is valid
         if not hasattr(self, 'root') or self.root is None:
-            logger.error("Root element is not initialized.")
+            internal_logger.error("Root element is not initialized.")
             return None
 
         for element in self.root.findall(".//*"):
@@ -285,13 +285,13 @@ class UIHelper:
 
                 # Check exact match first
                 if input_value == elem_value:
-                    logger.debug(f"Exact match found for {attr}: {elem_value}")
+                    internal_logger.debug(f"Exact match found for {attr}: {elem_value}")
                     return self.simplify_xpath(element)
 
                 # Fuzzy match logic
                 if self.fuzzy_match_prefix(input_prefix, elem_prefix):
                     if input_suffix == elem_suffix:
-                        logger.debug(
+                        internal_logger.debug(
                             f"Attribute match found for {attr} with exact suffix match: {elem_value}"
                         )
                         return self.simplify_xpath(element)
@@ -304,11 +304,11 @@ class UIHelper:
 
         # Handle best fuzzy match
         if best_fuzzy_score >= 70:  # Threshold for fuzzy match acceptance
-            logger.debug(f"Fuzzy match found with score {best_fuzzy_score}, element: {best_match}")
+            internal_logger.debug(f"Fuzzy match found with score {best_fuzzy_score}, element: {best_match}")
             return self.simplify_xpath(best_match)
 
         # No match found
-        logger.debug("No match found using attribute matching.")
+        internal_logger.debug("No match found using attribute matching.")
         return None
 
     def split_element(self, element):
@@ -353,7 +353,7 @@ class UIHelper:
         # Combine all parts into a simplified XPath
         simplified_xpath = "".join(xpath_parts)
 
-        logger.debug(f"Simplified XPath: {simplified_xpath}")
+        internal_logger.debug(f"Simplified XPath: {simplified_xpath}")
         return simplified_xpath
 
     def extract_key_attributes(self, element):
@@ -411,15 +411,15 @@ class UIHelper:
             for elem in elements:
                 value = elem.attrib.get(attrib, '').strip()
                 if value and value == element:
-                    logger.debug('Exact match found.')
-                    logger.debug(f"Match found using '{strategy_name}' strategy: '{value}'")
+                    internal_logger.debug('Exact match found.')
+                    internal_logger.debug(f"Match found using '{strategy_name}' strategy: '{value}'")
                     attributes = elem.attrib
                     return {"strategy": strategy_name, "locator": value, "attributes": attributes, "timestamp": time_stamp}
                 elif value and "/" in value:
                     _ , suffix = value.rsplit("/", 1)  # Split at the last "/"
                     if element == suffix:
-                        logger.debug('Exact match found.')
-                        logger.debug(f"Match found using '{strategy_name}' strategy: '{value}'")
+                        internal_logger.debug('Exact match found.')
+                        internal_logger.debug(f"Match found using '{strategy_name}' strategy: '{value}'")
                         attributes = elem.attrib
                         return {"strategy": strategy_name, "locator": value, "attributes": attributes, "timestamp": time_stamp}
 
@@ -428,11 +428,11 @@ class UIHelper:
             for elem in elements:
                 value = elem.attrib.get(attrib, '').strip()
                 if value and utils.compare_text(value, element):
-                    logger.debug(f"Match found using '{strategy_name}' strategy: '{value}'")
+                    internal_logger.debug(f"Match found using '{strategy_name}' strategy: '{value}'")
                     attributes = elem.attrib
                     return {"strategy": strategy_name, "locator": value, "attributes": attributes, "timestamp": time_stamp}
 
-        logger.debug(f"No matching element found in any of the locator strategies for '{element}'.")
+        internal_logger.debug(f"No matching element found in any of the locator strategies for '{element}'.")
         return None
 
 
@@ -449,10 +449,10 @@ class UIHelper:
                 # Directly use the strategy as the attribute name
                 xpath_query = f"//*[@{strategy}='{locator}']"
             elif strategy == 'xpath':
-                # logger.debug("Debug: Strategy is XPath, returning locator directly.")
+                # internal_logger.debug("Debug: Strategy is XPath, returning locator directly.")
                 return locator
             else:
-                logger.debug(f"Unsupported strategy: {strategy}")
+                internal_logger.debug(f"Unsupported strategy: {strategy}")
                 return None
 
             # Run the XPath query
@@ -501,10 +501,10 @@ class UIHelper:
                 # Find the XPath that is acceptable by Appium
                 final_xpath, _ = self.find_xpath(full_xpath)
                 return final_xpath
-            logger.debug(f"No element found for '{locator}' in the UI tree.")
+            internal_logger.debug(f"No element found for '{locator}' in the UI tree.")
             return None
         except Exception as e:
-            logger.debug(f"Error getting view locator from tree: {e}")
+            internal_logger.debug(f"Error getting view locator from tree: {e}")
             return None
 
     def get_locator_and_strategy_using_index(self, element, index, strategy=None) -> dict:
@@ -557,18 +557,18 @@ class UIHelper:
                 })
 
         # Log matches
-        logger.debug(f"Found {len(matches)} matches for '{element}': {matches}")
+        internal_logger.debug(f"Found {len(matches)} matches for '{element}': {matches}")
 
         if index >= len(matches):
             raise   IndexError(f"Index {index} is out of range for the matches found. Total matches: {len(matches)}.")
 
         desired_match = matches[index]
-        logger.debug(f'Found the matches for {element} and returning {index} index match: {desired_match} ')
+        internal_logger.debug(f'Found the matches for {element} and returning {index} index match: {desired_match} ')
 
         strategy = desired_match["strategy"]
         locator = desired_match["value"]
 
-        logger.debug(f"Returning strategy: {strategy}, locator: {locator}")
+        internal_logger.debug(f"Returning strategy: {strategy}, locator: {locator}")
         return {"strategy": strategy, "locator": locator}
 
 
@@ -588,7 +588,7 @@ class UIHelper:
             else:
                 raise ValueError(f"Unexpected bounds format: {bounds}")
         except Exception as e:
-            logger.debug(f"Error parsing bounds: {bounds} - {e}")
+            internal_logger.debug(f"Error parsing bounds: {bounds} - {e}")
             return {"x1": 0, "y1": 0, "x2": 0, "y2": 0}
 
     def get_bounding_box_for_text(self,attributes):
@@ -608,21 +608,21 @@ class UIHelper:
             top_left = tuple(map(int, bounds[0].split(',')))
             bottom_right = tuple(map(int, bounds[1].split(',')))
 
-            logger.debug(f"Bounding box extracted: {top_left}, {bottom_right}")
+            internal_logger.debug(f"Bounding box extracted: {top_left}, {bottom_right}")
             return (top_left, bottom_right)
         else:
-            logger.debug(f"Bounds not available in attributes: {attributes}")
+            internal_logger.debug(f"Bounds not available in attributes: {attributes}")
 
     def get_bounding_box_for_xpath(self,xpath):
         # refresh page source tree and root
         self.get_page_source()
         if not xpath:
-            logger.debug("Invalid Xpath, bounding box cannot be fetched.")
+            internal_logger.debug("Invalid Xpath, bounding box cannot be fetched.")
             return None
 
         # Get the element attributes based on the xpath
         attributes = self.get_element_attributes_by_xpath(xpath)
-        logger.debug(attributes)
+        internal_logger.debug(attributes)
 
         try:
             if attributes:
@@ -634,7 +634,7 @@ class UIHelper:
                     top_left = tuple(map(int, bounds[0].split(',')))
                     bottom_right = tuple(map(int, bounds[1].split(',')))
 
-                    logger.debug(f"Bounding box for element with xpath '{xpath}': {top_left}, {bottom_right}")
+                    internal_logger.debug(f"Bounding box for element with xpath '{xpath}': {top_left}, {bottom_right}")
                     return (top_left, bottom_right)
 
                 # If bounds key is not available, calculate using x, y, width, and height
@@ -647,18 +647,18 @@ class UIHelper:
                     top_left = (x, y)
                     bottom_right = (x + width, y + height)
 
-                    logger.debug(f"Bounding box calculated for element with xpath '{xpath}': {top_left}, {bottom_right}")
+                    internal_logger.debug(f"Bounding box calculated for element with xpath '{xpath}': {top_left}, {bottom_right}")
                     return (top_left, bottom_right)
 
                 else:
-                    logger.debug(f"Required attributes (x, y, width, height) not found in element attributes: {attributes}")
+                    internal_logger.debug(f"Required attributes (x, y, width, height) not found in element attributes: {attributes}")
                     return None  # Graceful exit if required keys are missing
             else:
-                logger.debug(f"Element with xpath '{xpath}' not found or attributes unavailable.")
+                internal_logger.debug(f"Element with xpath '{xpath}' not found or attributes unavailable.")
                 return None  # Graceful exit if attributes are missing
 
         except Exception as e:
-            logger.debug(f"Error calculating bounding box for xpath '{xpath}': {str(e)}")
+            internal_logger.debug(f"Error calculating bounding box for xpath '{xpath}': {str(e)}")
             return None  # Graceful exit on unexpected errors
 
     def get_element_attributes_by_xpath(self,xpath):
@@ -681,7 +681,7 @@ class UIHelper:
                 # If an element is found, return its attributes as a dictionary
                 return dict(elements[0].attrib)
             else:
-                logger.debug(f"No element found with XPath: {xpath}")
+                internal_logger.debug(f"No element found with XPath: {xpath}")
                 return None
         except etree.XPathSyntaxError as e:
-            logger.debug(f"Invalid XPath syntax: {xpath} - Error: {str(e)}")
+            internal_logger.debug(f"Invalid XPath syntax: {xpath} - Error: {str(e)}")

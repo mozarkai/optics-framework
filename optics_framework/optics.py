@@ -1,5 +1,5 @@
 import os
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
@@ -153,7 +153,7 @@ def setup(yaml_path: str | None = None, **kwargs):
     text = config.get("text_detection")
 
     if driver is None or element_source is None or image is None or text is None:
-        logger.error(
+        internal_logger.error(
             "No driver, element source, or image source found in the configuration.")
         return None  # Return None to indicate failure
 

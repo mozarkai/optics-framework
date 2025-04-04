@@ -6,7 +6,7 @@ from functools import wraps
 import json
 import csv
 import requests
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.runner.test_runnner import Runner
 
 
@@ -68,12 +68,12 @@ class FlowControl:
                     param if i in raw_indices else self._resolve_param(param)
                     for i, param in enumerate(params)
                 ]
-                logger.debug(
+                internal_logger.debug(
                     f"Executing {keyword} with params: {resolved_params}")
                 result = method(*resolved_params)
                 results.append(result)
             except Exception as e:
-                logger.error(f"Error executing keyword '{keyword}': {e}")
+                internal_logger.error(f"Error executing keyword '{keyword}': {e}")
                 raise  # Propagate exception to fail the test
         return results
 
@@ -101,7 +101,7 @@ class FlowControl:
 
         results = []
         for i in range(iterations):
-            logger.debug(
+            internal_logger.debug(
                 f"[RUN LOOP] Iteration {i+1}: Executing target '{target}'")
             result = self.execute_module(target)
             results.append(result)
@@ -129,10 +129,10 @@ class FlowControl:
         for i in range(min_length):
             for var_name, iterable_values in zip(var_names, parsed_iterables):
                 value = iterable_values[i]
-                logger.debug(
+                internal_logger.debug(
                     f"[RUN LOOP] Iteration {i+1}: Setting {var_name} = {value}")
                 runner_elements[var_name] = value
-            logger.debug(
+            internal_logger.debug(
                 f"[RUN LOOP] Iteration {i+1}: Executing target '{target}'")
             result = self.execute_module(target)
             results.append(result)
@@ -152,7 +152,7 @@ class FlowControl:
             if var_name.startswith("${") and var_name.endswith("}"):
                 var_name = var_name[2:-1].strip()
             else:
-                logger.warning(
+                internal_logger.warning(
                     f"[RUN LOOP] Expected variable in format '${{name}}', got '{variable}'. Using as is.")
             var_names.append(var_name)
         return var_names
@@ -216,12 +216,12 @@ class FlowControl:
             if not cond_str:
                 continue
             if self._is_condition_true(cond_str):
-                logger.debug(
+                internal_logger.debug(
                     f"[CONDITION] Condition '{cond_str}' is True. Executing target '{target}'.")
                 return self.execute_module(target)
-            logger.debug(f"[CONDITION] Condition '{cond_str}' is False.")
+            internal_logger.debug(f"[CONDITION] Condition '{cond_str}' is False.")
         if else_target is not None:
-            logger.debug(
+            internal_logger.debug(
                 f"[CONDITION] No condition met. Executing ELSE target '{else_target}'.")
             return self.execute_module(else_target)
         return None
@@ -270,7 +270,7 @@ class FlowControl:
         elem_name = input_element.strip()
         if elem_name.startswith("${") and elem_name.endswith("}"):
             return elem_name[2:-1].strip()
-        logger.warning(
+        internal_logger.warning(
             f"[READ DATA] Expected element in format '${{name}}', got '{input_element}'. Using as is.")
         return elem_name
 
@@ -343,7 +343,7 @@ class FlowControl:
         var_name = param1.strip()
         if var_name.startswith("${") and var_name.endswith("}"):
             return var_name[2:-1].strip()
-        logger.warning(
+        internal_logger.warning(
             f"[EVALUATE] Expected param1 in format '${{name}}', got '{param1}'. Using as is.")
         return var_name
 

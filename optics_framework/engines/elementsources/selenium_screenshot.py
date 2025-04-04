@@ -10,7 +10,7 @@ import base64
 import numpy as np
 from selenium.common.exceptions import ScreenshotException
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.logging_config import logger
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.selenium import SeleniumDriver
 
 
@@ -67,11 +67,11 @@ class SeleniumScreenshot(ElementSourceInterface):
             return numpy_image
 
         except ScreenshotException as se:
-            logger.warning(
+            internal_logger.warning(
                 f"ScreenshotException: {se}. Using external camera.")
             return None
         except Exception as e:
-            logger.warning(
+            internal_logger.warning(
                 f"Error capturing Selenium screenshot: {e}. Using external camera.")
             return None
 
@@ -97,7 +97,7 @@ class SeleniumScreenshot(ElementSourceInterface):
         Returns:
             tuple: Coordinates of the element, or None.
         """
-        logger.exception(
+        internal_logger.exception(
             "SeleniumScreenshot does not support locating elements.")
         raise NotImplementedError(
             "SeleniumScreenshot does not support locate.")
@@ -113,7 +113,7 @@ class SeleniumScreenshot(ElementSourceInterface):
         Returns:
             tuple: Coordinates of the element, or None.
         """
-        logger.exception(
+        internal_logger.exception(
             "SeleniumScreenshot does not support locating elements using index.")
         raise NotImplementedError(
             "SeleniumScreenshot does not support locate_using_index.")

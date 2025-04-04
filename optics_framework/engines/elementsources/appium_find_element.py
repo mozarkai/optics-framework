@@ -1,13 +1,12 @@
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
 from appium.webdriver.common.appiumby import AppiumBy
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from lxml import etree
 import time
 
 
-@apply_logger_format_to_all("internal")
 class AppiumFindElement(ElementSourceInterface):
     """
     Appium Find Element Class
@@ -39,8 +38,8 @@ class AppiumFindElement(ElementSourceInterface):
         """
         Capture the current screen state using the Appium driver.
         """
-        logger.exception('Appium Find Element does not support capturing the screen state.')
-        raise ValueError('Appium Find Element does not support capturing the screen state.')
+        internal_logger.exception('Appium Find Element does not support capturing the screen state.')
+        raise NotImplementedError('Appium Find Element does not support capturing the screen state.')
 
 
     def get_page_source(self) -> str:
@@ -83,7 +82,7 @@ class AppiumFindElement(ElementSourceInterface):
 
         if element_type == 'Image':
             # Find the element by image
-            # logger.debug(f'Appium Find Element does not support finding images.')
+            # internal_logger.debug(f'Appium Find Element does not support finding images.')
             return None
         elif element_type == 'XPath':
             try:
@@ -92,13 +91,13 @@ class AppiumFindElement(ElementSourceInterface):
                     return None
                 return element
             except Exception as e:
-                logger.error(f'Error finding element: {element}', exc_info=e)
+                internal_logger.error(f'Error finding element: {element}', exc_info=e)
                 return None
         elif element_type == 'Text':
             try:
                 element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, element)
             except Exception as e:
-                logger.exception(f' element: {element}', exc_info=e)
+                internal_logger.exception(f' element: {element}', exc_info=e)
                 raise Exception(f'Element not found: {element}')
                 return None
             return element

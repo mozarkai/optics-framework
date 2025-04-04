@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.execution import ExecutionEngine
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import Config, DependencyConfig
 
 app = FastAPI(title="Optics Framework API", version="1.0")
@@ -74,11 +74,11 @@ async def create_session(config: SessionConfig):
         }
         session_config = Config(**session_config_dict)
         session_id = session_manager.create_session(session_config)
-        logger.info(
+        internal_logger.info(
             f"Created session {session_id} with config: {config.model_dump()}")
         return SessionResponse(session_id=session_id)
     except Exception as e:
-        logger.error(f"Failed to create session: {e}")
+        internal_logger.error(f"Failed to create session: {e}")
         raise HTTPException(
             status_code=500, detail=f"Session creation failed: {e}")
 
@@ -99,11 +99,11 @@ async def execute(
     """
     session = session_manager.get_session(session_id)
     if not session:
-        logger.error(f"Session not found: {session_id}")
+        internal_logger.error(f"Session not found: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
 
     execution_id = str(uuid.uuid4())
-    logger.info(
+    internal_logger.info(
         f"Starting execution {execution_id} for session {session_id} with request: {request.model_dump()}")
 
     engine = ExecutionEngine(session_manager)
@@ -131,10 +131,10 @@ async def stream_events(session_id: str):
     """
     session = session_manager.get_session(session_id)
     if not session:
-        logger.error(f"Session not found for event streaming: {session_id}")
+        internal_logger.error(f"Session not found for event streaming: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
 
-    logger.info(f"Starting event stream for session {session_id}")
+    internal_logger.info(f"Starting event stream for session {session_id}")
     return EventSourceResponse(event_generator(session))
 
 
@@ -148,15 +148,14 @@ async def delete_session(session_id: str):
     """
     try:
         session_manager.terminate_session(session_id)
-        logger.info(f"Terminated session: {session_id}")
+        internal_logger.info(f"Terminated session: {session_id}")
         return TerminationResponse()
     except Exception as e:
-        logger.error(f"Failed to terminate session {session_id}: {e}")
+        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
         raise HTTPException(
             status_code=500, detail=f"Session termination failed: {e}")
 
 
-@apply_logger_format_to_all("user")
 async def run_execution(
     engine: ExecutionEngine,
     session_id: str,
@@ -170,7 +169,7 @@ async def run_execution(
     """Runs the requested execution in the background."""
     session = session_manager.get_session(session_id)
     if not session or not event_queue:
-        logger.error(
+        internal_logger.error(
             f"Session {session_id} not found or invalid during execution {execution_id}")
         if event_queue:
             await event_queue.put(
@@ -191,7 +190,7 @@ async def run_execution(
             params=params,
             event_queue=event_queue
         )
-        logger.info(f"Execution {execution_id} completed successfully")
+        internal_logger.info(f"Execution {execution_id} completed successfully")
         await event_queue.put(
             ExecutionEvent(
                 execution_id=execution_id,
@@ -200,7 +199,7 @@ async def run_execution(
             ).model_dump()
         )
     except Exception as e:
-        logger.error(f"Execution {execution_id} failed: {e}")
+        internal_logger.error(f"Execution {execution_id} failed: {e}")
         await event_queue.put(
             ExecutionEvent(
                 execution_id=execution_id,
@@ -210,17 +209,16 @@ async def run_execution(
         )
 
 
-@apply_logger_format_to_all("user")
 async def event_generator(session: Session):
     """Generates SSE events from the session's event queue."""
     while True:
         try:
             event = await session.event_queue.get()
-            logger.debug(
+            internal_logger.debug(
                 f"Streaming event for session {session.session_id}: {event}")
             yield {"data": json.dumps(event)}
         except Exception as e:
-            logger.error(
+            internal_logger.error(
                 f"Error in event streaming for session {session.session_id}: {e}")
             yield {"data": json.dumps(
                 ExecutionEvent(

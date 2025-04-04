@@ -2,14 +2,13 @@ import os
 import asyncio
 from typing import Optional, Tuple
 from pydantic import BaseModel, field_validator
-from optics_framework.common.logging_config import logger, apply_logger_format_to_all
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.runner.csv_reader import CSVDataReader
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData
 
 
-@apply_logger_format_to_all("user")
 def find_csv_files(folder_path: str) -> Tuple[str, str, Optional[str]]:
     """
     Search for CSV files in a folder and categorize them by reading their headers.
@@ -26,23 +25,23 @@ def find_csv_files(folder_path: str) -> Tuple[str, str, Optional[str]]:
                     header = f.readline().strip().split(',')
                     headers = {h.strip().lower() for h in header}
             except (OSError, IOError) as e:
-                logger.exception(f"Error reading {file_path}: {e}")
+                internal_logger.exception(f"Error reading {file_path}: {e}")
                 continue
 
             if "test_case" in headers and "test_step" in headers:
                 test_cases = file_path
-                logger.debug(f"Found test cases file: {file_path}")
+                internal_logger.debug(f"Found test cases file: {file_path}")
             elif "module_name" in headers and "module_step" in headers:
                 modules = file_path
-                logger.debug(f"Found modules file: {file_path}")
+                internal_logger.debug(f"Found modules file: {file_path}")
             elif "element_name" in headers and "element_id" in headers:
                 elements = file_path
-                logger.debug(f"Found elements file: {file_path}")
+                internal_logger.debug(f"Found elements file: {file_path}")
 
     if not test_cases or not modules:
         missing = [f for f, p in [
             ("test_cases", test_cases), ("modules", modules)] if not p]
-        logger.error(
+        internal_logger.error(
             f"Missing required CSV files in {folder_path}: {', '.join(missing)}")
         raise ValueError(f"Required CSV files missing: {', '.join(missing)}")
     return test_cases, modules, elements
@@ -69,7 +68,6 @@ class RunnerArgs(BaseModel):
         return v.strip()
 
 
-@apply_logger_format_to_all("user")
 class BaseRunner:
     """Base class for running test cases from CSV files using ExecutionEngine."""
 
@@ -89,8 +87,7 @@ class BaseRunner:
             elements_file) if elements_file else {}
 
         if not self.test_cases_data:
-            logger.debug(f"No test cases found in {test_cases_file}")
-
+            internal_logger.debug(f"No test cases found in {test_cases_file}")
         # Load and validate configuration using ConfigHandler
         self.config_handler = ConfigHandler.get_instance()
         self.config_handler.set_project(self.folder_path)
@@ -99,14 +96,13 @@ class BaseRunner:
 
         # Ensure project_path is set in the Config object
         self.config.project_path = self.folder_path
-        logger.debug(f"Loaded configuration: {self.config}")
-
+        internal_logger.debug(f"Loaded configuration: {self.config}")
         # Check required configs using the get() method
         required_configs = ["driver_sources", "elements_sources"]
         missing_configs = [
             key for key in required_configs if not self.config_handler.get(key)]
         if missing_configs:
-            logger.error(
+            internal_logger.error(
                 f"Missing required configuration keys: {', '.join(missing_configs)}")
             raise ValueError(
                 f"Configuration missing required keys: {', '.join(missing_configs)}")
@@ -131,7 +127,7 @@ class BaseRunner:
             )
             await self.engine.execute(params)
         except Exception as e:
-            logger.error(f"{mode.capitalize()} failed: {e}")
+            internal_logger.error(f"{mode.capitalize()} failed: {e}")
             raise
         finally:
             self.cleanup()
@@ -141,17 +137,15 @@ class BaseRunner:
         try:
             self.manager.terminate_session(self.session_id)
         except Exception as e:
-            logger.error(f"Failed to terminate session {self.session_id}: {e}")
+            internal_logger.error(f"Failed to terminate session {self.session_id}: {e}")
 
 
-@apply_logger_format_to_all("user")
 class ExecuteRunner(BaseRunner):
     async def execute(self):
         """Execute test cases."""
         await self.run("batch")
 
 
-@apply_logger_format_to_all("user")
 class DryRunRunner(BaseRunner):
     async def execute(self):
         """Perform dry run of test cases."""
@@ -173,5 +167,5 @@ def dryrun_main(folder_path: str, test_name: str = ""):
 
 
 if __name__ == "__main__":
-    folder_path = "/Users/dhruvmenon/Documents/optics-framework-1/optics_framework/samples/icici/"
+    folder_path = "/Users/dhruvmenon/Documents/optics-framework-1/optics_framework/samples/contact/"
     execute_main(folder_path, "")
