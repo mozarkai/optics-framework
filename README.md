@@ -131,6 +131,93 @@ Optics_Framework/
 
 ```
 
+### Available Keywords
+
+The following keywords are available and organized by category. These keywords can be used directly in your test cases or extended further for custom workflows.
+<details>
+<summary><strong>🔹 Core Keywords</strong></summary>
+<ul>
+  <li>clear_element_text</li>
+  <li>detect_and_press</li>
+  <li>enter_number</li>
+  <li>enter_text</li>
+  <li>get_text</li>
+  <li>press_by_coordinates</li>
+  <li>press_by_percentage</li>
+  <li>press_element</li>
+  <li>press_element_with_index</li>
+  <li>press_keycode</li>
+  <li>scroll</li>
+  <li>scroll_from_element</li>
+  <li>scroll_until_element_appears</li>
+  <li>select_dropdown_option</li>
+  <li>sleep</li>
+  <li>swipe</li>
+  <li>swipe_from_element</li>
+  <li>swipe_until_element_appears</li>
+</ul>
+</details>
+<details>
+<summary><strong>🔹 AppManagement</strong></summary>
+
+<ul>
+  <li>close_and_terminate_app</li>
+  <li>force_terminate_app</li>
+  <li>get_app_version</li>
+  <li>initialise_setup</li>
+  <li>launch_app</li>
+  <li>start_appium_session</li>
+  <li>start_other_app</li>
+</ul>
+
+</details>
+
+<details>
+<summary><strong>🔹 FlowControl</strong></summary>
+
+<ul>
+  <li>_compute_expression</li>
+  <li>_ensure_runner</li>
+  <li>_evaluate_conditions</li>
+  <li>_extract_element_name</li>
+  <li>_extract_variable_name</li>
+  <li>_is_condition_true</li>
+  <li>_load_data</li>
+  <li>_loop_by_count</li>
+  <li>_loop_with_variables</li>
+  <li>_parse_iterables</li>
+  <li>_parse_single_iterable</li>
+  <li>_parse_variable_iterable_pairs</li>
+  <li>_parse_variable_names</li>
+  <li>_resolve_condition</li>
+  <li>_safe_eval</li>
+  <li>_split_condition_args</li>
+  <li>condition</li>
+  <li>evaluate</li>
+  <li>execute_module</li>
+  <li>read_data</li>
+  <li>run_loop</li>
+</ul>
+
+</details>
+
+<details>
+<summary><strong>🔹 Verifier</strong></summary>
+
+<ul>
+  <li>assert_equality</li>
+  <li>assert_images_vision</li>
+  <li>assert_presence</li>
+  <li>assert_texts_vision</li>
+  <li>is_element</li>
+  <li>validate_element</li>
+  <li>validate_screen</li>
+  <li>vision_search</li>
+</ul>
+
+</details>
+
+
 ### Setup Development Environment
 
 ```bash
@@ -172,6 +259,16 @@ We welcome contributions! Please follow these steps:
 4. Open a pull request.
 
 Ensure your code follows **PEP8** standards and is formatted with **Black**.
+
+---
+
+## 🎯 Roadmap
+
+Here are the key initiatives planned for the upcoming quarter:
+1. MCP Servicer: Introduce a dedicated service to handle MCP (Multi-Channel Processing) tasks, improving scalability and modularity across the framework.
+2. Omniparser Integration: Seamlessly integrate Omniparser to enable robust and flexible element extraction and location.
+3. Playwright Integration: Add support for Playwright to enhance browser automation capabilities, enabling cross-browser testing with modern and powerful tooling.
+4. Audio Support: Extend the framework to support audio inputs and outputs, enabling testing and verification of voice-based or sound-related interactions.
 
 ---
 
