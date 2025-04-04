@@ -39,7 +39,7 @@ jobs:
         run: |
           if [ -n "${{ env.CHANGED_FILES }}" ]; then
             echo "Running pre-commit on: ${{ env.CHANGED_FILES }}"
-            echo "${{ env.CHANGED_FILES }}" | xargs pre-commit run --files
+            echo "${{ env.CHANGED_FILES }}" | tr '\n' '\0' | xargs -0 pre-commit run --files
           else
             echo "No changed files to check."
           fi
