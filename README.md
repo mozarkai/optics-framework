@@ -136,67 +136,209 @@ Optics_Framework/
 The following keywords are available and organized by category. These keywords can be used directly in your test cases or extended further for custom workflows.
 <details>
 <summary><strong>🔹 Core Keywords</strong></summary>
+
 <ul>
-  <li>clear_element_text</li>
-  <li>detect_and_press</li>
-  <li>enter_number</li>
-  <li>enter_text</li>
-  <li>get_text</li>
-  <li>press_by_coordinates</li>
-  <li>press_by_percentage</li>
-  <li>press_element</li>
-  <li>press_element_with_index</li>
-  <li>press_keycode</li>
-  <li>scroll</li>
-  <li>scroll_from_element</li>
-  <li>scroll_until_element_appears</li>
-  <li>select_dropdown_option</li>
-  <li>sleep</li>
-  <li>swipe</li>
-  <li>swipe_from_element</li>
-  <li>swipe_until_element_appears</li>
+  <li>
+    <code>clear_element_text(element, event_name=None)</code><br/>
+    Clears any existing text from the given input element.
+  </li>
+  <li>
+    <code>detect_and_press(element, timeout, event_name=None)</code><br/>
+    Detects if the element exists, then performs a press action on it.
+  </li>
+  <li>
+    <code>enter_number(element, number, event_name=None)</code><br/>
+    Enters a numeric value into the specified input field.
+  </li>
+  <li>
+    <code>enter_text(element, text, event_name=None)</code><br/>
+    Inputs the given text into the specified element.
+  </li>
+  <li>
+    <code>get_text(element)</code><br/>
+    Retrieves the text content from the specified element.
+  </li>
+  <li>
+    <code>press_by_coordinates(x, y, repeat=1, event_name=None)</code><br/>
+    Performs a tap at the specified absolute screen coordinates.
+  </li>
+  <li>
+    <code>press_by_percentage(percent_x, percent_y, repeat=1, event_name=None)</code><br/>
+    Taps on a location based on percentage of screen width and height.
+  </li>
+  <li>
+    <code>press_element(element, repeat=1, offset_x=0, offset_y=0, event_name=None)</code><br/>
+    Taps on a given element with optional offset and repeat parameters.
+  </li>
+  <li>
+    <code>press_element_with_index(element, index=0, event_name=None)</code><br/>
+    Presses the element found at the specified index from multiple matches.
+  </li>
+  <li>
+    <code>press_keycode(keycode, event_name)</code><br/>
+    Simulates pressing a hardware key using a keycode.
+  </li>
+  <li>
+    <code>scroll(direction, event_name=None)</code><br/>
+    Scrolls the screen in the specified direction.
+  </li>
+  <li>
+    <code>scroll_from_element(element, direction, scroll_length, event_name)</code><br/>
+    Scrolls starting from a specific element in the given direction.
+  </li>
+  <li>
+    <code>scroll_until_element_appears(element, direction, timeout, event_name=None)</code><br/>
+    Continuously scrolls until the target element becomes visible or the timeout is reached.
+  </li>
+  <li>
+    <code>select_dropdown_option(element, option, event_name=None)</code><br/>
+    Selects an option from a dropdown field by visible text.
+  </li>
+  <li>
+    <code>sleep(duration)</code><br/>
+    Pauses execution for a specified number of seconds.
+  </li>
+  <li>
+    <code>swipe(x, y, direction='right', swipe_length=50, event_name=None)</code><br/>
+    Swipes from a coordinate point in the given direction and length.
+  </li>
+  <li>
+    <code>swipe_from_element(element, direction, swipe_length, event_name=None)</code><br/>
+    Swipes starting from the position of a given element.
+  </li>
+  <li>
+    <code>swipe_until_element_appears(element, direction, timeout, event_name=None)</code><br/>
+    Swipes repeatedly until the element is detected or timeout is reached.
+  </li>
 </ul>
+
 </details>
+
 <details>
 <summary><strong>🔹 AppManagement</strong></summary>
 
 <ul>
-  <li>close_and_terminate_app</li>
-  <li>force_terminate_app</li>
-  <li>get_app_version</li>
-  <li>initialise_setup</li>
-  <li>launch_app</li>
-  <li>start_appium_session</li>
-  <li>start_other_app</li>
+  <li>
+    <code>close_and_terminate_app(package_name, event_name)</code><br/>
+    Closes and fully terminates the specified application using its package name.
+  </li>
+  <li>
+    <code>force_terminate_app(event_name)</code><br/>
+    Forcefully terminates the currently running application.
+  </li>
+  <li>
+    <code>get_app_version()</code><br/>
+    Returns the version of the currently running application.
+  </li>
+  <li>
+    <code>initialise_setup()</code><br/>
+    Prepares the environment for performing application management operations.
+  </li>
+  <li>
+    <code>launch_app(event_name=None)</code><br/>
+    Launches the default application configured in the session.
+  </li>
+  <li>
+    <code>start_appium_session(event_name=None)</code><br/>
+    Starts a new Appium session for the current application.
+  </li>
+  <li>
+    <code>start_other_app(package_name, event_name)</code><br/>
+    Launches a different application using the provided package name.
+  </li>
 </ul>
 
 </details>
+
 
 <details>
 <summary><strong>🔹 FlowControl</strong></summary>
 
 <ul>
-  <li>_compute_expression</li>
-  <li>_ensure_runner</li>
-  <li>_evaluate_conditions</li>
-  <li>_extract_element_name</li>
-  <li>_extract_variable_name</li>
-  <li>_is_condition_true</li>
-  <li>_load_data</li>
-  <li>_loop_by_count</li>
-  <li>_loop_with_variables</li>
-  <li>_parse_iterables</li>
-  <li>_parse_single_iterable</li>
-  <li>_parse_variable_iterable_pairs</li>
-  <li>_parse_variable_names</li>
-  <li>_resolve_condition</li>
-  <li>_safe_eval</li>
-  <li>_split_condition_args</li>
-  <li>condition</li>
-  <li>evaluate</li>
-  <li>execute_module</li>
-  <li>read_data</li>
-  <li>run_loop</li>
+  <li>
+    <code>_compute_expression(param2)</code><br/>
+    Resolves variables and safely computes a mathematical or logical expression.
+  </li>
+  <li>
+    <code>_ensure_runner()</code><br/>
+    Internal method to ensure a valid runner is set before execution.
+  </li>
+  <li>
+    <code>_evaluate_conditions(pairs, else_target)</code><br/>
+    Evaluates a list of condition-target pairs and executes the first matched one.
+  </li>
+  <li>
+    <code>_extract_element_name(input_element)</code><br/>
+    Extracts the variable name from a Robot-style input (e.g., ${var}).
+  </li>
+  <li>
+    <code>_extract_variable_name(param1)</code><br/>
+    Extracts a variable name from a string and strips formatting.
+  </li>
+  <li>
+    <code>_is_condition_true(condition)</code><br/>
+    Resolves variables and safely evaluates a condition string.
+  </li>
+  <li>
+    <code>_load_data(file_path, index=None)</code><br/>
+    Loads data from a local CSV, API response, or list for use in test steps.
+  </li>
+  <li>
+    <code>_loop_by_count(target, count)</code><br/>
+    Executes a module a specified number of times.
+  </li>
+  <li>
+    <code>_loop_with_variables(target, args)</code><br/>
+    Loops over multiple sets of variables and values to execute a module with dynamic input.
+  </li>
+  <li>
+    <code>_parse_iterables(variables, iterables)</code><br/>
+    Parses raw iterable strings or lists into structured Python lists.
+  </li>
+  <li>
+    <code>_parse_single_iterable(iterable, variable)</code><br/>
+    Parses a single iterable string or list and validates its structure.
+  </li>
+  <li>
+    <code>_parse_variable_iterable_pairs(variables, iterables)</code><br/>
+    Parses variables and iterable values into matched pairs.
+  </li>
+  <li>
+    <code>_parse_variable_names(variables)</code><br/>
+    Extracts variable names from Robot Framework-style variable syntax.
+  </li>
+  <li>
+    <code>_resolve_condition(condition)</code><br/>
+    Substitutes variables in a condition string with their values.
+  </li>
+  <li>
+    <code>_safe_eval(expression)</code><br/>
+    Evaluates expressions securely with limited allowed operations and types.
+  </li>
+  <li>
+    <code>_split_condition_args(args)</code><br/>
+    Separates condition-target pairs and an optional else-target from arguments.
+  </li>
+  <li>
+    <code>condition(*args)</code><br/>
+    Evaluates multiple conditions and executes corresponding modules if the condition is true.
+  </li>
+  <li>
+    <code>evaluate(param1, param2)</code><br/>
+    Evaluates a mathematical or logical expression and stores the result in a variable.
+  </li>
+  <li>
+    <code>execute_module(module_name)</code><br/>
+    Executes all the steps defined in the specified module.
+  </li>
+  <li>
+    <code>read_data(input_element, file_path, index=None)</code><br/>
+    Reads data from a CSV file, API URL, or list and assigns it to a variable.
+  </li>
+  <li>
+    <code>run_loop(target, *args)</code><br/>
+    Runs a loop either by count or by iterating over variable-value pairs.
+  </li>
 </ul>
 
 </details>
@@ -205,14 +347,38 @@ The following keywords are available and organized by category. These keywords c
 <summary><strong>🔹 Verifier</strong></summary>
 
 <ul>
-  <li>assert_equality</li>
-  <li>assert_images_vision</li>
-  <li>assert_presence</li>
-  <li>assert_texts_vision</li>
-  <li>is_element</li>
-  <li>validate_element</li>
-  <li>validate_screen</li>
-  <li>vision_search</li>
+  <li>
+    <code>assert_equality(output, expression)</code><br/>
+    Compares two values and checks if they are equal.
+  </li>
+  <li>
+    <code>assert_images_vision(frame, images, element_status, rule)</code><br/>
+    Searches for the specified image templates within the frame using vision-based template matching.
+  </li>
+  <li>
+    <code>assert_presence(elements, timeout=30, rule='any', event_name=None)</code><br/>
+    Verifies the presence of given elements using Appium or vision-based fallback logic.
+  </li>
+  <li>
+    <code>assert_texts_vision(frame, texts, element_status, rule)</code><br/>
+    Searches for text in the given frame using OCR and updates element status.
+  </li>
+  <li>
+    <code>is_element(element, element_state, timeout, event_name)</code><br/>
+    Checks if a given element exists.
+  </li>
+  <li>
+    <code>validate_element(element, timeout=10, rule='all', event_name=None)</code><br/>
+    Validates if the given element is present on the screen using defined rule and timeout.
+  </li>
+  <li>
+    <code>validate_screen(elements, timeout=30, rule='any', event_name=None)</code><br/>
+    Validates the presence of a set of elements on a screen using the defined rule.
+  </li>
+  <li>
+    <code>vision_search(elements, timeout, rule)</code><br/>
+    Performs vision-based search to detect text or image elements in the screen.
+  </li>
 </ul>
 
 </details>
@@ -221,7 +387,7 @@ The following keywords are available and organized by category. These keywords c
 ### Setup Development Environment
 
 ```bash
-git clone <repo_url> :TODO: Add repo URL
+git clone git@github.com:mozarkai/optics-framework.git
 cd Optics_Framework
 pipx install poetry
 poetry install --with dev
@@ -265,7 +431,7 @@ Ensure your code follows **PEP8** standards and is formatted with **Black**.
 ## 🎯 Roadmap
 
 Here are the key initiatives planned for the upcoming quarter:
-1. MCP Servicer: Introduce a dedicated service to handle MCP (Multi-Channel Processing) tasks, improving scalability and modularity across the framework.
+1. MCP Servicer: Introduce a dedicated service to handle MCP (Model Context Protocol), improving scalability and modularity across the framework.
 2. Omniparser Integration: Seamlessly integrate Omniparser to enable robust and flexible element extraction and location.
 3. Playwright Integration: Add support for Playwright to enhance browser automation capabilities, enabling cross-browser testing with modern and powerful tooling.
 4. Audio Support: Extend the framework to support audio inputs and outputs, enabling testing and verification of voice-based or sound-related interactions.
@@ -274,7 +440,7 @@ Here are the key initiatives planned for the upcoming quarter:
 
 ## 📄 License
 
-This project is licensed under the **Apache 2.0 License**. See the [LICENSE](LICENSE)(:TODO: Add License Link) file for details.
+This project is licensed under the **Apache 2.0 License**. See the [LICENSE](https://github.com/mozarkai/optics-framework?tab=Apache-2.0-1-ov-file) file for details.
 
 ---
 
