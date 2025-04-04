@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 
 class ImageInterface(ABC):
@@ -15,7 +15,6 @@ class ImageInterface(ABC):
     """
 
 
-    @abstractmethod
     def element_exist(self, input_data: Any, reference_data: Any) -> Optional[Tuple[int, int]]:
         """
         Find the location of a reference image within the input data.

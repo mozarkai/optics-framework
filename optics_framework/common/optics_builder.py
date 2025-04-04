@@ -47,17 +47,17 @@ class OpticsBuilder:
     def get_element_source(self):
         if not self.config.element_source_config:
             raise ValueError("Element source configuration must be set")
-        return ElementSourceFactory.get_elementsource(self.config.element_source_config)
+        return ElementSourceFactory.get_driver(self.config.element_source_config)
 
     def get_image_detection(self):
         if not self.config.image_config:
             return None
-        return ImageFactory.get_image_engine(self.config.image_config)
+        return ImageFactory.get_driver(self.config.image_config)
 
     def get_text_detection(self):
         if not self.config.text_config:
             return None
-        return TextFactory.get_text_engine(self.config.text_config)
+        return TextFactory.get_driver(self.config.text_config)
 
     def build(self, cls: Type[T]) -> T:
         """
