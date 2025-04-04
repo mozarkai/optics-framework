@@ -33,3 +33,5 @@ text_detection:
 image_detection:
   - templatematch:
       enabled: false
+
+log_level: INFO

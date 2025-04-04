@@ -9,12 +9,11 @@ from datetime import datetime
 import atexit
 import sys
 
-# Import from your separate config_handler module
 from optics_framework.common.config_handler import ConfigHandler
 
 # Initialize ConfigHandler
 config_handler = ConfigHandler.get_instance()
-config = config_handler.load()  # Initial load
+config = config_handler.load()
 
 # Global Queues
 user_log_queue = queue.Queue(-1)
@@ -22,14 +21,11 @@ internal_log_queue = queue.Queue(-1)
 
 # User Logger
 user_logger = logging.getLogger("optics.user")
-user_logger.setLevel(getattr(logging, config.log_level.upper(), logging.INFO))
 user_logger.propagate = False
 
 user_console_handler = RichHandler(
     rich_tracebacks=False, show_time=False, show_level=False, markup=True)
 user_console_handler.setFormatter(logging.Formatter("%(message)s"))
-user_console_handler.setLevel(
-    getattr(logging, config.log_level.upper(), logging.INFO))
 
 user_queue_handler = QueueHandler(user_log_queue)
 user_logger.addHandler(user_queue_handler)
@@ -40,14 +36,12 @@ user_listener.start()
 
 # Internal Logger
 internal_logger = logging.getLogger("optics.internal")
-internal_logger.setLevel(logging.DEBUG)  # Always DEBUG for internal
 internal_logger.propagate = False
 
 internal_console_handler = RichHandler(
     rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
 internal_console_handler.setFormatter(logging.Formatter(
     "%(levelname)s | %(asctime)s | %(message)s", datefmt="%H:%M:%S"))
-internal_console_handler.setLevel(logging.DEBUG)
 
 internal_queue_handler = QueueHandler(internal_log_queue)
 internal_logger.addHandler(internal_queue_handler)
@@ -65,7 +59,7 @@ class JUnitHandler(logging.Handler):
         self.testsuites = ET.Element("testsuites")
         self.suite_map = {}
         self.start_time = datetime.now()
-        self.formatter = logging.Formatter()  # Added formatter for exception handling
+        self.formatter = logging.Formatter()
 
     def emit(self, record: logging.LogRecord) -> None:
         if self.lock is None:
@@ -139,28 +133,31 @@ class JUnitHandler(logging.Handler):
         super().close()
 
 
-# Initialize Handlers
-internal_listener = QueueListener(
-    internal_log_queue, internal_console_handler, respect_handler_level=True)
-junit_handler = None  # Global reference for reconfiguration
+# Global listener and JUnit handler
+junit_handler = None
+internal_listener = None
 
 
 def initialize_handlers():
-    global config, junit_handler
-    config = config_handler.load()  # Reload config to catch changes
+    global config, junit_handler, internal_listener
+    config = config_handler.load()  # Reload config
+
+    # Set log levels dynamically from config
+    log_level = getattr(logging, config.log_level.upper(), logging.INFO)
+    user_logger.setLevel(log_level)
+    user_console_handler.setLevel(log_level)
+    internal_logger.setLevel(log_level)  # Update internal logger too
+    internal_console_handler.setLevel(log_level)
 
     project_path = config.project_path or Path.home() / ".optics"
     log_dir = Path(project_path) / "execution_output"
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Update logger levels
-    user_logger.setLevel(
-        getattr(logging, config.log_level.upper(), logging.INFO))
-    user_console_handler.setLevel(
-        getattr(logging, config.log_level.upper(), logging.INFO))
-
-    # Clear existing file/JUnit handlers from internal_listener
-    internal_listener.handlers = (internal_console_handler,)
+    # Stop and clear existing internal_listener if it exists
+    if internal_listener:
+        internal_listener.stop()
+    internal_listener = QueueListener(
+        internal_log_queue, internal_console_handler, respect_handler_level=True)
 
     # File Handler
     if config.file_log:
@@ -168,17 +165,15 @@ def initialize_handlers():
                         "internal_logs.log").expanduser()
         file_handler = RotatingFileHandler(
             log_path, maxBytes=10*1024*1024, backupCount=10)
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S"
-            )
-        )
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter(
+            "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        file_handler.setLevel(log_level)  # Use dynamic log level
         internal_listener.handlers += (file_handler,)
 
-    # JUnit Handler (shared)
-    if config.json_log:  # Repurposed for JUnit
+    # JUnit Handler
+    if config.json_log:
         global junit_handler
         junit_path = Path(config.json_path or log_dir /
                           "test_results.xml").expanduser()
@@ -189,13 +184,14 @@ def initialize_handlers():
             internal_logger.handlers = [
                 h for h in internal_logger.handlers if not isinstance(h, JUnitHandler)]
         junit_handler = JUnitHandler(junit_path, buffer_size=100)
-        junit_handler.setLevel(logging.DEBUG)
+        junit_handler.setLevel(log_level)  # Use dynamic log level
         internal_listener.handlers += (junit_handler,)
         user_logger.addHandler(junit_handler)
 
+    internal_listener.start()
+
 
 initialize_handlers()
-internal_listener.start()
 
 # Shutdown
 
@@ -203,7 +199,8 @@ internal_listener.start()
 def shutdown_logging():
     internal_logger.debug("Shutting down logging system")
     user_listener.stop()
-    internal_listener.stop()
+    if internal_listener:
+        internal_listener.stop()
     for handler in internal_logger.handlers + user_logger.handlers:
         if isinstance(handler, JUnitHandler):
             handler.close()
@@ -216,9 +213,8 @@ atexit.register(shutdown_logging)
 
 def reconfigure_logging():
     """Reinitialize handlers if config changes."""
-    internal_logger.info("Reconfiguring logging due to config change")
+    internal_logger.debug("Reconfiguring logging due to config change")
     initialize_handlers()
 
 
-# Exports
 __all__ = ["user_logger", "internal_logger", "reconfigure_logging"]

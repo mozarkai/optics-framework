@@ -60,3 +60,5 @@ image_detection:
         enabled: true
         url: null
         capabilities: {}
+
+log_level: INFO

@@ -2,7 +2,7 @@ import os
 import asyncio
 from typing import Optional, Tuple
 from pydantic import BaseModel, field_validator
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, reconfigure_logging
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.runner.csv_reader import CSVDataReader
 from optics_framework.common.session_manager import SessionManager
@@ -97,6 +97,7 @@ class BaseRunner:
         # Ensure project_path is set in the Config object
         self.config.project_path = self.folder_path
         internal_logger.debug(f"Loaded configuration: {self.config}")
+        reconfigure_logging()
         # Check required configs using the get() method
         required_configs = ["driver_sources", "elements_sources"]
         missing_configs = [
