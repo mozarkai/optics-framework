@@ -9,6 +9,7 @@ import requests
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.runner.test_runnner import Runner
 
+NO_RUNNER_PRESENT = "Runner is None after ensure_runner call."
 
 def raw_params(*indices):
     """Decorator to mark parameter indices that should remain unresolved."""
@@ -51,7 +52,7 @@ class FlowControl:
         """Executes a module's keywords using the runner's keyword_map."""
         self._ensure_runner()
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         if module_name not in self.modules:
             raise ValueError(f"Module '{module_name}' not found in modules.")
         results = []
@@ -82,7 +83,7 @@ class FlowControl:
         """Runs a loop over a target module, either by count or with variables."""
         self._ensure_runner()
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         if len(args) == 1:
             return self._loop_by_count(target, args[0])
         return self._loop_with_variables(target, args)
@@ -119,7 +120,7 @@ class FlowControl:
             variables, iterables)
         min_length = min(len(lst) for lst in parsed_iterables)
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
         if not isinstance(runner_elements, dict):
             runner_elements = {}
@@ -190,7 +191,7 @@ class FlowControl:
         """Evaluates conditions and executes corresponding targets."""
         self._ensure_runner()
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         if not args:
             raise ValueError("No condition-target pairs provided.")
         pairs, else_target = self._split_condition_args(args)
@@ -237,7 +238,7 @@ class FlowControl:
     def _resolve_condition(self, cond: str) -> str:
         """Resolves variables in a condition string."""
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
         pattern = re.compile(r"\$\{([^}]+)\}")
 
@@ -255,7 +256,7 @@ class FlowControl:
         """Reads data from a file, API, or list and stores it in runner.elements."""
         self._ensure_runner()
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         elem_name = self._extract_element_name(input_element)
         data = self._load_data(file_path, index)
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
@@ -274,61 +275,72 @@ class FlowControl:
             f"[READ DATA] Expected element in format '${{name}}', got '{input_element}'. Using as is.")
         return elem_name
 
-    def _load_data(self, file_path: Union[str, List[Any]], index: Optional[int]) -> List[Any]:
+    def _load_data(self,file_path: Union[str, List[Any]], index: Optional[int]) -> List[Any]:
         """Loads data from a list, API, or CSV file."""
         if isinstance(file_path, list):
             return file_path
-        elif file_path.lower().startswith("http"):
-            try:
-                response = requests.get(file_path, timeout=(5, 30))
-                response.raise_for_status()
-                json_data = response.json()
-                if not isinstance(json_data, list):
-                    raise ValueError("API response must be a JSON list.")
-                if not isinstance(index, str):
-                    raise ValueError(
-                        "For API data, 'index' must be a string (JSON key).")
-                extracted_data = [item[index]
-                                  for item in json_data if index in item]
-                return extracted_data
-            except requests.RequestException as e:
-                raise ValueError(f"Failed to fetch data from {file_path}: {e}")
-        else:
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"File '{file_path}' not found.")
-            file_extension = os.path.splitext(file_path)[-1].lower()
-            if file_extension == '.csv':
-                with open(file_path, newline='') as csvfile:
-                    reader = csv.reader(csvfile)
-                    data = list(reader)
-                    if not data:
-                        raise ValueError(f"CSV file '{file_path}' is empty.")
-                    if isinstance(index, str):
-                        headers = data[0]
-                        if index not in headers:
-                            raise ValueError(
-                                f"Column '{index}' not found in CSV file.")
-                        col_idx = headers.index(index)
-                        return [row[col_idx] for row in data[1:] if row[col_idx]]
-                    elif isinstance(index, int):
-                        if index >= len(data[0]):
-                            raise IndexError("Index out of range.")
-                        return [row[index] for row in data[1:] if row[index]]
-                    elif index is None:
-                        return [row[0] for row in data[1:] if row[0]]
-                    else:
-                        raise ValueError(
-                            "Index must be a string (column name) or an integer (column index).")
-            else:
+        if file_path.lower().startswith("http"):
+            return FlowControl._load_from_api(file_path, index)
+        return FlowControl._load_from_csv(file_path, index)
+
+    @staticmethod
+    def _load_from_api(url: str, index: Optional[int]) -> List[Any]:
+        """Loads and extracts data from an API."""
+        try:
+            response = requests.get(url, timeout=(5, 30))
+            response.raise_for_status()
+            json_data = response.json()
+            if not isinstance(json_data, list):
+                raise ValueError("API response must be a JSON list.")
+            if not isinstance(index, str):
                 raise ValueError(
-                    "Unsupported file format. Use CSV or provide a list/URL.")
+                    "For API data, 'index' must be a string (JSON key).")
+            return [item[index] for item in json_data if index in item]
+        except requests.RequestException as e:
+            raise ValueError(f"Failed to fetch data from {url}: {e}")
+
+    @staticmethod
+    def _load_from_csv(file_path: str, index: Optional[int]) -> List[Any]:
+        """Loads and extracts data from a CSV file."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File '{file_path}' not found.")
+        if os.path.splitext(file_path)[-1].lower() != '.csv':
+            raise ValueError(
+                "Unsupported file format. Use CSV or provide a list/URL.")
+
+        with open(file_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            data = list(reader)
+            if not data:
+                raise ValueError(f"CSV file '{file_path}' is empty.")
+            return FlowControl._extract_csv_data(data, index)
+
+    @staticmethod
+    def _extract_csv_data(data: List[List[str]], index: Optional[int]) -> List[Any]:
+        """Extracts data from CSV based on index or column name."""
+        headers = data[0]
+        rows = data[1:]
+
+        if isinstance(index, str):
+            if index not in headers:
+                raise ValueError(f"Column '{index}' not found in CSV file.")
+            col_idx = headers.index(index)
+            return [row[col_idx] for row in rows if row[col_idx]]
+        if isinstance(index, int):
+            if index >= len(headers):
+                raise IndexError("Index out of range.")
+            return [row[index] for row in rows if row[index]]
+        if index is None:
+            return [row[0] for row in rows if row[0]]
+        raise ValueError(
+            "Index must be a string (column name) or an integer (column index).")
 
     @raw_params(0)
     def evaluate(self, param1: str, param2: str) -> Any:
         """Evaluates an expression and stores the result in runner.elements."""
         self._ensure_runner()
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         var_name = self._extract_variable_name(param1)
         result = self._compute_expression(param2)
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
@@ -350,7 +362,7 @@ class FlowControl:
     def _compute_expression(self, param2: str) -> Any:
         """Computes an expression by resolving variables and evaluating it."""
         if self.runner is None:
-            raise ValueError("Runner is None after ensure_runner call.")
+            raise ValueError(NO_RUNNER_PRESENT)
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
 
         def replace_var(match):
@@ -379,7 +391,7 @@ class FlowControl:
                     raise ValueError(
                         f"Unsafe expression detected: {expression}")
             if self.runner is None:
-                raise ValueError("Runner is None after ensure_runner call.")
+                raise ValueError(NO_RUNNER_PRESENT)
             runner_elements = getattr(self.runner, 'elements', {})
             return eval(expression, {"__builtins__": None}, {k: str(v) for k, v in runner_elements.items()})  # nosec B307 # pylint: disable=eval-used
             # Note: eval() is used here for simplicity, i know it should be should be avoided in production code.

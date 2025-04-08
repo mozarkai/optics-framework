@@ -164,17 +164,19 @@ class ConfigHandler:
                 return {}
         return {}
 
+    def _is_enabled(self, details: Any) -> bool:
+        """Check if a configuration is enabled."""
+        return details.enabled
+
     def _precompute_enabled_configs(self) -> None:
+        """Precompute enabled configuration names for each dependency type."""
         for key in self.DEPENDENCY_KEYS:
-            value = getattr(self.config, key)
-            enabled_names = []
-            for item in value:
-                for name, details in item.items():
-                    if isinstance(details, dict) and details.get("enabled", False):
-                        enabled_names.append(name)
-                    elif isinstance(details, DependencyConfig) and details.enabled:
-                        enabled_names.append(name)
-            self._enabled_configs[key] = enabled_names  # Store just the names
+            dependencies = getattr(self.config, key, [])
+            self._enabled_configs[key] = [
+                name for item in dependencies
+                for name, details in item.items()
+                if self._is_enabled(details)
+            ]
 
     def get_dependency_config(self, dependency_type: str, name: str) -> Optional[Dict[str, Any]]:
         # Still available if detailed config is needed elsewhere

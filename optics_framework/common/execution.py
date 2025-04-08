@@ -1,14 +1,15 @@
+from uuid import uuid4
 import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field, ConfigDict
-from uuid import uuid4
-
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter, TestCaseResult
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner
+
+NO_TEST_CASES_LOADED = "No test cases loaded"
 
 # Data Models
 class TestCaseData(BaseModel):
@@ -60,21 +61,35 @@ class BatchExecutor(Executor):
 
     async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
-            await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
-            raise ValueError("No test cases loaded")
+            await self._send_event(event_queue, session.session_id, "ERROR", NO_TEST_CASES_LOADED)
+            raise ValueError(NO_TEST_CASES_LOADED)
 
         if self.test_case:
             if self.test_case not in runner.test_cases:
                 await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
                 raise ValueError(f"Test case {self.test_case} not found")
+
             result = runner.execute_test_case(self.test_case)
-            status = "PASS" if isinstance(result, TestCaseResult) and result.status == "PASS" else result.get(
-                "status", "FAIL") if isinstance(result, dict) else "FAIL"
+            is_result_test_case = isinstance(result, TestCaseResult)
+            is_result_pass = is_result_test_case and result.status == "PASS"
+            is_result_dict = isinstance(result, dict)
+
+            if is_result_pass:
+                status = "PASS"
+            elif is_result_dict:
+                status = result.get("status", "FAIL")
+            else:
+                status = "FAIL"
+
             message = f"Test case {self.test_case} completed with status {status}"
         else:
             runner.run_all()
-            status = "PASS" if all(
-                tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
+            all_tests_passed = all(
+                tc.status == "PASS" for tc in runner.result_printer.test_state.values())
+            if all_tests_passed:
+                status = "PASS"
+            else:
+                status = "FAIL"
             message = "All test cases completed"
 
         await self._send_event(event_queue, session.session_id, status, message)
@@ -92,21 +107,35 @@ class DryRunExecutor(Executor):
 
     async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
-            await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
-            raise ValueError("No test cases loaded")
+            await self._send_event(event_queue, session.session_id, "ERROR", NO_TEST_CASES_LOADED)
+            raise ValueError(NO_TEST_CASES_LOADED)
 
         if self.test_case:
             if self.test_case not in runner.test_cases:
                 await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
                 raise ValueError(f"Test case {self.test_case} not found")
+
             result = runner.dry_run_test_case(self.test_case)
-            status = "PASS" if isinstance(result, TestCaseResult) and result.status == "PASS" else result.get(
-                "status", "FAIL") if isinstance(result, dict) else "FAIL"
+            is_result_test_case = isinstance(result, TestCaseResult)
+            is_result_pass = is_result_test_case and result.status == "PASS"
+            is_result_dict = isinstance(result, dict)
+
+            if is_result_pass:
+                status = "PASS"
+            elif is_result_dict:
+                status = result.get("status", "FAIL")
+            else:
+                status = "FAIL"
+
             message = f"Dry run for test case {self.test_case} completed with status {status}"
         else:
             runner.dry_run_all()
-            status = "PASS" if all(
-                tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
+            all_tests_passed = all(
+                tc.status == "PASS" for tc in runner.result_printer.test_state.values())
+            if all_tests_passed:
+                status = "PASS"
+            else:
+                status = "FAIL"
             message = "All test cases dry run completed"
 
         await self._send_event(event_queue, session.session_id, status, message)
@@ -152,21 +181,23 @@ class RunnerFactory:
         test_cases: Dict[str, List[str]],
         modules: Dict[str, List[tuple[str, List[str]]]],
         elements: Dict[str, str]
-        ) -> Runner:
+    ) -> Runner:
         registry = KeywordRegistry()
         action_keyword = session.optics.build(ActionKeyword)
         app_management = session.optics.build(AppManagement)
         verifier = session.optics.build(Verifier)
 
         if runner_type == "test_runner":
-            result_printer = TreeResultPrinter(
-                TerminalWidthProvider()) if use_printer else NullResultPrinter()
+            if use_printer:
+                result_printer = TreeResultPrinter(TerminalWidthProvider())
+            else:
+                result_printer = NullResultPrinter()
             runner = TestRunner(test_cases, modules,
                                 elements, {}, result_printer)
-            flow_control = FlowControl(runner, modules)  # Pass modules here
+            flow_control = FlowControl(runner, modules)
         elif runner_type == "pytest":
             runner = PytestRunner(session, test_cases, modules, elements, {})
-            flow_control = FlowControl(runner, modules)  # Pass modules here
+            flow_control = FlowControl(runner, modules)
         else:
             raise ValueError(f"Unknown runner type: {runner_type}")
 
@@ -176,6 +207,7 @@ class RunnerFactory:
         registry.register(verifier)
         runner.keyword_map = registry.keyword_map
         return runner
+
 
 # Engine
 class ExecutionEngine:
@@ -236,6 +268,3 @@ async def main():
         elements=ElementData(elements={"button": "btn1"})
     )
     await engine.execute(params)
-
-if __name__ == "__main__":
-    asyncio.run(main())

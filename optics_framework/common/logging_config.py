@@ -211,44 +211,76 @@ initialize_handlers()
 
 
 def shutdown_logging():
+    """Shuts down logging and related resources."""
     try:
-        logging.getLogger().disabled = True
-
-        user_listener.stop()
-        if internal_listener:
-            internal_listener.stop()
-
-        timeout = 2.0
-        start_time = time.time()
-        while ((user_listener._thread and user_listener._thread.is_alive()) or
-               (internal_listener and internal_listener._thread and internal_listener._thread.is_alive())) and (time.time() - start_time < timeout):
-            time.sleep(0.1)
-
-        if user_listener._thread and user_listener._thread.is_alive():
-            print("Warning: user_listener thread did not terminate", file=sys.stderr)
-        if internal_listener and internal_listener._thread and internal_listener._thread.is_alive():
-            print("Warning: internal_listener thread did not terminate",
-                  file=sys.stderr)
-
-        if user_junit_handler:
-            user_junit_handler.flush()
-            user_junit_handler.close()
-        if internal_junit_handler:
-            internal_junit_handler.flush()
-            internal_junit_handler.close()
-
-        while not user_log_queue.empty():
-            try:
-                user_log_queue.get_nowait()
-            except queue.Empty:
-                break
-        while not internal_log_queue.empty():
-            try:
-                internal_log_queue.get_nowait()
-            except queue.Empty:
-                break
+        disable_logger()
+        stop_listeners()
+        wait_for_threads()
+        flush_handlers()
+        clear_queues()
     except Exception as e:
         print(f"Shutdown error: {e}", file=sys.stderr)
+
+
+def disable_logger():
+    """Disables the root logger."""
+    logging.getLogger().disabled = True
+
+
+def stop_listeners():
+    """Stops user and internal listeners."""
+    user_listener.stop()
+    if internal_listener:
+        internal_listener.stop()
+
+
+def wait_for_threads():
+    """Waits for listener threads to terminate with a timeout."""
+    timeout = 2.0
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if not (is_thread_alive(user_listener) or is_thread_alive(internal_listener)):
+            return
+        time.sleep(0.1)
+    check_thread_status()
+
+
+def is_thread_alive(listener):
+    """Checks if a listener's thread is alive."""
+    return listener._thread and listener._thread.is_alive()
+
+
+def check_thread_status():
+    """Prints warnings if threads are still alive."""
+    if is_thread_alive(user_listener):
+        print("Warning: user_listener thread did not terminate", file=sys.stderr)
+    if is_thread_alive(internal_listener):
+        print("Warning: internal_listener thread did not terminate", file=sys.stderr)
+
+
+def flush_handlers():
+    """Flushes and closes JUnit handlers if they exist."""
+    if user_junit_handler:
+        user_junit_handler.flush()
+        user_junit_handler.close()
+    if internal_junit_handler:
+        internal_junit_handler.flush()
+        internal_junit_handler.close()
+
+
+def clear_queues():
+    """Clears user and internal log queues."""
+    clear_queue(user_log_queue)
+    clear_queue(internal_log_queue)
+
+
+def clear_queue(log_queue):
+    """Empties a single queue."""
+    while not log_queue.empty():
+        try:
+            log_queue.get_nowait()
+        except queue.Empty:
+            break
 
 
 atexit.register(shutdown_logging)

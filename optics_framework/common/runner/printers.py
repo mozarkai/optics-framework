@@ -48,29 +48,49 @@ class IResultPrinter(abc.ABC):
 
 
 class NullResultPrinter(IResultPrinter):
-    """No-op result printer."""
+    """No-op result printer that implements IResultPrinter with empty methods."""
 
     def __init__(self):
         self._test_state: Dict[str, TestCaseResult] = {}
 
     @property
     def test_state(self) -> Dict[str, TestCaseResult]:
+        # This getter returns the internal test state dictionary.
+        # It’s implemented minimally to satisfy the interface.
         return self._test_state
 
     @test_state.setter
     def test_state(self, value: Dict[str, TestCaseResult]) -> None:
+        # This setter assigns the provided value to the internal state.
+        # It’s a no-op beyond storage, as this class doesn’t process or use the state.
         self._test_state = value
 
     def print_tree_log(self, test_case_result: TestCaseResult) -> None:
+        # This method is intentionally empty because:
+        #   - NullResultPrinter is a no-op implementation.
+        #   - It’s meant to silently ignore printing requests, providing a safe default.
+        #   - No logging or output is generated, as per the null object pattern.
         pass
 
     def start_live(self) -> None:
+        # This method does nothing because:
+        #   - It’s part of the no-op behavior.
+        #   - No live updates or processes are started in this null implementation.
+        #   - It exists to fulfill the interface contract without side effects.
         pass
 
     def stop_live(self) -> None:
+        # This method is empty because:
+        #   - There’s no live process to stop (start_live does nothing).
+        #   - It ensures compatibility with IResultPrinter without altering state.
+        #   - It’s a deliberate no-op for this null printer.
         pass
 
     def start_run(self, total_test_cases: int) -> None:
+        # This method remains empty because:
+        #   - No initialization or tracking of test runs is needed here.
+        #   - It silently accepts the total_test_cases parameter without action.
+        #   - The null pattern avoids any output or state change.
         pass
 
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 from typing import Optional, Tuple
 from pydantic import BaseModel, field_validator
@@ -12,39 +13,68 @@ from optics_framework.common.execution import ExecutionEngine, ExecutionParams, 
 def find_csv_files(folder_path: str) -> Tuple[str, str, Optional[str]]:
     """
     Search for CSV files in a folder and categorize them by reading their headers.
+    Exits the program if required files are missing.
 
     :param folder_path: Path to the project folder.
     :return: Tuple of paths to test_cases (required), modules (required), and elements (optional) CSV files.
     """
-    test_cases, modules, elements = None, None, None
+    test_cases, modules, elements = scan_folder_for_csvs(folder_path)
+    return test_cases, modules, elements
+
+
+def scan_folder_for_csvs(folder_path: str) -> Tuple[str, str, Optional[str]]:
+    """Scans folder for CSV files and categorizes them based on headers."""
+    test_cases: str = ""  # Initialize as empty string instead of None
+    modules: str = ""     # Initialize as empty string instead of None
+    elements: Optional[str] = None
+
     for file in os.listdir(folder_path):
         if file.endswith(".csv"):
             file_path = os.path.join(folder_path, file)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    header = f.readline().strip().split(',')
-                    headers = {h.strip().lower() for h in header}
-            except (OSError, IOError) as e:
-                internal_logger.exception(f"Error reading {file_path}: {e}")
-                continue
+            headers = read_csv_headers(file_path)
+            if headers:
+                test_cases, modules, elements = categorize_file(
+                    headers, file_path, test_cases, modules, elements)
 
-            if "test_case" in headers and "test_step" in headers:
-                test_cases = file_path
-                internal_logger.debug(f"Found test cases file: {file_path}")
-            elif "module_name" in headers and "module_step" in headers:
-                modules = file_path
-                internal_logger.debug(f"Found modules file: {file_path}")
-            elif "element_name" in headers and "element_id" in headers:
-                elements = file_path
-                internal_logger.debug(f"Found elements file: {file_path}")
+    validate_required_files(test_cases, modules, folder_path)
+    return test_cases, modules, elements
 
+
+def read_csv_headers(file_path: str) -> Optional[set]:
+    """Reads and returns the headers of a CSV file as a set."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            header = f.readline().strip().split(',')
+            return {h.strip().lower() for h in header}
+    except (OSError, IOError) as e:
+        internal_logger.exception(f"Error reading {file_path}: {e}")
+        return None
+
+
+def categorize_file(headers: set, file_path: str, test_cases: str,
+                    modules: str, elements: Optional[str]) -> Tuple[str, str, Optional[str]]:
+    """Categorizes a CSV file based on its headers."""
+    if "test_case" in headers and "test_step" in headers:
+        internal_logger.debug(f"Found test cases file: {file_path}")
+        return file_path, modules, elements
+    if "module_name" in headers and "module_step" in headers:
+        internal_logger.debug(f"Found modules file: {file_path}")
+        return test_cases, file_path, elements
+    if "element_name" in headers and "element_id" in headers:
+        internal_logger.debug(f"Found elements file: {file_path}")
+        return test_cases, modules, file_path
+    return test_cases, modules, elements
+
+
+def validate_required_files(test_cases: str, modules: str, folder_path: str) -> None:
+    """Validates that required CSV files are present; exits if missing."""
     if not test_cases or not modules:
         missing = [f for f, p in [
             ("test_cases", test_cases), ("modules", modules)] if not p]
-        internal_logger.error(
-            f"Missing required CSV files in {folder_path}: {', '.join(missing)}")
-        raise ValueError(f"Required CSV files missing: {', '.join(missing)}")
-    return test_cases, modules, elements
+        error_msg = f"Missing required CSV files in {folder_path}: {', '.join(missing)}"
+        internal_logger.error(error_msg)
+        print(f"Error: {error_msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 class RunnerArgs(BaseModel):
