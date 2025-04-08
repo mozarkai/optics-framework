@@ -7,105 +7,125 @@ from pydantic import BaseModel, Field
 from optics_framework.common.logging_config import internal_logger
 
 T = TypeVar("T")
-S = TypeVar("S")  # New TypeVar for FactoryState
+S = TypeVar("S")
 
 
 class GenericFactory(Generic[T]):
-    """
-    A generic factory class for discovering and instantiating modules dynamically.
-    """
-    class FactoryState(BaseModel, Generic[S]):
-        """Pydantic model to manage factory state."""
-        modules: Dict[str, str] = Field(
-            default_factory=dict)  # {name: module_path}
-        instances: Dict[str, S] = Field(
-            default_factory=dict)  # {name: instance}
+    class ModuleRegistry(BaseModel, Generic[S]):
+        """Tracks registered module paths and their instances."""
+        module_paths: Dict[str, str] = Field(default_factory=dict)
+        instances: Dict[str, S] = {}
 
         class Config:
-            arbitrary_types_allowed = True  # Allow generic S
+            arbitrary_types_allowed = True
 
-    _state: FactoryState[T] = FactoryState()  # Bind to T from GenericFactory
+    _registry: ModuleRegistry[T] = ModuleRegistry()
 
     @classmethod
-    def discover(cls, package: str) -> None:
-        """
-        Recursively discover and register modules within a given package.
-        """
-        internal_logger.debug(f"Discovering modules in package: {package}")
-        package_obj = cls._import_package(package)
+    def register_package(cls, package: str) -> None:
+        """Registers all modules within the specified package."""
+        internal_logger.debug(f"Registering modules in package: {package}")
+        package_obj = cls._load_package(package)
         if package_obj:
-            cls._recursive_discover(package_obj.__path__, package)
+            cls._register_submodules(package_obj.__path__, package)
 
     @classmethod
-    def _import_package(cls, package: str) -> Optional[ModuleType]:
-        """Attempt to import a package and return it, or None if it fails."""
+    def _load_package(cls, package: str) -> Optional[ModuleType]:
+        """Loads a package, returning None if it fails."""
         try:
             return importlib.import_module(package)
         except ModuleNotFoundError as e:
-            internal_logger.error(f"Package '{package}' not found: {e}")
+            internal_logger.debug(
+                f"Package '{package}' not found, skipping: {e}")
             return None
 
     @classmethod
-    def _recursive_discover(cls, package_paths, base_package: str) -> None:
-        """
-        Recursively discover and register all modules in subpackages.
-        """
+    def _register_submodules(cls, package_paths, base_package: str) -> None:
+        """Recursively registers all submodules in a package."""
         for _, module_name, is_pkg in pkgutil.iter_modules(package_paths):
             full_module_name = f"{base_package}.{module_name}"
-            cls._state.modules[module_name] = full_module_name
+            cls._registry.module_paths[module_name] = full_module_name
             internal_logger.debug(f"Registered module: {full_module_name}")
             if is_pkg:
-                cls._discover_subpackage(full_module_name)
+                cls._register_subpackage(full_module_name)
 
     @classmethod
-    def _discover_subpackage(cls, full_module_name: str) -> None:
-        """Discover a subpackage recursively."""
+    def _register_subpackage(cls, full_module_name: str) -> None:
+        """Registers a subpackage and its contents recursively."""
         try:
             sub_package = importlib.import_module(full_module_name)
-            cls._recursive_discover(sub_package.__path__, full_module_name)
+            cls._register_submodules(sub_package.__path__, full_module_name)
         except ModuleNotFoundError as e:
-            internal_logger.error(
-                f"Failed to import subpackage '{full_module_name}': {e}")
+            internal_logger.debug(
+                f"Skipping subpackage '{full_module_name}': {e}")
 
     @staticmethod
-    def _find_class(module: ModuleType, interface: Type[T]) -> Optional[Type[T]]:
-        """
-        Find a class in the module that implements the specified interface.
-        """
+    def _locate_implementation(module: ModuleType, interface: Type[T]) -> Optional[Type[T]]:
+        """Locates a class in the module that implements the given interface."""
         for _, obj in inspect.getmembers(module, inspect.isclass):
             if issubclass(obj, interface) and obj is not interface:
                 return obj
         return None
 
     @classmethod
-    def get(cls, name: Union[str, List[Union[str, dict]], None], interface: Type[T]) -> T:
-        """
-        Retrieve an instance of the requested module implementing the given interface.
-        """
-        cls._ensure_discovery(interface)
+    def create_instance(cls, name: Union[str, List[Union[str, dict]], None], interface: Type[T], package: str) -> T:
+        """Creates or retrieves an instance implementing the specified interface."""
         if isinstance(name, (list, dict)):
-            return cls._get_fallback_instance(name, interface)
+            return cls._create_fallback(name, interface, package)
         if name is None:
             raise ValueError(
                 "Name cannot be None for single instance retrieval")
-        return cls._get_single_instance(name, interface)
+        return cls._create_or_retrieve(name, interface, package)
 
     @classmethod
-    def _ensure_discovery(cls, interface: Type[T]) -> None:
-        """Ensure modules have been discovered."""
-        if not cls._state.modules:
+    def _create_or_retrieve(cls, name: str, interface: Type[T], package: str) -> T:
+        """Creates a new instance or retrieves a cached one for the given name."""
+        if name in cls._registry.instances:
+            internal_logger.debug(f"Returning cached instance for: {name}")
+            return cls._registry.instances[name]
+
+        if name not in cls._registry.module_paths:
+            cls._load_module(name, package)
+
+        try:
+            module_path = cls._registry.module_paths[name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown module requested: '{name}' in package '{package}'") from exc
+
+        module = importlib.import_module(module_path)
+        implementation = cls._locate_implementation(module, interface)
+        if not implementation:
             raise RuntimeError(
-                f"No modules discovered for {interface.__name__}. Call `discover` first.")
+                f"No implementation found in '{module_path}' for {interface.__name__}")
+
+        instance = implementation()
+        cls._registry.instances[name] = instance
+        internal_logger.debug(
+            f"Instantiated {implementation.__name__} from {module_path}")
+        return instance
 
     @classmethod
-    def _normalize_name_list(cls, name: Union[List[Union[str, dict]], dict]) -> List[str]:
-        """Convert a list or dict input into a list of module names."""
+    def _load_module(cls, name: str, package: str) -> None:
+        """Loads a specific module dynamically."""
+        full_module_name = f"{package}.{name}"
+        try:
+            importlib.import_module(full_module_name)
+            cls._registry.module_paths[name] = full_module_name
+            internal_logger.debug(f"Lazily loaded module: {full_module_name}")
+        except ModuleNotFoundError as e:
+            internal_logger.error(
+                f"Failed to load module '{full_module_name}': {e}")
+            raise ValueError(
+                f"Module '{name}' not found in package '{package}'") from e
+
+    @classmethod
+    def _extract_names(cls, name: Union[List[Union[str, dict]], dict]) -> List[str]:
+        """Extracts module names from a list or dictionary."""
         if isinstance(name, dict):
             return [k for k, v in name.items() if v]
-
         if not name or not isinstance(name[0], dict):
             return [str(n) for n in name]
-
         normalized = []
         for item in name:
             if isinstance(item, dict):
@@ -117,50 +137,27 @@ class GenericFactory(Generic[T]):
         return normalized
 
     @classmethod
-    def _get_fallback_instance(cls, name: Union[List[Union[str, dict]], dict], interface: Type[T]) -> T:
-        """Create a fallback proxy from a list of module names."""
-        name_list = cls._normalize_name_list(name)
-        instances = [cls._get_single_instance(
-            single_name, interface) for single_name in name_list]
-        return cast(T, FallbackProxy(instances))
+    def _create_fallback(cls, name: Union[List[Union[str, dict]], dict], interface: Type[T], package: str) -> T:
+        """Creates a fallback instance from a list of module names."""
+        name_list = cls._extract_names(name)
+        instances = [cls._create_or_retrieve(
+            single_name, interface, package) for single_name in name_list]
+        return cast(T, InstanceFallback(instances))
 
     @classmethod
-    def _get_single_instance(cls, name: str, interface: Type[T]) -> T:
-        """Retrieve or create a single instance for a module name."""
-        if name in cls._state.instances:
-            internal_logger.debug(f"Returning cached instance for: {name}")
-            return cls._state.instances[name]
-
-        module_path = cls._state.modules.get(name)  # pylint: disable=no-member
-        if not module_path:
-            raise ValueError(f"Unknown module requested: '{name}'")
-
-        module = importlib.import_module(module_path)
-        cls_obj = cls._find_class(module, interface)
-        if not cls_obj:
-            raise RuntimeError(
-                f"No valid class found in '{module_path}' implementing {interface.__name__}")
-
-        instance = cls_obj()
-        cls._state.instances[name] = instance
-        internal_logger.debug(
-            f"Successfully instantiated {cls_obj.__name__} from {module_path}")
-        return instance
-
-    @classmethod
-    def clear_cache(cls) -> None:
-        """Clear cached instances."""
-        cls._state.instances.clear()  # pylint: disable=no-member
+    def clear_instances(cls) -> None:
+        """Clears all cached instances."""
+        cls._registry.instances.clear()
         internal_logger.debug("Cleared instance cache.")
 
 
-class FallbackProxy(BaseModel, Generic[T]):
-    """Pydantic-based proxy for fallback instances."""
+class InstanceFallback(BaseModel, Generic[T]):
+    """Manages fallback instances for dynamic method invocation."""
     instances: List[T] = Field(default_factory=list)
     current_instance: Optional[T] = None
 
     class Config:
-        arbitrary_types_allowed = True  # Allow generic T
+        arbitrary_types_allowed = True
 
     def __init__(self, instances: List[T], **data):
         super().__init__(instances=instances, **data)
@@ -170,9 +167,8 @@ class FallbackProxy(BaseModel, Generic[T]):
         def fallback_method(*args, **kwargs):
             if not self.instances:
                 internal_logger.warning(
-                    f"Attempted to call '{attr}' but no valid instances exist. Passing off the call.")
+                    f"Attempted to call '{attr}' but no valid instances exist.")
                 return None
-
             last_exception = None
             for instance in self.instances:
                 self.current_instance = instance
@@ -181,7 +177,8 @@ class FallbackProxy(BaseModel, Generic[T]):
                     return method(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    internal_logger.error(f"Error calling '{attr}' on {instance}: {e}")
+                    internal_logger.error(
+                        f"Error calling '{attr}' on {instance}: {e}")
             self.current_instance = None
             if last_exception:
                 raise last_exception

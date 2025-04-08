@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import inspect
 from typing import List, Union, Tuple, Generator, Set
-from optics_framework.common.base_factory import FallbackProxy
+from optics_framework.common.base_factory import InstanceFallback  # Updated import
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
@@ -184,7 +184,7 @@ class StrategyManager:
         :raises ValueError: If no strategies are available.
         """
         all_strategies: Set[LocatorStrategy] = set()
-        if isinstance(self.element_source, FallbackProxy):
+        if isinstance(self.element_source, InstanceFallback):  # Updated to InstanceFallback
             for instance in self.element_source.instances:
                 all_strategies.update(self.factory.create_strategies(instance))
         else:
