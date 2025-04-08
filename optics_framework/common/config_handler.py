@@ -86,12 +86,16 @@ class Config(BaseModel):
                 {"pytesseract": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
                 {"google_vision": DependencyConfig(
-                    enabled=False, url=None, capabilities={})}
+                    enabled=False, url=None, capabilities={})},
+                {"remote_ocr": DependencyConfig(
+                    enabled=False, url=None, capabilities={})},
             ]
         if not self.image_detection:
             self.image_detection = [
                 {"templatematch": DependencyConfig(
-                    enabled=False, url=None, capabilities={})}
+                    enabled=False, url=None, capabilities={})},
+                {"remote_oir": DependencyConfig(
+                    enabled=False, url=None, capabilities={})},
             ]
 
     class Config:
