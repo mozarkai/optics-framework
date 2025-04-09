@@ -1,13 +1,11 @@
+import subprocess
+from typing import Dict, List
+import os
 from textual.app import App, ComposeResult
 from textual.widgets import Checkbox, Button, Header, Footer, Static
 from pydantic import BaseModel
-from typing import Dict, List
-import pip
-import os
 
 
-# TODO: Add more driver categories and packages as needed
-# TODO: enable keyboard usage like arrow keys to navigate and select drivers
 class DriverPackage(BaseModel):
     name: str
     packages: List[str]
@@ -37,6 +35,8 @@ TEXT_DRIVERS = DriverCategory(
     }
 )
 
+ALL_DRIVERS = {**ACTION_DRIVERS.drivers, **TEXT_DRIVERS.drivers}
+
 
 class DriverInstallerApp(App):
     CSS = """
@@ -57,16 +57,13 @@ class DriverInstallerApp(App):
         self.selected_drivers: Dict[str, List[str]] = {}
 
     def compose(self) -> ComposeResult:
-        """Compose the UI layout"""
         yield Header()
         yield Static("Select Drivers to Install:", classes="title")
 
-        # Action Drivers section
         yield Static("Action Drivers:")
         for name, driver in ACTION_DRIVERS.drivers.items():
             yield Checkbox(f"{name} ({', '.join(driver.packages)})", id=f"action_{name.lower().replace(' ', '_')}")
 
-        # Text Drivers section
         yield Static("Text Drivers:")
         for name, driver in TEXT_DRIVERS.drivers.items():
             yield Checkbox(f"{name} ({', '.join(driver.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
@@ -76,7 +73,6 @@ class DriverInstallerApp(App):
         yield Footer()
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Handle checkbox state changes"""
         if event.checkbox.id is None:
             return
         category, driver_key = event.checkbox.id.split("_", 1)
@@ -85,7 +81,6 @@ class DriverInstallerApp(App):
             name for name in drivers_source.drivers.keys()
             if name.lower().replace(' ', '_') == driver_key
         )
-
         packages = drivers_source.drivers[driver_name].packages
 
         if event.checkbox.value:
@@ -94,14 +89,12 @@ class DriverInstallerApp(App):
             del self.selected_drivers[driver_name]
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses"""
         if event.button.id == "install":
             self.install_drivers()
         elif event.button.id == "quit":
             self.exit()
 
     def install_drivers(self) -> None:
-        """Install selected drivers"""
         if not self.selected_drivers:
             self.notify("No drivers selected!", severity="warning")
             return
@@ -109,35 +102,37 @@ class DriverInstallerApp(App):
         requirements = []
         for packages in self.selected_drivers.values():
             requirements.extend(packages)
-
-        # Validate packages (basic security check)
-        if not all(isinstance(pkg, str) and pkg.strip() and not pkg.startswith('-') for pkg in requirements):
-            self.notify("Invalid package specifications detected!",
-                        severity="error")
-            return
-
-        # Write requirements file
-        req_file = "requirements.txt"
-        try:
-            with open(req_file, "w") as f:
-                f.write("\n".join(requirements))
-
-            # Use pip's main function instead of subprocess
-            result = pip.main(["install", "-r", req_file])
-            if result == 0:
-                self.notify("Drivers installed successfully!",
-                            severity="success")
-            else:
-                self.notify("Installation failed!", severity="error")
-
-            # Clean up requirements file
-            if os.path.exists(req_file):
-                os.remove(req_file)
-
-        except Exception as e:
-            self.notify(f"Installation failed: {str(e)}", severity="error")
+        install_packages(requirements)
 
 
-if __name__ == "__main__":
-    app = DriverInstallerApp()
-    app.run()
+def install_packages(requirements: List[str]) -> None:
+    if not all(isinstance(pkg, str) and pkg.strip() and not pkg.startswith('-') for pkg in requirements):
+        print("Error: Invalid package specifications detected!")
+        return
+
+    req_file = "requirements.txt"
+    try:
+        with open(req_file, "w") as f:
+            f.write("\n".join(requirements))
+
+        result = subprocess.run(
+            ["pip", "install", "-r", req_file], capture_output=True, text=True, check=True)
+        if result.returncode == 0:
+            print("Drivers installed successfully!")
+        else:
+            print("Installation failed!")
+
+        if os.path.exists(req_file):
+            os.remove(req_file)
+    except Exception as e:
+        print(f"Installation failed: {str(e)}")
+
+
+def list_drivers() -> None:
+    print("Available Drivers:")
+    print("\nAction Drivers:")
+    for name, _ in ACTION_DRIVERS.drivers.items():
+        print(f"  {name}")
+    print("\nText Drivers:")
+    for name, _ in TEXT_DRIVERS.drivers.items():
+        print(f"  {name}")

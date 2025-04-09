@@ -8,7 +8,7 @@ from optics_framework.helper.initialize import create_project
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
-from optics_framework.helper.setup  import DriverInstallerApp
+from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, install_packages, ALL_DRIVERS
 
 class Command:
     """
@@ -221,11 +221,30 @@ class DriverInstaller(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
             "setup", help="Install driver for the project")
+        parser.add_argument("--install", nargs="+",
+                            help="Install specified drivers")
+        parser.add_argument("--list", action="store_true",
+                        help="List all available drivers")
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
-        driver_installer = DriverInstallerApp()
-        driver_installer.run()
+        if args.list:
+            list_drivers()
+        elif args.install:
+            driver_to_install = args.install
+            invalid_drivers = [
+                d for d in driver_to_install if d not in ALL_DRIVERS]
+            if invalid_drivers:
+                print(f"Error: Invalid driver(s): {', '.join(invalid_drivers)}")
+                print("Use --list to see available drivers")
+                return
+            requirements = []
+            for driver in driver_to_install:
+                requirements.extend(ALL_DRIVERS[driver].packages)
+            install_packages(requirements)
+        else:
+            DriverInstallerApp().run()
+
 
 def main():
     """
