@@ -12,7 +12,9 @@ import time
 def with_self_healing(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(self, element, *args, **kwargs):
-        utils.capture_screenshot(func.__name__)
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, func.__name__)
+
         results = self.strategy_manager.locate(element)
 
         last_exception = None
@@ -82,7 +84,8 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
-        utils.capture_screenshot("press_by_percentage")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "press_by_percentage")
         element_source_type = type(
             self.element_source.current_instance).__name__
         if 'appium' in element_source_type.lower():
@@ -106,7 +109,8 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
-        utils.capture_screenshot("press_by_coordinates")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "press_by_coordinates")
         self.driver.press_coordinates(coor_x, coor_y, event_name)
 
     def press_element_with_index(self, element: str, index: int = 0, event_name: Optional[str] = None) -> None:
@@ -118,7 +122,8 @@ class ActionKeyword:
         :param event_name: The event triggering the press.
         """
         index = int(index)
-        utils.capture_screenshot("press_element_with_index")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "press_element_with_index")
         element_source_type = type(
             self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)
@@ -160,7 +165,8 @@ class ActionKeyword:
         :param timeout: Timeout for the detection operation.
         :param event_name: The event triggering the press.
         """
-        utils.capture_screenshot("detect_and_press")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "detect_and_press")
         result = self.verifier.assert_presence(
             element, timeout=timeout, rule="any")
         if result:
@@ -218,7 +224,8 @@ class ActionKeyword:
         :param swipe_length: The length of the swipe.
         :param event_name: The event triggering the swipe.
         """
-        utils.capture_screenshot("swipe")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "swipe")
         self.driver.swipe(coor_x, coor_y, direction, swipe_length, event_name)
 
     @DeprecationWarning
@@ -228,7 +235,8 @@ class ActionKeyword:
 
         :param element: The seekbar element (Image template, OCR template, or XPath).
         """
-        utils.capture_screenshot("swipe_seekbar_to_right_android")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "swipe_seekbar_to_right_android")
         self.driver.swipe_element(element, 'right', 50, event_name)
 
     def swipe_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None) -> None:
@@ -240,7 +248,8 @@ class ActionKeyword:
         :param timeout: Timeout until element search is performed.
         :param event_name: The event triggering the swipe.
         """
-        utils.capture_screenshot("swipe_until_element_appears")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "swipe_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
@@ -276,7 +285,8 @@ class ActionKeyword:
         :param direction: The scroll direction (up, down, left, right).
         :param event_name: The event triggering the scroll.
         """
-        utils.capture_screenshot("scroll")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "scroll")
         self.driver.scroll(direction, 1000, event_name)
 
     @with_self_healing
@@ -289,7 +299,8 @@ class ActionKeyword:
         :param timeout: Timeout for the scroll operation.
         :param event_name: The event triggering the scroll.
         """
-        utils.capture_screenshot("scroll_until_element_appears")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "scroll_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
@@ -309,7 +320,8 @@ class ActionKeyword:
         :param scroll_length: The length of the scroll.
         :param event_name: The event triggering the scroll.
         """
-        utils.capture_screenshot("scroll_from_element")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "scroll_from_element")
         self.swipe_from_element(
             element, direction, scroll_length, event_name, located=located)
 
@@ -340,7 +352,8 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
-        utils.capture_screenshot("enter_text_using_keyboard_android")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "enter_text_using_keyboard_android")
         self.driver.enter_text_using_keyboard(text, event_name)
 
     @with_self_healing
@@ -352,7 +365,8 @@ class ActionKeyword:
         :param number: The number to be entered.
         :param event_name: The event triggering the input.
         """
-        utils.capture_screenshot("enter_number")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "enter_number")
         self.enter_text(element, str(number), event_name, located=located)
 
     def press_keycode(self, keycode: int, event_name: str) -> None:
@@ -362,7 +376,8 @@ class ActionKeyword:
         :param keycode: The keycode to be pressed.
         :param event_name: The event triggering the press.
         """
-        utils.capture_screenshot("press_keycode")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "press_keycode")
         self.driver.press_keycode(keycode, event_name)
 
     @with_self_healing
@@ -390,7 +405,8 @@ class ActionKeyword:
         :param element: The target element (Image template, OCR template, or XPath).
         :return: The text from the element or None if not supported.
         """
-        utils.capture_screenshot("get_text")
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "get_text")
         element_source_type = type(
             self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)

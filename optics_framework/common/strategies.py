@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 import inspect
-from typing import List, Union, Tuple, Generator, Set
-from optics_framework.common.base_factory import InstanceFallback  # Updated import
+from typing import List, Union, Tuple, Generator, Set, Optional
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
+import numpy as np
 
 
 class LocatorStrategy(ABC):
@@ -13,7 +14,6 @@ class LocatorStrategy(ABC):
     @property
     @abstractmethod
     def element_source(self) -> ElementSourceInterface:
-        """Returns the element source this strategy operates on."""
         pass
 
     @abstractmethod
@@ -130,13 +130,28 @@ class ImageDetectionStrategy(LocatorStrategy):
         return element_type == "Image" and LocatorStrategy._is_method_implemented(element_source, "capture")
 
 
+class ScreenshotStrategy:
+    def __init__(self, element_source: ElementSourceInterface):
+        self.element_source = element_source
+
+    def capture(self) -> Optional[np.ndarray]:
+        screenshot = self.element_source.capture()
+        if screenshot is not None and not utils.is_black_screen(screenshot):
+            return screenshot
+        raise ValueError("Invalid screenshot captured")
+
+    @staticmethod
+    def supports(element_source: ElementSourceInterface) -> bool:
+        return LocatorStrategy._is_method_implemented(element_source, "capture")
+
+
 class StrategyFactory:
     """Factory for creating locator strategies."""
 
     def __init__(self, text_detection, image_detection):
         self.text_detection = text_detection
         self.image_detection = image_detection
-        self._strategy_registry = [
+        self._registry = [
             (XPathStrategy, "XPath", {}),
             (TextElementStrategy, "Text", {}),
             (TextDetectionStrategy, "Text", {
@@ -146,16 +161,15 @@ class StrategyFactory:
         ]
 
     def create_strategies(self, element_source: ElementSourceInterface) -> List[LocatorStrategy]:
-        """Creates strategies compatible with the given element source.
+        return [cls(element_source, **args) for cls, etype, args in self._registry if cls.supports(etype, element_source)]
 
-        :param element_source: The source to build strategies for.
-        :return: List of compatible strategy instances.
-        """
-        strategies = []
-        for strategy_cls, element_type, extra_args in self._strategy_registry:
-            if strategy_cls.supports(element_type, element_source):
-                strategies.append(strategy_cls(element_source, **extra_args))
-        return strategies
+
+class ScreenshotFactory:
+    def __init__(self):
+        self._registry = [(ScreenshotStrategy, {})]
+
+    def create_strategies(self, element_source: ElementSourceInterface) -> List[ScreenshotStrategy]:
+        return [cls(element_source, **args) for cls, args in self._registry if cls.supports(element_source)]
 
 
 class LocateResult:
@@ -168,49 +182,53 @@ class LocateResult:
 
 
 class StrategyManager:
-    """Manages multiple locator strategies for element location."""
-
     def __init__(self, element_source: ElementSourceInterface, text_detection, image_detection):
         self.element_source = element_source
-        self.factory = StrategyFactory(text_detection, image_detection)
-        self.strategies = self._build_strategies()
-        internal_logger.debug(
-            f"Built strategies: {[s.__class__.__name__ for s in self.strategies]}")
+        self.locator_factory = StrategyFactory(text_detection, image_detection)
+        self.screenshot_factory = ScreenshotFactory()
+        self.locator_strategies = self._build_locator_strategies()
+        self.screenshot_strategies = self._build_screenshot_strategies()
 
-    def _build_strategies(self) -> Set[LocatorStrategy]:
-        """Builds a set of all strategies from the element source.
-
-        :return: Set of strategy instances.
-        :raises ValueError: If no strategies are available.
-        """
-        all_strategies: Set[LocatorStrategy] = set()
-        if isinstance(self.element_source, InstanceFallback):  # Updated to InstanceFallback
+    def _build_locator_strategies(self) -> Set[LocatorStrategy]:
+        strategies = set()
+        if isinstance(self.element_source, InstanceFallback):
             for instance in self.element_source.instances:
-                all_strategies.update(self.factory.create_strategies(instance))
+                strategies.update(
+                    self.locator_factory.create_strategies(instance))
         else:
-            all_strategies.update(
-                self.factory.create_strategies(self.element_source))
+            strategies.update(
+                self.locator_factory.create_strategies(self.element_source))
+        return strategies
 
-        if not all_strategies:
-            raise ValueError(
-                "No strategies available for the given element source")
-        return all_strategies
+    def _build_screenshot_strategies(self) -> Set[ScreenshotStrategy]:
+        strategies = set()
+        if isinstance(self.element_source, InstanceFallback):
+            for instance in self.element_source.instances:
+                strategies.update(
+                    self.screenshot_factory.create_strategies(instance))
+        else:
+            strategies.update(
+                self.screenshot_factory.create_strategies(self.element_source))
+        return strategies
 
     def locate(self, element: str) -> Generator[LocateResult, None, None]:
-        """Yields applicable strategies' results in order of attempt.
-
-        :param element: The element identifier to locate.
-        :yields: LocateResult objects with location data and strategy used.
-        """
         element_type = utils.determine_element_type(element)
-        applicable_strategies = {
-            s for s in self.strategies if s.supports(element_type, s.element_source)}
+        for strategy in self.locator_strategies:
+            if strategy.supports(element_type, strategy.element_source):
+                try:
+                    result = strategy.locate(element)
+                    if result:
+                        yield LocateResult(result, strategy)
+                except Exception as e:
+                    internal_logger.error(
+                        f"Strategy {strategy.__class__.__name__} failed: {e}")
 
-        for strategy in applicable_strategies:
+    def capture_screenshot(self) -> Optional[np.ndarray]:
+        for strategy in self.screenshot_strategies:
             try:
-                result = strategy.locate(element)
-                if result:
-                    yield LocateResult(result, strategy)
+                return strategy.capture()
             except Exception as e:
-                internal_logger.error(
-                    f"Strategy {strategy.__class__.__name__} failed: {e}")
+                internal_logger.debug(
+                    f"Screenshot failed with {strategy.__class__.__name__}: {e}")
+        internal_logger.error("No screenshot captured.")
+        return None

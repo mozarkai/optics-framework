@@ -7,10 +7,6 @@ import cv2
 import numpy as np
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.engines.elementsources.device_screenshot import DeviceScreenshot
-from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot
-from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
-
 
 def determine_element_type(element):
     # Check if the input is an Image path
@@ -194,39 +190,3 @@ def save_page_source(tree, time_stamp):
         internal_logger.debug(f"Page source appended at: {time_stamp}")
 
     internal_logger.debug(f"Page source saved to: {page_source_file_path}")
-
-def capture_screenshot(name=None):
-    """
-    Capture a screenshot using the DeviceScreenshot class.
-    If the screenshot is None or a black screen, fall back to CameraScreenshot.
-    """
-    try:
-        screenshot = SeleniumScreenshot().capture()
-        save_screenshot(screenshot, name)
-        return screenshot
-    except Exception as e:
-        internal_logger.debug(f"Error capturing screenshot from Selenium: {e}")
-        screenshot = None
-    # If Selenium screenshot is None or a black screen, switch to DeviceScreenshot
-    try:
-        screenshot = DeviceScreenshot().capture()
-    except Exception as e:
-        internal_logger.debug(f"Error capturing screenshot from device: {e}")
-        screenshot = None  # Ensure screenshot is None if exception occurs
-
-    # If device screenshot is None or a black screen, switch to CameraScreenshot
-    if screenshot is None:
-        internal_logger.debug("Device screenshot returned None. Falling back to CameraScreenshot.")
-        screenshot = CameraScreenshot().capture()
-    elif is_black_screen(screenshot):
-        internal_logger.debug("Device screenshot is black. Falling back to CameraScreenshot.")
-        screenshot = CameraScreenshot().capture()
-
-    # Final check: if CameraScreenshot also fails, log and return None
-    if screenshot is None or is_black_screen(screenshot):
-        internal_logger.error("Both DeviceScreenshot and CameraScreenshot returned None or a black screen.")
-        return None
-    if name is not None:
-        save_screenshot(screenshot, name)
-
-    return screenshot
