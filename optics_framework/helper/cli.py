@@ -8,7 +8,7 @@ from optics_framework.helper.initialize import create_project
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
-
+from optics_framework.helper.setup  import DriverInstallerApp
 
 class Command:
     """
@@ -217,6 +217,15 @@ class VersionCommand(Command):
     def execute(self, args):
         print(f"Optics Framework {VERSION}")
 
+class DriverInstaller(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "setup", help="Install driver for the project")
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        driver_installer = DriverInstallerApp()
+        driver_installer.run()
 
 def main():
     """
@@ -238,6 +247,7 @@ def main():
         ExecuteCommand(),
         VersionCommand(),
         GenerateCommand(),
+        DriverInstaller(),
     ]
     for cmd in commands:
         cmd.register(subparsers)

@@ -8,7 +8,6 @@ from optics_framework.common.runner.csv_reader import CSVDataReader
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData
 
-
 def find_csv_files(folder_path: str) -> Tuple[str, str, Optional[str]]:
     """
     Search for CSV files in a folder and categorize them by reading their headers.

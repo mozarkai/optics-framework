@@ -5,9 +5,9 @@ from typing import Dict, List
 import pip
 import os
 
-# Pydantic models for driver definitions
 
-
+# TODO: Add more driver categories and packages as needed
+# TODO: enable keyboard usage like arrow keys to navigate and select drivers
 class DriverPackage(BaseModel):
     name: str
     packages: List[str]
