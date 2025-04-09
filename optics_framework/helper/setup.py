@@ -23,7 +23,7 @@ ACTION_DRIVERS = DriverCategory(
     name="Action Driver",
     drivers={
         "Appium": DriverPackage(name="Appium", packages=["appium-python-client"]),
-        "BLE": DriverPackage(name="BLE", packages=["pybluez"]),
+        "BLE": DriverPackage(name="BLE", packages=["pyserial"]),
         "Selenium": DriverPackage(name="Selenium", packages=["selenium"])
     }
 )
