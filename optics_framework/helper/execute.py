@@ -98,6 +98,12 @@ class BaseRunner:
 
         if not self.test_cases_data:
             internal_logger.debug(f"No test cases found in {test_cases_file}")
+
+        # Extract setup and teardown steps from test cases
+        self.setup_case, self.teardown_case = self.extract_setup_teardown(self.test_cases_data)
+        internal_logger.debug(
+            f"Setup case: {self.setup_case}, Teardown case: {self.teardown_case}")
+
         # Load and validate configuration using ConfigHandler
         self.config_handler = ConfigHandler.get_instance()
         self.config_handler.set_project(self.folder_path)
@@ -123,6 +129,18 @@ class BaseRunner:
         self.session_id = self.manager.create_session(self.config)
         self.engine = ExecutionEngine(self.manager)
 
+    # extract custom setup ad teardown from test cases csv
+    def extract_setup_teardown(self, test_cases_data: list[dict]) -> Tuple[Optional[str], Optional[str]]:
+        setup_case, teardown_case = None, None
+        for test_case, steps in test_cases_data.items():
+            case_lower = test_case.strip().lower()
+            if "setup" in case_lower:
+                setup_case = test_case
+            elif "teardown" in case_lower:
+                teardown_case = test_case
+        return setup_case, teardown_case
+
+
     async def run(self, mode: str):
         """Run the specified mode using ExecutionEngine."""
         try:
@@ -132,6 +150,8 @@ class BaseRunner:
                 test_case=self.test_name if self.test_name else None,
                 event_queue=None,  # Local mode uses TreeResultPrinter
                 test_cases=TestCaseData(test_cases=self.test_cases_data),
+                setup_case=self.setup_case,
+                teardown_case=self.teardown_case,
                 modules=ModuleData(modules=self.modules_data),
                 elements=ElementData(elements=self.elements_data),
                 runner_type=self.runner
@@ -182,5 +202,5 @@ def dryrun_main(folder_path: str, test_name: str = "", runner: str = "test_runne
 
 
 if __name__ == "__main__":
-    path = "/Users/dhruvmenon/Documents/optics-framework-1/optics_framework/samples/contact/"
-    execute_main(path, "")
+    path = "/Users/davidchen/Documents/Mozark/optics_github/optics-framework-github/optics_framework/input"
+    execute_main(path,"Start App")

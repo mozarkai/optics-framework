@@ -33,6 +33,8 @@ class ExecutionParams(BaseModel):
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: str
+    setup_case: Optional[str] = None
+    teardown_case: Optional[str] = None
     test_case: Optional[str] = None
     keyword: Optional[str] = None
     params: List[str] = Field(default_factory=list)
@@ -55,29 +57,39 @@ class Executor(ABC):
 class BatchExecutor(Executor):
     """Executes batch test cases."""
 
-    def __init__(self, test_case: Optional[str] = None):
+    def __init__(self, test_case: Optional[str] = None, setup_case: Optional[str] = None, teardown_case: Optional[str] = None):
         self.test_case = test_case
+        self.setup_case = setup_case
+        self.teardown_case = teardown_case
 
     async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
             await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
             raise ValueError("No test cases loaded")
 
-        if self.test_case:
-            if self.test_case not in runner.test_cases:
-                await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
-                raise ValueError(f"Test case {self.test_case} not found")
-            result = runner.execute_test_case(self.test_case)
-            status = "PASS" if isinstance(result, TestCaseResult) and result.status == "PASS" else result.get(
-                "status", "FAIL") if isinstance(result, dict) else "FAIL"
-            message = f"Test case {self.test_case} completed with status {status}"
-        else:
-            runner.run_all()
-            status = "PASS" if all(
-                tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
-            message = "All test cases completed"
+        try:
+            if self.setup_case:
+                runner.execute_test_case(self.setup_case)
 
-        await self._send_event(event_queue, session.session_id, status, message)
+            if self.test_case:
+                result = runner.execute_test_case(self.test_case)
+                status = "PASS" if isinstance(result, TestCaseResult) and result.status == "PASS" else result.get(
+                    "status", "FAIL") if isinstance(result, dict) else "FAIL"
+                message = f"Test case {self.test_case} completed with status {status}"
+            else:
+                test_cases_to_run = [name for name in runner.test_cases if name not in (self.setup_case, self.teardown_case)]
+                runner.run_all(test_cases_to_run)
+                status = "PASS" if all(
+                    tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
+                message = "All test cases completed"
+
+            if self.teardown_case:
+                runner.execute_test_case(self.teardown_case)
+
+            await self._send_event(event_queue, session.session_id, status, message)
+        except Exception as e:
+            await self._send_event(event_queue, session.session_id, "FAIL", f"Execution failed: {str(e)}")
+            raise
 
     async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
         if queue:
@@ -198,7 +210,7 @@ class ExecutionEngine:
             runner.result_printer.start_live()
 
         if params.mode == "batch":
-            executor = BatchExecutor(params.test_case)
+            executor = BatchExecutor(test_case=params.test_case, setup_case=params.setup_case, teardown_case=params.teardown_case)
         elif params.mode == "dry_run":
             executor = DryRunExecutor(params.test_case)
         elif params.mode == "keyword":

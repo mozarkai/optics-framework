@@ -49,11 +49,33 @@ class ActionKeyword:
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection)
 
-    # Click actions
-    @with_self_healing
+    # # Click actions
+    # @with_self_healing
+    # def press_element(
+    #     self, element: str, repeat: int = 1, offset_x: int = 0, offset_y: int = 0, event_name: Optional[str] = None, *, located: Any
+    # ) -> None:
+    #     """
+    #     Press a specified element.
+
+    #     :param element: The element to be pressed (text, xpath or image).
+    #     :param repeat: Number of times to repeat the press.
+    #     :param offset_x: X offset of the press.
+    #     :param offset_y: Y offset of the press.
+    #     :param event_name: The event triggering the press.
+    #     """
+    #     if isinstance(located, tuple):
+    #         x, y = located
+    #         internal_logger.debug(
+    #             f"Pressing at coordinates ({x + offset_x}, {y + offset_y})")
+    #         self.driver.press_coordinates(
+    #             x + offset_x, y + offset_y, event_name)
+    #     else:
+    #         internal_logger.debug(f"Pressing element '{element}'")
+    #         self.driver.press_element(located, repeat, event_name)
+
     def press_element(
-        self, element: str, repeat: int = 1, offset_x: int = 0, offset_y: int = 0, event_name: Optional[str] = None, *, located: Any
-    ) -> None:
+        self, element, repeat=1, offset_x=0, offset_y=0, event_name=None
+    ):
         """
         Press a specified element.
 
@@ -63,15 +85,42 @@ class ActionKeyword:
         :param offset_y: Y offset of the press.
         :param event_name: The event triggering the press.
         """
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.debug(
-                f"Pressing at coordinates ({x + offset_x}, {y + offset_y})")
-            self.driver.press_coordinates(
-                x + offset_x, y + offset_y, event_name)
-        else:
-            internal_logger.debug(f"Pressing element '{element}'")
-            self.driver.press_element(located, repeat, event_name)
+        utils.capture_screenshot("press_element")
+        element_source_type = type(self.element_source.current_instance).__name__
+        element_type = utils.determine_element_type(element)
+
+        if element_type in ["Text", "XPath"]:
+            if 'appium' in element_source_type.lower():
+                element = self.element_source.locate(element) # returns appium element
+                self.driver.press_element(element, repeat, event_name)
+            else:
+                if 'screenshot' not in element_source_type.lower():
+                    internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
+
+                if element_type == "XPath":
+                    internal_logger.error(self.XPAHT_NOT_SUPPORTED_MSG)
+
+                screenshot_image = self.element_source.capture()
+                # locate text
+                x_coor, y_coor = self.text_detection.locate(screenshot_image, element)
+                if offset_x or offset_y:
+                    x_coor += offset_x
+                    y_coor += offset_y
+                # perform press
+                self.driver.press_coordinates(x_coor, y_coor, repeat, event_name)
+
+        elif element_type == "Image":
+            if 'screenshot' not in element_source_type.lower():
+                internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
+            # Capture screenshot
+            screenshot_image = self.element_source.capture()
+            # locate image
+            x_coor, y_coor = self.image_detection.locate(screenshot_image, element)
+            if offset_x or offset_y:
+                x_coor += offset_x
+                y_coor += offset_y
+            # perform press
+            self.driver.press_coordinates(x_coor, y_coor, repeat, event_name)
 
     def press_by_percentage(self, percent_x: float, percent_y: float, repeat: int = 1, event_name: Optional[str] = None) -> None:
         """
