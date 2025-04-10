@@ -6,7 +6,7 @@ from optics_framework.common.logging_config import internal_logger, reconfigure_
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.runner.csv_reader import CSVDataReader
 from optics_framework.common.session_manager import SessionManager
-from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData
+from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData,SetupConfig
 
 
 def find_csv_files(folder_path: str) -> Tuple[str, str, Optional[str]]:
@@ -100,9 +100,12 @@ class BaseRunner:
             internal_logger.debug(f"No test cases found in {test_cases_file}")
 
         # Extract setup and teardown steps from test cases
-        self.setup_case, self.teardown_case = self.extract_setup_teardown(self.test_cases_data)
-        internal_logger.debug(
-            f"Setup case: {self.setup_case}, Teardown case: {self.teardown_case}")
+        self.suite_setup, self.suite_teardown, self.setup_case, self.teardown_case = self.extract_setup_teardown(self.test_cases_data)
+        self.setup_config = SetupConfig(
+            suite_setup=self.suite_setup,
+            suite_teardown=self.suite_teardown,
+            setup_case=self.setup_case,
+            teardown_case=self.teardown_case)
 
         # Load and validate configuration using ConfigHandler
         self.config_handler = ConfigHandler.get_instance()
@@ -134,11 +137,15 @@ class BaseRunner:
         setup_case, teardown_case = None, None
         for test_case, steps in test_cases_data.items():
             case_lower = test_case.strip().lower()
-            if "setup" in case_lower:
+            if "suite" in case_lower and "setup" in case_lower:
+                suite_setup = test_case
+            elif "suite" in case_lower and "teardown" in case_lower:
+                suite_teardown = test_case
+            elif "setup" in case_lower and "suite" not in case_lower:
                 setup_case = test_case
-            elif "teardown" in case_lower:
+            elif "teardown" in case_lower and "suite" not in case_lower:
                 teardown_case = test_case
-        return setup_case, teardown_case
+        return suite_setup, suite_teardown, setup_case, teardown_case
 
 
     async def run(self, mode: str):
@@ -150,8 +157,7 @@ class BaseRunner:
                 test_case=self.test_name if self.test_name else None,
                 event_queue=None,  # Local mode uses TreeResultPrinter
                 test_cases=TestCaseData(test_cases=self.test_cases_data),
-                setup_case=self.setup_case,
-                teardown_case=self.teardown_case,
+                setup_config=self.setup_config,
                 modules=ModuleData(modules=self.modules_data),
                 elements=ElementData(elements=self.elements_data),
                 runner_type=self.runner

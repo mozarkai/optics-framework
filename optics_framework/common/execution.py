@@ -26,6 +26,13 @@ class ElementData(BaseModel):
     """Structure for elements."""
     elements: Dict[str, str] = Field(default_factory=dict)
 
+class SetupConfig(BaseModel):
+    suite_setup: Optional[str] = None
+    suite_teardown: Optional[str] = None
+    setup_case: Optional[str] = None
+    teardown_case: Optional[str] = None
+
+
 
 class ExecutionParams(BaseModel):
     """Execution parameters with Pydantic validation."""
@@ -33,8 +40,7 @@ class ExecutionParams(BaseModel):
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: str
-    setup_case: Optional[str] = None
-    teardown_case: Optional[str] = None
+    setup_config: SetupConfig = Field(default_factory=SetupConfig)
     test_case: Optional[str] = None
     keyword: Optional[str] = None
     params: List[str] = Field(default_factory=list)
@@ -57,19 +63,29 @@ class Executor(ABC):
 class BatchExecutor(Executor):
     """Executes batch test cases."""
 
-    def __init__(self, test_case: Optional[str] = None, setup_case: Optional[str] = None, teardown_case: Optional[str] = None):
+    def __init__(self, test_case: Optional[str] = None, setup_config: Optional[SetupConfig] = None):
         self.test_case = test_case
-        self.setup_case = setup_case
-        self.teardown_case = teardown_case
+        self.setup_config = setup_config
 
     async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
             await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
             raise ValueError("No test cases loaded")
 
+        # Unpack setup/teardown from config
+        setup_case = self.setup_config.setup_case if self.setup_config else None
+        teardown_case = self.setup_config.teardown_case if self.setup_config else None
+        suite_setup = self.setup_config.suite_setup if self.setup_config else None
+        suite_teardown = self.setup_config.suite_teardown if self.setup_config else None
+
         try:
-            if self.setup_case:
-                runner.execute_test_case(self.setup_case)
+            # suite setup ( only when running full suite )
+            if suite_setup and self.test_case is None:
+                runner.execute_test_case(suite_setup)
+
+            # test case setup ( only when test cases are specified )
+            if self.test_case and setup_case:
+                runner.execute_test_case(setup_case)
 
             if self.test_case:
                 result = runner.execute_test_case(self.test_case)
@@ -77,14 +93,18 @@ class BatchExecutor(Executor):
                     "status", "FAIL") if isinstance(result, dict) else "FAIL"
                 message = f"Test case {self.test_case} completed with status {status}"
             else:
-                test_cases_to_run = [name for name in runner.test_cases if name not in (self.setup_case, self.teardown_case)]
+                test_cases_to_run = [name for name in runner.test_cases if name not in (setup_case, teardown_case, suite_setup, suite_teardown)]
                 runner.run_all(test_cases_to_run)
                 status = "PASS" if all(
                     tc.status == "PASS" for tc in runner.result_printer.test_state.values()) else "FAIL"
                 message = "All test cases completed"
 
-            if self.teardown_case:
-                runner.execute_test_case(self.teardown_case)
+            # test case teardown ( only when test cases are specified )
+            if self.test_case and teardown_case:
+                runner.execute_test_case(teardown_case)
+
+            if not self.test_case and suite_teardown:
+                runner.execute_test_case(suite_teardown)
 
             await self._send_event(event_queue, session.session_id, status, message)
         except Exception as e:
@@ -210,7 +230,7 @@ class ExecutionEngine:
             runner.result_printer.start_live()
 
         if params.mode == "batch":
-            executor = BatchExecutor(test_case=params.test_case, setup_case=params.setup_case, teardown_case=params.teardown_case)
+            executor = BatchExecutor(test_case=params.test_case, setup_config=params.setup_config)
         elif params.mode == "dry_run":
             executor = DryRunExecutor(params.test_case)
         elif params.mode == "keyword":
