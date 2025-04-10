@@ -41,10 +41,7 @@ pytest-cov = "~6.0.0"
 pytest-mock = "~3.14.0"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=8.2.0,<9.0.0"
-pydata-sphinx-theme = ">=0.16.1,<0.17.0"
-sphinx-autoapi = ">=3.6.0,<4.0.0"
-sphinx-autobuild = "^2024.10.3"
+mkdocs-material = "^9.6.11"
 
 [tool.poetry.scripts]
 optics = "optics_framework.helper.cli:main"

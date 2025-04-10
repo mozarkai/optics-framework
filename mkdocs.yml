@@ -1,0 +1,10 @@
+site_name: Optics Framework
+theme:
+  name: material
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences

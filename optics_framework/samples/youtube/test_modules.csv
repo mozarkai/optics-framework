@@ -13,7 +13,6 @@ Interact using xpath,Press Element,${Home_xpath},,,
 Interact using images,Press Element,${Subscriptions_image},,,
 Interact using images,Press Element,${Home_image},,,
 
-
 Dynamic Launch,condition,${METHOD} == 'text',Interact using text,${METHOD} == 'xpath',Interact using xpath,Interact using images
 
 Repeat Test,Run Loop,Dynamic Launch,${METHOD},${List}
