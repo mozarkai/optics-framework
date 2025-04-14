@@ -55,14 +55,14 @@ class AppManagement:
         """
         pass
 
-    def close_and_terminate_app(self, package_name: str, event_name: Optional[str] = None) -> None:
+    def close_and_terminate_app(self, package_name: Optional[str] = None, event_name: Optional[str] = None) -> None:
         """
         Closes and terminates a specified application.
 
         :param package_name: The package name of the application.
         :param event_name: The event triggering the app termination, if any.
         """
-        pass
+        self.driver.terminate()
 
     def force_terminate_app(self, event_name: Optional[str] = None) -> None:
         """

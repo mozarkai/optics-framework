@@ -165,6 +165,7 @@ class TestRunner(Runner):
 
     def execute_test_case(self, test_case: str) -> TestCaseResult:
         start_time = time.time()
+        self.result_printer.start_live()
         extra = self._extra(test_case)
         user_logger.debug("Starting test case execution", extra=extra)
         test_case_result = self._init_test_case(test_case)
@@ -189,6 +190,7 @@ class TestRunner(Runner):
             m.status == "PASS" for m in test_case_result.modules) else "FAIL"
         user_logger.debug("Completed test case execution", extra=extra)
         self.result_printer.print_tree_log(test_case_result)
+        self.result_printer.stop_live()
         return test_case_result
 
     def run_all(self, test_case_names: Union[str, List[str]] = "") -> None:
@@ -204,10 +206,9 @@ class TestRunner(Runner):
             self.result_printer.test_state[tc_name] = self._init_test_case(
                 tc_name)
         self.result_printer.start_run(len(test_case_names))
-        self.result_printer.start_live()
         for test_case in test_case_names:
             self.execute_test_case(test_case)
-        self.result_printer.stop_live()
+
 
     def _dry_run_keyword(self, keyword: str, params: List[str], keyword_result: KeywordResult, module_result: ModuleResult, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
         internal_logger.debug(f"Executing keyword: {keyword}", extra=extra)

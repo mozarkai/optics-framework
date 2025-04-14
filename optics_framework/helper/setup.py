@@ -1,6 +1,7 @@
-import subprocess
+import subprocess  # nosec B404
 from typing import Dict, List
 import os
+import sys
 from textual.app import App, ComposeResult
 from textual.widgets import Checkbox, Button, Header, Footer, Static
 from pydantic import BaseModel
@@ -115,8 +116,8 @@ def install_packages(requirements: List[str]) -> None:
         with open(req_file, "w") as f:
             f.write("\n".join(requirements))
 
-        result = subprocess.run(
-            ["pip", "install", "-r", req_file], capture_output=True, text=True, check=True)
+        result = subprocess.run( # nosec B603
+            [sys.executable, "-m","pip", "install", "-r", req_file], capture_output=True, text=True, check=True, shell=False)  # nosec B603
         if result.returncode == 0:
             print("Drivers installed successfully!")
         else:

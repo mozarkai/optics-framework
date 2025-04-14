@@ -155,3 +155,6 @@ class SeleniumDriver(DriverInterface):
 
     def get_text_element(self, element) -> str:
         raise NotImplementedError
+
+    def terminate(self):
+        raise NotImplementedError

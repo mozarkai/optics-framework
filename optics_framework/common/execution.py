@@ -27,6 +27,13 @@ class ElementData(BaseModel):
     """Structure for elements."""
     elements: Dict[str, str] = Field(default_factory=dict)
 
+class SetupConfig(BaseModel):
+    suite_setup: Optional[str] = None
+    suite_teardown: Optional[str] = None
+    setup_case: Optional[str] = None
+    teardown_case: Optional[str] = None
+
+
 
 class ExecutionParams(BaseModel):
     """Execution parameters with Pydantic validation."""
@@ -34,6 +41,7 @@ class ExecutionParams(BaseModel):
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: str
+    setup_config: SetupConfig = Field(default_factory=SetupConfig)
     test_case: Optional[str] = None
     keyword: Optional[str] = None
     params: List[str] = Field(default_factory=list)
@@ -56,43 +64,70 @@ class Executor(ABC):
 class BatchExecutor(Executor):
     """Executes batch test cases."""
 
-    def __init__(self, test_case: Optional[str] = None):
+    def __init__(self, test_case: Optional[str] = None, setup_config: Optional[SetupConfig] = None):
         self.test_case = test_case
+        self.setup_config = setup_config
 
     async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue]) -> None:
         if not runner.test_cases:
             await self._send_event(event_queue, session.session_id, "ERROR", NO_TEST_CASES_LOADED)
             raise ValueError(NO_TEST_CASES_LOADED)
 
-        if self.test_case:
-            if self.test_case not in runner.test_cases:
-                await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
-                raise ValueError(f"Test case {self.test_case} not found")
+        # Unpack setup/teardown from config
+        setup_case = self.setup_config.setup_case if self.setup_config else None
+        teardown_case = self.setup_config.teardown_case if self.setup_config else None
+        suite_setup = self.setup_config.suite_setup if self.setup_config else None
+        suite_teardown = self.setup_config.suite_teardown if self.setup_config else None
 
-            result = runner.execute_test_case(self.test_case)
-            is_result_test_case = isinstance(result, TestCaseResult)
-            is_result_pass = is_result_test_case and result.status == "PASS"
-            is_result_dict = isinstance(result, dict)
+        try:
+            # suite setup ( only when running full suite )
+            if suite_setup and self.test_case is None:
+                runner.execute_test_case(suite_setup)
 
-            if is_result_pass:
-                status = "PASS"
-            elif is_result_dict:
-                status = result.get("status", "FAIL")
+            # test case setup ( only when test cases are specified )
+            if self.test_case and setup_case:
+                runner.execute_test_case(setup_case)
+
+            if self.test_case:
+                if self.test_case not in runner.test_cases:
+                    await self._send_event(event_queue, session.session_id, "ERROR", f"Test case {self.test_case} not found")
+                    raise ValueError(f"Test case {self.test_case} not found")
+
+                result = runner.execute_test_case(self.test_case)
+                is_result_test_case = isinstance(result, TestCaseResult)
+                is_result_pass = is_result_test_case and result.status == "PASS"
+                is_result_dict = isinstance(result, dict)
+
+                if is_result_pass:
+                        status = "PASS"
+                elif is_result_dict:
+                    status = result.get("status", "FAIL")
+                else:
+                    status = "FAIL"
+
+                message = f"Test case {self.test_case} completed with status {status}"
             else:
-                status = "FAIL"
-
-            message = f"Test case {self.test_case} completed with status {status}"
-        else:
-            runner.run_all()
-            all_tests_passed = all(
-                tc.status == "PASS" for tc in runner.result_printer.test_state.values())
+                test_cases_to_run = [name for name in runner.test_cases if name not in (setup_case, teardown_case, suite_setup, suite_teardown)]
+                runner.run_all(test_cases_to_run)
+                all_tests_passed = all(
+                    tc.status == "PASS" for tc in runner.result_printer.test_state.values())
             if all_tests_passed:
                 status = "PASS"
             else:
                 status = "FAIL"
-            message = "All test cases completed"
+                message = "All test cases completed"
 
-        await self._send_event(event_queue, session.session_id, status, message)
+            # test case teardown ( only when test cases are specified )
+            if self.test_case and teardown_case:
+                runner.execute_test_case(teardown_case)
+
+            if not self.test_case and suite_teardown:
+                runner.execute_test_case(suite_teardown)
+
+            await self._send_event(event_queue, session.session_id, status, message)
+        except Exception as e:
+            await self._send_event(event_queue, session.session_id, "FAIL", f"Execution failed: {str(e)}")
+            raise
 
     async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
         if queue:
@@ -230,7 +265,7 @@ class ExecutionEngine:
             runner.result_printer.start_live()
 
         if params.mode == "batch":
-            executor = BatchExecutor(params.test_case)
+            executor = BatchExecutor(test_case=params.test_case, setup_config=params.setup_config)
         elif params.mode == "dry_run":
             executor = DryRunExecutor(params.test_case)
         elif params.mode == "keyword":
