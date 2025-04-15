@@ -48,6 +48,8 @@ class Config(BaseModel):
     log_level: str = "INFO"
     log_path: Optional[str] = None
     project_path: Optional[str] = None
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
 
     def __init__(self, **data):
         super().__init__(**data)

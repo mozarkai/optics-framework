@@ -144,25 +144,26 @@ class ScreenshotStrategy:
     def supports(element_source: ElementSourceInterface) -> bool:
         return LocatorStrategy._is_method_implemented(element_source, "capture")
 
-
 class StrategyFactory:
-    """Factory for creating locator strategies."""
-
+    """Factory for creating locator strategies with priority ordering."""
     def __init__(self, text_detection, image_detection):
         self.text_detection = text_detection
         self.image_detection = image_detection
         self._registry = [
-            (XPathStrategy, "XPath", {}),
-            (TextElementStrategy, "Text", {}),
-            (TextDetectionStrategy, "Text", {
-             "text_detection": self.text_detection}),
-            (ImageDetectionStrategy, "Image", {
-             "image_detection": self.image_detection}),
+            (XPathStrategy, "XPath", {}, 1),
+            (TextElementStrategy, "Text", {}, 2),
+            (TextDetectionStrategy, "Text", {"text_detection": self.text_detection}, 3),
+            (ImageDetectionStrategy, "Image", {"image_detection": self.image_detection}, 4),
         ]
 
     def create_strategies(self, element_source: ElementSourceInterface) -> List[LocatorStrategy]:
-        return [cls(element_source, **args) for cls, etype, args in self._registry if cls.supports(etype, element_source)]
-
+        strategies = [
+            (cls(element_source, **args), priority)
+            for cls, etype, args, priority in self._registry
+            if cls.supports(etype, element_source)
+        ]
+        strategies.sort(key=lambda x: x[1])  # Sort by priority value
+        return [strategy for strategy, _ in strategies]
 
 class ScreenshotFactory:
     def __init__(self):
@@ -189,16 +190,17 @@ class StrategyManager:
         self.locator_strategies = self._build_locator_strategies()
         self.screenshot_strategies = self._build_screenshot_strategies()
 
-    def _build_locator_strategies(self) -> Set[LocatorStrategy]:
-        strategies = set()
+    def _build_locator_strategies(self) -> List[LocatorStrategy]:
+        strategies = []
         if isinstance(self.element_source, InstanceFallback):
             for instance in self.element_source.instances:
-                strategies.update(
+                strategies.extend(
                     self.locator_factory.create_strategies(instance))
         else:
-            strategies.update(
+            strategies.extend(
                 self.locator_factory.create_strategies(self.element_source))
         return strategies
+
 
     def _build_screenshot_strategies(self) -> Set[ScreenshotStrategy]:
         strategies = set()

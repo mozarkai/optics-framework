@@ -75,6 +75,120 @@ def validate_required_files(test_cases: str, modules: str, folder_path: str) -> 
         print(f"Error: {error_msg}", file=sys.stderr)
         sys.exit(1)
 
+def filter_test_cases(test_cases_dict: dict, include: list = None, exclude: list = None) -> dict:
+    """
+    Filters a dictionary of test cases based on include or exclude list.
+    Always includes any test cases that are setup or teardown.
+
+    :param test_cases_dict: Dictionary of test case names and their steps.
+    :param include: List of test case names to include (case-insensitive).
+    :param exclude: List of test case names to exclude (case-insensitive).
+    :return: Filtered dictionary with test case names as keys.
+    """
+    if include and exclude:
+        raise ValueError("Provide either include or exclude list, not both.")
+
+    include_set = set(tc.strip().lower() for tc in include) if include else None
+    exclude_set = set(tc.strip().lower() for tc in exclude) if exclude else None
+
+    filtered = {}
+
+    for name, steps in test_cases_dict.items():
+        lname = name.lower()
+
+        # Always include any setup or teardown case
+        if "setup" in lname or "teardown" in lname:
+            filtered[name] = steps
+            continue
+
+        # Include or exclude logic for test cases
+        if include_set and lname in include_set:
+            filtered[name] = steps
+        elif exclude_set and lname not in exclude_set:
+            filtered[name] = steps
+        elif not include_set and not exclude_set:
+            filtered[name] = steps
+
+    return filtered
+
+def get_execution_queue(test_cases_data: dict, test_case_name="", case_setup_teardown: bool = True) -> dict:
+    """
+    Builds and returns the execution queue as a dictionary:
+    - Handles unordered entries in CSV.
+    - Supports single or multiple test case names.
+    - Includes per-test setup/teardown if toggle is True.
+    """
+
+    suite_setup = None
+    suite_teardown = None
+    setup = None
+    teardown = None
+    regular_test_cases = {}
+
+    # Normalize test_case_name to list of lowercase strings
+    if isinstance(test_case_name, str) and test_case_name.strip():
+        test_case_name_list = [test_case_name.strip().lower()]
+    elif isinstance(test_case_name, list) and test_case_name:
+        test_case_name_list = [tc.strip().lower() for tc in test_case_name]
+    else:
+        test_case_name_list = None  # Run all test cases
+
+    # Categorize entries
+    for name, steps in test_cases_data.items():
+        lname = name.lower()
+        if "suite" in lname and "setup" in lname:
+            suite_setup = (name, steps)
+        elif "suite" in lname and "teardown" in lname:
+            suite_teardown = (name, steps)
+        elif "setup" in lname and "suite" not in lname and not setup:
+            setup = (name, steps)
+        elif "teardown" in lname and "suite" not in lname and not teardown:
+            teardown = (name, steps)
+        else:
+            regular_test_cases[name] = steps
+
+    execution_dict = {}
+
+    # Case: specific test case(s) provided
+    if test_case_name_list:
+        matched_cases = {
+            name: steps for name, steps in regular_test_cases.items()
+            if name.lower() in test_case_name_list
+        }
+
+        if not matched_cases:
+            raise ValueError(f"None of the specified test cases found: {test_case_name}")
+
+        if suite_setup:
+            execution_dict[suite_setup[0]] = suite_setup[1]
+
+        for name, steps in matched_cases.items():
+            if case_setup_teardown and setup:
+                execution_dict[setup[0]] = setup[1]
+            execution_dict[name] = steps
+            if case_setup_teardown and teardown:
+                execution_dict[teardown[0]] = teardown[1]
+
+        if suite_teardown:
+            execution_dict[suite_teardown[0]] = suite_teardown[1]
+
+    # Case: run all test cases
+    else:
+        if suite_setup:
+            execution_dict[suite_setup[0]] = suite_setup[1]
+
+        for name, steps in regular_test_cases.items():
+            if case_setup_teardown and setup:
+                execution_dict[setup[0]] = setup[1]
+            execution_dict[name] = steps
+            if case_setup_teardown and teardown:
+                execution_dict[teardown[0]] = teardown[1]
+
+        if suite_teardown:
+            execution_dict[suite_teardown[0]] = suite_teardown[1]
+
+    return execution_dict
+
 
 class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
@@ -127,6 +241,7 @@ class BaseRunner:
 
         if not self.test_cases_data:
             internal_logger.debug(f"No test cases found in {test_cases_file}")
+
         # Load and validate configuration using ConfigHandler
         self.config_handler = ConfigHandler.get_instance()
         self.config_handler.set_project(self.folder_path)
@@ -152,6 +267,14 @@ class BaseRunner:
         self.session_id = self.manager.create_session(self.config)
         self.engine = ExecutionEngine(self.manager)
 
+        # test case selection rules
+        included, excluded = self.config_handler.get('include'), self.config_handler.get('exclude')
+        self.filtered_test_cases = filter_test_cases(
+            self.test_cases_data, included, excluded)
+
+        self.execution_queue = get_execution_queue(
+            self.filtered_test_cases, self.test_name, case_setup_teardown=False)
+
     async def run(self, mode: str):
         """Run the specified mode using ExecutionEngine."""
         try:
@@ -160,7 +283,7 @@ class BaseRunner:
                 mode=mode,
                 test_case=self.test_name if self.test_name else None,
                 event_queue=None,  # Local mode uses TreeResultPrinter
-                test_cases=TestCaseData(test_cases=self.test_cases_data),
+                test_cases=TestCaseData(test_cases=self.execution_queue),
                 modules=ModuleData(modules=self.modules_data),
                 elements=ElementData(elements=self.elements_data),
                 runner_type=self.runner
@@ -208,8 +331,3 @@ def dryrun_main(folder_path: str, test_name: str = "", runner: str = "test_runne
                       test_name=test_name, runner=runner)
     runner_instance = DryRunRunner(args)
     asyncio.run(runner_instance.execute())
-
-
-if __name__ == "__main__":
-    path = "/Users/dhruvmenon/Documents/optics-framework-1/optics_framework/samples/contact/"
-    execute_main(path, "")
