@@ -1,14 +1,14 @@
 import time
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
-from pydantic import BaseModel, Field
-from optics_framework.common.logging_config import user_logger, internal_logger
-from optics_framework.common.config_handler import ConfigHandler
 import pytest
 import tempfile
 import shutil
 import sys
+from pydantic import BaseModel, Field
 from optics_framework.common.session_manager import Session
+from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.logging_config import user_logger, internal_logger
 from .printers import IResultPrinter, TestCaseResult
 
 
@@ -98,6 +98,7 @@ class TestRunner(Runner):
 
     def _execute_keyword(self, keyword: str, params: List[str], keyword_result: KeywordResult, module_result: ModuleResult, test_case_result: TestCaseResult, start_time: float, extra: Dict[str, str]) -> bool:
         internal_logger.debug(f"Executing keyword: {keyword}", extra=extra)
+        user_logger.debug(f"Executing keyword: {keyword}", extra=extra)
         self._update_status(keyword_result, "RUNNING")
         self.result_printer.print_tree_log(test_case_result)
 
@@ -105,6 +106,7 @@ class TestRunner(Runner):
         method = self.keyword_map.get(func_name)
         if not method:
             user_logger.error(f"Keyword not found: {keyword}", extra=extra)
+            internal_logger.error(f"Keyword not found: {keyword}", extra=extra)
             keyword_result.reason = "Keyword not found"
             keyword_result.elapsed = f"{time.time() - start_time:.2f}s"
             self._update_status(keyword_result, "FAIL")
@@ -121,12 +123,16 @@ class TestRunner(Runner):
             method(*resolved_params)
             internal_logger.debug(
                 f"Keyword '{keyword}' executed successfully", extra=extra)
+            user_logger.debug(
+                f"Keyword '{keyword}' executed successfully", extra=extra)
             self._update_status(keyword_result, "PASS",
                                 time.time() - start_time)
             self.result_printer.print_tree_log(test_case_result)
             return True
         except Exception as e:
             internal_logger.error(
+                f"Error executing keyword '{keyword}': {e}", extra=extra)
+            user_logger.error(
                 f"Error executing keyword '{keyword}': {e}", extra=extra)
             keyword_result.reason = str(e)
             keyword_result.elapsed = f"{time.time() - start_time:.2f}s"
@@ -138,9 +144,11 @@ class TestRunner(Runner):
 
     def _process_module(self, module_name: str, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
         internal_logger.debug(f"Loading module: {module_name}", extra=extra)
+        user_logger.debug(f"Loading module: {module_name}", extra=extra)
         module_result = self._init_module(module_name)
         if module_name not in self.modules:
             user_logger.error("Module not found", extra=extra)
+            internal_logger.error("Module not found", extra=extra)
             self._update_status(module_result, "FAIL")
             return False
         test_case_result.modules.append(module_result)
@@ -152,7 +160,7 @@ class TestRunner(Runner):
 
         for keyword, params in self.modules[module_name]:
             keyword_result = self._init_keyword(keyword)
-            module_result.keywords.append(keyword_result) # pylint: disable=E1101
+            module_result.keywords = module_result.keywords + [keyword_result]
             extra["keyword"] = keyword
             keyword_start = time.time()
             if not self._execute_keyword(keyword, params, keyword_result, module_result, test_case_result, keyword_start, extra):
@@ -166,15 +174,23 @@ class TestRunner(Runner):
     def execute_test_case(self, test_case: str) -> TestCaseResult:
         start_time = time.time()
         extra = self._extra(test_case)
-        user_logger.debug("Starting test case execution", extra=extra)
+        user_logger.info("Starting test case", extra={
+                         **extra, "test_start": True})
+        internal_logger.info("Starting test case", extra={
+                             **extra, "test_start": True})
         test_case_result = self._init_test_case(test_case)
         self.result_printer.print_tree_log(test_case_result)
 
         if test_case not in self.test_cases:
             user_logger.error("Test case not found", extra=extra)
+            internal_logger.error("Test case not found", extra=extra)
             self._update_status(test_case_result, "FAIL",
                                 time.time() - start_time)
             self.result_printer.print_tree_log(test_case_result)
+            user_logger.info("Completed test case", extra={
+                             **extra, "test_end": True})
+            internal_logger.info("Completed test case", extra={
+                                 **extra, "test_end": True})
             return test_case_result
 
         self._update_status(test_case_result, "RUNNING")
@@ -182,13 +198,22 @@ class TestRunner(Runner):
 
         for module_name in self.test_cases[test_case]:
             if not self._process_module(module_name, test_case_result, self._extra(test_case, module_name)):
+                user_logger.info("Completed test case", extra={
+                                 **extra, "test_end": True})
+                internal_logger.info("Completed test case", extra={
+                                     **extra, "test_end": True})
                 return test_case_result
 
         test_case_result.elapsed = f"{time.time() - start_time:.2f}s"
         test_case_result.status = "PASS" if all(
             m.status == "PASS" for m in test_case_result.modules) else "FAIL"
         user_logger.debug("Completed test case execution", extra=extra)
+        internal_logger.debug("Completed test case execution", extra=extra)
         self.result_printer.print_tree_log(test_case_result)
+        user_logger.info("Completed test case", extra={
+                         **extra, "test_end": True})
+        internal_logger.info("Completed test case", extra={
+                             **extra, "test_end": True})
         return test_case_result
 
     def run_all(self, test_case_names: Union[str, List[str]] = "") -> None:
@@ -211,6 +236,7 @@ class TestRunner(Runner):
 
     def _dry_run_keyword(self, keyword: str, params: List[str], keyword_result: KeywordResult, module_result: ModuleResult, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
         internal_logger.debug(f"Executing keyword: {keyword}", extra=extra)
+        user_logger.debug(f"Executing keyword: {keyword}", extra=extra)
         self._update_status(keyword_result, "RUNNING")
         self.result_printer.print_tree_log(test_case_result)
 
@@ -220,6 +246,8 @@ class TestRunner(Runner):
                 keyword_result.resolved_name = f"{keyword} ({', '.join(resolved_params)})"
         except ValueError as e:
             user_logger.error(f"Parameter resolution failed: {e}", extra=extra)
+            internal_logger.error(
+                f"Parameter resolution failed: {e}", extra=extra)
             keyword_result.reason = str(e)
             self._update_status(keyword_result, "FAIL")
             self._update_status(module_result, "FAIL")
@@ -230,6 +258,7 @@ class TestRunner(Runner):
         func_name = "_".join(keyword.split()).lower()
         if func_name not in self.keyword_map:
             user_logger.error(f"Keyword not found: {keyword}", extra=extra)
+            internal_logger.error(f"Keyword not found: {keyword}", extra=extra)
             keyword_result.reason = "Keyword not found"
             self._update_status(keyword_result, "FAIL")
             self._update_status(module_result, "FAIL")
@@ -243,6 +272,7 @@ class TestRunner(Runner):
 
     def _dry_run_module(self, module_name: str, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
         internal_logger.debug(f"Loading module: {module_name}", extra=extra)
+        user_logger.debug(f"Loading module: {module_name}", extra=extra)
         module_result = self._init_module(module_name)
         test_case_result.modules.append(module_result)
         self.result_printer.print_tree_log(test_case_result)
@@ -252,7 +282,7 @@ class TestRunner(Runner):
 
         for keyword, params in self.modules.get(module_name, []):
             keyword_result = self._init_keyword(keyword)
-            module_result.keywords.append(keyword_result) # pylint: disable=E1101
+            module_result.keywords.append(keyword_result)
             extra["keyword"] = keyword
             if not self._dry_run_keyword(keyword, params, keyword_result, module_result, test_case_result, extra):
                 return False
@@ -266,11 +296,14 @@ class TestRunner(Runner):
         start_time = time.time()
         extra = self._extra(test_case)
         user_logger.debug("Starting dry run", extra=extra)
+        internal_logger.debug("Starting dry run", extra=extra)
         test_case_result = self._init_test_case(test_case)
         self.result_printer.print_tree_log(test_case_result)
 
         if test_case not in self.test_cases:
             user_logger.warning(
+                f"Test case '{test_case}' not found.", extra=extra)
+            internal_logger.warning(
                 f"Test case '{test_case}' not found.", extra=extra)
             self._update_status(test_case_result, "FAIL",
                                 time.time() - start_time)
@@ -288,6 +321,7 @@ class TestRunner(Runner):
         test_case_result.status = "PASS" if all(
             m.status == "PASS" for m in test_case_result.modules) else "FAIL"
         user_logger.debug("Completed dry run", extra=extra)
+        internal_logger.debug("Completed dry run", extra=extra)
         self.result_printer.print_tree_log(test_case_result)
         return test_case_result
 

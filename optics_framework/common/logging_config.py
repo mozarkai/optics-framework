@@ -5,10 +5,10 @@ from rich.logging import RichHandler
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pathlib import Path
 import xml.etree.ElementTree as ET  # For JUnit XML generation # nosec B405
-from datetime import datetime
 import atexit
 import sys
 import time
+from typing import Tuple
 
 from optics_framework.common.config_handler import ConfigHandler
 
@@ -47,6 +47,49 @@ internal_console_handler.setFormatter(logging.Formatter(
 internal_queue_handler = QueueHandler(internal_log_queue)
 internal_logger.addHandler(internal_queue_handler)
 
+# SessionLoggerAdapter
+
+
+class SessionLoggerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        session_id = self.extra.get("session_id", "unknown")
+        print(
+            f"SessionLoggerAdapter: Adding session_id={session_id} to log", file=sys.stderr)
+        kwargs.setdefault("extra", {})
+        kwargs["extra"]["session_id"] = session_id
+        return msg, kwargs
+
+# LoggerContext
+
+
+class LoggerContext:
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.original_user_logger = None
+        self.original_internal_logger = None
+
+    def __enter__(self) -> Tuple[logging.LoggerAdapter, logging.LoggerAdapter]:
+        global user_logger, internal_logger
+        # Store original loggers
+        self.original_user_logger = user_logger
+        self.original_internal_logger = internal_logger
+        # Wrap with SessionLoggerAdapter
+        user_logger = SessionLoggerAdapter(
+            user_logger, {"session_id": self.session_id})
+        internal_logger = SessionLoggerAdapter(
+            internal_logger, {"session_id": self.session_id})
+        print(
+            f"LoggerContext: Swapped module-level loggers for session_id={self.session_id}", file=sys.stderr)
+        return user_logger, internal_logger
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        global user_logger, internal_logger
+        # Restore original loggers
+        user_logger = self.original_user_logger
+        internal_logger = self.original_internal_logger
+        print(
+            f"LoggerContext: Restored module-level loggers for session_id={self.session_id}", file=sys.stderr)
+
 # JUnit Handler
 
 
@@ -56,51 +99,84 @@ class JUnitHandler(logging.Handler):
         self.filename = filename
         self.buffer = []
         self.buffer_size = buffer_size
-        self._lock: threading.RLock = threading.RLock()  # Use RLock instead of Lock
+        self._lock = threading.RLock()
         self.testsuites = ET.Element("testsuites")
         self.suite_map = {}
-        self.start_time = datetime.now()
+        self.active_test_cases = {}
         self.formatter = logging.Formatter()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            print(
-                f"Attempting to acquire lock for {self.filename}", file=sys.stderr)
-            if not self._lock.acquire(timeout=2):  # Timeout after 2 seconds
+            if not self._lock.acquire(timeout=2):
                 print(
-                    f"Failed to acquire lock for {self.filename} within 2 seconds", file=sys.stderr)
+                    f"Failed to acquire lock for {self.filename}", file=sys.stderr)
                 return
             try:
-                suite_key = getattr(record, "module", record.name)
-                if suite_key not in self.suite_map:
+                session_id = getattr(record, "session_id", "unknown")
+                test_case = getattr(record, "test_case", None)
+                print(f"JUnitHandler ({self.filename}): session_id={session_id}, test_case={test_case}, message={record.getMessage()}, level={record.levelname}, start={getattr(record, 'test_start', False)}, end={getattr(record, 'test_end', False)}", file=sys.stderr)
+
+                if session_id not in self.suite_map:
                     suite = ET.SubElement(self.testsuites, "testsuite", {
-                        "name": suite_key, "tests": "0", "failures": "0", "errors": "0", "skipped": "0", "time": "0"
+                        "name": session_id,
+                        "tests": "0",
+                        "failures": "0",
+                        "errors": "0",
+                        "skipped": "0",
+                        "time": "0"
                     })
-                    self.suite_map[suite_key] = suite
-                suite = self.suite_map[suite_key]
+                    self.suite_map[session_id] = suite
+                suite = self.suite_map[session_id]
 
-                testcase = ET.SubElement(suite, "testcase", {
-                    "name": record.getMessage(), "classname": record.module if hasattr(record, "module") else record.name, "time": "0"
-                })
+                if getattr(record, "test_start", False) and test_case:
+                    testcase = ET.SubElement(suite, "testcase", {
+                        "name": test_case,
+                        "classname": session_id,
+                        "time": "0"
+                    })
+                    self.active_test_cases[(session_id, test_case)] = (
+                        testcase, [], time.time(), False)
+                    suite.attrib["tests"] = str(int(suite.attrib["tests"]) + 1)
 
-                if record.levelno >= logging.ERROR:
-                    failure_type = "Error"
-                    if record.exc_info and record.exc_info[0] is not None:
-                        failure_type = record.exc_info[0].__name__
-                    failure = ET.SubElement(testcase, "failure", {
-                                            "message": record.getMessage(), "type": failure_type})
-                    if record.exc_info:
-                        formatter = self.formatter or logging.Formatter()
-                        failure.text = formatter.formatException(
-                            record.exc_info)
-                    suite.attrib["failures"] = str(
-                        int(suite.attrib["failures"]) + 1)
-                elif record.levelno == logging.WARNING:
-                    ET.SubElement(testcase, "skipped")
+                elif getattr(record, "test_end", False) and test_case and (session_id, test_case) in self.active_test_cases:
+                    testcase, logs, start_time, has_failure = self.active_test_cases.pop(
+                        (session_id, test_case))
+                    elapsed = time.time() - start_time
+                    testcase.attrib["time"] = f"{elapsed:.2f}"
 
-                suite.attrib["tests"] = str(int(suite.attrib["tests"]) + 1)
+                    if logs:
+                        system_out = ET.SubElement(testcase, "system-out")
+                        system_out.text = "\n".join(
+                            log.getMessage() for log in logs)
+
+                    if has_failure:
+                        failure = ET.SubElement(testcase, "failure", {
+                            "message": "Test case failed",
+                            "type": "Error"
+                        })
+                        failure.text = "\n".join(
+                            self.formatter.formatException(log.exc_info)
+                            for log in logs if log.exc_info
+                        )
+                        suite.attrib["failures"] = str(
+                            int(suite.attrib["failures"]) + 1)
+                    elif any(log.levelno == logging.WARNING for log in logs):
+                        ET.SubElement(testcase, "skipped")
+                        suite.attrib["skipped"] = str(
+                            int(suite.attrib["skipped"]) + 1)
+
+                elif test_case and (session_id, test_case) in self.active_test_cases:
+                    testcase, logs, start_time, has_failure = self.active_test_cases[(
+                        session_id, test_case)]
+                    logs.append(record)
+                    if record.levelno >= logging.ERROR:
+                        self.active_test_cases[(session_id, test_case)] = (
+                            testcase, logs, start_time, True)
+                    else:
+                        self.active_test_cases[(session_id, test_case)] = (
+                            testcase, logs, start_time, has_failure)
+
                 self.buffer.append(record)
-
                 if len(self.buffer) >= self.buffer_size:
                     self.flush()
             finally:
@@ -115,26 +191,51 @@ class JUnitHandler(logging.Handler):
                 f"Failed to acquire lock for flush in {self.filename}", file=sys.stderr)
             return
         try:
-            if len(self.buffer) > 0:
+            if self.buffer:
+                for suite in self.testsuites:
+                    suite.attrib["time"] = str(sum(
+                        float(tc.get("time", 0)) for tc in suite.findall("testcase")
+                    ))
+                tree = ET.ElementTree(self.testsuites)
+                ET.indent(tree, space="  ")
                 try:
-                    elapsed = (datetime.now() -
-                               self.start_time).total_seconds()
-                    for suite in self.testsuites:
-                        suite.attrib["time"] = str(
-                            elapsed / len(self.testsuites))
-                    tree = ET.ElementTree(self.testsuites)
-                    ET.indent(tree, space="  ")
                     tree.write(self.filename, encoding="utf-8",
                                xml_declaration=True)
-                    self.buffer.clear()
                 except Exception as e:
                     print(
                         f"JUnitHandler flush error for {self.filename}: {e}", file=sys.stderr)
+                self.buffer.clear()
         finally:
             self._lock.release()
 
     def close(self) -> None:
         try:
+            with self._lock:
+                for (session_id, test_case), (testcase, logs, start_time, has_failure) in list(self.active_test_cases.items()):
+                    elapsed = time.time() - start_time
+                    testcase.attrib["time"] = f"{elapsed:.2f}"
+                    if logs:
+                        system_out = ET.SubElement(testcase, "system-out")
+                        system_out.text = "\n".join(
+                            log.getMessage() for log in logs)
+                    if has_failure:
+                        suite = self.suite_map[session_id]
+                        failure = ET.SubElement(testcase, "failure", {
+                            "message": "Test case failed",
+                            "type": "Error"
+                        })
+                        failure.text = "\n".join(
+                            self.formatter.formatException(log.exc_info)
+                            for log in logs if log.exc_info
+                        )
+                        suite.attrib["failures"] = str(
+                            int(suite.attrib["failures"]) + 1)
+                    elif any(log.levelno == logging.WARNING for log in logs):
+                        suite = self.suite_map[session_id]
+                        ET.SubElement(testcase, "skipped")
+                        suite.attrib["skipped"] = str(
+                            int(suite.attrib["skipped"]) + 1)
+                self.active_test_cases.clear()
             self.flush()
         except Exception as e:
             print(
@@ -152,7 +253,7 @@ def initialize_handlers():
     global config, user_junit_handler, internal_junit_handler, internal_listener
     config = config_handler.load()
 
-    log_level = getattr(logging, config.log_level.upper(), logging.INFO)
+    log_level = logging.DEBUG
     user_logger.setLevel(log_level)
     user_console_handler.setLevel(log_level)
     internal_logger.setLevel(log_level)
@@ -181,7 +282,6 @@ def initialize_handlers():
         internal_listener.handlers += (file_handler,)
 
     if config.json_log:
-        global user_junit_handler, internal_junit_handler
         user_junit_path = log_dir / "user_test_results.xml"
         internal_junit_path = log_dir / "internal_test_results.xml"
 
@@ -191,7 +291,8 @@ def initialize_handlers():
                 h for h in user_logger.handlers if not isinstance(h, JUnitHandler)]
         user_junit_handler = JUnitHandler(user_junit_path, buffer_size=100)
         user_junit_handler.setLevel(log_level)
-        user_logger.addHandler(user_junit_handler)
+        if isinstance(user_logger, SessionLoggerAdapter):
+            user_logger.logger.addHandler(user_junit_handler)
 
         if internal_junit_handler:
             internal_junit_handler.close()
@@ -203,12 +304,6 @@ def initialize_handlers():
         internal_listener.handlers += (internal_junit_handler,)
 
     internal_listener.start()
-
-
-initialize_handlers()
-
-# Shutdown
-
 
 def shutdown_logging():
     """Shuts down logging and related resources."""
@@ -293,4 +388,5 @@ def reconfigure_logging():
     initialize_handlers()
 
 
-__all__ = ["user_logger", "internal_logger", "reconfigure_logging"]
+__all__ = ["user_logger", "internal_logger",
+           "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter"]
