@@ -1,7 +1,6 @@
 import pkgutil
 import inspect
 import importlib
-from optics_framework.common.logging_config import user_logger
 import optics_framework.api
 
 
@@ -24,7 +23,7 @@ def list_api_methods(package):
                 methods = [
                     func
                     for func in dir(cls)
-                    if callable(getattr(cls, func)) and not func.startswith("__")
+                    if callable(getattr(cls, func)) and not func.startswith("_")
                 ]
                 api_methods[name] = methods
 
@@ -54,7 +53,7 @@ def main():
     CLI entry point for listing API methods.
     """
     api_methods = list_api_methods(optics_framework.api)
-    user_logger.info(format_methods(api_methods))
+    print(format_methods(api_methods))
 
 
 if __name__ == "__main__":
