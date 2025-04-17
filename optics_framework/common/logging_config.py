@@ -74,11 +74,12 @@ class LoggerContext:
         self.original_user_logger = user_logger
         self.original_internal_logger = internal_logger
         # Wrap with SessionLoggerAdapter
-        user_logger = SessionLoggerAdapter(
-            user_logger, {"session_id": self.session_id})
-        internal_logger = SessionLoggerAdapter(
-            internal_logger, {"session_id": self.session_id})
-        print(
+        session_user_logger = SessionLoggerAdapter(
+            self.original_user_logger, {"session_id": self.session_id})
+        session_internal_logger = SessionLoggerAdapter(
+            self.original_internal_logger, {"session_id": self.session_id})
+        return session_user_logger, session_internal_logger
+        internal_logger.debug(
             f"LoggerContext: Swapped module-level loggers for session_id={self.session_id}", file=sys.stderr)
         return user_logger, internal_logger
 
@@ -87,7 +88,7 @@ class LoggerContext:
         # Restore original loggers
         user_logger = self.original_user_logger
         internal_logger = self.original_internal_logger
-        print(
+        internal_logger.debug(
             f"LoggerContext: Restored module-level loggers for session_id={self.session_id}", file=sys.stderr)
 
 # JUnit Handler
@@ -305,6 +306,7 @@ def initialize_handlers():
 
     internal_listener.start()
 
+
 def shutdown_logging():
     """Shuts down logging and related resources."""
     try:
@@ -342,7 +344,7 @@ def wait_for_threads():
 
 def is_thread_alive(listener):
     """Checks if a listener's thread is alive."""
-    return listener._thread and listener._thread.is_alive()
+    return listener is not None and listener._thread and listener._thread.is_alive()
 
 
 def check_thread_status():
