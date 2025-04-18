@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![Documentation](https://img.shields.io/badge/docs-Sphinx-blue)](docs/)
+[![Documentation](https://img.shields.io/badge/docs-Mkdocs-blue)](docs/)
 
 **Optics Framework** is a powerful, extensible no code test automation framework designed for **vision powered**, **data-driven testing** and **production app synthetic monitoring**. It enables seamless integration with intrusive action & detection drivers such as Appium / WebDriver as well as non-intrusive action drivers such as BLE mouse / keyboard and detection drivers such as video capture card and external web cams.
 
