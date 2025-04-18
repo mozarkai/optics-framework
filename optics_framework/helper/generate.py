@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Optional
-from optics_framework.common.runner.csv_reader import CSVDataReader
+from optics_framework.common.runner.data_reader import CSVDataReader
 from optics_framework.common.logging_config import user_logger
 
 # Type aliases for clarity

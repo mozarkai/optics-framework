@@ -1,46 +1,82 @@
 import os
 import sys
 import asyncio
-from typing import Optional, Tuple
+import yaml
+from typing import Optional, Tuple, List
 from pydantic import BaseModel, field_validator
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.runner.csv_reader import CSVDataReader
+from optics_framework.common.runner.data_reader import CSVDataReader, YAMLDataReader, merge_dicts
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData
 
-def find_csv_files(folder_path: str) -> Tuple[str, str, Optional[str]]:
+
+def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str]]:
     """
-    Search for CSV files in a folder and categorize them by reading their headers.
-    Exits the program if required files are missing.
+    Search for CSV and YAML files in a folder and categorize them by content.
+    Exits the program if required files (test cases and modules) are missing.
 
     :param folder_path: Path to the project folder.
-    :return: Tuple of paths to test_cases (required), modules (required), and elements (optional) CSV files.
+    :return: Tuple of lists of paths to test case files, module files, and element files.
     """
-    test_cases, modules, elements = scan_folder_for_csvs(folder_path)
-    return test_cases, modules, elements
-
-
-def scan_folder_for_csvs(folder_path: str) -> Tuple[str, str, Optional[str]]:
-    """Scans folder for CSV files and categorizes them based on headers."""
-    test_cases: str = ""  # Initialize as empty string instead of None
-    modules: str = ""     # Initialize as empty string instead of None
-    elements: Optional[str] = None
+    test_case_files = []
+    module_files = []
+    element_files = []
 
     for file in os.listdir(folder_path):
-        if file.endswith(".csv"):
+        if file.endswith((".csv", ".yml", ".yaml")):
             file_path = os.path.join(folder_path, file)
+            content_type = identify_file_content(file_path)
+            if "test_cases" in content_type:
+                test_case_files.append(file_path)
+            if "modules" in content_type:
+                module_files.append(file_path)
+            if "elements" in content_type:
+                element_files.append(file_path)
+
+    validate_required_files(test_case_files, module_files, folder_path)
+    return test_case_files, module_files, element_files
+
+
+def identify_file_content(file_path: str) -> set:
+    """
+    Identify the content type of a file based on its headers (CSV) or keys (YAML).
+
+    :param file_path: Path to the file.
+    :return: Set of content types ('test_cases', 'modules', 'elements').
+    """
+    content_types = set()
+    try:
+        if file_path.endswith(".csv"):
             headers = read_csv_headers(file_path)
             if headers:
-                test_cases, modules, elements = categorize_file(
-                    headers, file_path, test_cases, modules, elements)
-
-    validate_required_files(test_cases, modules, folder_path)
-    return test_cases, modules, elements
+                if {"test_case", "test_step"}.issubset(headers):
+                    content_types.add("test_cases")
+                if {"module_name", "module_step"}.issubset(headers):
+                    content_types.add("modules")
+                if {"element_name", "element_id"}.issubset(headers):
+                    content_types.add("elements")
+        else:  # YAML file
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+                if "Test Cases" in data:
+                    content_types.add("test_cases")
+                if "Modules" in data:
+                    content_types.add("modules")
+                if "Elements" in data:
+                    content_types.add("elements")
+    except Exception as e:
+        internal_logger.exception(f"Error reading {file_path}: {e}")
+    return content_types
 
 
 def read_csv_headers(file_path: str) -> Optional[set]:
-    """Reads and returns the headers of a CSV file as a set."""
+    """
+    Read and return the headers of a CSV file as a set.
+
+    :param file_path: Path to the CSV file.
+    :return: Set of header names or None if reading fails.
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             header = f.readline().strip().split(',')
@@ -50,35 +86,27 @@ def read_csv_headers(file_path: str) -> Optional[set]:
         return None
 
 
-def categorize_file(headers: set, file_path: str, test_cases: str,
-                    modules: str, elements: Optional[str]) -> Tuple[str, str, Optional[str]]:
-    """Categorizes a CSV file based on its headers."""
-    if "test_case" in headers and "test_step" in headers:
-        internal_logger.debug(f"Found test cases file: {file_path}")
-        return file_path, modules, elements
-    if "module_name" in headers and "module_step" in headers:
-        internal_logger.debug(f"Found modules file: {file_path}")
-        return test_cases, file_path, elements
-    if "element_name" in headers and "element_id" in headers:
-        internal_logger.debug(f"Found elements file: {file_path}")
-        return test_cases, modules, file_path
-    return test_cases, modules, elements
+def validate_required_files(test_case_files: List[str], module_files: List[str], folder_path: str) -> None:
+    """
+    Validate that required files (test cases and modules) are present; exit if missing.
 
-
-def validate_required_files(test_cases: str, modules: str, folder_path: str) -> None:
-    """Validates that required CSV files are present; exits if missing."""
-    if not test_cases or not modules:
+    :param test_case_files: List of test case file paths.
+    :param module_files: List of module file paths.
+    :param folder_path: Path to the project folder.
+    """
+    if not test_case_files or not module_files:
         missing = [f for f, p in [
-            ("test_cases", test_cases), ("modules", modules)] if not p]
-        error_msg = f"Missing required CSV files in {folder_path}: {', '.join(missing)}"
+            ("test_cases", test_case_files), ("modules", module_files)] if not p]
+        error_msg = f"Missing required files in {folder_path}: {', '.join(missing)}"
         internal_logger.error(error_msg)
         print(f"Error: {error_msg}", file=sys.stderr)
         sys.exit(1)
 
+
 def filter_test_cases(test_cases_dict: dict, include: list = None, exclude: list = None) -> dict:
     """
-    Filters a dictionary of test cases based on include or exclude list.
-    Always includes any test cases that are setup or teardown.
+    Filter a dictionary of test cases based on include or exclude list.
+    Always include setup or teardown test cases.
 
     :param test_cases_dict: Dictionary of test case names and their steps.
     :param include: List of test case names to include (case-insensitive).
@@ -88,52 +116,49 @@ def filter_test_cases(test_cases_dict: dict, include: list = None, exclude: list
     if include and exclude:
         raise ValueError("Provide either include or exclude list, not both.")
 
-    include_set = set(tc.strip().lower() for tc in include) if include else None
-    exclude_set = set(tc.strip().lower() for tc in exclude) if exclude else None
+    include_set = set(tc.strip().lower()
+                      for tc in include) if include else set()
+    exclude_set = set(tc.strip().lower()
+                      for tc in exclude) if exclude else set()
 
     filtered = {}
-
     for name, steps in test_cases_dict.items():
         lname = name.lower()
-
-        # Always include any setup or teardown case
         if "setup" in lname or "teardown" in lname:
             filtered[name] = steps
             continue
-
-        # Include or exclude logic for test cases
-        if include_set and lname in include_set:
+        if include_set:
+            if lname in include_set:
+                filtered[name] = steps
+        elif exclude_set:
+            if lname not in exclude_set:
+                filtered[name] = steps
+        else:
             filtered[name] = steps
-        elif exclude_set and lname not in exclude_set:
-            filtered[name] = steps
-        elif not include_set and not exclude_set:
-            filtered[name] = steps
-
     return filtered
+
 
 def get_execution_queue(test_cases_data: dict, test_case_name="", case_setup_teardown: bool = True) -> dict:
     """
-    Builds and returns the execution queue as a dictionary:
-    - Handles unordered entries in CSV.
-    - Supports single or multiple test case names.
-    - Includes per-test setup/teardown if toggle is True.
-    """
+    Build and return the execution queue as a dictionary, handling setup/teardown.
 
+    :param test_cases_data: Dictionary of test case names and their steps.
+    :param test_case_name: Optional specific test case name or list of names.
+    :param case_setup_teardown: Whether to include per-test setup/teardown.
+    :return: Ordered dictionary of test cases and their steps.
+    """
     suite_setup = None
     suite_teardown = None
     setup = None
     teardown = None
     regular_test_cases = {}
 
-    # Normalize test_case_name to list of lowercase strings
-    if isinstance(test_case_name, str) and test_case_name.strip():
-        test_case_name_list = [test_case_name.strip().lower()]
-    elif isinstance(test_case_name, list) and test_case_name:
-        test_case_name_list = [tc.strip().lower() for tc in test_case_name]
-    else:
-        test_case_name_list = None  # Run all test cases
+    test_case_name_list = (
+        [test_case_name.strip().lower()] if isinstance(test_case_name, str) and test_case_name.strip()
+        else [tc.strip().lower() for tc in test_case_name] if isinstance(test_case_name, list) and test_case_name
+        else None
+    )
 
-    # Categorize entries
     for name, steps in test_cases_data.items():
         lname = name.lower()
         if "suite" in lname and "setup" in lname:
@@ -148,42 +173,33 @@ def get_execution_queue(test_cases_data: dict, test_case_name="", case_setup_tea
             regular_test_cases[name] = steps
 
     execution_dict = {}
-
-    # Case: specific test case(s) provided
     if test_case_name_list:
         matched_cases = {
             name: steps for name, steps in regular_test_cases.items()
             if name.lower() in test_case_name_list
         }
-
         if not matched_cases:
-            raise ValueError(f"None of the specified test cases found: {test_case_name}")
-
+            raise ValueError(
+                f"None of the specified test cases found: {test_case_name}")
         if suite_setup:
             execution_dict[suite_setup[0]] = suite_setup[1]
-
         for name, steps in matched_cases.items():
             if case_setup_teardown and setup:
                 execution_dict[setup[0]] = setup[1]
             execution_dict[name] = steps
             if case_setup_teardown and teardown:
                 execution_dict[teardown[0]] = teardown[1]
-
         if suite_teardown:
             execution_dict[suite_teardown[0]] = suite_teardown[1]
-
-    # Case: run all test cases
     else:
         if suite_setup:
             execution_dict[suite_setup[0]] = suite_setup[1]
-
         for name, steps in regular_test_cases.items():
             if case_setup_teardown and setup:
                 execution_dict[setup[0]] = setup[1]
             execution_dict[name] = steps
             if case_setup_teardown and teardown:
                 execution_dict[teardown[0]] = teardown[1]
-
         if suite_teardown:
             execution_dict[suite_teardown[0]] = suite_teardown[1]
 
@@ -219,40 +235,59 @@ class RunnerArgs(BaseModel):
 
 
 class BaseRunner:
-    """Base class for running test cases from CSV files using ExecutionEngine."""
+    """Base class for running test cases from CSV and YAML files using ExecutionEngine."""
 
     def __init__(self, args: RunnerArgs):
         self.folder_path = args.folder_path
         self.test_name = args.test_name
         self.runner = args.runner
-        # Added for debugging
         internal_logger.debug(f"Using runner: {self.runner}")
 
-        # Validate CSV files (test_cases and modules required, elements optional)
-        test_cases_file, modules_file, elements_file = find_csv_files(
+        # Find all relevant files
+        test_case_files, module_files, element_files = find_files(
             self.folder_path)
 
-        # Load CSV data
+        # Initialize data readers
         csv_reader = CSVDataReader()
-        self.test_cases_data = csv_reader.read_test_cases(test_cases_file)
-        self.modules_data = csv_reader.read_modules(modules_file)
-        self.elements_data = csv_reader.read_elements(
-            elements_file) if elements_file else {}
+        yaml_reader = YAMLDataReader()
+
+        # Read and merge test cases
+        self.test_cases_data = {}
+        for file_path in test_case_files:
+            reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+            test_cases = reader.read_test_cases(file_path)
+            self.test_cases_data = merge_dicts(
+                self.test_cases_data, test_cases, "test_cases")
+
+        # Read and merge modules
+        self.modules_data = {}
+        for file_path in module_files:
+            reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+            modules = reader.read_modules(file_path)
+            self.modules_data = merge_dicts(
+                self.modules_data, modules, "modules")
+
+        # Read and merge elements
+        self.elements_data = {}
+        for file_path in element_files:
+            reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+            elements = reader.read_elements(file_path)
+            self.elements_data = merge_dicts(
+                self.elements_data, elements, "elements")
 
         if not self.test_cases_data:
-            internal_logger.debug(f"No test cases found in {test_cases_file}")
+            internal_logger.debug(f"No test cases found in {test_case_files}")
 
-        # Load and validate configuration using ConfigHandler
+        # Load and validate configuration
         self.config_handler = ConfigHandler.get_instance()
         self.config_handler.set_project(self.folder_path)
         self.config_handler.load()
         self.config = self.config_handler.config
-
-        # Ensure project_path is set in the Config object
         self.config.project_path = self.folder_path
         internal_logger.debug(f"Loaded configuration: {self.config}")
         reconfigure_logging()
-        # Check required configs using the get() method
+
+        # Validate required configs
         required_configs = ["driver_sources", "elements_sources"]
         missing_configs = [
             key for key in required_configs if not self.config_handler.get(key)]
@@ -267,11 +302,13 @@ class BaseRunner:
         self.session_id = self.manager.create_session(self.config)
         self.engine = ExecutionEngine(self.manager)
 
-        # test case selection rules
-        included, excluded = self.config_handler.get('include'), self.config_handler.get('exclude')
+        # Filter test cases
+        included, excluded = self.config_handler.get(
+            'include'), self.config_handler.get('exclude')
         self.filtered_test_cases = filter_test_cases(
             self.test_cases_data, included, excluded)
 
+        # Build execution queue
         self.execution_queue = get_execution_queue(
             self.filtered_test_cases, self.test_name, case_setup_teardown=False)
 
@@ -282,7 +319,7 @@ class BaseRunner:
                 session_id=self.session_id,
                 mode=mode,
                 test_case=self.test_name if self.test_name else None,
-                event_queue=None,  # Local mode uses TreeResultPrinter
+                event_queue=None,
                 test_cases=TestCaseData(test_cases=self.execution_queue),
                 modules=ModuleData(modules=self.modules_data),
                 elements=ElementData(elements=self.elements_data),
