@@ -1,4 +1,4 @@
-name: Build-sphinx-docs
+name: Build-mkdocs-docs
 
 on:
   push:
@@ -34,16 +34,11 @@ jobs:
             poetry lock
           fi
 
-      - name: Install dependencies (including `optics_framework`)
-        run: poetry install --no-interaction --with docs  # Installs both package and docs dependencies
+      - name: Install dependencies
+        run: poetry install --no-interaction --with docs
 
-      - name: Install ghp-import
-        run: poetry add --group docs ghp-import  # Ensures it's available inside the venv
-
-      - name: Build HTML with Sphinx
-        run: |
-          poetry run make -C docs html  # Uses Poetry's virtual env
+      - name: Build HTML with MkDocs
+        run: poetry run mkdocs build --site-dir build/html
 
       - name: Deploy to GitHub Pages
-        run: |
-          poetry run ghp-import -n -p -f docs/build/html  # Runs inside Poetry's venv
+        run: poetry run mkdocs gh-deploy --force --no-history --site-dir build/html
