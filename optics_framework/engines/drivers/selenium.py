@@ -6,6 +6,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.selenium_driver_manager import set_selenium_driver
+from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 
 
 class SeleniumDriver(DriverInterface):
@@ -35,6 +36,7 @@ class SeleniumDriver(DriverInterface):
         self.browser_url: str = self.capabilities.get(
             "browserURL", "about:blank")
         self.initialized = True
+        self.ui_helper = None
 
     def start_session(self):
         """Start a new Selenium session with the specified browser."""
@@ -43,6 +45,10 @@ class SeleniumDriver(DriverInterface):
                 "browserName", "chrome").lower()
             if browser_name == "chrome":
                 options = ChromeOptions()
+                options.add_argument("--remote-debugging-address=0.0.0.0")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
             elif browser_name == "firefox":
                 options = FirefoxOptions()
             else:
@@ -52,15 +58,18 @@ class SeleniumDriver(DriverInterface):
                     command_executor=self.selenium_server_url,
                     options=options
                 )
+
                 set_selenium_driver(self.driver)
+                self.ui_helper = UIHelper()
                 internal_logger.debug(
                     f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name}")
+
             except Exception as e:
                 internal_logger.error(f"Failed to start Selenium session: {e}")
                 raise
         return self.driver
 
-    def end_session(self):
+    def terminate(self):
         """End the current Selenium session."""
         if self.driver is not None:
             try:
@@ -121,37 +130,105 @@ class SeleniumDriver(DriverInterface):
         raise NotImplementedError
 
     def press_coordinates(self, coor_x: int, coor_y: int, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        """Click at specific screen coordinates using JavaScript (limited support)."""
+        try:
+            script = f"""
+            var element = document.elementFromPoint({coor_x}, {coor_y});
+            if (element) element.click();
+            """
+            self.driver.execute_script(script)
+            internal_logger.debug(f"Clicked at coordinates ({coor_x}, {coor_y}) with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to click at coordinates: {e}")
+            raise
 
-    def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int, event_name: str | None = None) -> None:
-        raise NotImplementedError
+    def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int = 1, event_name: str | None = None) -> None:
+        """Click based on screen percentage coordinates."""
+        try:
+            size = self.driver.get_window_size()
+            abs_x = int(size['width'] * percentage_x / 100)
+            abs_y = int(size['height'] * percentage_y / 100)
+            self.press_coordinates(abs_x, abs_y, event_name)
+        except Exception as e:
+            internal_logger.error(f"Failed to click using percentage coordinates: {e}")
+            raise
+
 
     def enter_text(self, text: str, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        """Selenium needs a focused element to type into."""
+        internal_logger.warning("enter_text requires a focused element in Selenium. Use `enter_text_element` instead.")
+        raise NotImplementedError("Use enter_text_element with a specific element.")
 
     def press_keycode(self, keycode: int, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        """Selenium does not support raw keycodes. Log a warning."""
+        internal_logger.warning("press_keycode is not supported in Selenium.")
+        raise NotImplementedError("Keycode-based actions are not supported.")
 
     def enter_text_using_keyboard(self, text: str, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        """Enter text into the active element (e.g., body/input)."""
+        try:
+            active_element = self.driver.switch_to.active_element
+            active_element.send_keys(text)
+            internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to type using keyboard: {e}")
+            raise
 
     def clear_text(self, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        """Clear the active element (if possible)."""
+        try:
+            active_element = self.driver.switch_to.active_element
+            active_element.clear()
+            internal_logger.debug(f"Cleared text in active element with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to clear active element: {e}")
+            raise
+
 
     def clear_text_element(self, element, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        try:
+            element.clear()
+            internal_logger.debug(f"Cleared text in specified element with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to clear element: {e}")
+            raise
+
 
     def swipe(self, x_coor: int, y_coor: int, direction: str, swipe_length: int, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        internal_logger.warning("Swipe action is not natively supported in Selenium desktop.")
+        raise NotImplementedError("Swipe is not applicable for web browsers.")
+
 
     def swipe_percentage(self, x_percentage: float, y_percentage: float, direction: str, swipe_percentage: float, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        internal_logger.warning("Swipe percentage is not supported in Selenium desktop.")
+        raise NotImplementedError("Swipe is not applicable for web browsers.")
+
 
     def swipe_element(self, element, direction: str, swipe_length: int, event_name: str | None = None) -> None:
-        raise NotImplementedError
+        internal_logger.warning("Swipe element is not supported in Selenium.")
+        raise NotImplementedError("Swipe is not applicable for web browsers.")
 
-    def scroll(self, direction: str, duration: int, event_name: str | None = None) -> None:
-        raise NotImplementedError
+
+    def scroll(self, direction: str, duration: int = 1000, event_name: str | None = None) -> None:
+        try:
+            if direction == "down":
+                self.driver.execute_script("window.scrollBy(0, window.innerHeight);")
+            elif direction == "up":
+                self.driver.execute_script("window.scrollBy(0, -window.innerHeight);")
+            elif direction == "right":
+                self.driver.execute_script("window.scrollBy(window.innerWidth, 0);")
+            elif direction == "left":
+                self.driver.execute_script("window.scrollBy(-window.innerWidth, 0);")
+            internal_logger.debug(f"Scrolled {direction} with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to scroll {direction}: {e}")
+            raise
 
     def get_text_element(self, element) -> str:
-        raise NotImplementedError
+        try:
+            text = element.text
+            internal_logger.debug(f"Extracted text from element: {text}")
+            return text
+        except Exception as e:
+            internal_logger.error(f"Failed to get text from element: {e}")
+            return ""
