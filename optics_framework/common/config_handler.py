@@ -74,7 +74,7 @@ class Config(BaseModel):
                     enabled=False, url=None, capabilities={})},
                 {"device_screenshot": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
-                {"webcam_screenshot": DependencyConfig(
+                {"camera_screenshot": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
                 {"selenium_find_element": DependencyConfig(
                     enabled=False, url=None, capabilities={})},

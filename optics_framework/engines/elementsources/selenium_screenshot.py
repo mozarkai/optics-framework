@@ -11,7 +11,7 @@ import numpy as np
 from selenium.common.exceptions import ScreenshotException
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.engines.drivers.selenium import SeleniumDriver
+from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
 
 
 class SeleniumScreenshot(ElementSourceInterface):
@@ -24,7 +24,6 @@ class SeleniumScreenshot(ElementSourceInterface):
         Initialize the screen capture utility with a Selenium driver.
         """
         self.driver = None
-        self.selenium_driver_instance = SeleniumDriver()
 
     def _get_selenium_driver(self):
         """
@@ -34,7 +33,7 @@ class SeleniumScreenshot(ElementSourceInterface):
             WebDriver: The Selenium driver instance.
         """
         if self.driver is None:
-            self.driver = self.selenium_driver_instance.start_session()
+            self.driver = get_selenium_driver()
         return self.driver
 
     def capture(self) -> np.ndarray:

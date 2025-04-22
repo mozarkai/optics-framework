@@ -4,7 +4,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.logging_config import internal_logger
 from selenium.webdriver.common.by import By
 from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
-from lxml import etree
+from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 from optics_framework.common import utils
 import time
 
@@ -27,6 +27,7 @@ class SeleniumFindElement(ElementSourceInterface):
         if self.driver is None:
             self.driver = get_selenium_driver()
         return self.driver
+
     def capture(self) -> None:
         """
         Capture the current screen state.
@@ -38,57 +39,56 @@ class SeleniumFindElement(ElementSourceInterface):
         """
         Get the page source of the current page.
         """
-        driver = self._get_selenium_driver()
-        page_source = driver.page_source
-        parser = etree.XMLParser()
-        self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8'), parser=parser))
-        self.root = self.tree.getroot()
-        return page_source
+        return UIHelper.get_page_source()
 
-    def locate(self, element: str):
+
+    def locate(self, element: str, index: int = None, strategy: str = None) -> Any:
         """
-        Find the specified element on the current webpage.
+        Locate an element using XPath, Text (via XPath), or fallback to ID.
 
         Args:
-            element: The element identifier to find on the page (XPath, ID, or text).
+            element: The identifier (XPath, text, or ID)
 
         Returns:
-            WebElement: The located element if found, None otherwise.
+            WebElement if found, else None
         """
-        driver = self._get_selenium_driver()
         element_type = utils.determine_element_type(element)
+        driver = self._get_selenium_driver()
 
-        if element_type == 'Image':
-            # Selenium doesn't natively support finding elements by image
-            internal_logger.debug("Selenium does not support finding elements by image")
+        if index is not None:
+            raise ValueError('Selenium Find Element does not support locating elements using index.')
+
+        try:
+            if element_type == "Image":
+                internal_logger.debug("Selenium does not support locating elements by image.")
+                return None
+
+            elif element_type == "XPath":
+                internal_logger.debug(f"Locating by XPath: {element}")
+                return driver.find_element(By.XPATH, element)
+
+            elif element_type == "Text":
+                # First try using text-based XPath
+                try:
+                    xpath = f"//*[contains(text(), '{element}')]"
+                    internal_logger.debug(f"Trying text-based XPath: {xpath}")
+                    return driver.find_element(By.XPATH, xpath)
+                except NoSuchElementException:
+                    # Fallback to ID if text fails
+                    internal_logger.debug(f"Text not found, falling back to ID: {element}")
+                    return driver.find_element(By.ID, element)
+
+            elif element_type == "ID":
+                internal_logger.debug(f"Locating by ID: {element}")
+                return driver.find_element(By.ID, element)
+
+        except NoSuchElementException:
+            internal_logger.warning(f"Element not found: {element}")
             return None
-        elif element_type == 'XPath':
-            try:
-                found_element = driver.find_element(By.XPATH, element)
-                if not found_element:
-                    return None
-                return found_element
-            except NoSuchElementException as e:
-                internal_logger.error(f"Error finding element by XPath: {element}: {e}")
-                return None
-            except Exception as e:
-                internal_logger.error(
-                    f"Unexpected error finding element by XPath: {element}: {e}")
-                return None
-        elif element_type == 'Text':
-            try:
-                # Using ID as a proxy for text-based search in Selenium
-                found_element = driver.find_element(By.ID, element)
-                if not found_element:
-                    return None
-                return found_element
-            except NoSuchElementException as e:
-                internal_logger.error(f"Error finding element by ID: {element}: {e}")
-                return None
-            except Exception as e:
-                internal_logger.error(
-                    f"Unexpected error finding element by ID: {element}: {e}")
-                return None
+        except Exception as e:
+            internal_logger.error(f"Unexpected error locating element {element}: {e}")
+            return None
+
 
     def assert_elements(self, elements, timeout=10, rule="any") -> None:
         """
