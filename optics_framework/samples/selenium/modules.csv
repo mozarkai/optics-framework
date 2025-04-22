@@ -1,0 +1,9 @@
+module_name,module_step,param_1,param_2,param_3,param_4
+Launch Webpage,Launch App
+Close Browser,Close And Terminate App
+Gmail Sign In,Press Element,Gmail
+Gmail Sign In,Press Element,Sign in
+Gmail Sign In,Enter Text,Email or phone,dummy@gmail.com
+Create Gmail Account,Press Element,Gmail
+Create Gmail Account,Press Element,Create An Account
+Create Gmail Account,Press Element,For Personal Use
