@@ -24,6 +24,7 @@ requests = "^2.32.3"
 textual = "^3.0.0"
 pytest = "^8.3.5"
 pydantic = "^2.11.2"
+pre-commit = "^4.2.0"
 
 [tool.poetry.group.dev.dependencies]
 tox = "~4.24.1"
