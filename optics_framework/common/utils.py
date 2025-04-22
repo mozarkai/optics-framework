@@ -15,6 +15,9 @@ def determine_element_type(element):
     # Check if the input is an XPath
     if element.startswith("/") or element.startswith("//") or element.startswith("("):
         return "XPath"
+    # Check if it looks like an ID (heuristic: no slashes, no dots, usually alphanumeric/underscores)
+    if all(char.isalnum() or char == '_' for char in element) and not element.lower().endswith(("jpg", "jpeg", "png", "bmp")):
+        return "ID"
     # Default case: consider the input as Text
     return "Text"
 
@@ -190,3 +193,24 @@ def save_page_source(tree, time_stamp):
         internal_logger.debug(f"Page source appended at: {time_stamp}")
 
     internal_logger.debug(f"Page source saved to: {page_source_file_path}")
+
+
+def save_page_source_html(html: str, time_stamp):
+    base_dir = str(ConfigHandler.get_instance().get_project_path())
+    output_dir = os.path.join(base_dir, "execution_output")
+    os.makedirs(output_dir, exist_ok=True)
+
+    page_source_file_path = os.path.join(output_dir, "page_sources_log.html")
+    # Prepare entry block with timestamp comment
+    entry_block = f'\n<!-- timestamp: {time_stamp} -->\n{html}\n'
+
+    if not os.path.exists(page_source_file_path):
+        with open(page_source_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"<!-- HTML Page Source Logs -->\n{entry_block}")
+        internal_logger.debug(f"Created new HTML page source log file at: {time_stamp}")
+    else:
+        with open(page_source_file_path, 'a', encoding='utf-8') as f:
+            f.write(entry_block)
+        internal_logger.debug(f"Appended new page source entry at: {time_stamp}")
+
+    internal_logger.debug(f"HTML page source saved to: {page_source_file_path}")
