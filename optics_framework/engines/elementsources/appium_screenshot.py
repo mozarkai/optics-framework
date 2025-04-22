@@ -74,7 +74,7 @@ class DeviceScreenshot(ElementSourceInterface):
             internal_logger.warning(f"Error capturing Appium screenshot: {e}. Using external camera.")
             return None
 
-    def assert_elements(self, elements):
+    def assert_elements(self, elements,timeout=30, rule='any') -> None:
         internal_logger.exception("AppiumScreenshot does not support asserting elements.")
         raise NotImplementedError(
             "AppiumScreenshot does not support asserting elements.")
@@ -86,7 +86,7 @@ class DeviceScreenshot(ElementSourceInterface):
             "AppiumScreenshot does not support locating elements.")
 
 
-    def locate_using_index(self, element, index):
+    def locate_using_index(self):
         internal_logger.exception(
             "AppiumScreenshot does not support locating elements using index.")
         raise NotImplementedError(

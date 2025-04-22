@@ -3,27 +3,31 @@ from optics_framework.engines.drivers.selenium_driver_manager import get_seleniu
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
+from selenium.webdriver.remote.webelement import WebElement
 import time
 
 
 class SeleniumPageSource(ElementSourceInterface):
     """
-    Appium Find Element Class
+    Selenium Page Source Handler Class
+
+    This class is responsible for retrieving and interacting with the page source
+    using Selenium WebDriver.
     """
 
     def __init__(self):
         """
-        Initialize the Appium Find Element Class.
+        Initialize the Selenium Page Source Handler Class.
 
         Args:
-            driver: The Appium driver instance.
+            driver: The Selenium driver instance.
         """
         self.driver = None
         self.ui_helper = UIHelper()
         self.tree = None
         self.root = None
 
-    def _get_appium_driver(self):
+    def _get_selenium_driver(self):
         if self.driver is None:
             self.driver = get_selenium_driver()
         return self.driver
@@ -34,9 +38,9 @@ class SeleniumPageSource(ElementSourceInterface):
 
         Not Supported: This method is not implemented for Selenium Find Element.
         """
-        internal_logger.exception('Appium Find Element does not support capturing the screen state.')
+        internal_logger.exception('Selenium Find Element does not support capturing the screen state.')
         raise NotImplementedError(
-            'Appium Find Element does not support capturing the screen state.')
+            'Selenium Find Element does not support capturing the screen state.')
 
 
 
@@ -48,26 +52,34 @@ class SeleniumPageSource(ElementSourceInterface):
         Returns:
             str: The raw page source.
         """
-        return UIHelper.get_page_source()
+        ui_helper = UIHelper()
+        return ui_helper.get_page_source()
 
 
-    def locate(self, element: str, index: int = None) -> dict:
+    def locate(self, element: str, index: int = None) -> WebElement:
         """
-        Locates an element on the current page using the Appium HTML source.
+        Locates a Selenium WebElement using either text or XPath from the current page source.
+
+        This method:
+        - Determines the type of the input (text, XPath, image)
+        - Finds the corresponding tag in the page source using HTML parsing
+        - Converts the matched tag info into a Selenium WebElement using DOM search
 
         Args:
-            element (str): The element descriptor (text or XPath).
-            index (int, optional): Index to return if multiple matches are found.
-            strategy (str, optional): Reserved for future strategy types.
+            element (str): The element to locate (text string or XPath expression).
+            index (int, optional): Index of the matching element to return if multiple are found.
 
         Returns:
-            dict: A dictionary with tag info if found, otherwise None.
+            WebElement: The located and resolved Selenium WebElement ready for interaction.
+
+        Raises:
+            Exception: If the element cannot be found or mapped to the DOM.
         """
         element_type = utils.determine_element_type(element)
 
         try:
             if element_type == 'Image':
-                internal_logger.debug('Appium does not support finding elements by image.')
+                internal_logger.debug('Selenium does not support finding elements by image.')
                 return None
 
             elif element_type == 'Text':
@@ -110,8 +122,14 @@ class SeleniumPageSource(ElementSourceInterface):
         Raises:
             TimeoutError: If condition is not met within timeout.
         """
-        if rule not in ["any", "all"]:
+        if rule not in {"any", "all"}:
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
+
+        def check_texts(texts: list) -> list:
+            return [text for text in texts if self._is_text_found(text)]
+
+        def check_xpaths(xpaths: list) -> list:
+            return [xpath for xpath in xpaths if self._is_xpath_found(xpath)]
 
         start_time = time.time()
 
@@ -119,40 +137,35 @@ class SeleniumPageSource(ElementSourceInterface):
             texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
             xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
 
-            # ----- Text Matching -----
-            text_matches = []
-            for text in texts:
-                try:
-                    self.ui_helper.find_html_element_by_text(text)
-                    text_matches.append(text)
-                    if rule == "any":
-                        return True  # Found at least one
-                except ValueError:
-                    continue
+            found_texts = check_texts(texts)
+            found_xpaths = check_xpaths(xpaths)
 
-            # ----- XPath Matching -----
-            xpath_matches = []
-            for xpath in xpaths:
-                try:
-                    self.ui_helper.find_html_element_by_xpath(xpath)
-                    xpath_matches.append(xpath)
-                    if rule == "any":
-                        return True
-                except ValueError:
-                    continue
+        is_any = rule == "any" and (found_texts or found_xpaths)
+        is_all = rule == "all" and len(found_texts) == len(texts) and len(found_xpaths) == len(xpaths)
 
-            # ----- Check Combined Match Result -----
-            if rule == "all":
-                if len(text_matches) == len(texts) and len(xpath_matches) == len(xpaths):
-                    return True
-
-            time.sleep(0.1)
+        if is_any or is_all:
+            return True
 
         # ----- Timeout Handling -----
         if rule == "all":
-            missing_texts = list(set(texts) - set(text_matches))
-            missing_xpaths = list(set(xpaths) - set(xpath_matches))
+            missing_texts = list(set(texts) - set(found_texts))
+            missing_xpaths = list(set(xpaths) - set(found_xpaths))
             raise TimeoutError(f"Timeout reached: Not all elements were found.\nMissing texts: {missing_texts}\nMissing xpaths: {missing_xpaths}")
-
-        if rule == "any":
+        else:
             raise TimeoutError(f"Timeout reached: None of the specified elements were found: {elements}")
+
+
+    # ----- Supporting Methods -----
+    def _is_text_found(self, text: str) -> bool:
+        try:
+            self.ui_helper.find_html_element_by_text(text)
+            return True
+        except ValueError:
+            return False
+
+    def _is_xpath_found(self, xpath: str) -> bool:
+        try:
+            self.ui_helper.find_html_element_by_xpath(xpath)
+            return True
+        except ValueError:
+            return False

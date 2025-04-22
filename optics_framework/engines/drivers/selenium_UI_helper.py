@@ -1,6 +1,7 @@
 from fuzzywuzzy import fuzz
 from bs4 import BeautifulSoup
 from lxml import html
+from typing import Optional, Tuple, Any
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
@@ -94,54 +95,8 @@ class UIHelper:
         Raises:
             ValueError: If no match is found or the index is out of range.
         """
-        page_source = self.get_page_source()
-        index = int(index) if index is not None else 0
-        try:
-            soup = BeautifulSoup(page_source, 'html.parser')
-        except Exception:
-            internal_logger.warning("Falling back to html.parser due to error in lxml parser")
-            soup = BeautifulSoup(page_source, 'html.parser')
-
-        valid_tags = ['a', 'button', 'span', 'div', 'label', 'input', 'textarea', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
-        candidates = []
-
-        for tag in soup.find_all(True):  # All tags
-            if tag.name not in valid_tags:
-                continue
-
-            # 1. Match by visible text
-            visible_text = tag.get_text(strip=True)
-            if visible_text and utils.compare_text(text, visible_text):
-                candidates.append({
-                    "tag": tag.name,
-                    "attrs": tag.attrs,
-                    "matched_value": visible_text,
-                    "text": visible_text,
-                    "matched_by": "text"
-                })
-                continue
-
-            # 2. Match by common attributes
-            for attr in ['aria-label', 'placeholder', 'id', 'class', 'name', 'title', 'alt', 'value']:
-                attr_value = tag.get(attr)
-                if attr_value:
-                    if isinstance(attr_value, list):
-                        values = attr_value
-                    else:
-                        values = [attr_value]
-
-                    for val in values:
-                        if utils.compare_text(text, val):
-                            candidates.append({
-                                "tag": tag.name,
-                                "attrs": tag.attrs,
-                                "matched_value": val,
-                                "text": visible_text,
-                                "matched_by": f"attribute:{attr}"
-                            })
-                            break  # Only need one attribute match per tag
-                if len(candidates) > int(index):
-                    break  # No need to over-collect if we already have what we need
+        soup = self._get_html_soup()
+        candidates = self._collect_matching_tags(soup, text)
 
         if not candidates:
             internal_logger.error(f"No match found for '{text}' in HTML source")
@@ -152,6 +107,67 @@ class UIHelper:
             raise ValueError(f"Match index {index} out of range. Only {len(candidates)} match(es) found.")
 
         return candidates[index]
+
+
+    def _get_html_soup(self) -> BeautifulSoup:
+        """Parses and returns the page source as a BeautifulSoup object."""
+        page_source = self.get_page_source()
+        try:
+            return BeautifulSoup(page_source, 'lxml')
+        except Exception:
+            internal_logger.warning("Falling back to html.parser due to error in lxml parser")
+            return BeautifulSoup(page_source, 'html.parser')
+
+
+    def _collect_matching_tags(self, soup: BeautifulSoup, target_text: str) -> list:
+        """Collects tags that match the given text in either visible content or common attributes."""
+        valid_tags = ['a', 'button', 'span', 'div', 'label', 'input', 'textarea', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+        candidates = []
+
+        for tag in soup.find_all(True):
+            if tag.name not in valid_tags:
+                continue
+
+            if self._matches_visible_text(tag, target_text):
+                candidates.append(self._build_match_result(tag, tag.get_text(strip=True), "text"))
+                continue
+
+            matched_attr = self._match_tag_attributes(tag, target_text)
+            if matched_attr:
+                matched_value, attr_name = matched_attr
+                candidates.append(self._build_match_result(tag, matched_value, f"attribute:{attr_name}"))
+
+        return candidates
+
+
+    def _matches_visible_text(self, tag, target_text: str) -> bool:
+        visible_text = tag.get_text(strip=True)
+        return visible_text and utils.compare_text(target_text, visible_text)
+
+
+    def _match_tag_attributes(self, tag, target_text: str) -> Optional[Tuple[str, str]]:
+        """Returns (matched_value, attribute_name) if match is found, else None."""
+        for attr in ['aria-label', 'placeholder', 'id', 'class', 'name', 'title', 'alt', 'value']:
+            attr_value = tag.get(attr)
+            if not attr_value:
+                continue
+
+            values = attr_value if isinstance(attr_value, list) else [attr_value]
+            for val in values:
+                if utils.compare_text(target_text, val):
+                    return val, attr
+        return None
+
+
+    def _build_match_result(self, tag, matched_value: str, matched_by: str) -> dict:
+        return {
+            "tag": tag.name,
+            "attrs": tag.attrs,
+            "matched_value": matched_value,
+            "text": tag.get_text(strip=True),
+            "matched_by": matched_by
+        }
+
 
     def find_html_element_by_xpath(self, xpath: str, index: int = 0):
         """
@@ -184,18 +200,17 @@ class UIHelper:
         except Exception as e:
             raise ValueError(f"Error while parsing XPath: {e}")
 
-
     def convert_to_selenium_element(self, match: dict):
         """
         Resolves a match dictionary from HTML-parsed results into a Selenium WebElement.
 
         Args:
             match (dict): A dictionary with keys like:
-                        - tag
-                        - attrs (id, class, etc.)
-                        - text (optional)
-                        - matched_value (what matched)
-                        - matched_by ("text" or "attribute:<name>")
+                - tag
+                - attrs (id, class, etc.)
+                - text (optional)
+                - matched_value (what matched)
+                - matched_by ("text" or "attribute:<name>")
 
         Returns:
             WebElement: The actual Selenium WebElement.
@@ -204,38 +219,44 @@ class UIHelper:
             ValueError: If no element could be found in the live DOM.
         """
         driver = self.driver
+        matched_by = match.get("matched_by")
+        matched_value = match.get("matched_value")
+        attrs = match.get("attrs", {})
+        text = match.get("text", "").strip()
 
         try:
-            matched_by = match.get("matched_by")
-            matched_value = match.get("matched_value")
-            attrs = match.get("attrs", {})
-            text = match.get("text", "").strip()
-
-            # Prioritize based on match source
             if matched_by == "text" and text:
-                xpath = f"//*[normalize-space(text())='{text}']"
-                return driver.find_element(By.XPATH, xpath)
+                return self._find_element_by_text(text, driver)
 
-            elif matched_by and matched_by.startswith("attribute:"):
+            if matched_by and matched_by.startswith("attribute:"):
                 attr = matched_by.split(":", 1)[1]
-                if attr == "id" and "id" in attrs:
-                    return driver.find_element(By.ID, attrs["id"])
-                elif attr == "name" and "name" in attrs:
-                    return driver.find_element(By.NAME, attrs["name"])
-                elif attr == "class" and "class" in attrs:
-                    class_name = attrs["class"][0] if isinstance(attrs["class"], list) else attrs["class"]
-                    return driver.find_element(By.CLASS_NAME, class_name)
-                else:
-                    # Fallback: generic attribute-based XPath
-                    xpath = "//*[@" + attr + f"='{matched_value}']"
-                    return driver.find_element(By.XPATH, xpath)
+                return self._find_element_by_attribute(attr, attrs, matched_value, driver)
 
-            # Final fallback using text
-            if text:
-                fallback_xpath = f"//*[normalize-space(text())='{text}']"
-                return driver.find_element(By.XPATH, fallback_xpath)
+            if text:  # Fallback
+                return self._find_element_by_text(text, driver)
 
         except NoSuchElementException:
-            raise ValueError(f"Element found in HTML but not found in DOM (matched_by: {matched_by}, value: {matched_value})")
+            raise ValueError(
+                f"Element found in HTML but not found in DOM (matched_by: {matched_by}, value: {matched_value})"
+            )
 
         raise ValueError("Unable to resolve element to a Selenium WebElement.")
+
+
+    def _find_element_by_text(self, text: str, driver) -> Any:
+        xpath = f"//*[normalize-space(text())='{text}']"
+        return driver.find_element(By.XPATH, xpath)
+
+
+    def _find_element_by_attribute(self, attr: str, attrs: dict, matched_value: str, driver) -> Any:
+        if attr == "id" and "id" in attrs:
+            return driver.find_element(By.ID, attrs["id"])
+        if attr == "name" and "name" in attrs:
+            return driver.find_element(By.NAME, attrs["name"])
+        if attr == "class" and "class" in attrs:
+            class_name = attrs["class"][0] if isinstance(attrs["class"], list) else attrs["class"]
+            return driver.find_element(By.CLASS_NAME, class_name)
+
+        # Fallback to generic attribute-based XPath
+        xpath = "//*[@" + attr + f"='{matched_value}']"
+        return driver.find_element(By.XPATH, xpath)
