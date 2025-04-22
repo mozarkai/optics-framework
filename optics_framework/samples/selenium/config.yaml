@@ -1,0 +1,73 @@
+driver_sources:
+  - appium:
+      enabled: false
+      url: "http://127.0.0.1:4723"
+      capabilities:
+        appActivity: "com.google.android.youtube.app.honeycomb.Shell$HomeActivity"
+        appPackage: "com.google.android.youtube"
+        automationName: "UiAutomator2"
+        deviceName: "emulator-5554"
+        platformName: "Android"
+  - selenium:
+      enabled: true
+      url: "http://localhost:4444/wd/hub"
+      capabilities:
+        browserName: "chrome"
+        browserURL: "https://www.google.com"
+  - ble_helper:
+      enabled: false
+      url: null
+      capabilities: {}
+
+elements_sources:
+  - appium_find_element:
+      enabled: false
+      url: null
+      capabilities: {}
+  - appium_page_source:
+      enabled: false
+      url: null
+      capabilities: {}
+  - appium_screenshot:
+      enabled: false
+      url: null
+      capabilities: {}
+  - selenium_find_element:
+      enabled: false
+      url: null
+      capabilities: {}
+  - selenium_page_source:
+      enabled: true
+      url: null
+      capabilities: {}   
+  - selenium_screenshot:
+      enabled: true
+      url: null
+      capabilities: {}
+  - camera_screenshot:
+      enabled: true
+      url: null
+      capabilities: {}
+
+text_detection:
+  - easyocr:
+      enabled: true
+      url: null 
+      capabilities: {}
+  - pytesseract:
+      enabled: false
+      url: null
+      capabilities: {}
+  - google_vision:
+      enabled: false
+      url: null
+      capabilities: {}
+
+image_detection:
+  - templatematch:
+      enabled: true
+      url: null  
+      capabilities: {}
+
+
+log_level: "DEBUG"

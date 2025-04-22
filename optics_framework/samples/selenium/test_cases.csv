@@ -1,0 +1,5 @@
+test_case,test_step
+Suite Setup,Launch Webpage
+TC1,Gmail Sign In
+TC2,Create Gmail Account
+Suite Teardown,Close Browser
