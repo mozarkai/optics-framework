@@ -42,15 +42,26 @@ class SeleniumFindElement(ElementSourceInterface):
         return UIHelper.get_page_source()
 
 
-    def locate(self, element: str, index: int = None, strategy: str = None) -> Any:
+    def locate(self, element: str, index: int = None) -> Any:
         """
-        Locate an element using XPath, Text (via XPath), or fallback to ID.
+        Locate an element on the current webpage using Selenium.
+
+        This method determines the element type (XPath, text, or ID) and locates it using
+        the appropriate Selenium strategy. Text-based elements are searched using an XPath
+        contains() expression, with a fallback to ID if not found. Image-based elements are
+        not supported in Selenium.
 
         Args:
-            element: The identifier (XPath, text, or ID)
+            element (str): The identifier of the element to locate. Can be an XPath string,
+                visible text, or element ID.
+            index (int, optional): Index-based selection is not supported for Selenium and
+                will raise a ValueError if provided.
 
         Returns:
-            WebElement if found, else None
+            WebElement or None: The located Selenium WebElement if found, otherwise None.
+
+        Raises:
+            ValueError: If the `index` argument is provided, as it's unsupported in Selenium.
         """
         element_type = utils.determine_element_type(element)
         driver = self._get_selenium_driver()

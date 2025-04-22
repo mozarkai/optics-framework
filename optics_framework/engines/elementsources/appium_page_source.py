@@ -60,18 +60,20 @@ class AppiumPageSource(ElementSourceInterface):
         return page_source
 
 
-    def locate(self, element: str, index=None, strategy=None) -> dict:
+    def locate(self, element: str, index=None) -> dict:
         """
-        Find the specified element on the current page.
+        Locate a UI element on the current page using Appium.
+
+        This method determines the type of the element (text, XPath, or image) and attempts
+        to locate it using the Appium driver. Image-based search is not supported.
 
         Args:
-            element: The element to find on the page.
+            element (str): The element identifier to locate. This can be text, an XPath, or an image path.
+            index (int, optional): If multiple elements match the given text, the index specifies
+                which one to retrieve. Used only when element type is text.
 
         Returns:
-            bool: True if the element is found, False otherwise.
-        """
-        """
-        Find the specified element on the current page using the Appium driver.
+            dict or None: A WebElement dictionary if the element is found; otherwise, None for unsupported types (e.g., image).
         """
         driver = self._get_appium_driver()
         element_type = utils.determine_element_type(element)
@@ -83,7 +85,7 @@ class AppiumPageSource(ElementSourceInterface):
         else:
             if element_type == 'Text':
                 if index is not None:
-                    xpath = self.find_xpath_from_text_index(element, index, strategy)
+                    xpath = self.find_xpath_from_text_index(element, index)
                 else:
                     xpath = self.find_xpath_from_text(element)
 

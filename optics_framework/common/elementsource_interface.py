@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Any
+from typing import Any
 
 
 class ElementSourceInterface(ABC):
@@ -25,7 +25,7 @@ class ElementSourceInterface(ABC):
         pass
 
     @abstractmethod
-    def locate(self, element, index=None, strategy=None) -> tuple:
+    def locate(self, element, index=None) -> tuple:
         """
         Locate an element within the current screen state.
 

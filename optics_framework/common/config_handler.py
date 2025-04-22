@@ -72,7 +72,7 @@ class Config(BaseModel):
                     enabled=False, url=None, capabilities={})},
                 {"appium_page_source": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
-                {"device_screenshot": DependencyConfig(
+                {"appium_screenshot": DependencyConfig(
                     enabled=False, url=None, capabilities={})},
                 {"camera_screenshot": DependencyConfig(
                     enabled=False, url=None, capabilities={})},

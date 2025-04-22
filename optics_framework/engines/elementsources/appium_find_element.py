@@ -61,7 +61,7 @@ class AppiumFindElement(ElementSourceInterface):
         return page_source
 
 
-    def locate(self, element: str, index = None, strategy=None):
+    def locate(self, element: str, index = None):
         """
         Find the specified element on the current page.
 

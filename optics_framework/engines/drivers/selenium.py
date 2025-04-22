@@ -13,6 +13,7 @@ class SeleniumDriver(DriverInterface):
     _instance = None
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "selenium"
+    ACTION_NOT_SUPPORTED = "Action not supported in Selenium."
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -37,6 +38,7 @@ class SeleniumDriver(DriverInterface):
             "browserURL", "about:blank")
         self.initialized = True
         self.ui_helper = None
+
 
     def start_session(self):
         """Start a new Selenium session with the specified browser."""
@@ -156,13 +158,17 @@ class SeleniumDriver(DriverInterface):
 
     def enter_text(self, text: str, event_name: str | None = None) -> None:
         """Selenium needs a focused element to type into."""
-        internal_logger.warning("enter_text requires a focused element in Selenium. Use `enter_text_element` instead.")
-        raise NotImplementedError("Use enter_text_element with a specific element.")
+        active_element = self.driver.switch_to.active_element
+        if active_element:
+            active_element.send_keys(text)
+            internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
+        else:
+            internal_logger.error("No active element to type into.")
+            raise RuntimeError("No active element to type into.")
 
     def press_keycode(self, keycode: int, event_name: str | None = None) -> None:
         """Selenium does not support raw keycodes. Log a warning."""
-        internal_logger.warning("press_keycode is not supported in Selenium.")
-        raise NotImplementedError("Keycode-based actions are not supported.")
+        self._raise_action_not_supported()
 
     def enter_text_using_keyboard(self, text: str, event_name: str | None = None) -> None:
         """Enter text into the active element (e.g., body/input)."""
@@ -195,19 +201,13 @@ class SeleniumDriver(DriverInterface):
 
 
     def swipe(self, x_coor: int, y_coor: int, direction: str, swipe_length: int, event_name: str | None = None) -> None:
-        internal_logger.warning("Swipe action is not natively supported in Selenium desktop.")
-        raise NotImplementedError("Swipe is not applicable for web browsers.")
-
+        self._raise_action_not_supported()
 
     def swipe_percentage(self, x_percentage: float, y_percentage: float, direction: str, swipe_percentage: float, event_name: str | None = None) -> None:
-        internal_logger.warning("Swipe percentage is not supported in Selenium desktop.")
-        raise NotImplementedError("Swipe is not applicable for web browsers.")
-
+        self._raise_action_not_supported()
 
     def swipe_element(self, element, direction: str, swipe_length: int, event_name: str | None = None) -> None:
-        internal_logger.warning("Swipe element is not supported in Selenium.")
-        raise NotImplementedError("Swipe is not applicable for web browsers.")
-
+        self._raise_action_not_supported()
 
     def scroll(self, direction: str, duration: int = 1000, event_name: str | None = None) -> None:
         try:
@@ -232,3 +232,7 @@ class SeleniumDriver(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to get text from element: {e}")
             return ""
+
+    def _raise_action_not_supported(self) -> None:
+        internal_logger.warning(self.ACTION_NOT_SUPPORTED)
+        raise NotImplementedError(self.ACTION_NOT_SUPPORTED)
