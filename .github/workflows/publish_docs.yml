@@ -1,44 +1,30 @@
 name: Build-mkdocs-docs
-
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-
+permissions:
+  contents: write
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH  # Ensure Poetry is in PATH
-
-      - name: Configure Poetry to use Python 3.12
-        run: poetry env use python3.12
-
-      - name: Ensure poetry.lock exists
-        run: |
-          if [ ! -f poetry.lock ]; then
-            poetry lock
-          fi
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --with docs
-
-      - name: Build HTML with MkDocs
-        run: poetry run mkdocs build --site-dir build/html
-
-      - name: Deploy to GitHub Pages
-        run: poetry run mkdocs gh-deploy --force --no-history --site-dir build/html
+          python-version: 3.x
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: .cache
+          restore-keys: |
+            mkdocs-material-
+      - run: pip install mkdocs-material
+      - run: mkdocs gh-deploy --force
