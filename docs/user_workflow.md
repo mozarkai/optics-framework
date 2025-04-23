@@ -35,6 +35,20 @@ Running youtube unknown,Repeat Test
 - **test_case**: The name of the test case.
 - **test_step**: The module or step to execute for that test case.
 
+```csv
+test_case,test_step
+Suite Setup, Launch youtube app
+Suite Teardown, Terminate youtube app
+Setup, Load home page
+Teardown, Return to Home Page
+Running youtube using text,Launching App using text
+Running youtube unknown,Repeat Test
+```
+
+**Suite Setup/Teardown and Test Case Setup/Teardown**
+
+You can define setup and teardown steps in the test_cases.csv to ensure proper initialization and cleanup for both the entire test suite and individual test cases.
+
 ### test_modules.csv
 
 This file lists all modules, their steps, and associated parameters. Columns include `module_name`, `module_step`, and optional `param_1` to `param_n` (as many parameters as needed).
@@ -125,12 +139,21 @@ image_detection:
       capabilities: {}
 
 log_level: INFO
+
+include:
+- "Test cases to be included"
+
+exclude:
+- "Test Cases to be excluded"
+
 ```
 
 - **driver_sources**: Defines the automation driver (e.g., Appium for Android).
 - **elements_sources**: Specifies how elements are located (e.g., Appium or screenshots).
 - **text_detection**: Configures text recognition tools (e.g., EasyOCR).
 - **image_detection**: Sets up image matching (e.g., Template Matching).
+- **include**: Test cases to be executed, the rest of the test cases will be skipped.
+- **exclude**: All test cases apart from excluded test cases will be executed.
 
 ## Project Structure
 
