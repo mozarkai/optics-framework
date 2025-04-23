@@ -23,7 +23,7 @@ elements_sources:
         url: null
         capabilities: {}
     - appium_page_source:
-        enabled: false
+        enabled: true
         url: null
         capabilities: {}
     - appium_screenshot:

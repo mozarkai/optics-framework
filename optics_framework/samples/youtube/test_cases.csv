@@ -1,3 +1,6 @@
 test_case,test_step
-Running youtube using text,     Launching App using text
-Running youtube unknown,     Repeat Test
+Suite Setup,     Launch Youtube App
+Suite Teardown,   Close Youtube App
+Running youtube using Text,Interact using text
+Running youtube using Xpath,Interact using xpath
+Running youtube Repeat,     Repeat Test

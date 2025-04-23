@@ -1,15 +1,29 @@
 module_name,module_step,param_1,param_2,param_3,param_4,param_5
-Launching App using text,Launch App,,,,
-Launching App using text,Press Element,//android.widget.Button[@resource-id="com.android.permissioncontroller:id/permission_allow_button"],,,
-
+Launch Youtube App,Launch App,,,,
+Close Youtube App,Close And Terminate App,,,,
+Interact using text,Press Element,${popup_element_text},,,
 Interact using text,Assert Presence,${Subscriptions_text},,,
-Interact using text,Press Element,${Subscriptions_text},,,
 Interact using text,Press Element,${Home_text},,,
+Interact using text,Press Element,${Shorts_text},,,
+Interact using text,Scroll,up
+Interact using text,Press Element,${Subscriptions_text},,,
+Interact using text,Press Element,${today_text},,,
+Interact using text,Press Element,${Home_text},,,
+Interact using text,Press Element,${Search_text},,,
+Interact using text,Enter Text,${Search_input_field_text},${text_to_search},,
 
+Interact using xpath,Press Element,${popup_element_xpath},,,
 Interact using xpath,Assert Presence,${Subscriptions_xpath},,,
-Interact using xpath,Press Element,${Subscriptions_xpath},,,
 Interact using xpath,Press Element,${Home_xpath},,,
+Interact using xpath,Press Element,${Shorts_xpath},,,
+Interact using xpath,Scroll,up
+Interact using xpath,Press Element,${Subscriptions_xpath},,,
+Interact using xpath,Press Element,${today_xpath},,,
+Interact using xpath,Press Element,${Home_xpath},,,
+Interact using xpath,Press Element,${Search_xpath},,,
+Interact using xpath,Enter Text,${Search_input_field_xpath},${text_to_search},,
 
+Interact using images,Press Element,${popup_element_image},,,
 Interact using images,Press Element,${Subscriptions_image},,,
 Interact using images,Press Element,${Home_image},,,
 

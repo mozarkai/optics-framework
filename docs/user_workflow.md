@@ -180,6 +180,13 @@ Your project folder should look like this:
 
 Modules in `test_modules.csv` use a predefined set of keywords (e.g., `Launch App`, `Press Element`, `Assert Presence`). For a complete list, refer to the [Keywords Reference](usage/keyword_usage.md).
 
+## Samples For Your Reference
+Sample test scripts are provided to demonstrate the framework’s capabilities and guide users in writing their own. These examples show how texts, XPaths, and images can be used interchangeably, and how test data can be structured using CSV files.
+
+- Youtube
+- Contact
+- Gmail Website
+
 ## Validating Your Setup
 
 To check for syntactical errors in your CSV files and configuration, run a dry run:

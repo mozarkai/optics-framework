@@ -261,12 +261,12 @@ class Appium(DriverInterface):
             start_x = width // 2
             start_y = int(height * 0.8)
             end_y = int(height * 0.2)
-            self.swipe(start_x, start_y, start_x, end_y, duration)
+            self.driver.swipe(start_x, start_y, start_x, end_y, duration)
         elif direction == "down":
             start_x = width // 2
             start_y = int(height * 0.2)
             end_y = int(height * 0.8)
-            self.swipe(start_x, start_y, start_x, end_y, duration)
+            self.driver.swipe(start_x, start_y, start_x, end_y, duration)
 
 
     def enter_text_element(self, element, text, event_name=None):

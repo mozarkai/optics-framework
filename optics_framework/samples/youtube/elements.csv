@@ -1,12 +1,23 @@
 Element_Name,Element_ID
+popup_element_text,   Allow
+popup_element_xpath,  //android.widget.Button[@resource-id="com.android.permissioncontroller:id/permission_allow_button"]
+Subscriptions_text,   Subscriptions
 Subscriptions_xpath,   //android.widget.TextView[@resource-id="com.google.android.youtube:id/text" and @text="Subscriptions"]
 you_xpath,             (//android.widget.ImageView[@resource-id="com.google.android.youtube:id/image"])[4]
+Home_text,            Home
 Home_xpath,            //android.widget.TextView[@resource-id="com.google.android.youtube:id/text" and @text="Home"]
-Subscriptions_text,    Subscriptions
+Shorts_text,          Shorts
+Shorts_xpath,          //android.widget.TextView[@resource-id="com.google.android.youtube:id/text" and @text="Shorts"]
+today_text,          Today
+today_xpath,          //android.view.ViewGroup[@content-desc="Today"]
+Search_text,          Search
+Search_xpath,          //android.widget.ImageView[@content-desc="Search"]
+Search_input_field_text,Search
+Search_input_field_xpath,//android.widget.EditText[@resource-id="com.google.android.youtube:id/search_edit_text"]
+text_to_search,       mozark
 you_text,              Library
-Home_text,             Home
 Subscriptions_image,           sub.jpeg
 Youtube_image,             youtube.jpeg
 Home_image,                home.png
-METHOD,None
+METHOD,text
 List,"[""xpath"",""text"",""images""]"
