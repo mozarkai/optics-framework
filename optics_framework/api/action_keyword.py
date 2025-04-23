@@ -369,7 +369,7 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "enter_number")
         self.enter_text(element, str(number), event_name, located=located)
 
-    def press_keycode(self, keycode: int, event_name: str) -> None:
+    def press_keycode(self, keycode: int, event_name: str=None) -> None:
         """
         Press a specified keycode.
 
