@@ -7,6 +7,20 @@ from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.selenium_driver_manager import set_selenium_driver
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
+from pydantic import BaseModel, Field,ValidationError, ConfigDict
+from typing import Literal
+
+class SeleniumCapabilities(BaseModel):
+    browser_name: Literal["chrome", "firefox"] = Field(..., alias="browserName")
+    browser_url: str = Field("about:blank", alias="browserURL")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+class SeleniumDriverConfig(BaseModel):
+    url: str = "http://localhost:4444/wd/hub"
+    capabilities: SeleniumCapabilities
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SeleniumDriver(DriverInterface):
@@ -31,11 +45,15 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
             raise ValueError("Selenium driver not enabled in config")
-        self.selenium_server_url: str = config.get(
-            "url", "http://localhost:4444/wd/hub")
-        self.capabilities: Dict[str, Any] = config.get("capabilities", {})
-        self.browser_url: str = self.capabilities.get(
-            "browserURL", "about:blank")
+        try:
+            parsed_config = SeleniumDriverConfig(**config)
+        except ValidationError as e:
+            internal_logger.error(f"Invalid Selenium config: {e}")
+            raise
+
+        self.selenium_server_url = parsed_config.url
+        self.capabilities = parsed_config.capabilities
+        self.browser_url = parsed_config.capabilities.browser_url
         self.initialized = True
         self.ui_helper = None
 

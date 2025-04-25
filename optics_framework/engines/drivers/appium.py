@@ -10,10 +10,30 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
-
+from pydantic import BaseModel, Field, model_validator, ValidationError
 # Hotfix: Disable debug logs from Appium to prevent duplicates on live logs
 # logging.disable(logging.DEBUG)
 
+class CapabilitiesConfig(BaseModel):
+    platform_name: str = Field(..., alias="platformName", pattern="^(Android|iOS)$")
+    device_name: str = Field(..., alias="deviceName")
+    automation_name: str = Field(..., alias="automationName")
+    app_package: Optional[str] = Field(None, alias="appPackage")
+    app_activity: Optional[str] = Field(None, alias="appActivity")
+    app: Optional[str] = None  # iOS apps often use just 'app'
+
+    @model_validator(mode="after")
+    def validate_platform_requirements(self):
+        if self.platform_name.lower() == "android":
+            if not self.app_package or not self.app_activity:
+                raise ValueError("Android requires 'appPackage' and 'appActivity'")
+        elif self.platform_name.lower() == "ios":
+            if not self.app:
+                raise ValueError("iOS requires a valid 'app'")
+        return self
+
+    class Config:
+        populate_by_name = True
 
 class Appium(DriverInterface):
     _instance = None
@@ -37,22 +57,25 @@ class Appium(DriverInterface):
             raise ValueError("Appium driver not enabled in config")
 
         self.appium_server_url: str = config.get("url", "http://127.0.0.1:4723")
-        self.capabilities: Dict[str, Any] = config.get("capabilities", {})
+
+        try:
+            self.capabilities_model = CapabilitiesConfig(**config.get("capabilities", {}))
+        except ValidationError as ve:
+            internal_logger.error(f"Invalid Appium capabilities: {ve}")
+            raise
         # UI Tree handling
         self.ui_helper = None
-        self.tree = None
-        self.root = None
-        self.prev_hash = None
         self.initialized = True
 
     # session management
     def start_session(self):
         """Start the Appium session if not already started."""
-        app_package = self.capabilities.get('appPackage')
-        app_activity = self.capabilities.get('appActivity')
-        platform = self.capabilities.get('platformName')
-        device_serial = self.capabilities.get('deviceName')
-        automation_name = self.capabilities.get('automationName')
+        cap = self.capabilities_model
+        app_package = cap.app_package
+        app_activity = cap.app_activity
+        platform = cap.platform_name
+        device_serial = cap.device_name
+        automation_name = cap.automation_name
 
         internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
         new_comm_timeout = 3600  # Command timeout

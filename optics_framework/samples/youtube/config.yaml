@@ -26,7 +26,7 @@ elements_sources:
         enabled: false
         url: null
         capabilities: {}
-    - device_screenshot:
+    - appium_screenshot:
         enabled: true
         url: null
         capabilities: {}
