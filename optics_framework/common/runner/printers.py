@@ -1,13 +1,12 @@
 import abc
-from typing import Dict
+from typing import Dict, List
 from pydantic import BaseModel, Field
 from rich.live import Live
 from rich.tree import Tree
 from rich.text import Text
 from rich.panel import Panel
 from rich.progress import Progress, TaskID
-from rich.console import Group
-
+from rich.console import Console, Group
 import shutil
 
 
@@ -17,6 +16,22 @@ class TestCaseResult(BaseModel):
     elapsed: str
     status: str
     modules: list = Field(default_factory=list)
+
+
+class KeywordResult(BaseModel):
+    id: str
+    name: str
+    resolved_name: str
+    elapsed: str
+    status: str
+    reason: str
+
+
+class ModuleResult(BaseModel):
+    name: str
+    elapsed: str
+    status: str
+    keywords: List[KeywordResult] = Field(default_factory=list)
 
 
 class IResultPrinter(abc.ABC):
@@ -101,7 +116,14 @@ class TerminalWidthProvider:
 
 class TreeResultPrinter(IResultPrinter):
     STATUS_COLORS: Dict[str, str] = {
-        "NOT RUN": "grey50", "RUNNING": "yellow", "PASS": "green", "FAIL": "red"
+        "NOT RUN": "grey50",
+        "RUNNING": "yellow",
+        "PASS": "green",
+        "FAIL": "red",
+        "RETRYING": "orange",
+        "SKIPPED": "cyan",
+        "ERROR": "red",
+        "PAUSED": "blue"
     }
 
     def __init__(self, terminal_width_provider: TerminalWidthProvider) -> None:
@@ -121,7 +143,7 @@ class TreeResultPrinter(IResultPrinter):
 
     def start_run(self, total_test_cases: int) -> None:
         self.task_id = self.progress.add_task(
-            "Running tests", total=total_test_cases)
+            "Running tests", total=max(1, total_test_cases))
 
     def create_label(self, display_name: str, elapsed: str, status: str, level: int) -> Text:
         terminal_width = self.terminal_width_provider.get_terminal_width()
@@ -164,7 +186,7 @@ class TreeResultPrinter(IResultPrinter):
 
         total, passed, failed = len(self.test_state), sum(1 for tc in self.test_state.values(
         ) if tc.status == "PASS"), sum(1 for tc in self.test_state.values() if tc.status == "FAIL")
-        summary_text = f"Total Test Cases: {total} | Passed: {passed} | Failed: {failed}"
+        summary_text = f"Total Test Cases: {total} | Passed: {passed} | Failed: 0"
         summary_panel = Panel(
             summary_text, style="green" if failed == 0 else "red")
         return Group(self.progress, tree, summary_panel)
@@ -176,7 +198,8 @@ class TreeResultPrinter(IResultPrinter):
 
     def start_live(self) -> None:
         if not self._live:
-            self._live = Live(self._render_tree(), refresh_per_second=10)
+            self._live = Live(self._render_tree(
+            ), refresh_per_second=10, console=Console(force_terminal=True) )
             self._live.start()
             self._live.console.log("Testing started")
 

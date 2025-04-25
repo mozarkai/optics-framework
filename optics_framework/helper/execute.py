@@ -1,14 +1,15 @@
 import os
 import sys
 import asyncio
-import yaml
 from typing import Optional, Tuple, List
+import yaml
 from pydantic import BaseModel, field_validator
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.runner.data_reader import CSVDataReader, YAMLDataReader, merge_dicts
 from optics_framework.common.session_manager import SessionManager
-from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseData, ModuleData, ElementData
+from optics_framework.common.execution import ExecutionEngine, ExecutionParams
+from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, ElementData
 
 
 def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str]]:
@@ -138,72 +139,42 @@ def filter_test_cases(test_cases_dict: dict, include: list = None, exclude: list
     return filtered
 
 
-def get_execution_queue(test_cases_data: dict, test_case_name="", case_setup_teardown: bool = True) -> dict:
-    """
-    Build and return the execution queue as a dictionary, handling setup/teardown.
+def build_linked_list(test_cases_data: dict, modules_data: dict) -> TestCaseNode:
+    """Build a nested singly linked list from test cases and modules."""
+    head = None
+    prev = None
+    for tc_name, modules in test_cases_data.items():
+        tc_node = TestCaseNode(name=tc_name)
+        if not head:
+            head = tc_node
+        if prev:
+            prev.next = tc_node
+        prev = tc_node
 
-    :param test_cases_data: Dictionary of test case names and their steps.
-    :param test_case_name: Optional specific test case name or list of names.
-    :param case_setup_teardown: Whether to include per-test setup/teardown.
-    :return: Ordered dictionary of test cases and their steps.
-    """
-    suite_setup = None
-    suite_teardown = None
-    setup = None
-    teardown = None
-    regular_test_cases = {}
+        module_head = None
+        module_prev = None
+        for module_name in modules:
+            module_node = ModuleNode(name=module_name)
+            if not module_head:
+                module_head = module_node
+            if module_prev:
+                module_prev.next = module_node
+            module_prev = module_node
 
-    test_case_name_list = (
-        [test_case_name.strip().lower()] if isinstance(test_case_name, str) and test_case_name.strip()
-        else [tc.strip().lower() for tc in test_case_name] if isinstance(test_case_name, list) and test_case_name
-        else None
-    )
-
-    for name, steps in test_cases_data.items():
-        lname = name.lower()
-        if "suite" in lname and "setup" in lname:
-            suite_setup = (name, steps)
-        elif "suite" in lname and "teardown" in lname:
-            suite_teardown = (name, steps)
-        elif "setup" in lname and "suite" not in lname and not setup:
-            setup = (name, steps)
-        elif "teardown" in lname and "suite" not in lname and not teardown:
-            teardown = (name, steps)
-        else:
-            regular_test_cases[name] = steps
-
-    execution_dict = {}
-    if test_case_name_list:
-        matched_cases = {
-            name: steps for name, steps in regular_test_cases.items()
-            if name.lower() in test_case_name_list
-        }
-        if not matched_cases:
-            raise ValueError(
-                f"None of the specified test cases found: {test_case_name}")
-        if suite_setup:
-            execution_dict[suite_setup[0]] = suite_setup[1]
-        for name, steps in matched_cases.items():
-            if case_setup_teardown and setup:
-                execution_dict[setup[0]] = setup[1]
-            execution_dict[name] = steps
-            if case_setup_teardown and teardown:
-                execution_dict[teardown[0]] = teardown[1]
-        if suite_teardown:
-            execution_dict[suite_teardown[0]] = suite_teardown[1]
-    else:
-        if suite_setup:
-            execution_dict[suite_setup[0]] = suite_setup[1]
-        for name, steps in regular_test_cases.items():
-            if case_setup_teardown and setup:
-                execution_dict[setup[0]] = setup[1]
-            execution_dict[name] = steps
-            if case_setup_teardown and teardown:
-                execution_dict[teardown[0]] = teardown[1]
-        if suite_teardown:
-            execution_dict[suite_teardown[0]] = suite_teardown[1]
-
-    return execution_dict
+            keyword_head = None
+            keyword_prev = None
+            for keyword, params in modules_data.get(module_name, []):
+                keyword_node = KeywordNode(name=keyword, params=params)
+                if not keyword_head:
+                    keyword_head = keyword_node
+                if keyword_prev:
+                    keyword_prev.next = keyword_node
+                keyword_prev = keyword_node
+            module_node.keywords_head = keyword_head
+        tc_node.modules_head = module_head
+    if not head:
+        raise ValueError("No test cases found to build linked list")
+    return head
 
 
 class RunnerArgs(BaseModel):
@@ -307,10 +278,8 @@ class BaseRunner:
             'include'), self.config_handler.get('exclude')
         self.filtered_test_cases = filter_test_cases(
             self.test_cases_data, included, excluded)
-
-        # Build execution queue
-        self.execution_queue = get_execution_queue(
-            self.filtered_test_cases, self.test_name, case_setup_teardown=False)
+        self.execution_queue = build_linked_list(
+            self.filtered_test_cases, self.modules_data)
 
     async def run(self, mode: str):
         """Run the specified mode using ExecutionEngine."""
@@ -319,9 +288,8 @@ class BaseRunner:
                 session_id=self.session_id,
                 mode=mode,
                 test_case=self.test_name if self.test_name else None,
-                event_queue=None,
-                test_cases=TestCaseData(test_cases=self.execution_queue),
-                modules=ModuleData(modules=self.modules_data),
+                test_cases=self.execution_queue,
+                modules=self.modules_data,
                 elements=ElementData(elements=self.elements_data),
                 runner_type=self.runner
             )
