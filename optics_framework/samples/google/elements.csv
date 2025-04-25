@@ -1,8 +1,0 @@
-Element_Name,Element_ID
-popup_element_text,   Allow
-popup_element_xpath,  //android.widget.Button[@resource-id="com.android.permissioncontroller:id/permission_allow_button"]
-Search_input_field_text,Search or type URL
-Search_input_field_xpath,//android.widget.EditText[@resource-id="com.android.chrome:id/search_box_text"]
-text_to_search,       mozark
-METHOD,text
-List,"[""xpath"",""text"",""images""]"

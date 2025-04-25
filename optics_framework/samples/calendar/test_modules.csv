@@ -1,0 +1,11 @@
+module_name,module_step,param_1,param_2,param_3,param_4,param_5
+Launch Calendar App, Launch App
+Close Calendar App, Close And Terminate App
+Get today's date using WorldTimeAPI,Read Data,${today},${world_time_api_url},date
+Schedule an event for tomorrow,Date Evaluate,${desired_date},${today},"+3 day"
+Schedule an event for tomorrow,Press Element,${desired_date}
+Schedule an event for tomorrow,Sleep,5
+Schedule an event for tomorrow,Press Element,${add_event_button}
+Schedule an event for tomorrow,Press Element,${event_type}
+Schedule an event for tomorrow,Enter Text,${title_field},${title_text}
+Schedule an event for tomorrow,Press Element,${save_button}

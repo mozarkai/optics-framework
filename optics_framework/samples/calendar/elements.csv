@@ -1,0 +1,7 @@
+Element_Name,Element_ID
+world_time_api_url,https://timeapi.io/api/Time/current/zone?timeZone=Asia/Singapore
+add_event_button,//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc="Create new event or other calendar entries"]
+event_type,Task button
+title_field,//android.widget.EditText[@resource-id="com.google.android.calendar:id/title"]
+title_text,Meeting With John
+save_button,Save

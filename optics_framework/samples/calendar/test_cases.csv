@@ -1,0 +1,5 @@
+test_case,test_step
+Suite Setup,     Launch Calendar App
+Suite Teardown,   Close Calendar App
+Fetch Today's Date,  Get today's date using WorldTimeAPI
+Schedule An Event,  Schedule an event for tomorrow

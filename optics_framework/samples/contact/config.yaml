@@ -17,7 +17,7 @@ elements_sources:
       enabled: true
   - appium_page_source:
       enabled: false
-  - device_screenshot:
+  - appium_screenshot:
       enabled: true
   - webcam_screenshot:
       enabled: false

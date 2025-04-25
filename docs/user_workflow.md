@@ -153,7 +153,7 @@ exclude:
 - **text_detection**: Configures text recognition tools (e.g., EasyOCR).
 - **image_detection**: Sets up image matching (e.g., Template Matching).
 - **include**: Test cases to be executed, the rest of the test cases will be skipped.
-- **exclude**: All test cases apart from excluded test cases will be executed.
+- **exclude**: Specified test cases to be skipped, all other test cases will be executed.
 
 ## Project Structure
 
@@ -183,9 +183,21 @@ Modules in `test_modules.csv` use a predefined set of keywords (e.g., `Launch Ap
 ## Samples For Your Reference
 Sample test scripts are provided to demonstrate the framework’s capabilities and guide users in writing their own. These examples show how texts, XPaths, and images can be used interchangeably, and how test data can be structured using CSV files.
 
-- Youtube
-- Contact
-- Gmail Website
+📅 Calendar
+
+Calendar sample showcases how our framework supports dynamic data fetching using APIs (e.g. fetching current date) and apply natural date evaluations to compute future dates on the fly.
+
+📺 Youtube
+
+Youtube sample showcases our framework's ability to interact with the devices using multiple element types such as texts, xpaths and images.
+
+👥 Contact
+
+Contact example showcases form input automation, screen validation using dynamic element assertions, and how structured test data (like ${First_Name}) can be reused across steps.
+
+📧 Gmail Website
+
+A Selenium-based sample that automates Gmail sign-in and account creation. It includes clicking on buttons like “Sign in” and “Create an account,” and entering user credentials, showcasing web interaction using text-based locators.
 
 ## Validating Your Setup
 

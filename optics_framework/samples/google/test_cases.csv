@@ -1,6 +1,0 @@
-test_case,test_step
-Suite Setup,     Launch Chrome App
-Suite Teardown,   Close Chrome App
-Browsing chrome using Text,Interact using text
-Browsing chrome using Xpath,Interact using xpath
-Running youtube Repeat,     Repeat Test
