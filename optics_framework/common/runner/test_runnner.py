@@ -1,19 +1,21 @@
 import time
+import asyncio
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any
-import pytest
 import tempfile
 import shutil
 import sys
+from typing import Callable, Dict, List, Optional, Tuple, Union, Any
+import pytest
 from pydantic import BaseModel, Field
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import user_logger, internal_logger
-from .printers import IResultPrinter, TestCaseResult
+from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult
+from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
 
 
 class KeywordResult(BaseModel):
-    """Result of a single keyword execution."""
+    id: str
     name: str
     resolved_name: str
     elapsed: str
@@ -22,7 +24,6 @@ class KeywordResult(BaseModel):
 
 
 class ModuleResult(BaseModel):
-    """Result of a module execution."""
     name: str
     elapsed: str
     status: str
@@ -31,31 +32,31 @@ class ModuleResult(BaseModel):
 
 class Runner(ABC):
     """Abstract base class for test runners with explicit attributes."""
-    test_cases: Dict[str, List[str]]
+    test_cases: TestCaseNode
     result_printer: IResultPrinter
     keyword_map: Dict[str, Callable[..., Any]]
 
     @abstractmethod
-    def execute_test_case(self, test_case: str) -> Union[dict, TestCaseResult]:
+    async def execute_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
         pass
 
     @abstractmethod
-    def run_all(self) -> None:
+    async def run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
         pass
 
     @abstractmethod
-    def dry_run_test_case(self, test_case: str) -> Union[dict, TestCaseResult]:
+    async def dry_run_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
         pass
 
     @abstractmethod
-    def dry_run_all(self) -> None:
+    async def dry_run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
         pass
 
 
 class TestRunner(Runner):
     def __init__(
         self,
-        test_cases: Dict[str, List[str]],
+        test_cases: TestCaseNode,
         modules: Dict[str, List[Tuple[str, List[str]]]],
         elements: Dict[str, str],
         keyword_map: Dict[str, Callable[..., Any]],
@@ -66,6 +67,42 @@ class TestRunner(Runner):
         self.elements = elements
         self.keyword_map = keyword_map
         self.result_printer = result_printer
+        self.config = ConfigHandler.get_instance().config
+        self._initialize_test_state()
+
+    def _initialize_test_state(self) -> None:
+        """Pre-populate test_state with all test cases, modules, and keywords as NOT RUN."""
+        test_state = {}
+        current_test = self.test_cases
+        while current_test:
+            test_result = TestCaseResult(
+                name=current_test.name, elapsed="0.00s", status="NOT RUN", modules=[])
+            current_module = current_test.modules_head
+            while current_module:
+                module_result = ModuleResult(
+                    name=current_module.name, elapsed="0.00s", status="NOT RUN", keywords=[])
+                current_keyword = current_module.keywords_head
+                while current_keyword:
+                    resolved_params = [self.resolve_param(
+                        param) for param in current_keyword.params]
+                    resolved_name = f"{current_keyword.name} ({', '.join(str(p) for p in resolved_params)})" if resolved_params else current_keyword.name
+                    keyword_result = KeywordResult(
+                        id=current_keyword.id,
+                        name=current_keyword.name,
+                        resolved_name=resolved_name,
+                        elapsed="0.00s",
+                        status="NOT RUN",
+                        reason=""
+                    )
+                    module_result.keywords.append(keyword_result)
+                    current_keyword = current_keyword.next
+                test_result.modules.append(module_result)
+                current_module = current_module.next
+            test_state[current_test.name] = test_result
+            current_test = current_test.next
+        self.result_printer.test_state = test_state
+        internal_logger.debug(
+            f"Initialized test_state: {list(test_state.keys())} with {sum(len(m.modules) for m in test_state.values())} modules")
 
     def _extra(self, test_case: str, module: str = "N/A", keyword: str = "N/A") -> Dict[str, str]:
         return {"test_case": test_case, "test_module": module, "keyword": keyword}
@@ -81,265 +118,287 @@ class TestRunner(Runner):
         return resolved_value
 
     def _init_test_case(self, test_case: str) -> TestCaseResult:
-        return TestCaseResult(name=test_case, elapsed="0.00s", status="NOT RUN")
+        return self.result_printer.test_state.get(test_case, TestCaseResult(name=test_case, elapsed="0.00s", status="NOT RUN"))
 
-    def _init_module(self, module_name: str) -> ModuleResult:
-        return ModuleResult(name=module_name, elapsed="0.00s", status="NOT RUN")
+    def _find_result(self, test_case_name: str, module_name: Optional[str] = None, keyword_id: Optional[str] = None) -> Union[TestCaseResult, ModuleResult, KeywordResult]:
+        """Find the result object in test_state by test case, module, and keyword id."""
+        test_result = self.result_printer.test_state.get(test_case_name)
+        if not test_result:
+            raise ValueError(
+                f"Test case {test_case_name} not found in test_state")
+        if module_name is None:
+            return test_result
+        for module_result in test_result.modules:
+            if module_result.name == module_name:
+                if keyword_id is None:
+                    return module_result
+                for keyword_result in module_result.keywords:
+                    if keyword_result.id == keyword_id:
+                        internal_logger.debug(
+                            f"Found keyword: {keyword_result.name} (id: {keyword_id})")
+                        return keyword_result
+                raise ValueError(
+                    f"Keyword id {keyword_id} not found in module {module_name}")
+        raise ValueError(f"Module {module_name} not found in test_state")
 
-    def _init_keyword(self, keyword: str) -> KeywordResult:
-        return KeywordResult(name=keyword, resolved_name=keyword, elapsed="0.00s", status="NOT RUN", reason="")
-
-    def _update_status(self, result: Union[TestCaseResult, ModuleResult, KeywordResult], status: str, elapsed: Optional[float] = None) -> None:
+    def _update_status(self, result: Union[TestCaseResult, ModuleResult, KeywordResult], status: str, elapsed: Optional[float] = None, test_case_name: str = "") -> None:
         result.status = status
         if elapsed is not None:
             result.elapsed = f"{elapsed:.2f}s"
-        if isinstance(result, TestCaseResult):
-            self.result_printer.print_tree_log(result)
+        if test_case_name:
+            internal_logger.debug(
+                f"Updating tree log for {result.__class__.__name__}: {result.name} -> {status}")
+            test_case_result = self.result_printer.test_state.get(
+                test_case_name)
+            if test_case_result:
+                self.result_printer.print_tree_log(test_case_result)
 
-    def _execute_keyword(self, keyword: str, params: List[str], keyword_result: KeywordResult, module_result: ModuleResult, test_case_result: TestCaseResult, start_time: float, extra: Dict[str, str]) -> bool:
-        internal_logger.debug(f"Executing keyword: {keyword}", extra=extra)
-        user_logger.debug(f"Executing keyword: {keyword}", extra=extra)
-        self._update_status(keyword_result, "RUNNING")
-        self.result_printer.print_tree_log(test_case_result)
+    async def _send_event(self, queue: Optional[asyncio.Queue], entity_type: str, node: Node, status: str, reason: Optional[str] = None) -> None:
+        if queue:
+            await queue.put({
+                "entity_type": entity_type,
+                "entity_id": node.id,
+                "name": node.name,
+                "status": status,
+                "reason": reason or "",
+                "attempt_count": node.attempt_count
+            })
 
-        func_name = "_".join(keyword.split()).lower()
+    async def _process_commands(self, command_queue: Optional[asyncio.Queue], node: KeywordNode, parent: Optional[ModuleNode]) -> bool:
+        if not command_queue:
+            return False
+        retry = False
+        while not command_queue.empty():
+            command = await command_queue.get()
+            if command["command"] == "Retry" and command["entity_id"] == node.id:
+                node.state = State.RETRYING
+                node.attempt_count += 1
+                retry = True
+            elif command["command"] == "Add" and parent and command["parent_id"] == parent.id:
+                new_node = KeywordNode(
+                    name=command["name"], params=command.get("params", []))
+                new_node.next = node.next
+                node.next = new_node
+        return retry
+
+    async def _execute_keyword(
+        self,
+        keyword_node: KeywordNode,
+        module_node: ModuleNode,
+        test_case_result: TestCaseResult,
+        extra: Dict[str, str],
+        event_queue: Optional[asyncio.Queue],
+        command_queue: Optional[asyncio.Queue]
+    ) -> bool:
+        keyword_result = self._find_result(
+            test_case_result.name, module_node.name, keyword_node.id)
+        internal_logger.debug(
+            f"Executing keyword: {keyword_node.name} (id: {keyword_node.id})")
+        start_time = time.time()
+
+        keyword_node.state = State.RUNNING
+        await self._send_event(event_queue, "keyword", keyword_node, "KeywordStart")
+        self._update_status(keyword_result, "RUNNING",
+                            time.time() - start_time, test_case_result.name)
+
+        func_name = "_".join(keyword_node.name.split()).lower()
         method = self.keyword_map.get(func_name)
         if not method:
-            user_logger.error(f"Keyword not found: {keyword}", extra=extra)
-            internal_logger.error(f"Keyword not found: {keyword}", extra=extra)
-            keyword_result.reason = "Keyword not found"
-            keyword_result.elapsed = f"{time.time() - start_time:.2f}s"
-            self._update_status(keyword_result, "FAIL")
-            self._update_status(module_result, "FAIL")
-            self._update_status(test_case_result, "FAIL")
-            self.result_printer.print_tree_log(test_case_result)
+            keyword_node.state = State.ERROR
+            keyword_node.last_failure_reason = "Keyword not found"
+            await self._send_event(event_queue, "keyword", keyword_node, "KeywordFail", "Keyword not found")
+            self._update_status(keyword_result, "FAIL",
+                                time.time() - start_time, test_case_result.name)
             return False
 
         try:
             raw_indices = getattr(method, '_raw_param_indices', [])
             resolved_params = [param if i in raw_indices else self.resolve_param(
-                param) for i, param in enumerate(params)]
-            keyword_result.resolved_name = f"{keyword} ({', '.join(str(p) for p in resolved_params)})"
+                param) for i, param in enumerate(keyword_node.params)]
+            if isinstance(keyword_result, KeywordResult):
+                keyword_result.resolved_name = f"{keyword_node.name} ({', '.join(str(p) for p in resolved_params)})" if resolved_params else keyword_node.name
             method(*resolved_params)
-            internal_logger.debug(
-                f"Keyword '{keyword}' executed successfully", extra=extra)
-            user_logger.debug(
-                f"Keyword '{keyword}' executed successfully", extra=extra)
+            keyword_node.state = State.COMPLETED_PASSED
+            await self._send_event(event_queue, "keyword", keyword_node, "KeywordPass")
             self._update_status(keyword_result, "PASS",
-                                time.time() - start_time)
-            self.result_printer.print_tree_log(test_case_result)
+                                time.time() - start_time, test_case_result.name)
             return True
         except Exception as e:
-            internal_logger.error(
-                f"Error executing keyword '{keyword}': {e}", extra=extra)
-            user_logger.error(
-                f"Error executing keyword '{keyword}': {e}", extra=extra)
-            keyword_result.reason = str(e)
-            keyword_result.elapsed = f"{time.time() - start_time:.2f}s"
-            self._update_status(keyword_result, "FAIL")
-            self._update_status(module_result, "FAIL")
-            self._update_status(test_case_result, "FAIL")
-            self.result_printer.print_tree_log(test_case_result)
+            keyword_node.state = State.COMPLETED_FAILED
+            keyword_node.last_failure_reason = str(e)
+            await self._send_event(event_queue, "keyword", keyword_node, "KeywordFail", str(e))
+            self._update_status(keyword_result, "FAIL",
+                                time.time() - start_time, test_case_result.name)
+
+            if keyword_node.attempt_count < self.config.max_attempts:
+                await asyncio.sleep(self.config.halt_duration)
+                if await self._process_commands(command_queue, keyword_node, module_node):
+                    return await self._execute_keyword(keyword_node, module_node, test_case_result, extra, event_queue, command_queue)
             return False
 
-    def _process_module(self, module_name: str, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
-        internal_logger.debug(f"Loading module: {module_name}", extra=extra)
-        user_logger.debug(f"Loading module: {module_name}", extra=extra)
-        module_result = self._init_module(module_name)
-        if module_name not in self.modules:
-            user_logger.error("Module not found", extra=extra)
-            internal_logger.error("Module not found", extra=extra)
-            self._update_status(module_result, "FAIL")
-            return False
-        test_case_result.modules.append(module_result)
-        self.result_printer.print_tree_log(test_case_result)
+    async def _process_module(self, module_node: ModuleNode, test_case_result: TestCaseResult, extra: Dict[str, str], event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> bool:
+        module_result = self._find_result(
+            test_case_result.name, module_node.name)
+        start_time = time.time()
+        module_node.state = State.RUNNING
+        await self._send_event(event_queue, "module", module_node, "ModuleStart")
+        self._update_status(module_result, "RUNNING",
+                            time.time() - start_time, test_case_result.name)
 
-        module_start = time.time()
-        self._update_status(module_result, "RUNNING")
-        self.result_printer.print_tree_log(test_case_result)
-
-        for keyword, params in self.modules[module_name]:
-            keyword_result = self._init_keyword(keyword)
-            module_result.keywords = module_result.keywords + [keyword_result]
-            extra["keyword"] = keyword
-            keyword_start = time.time()
-            if not self._execute_keyword(keyword, params, keyword_result, module_result, test_case_result, keyword_start, extra):
+        current = module_node.keywords_head
+        while current:
+            extra["keyword"] = current.name
+            if not await self._execute_keyword(current, module_node, test_case_result, extra, event_queue, command_queue):
+                module_node.state = State.COMPLETED_FAILED
+                await self._send_event(event_queue, "module", module_node, "ModuleFail")
+                self._update_status(
+                    module_result, "FAIL", time.time() - start_time, test_case_result.name)
                 return False
-            module_result.elapsed = f"{time.time() - module_start:.2f}s"
-            module_result.status = "PASS" if all(
-                k.status == "PASS" for k in module_result.keywords) else "FAIL"
-            self.result_printer.print_tree_log(test_case_result)
+            current = current.next
+
+        module_node.state = State.COMPLETED_PASSED
+        await self._send_event(event_queue, "module", module_node, "ModulePass")
+        self._update_status(module_result, "PASS",
+                            time.time() - start_time, test_case_result.name)
         return True
 
-    def execute_test_case(self, test_case: str) -> TestCaseResult:
+    async def execute_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
         start_time = time.time()
         extra = self._extra(test_case)
-        user_logger.info("Starting test case", extra={
-                         **extra, "test_start": True})
-        internal_logger.info("Starting test case", extra={
-                             **extra, "test_start": True})
         test_case_result = self._init_test_case(test_case)
-        self.result_printer.print_tree_log(test_case_result)
-
-        if test_case not in self.test_cases:
-            user_logger.error("Test case not found", extra=extra)
-            internal_logger.error("Test case not found", extra=extra)
+        current = self.test_cases
+        while current and current.name != test_case:
+            current = current.next
+        if not current:
             self._update_status(test_case_result, "FAIL",
-                                time.time() - start_time)
-            self.result_printer.print_tree_log(test_case_result)
-            user_logger.info("Completed test case", extra={
-                             **extra, "test_end": True})
-            internal_logger.info("Completed test case", extra={
-                                 **extra, "test_end": True})
+                                time.time() - start_time, test_case_result.name)
             return test_case_result
 
-        self._update_status(test_case_result, "RUNNING")
-        self.result_printer.print_tree_log(test_case_result)
+        current.state = State.RUNNING
+        await self._send_event(event_queue, "test_case", current, "TestCaseStart")
+        self._update_status(test_case_result, "RUNNING",
+                            time.time() - start_time, test_case_result.name)
 
-        for module_name in self.test_cases[test_case]:
-            if not self._process_module(module_name, test_case_result, self._extra(test_case, module_name)):
-                user_logger.info("Completed test case", extra={
-                                 **extra, "test_end": True})
-                internal_logger.info("Completed test case", extra={
-                                     **extra, "test_end": True})
+        module_current = current.modules_head
+        while module_current:
+            if not await self._process_module(module_current, test_case_result, extra, event_queue, command_queue):
+                current.state = State.COMPLETED_FAILED
+                await self._send_event(event_queue, "test_case", current, "TestCaseFail")
+                self._update_status(
+                    test_case_result, "FAIL", time.time() - start_time, test_case_result.name)
                 return test_case_result
+            module_current = module_current.next
 
-        test_case_result.elapsed = f"{time.time() - start_time:.2f}s"
-        test_case_result.status = "PASS" if all(
-            m.status == "PASS" for m in test_case_result.modules) else "FAIL"
-        user_logger.debug("Completed test case execution", extra=extra)
-        internal_logger.debug("Completed test case execution", extra=extra)
-        self.result_printer.print_tree_log(test_case_result)
-        user_logger.info("Completed test case", extra={
-                         **extra, "test_end": True})
-        internal_logger.info("Completed test case", extra={
-                             **extra, "test_end": True})
+        current.state = State.COMPLETED_PASSED
+        await self._send_event(event_queue, "test_case", current, "TestCasePass")
+        self._update_status(test_case_result, "PASS",
+                            time.time() - start_time, test_case_result.name)
         return test_case_result
 
-    def run_all(self, test_case_names: Union[str, List[str]] = "") -> None:
-        if isinstance(test_case_names, str):
-            test_case_names = list(self.test_cases.keys()) if test_case_names == "" else [
-                test_case_names]
-        if not test_case_names:
-            user_logger.error("No test cases found to run.",
-                              extra=self._extra("N/A"))
-            return
-
-        for tc_name in test_case_names:
-            self.result_printer.test_state[tc_name] = self._init_test_case(
-                tc_name)
-        self.result_printer.start_run(len(test_case_names))
+    async def run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+        current = self.test_cases
+        self.result_printer.start_run(len(self.result_printer.test_state))
         self.result_printer.start_live()
-        for test_case in test_case_names:
-            self.execute_test_case(test_case)
+        while current:
+            await self.execute_test_case(current.name, event_queue, command_queue)
+            current = current.next
         self.result_printer.stop_live()
 
-    def _dry_run_keyword(self, keyword: str, params: List[str], keyword_result: KeywordResult, module_result: ModuleResult, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
-        internal_logger.debug(f"Executing keyword: {keyword}", extra=extra)
-        user_logger.debug(f"Executing keyword: {keyword}", extra=extra)
-        self._update_status(keyword_result, "RUNNING")
-        self.result_printer.print_tree_log(test_case_result)
-
-        try:
-            resolved_params = [self.resolve_param(param) for param in params]
-            if resolved_params:
-                keyword_result.resolved_name = f"{keyword} ({', '.join(resolved_params)})"
-        except ValueError as e:
-            user_logger.error(f"Parameter resolution failed: {e}", extra=extra)
-            internal_logger.error(
-                f"Parameter resolution failed: {e}", extra=extra)
-            keyword_result.reason = str(e)
-            self._update_status(keyword_result, "FAIL")
-            self._update_status(module_result, "FAIL")
-            self._update_status(test_case_result, "FAIL")
-            self.result_printer.print_tree_log(test_case_result)
-            return False
-
-        func_name = "_".join(keyword.split()).lower()
-        if func_name not in self.keyword_map:
-            user_logger.error(f"Keyword not found: {keyword}", extra=extra)
-            internal_logger.error(f"Keyword not found: {keyword}", extra=extra)
-            keyword_result.reason = "Keyword not found"
-            self._update_status(keyword_result, "FAIL")
-            self._update_status(module_result, "FAIL")
-            self._update_status(test_case_result, "FAIL")
-            self.result_printer.print_tree_log(test_case_result)
-            return False
-
-        self._update_status(keyword_result, "PASS", 0.0)
-        self.result_printer.print_tree_log(test_case_result)
-        return True
-
-    def _dry_run_module(self, module_name: str, test_case_result: TestCaseResult, extra: Dict[str, str]) -> bool:
-        internal_logger.debug(f"Loading module: {module_name}", extra=extra)
-        user_logger.debug(f"Loading module: {module_name}", extra=extra)
-        module_result = self._init_module(module_name)
-        test_case_result.modules.append(module_result)
-        self.result_printer.print_tree_log(test_case_result)
-
-        self._update_status(module_result, "RUNNING")
-        self.result_printer.print_tree_log(test_case_result)
-
-        for keyword, params in self.modules.get(module_name, []):
-            keyword_result = self._init_keyword(keyword)
-            module_result.keywords.append(keyword_result)
-            extra["keyword"] = keyword
-            if not self._dry_run_keyword(keyword, params, keyword_result, module_result, test_case_result, extra):
-                return False
-            module_result.status = "PASS" if all(
-                k.status == "PASS" for k in module_result.keywords) else "FAIL"
-            module_result.elapsed = "0.00s"
-            self.result_printer.print_tree_log(test_case_result)
-        return True
-
-    def dry_run_test_case(self, test_case: str) -> TestCaseResult:
+    async def dry_run_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
         start_time = time.time()
         extra = self._extra(test_case)
-        user_logger.debug("Starting dry run", extra=extra)
-        internal_logger.debug("Starting dry run", extra=extra)
         test_case_result = self._init_test_case(test_case)
-        self.result_printer.print_tree_log(test_case_result)
-
-        if test_case not in self.test_cases:
-            user_logger.warning(
-                f"Test case '{test_case}' not found.", extra=extra)
-            internal_logger.warning(
-                f"Test case '{test_case}' not found.", extra=extra)
+        current = self.test_cases
+        while current and current.name != test_case:
+            current = current.next
+        if not current:
             self._update_status(test_case_result, "FAIL",
-                                time.time() - start_time)
-            self.result_printer.print_tree_log(test_case_result)
+                                time.time() - start_time, test_case_result.name)
             return test_case_result
 
-        self._update_status(test_case_result, "RUNNING")
-        self.result_printer.print_tree_log(test_case_result)
+        current.state = State.RUNNING
+        await self._send_event(event_queue, "test_case", current, "TestCaseStart")
+        self._update_status(test_case_result, "RUNNING",
+                            time.time() - start_time, test_case_result.name)
 
-        for module_name in self.test_cases[test_case]:
-            if not self._dry_run_module(module_name, test_case_result, self._extra(test_case, module_name)):
-                return test_case_result
+        module_current = current.modules_head
+        while module_current:
+            module_result = self._find_result(
+                test_case_result.name, module_current.name)
+            module_current.state = State.RUNNING
+            await self._send_event(event_queue, "module", module_current, "ModuleStart")
+            self._update_status(module_result, "RUNNING",
+                                0.0, test_case_result.name)
 
-        test_case_result.elapsed = f"{time.time() - start_time:.2f}s"
-        test_case_result.status = "PASS" if all(
-            m.status == "PASS" for m in test_case_result.modules) else "FAIL"
-        user_logger.debug("Completed dry run", extra=extra)
-        internal_logger.debug("Completed dry run", extra=extra)
-        self.result_printer.print_tree_log(test_case_result)
+            keyword_current = module_current.keywords_head
+            while keyword_current:
+                keyword_result = self._find_result(
+                    test_case_result.name, module_current.name, keyword_current.id)
+                keyword_current.state = State.RUNNING
+                await self._send_event(event_queue, "keyword", keyword_current, "KeywordStart")
+                self._update_status(keyword_result, "RUNNING",
+                                    0.0, test_case_result.name)
+
+                try:
+                    resolved_params = [self.resolve_param(
+                        param) for param in keyword_current.params]
+                    if isinstance(keyword_result, KeywordResult):
+                        keyword_result.resolved_name = f"{keyword_current.name} ({', '.join(resolved_params)})" if resolved_params else keyword_current.name
+                except ValueError as e:
+                    keyword_current.state = State.COMPLETED_FAILED
+                    await self._send_event(event_queue, "keyword", keyword_current, "KeywordFail", str(e))
+                    self._update_status(
+                        keyword_result, "FAIL", 0.0, test_case_result.name)
+                    self._update_status(
+                        module_result, "FAIL", 0.0, test_case_result.name)
+                    self._update_status(
+                        test_case_result, "FAIL", time.time() - start_time, test_case_result.name)
+                    return test_case_result
+
+                func_name = "_".join(keyword_current.name.split()).lower()
+                if func_name not in self.keyword_map:
+                    keyword_current.state = State.COMPLETED_FAILED
+                    await self._send_event(event_queue, "keyword", keyword_current, "KeywordFail", "Keyword not found")
+                    self._update_status(
+                        keyword_result, "FAIL", 0.0, test_case_result.name)
+                    self._update_status(
+                        module_result, "FAIL", 0.0, test_case_result.name)
+                    self._update_status(
+                        test_case_result, "FAIL", time.time() - start_time, test_case_result.name)
+                    return test_case_result
+
+                keyword_current.state = State.COMPLETED_PASSED
+                await self._send_event(event_queue, "keyword", keyword_current, "KeywordPass")
+                self._update_status(keyword_result, "PASS",
+                                    0.0, test_case_result.name)
+                keyword_current = keyword_current.next
+
+            module_current.state = State.COMPLETED_PASSED
+            await self._send_event(event_queue, "module", module_current, "ModulePass")
+            self._update_status(module_result, "PASS",
+                                0.0, test_case_result.name)
+            module_current = module_current.next
+
+        current.state = State.COMPLETED_PASSED
+        await self._send_event(event_queue, "test_case", current, "TestCasePass")
+        self._update_status(test_case_result, "PASS",
+                            time.time() - start_time, test_case_result.name)
         return test_case_result
 
-    def dry_run_all(self, test_case_names: Union[str, List[str]] = "") -> None:
-        if isinstance(test_case_names, str):
-            test_case_names = list(self.test_cases.keys()) if test_case_names == "" else [
-                test_case_names]
+    async def dry_run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+        current = self.test_cases
+        self.result_printer.start_run(len(self.result_printer.test_state))
         self.result_printer.start_live()
-        for test_case in test_case_names:
-            self.dry_run_test_case(test_case)
+        while current:
+            await self.dry_run_test_case(current.name, event_queue, command_queue)
+            current = current.next
         self.result_printer.stop_live()
 
 
 class PytestRunner(Runner):
-    """Pytest-based test runner."""
     instance = None
 
-    def __init__(self, session: Session, test_cases: Dict, modules: Dict, elements: Dict, keyword_map: Dict):
+    def __init__(self, session: Session, test_cases: TestCaseNode, modules: Dict, elements: Dict, keyword_map: Dict):
         self.test_cases = test_cases
         self.modules = modules
         self.elements = elements
@@ -378,40 +437,46 @@ class PytestRunner(Runner):
                 return False
         return True
 
-    def execute_test_case(self, test_case: str, dry_run: bool = False) -> TestCaseResult:
+    async def execute_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
         start_time = time.time()
         result = TestCaseResult(
             name=test_case, elapsed="0.00s", status="NOT RUN")
-        if test_case not in self.test_cases:
+        current = self.test_cases
+        while current and current.name != test_case:
+            current = current.next
+        if not current:
             result.status = "FAIL"
             result.elapsed = f"{time.time() - start_time:.2f}s"
             return result
 
         result.status = "RUNNING"
-        for module_name in self.test_cases[test_case]:
-            if dry_run:
-                if module_name not in self.modules:
-                    result.status = "FAIL"
-                    break
-            else:
-                if not self._process_module(module_name):
-                    result.status = "FAIL"
-                    break
+        module_current = current.modules_head
+        while module_current:
+            if not self._process_module(module_current.name):
+                result.status = "FAIL"
+                break
+            module_current = module_current.next
         else:
             result.status = "PASS"
         result.elapsed = f"{time.time() - start_time:.2f}s"
         return result
 
-    def run_all(self) -> None:
-        self._run_pytest(list(self.test_cases.keys()))
+    async def run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+        await self._run_pytest([node.name for node in self._iter_test_cases()])
 
-    def dry_run_test_case(self, test_case: str) -> TestCaseResult:
-        return self.execute_test_case(test_case, dry_run=True)
+    async def dry_run_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
+        return await self.execute_test_case(test_case, event_queue, command_queue)
 
-    def dry_run_all(self) -> None:
-        self._run_pytest(list(self.test_cases.keys()), dry_run=True)
+    async def dry_run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+        await self._run_pytest([node.name for node in self._iter_test_cases()], dry_run=True)
 
-    def _run_pytest(self, test_cases: List[str], dry_run: bool = False) -> bool:
+    def _iter_test_cases(self):
+        current = self.test_cases
+        while current:
+            yield current
+            current = current.next
+
+    async def _run_pytest(self, test_cases: List[str], dry_run: bool = False) -> bool:
         temp_dir = tempfile.mkdtemp()
         test_file_path = f"{temp_dir}/test_generated_{int(time.time()*1000)}.py"
         conftest_path = f"{temp_dir}/conftest.py"
@@ -419,7 +484,6 @@ class PytestRunner(Runner):
 
         internal_logger.debug(
             f"Generating test file: {test_file_path}", extra=extra)
-
         with open(conftest_path, "w") as f:
             f.write("""
 import pytest
@@ -431,9 +495,10 @@ def runner():
 """)
 
         test_code = "".join(
-            f"def test_{tc.replace(' ', '_')}(runner):\n"
-            f"    result = runner.execute_test_case('{tc}', dry_run={dry_run})\n"
-            f"    assert result.status == 'PASS', 'Test case failed with status: ' + result.status\n"
+            f"@pytest.mark.asyncio\n"
+            f"async def test_{tc.replace(' ', '_')}(runner):\n"
+            f"    result = await runner.execute_test_case('{tc}', None, None)\n"
+            f"    assert result.status == 'PASS', f'Test case failed with status: {{result.status}}'\n"
             for tc in test_cases
         )
         internal_logger.debug(
@@ -447,6 +512,9 @@ def runner():
 
         junit_path = f"{ConfigHandler.get_instance().get_project_path()}/execution_output/junit_output.xml"
         result = pytest.main(
-            [temp_dir, '-q', '--disable-warnings', f'--junitxml={junit_path}', '--no-cov'])
+            [temp_dir, '-q', '--disable-warnings',
+                f'--junitxml={junit_path}', '--no-cov'],
+            plugins=["pytest_asyncio"]
+        )
         shutil.rmtree(temp_dir)
         return result == 0

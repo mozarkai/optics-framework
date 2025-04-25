@@ -1,9 +1,10 @@
 import os
-import yaml
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
 from collections.abc import Mapping
 import logging
+from typing import List, Dict, Any, Optional
+import yaml
+from pydantic import BaseModel, Field
+
 
 
 def deep_merge(d1: dict, d2: dict) -> dict:
@@ -50,6 +51,8 @@ class Config(BaseModel):
     project_path: Optional[str] = None
     include: Optional[List[str]] = None
     exclude: Optional[List[str]] = None
+    halt_duration: float = 0.1
+    max_attempts: int = 3
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -128,7 +131,6 @@ class ConfigHandler:
             self.project_config_path: Optional[str] = None
             self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG
             self.config: Config = Config()
-            # Changed to store lists of names
             self._enabled_configs: Dict[str, List[str]] = {}
             self._initialized = True
 
