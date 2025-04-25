@@ -2,6 +2,7 @@ import re
 from typing import Optional, Any, List, Union, Tuple, Callable, Dict
 import os.path
 import ast
+from datetime import datetime, timedelta
 from functools import wraps
 import json
 import csv
@@ -259,6 +260,8 @@ class FlowControl:
             raise ValueError(NO_RUNNER_PRESENT)
         elem_name = self._extract_element_name(input_element)
         data = self._load_data(file_path, index)
+        if isinstance(data, list) and len(data) == 1:
+            data = data[0]
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
         if not isinstance(runner_elements, dict):
             runner_elements = {}
@@ -290,12 +293,19 @@ class FlowControl:
             response = requests.get(url, timeout=(5, 30))
             response.raise_for_status()
             json_data = response.json()
-            if not isinstance(json_data, list):
-                raise ValueError("API response must be a JSON list.")
-            if not isinstance(index, str):
-                raise ValueError(
-                    "For API data, 'index' must be a string (JSON key).")
-            return [item[index] for item in json_data if index in item]
+            if isinstance(json_data, dict):
+                if not isinstance(index, str):
+                    raise ValueError("For json object, 'index' must be a string (JSON key).")
+                if index not in json_data:
+                    raise ValueError(f"Key '{index}' not found in API response.")
+                return [json_data[index]]
+
+            elif isinstance(json_data, list):
+                if not isinstance(index, str):
+                    raise ValueError("For JSON list, 'index' must be a string key.")
+                return [item[index] for item in json_data if index in item]
+            else:
+                raise ValueError("Unsupported API response format.")
         except requests.RequestException as e:
             raise ValueError(f"Failed to fetch data from {url}: {e}")
 
@@ -400,3 +410,92 @@ class FlowControl:
         except Exception as e:
             raise ValueError(
                 f"Error evaluating expression '{expression}': {e}")
+
+
+    def _detect_date_format(self,date_str: str) -> str:
+        """Detect the format of the input date string."""
+        common_formats = [
+            "%m/%d/%Y",  # 04/25/2025
+            "%d/%m/%Y",  # 25/04/2025
+            "%Y-%m-%d",  # 2025-04-25
+            "%d-%m-%Y",  # 25-04-2025
+            "%Y/%m/%d",  # 2025/04/25
+        ]
+        for fmt in common_formats:
+            try:
+                datetime.strptime(date_str, fmt)
+                return fmt
+            except ValueError:
+                continue
+        raise ValueError(f"Unable to detect date format for input: {date_str}")
+
+
+    @raw_params(0)
+    def date_evaluate(self, param1: str, param2: str, param3: str, param4: Optional[str] = "%d %B") -> str:
+        """
+        Evaluates a date expression based on an input date and stores the result in runner.elements.
+
+        Args:
+            param1 (str): The variable name (placeholder) where the evaluated date result will be stored.
+            param2 (str): The input date string (e.g., "04/25/2025" or "2025-04-25"). Format is auto-detected.
+            param3 (str): The date expression to evaluate, such as "+1 day", "-2 days", or "today".
+            param4 (Optional[str]): The output format for the evaluated date (default is "%d %B", e.g., "26 April").
+
+        Returns:
+            str: The resulting evaluated and formatted date string.
+
+        Raises:
+            ValueError: If the runner is not present, the input date format cannot be detected,
+                        or the expression format is invalid.
+
+        Example:
+            date_evaluate("tomorrow", "04/25/2025", "+1 day")
+            ➔ Stores "26 April" in runner.elements["tomorrow"]
+        """
+        self._ensure_runner()
+        if self.runner is None:
+            raise ValueError(NO_RUNNER_PRESENT)
+
+        var_name = self._extract_variable_name(param1)
+        input_date = param2.strip()
+        expression = param3.strip()
+        output_format = param4 or "%d %B"
+
+        # Detect input format
+        input_format = self._detect_date_format(input_date)
+
+        # Parse current date
+        base_date = datetime.strptime(input_date, input_format)
+
+        # Parse and apply expression
+        expr = expression.lower()
+        if expr.startswith("+"):
+            number, unit = expr[1:].split()
+            number = int(number)
+            if unit.startswith("day"):
+                base_date += timedelta(days=number)
+            else:
+                raise ValueError(f"Unsupported unit in expression: {unit}")
+        elif expr.startswith("-"):
+            number, unit = expr[1:].split()
+            number = int(number)
+            if unit.startswith("day"):
+                base_date -= timedelta(days=number)
+            else:
+                raise ValueError(f"Unsupported unit in expression: {unit}")
+        elif expr in ("today", "now"):
+            pass  # No change
+        else:
+            raise ValueError(f"Unsupported expression format: {expression}")
+
+        # Format result
+        result = base_date.strftime(output_format)
+
+        # Store in runner.elements
+        runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})
+        if not isinstance(runner_elements, dict):
+            runner_elements = {}
+            setattr(self.runner, 'elements', runner_elements)
+
+        runner_elements[var_name] = result
+        return result
