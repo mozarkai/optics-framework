@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult
+from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, NullResultPrinter
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
 
 
@@ -306,7 +306,6 @@ class TestRunner(Runner):
 
     async def dry_run_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
         start_time = time.time()
-        extra = self._extra(test_case)
         test_case_result = self._init_test_case(test_case)
         current = self.test_cases
         while current and current.name != test_case:
@@ -404,7 +403,6 @@ class PytestRunner(Runner):
         self.elements = elements
         self.session = session
         self.keyword_map = keyword_map
-        from .printers import NullResultPrinter
         self.result_printer = NullResultPrinter()
         PytestRunner.instance = self
 
@@ -416,7 +414,13 @@ class PytestRunner(Runner):
             pytest.fail(f"Variable '{var_name}' not found")
         return self.elements[var_name]
 
-    def _execute_keyword(self, keyword: str, params: List[str]) -> bool:
+    def _execute_keyword(self, keyword: str, params: List[str], dry_run: bool = False) -> bool:
+        if dry_run:
+            # In dry run, validate keyword existence without executing
+            func_name = "_".join(keyword.split()).lower()
+            if not self.keyword_map.get(func_name):
+                pytest.fail(f"Keyword not found: {keyword}")
+            return True
         func_name = "_".join(keyword.split()).lower()
         method = self.keyword_map.get(func_name)
         if not method:
@@ -429,15 +433,16 @@ class PytestRunner(Runner):
             pytest.fail(f"Keyword '{keyword}' failed: {e}")
             return False
 
-    def _process_module(self, module_name: str) -> bool:
+    def _process_module(self, module_name: str, dry_run: bool = False) -> bool:
         if module_name not in self.modules:
             pytest.fail(f"Module '{module_name}' not found")
         for keyword, params in self.modules[module_name]:
-            if not self._execute_keyword(keyword, params):
+            if not self._execute_keyword(keyword, params, dry_run=dry_run):
                 return False
         return True
 
-    async def execute_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
+    def execute_test_case_sync(self, test_case: str, dry_run: bool = False) -> TestCaseResult:
+        """Synchronous execution for pytest."""
         start_time = time.time()
         result = TestCaseResult(
             name=test_case, elapsed="0.00s", status="NOT RUN")
@@ -452,7 +457,7 @@ class PytestRunner(Runner):
         result.status = "RUNNING"
         module_current = current.modules_head
         while module_current:
-            if not self._process_module(module_current.name):
+            if not self._process_module(module_name=module_current.name, dry_run=dry_run):
                 result.status = "FAIL"
                 break
             module_current = module_current.next
@@ -461,14 +466,23 @@ class PytestRunner(Runner):
         result.elapsed = f"{time.time() - start_time:.2f}s"
         return result
 
-    async def run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
-        await self._run_pytest([node.name for node in self._iter_test_cases()])
+    async def execute_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue] = None, command_queue: Optional[asyncio.Queue] = None) -> TestCaseResult:
+        """Async wrapper for Runner interface, ignoring event and command queues."""
+        return self.execute_test_case_sync(test_case, dry_run=False)
 
-    async def dry_run_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> TestCaseResult:
-        return await self.execute_test_case(test_case, event_queue, command_queue)
+    async def dry_run_test_case(self, test_case: str, event_queue: Optional[asyncio.Queue] = None, command_queue: Optional[asyncio.Queue] = None) -> TestCaseResult:
+        """Async wrapper for Runner interface, ignoring event and command queues."""
+        return self.execute_test_case_sync(test_case, dry_run=True)
 
-    async def dry_run_all(self, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
-        await self._run_pytest([node.name for node in self._iter_test_cases()], dry_run=True)
+    async def run_all(self, event_queue: Optional[asyncio.Queue] = None, command_queue: Optional[asyncio.Queue] = None) -> None:
+        """Run all test cases using pytest, ignoring event and command queues."""
+        test_cases = [node.name for node in self._iter_test_cases()]
+        self._run_pytest(test_cases, dry_run=False)
+
+    async def dry_run_all(self, event_queue: Optional[asyncio.Queue] = None, command_queue: Optional[asyncio.Queue] = None) -> None:
+        """Dry run all test cases using pytest, ignoring event and command queues."""
+        test_cases = [node.name for node in self._iter_test_cases()]
+        self._run_pytest(test_cases, dry_run=True)
 
     def _iter_test_cases(self):
         current = self.test_cases
@@ -476,7 +490,7 @@ class PytestRunner(Runner):
             yield current
             current = current.next
 
-    async def _run_pytest(self, test_cases: List[str], dry_run: bool = False) -> bool:
+    def _run_pytest(self, test_cases: List[str], dry_run: bool = False) -> bool:
         temp_dir = tempfile.mkdtemp()
         test_file_path = f"{temp_dir}/test_generated_{int(time.time()*1000)}.py"
         conftest_path = f"{temp_dir}/conftest.py"
@@ -484,6 +498,7 @@ class PytestRunner(Runner):
 
         internal_logger.debug(
             f"Generating test file: {test_file_path}", extra=extra)
+
         with open(conftest_path, "w") as f:
             f.write("""
 import pytest
@@ -494,11 +509,10 @@ def runner():
     return PytestRunner.instance
 """)
 
-        test_code = "".join(
-            f"@pytest.mark.asyncio\n"
-            f"async def test_{tc.replace(' ', '_')}(runner):\n"
-            f"    result = await runner.execute_test_case('{tc}', None, None)\n"
-            f"    assert result.status == 'PASS', f'Test case failed with status: {{result.status}}'\n"
+        test_code = "import pytest\n\n" + "".join(
+            f"def test_{tc.replace(' ', '_')}(runner):\n"
+            f"    result = runner.execute_test_case_sync('{tc}', dry_run={dry_run})\n"
+            f"    assert result.status == 'PASS', 'Test case failed with status: ' + result.status\n"
             for tc in test_cases
         )
         internal_logger.debug(
@@ -512,9 +526,11 @@ def runner():
 
         junit_path = f"{ConfigHandler.get_instance().get_project_path()}/execution_output/junit_output.xml"
         result = pytest.main(
-            [temp_dir, '-q', '--disable-warnings',
-                f'--junitxml={junit_path}', '--no-cov'],
-            plugins=["pytest_asyncio"]
-        )
+            [temp_dir, '-q', '--disable-warnings', f'--junitxml={junit_path}', '--no-cov'])
         shutil.rmtree(temp_dir)
-        return result == 0
+
+        if result == 0:
+            internal_logger.info("Pytest execution completed successfully")
+        else:
+            internal_logger.error("Pytest execution failed")
+        sys.exit(result)
