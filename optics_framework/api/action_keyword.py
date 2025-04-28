@@ -1,11 +1,11 @@
 from functools import wraps
+import time
 from typing import Callable, Optional, Any
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
 from .verifier import Verifier
-import time
 
 
 # Action Executor Decorator
@@ -16,9 +16,10 @@ def with_self_healing(func: Callable) -> Callable:
         utils.save_screenshot(screenshot_np, func.__name__)
 
         results = self.strategy_manager.locate(element)
-
         last_exception = None
+        result_count = 0
         for result in results:
+            result_count += 1
             try:
                 return func(self, element, located=result.value, *args, **kwargs)
             except Exception as e:
@@ -26,9 +27,15 @@ def with_self_healing(func: Callable) -> Callable:
                     f"Action '{func.__name__}' failed with {result.strategy.__class__.__name__}: {e}")
                 last_exception = e
 
+        if result_count == 0:
+            # No strategies yielded a result
+            raise ValueError(
+                f"No valid strategies found for '{element}' in '{func.__name__}'")
         if last_exception:
             raise ValueError(
                 f"All strategies failed for '{element}' in '{func.__name__}': {last_exception}")
+        raise ValueError(
+            f"Unexpected failure: No results or exceptions for '{element}' in '{func.__name__}'")
     return wrapper
 
 
