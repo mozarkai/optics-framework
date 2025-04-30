@@ -12,6 +12,7 @@ import shutil
 
 class TestCaseResult(BaseModel):
     """Result of a test case execution."""
+    id: str
     name: str
     elapsed: str
     status: str

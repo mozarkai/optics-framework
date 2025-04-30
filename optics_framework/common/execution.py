@@ -10,19 +10,17 @@ from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode, ElementData
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.common.events import Event, get_event_manager, EventStatus
 
 
 class ExecutionParams(BaseModel):
     """Execution parameters with Pydantic validation."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: str
     test_case: Optional[str] = None
     keyword: Optional[str] = None
     params: List[str] = Field(default_factory=list)
-    event_queue: Optional[asyncio.Queue] = None
-    command_queue: Optional[asyncio.Queue] = None
     test_cases: TestCaseNode
     modules: Dict[str, List[tuple[str, List[str]]]
                   ] = Field(default_factory=dict)
@@ -33,7 +31,7 @@ class ExecutionParams(BaseModel):
 class Executor(ABC):
     """Abstract base class for execution strategies."""
     @abstractmethod
-    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner) -> None:
         pass
 
 
@@ -43,30 +41,48 @@ class BatchExecutor(Executor):
     def __init__(self, test_case: Optional[str] = None):
         self.test_case = test_case
 
-    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner) -> None:
+        event_manager = get_event_manager()
         if not runner.test_cases:
-            await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
+            await event_manager.publish_event(Event(
+                entity_type="execution",
+                entity_id=session.session_id,
+                name="Execution",
+                status=EventStatus.ERROR,
+                message="No test cases loaded",
+                extra={"session_id": session.session_id}
+            ))
             raise ValueError("No test cases loaded")
 
         try:
             if self.test_case:
-                result = await runner.execute_test_case(self.test_case, event_queue, command_queue)
-                status = "PASS" if result.status == "PASS" else "FAIL"
-                message = f"Test case {self.test_case} completed with status {status}"
+                result = await runner.execute_test_case(self.test_case)
+                status = EventStatus.PASS if result.status == "PASS" else EventStatus.FAIL
+                message = f"Test case {self.test_case} completed with status {status.value}"
             else:
-                await runner.run_all(event_queue, command_queue)
+                await runner.run_all()
                 all_passed = all(
                     tc.status == "PASS" for tc in runner.result_printer.test_state.values())
-                status = "PASS" if all_passed else "FAIL"
+                status = EventStatus.PASS if all_passed else EventStatus.FAIL
                 message = "All test cases completed" if all_passed else "Some test cases failed"
-            await self._send_event(event_queue, session.session_id, status, message)
+            await event_manager.publish_event(Event(
+                entity_type="execution",
+                entity_id=session.session_id,
+                name="Execution",
+                status=status,
+                message=message,
+                extra={"session_id": session.session_id}
+            ))
         except Exception as e:
-            await self._send_event(event_queue, session.session_id, "FAIL", f"Execution failed: {str(e)}")
+            await event_manager.publish_event(Event(
+                entity_type="execution",
+                entity_id=session.session_id,
+                name="Execution",
+                status=EventStatus.FAIL,
+                message=f"Execution failed: {str(e)}",
+                extra={"session_id": session.session_id}
+            ))
             raise
-
-    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
-        if queue:
-            await queue.put({"execution_id": session_id, "status": status, "message": message})
 
 
 class DryRunExecutor(Executor):
@@ -75,26 +91,37 @@ class DryRunExecutor(Executor):
     def __init__(self, test_case: Optional[str] = None):
         self.test_case = test_case
 
-    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner) -> None:
+        event_manager = get_event_manager()
         if not runner.test_cases:
-            await self._send_event(event_queue, session.session_id, "ERROR", "No test cases loaded")
+            await event_manager.publish_event(Event(
+                entity_type="execution",
+                entity_id=session.session_id,
+                name="Execution",
+                status=EventStatus.ERROR,
+                message="No test cases loaded",
+                extra={"session_id": session.session_id}
+            ))
             raise ValueError("No test cases loaded")
 
         if self.test_case:
-            result = await runner.dry_run_test_case(self.test_case, event_queue, command_queue)
-            status = "PASS" if result.status == "PASS" else "FAIL"
-            message = f"Dry run for test case {self.test_case} completed with status {status}"
+            result = await runner.dry_run_test_case(self.test_case)
+            status = EventStatus.PASS if result.status == "PASS" else EventStatus.FAIL
+            message = f"Dry run for test case {self.test_case} completed with status {status.value}"
         else:
-            await runner.dry_run_all(event_queue, command_queue)
+            await runner.dry_run_all()
             all_passed = all(
                 tc.status == "PASS" for tc in runner.result_printer.test_state.values())
-            status = "PASS" if all_passed else "FAIL"
+            status = EventStatus.PASS if all_passed else EventStatus.FAIL
             message = "All test cases dry run completed"
-        await self._send_event(event_queue, session.session_id, status, message)
-
-    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
-        if queue:
-            await queue.put({"execution_id": session_id, "status": status, "message": message})
+        await event_manager.publish_event(Event(
+            entity_type="execution",
+            entity_id=session.session_id,
+            name="Execution",
+            status=status,
+            message=message,
+            extra={"session_id": session.session_id}
+        ))
 
 
 class KeywordExecutor(Executor):
@@ -104,22 +131,29 @@ class KeywordExecutor(Executor):
         self.keyword = keyword
         self.params = params
 
-    async def execute(self, session: Session, runner: Runner, event_queue: Optional[asyncio.Queue], command_queue: Optional[asyncio.Queue]) -> None:
+    async def execute(self, session: Session, runner: Runner) -> None:
+        event_manager = get_event_manager()
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
         if method:
             method(*self.params)
-            await self._send_event(event_queue, session.session_id, "PASS", "Keyword executed successfully", self.keyword)
+            await event_manager.publish_event(Event(
+                entity_type="keyword",
+                entity_id=session.session_id,
+                name=self.keyword,
+                status=EventStatus.PASS,
+                message="Keyword executed successfully",
+                extra={"session_id": session.session_id}
+            ))
         else:
-            await self._send_event(event_queue, session.session_id, "FAIL", "Keyword not found", self.keyword)
+            await event_manager.publish_event(Event(
+                entity_type="keyword",
+                entity_id=session.session_id,
+                name=self.keyword,
+                status=EventStatus.FAIL,
+                message="Keyword not found",
+                extra={"session_id": session.session_id}
+            ))
             raise ValueError(f"Keyword {self.keyword} not found")
-
-    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str, keyword: Optional[str] = None) -> None:
-        if queue:
-            event = {"execution_id": session_id,
-                     "status": status, "message": message}
-            if keyword:
-                event["keyword"] = keyword
-            await queue.put(event)
 
 
 class RunnerFactory:
@@ -142,8 +176,9 @@ class RunnerFactory:
         if runner_type == "test_runner":
             result_printer = TreeResultPrinter(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
-            runner = TestRunner(test_cases, modules,
-                                elements, {}, result_printer)
+            runner = TestRunner(
+                test_cases, modules, elements, {}, result_printer, session_id=session.session_id
+            )
             flow_control = FlowControl(runner, modules)
         elif runner_type == "pytest":
             runner = PytestRunner(session, test_cases, modules, elements, {})
@@ -164,24 +199,35 @@ class ExecutionEngine:
 
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
+        self.event_manager = get_event_manager()
 
     async def execute(self, params: ExecutionParams) -> None:
         session = self.session_manager.get_session(params.session_id)
         if not session:
-            await self._send_event(params.event_queue, params.session_id, "ERROR", "Session not found")
+            await self.event_manager.publish_event(Event(
+                entity_type="session",
+                entity_id=params.session_id,
+                name="Session",
+                status=EventStatus.ERROR,
+                message="Session not found",
+                extra={"session_id": params.session_id}
+            ))
             raise ValueError("Session not found")
 
         if not params.test_cases:
-            await self._send_event(params.event_queue, params.session_id, "ERROR", "Test cases are required")
+            await self.event_manager.publish_event(Event(
+                entity_type="execution",
+                entity_id=params.session_id,
+                name="Execution",
+                status=EventStatus.ERROR,
+                message="Test cases are required",
+                extra={"session_id": params.session_id}
+            ))
             raise ValueError("Test cases are required")
 
-        event_queue = asyncio.Queue()
-        command_queue = asyncio.Queue()
-        params.event_queue = event_queue
-        params.command_queue = command_queue
+        self.event_manager.start()
 
-        # Use TreeResultPrinter for test_runner, NullResultPrinter for pytest
-        use_printer = params.event_queue is None or params.runner_type == "test_runner"
+        use_printer = params.runner_type == "test_runner"
         internal_logger.debug(
             f"Using printer: {'TreeResultPrinter' if use_printer else 'NullResultPrinter'} for runner: {params.runner_type}")
 
@@ -199,30 +245,63 @@ class ExecutionEngine:
                 runner.result_printer.start_live()
 
             try:
-                await self._send_event(event_queue, params.session_id, "RUNNING", f"Starting {params.mode} execution")
+                await self.event_manager.publish_event(Event(
+                    entity_type="execution",
+                    entity_id=params.session_id,
+                    name="Execution",
+                    status=EventStatus.RUNNING,
+                    message=f"Starting {params.mode} execution",
+                    extra={"session_id": params.session_id}
+                ))
                 if params.mode == "batch":
                     executor = BatchExecutor(test_case=params.test_case)
                 elif params.mode == "dry_run":
                     executor = DryRunExecutor(params.test_case)
                 elif params.mode == "keyword":
                     if not params.keyword:
-                        await self._send_event(event_queue, params.session_id, "ERROR", "Keyword mode requires a keyword")
+                        await self.event_manager.publish_event(Event(
+                            entity_type="execution",
+                            entity_id=params.session_id,
+                            name="Execution",
+                            status=EventStatus.ERROR,
+                            message="Keyword mode requires a keyword",
+                            extra={"session_id": params.session_id}
+                        ))
                         raise ValueError("Keyword mode requires a keyword")
                     executor = KeywordExecutor(params.keyword, params.params)
                 else:
-                    await self._send_event(event_queue, params.session_id, "ERROR", f"Unknown mode: {params.mode}")
+                    await self.event_manager.publish_event(Event(
+                        entity_type="execution",
+                        entity_id=params.session_id,
+                        name="Execution",
+                        status=EventStatus.ERROR,
+                        message=f"Unknown mode: {params.mode}",
+                        extra={"session_id": params.session_id}
+                    ))
                     raise ValueError(f"Unknown mode: {params.mode}")
 
-                await executor.execute(session, runner, event_queue, command_queue)
+                await executor.execute(session, runner)
             except Exception as e:
-                await self._send_event(event_queue, params.session_id, "FAIL", f"Execution failed: {str(e)}")
+                await self.event_manager.publish_event(Event(
+                    entity_type="execution",
+                    entity_id=params.session_id,
+                    name="Execution",
+                    status=EventStatus.FAIL,
+                    message=f"Execution failed: {str(e)}",
+                    extra={"session_id": params.session_id}
+                ))
                 raise
             finally:
                 if hasattr(runner, 'result_printer') and runner.result_printer:
                     internal_logger.debug(
                         "Stopping result printer live display")
                     runner.result_printer.stop_live()
-
-    async def _send_event(self, queue: Optional[asyncio.Queue], session_id: str, status: str, message: str) -> None:
-        if queue:
-            await queue.put({"execution_id": session_id, "status": status, "message": message})
+                # Wait for event queue to drain
+                internal_logger.debug(
+                    f"Event queue size before drain: {self.event_manager.event_queue.qsize()}")
+                while self.event_manager.event_queue.qsize() > 0:
+                    internal_logger.debug(
+                        f"Waiting for {self.event_manager.event_queue.qsize()} events to process")
+                    await asyncio.sleep(0.1)
+                self.event_manager.dump_state()
+                self.event_manager.stop()
