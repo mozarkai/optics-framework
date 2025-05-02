@@ -16,7 +16,7 @@ def determine_element_type(element):
     if element.startswith("/") or element.startswith("//") or element.startswith("("):
         return "XPath"
     # Check if it looks like an ID (heuristic: no slashes, no dots, usually alphanumeric/underscores)
-    if all(char.isalnum() or char == '_' for char in element) and not element.lower().endswith(("jpg", "jpeg", "png", "bmp")):
+    if element.lower().startswith("id:"):
         return "ID"
     # Default case: consider the input as Text
     return "Text"
