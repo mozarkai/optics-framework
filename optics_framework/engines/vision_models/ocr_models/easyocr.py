@@ -31,18 +31,6 @@ class EasyOCRHelper(TextInterface):
             raise RuntimeError("EasyOCR initialization failed.") from e
 
 
-    def locate(self, frame, text, index=None):
-        result, coor, bbox = self.find_element(frame, text, index)
-        if not result:
-            internal_logger.exception(f"Text '{text}' not found in the frame.")
-            raise Exception(f"Text '{text}' not found in the frame.")
-
-        # annotate the frame
-        annotated_frame = utils.annotate_element(frame, coor, bbox)
-        utils.save_screenshot(annotated_frame, "annotated_frame")
-        return coor
-
-
     def find_element(self, frame, text, index=None):
         """
         Locate multiple instances of a specific text in the given frame using OCR and return the center coordinates
@@ -90,6 +78,7 @@ class EasyOCRHelper(TextInterface):
                 return detected_texts[index]
             return False, (None, None), None
 
+        utils.save_screenshot(frame, "annotated_frame")
         return detected_texts[0]
 
 

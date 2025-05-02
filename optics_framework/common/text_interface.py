@@ -28,18 +28,6 @@ class TextInterface(ABC):
         """
         pass
 
-    def locate(self, input_data, text, index=None) -> Optional[Tuple[int, int]]:
-        """
-        Find the location of specific text within the input data.
-
-        :param input_data: The input source (e.g., image, video frame) for detection.
-        :type input_data: Any
-        :param text: The text to search for.
-        :type text: str
-        :return: A tuple (x, y) representing the center of the text, or None if not found.
-        :rtype: Optional[Tuple[int, int]]
-        """
-        pass
 
     def find_element(self, input_data, text, index=None) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """

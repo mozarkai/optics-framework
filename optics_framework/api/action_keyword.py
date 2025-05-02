@@ -140,16 +140,18 @@ class ActionKeyword:
                 if 'screenshot' not in element_source_type.lower():
                     internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
                 screenshot_image = self.element_source.capture()
-                x_coor, y_coor = self.text_detection.locate(
+                _, coor, _ = self.text_detection.find_element(
                     screenshot_image, element, index)
+                x_coor, y_coor = coor
                 self.driver.press_coordinates(
                     x_coor, y_coor, event_name=event_name)
         elif element_type == 'Image':
             if 'screenshot' not in element_source_type.lower():
                 internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
             screenshot_image = self.element_source.capture()
-            x_coor, y_coor = self.image_detection.locate(
+            _, centre, _ = self.image_detection.find_element(
                 screenshot_image, element, index)
+            x_coor, y_coor = centre
             self.driver.press_coordinates(
                 x_coor, y_coor, event_name=event_name)
         elif element_type == 'XPath':

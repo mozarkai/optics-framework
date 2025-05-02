@@ -1,6 +1,5 @@
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
-from optics_framework.common.logging_config import internal_logger
 import pytesseract
 import cv2
 
@@ -24,20 +23,6 @@ class PytesseractHelper(TextInterface):
         """
         self.pytesseract_config = "--oem 3 --psm 6"
         # internal_logger.debug(f"Pytesseract initialized with config: {self.pytesseract_config}")
-
-
-    def locate(self, frame, text, index=0):
-        """
-        Find the location of text within the input data.
-        """
-        result, coor, bbox = self.find_element(frame, text, index)
-        if not result:
-            internal_logger.exception(f"Text '{text}' not found in the frame.")
-            raise Exception(f"Text '{text}' not found in the frame.")
-        # annotate the frame
-        annotated_frame = utils.annotate_element(frame, coor, bbox)
-        utils.save_screenshot(annotated_frame, name='annotated_frame')
-        return coor
 
 
     def find_element(self, frame, text, index=None):

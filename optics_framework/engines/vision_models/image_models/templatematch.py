@@ -33,17 +33,6 @@ class TemplateMatchingHelper(ImageInterface):
 
         return template
 
-    def locate(self, frame, element, index=None):
-        # fetch template from folder
-        template = self.load_template(element)
-        # locate the image element
-        found, coor, frame = self.find_element(frame, template, index)
-        if found:
-            return coor
-        else:
-            internal_logger.exception(f'Failed to locate image template: {element}')
-            raise Exception(f'Failed to locate image template: {element}')
-
 
     def find_element(
         self,frame, reference_data, index=None, confidence_level=0.85, min_inliers=10
@@ -65,6 +54,7 @@ class TemplateMatchingHelper(ImageInterface):
         - tuple: (x, y) coordinates of the indexed match or (None, None) if out of bounds.
         - frame (np.array): The frame with all detected templates annotated.
         """
+        reference_data = self.load_template(reference_data)
         sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)

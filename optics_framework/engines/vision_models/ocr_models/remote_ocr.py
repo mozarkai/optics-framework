@@ -173,7 +173,3 @@ class RemoteOCR(TextInterface):
             Tuple[int, int] | None: Coordinates of the reference text if found, otherwise None
         """
         return super().element_exist(input_data, reference_data)
-
-    def locate(self, input_data, text, index=None) -> Tuple[int, int] | None:
-        raise NotImplementedError(
-            "The 'locate' method is not implemented for RemoteOCR. Use 'find_element' instead.")

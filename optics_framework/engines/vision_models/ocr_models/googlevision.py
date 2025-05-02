@@ -1,7 +1,5 @@
 from optics_framework.common.text_interface import TextInterface
-from optics_framework.common.logging_config import internal_logger
 import cv2
-from optics_framework.common import utils
 import numpy as np
 from google.cloud import vision
 from google.cloud.vision_v1 import ImageAnnotatorClient
@@ -25,20 +23,6 @@ class GoogleVisionHelper(TextInterface):
         :raises RuntimeError: If EasyOCR fails to initialize.
         """
         pass
-
-    def locate(self, frame, text, index=None):
-        """
-        Find the location of text within the input data.
-        """
-        result, coor, bbox = self.find_element(frame, text, index)
-        if not result:
-            internal_logger.exception(f"Text '{text}' not found in the frame.")
-            raise Exception(f"Text '{text}' not found in the frame.")
-        # annotate the frame
-        annotated_frame = utils.annotate_element(frame, coor, bbox)
-        utils.save_screenshot(annotated_frame, name='annotated_frame')
-        return coor
-
 
     def find_element(self, frame, text, index=None):
         """

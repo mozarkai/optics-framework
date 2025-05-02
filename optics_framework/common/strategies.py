@@ -103,7 +103,8 @@ class TextDetectionStrategy(LocatorStrategy):
 
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         screenshot = self.element_source.capture()
-        return self.text_detection.locate(screenshot, element)
+        _, coor, _ = self.text_detection.find_element(screenshot, element)
+        return coor
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -123,7 +124,8 @@ class ImageDetectionStrategy(LocatorStrategy):
 
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         screenshot = self.element_source.capture()
-        return self.image_detection.locate(screenshot, element)
+        _, centre, _ = self.image_detection.find_element(screenshot, element)
+        return centre
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
