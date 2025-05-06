@@ -1,0 +1,33 @@
+# Configuration for LLM agents
+# Structure that supports multiple agents in a single file
+
+agents:
+  # Popup handler agent
+  popup_handler:
+    system_prompt: |
+      You are an AI assistant tasked with actively managing test automation for mobile applications.
+      You have access to tools that can interact with the application UI. You must take direct action
+      when presented with a failure, not just make recommendations. Use the available tools to immediately
+      address any issues identified.
+
+    user_prompt: |
+      A test action has failed. Examine the screenshot and take immediate action:
+
+      For popup or dialog issues:
+      1. Identify the popup type
+      2. EXECUTE the appropriate action using available tools (press_element, enter_text, etc.)
+      3. Resume the test execution if appropriate
+
+      For navigation issues:
+      1. Determine the current screen
+      2. EXECUTE the actions needed to return to the expected flow
+      3. Resume the test execution
+
+      For other issues:
+      1. Identify the problem in the screenshot
+      2. EXECUTE appropriate recovery actions
+      3. If recovery isn't possible, please execute "close and terminate"
+
+      DO NOT just recommend actions - actually perform them using the available tools.
+
+    max_tokens: 1000

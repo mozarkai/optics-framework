@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Optional
 import yaml
 from pydantic import BaseModel, Field
 
+from optics_framework.common.llm_agents.models import LLMAgentConfig
+
 
 
 def deep_merge(d1: dict, d2: dict) -> dict:
@@ -43,6 +45,7 @@ class Config(BaseModel):
                          ] = Field(default_factory=list)
     image_detection: List[Dict[str, DependencyConfig]
                           ] = Field(default_factory=list)
+    llm_agents: Dict[str, LLMAgentConfig] = Field(default_factory=dict)
     file_log: bool = False
     json_log: bool = False
     json_path: Optional[str] = None
@@ -119,6 +122,7 @@ class ConfigHandler:
         "text_detection",
         "image_detection"
     ]
+    # LLM agents are handled separately
 
     def __new__(cls):
         if cls._instance is None:

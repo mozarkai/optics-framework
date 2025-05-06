@@ -10,6 +10,7 @@ from optics_framework.common.runner.data_reader import CSVDataReader, YAMLDataRe
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, ElementData
+from optics_framework.common.llm_agents.connector import initialize_llm_agents, check_for_data_yml
 
 
 def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str]]:
@@ -257,6 +258,10 @@ class BaseRunner:
         self.config.project_path = self.folder_path
         internal_logger.debug(f"Loaded configuration: {self.config}")
         reconfigure_logging()
+
+        # Initialize LLM agents from configuration
+        initialize_llm_agents(self.folder_path)
+        check_for_data_yml(self.folder_path)
 
         # Validate required configs
         required_configs = ["driver_sources", "elements_sources"]
