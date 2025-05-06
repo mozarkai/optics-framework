@@ -32,7 +32,7 @@ class ModuleResult(BaseModel):
 
 
 class Runner:
-    test_cases: TestCaseNode
+    test_case: TestCaseNode
     result_printer: IResultPrinter
     keyword_map: Dict[str, Callable[..., Any]]
 

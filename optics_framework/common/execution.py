@@ -19,7 +19,6 @@ class ExecutionParams(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: str
-    test_case: Optional[str] = None
     keyword: Optional[str] = None
     params: List[str] = Field(default_factory=list)
     test_cases: TestCaseNode
@@ -39,7 +38,7 @@ class Executor(ABC):
 class BatchExecutor(Executor):
     """Executes batch test cases."""
 
-    def __init__(self, test_case: Optional[str] = None):
+    def __init__(self, test_case: TestCaseNode):
         self.test_case = test_case
 
     async def execute(self, session: Session, runner: Runner) -> None:
@@ -57,10 +56,6 @@ class BatchExecutor(Executor):
 
         try:
             if self.test_case:
-                result = await runner.execute_test_case(self.test_case)
-                status = EventStatus.PASS if result.status == "PASS" else EventStatus.FAIL
-                message = f"Test case {self.test_case} completed with status {status.value}"
-            else:
                 await runner.run_all()
                 all_passed = all(
                     tc.status == "PASS" for tc in runner.result_printer.test_state.values())
@@ -89,7 +84,7 @@ class BatchExecutor(Executor):
 class DryRunExecutor(Executor):
     """Performs dry run of test cases."""
 
-    def __init__(self, test_case: Optional[str] = None):
+    def __init__(self, test_case: TestCaseNode):
         self.test_case = test_case
 
     async def execute(self, session: Session, runner: Runner) -> None:
@@ -106,10 +101,6 @@ class DryRunExecutor(Executor):
             raise ValueError("NO_TEST_CASES_LOADED")
 
         if self.test_case:
-            result = await runner.dry_run_test_case(self.test_case)
-            status = EventStatus.PASS if result.status == "PASS" else EventStatus.FAIL
-            message = f"Dry run for test case {self.test_case} completed with status {status.value}"
-        else:
             await runner.dry_run_all()
             all_passed = all(
                 tc.status == "PASS" for tc in runner.result_printer.test_state.values())
@@ -255,9 +246,9 @@ class ExecutionEngine:
                     extra={"session_id": params.session_id}
                 ))
                 if params.mode == "batch":
-                    executor = BatchExecutor(test_case=params.test_case)
+                    executor = BatchExecutor(test_case=params.test_cases)
                 elif params.mode == "dry_run":
-                    executor = DryRunExecutor(params.test_case)
+                    executor = DryRunExecutor(test_case=params.test_cases)
                 elif params.mode == "keyword":
                     if not params.keyword:
                         await self.event_manager.publish_event(Event(

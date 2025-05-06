@@ -139,20 +139,84 @@ def filter_test_cases(test_cases_dict: dict, include: list = None, exclude: list
     return filtered
 
 
-def build_linked_list(test_cases_data: dict, modules_data: dict) -> TestCaseNode:
-    """Build a nested singly linked list from test cases and modules."""
+def get_execution_queue(test_cases_data: dict) -> dict:
+    """
+    Build and return the execution queue including suite-level and per-test setup/teardown.
+
+    :param test_cases_data: Dictionary of all test case names and their steps.
+    :return: Ordered dictionary of test execution plan.
+    """
+    suite_setup = None
+    suite_teardown = None
+    setup = None
+    teardown = None
+    regular_test_cases = {}
+
+    for name, steps in test_cases_data.items():
+        lname = name.lower()
+        if "suite" in lname and "setup" in lname:
+            suite_setup = (name, steps)
+        elif "suite" in lname and "teardown" in lname:
+            suite_teardown = (name, steps)
+        elif "setup" in lname and "suite" not in lname and not setup:
+            setup = (name, steps)
+        elif "teardown" in lname and "suite" not in lname and not teardown:
+            teardown = (name, steps)
+        else:
+            regular_test_cases[name] = steps
+
+    execution_dict = {}
+
+    if suite_setup:
+        execution_dict[suite_setup[0]] = suite_setup[1]
+
+    for name, steps in regular_test_cases.items():
+        if setup:
+            execution_dict[setup[0]] = setup[1]
+        execution_dict[name] = steps
+        if teardown:
+            execution_dict[teardown[0]] = teardown[1]
+
+    if suite_teardown:
+        execution_dict[suite_teardown[0]] = suite_teardown[1]
+
+    return execution_dict
+
+
+def build_linked_list(
+    test_cases_data: dict,
+    modules_data: dict,
+) -> TestCaseNode:
+    """
+    Build a nested linked list structure representing the test execution flow.
+
+    This function uses the test case execution order from `get_execution_queue`,
+    which includes suite-level and per-test setup/teardown. For each test case,
+    it creates a TestCaseNode linked to its ModuleNodes, each of which is linked
+    to a list of KeywordNodes representing test steps.
+
+    :param test_cases_data: Dictionary mapping test case names to a list of module names.
+    :param modules_data: Dictionary mapping module names to a list of (keyword, params) tuples.
+    :return: Head of the linked list of TestCaseNode objects representing the full execution flow.
+    """
+    # Get the ordered execution dict
+    execution_dict = get_execution_queue(test_cases_data)
+
+    # Build the linked list based on execution_dict
     head = None
-    prev = None
-    for tc_name, modules in test_cases_data.items():
+    prev_tc = None
+
+    for tc_name, modules in execution_dict.items():
         tc_node = TestCaseNode(name=tc_name)
         if not head:
             head = tc_node
-        if prev:
-            prev.next = tc_node
-        prev = tc_node
+        if prev_tc:
+            prev_tc.next = tc_node
+        prev_tc = tc_node
 
         module_head = None
         module_prev = None
+
         for module_name in modules:
             module_node = ModuleNode(name=module_name)
             if not module_head:
@@ -163,6 +227,7 @@ def build_linked_list(test_cases_data: dict, modules_data: dict) -> TestCaseNode
 
             keyword_head = None
             keyword_prev = None
+
             for keyword, params in modules_data.get(module_name, []):
                 keyword_node = KeywordNode(name=keyword, params=params)
                 if not keyword_head:
@@ -170,17 +235,20 @@ def build_linked_list(test_cases_data: dict, modules_data: dict) -> TestCaseNode
                 if keyword_prev:
                     keyword_prev.next = keyword_node
                 keyword_prev = keyword_node
+
             module_node.keywords_head = keyword_head
+
         tc_node.modules_head = module_head
+
     if not head:
         raise ValueError("No test cases found to build linked list")
+
     return head
 
 
 class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
     folder_path: str
-    test_name: str = ""
     runner: str = "test_runner"
 
     @field_validator('folder_path')
@@ -191,12 +259,6 @@ class RunnerArgs(BaseModel):
         if not os.path.isdir(abs_path):
             raise ValueError(f"Invalid project folder: {abs_path}")
         return abs_path
-
-    @field_validator('test_name')
-    @classmethod
-    def strip_test_name(cls, v: str) -> str:
-        """Strip whitespace from test_name."""
-        return v.strip()
 
     @field_validator('runner')
     @classmethod
@@ -210,7 +272,6 @@ class BaseRunner:
 
     def __init__(self, args: RunnerArgs):
         self.folder_path = args.folder_path
-        self.test_name = args.test_name
         self.runner = args.runner
         internal_logger.debug(f"Using runner: {self.runner}")
 
@@ -287,7 +348,6 @@ class BaseRunner:
             params = ExecutionParams(
                 session_id=self.session_id,
                 mode=mode,
-                test_case=self.test_name if self.test_name else None,
                 test_cases=self.execution_queue,
                 modules=self.modules_data,
                 elements=ElementData(elements=self.elements_data),
@@ -322,17 +382,15 @@ class DryRunRunner(BaseRunner):
         await self.run("dry_run")
 
 
-def execute_main(folder_path: str, test_name: str = "", runner: str = "test_runner"):
+def execute_main(folder_path: str, runner: str = "test_runner"):
     """Entry point for execute command."""
-    args = RunnerArgs(folder_path=folder_path,
-                      test_name=test_name, runner=runner)
+    args = RunnerArgs(folder_path=folder_path, runner=runner)
     runner_instance = ExecuteRunner(args)
     asyncio.run(runner_instance.execute())
 
 
-def dryrun_main(folder_path: str, test_name: str = "", runner: str = "test_runner"):
+def dryrun_main(folder_path: str, runner: str = "test_runner"):
     """Entry point for dry run command."""
-    args = RunnerArgs(folder_path=folder_path,
-                      test_name=test_name, runner=runner)
+    args = RunnerArgs(folder_path=folder_path, runner=runner)
     runner_instance = DryRunRunner(args)
     asyncio.run(runner_instance.execute())
