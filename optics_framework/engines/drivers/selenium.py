@@ -61,8 +61,7 @@ class SeleniumDriver(DriverInterface):
     def start_session(self):
         """Start a new Selenium session with the specified browser."""
         if self.driver is None:
-            browser_name = self.capabilities.get(
-                "browserName", "chrome").lower()
+            browser_name = self.capabilities.browser_name.lower()
             if browser_name == "chrome":
                 options = ChromeOptions()
                 options.add_argument("--remote-debugging-address=0.0.0.0")

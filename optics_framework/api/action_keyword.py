@@ -75,7 +75,7 @@ class ActionKeyword:
             internal_logger.debug(f"Pressing element '{element}'")
             self.driver.press_element(located, repeat, event_name)
 
-    def press_by_percentage(self, percent_x: float, percent_y: float, repeat: int = 1, event_name: Optional[str] = None) -> None:
+    def press_by_percentage(self, percent_x: int, percent_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
         """
         Press an element by percentage coordinates.
 
@@ -291,8 +291,7 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "scroll")
         self.driver.scroll(direction, 1000, event_name)
 
-    @with_self_healing
-    def scroll_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None, *, located: Any) -> None:
+    def scroll_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None) -> None:
         """
         Scroll in a specified direction until an element appears.
 
@@ -324,8 +323,14 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "scroll_from_element")
-        self.swipe_from_element(
-            element, direction, scroll_length, event_name, located=located)
+        if isinstance(located, tuple):
+            x, y = located
+            internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
+            self.driver.swipe(x, y, direction, scroll_length, event_name)
+        else:
+            internal_logger.debug(f"Swiping from element '{element}'")
+            self.driver.swipe_element(
+                located, direction, scroll_length, event_name)
 
     # Text input actions
     @with_self_healing
@@ -345,6 +350,17 @@ class ActionKeyword:
         else:
             internal_logger.debug(f"Entering text '{text}' into element '{element}'")
             self.driver.enter_text_element(located, text, event_name)
+
+    def enter_text_keyboard(self, text: str, event_name: Optional[str] = None) -> None:
+        """
+        Enter text using the keyboard.
+
+        :param text: The text to be entered.
+        :param event_name: The event triggering the input.
+        """
+        screenshot_np = self.strategy_manager.capture_screenshot()
+        utils.save_screenshot(screenshot_np, "enter_text_keyboard")
+        self.driver.enter_text(text, event_name)
 
     @DeprecationWarning
     def enter_text_using_keyboard_android(self, text: str, event_name: Optional[str] = None) -> None:

@@ -242,6 +242,7 @@ class Appium(DriverInterface):
 
     def swipe_element(self, element, direction, swipe_length, event_name=None):
         location = element.location
+        swipe_length = int(swipe_length)
         size = element.size
         start_x = location['x'] + size['width'] // 2
         start_y = location['y'] + size['height'] // 2
@@ -251,7 +252,8 @@ class Appium(DriverInterface):
         elif direction == "left" or direction == "right":
             end_y = start_y
             end_x = start_x + swipe_length if direction == "right" else start_x - swipe_length
-        self.swipe(start_x, start_y, end_x, end_y, 1000)
+
+        self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
 
     def scroll(self, direction, duration=1000, even_name=None):
         window_size = self.driver.get_window_size()
@@ -356,7 +358,7 @@ class Appium(DriverInterface):
                 # trigger event
                 internal_logger.debug(f"Clicked on element: {element} at {timestamp}")
 
-    def press_coordinates(self, x, y, event_name=None):
+    def press_coordinates(self, x, y, repeat, event_name=None):
         """
         Press an element by absolute coordinates.
 
@@ -366,9 +368,12 @@ class Appium(DriverInterface):
             repeat (int): The number of times to repeat the press.
             event_name (str | None): The name of the event to trigger, if any.
         """
-        self.tap_at_coordinates(x, y, event_name)
+        x, y = int(x), int(y)
+        for _ in range(repeat):
+            self.tap_at_coordinates(x, y, event_name)
 
     def press_percentage_coordinates(self, percentage_x, percentage_y, repeat, event_name=None):
+        percentage_x, percentage_y = int(percentage_x), int(percentage_y)
         window_size = self.driver.get_window_size()
         x = int(window_size['width'] * percentage_x/100)
         y = int(window_size['height'] * percentage_y/100)
