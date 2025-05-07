@@ -1,6 +1,7 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.common.keys import Keys
 from typing import Any, Dict, Optional
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
@@ -137,7 +138,10 @@ class SeleniumDriver(DriverInterface):
                 "Selenium session not started. Call start_session() first.")
         try:
             element.clear()  # Clear existing text first
-            element.send_keys(text)
+            if text == "KEYS.ENTER":
+                element.send_keys(Keys.ENTER)
+            else:
+                element.send_keys(text)
             internal_logger.debug(
                 f"Entered text '{text}' into element with event: {event_name}")
         except Exception as e:
@@ -177,7 +181,10 @@ class SeleniumDriver(DriverInterface):
         """Selenium needs a focused element to type into."""
         active_element = self.driver.switch_to.active_element
         if active_element:
-            active_element.send_keys(text)
+            if text == "KEYS.ENTER":
+                active_element.send_keys(Keys.ENTER)
+            else:
+                active_element.send_keys(text)
             internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
         else:
             internal_logger.error("No active element to type into.")
@@ -191,7 +198,10 @@ class SeleniumDriver(DriverInterface):
         """Enter text into the active element (e.g., body/input)."""
         try:
             active_element = self.driver.switch_to.active_element
-            active_element.send_keys(text)
+            if text == "KEYS.ENTER":
+                active_element.send_keys(Keys.ENTER)
+            else:
+                active_element.send_keys(text)
             internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
         except Exception as e:
             internal_logger.error(f"Failed to type using keyboard: {e}")
