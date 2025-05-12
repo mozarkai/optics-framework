@@ -70,6 +70,14 @@ class LoggerContext:
             self.original_internal_logger, {"session_id": self.session_id})
         return session_user_logger, session_internal_logger
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        No-op implementation of the __exit__ method.
+        This method is required to complete the context management protocol,
+        but no cleanup actions are needed for this context manager.
+        """
+        pass
+
 
 class JUnitEventHandler(EventSubscriber):
     def __init__(self, output_path: Path):
