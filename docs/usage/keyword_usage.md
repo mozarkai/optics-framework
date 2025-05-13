@@ -165,7 +165,7 @@ These keywords handle interactions with the application, such as clicking, swipi
     - `event_name` (optional): A string identifier for the scroll event (e.g., "scroll_right").
   - **Example**: `Scroll From Element,${Subscriptions_image},right,100,scroll_right`
 
-- **Enter Text**
+- **Enter Text Element**
   Enters text into a specified element.
   - **Parameters**:
     - `element`: The input field:
@@ -176,12 +176,19 @@ These keywords handle interactions with the application, such as clicking, swipi
     - `event_name` (optional): A string identifier for the input event (e.g., "search_input").
   - **Example**: `Enter Text,${search_field_xpath},Hello World,search_input`
 
-- **Enter Text Using Keyboard Android** *(Deprecated)*
-  Enters text using the Android keyboard.
+- **Enter Text**
+  Enters text without the need of a specified element or input field. Does not support special keys.
   - **Parameters**:
-    - `text`: The text to enter (string, e.g., "Test Input").
+    - `text`: The text to enter (string, e.g., "Hello World").
+    - `event_name` (optional): A string identifier for the input event (e.g., "search_input").
+  - **Example**: `Enter Text,Hello World,search_input`
+
+- **Enter Text Using Keyboard**
+  Enters text or special keys such as Enter, Tab, Space, Backspace using the keyboard, supported for appium and selenium.
+  - **Parameters**:
+    - `text or special key`: The text to enter (string, e.g., "Test Input") or special key (followed by "_key", e.g, enter_key).
     - `event_name` (optional): A string identifier for the input event (e.g., "keyboard_input").
-  - **Example**: `Enter Text Using Keyboard Android,Test Input,keyboard_input`
+  - **Example**: `Enter Text Using Keyboard,Test Input,keyboard_input`
 
 - **Enter Number**
   Enters a number into a specified element.

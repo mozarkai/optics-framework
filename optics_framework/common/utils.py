@@ -7,6 +7,14 @@ import cv2
 import numpy as np
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
+from enum import Enum
+
+class SpecialKey(Enum):
+    ENTER = 'enter'
+    TAB = 'tab'
+    BACKSPACE = 'backspace'
+    SPACE = 'space'
+    ESCAPE = 'escape'
 
 def determine_element_type(element):
     # Check if the input is an Image path

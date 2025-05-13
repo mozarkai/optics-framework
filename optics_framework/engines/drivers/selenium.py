@@ -3,13 +3,14 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
 from typing import Any, Dict, Optional
+from optics_framework.common.utils import SpecialKey
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.selenium_driver_manager import set_selenium_driver
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 from pydantic import BaseModel, Field,ValidationError, ConfigDict
-from typing import Literal
+from typing import Literal, Union
 
 class SeleniumCapabilities(BaseModel):
     browser_name: Literal["chrome", "firefox"] = Field(..., alias="browserName")
@@ -131,22 +132,6 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to press element: {e}")
             raise
 
-    def enter_text_element(self, element, text: str, event_name: str | None = None) -> None:
-        """Enter text into a specific Selenium WebElement."""
-        if self.driver is None:
-            raise RuntimeError(
-                "Selenium session not started. Call start_session() first.")
-        try:
-            element.clear()  # Clear existing text first
-            if text == "KEYS.ENTER":
-                element.send_keys(Keys.ENTER)
-            else:
-                element.send_keys(text)
-            internal_logger.debug(
-                f"Entered text '{text}' into element with event: {event_name}")
-        except Exception as e:
-            internal_logger.error(f"Failed to enter text into element: {e}")
-            raise
 
     # Placeholder implementations for remaining abstract methods
     def get_app_version(self) -> str:
@@ -190,22 +175,42 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error("No active element to type into.")
             raise RuntimeError("No active element to type into.")
 
+    def enter_text_element(self, element, text: str, event_name: str | None = None) -> None:
+        """Enter text into a specific Selenium WebElement."""
+        if self.driver is None:
+            raise RuntimeError(
+                "Selenium session not started. Call start_session() first.")
+        try:
+            element.clear()  # Clear existing text first
+            element.send_keys(text)
+            internal_logger.debug(
+                f"Entered text '{text}' into element with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to enter text into element: {e}")
+            raise
+
     def press_keycode(self, keycode: int, event_name: str | None = None) -> None:
         """Selenium does not support raw keycodes. Log a warning."""
         self._raise_action_not_supported()
 
-    def enter_text_using_keyboard(self, text: str, event_name: str | None = None) -> None:
-        """Enter text into the active element (e.g., body/input)."""
+    def enter_text_using_keyboard(self, input_value: Union[str, SpecialKey], event_name: Optional[str] = None):
+        key_map = {
+            SpecialKey.ENTER: Keys.ENTER,
+            SpecialKey.TAB: Keys.TAB,
+            SpecialKey.BACKSPACE: Keys.BACKSPACE,
+            SpecialKey.SPACE: Keys.SPACE,
+            SpecialKey.ESCAPE: Keys.ESCAPE,
+        }
+
         try:
             active_element = self.driver.switch_to.active_element
-            if text == "KEYS.ENTER":
-                active_element.send_keys(Keys.ENTER)
+            if isinstance(input_value, SpecialKey):
+                active_element.send_keys(key_map[input_value])
             else:
-                active_element.send_keys(text)
-            internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
+                active_element.send_keys(input_value)
         except Exception as e:
-            internal_logger.error(f"Failed to type using keyboard: {e}")
-            raise
+            internal_logger.error(f"Failed to enter input using keyboard: {e}")
+            raise RuntimeError(f"Selenium failed to enter input: {e}")
 
     def clear_text(self, event_name: str | None = None) -> None:
         """Clear the active element (if possible)."""

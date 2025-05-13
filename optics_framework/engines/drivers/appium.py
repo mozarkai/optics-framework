@@ -8,9 +8,11 @@ from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
+from optics_framework.common.utils import SpecialKey
 from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from pydantic import BaseModel, Field, model_validator, ValidationError
+from typing import Union
 # Hotfix: Disable debug logs from Appium to prevent duplicates on live logs
 # logging.disable(logging.DEBUG)
 
@@ -298,16 +300,22 @@ class Appium(DriverInterface):
     def press_keycode(self,keycode, even_name=None):
         self.driver.press_keycode(keycode)
 
-    def enter_text_using_keyboard(self, text, event_name=None):
-        for char in text:
-            keycode = self.get_char_as_keycode(char)
-            if keycode:
-                self.press_keycode(keycode, event_name)
+    def enter_text_using_keyboard(self, input_value: Union[str, SpecialKey], event_name=None):
+        keycode_map = {
+            SpecialKey.ENTER: 66,
+            SpecialKey.TAB: 61,
+            SpecialKey.BACKSPACE: 67,
+            SpecialKey.SPACE: 62,
+            SpecialKey.ESCAPE: 111,
+        }
+        try:
+            if isinstance(input_value, SpecialKey):
+                internal_logger.debug(f"Pressing Detected SpecialKey: {input_value}. Keycode: {keycode_map[input_value]}")
+                self.driver.press_keycode(keycode_map[input_value])
             else:
-                internal_logger.debug(f"Keycode not found for character: {char}")
-        if event_name:
-            #TODO: Trigger event
-            pass
+                self.driver.execute_script("mobile: type", {"text": input_value})
+        except Exception as e:
+            raise RuntimeError(f"Appium failed to enter input: {e}")
 
 
     def get_char_as_keycode(self, char):

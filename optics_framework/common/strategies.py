@@ -89,7 +89,6 @@ class TextElementStrategy(LocatorStrategy):
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "locate")
 
-
 class TextDetectionStrategy(LocatorStrategy):
     """Strategy for locating text elements using text detection."""
 

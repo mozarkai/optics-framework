@@ -7,7 +7,6 @@ from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
 from .verifier import Verifier
 
-
 # Action Executor Decorator
 def with_self_healing(func: Callable) -> Callable:
     @wraps(func)
@@ -341,7 +340,7 @@ class ActionKeyword:
 
     # Text input actions
     @with_self_healing
-    def enter_text(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any) -> None:
+    def enter_text_element(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Enter text into a specified element.
 
@@ -358,7 +357,7 @@ class ActionKeyword:
             internal_logger.debug(f"Entering text '{text}' into element '{element}'")
             self.driver.enter_text_element(located, text, event_name)
 
-    def enter_text_keyboard(self, text: str, event_name: Optional[str] = None) -> None:
+    def enter_text(self, text: str, event_name: Optional[str] = None) -> None:
         """
         Enter text using the keyboard.
 
@@ -369,17 +368,29 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "enter_text_keyboard")
         self.driver.enter_text(text, event_name)
 
-    @DeprecationWarning
-    def enter_text_using_keyboard_android(self, text: str, event_name: Optional[str] = None) -> None:
+    # @DeprecationWarning
+    def enter_text_using_keyboard(self, input: str, event_name: Optional[str] = None) -> None:
         """
-        Enter text using the keyboard.
+        Enter text or press a special key using the keyboard.
 
-        :param text: The text to be entered.
-        :param event_name: The event triggering the input.
+        If the input is a string that includes an underscore (e.g., 'enter_key'),
+        it will be interpreted as a special key name and mapped accordingly.
+
+        :param input: The text or special key identifier to send.
+        :param event_name: Optional event label for logging.
         """
+
+
+        if isinstance(input, str) and "_" in input:
+            key_input = input.split("_")[0].lower()
+            try:
+                input = utils.SpecialKey(key_input)
+            except ValueError:
+                pass
+
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "enter_text_using_keyboard_android")
-        self.driver.enter_text_using_keyboard(text, event_name)
+        utils.save_screenshot(screenshot_np, "enter_text_using_keyboard")
+        self.driver.enter_text_using_keyboard(input, event_name)
 
     @with_self_healing
     def enter_number(self, element: str, number: float, event_name: Optional[str] = None, *, located: Any) -> None:
@@ -392,7 +403,7 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "enter_number")
-        self.enter_text(element, str(number), event_name, located=located)
+        self.enter_text_element(element, str(number), event_name, located=located)
 
     def press_keycode(self, keycode: int, event_name: str=None) -> None:
         """
