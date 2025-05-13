@@ -85,20 +85,39 @@ class SeleniumFindElement(ElementSourceInterface):
                     internal_logger.debug(f"Trying text-based XPath: {xpath}")
                     return driver.find_element(By.XPATH, xpath)
                 except NoSuchElementException:
-                    # Fallback to ID if text fails
+                    # Fallback to other strategies if text fails
                     internal_logger.debug(f"Text not found, falling back to ID: {element}")
-                    return driver.find_element(By.ID, element)
-
-            elif element_type == "ID":
-                internal_logger.debug(f"Locating by ID: {element}")
-                return driver.find_element(By.ID, element)
-
+                    return self._find_element_by_any(element)
         except NoSuchElementException:
             internal_logger.warning(f"Element not found: {element}")
             return None
         except Exception as e:
             internal_logger.error(f"Unexpected error locating element {element}: {e}")
             return None
+
+    def _find_element_by_any(self, locator_value: str):
+        """
+        Try locating an element using all known Selenium strategies.
+        """
+        driver = self._get_selenium_driver()
+        strategies = [
+            (By.ID, locator_value),
+            (By.NAME, locator_value),
+            (By.CLASS_NAME, locator_value),
+            (By.TAG_NAME, locator_value),
+            (By.LINK_TEXT, locator_value),
+            (By.PARTIAL_LINK_TEXT, locator_value),
+            (By.CSS_SELECTOR, locator_value),
+            (By.XPATH, locator_value),
+        ]
+        for strategy, value in strategies:
+            try:
+                internal_logger.debug(f"Trying {strategy}: {value}")
+                return driver.find_element(strategy, value)
+            except NoSuchElementException:
+                continue
+        internal_logger.warning(f"No matching element found using any strategy for: {locator_value}")
+        return None
 
 
     def assert_elements(self, elements, timeout=10, rule="any") -> None:
