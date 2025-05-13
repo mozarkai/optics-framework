@@ -27,7 +27,7 @@ class PydanticAIClient:
             config: Configuration for the LLM agent
         """
         self.config = config
-        self.url = config.url
+        self.url: str | None = config.url
         self.prompt = self._load_prompts()
         self.agent = None  # Will be created when tools are registered
         self.tools = {}

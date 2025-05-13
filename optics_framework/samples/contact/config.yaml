@@ -40,6 +40,10 @@ llm_agents:
   popup_handler:
     enabled: true
     url: "https://openrouter.ai/api/v1"
-    capabilities: {}
+    capabilities: {
+      "model": "gpt-3.5-turbo",
+      "max_tokens": 1000,
+      "temperature": 0.7,
+    }
     trigger: "keyword_FAIL"
     temperature: 0.7
