@@ -5,7 +5,9 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.engines.vision_models.base_methods import match_and_annotate
 import numpy as np
+import time
 
 
 class LocatorStrategy(ABC):
@@ -27,13 +29,6 @@ class LocatorStrategy(ABC):
 
     @abstractmethod
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
-        """Asserts the presence of elements using the locator strategy.
-
-        :param elements: List of element identifiers (e.g., XPath, text, image path).
-        :param timeout: Maximum time to wait in seconds (default: 30).
-        :param rule: 'any' or 'all' to specify if any or all elements must be present (default: 'any').
-        :return: True if the assertion is successful, False otherwise.
-        """
         pass
 
     @staticmethod
@@ -123,9 +118,23 @@ class TextDetectionStrategy(LocatorStrategy):
         return coor
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
-        screenshot = self.element_source.capture()
-        result = self.text_detection.assert_elements(screenshot, elements, timeout, rule)
+        end_time = time.time() + timeout
+        found_status = {t: False for t in elements}
+        result = False
+        while time.time() < end_time:
+            screenshot = self.element_source.capture()
+            annotated_frame = screenshot.copy()
+            _, ocr_results = self.text_detection.detect_text(annotated_frame)
+            match_and_annotate(ocr_results, elements, found_status, annotated_frame)
+
+            # Check rule
+            if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
+                result = True
+                break
+            time.sleep(0.3)
+        utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
         return result
+
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
@@ -253,13 +262,9 @@ class StrategyManager:
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
-        """Asserts the presence of an element using the locator strategies.
-
-        :param elements: The element identifier (e.g., XPath, text, image path).
-        :param timeout: Maximum time to wait in seconds (default: 30).
-        :param rule: 'any' or 'all' to specify if any or all elements must be present (default: 'any').
-        :return: True if the assertion is successful, False otherwise.
-        """
+        rule = rule.lower()
+        if rule not in ("any", "all"):
+            raise ValueError("Invalid rule. Use 'any' or 'all'.")
         for strategy in self.locator_strategies:
             if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
                 try:

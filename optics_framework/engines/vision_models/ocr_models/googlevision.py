@@ -39,11 +39,11 @@ class GoogleVisionHelper(TextInterface):
         - frame (np.array): The frame with the text bounding box and adjusted center dot annotated.
         """
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, ocr_results = self.detect_text_google(gray_frame)
+        _, ocr_results = self.detect_text(gray_frame)
 
         matches = []
         # Iterate over each detected text
-        for (bbox, detected_text, confidence) in ocr_results:
+        for (bbox, detected_text, _) in ocr_results:
             detected_text = detected_text.strip()
             if text in detected_text:
 
@@ -76,33 +76,34 @@ class GoogleVisionHelper(TextInterface):
         return super().element_exist(input_data, reference_data)
 
 
-    def detect_text_google(self,frame: np.ndarray):
+    def detect_text(self,frame: np.ndarray):
         """
-        Detects text in a given NumPy array (image frame) using Google Vision API.
-
-        Args:
-            frame (np.ndarray): The image frame in NumPy array format.
+        Detects text in a given NumPy array using Google Vision API and returns standardized OCR format.
 
         Returns:
-            list: List of detected text strings.
+            Tuple[None, List[Tuple[bbox, text, confidence]]]
+            bbox = List[Tuple[int, int]] with 4 points
         """
         if frame is None or not isinstance(frame, np.ndarray):
             raise ValueError("Invalid frame provided. Ensure it's a valid NumPy array.")
 
-        # Convert the NumPy array (OpenCV format) to bytes (JPEG)
         _, encoded_image = cv2.imencode('.jpg', frame)
         image_bytes = encoded_image.tobytes()
 
-        # Initialize Google Vision API client
         client = ImageAnnotatorClient()
-
-        # Create Google Vision API image object
         image = vision.Image(content=image_bytes)
 
-        # Perform text detection
         response = client.text_detection(image=image)
         texts = response.text_annotations
 
-        # Extract detected text
-        detected_text = [text.description for text in texts]
-        return detected_text[1:] if detected_text else []
+        results = []
+        for text in texts[1:]:  # Skip full block (index 0)
+            text_str = text.description
+            vertices = text.bounding_poly.vertices
+            if len(vertices) >= 4:
+                bbox = [(v.x, v.y) for v in vertices]
+                results.append((bbox, text_str, None)) # None for confidence placeholder as it's not provided by Google Vision API
+            else:
+                continue
+
+        return None, results

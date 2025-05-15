@@ -80,8 +80,7 @@ class Verifier:
         :param event_name: The name of the event associated with the assertion, if any.
         :return: True if the rule is satisfied, False otherwise.
         """
-        # element_source_type = type(
-        #     self.element_source.current_instance).__name__
+
         rule = rule.lower()
         timeout = int(timeout)
         elements_list = elements.split(',')
@@ -92,8 +91,6 @@ class Verifier:
             el for el in elements_list if utils.determine_element_type(el) == 'XPath']
         images = [
             el for el in elements_list if utils.determine_element_type(el) == 'Image']
-        result = False  # Initialize result with a default value
-
         result_parts = []
 
         if texts:

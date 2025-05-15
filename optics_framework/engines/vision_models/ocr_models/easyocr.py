@@ -47,7 +47,7 @@ class EasyOCRHelper(TextInterface):
         - tuple: Bounding box coordinates of the detected text.
         """
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, ocr_results = self.detect_text_easyocr(gray_frame)
+        _, ocr_results = self.detect_text(gray_frame)
 
         detected_texts = []
 
@@ -82,7 +82,8 @@ class EasyOCRHelper(TextInterface):
         return detected_texts[0]
 
 
-    def detect_text_easyocr(self, image):
+    def detect_text(self, image):
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         reader = easyocr.Reader(['en'])
         results = reader.readtext(image)
         detected_text = ' '.join(result[1] for result in results)
