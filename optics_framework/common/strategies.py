@@ -25,6 +25,17 @@ class LocatorStrategy(ABC):
         """
         pass
 
+    @abstractmethod
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        """Asserts the presence of elements using the locator strategy.
+
+        :param elements: List of element identifiers (e.g., XPath, text, image path).
+        :param timeout: Maximum time to wait in seconds (default: 30).
+        :param rule: 'any' or 'all' to specify if any or all elements must be present (default: 'any').
+        :return: True if the assertion is successful, False otherwise.
+        """
+        pass
+
     @staticmethod
     @abstractmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -67,6 +78,9 @@ class XPathStrategy(LocatorStrategy):
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         return self.element_source.locate(element)
 
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        return self.element_source.assert_elements(elements, timeout, rule)
+
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "XPath" and LocatorStrategy._is_method_implemented(element_source, "locate")
@@ -84,6 +98,9 @@ class TextElementStrategy(LocatorStrategy):
 
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         return self.element_source.locate(element)
+
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        return self.element_source.assert_elements(elements, timeout, rule)
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -105,6 +122,10 @@ class TextDetectionStrategy(LocatorStrategy):
         _, coor, _ = self.text_detection.find_element(screenshot, element)
         return coor
 
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        screenshot = self.element_source.capture()
+        result = self.text_detection.assert_elements(screenshot, elements, timeout, rule)
+        return result
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
@@ -125,6 +146,11 @@ class ImageDetectionStrategy(LocatorStrategy):
         screenshot = self.element_source.capture()
         _, centre, _ = self.image_detection.find_element(screenshot, element)
         return centre
+
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        screenshot = self.element_source.capture()
+        result = self.image_detection.assert_elements(screenshot, elements, timeout, rule)
+        return result
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -225,6 +251,26 @@ class StrategyManager:
                 except Exception as e:
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
+
+    def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
+        """Asserts the presence of an element using the locator strategies.
+
+        :param elements: The element identifier (e.g., XPath, text, image path).
+        :param timeout: Maximum time to wait in seconds (default: 30).
+        :param rule: 'any' or 'all' to specify if any or all elements must be present (default: 'any').
+        :return: True if the assertion is successful, False otherwise.
+        """
+        for strategy in self.locator_strategies:
+            if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
+                try:
+                    result = strategy.assert_elements(elements, timeout, rule)
+                    if result:
+                        return result
+                except Exception as e:
+                    internal_logger.error(
+                        f"Strategy {strategy.__class__.__name__} failed: {e}")
+
+        return False
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         for strategy in self.screenshot_strategies:

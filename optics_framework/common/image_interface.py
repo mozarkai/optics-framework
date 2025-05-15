@@ -46,3 +46,20 @@ class ImageInterface(ABC):
         :rtype: Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]
         """
         pass
+
+    def assert_elements(self, input_data, elements, timeout=30, rule="any"):
+        """
+        Assert that elements are present in the input data based on the specified rule.
+
+        :param input_data: The input source (e.g., image, video frame) for detection.
+        :type input_data: Any
+        :param elements: List of elements to locate.
+        :type elements: list
+        :param timeout: Maximum time to wait for elements.
+        :type timeout: int
+        :param rule: Rule to apply ("any" or "all").
+        :type rule: str
+        :return: True if the assertion passes.
+        :rtype: bool
+        """
+        pass
