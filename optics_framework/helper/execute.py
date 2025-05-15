@@ -250,6 +250,7 @@ class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
     folder_path: str
     runner: str = "test_runner"
+    use_printer: bool = True
 
     @field_validator('folder_path')
     @classmethod
@@ -273,6 +274,7 @@ class BaseRunner:
     def __init__(self, args: RunnerArgs):
         self.folder_path = args.folder_path
         self.runner = args.runner
+        self.use_printer = args.use_printer
         internal_logger.debug(f"Using runner: {self.runner}")
 
         # Find all relevant files
@@ -351,9 +353,10 @@ class BaseRunner:
                 test_cases=self.execution_queue,
                 modules=self.modules_data,
                 elements=ElementData(elements=self.elements_data),
-                runner_type=self.runner
+                runner_type=self.runner,
+                use_printer=self.use_printer
             )
-            internal_logger.debug(f"Executing with runner_type: {self.runner}")
+            internal_logger.debug(f"Executing with runner_type: {self.runner}, use_printer: {self.use_printer}")
             await self.engine.execute(params)
         except Exception as e:
             internal_logger.error(f"{mode.capitalize()} failed: {e}")
@@ -382,15 +385,15 @@ class DryRunRunner(BaseRunner):
         await self.run("dry_run")
 
 
-def execute_main(folder_path: str, runner: str = "test_runner"):
+def execute_main(folder_path: str, runner: str = "test_runner", use_printer: bool = True):
     """Entry point for execute command."""
-    args = RunnerArgs(folder_path=folder_path, runner=runner)
+    args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
     runner_instance = ExecuteRunner(args)
     asyncio.run(runner_instance.execute())
 
 
-def dryrun_main(folder_path: str, runner: str = "test_runner"):
+def dryrun_main(folder_path: str, runner: str = "test_runner", use_printer: bool = True):
     """Entry point for dry run command."""
-    args = RunnerArgs(folder_path=folder_path, runner=runner)
+    args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
     runner_instance = DryRunRunner(args)
     asyncio.run(runner_instance.execute())

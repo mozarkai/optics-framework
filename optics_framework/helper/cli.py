@@ -132,6 +132,7 @@ class DryRunArgs(BaseModel):
     """Arguments for the dry_run command."""
     folder_path: str
     runner: str = "test_runner"
+    use_printer: bool = True
 
 
 class DryRunCommand(Command):
@@ -148,20 +149,39 @@ class DryRunCommand(Command):
             default="test_runner",
             help="Test runner to use (default: test_runner)"
         )
-        parser.set_defaults(func=self.execute)
+        printer_group = parser.add_mutually_exclusive_group()
+        printer_group.add_argument(
+            "--use-printer",
+            dest="use_printer",
+            action="store_true",
+            help="Enable live result printer (default)"
+        )
+        printer_group.add_argument(
+            "--no-use-printer",
+            dest="use_printer",
+            action="store_false",
+            help="Disable live result printer"
+        )
+        parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
         dry_run_args = DryRunArgs(
             folder_path=args.folder_path,
-            runner=args.runner
+            runner=args.runner,
+            use_printer=args.use_printer
         )
-        dryrun_main(dry_run_args.folder_path, dry_run_args.runner)
+        dryrun_main(
+            dry_run_args.folder_path,
+            dry_run_args.runner,
+            use_printer=dry_run_args.use_printer
+        )
 
 
 class ExecuteArgs(BaseModel):
     """Arguments for the execute command."""
     folder_path: str
     runner: str = "test_runner"
+    use_printer: bool = True
 
 
 class ExecuteCommand(Command):
@@ -178,14 +198,33 @@ class ExecuteCommand(Command):
             default="test_runner",
             help="Test runner to use (default: test_runner)"
         )
-        parser.set_defaults(func=self.execute)
+        printer_group = parser.add_mutually_exclusive_group()
+        printer_group.add_argument(
+            "--use-printer",
+            dest="use_printer",
+            action="store_true",
+            help="Enable live result printer (default)"
+        )
+        printer_group.add_argument(
+            "--no-use-printer",
+            dest="use_printer",
+            action="store_false",
+            help="Disable live result printer"
+        )
+        parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
         execute_args = ExecuteArgs(
             folder_path=args.folder_path,
-            runner=args.runner
+            runner=args.runner,
+            use_printer=args.use_printer
         )
-        execute_main(execute_args.folder_path, execute_args.runner)
+        # Pass only required arguments for backward compatibility
+        execute_main(
+            execute_args.folder_path,
+            execute_args.runner,
+            use_printer=execute_args.use_printer
+        )
 
 
 class VersionCommand(Command):

@@ -26,6 +26,7 @@ class ExecutionParams(BaseModel):
                   ] = Field(default_factory=dict)
     elements: ElementData = Field(default_factory=ElementData)
     runner_type: str = "test_runner"
+    use_printer: bool = True
 
 
 class Executor(ABC):
@@ -75,7 +76,7 @@ class BatchExecutor(Executor):
                 entity_id=session.session_id,
                 name="Execution",
                 status=EventStatus.FAIL,
-                message=f"Execution failed: {str(e)}",
+                message="Execution failed: %s" % str(e),
                 extra={"session_id": session.session_id}
             ))
             raise
@@ -219,9 +220,9 @@ class ExecutionEngine:
 
         self.event_manager.start()
 
-        use_printer = params.runner_type == "test_runner"
+        use_printer = params.use_printer
         internal_logger.debug(
-            f"Using printer: {'TreeResultPrinter' if use_printer else 'NullResultPrinter'} for runner: {params.runner_type}")
+            "Using printer: %s for runner: %s", 'TreeResultPrinter' if use_printer else 'NullResultPrinter', params.runner_type)
 
         with LoggerContext(params.session_id):
             runner = RunnerFactory.create_runner(
@@ -232,7 +233,7 @@ class ExecutionEngine:
                 params.modules,
                 params.elements.elements
             )
-            if hasattr(runner, 'result_printer') and runner.result_printer:
+            if hasattr(runner, 'result_printer') and runner.result_printer and use_printer:
                 internal_logger.debug("Starting result printer live display")
                 runner.result_printer.start_live()
 
@@ -287,13 +288,12 @@ class ExecutionEngine:
                 if hasattr(runner, 'result_printer') and runner.result_printer:
                     internal_logger.debug(
                         "Stopping result printer live display")
-                    runner.result_printer.stop_live()
                 # Wait for event queue to drain
                 internal_logger.debug(
-                    f"Event queue size before drain: {self.event_manager.event_queue.qsize()}")
+                    "Event queue size before drain: %d", self.event_manager.event_queue.qsize())
                 while self.event_manager.event_queue.qsize() > 0:
                     internal_logger.debug(
-                        f"Waiting for {self.event_manager.event_queue.qsize()} events to process")
+                        "Waiting for %d events to process", self.event_manager.event_queue.qsize())
                     await asyncio.sleep(0.1)
                 self.event_manager.dump_state()
                 self.event_manager.stop()
