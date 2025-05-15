@@ -340,7 +340,7 @@ class ActionKeyword:
 
     # Text input actions
     @with_self_healing
-    def enter_text_element(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any) -> None:
+    def enter_text(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any) -> None:
         """
         Enter text into a specified element.
 
@@ -357,7 +357,7 @@ class ActionKeyword:
             internal_logger.debug(f"Entering text '{text}' into element '{element}'")
             self.driver.enter_text_element(located, text, event_name)
 
-    def enter_text(self, text: str, event_name: Optional[str] = None) -> None:
+    def enter_text_direct(self, text: str, event_name: Optional[str] = None) -> None:
         """
         Enter text using the keyboard.
 
