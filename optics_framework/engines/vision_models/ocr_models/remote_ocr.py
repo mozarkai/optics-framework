@@ -63,14 +63,11 @@ class RemoteOCR(TextInterface):
 
             formatted_results = []
             for item in result.get("results", []):
-                formatted_results.append({
-                    "text": item.get("text", ""),
-                    "bbox": item.get("bbox", []),
-                    "confidence": item.get("confidence", 0.0)
-                })
-
-            internal_logger.debug(
-                f"Successfully detected {len(formatted_results)} text instances")
+                text = item.get("text", "")
+                bbox = item.get("bbox", [])
+                confidence = item.get("confidence", 0.0)
+                if len(bbox) >= 4:
+                    formatted_results.append((bbox, text, confidence))
             return formatted_results
 
         except requests.exceptions.RequestException as e:
@@ -106,32 +103,22 @@ class RemoteOCR(TextInterface):
             return None
 
         # Get all detected texts
-        detected_texts = self.detect_text(
+        detections = self.detect_text(
             input_data, self.method, self.language)
 
         matching_elements = []
 
-        # Find matching texts
-        for detection in detected_texts:
-            # Case-insensitive matching
-            if text.lower() in detection["text"].lower():
-                bbox = detection["bbox"]
-                if len(bbox) >= 4:  # Ensure we have a valid bounding box with 4 corners
-                    # Extract top-left and bottom-right coordinates
-                    top_left = (int(bbox[0][0]), int(bbox[0][1]))
-                    bottom_right = (int(bbox[2][0]), int(bbox[2][1]))
+        for bbox, detected_text, _ in detections:
+            if text.lower() in detected_text.lower() and len(bbox) >= 4:
+                top_left = (int(bbox[0][0]), int(bbox[0][1]))
+                bottom_right = (int(bbox[2][0]), int(bbox[2][1]))
 
-                    # Calculate width and height
-                    w = bottom_right[0] - top_left[0]
-                    h = bottom_right[1] - top_left[1]
+                center_x = (top_left[0] + bottom_right[0]) // 2
+                center_y = (top_left[1] + bottom_right[1]) // 2
 
-                    # Calculate center coordinates
-                    center_x = top_left[0] + w // 2
-                    center_y = top_left[1] + h // 2
-
-                    matching_elements.append(
-                        (True, (center_x, center_y), (top_left, bottom_right)))
-
+                matching_elements.append(
+                    (True, (center_x, center_y), (top_left, bottom_right))
+                )
         # Determine the result
         if not matching_elements:
             internal_logger.debug(f"Text '{text}' not found in the image")

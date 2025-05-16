@@ -1,9 +1,10 @@
 import cv2
-import os
+import time
 import numpy as np
+from optics_framework.common import utils
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.engines.vision_models.base_methods import load_template
 
 class TemplateMatchingHelper(ImageInterface):
     """
@@ -12,27 +13,6 @@ class TemplateMatchingHelper(ImageInterface):
     This class uses OpenCV's :func:`cv2.matchTemplate` function to locate instances
     of a template (reference image) within a larger image.
     """
-
-    def load_template(self, element: str) -> np.ndarray:
-        """
-        Load a template image from the input_templates folder.
-
-        :param element: The name of the template image file.
-        :type element: str
-
-        :return: The template image as a NumPy array.
-        :rtype: np.ndarray
-
-        :raises ValueError: If the project path is not set.
-        """
-        project_path = str(ConfigHandler.get_instance().get_project_path())
-
-        templates_folder = os.path.join(project_path, "input_templates")
-        template_path = os.path.join(templates_folder, element)
-        template = cv2.imread(template_path)
-
-        return template
-
 
     def find_element(
         self,frame, reference_data, index=None, confidence_level=0.85, min_inliers=10
@@ -54,7 +34,7 @@ class TemplateMatchingHelper(ImageInterface):
         - tuple: (x, y) coordinates of the indexed match or (None, None) if out of bounds.
         - frame (np.array): The frame with all detected templates annotated.
         """
-        reference_data = self.load_template(reference_data)
+        reference_data = load_template(reference_data)
         sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -122,6 +102,52 @@ class TemplateMatchingHelper(ImageInterface):
                 return False, (None, None), frame
 
         return True, centers[0], frame
+
+    def assert_elements(self, frame, templates, timeout=30, rule="any"):
+        """
+        Assert that elements are present in the input data based on the specified rule.
+
+        :param input_data: The input source (e.g., image, video frame) for detection.
+        :type input_data: Any
+        :param elements: List of elements to locate.
+        :type elements: list
+        :param timeout: Maximum time to wait for elements.
+        :type timeout: int
+        :param rule: Rule to apply ("any" or "all").
+        :type rule: str
+        :return: True if the assertion passes.
+        :rtype: bool
+        """
+        end_time = time.time() + timeout
+        annotated_frame = frame.copy()
+        found_status = {template: False for template in templates}
+
+        while time.time() < end_time:
+            for template_path in templates:
+                if found_status[template_path]:  # Skip if already found (for 'all' rule)
+                    continue
+
+                success, _ , annotated = self.find_element(
+                    frame.copy(),  # use a copy of the frame to avoid overwriting annotations across templates
+                    reference_data=template_path,
+                )
+                if success:
+                    found_status[template_path] = True
+                    annotated_frame = annotated  # use the latest annotated version
+
+            # Rule evaluation
+            if rule == "any" and any(found_status.values()):
+                utils.save_screenshot(annotated_frame, "assert_elements_templatematching_result")
+                return True
+            if rule == "all" and all(found_status.values()):
+                utils.save_screenshot(annotated_frame, "assert_elements_templatematching_result")
+                return True
+
+            time.sleep(0.5)  # Prevent busy looping
+
+        internal_logger.warning("SIFT assert_elements failed within timeout.")
+        utils.save_screenshot(annotated_frame, "assert_elements_templatematching_failed")
+        return False
 
 
     def element_exist(self,frame, reference_data, offset=[0, 0], confidence_level=0.85, min_inliers=10):

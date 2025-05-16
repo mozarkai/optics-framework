@@ -4,11 +4,12 @@ import json
 import cv2
 import numpy as np
 import requests
+import time
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
-
+from optics_framework.engines.vision_models.base_methods import load_template
 
 class RemoteImageDetection(ImageInterface):
     DEPENDENCY_TYPE = "image_detection"
@@ -105,6 +106,10 @@ class RemoteImageDetection(ImageInterface):
             internal_logger.error(f"Failed to decode input image: {str(e)}")
             return None
 
+        # fetch template image and decode to base64
+        template_image = load_template(image)
+        image = utils.encode_numpy_to_base64(template_image)
+
         # Get all detected images
         detected_images = self.detect_images(
             input_data, image, self.method)
@@ -176,3 +181,79 @@ class RemoteImageDetection(ImageInterface):
         """
         raise NotImplementedError(
             "The 'locate' method is not implemented for RemoteImageDetection. Use 'find_element' instead.")
+
+    def assert_elements(self, frame, image_templates, timeout=30, rule="any"):
+        """
+        Assert that elements are present in the input data based on the specified rule.
+
+        Args:
+            input_data: The input source (e.g., image, video frame) for detection.
+            elements: List of elements to locate.
+            timeout: Maximum time to wait for elements.
+            rule: Rule to apply ("any" or "all").
+
+        Returns:
+            bool: True if the assertion passes, otherwise False.
+        """
+        annotated_frame = frame.copy()
+        found_status = []
+
+        # encode frame to base64
+        frame_base64 = utils.encode_numpy_to_base64(frame)
+        encoded_templates = self._prepare_encoded_templates(image_templates)
+        end_time = time.time() + timeout
+        while time.time() < end_time:
+            found_status = []
+
+            for template_name, encoded_template in encoded_templates.items():
+                match_found = self._detect_and_match_template(
+                    frame_base64, template_name, encoded_template, annotated_frame)
+                found_status.append(match_found)
+
+            if rule == "any" and any(found_status):
+                utils.save_screenshot(annotated_frame, "assert_elements_result")
+                return True
+            if rule == "all" and all(found_status):
+                utils.save_screenshot(annotated_frame, "assert_elements_result")
+                return True
+
+            time.sleep(0.3)
+
+        internal_logger.warning("Element assertion failed within timeout.")
+        utils.save_screenshot(annotated_frame, "assert_elements_result_failed")
+        return False
+
+    def _prepare_encoded_templates(self, templates: list) -> Dict[str, Optional[str]]:
+        encoded = {}
+        for template in templates:
+            try:
+                img = load_template(template)
+                encoded[template] = utils.encode_numpy_to_base64(img)
+            except Exception as e:
+                internal_logger.error(f"Failed to load or encode template '{template}': {e}")
+                encoded[template] = None
+        return encoded
+
+    def _detect_and_match_template(self, frame_base64: str, template_name: str, encoded_template: Optional[str], frame: np.ndarray) -> bool:
+        if not encoded_template:
+            internal_logger.error(f"Template image '{template_name}' could not be loaded or encoded.")
+            return False
+
+        try:
+            detections = self.detect_images(frame_base64, encoded_template, self.method)
+        except Exception as e:
+            internal_logger.error(f"Detection failed for '{template_name}': {e}")
+            return False
+
+        match_found = False
+        for detection in detections:
+            center = detection["center"]
+            bbox = detection["bbox"]
+            if len(bbox) >= 2:
+                top_left = (int(bbox[0][0]), int(bbox[0][1]))
+                bottom_right = (int(bbox[1][0]), int(bbox[1][1]))
+                cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
+                cv2.circle(frame, center, 5, (0, 0, 255), -1)
+                match_found = True
+
+        return match_found

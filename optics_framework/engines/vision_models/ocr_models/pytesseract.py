@@ -39,18 +39,18 @@ class PytesseractHelper(TextInterface):
             - tuple: Bounding box coordinates of the detected text.
             - frame (np.array): The frame with the annotated text bounding box and center dot.
         """
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, ocr_results = self.detect_text_pytesseract(gray_frame)
+        _, ocr_results = self.detect_text(frame)
 
         # internal_logger.debug("Text Detection Results:", ocr_results)
 
         matches = []
-        for detected_text, (x, y, w, h), confidence in ocr_results:
-            if detected_text.strip().lower() == text.lower():  # Case-insensitive match
-                center_x = x + w // 2
-                center_y = y + h // 2
-                bbox = ((x, y), (x + w, y + h))  # Top-left and bottom-right
-                matches.append(((center_x, center_y), bbox))
+        for bbox, detected_text, _ in ocr_results:
+            if detected_text.strip().lower() == text.lower():
+                top_left = tuple(map(int, bbox[0]))
+                bottom_right = tuple(map(int, bbox[2]))
+                center_x = (top_left[0] + bottom_right[0]) // 2
+                center_y = (top_left[1] + bottom_right[1]) // 2
+                matches.append(((center_x, center_y), (top_left, bottom_right)))
 
         if not matches:
             return False, (None, None), None
@@ -64,22 +64,35 @@ class PytesseractHelper(TextInterface):
             selected_center, selected_bbox = matches[0]
 
         # Save the annotated frame
+        cv2.rectangle(frame, selected_bbox[0], selected_bbox[1], (0, 255, 0), 2)
+        cv2.circle(frame, selected_center, 5, (0, 0, 255), -1)
         utils.save_screenshot(frame, name='annotated_frame')
 
         return True, selected_center, selected_bbox
 
-
-
-    def detect_text_pytesseract(self, image):
+    def detect_text(self, image):
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         _, binary_image = cv2.threshold(image, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         data = pytesseract.image_to_data(binary_image, config=self.pytesseract_config, output_type=pytesseract.Output.DICT)
         detected_texts = []
         for i in range(len(data["text"])):
             text = data["text"][i].strip()
-            if text:  # Filter out empty results
-                x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
-                conf = data["conf"][i]  # Get confidence score
-                detected_texts.append((text, (x, y, w, h), conf))
+            if text:
+                x = data["left"][i]
+                y = data["top"][i]
+                w = data["width"][i]
+                h = data["height"][i]
+                conf = float(data["conf"][i]) if data["conf"][i] != '-1' else 0.0
+
+                # Build 4-point bounding box
+                top_left = (x, y)
+                top_right = (x + w, y)
+                bottom_right = (x + w, y + h)
+                bottom_left = (x, y + h)
+                bbox = [top_left, top_right, bottom_right, bottom_left]
+
+                detected_texts.append((bbox, text, conf))
+
         return binary_image, detected_texts
 
     def element_exist(self, input_data, reference_data):

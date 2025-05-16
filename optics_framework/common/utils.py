@@ -4,17 +4,10 @@ from fuzzywuzzy import fuzz
 import re
 import os
 import cv2
+import base64
 import numpy as np
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
-from enum import Enum
-
-class SpecialKey(Enum):
-    ENTER = 'enter'
-    TAB = 'tab'
-    BACKSPACE = 'backspace'
-    SPACE = 'space'
-    ESCAPE = 'escape'
 
 def determine_element_type(element):
     # Check if the input is an Image path
@@ -41,7 +34,16 @@ def get_current_time_for_events():
         internal_logger.error('Unable to get current time', exc_info=e)
         return None
 
+def encode_numpy_to_base64(image: np.ndarray) -> str:
+    """
+    Encodes a NumPy image (OpenCV format) to a base64 string.
 
+    :param image: The input image as a NumPy array (BGR format).
+    :return: Base64 encoded string.
+    """
+    _, buffer = cv2.imencode('.jpg', image)
+    encoded_string = base64.b64encode(buffer).decode('utf-8')
+    return encoded_string
 
 def compute_hash(xml_string):
     """Computes the SHA-256 hash of the XML string."""

@@ -5,7 +5,9 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.engines.vision_models.base_methods import match_and_annotate
 import numpy as np
+import time
 
 
 class LocatorStrategy(ABC):
@@ -23,6 +25,10 @@ class LocatorStrategy(ABC):
         :param element: The element identifier (e.g., XPath, text, image path).
         :return: Either an element object or a tuple of (x, y) coordinates.
         """
+        pass
+
+    @abstractmethod
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
         pass
 
     @staticmethod
@@ -67,6 +73,9 @@ class XPathStrategy(LocatorStrategy):
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         return self.element_source.locate(element)
 
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        return self.element_source.assert_elements(elements, timeout, rule)
+
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "XPath" and LocatorStrategy._is_method_implemented(element_source, "locate")
@@ -84,6 +93,9 @@ class TextElementStrategy(LocatorStrategy):
 
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         return self.element_source.locate(element)
+
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        return self.element_source.assert_elements(elements, timeout, rule)
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -105,6 +117,24 @@ class TextDetectionStrategy(LocatorStrategy):
         _, coor, _ = self.text_detection.find_element(screenshot, element)
         return coor
 
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        end_time = time.time() + timeout
+        found_status = {t: False for t in elements}
+        result = False
+        while time.time() < end_time:
+            screenshot = self.element_source.capture()
+            annotated_frame = screenshot.copy()
+            _, ocr_results = self.text_detection.detect_text(annotated_frame)
+            match_and_annotate(ocr_results, elements, found_status, annotated_frame)
+
+            # Check rule
+            if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
+                result = True
+                break
+            time.sleep(0.3)
+        utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
+        return result
+
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
@@ -125,6 +155,11 @@ class ImageDetectionStrategy(LocatorStrategy):
         screenshot = self.element_source.capture()
         _, centre, _ = self.image_detection.find_element(screenshot, element)
         return centre
+
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        screenshot = self.element_source.capture()
+        result = self.image_detection.assert_elements(screenshot, elements, timeout, rule)
+        return result
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -225,6 +260,22 @@ class StrategyManager:
                 except Exception as e:
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
+
+    def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
+        rule = rule.lower()
+        if rule not in ("any", "all"):
+            raise ValueError("Invalid rule. Use 'any' or 'all'.")
+        for strategy in self.locator_strategies:
+            if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
+                try:
+                    result = strategy.assert_elements(elements, timeout, rule)
+                    if result:
+                        return result
+                except Exception as e:
+                    internal_logger.error(
+                        f"Strategy {strategy.__class__.__name__} failed: {e}")
+
+        return False
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         for strategy in self.screenshot_strategies:
