@@ -10,6 +10,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
+from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from pydantic import BaseModel, Field, model_validator, ValidationError
 from typing import Union
@@ -51,6 +52,7 @@ class Appium(DriverInterface):
         if hasattr(self, "initialized") and self.initialized:
             return
         self.driver = None
+        self.event_sdk = EventSDK.get_instance()
         config_handler = ConfigHandler.get_instance()
         config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(self.DEPENDENCY_TYPE, self.NAME)
 
@@ -70,7 +72,7 @@ class Appium(DriverInterface):
         self.initialized = True
 
     # session management
-    def start_session(self):
+    def start_session(self, event_name: str | None = None) -> webdriver.Remote:
         """Start the Appium session if not already started."""
         cap = self.capabilities_model
         app_package = cap.app_package
@@ -128,6 +130,8 @@ class Appium(DriverInterface):
 
         try:
             if self.driver is None:
+                if event_name:
+                    self.event_sdk.capture_event(event_name)
                 self.driver = webdriver.Remote(self.appium_server_url, options=options)
                 set_appium_driver(self.driver)
                 self.ui_helper = UIHelper()
@@ -136,9 +140,11 @@ class Appium(DriverInterface):
             internal_logger.debug(f"Failed to start Appium session: {e}")
             raise
 
-    def terminate(self):
+    def terminate(self, event_name: str | None = None) -> None:
         """End the Appium session if active."""
         if self.driver:
+            if event_name:
+                self.event_sdk.capture_event(event_name)
             self.driver.quit()
             self.driver = None
 
@@ -169,7 +175,7 @@ class Appium(DriverInterface):
     def launch_app(self, event_name: str | None = None) -> None:
         """Launch the app using the Appium driver."""
         if self.driver is None:
-            self.start_session()
+            self.start_session(event_name)
         internal_logger.debug(f"Launched application with event: {event_name}")
 
     def get_driver(self):
@@ -181,24 +187,24 @@ class Appium(DriverInterface):
         """
         Click on the specified element using Appium's click method.
         """
-        timestamp = utils.get_current_time_for_events()
+        timestamp = self.event_sdk.get_current_time_for_events()
         try:
             element.click()
             if event_name:
-                # TODO: Trigger event
+                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
                 internal_logger.debug(f"Clicked on element: {element} at {timestamp}")
         except Exception as e:
             internal_logger.debug(e)
 
     def tap_at_coordinates(self, x, y, event_name=None) -> None:
         """
-        Uses Appium 2.x's mobile: clickGesture to tap at specific coordinates.
+        Simulates a tap gesture at the specified screen coordinates using Appium's `tap` method.
         """
         try:
+            timestamp = self.event_sdk.get_current_time_for_events()
             self.driver.tap([(x, y)], 100)
             if event_name:
-                # TODO: Trigger event
-                pass
+                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug(f"Tapped at coordinates ({x}, {y})")
         except Exception as e:
             internal_logger.debug(f"Failed to tap at ({x}, {y}): {e}")
@@ -228,7 +234,13 @@ class Appium(DriverInterface):
             internal_logger.debug(f'type of swipe_length: {type(swipe_length)}, type of start_x: {type(start_x)}')
             end_x = start_x + swipe_length
             end_y = start_y
-        self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
+        timestamp = self.event_sdk.get_current_time_for_events()
+        try:
+            self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
+            if event_name:
+                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+        except Exception as e:
+            internal_logger.debug(f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}")
 
     def swipe_percentage(self, x_percentage, y_percentage, direction, swipe_percentage, event_name=None):
         window_size = self.driver.get_window_size()
@@ -240,7 +252,7 @@ class Appium(DriverInterface):
             swipe_length = int(height * swipe_percentage / 100)
         elif direction == "left" or direction == "right":
             swipe_length = int(width * swipe_percentage / 100)
-        self.swipe(start_x, start_y, direction, swipe_length, 1000)
+        self.swipe(start_x, start_y, direction, swipe_length, event_name)
 
     def swipe_element(self, element, direction, swipe_length, event_name=None):
         location = element.location
@@ -254,10 +266,16 @@ class Appium(DriverInterface):
         elif direction == "left" or direction == "right":
             end_y = start_y
             end_x = start_x + swipe_length if direction == "right" else start_x - swipe_length
+        timestamp = self.event_sdk.get_current_time_for_events()
+        try:
+            self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
+            if event_name:
+                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+                internal_logger.debug(f"Swiped from ({start_x}, {start_y}) to ({end_x}, {end_y})")
+        except Exception as e:
+            internal_logger.debug(f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}")
 
-        self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
-
-    def scroll(self, direction, duration=1000, even_name=None):
+    def scroll(self, direction, duration=1000, event_name=None):
         window_size = self.driver.get_window_size()
         width = window_size['width']
         height = window_size['height']
@@ -265,39 +283,43 @@ class Appium(DriverInterface):
             start_x = width // 2
             start_y = int(height * 0.8)
             end_y = int(height * 0.2)
-            self.driver.swipe(start_x, start_y, start_x, end_y, duration)
         elif direction == "down":
             start_x = width // 2
             start_y = int(height * 0.2)
             end_y = int(height * 0.8)
+        timestamp = self.event_sdk.get_current_time_for_events()
+        try:
             self.driver.swipe(start_x, start_y, start_x, end_y, duration)
+            if event_name:
+                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+                internal_logger.debug(f"Scrolled {direction} from ({start_x}, {start_y}) to ({start_x}, {end_y})")
+        except Exception as e:
+            internal_logger.debug(f"Failed to scroll {direction}: {e}")
 
 
     def enter_text_element(self, element, text, event_name=None):
         if event_name:
-            #TODO: Trigger event
-            pass
+            self.event_sdk.capture_event(event_name)
         element.send_keys(text)
 
     def clear_text_element(self, element, event_name=None):
         if event_name:
-            # TODO: Trigger event
-            pass
+            self.event_sdk.capture_event(event_name)
         element.clear()
 
     def enter_text(self, text, event_name=None):
         if event_name:
-            #TODO: Trigger event
-            pass
+            self.event_sdk.capture_event(event_name)
         self.driver.execute_script("mobile: type", {"text": text})
 
     def clear_text(self, event_name=None):
         if event_name:
-            # TODO: Trigger event
-            pass
+            self.event_sdk.capture_event(event_name)
         self.driver.execute_script("mobile: clear")
 
-    def press_keycode(self,keycode, even_name=None):
+    def press_keycode(self,keycode, event_name=None):
+        if event_name:
+            self.event_sdk.capture_event(event_name)
         self.driver.press_keycode(keycode)
 
     def enter_text_using_keyboard(self, input_value: Union[str, SpecialKey], event_name=None):
@@ -311,9 +333,14 @@ class Appium(DriverInterface):
         try:
             if isinstance(input_value, SpecialKey):
                 internal_logger.debug(f"Pressing Detected SpecialKey: {input_value}. Keycode: {keycode_map[input_value]}")
+                timestamp = self.event_sdk.get_current_time_for_events()
                 self.driver.press_keycode(keycode_map[input_value])
             else:
+                timestamp = self.event_sdk.get_current_time_for_events()
                 self.driver.execute_script("mobile: type", {"text": input_value})
+            if event_name:
+                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+                internal_logger.debug(f"Pressed key: {input_value} at {timestamp}")
         except Exception as e:
             raise RuntimeError(f"Appium failed to enter input: {e}")
 
@@ -358,13 +385,13 @@ class Appium(DriverInterface):
     def press_element(self, element,repeat, event_name=None):
         for _ in range(repeat):
             try:
-                timestamp = utils.get_current_time_for_events()
+                timestamp = self.event_sdk.get_current_time_for_events()
                 element.click()
             except Exception as e:
                 raise Exception(f"Error occurred while clicking on element: {e}")
-            if event_name:
-                # trigger event
-                internal_logger.debug(f"Clicked on element: {element} at {timestamp}")
+        if event_name:
+            self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+            internal_logger.debug(f"Clicked on element: {element} at {timestamp}")
 
     def press_coordinates(self, x, y, repeat, event_name=None):
         """

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import hashlib
 from fuzzywuzzy import fuzz
 import re
@@ -6,8 +6,17 @@ import os
 import cv2
 import base64
 import numpy as np
+from enum import Enum
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
+
+
+class SpecialKey(Enum):
+    ENTER = 'enter'
+    TAB = 'tab'
+    BACKSPACE = 'backspace'
+    SPACE = 'space'
+    ESCAPE = 'escape'
 
 def determine_element_type(element):
     # Check if the input is an Image path
@@ -22,17 +31,6 @@ def determine_element_type(element):
     # Default case: consider the input as Text
     return "Text"
 
-
-def get_current_time_for_events():
-    try:
-        current_utc_time = datetime.now(timezone.utc)
-        desired_timezone = timezone(timedelta(hours=5, minutes=30))
-        current_time_in_desired_timezone = current_utc_time.astimezone(desired_timezone)
-        formatted_time = current_time_in_desired_timezone.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
-        return formatted_time[:-2] + ":" + formatted_time[-2:]
-    except Exception as e:
-        internal_logger.error('Unable to get current time', exc_info=e)
-        return None
 
 def encode_numpy_to_base64(image: np.ndarray) -> str:
     """

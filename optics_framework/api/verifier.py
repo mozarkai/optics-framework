@@ -3,7 +3,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
-
+from optics_framework.common.eventSDK import EventSDK
 
 class Verifier:
     """
@@ -22,6 +22,7 @@ class Verifier:
         self.text_detection = builder.get_text_detection()
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection)
+        self.event_sdk = EventSDK().get_instance()
 
     def validate_element(
         self,
@@ -104,14 +105,18 @@ class Verifier:
             return False
 
         if rule == 'any':
-            if not any(result_parts) and fail:
-                raise AssertionError("None of the elements are found.")
-        elif rule == 'all':
-            if not all(result_parts) and fail:
-                raise AssertionError("Not all elements are found.")
-        else:
-            internal_logger.exception(f"Unknown rule: {rule}")
-            return False
+            result = any(result_parts)
+
+        else:  # rule == 'all'
+            result = all(result_parts)
+
+        if event_name and result:
+            self.event_sdk.capture_event(event_name)
+
+        if not result and fail:
+            raise AssertionError("Presence assertion failed based on rule: " + rule)
+
+        return result
 
 
     def validate_screen(self, elements: str, timeout: int = 30, rule: str = 'any', event_name: Optional[str] = None) -> None:

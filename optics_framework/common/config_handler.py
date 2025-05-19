@@ -51,6 +51,7 @@ class Config(BaseModel):
     project_path: Optional[str] = None
     include: Optional[List[str]] = None
     exclude: Optional[List[str]] = None
+    event_attributes_json: Optional[str] = None
     halt_duration: float = 0.1
     max_attempts: int = 3
 

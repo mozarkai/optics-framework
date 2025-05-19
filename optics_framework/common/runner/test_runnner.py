@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common import test_context
 from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, NullResultPrinter
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
 from optics_framework.common.events import get_event_manager, EventStatus, CommandType, Event
@@ -149,6 +150,7 @@ class TestRunner(Runner):
         return resolved_value
 
     def _init_test_case(self, test_case: str) -> TestCaseResult:
+        test_context.current_test_case.set(test_case)
         return self.result_printer.test_state.get(test_case, TestCaseResult(
             id=str(uuid.uuid4()),
             name=test_case,

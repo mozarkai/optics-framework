@@ -7,6 +7,7 @@ from optics_framework.common.utils import SpecialKey
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.selenium_driver_manager import set_selenium_driver
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 from pydantic import BaseModel, Field,ValidationError, ConfigDict
@@ -56,11 +57,12 @@ class SeleniumDriver(DriverInterface):
         self.selenium_server_url = parsed_config.url
         self.capabilities = parsed_config.capabilities
         self.browser_url = parsed_config.capabilities.browser_url
+        self.eventSDK = EventSDK.get_instance()
         self.initialized = True
         self.ui_helper = None
 
 
-    def start_session(self):
+    def start_session(self, event_name: str | None = None) -> webdriver.Remote:
         """Start a new Selenium session with the specified browser."""
         if self.driver is None:
             browser_name = self.capabilities.browser_name.lower()
@@ -81,6 +83,10 @@ class SeleniumDriver(DriverInterface):
                 )
 
                 set_selenium_driver(self.driver)
+                if event_name:
+                    internal_logger.debug(
+                        f"Starting Selenium session with event: {event_name}")
+                    self.eventSDK.capture_event(event_name)
                 self.ui_helper = UIHelper()
                 internal_logger.debug(
                     f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name}")
@@ -90,12 +96,16 @@ class SeleniumDriver(DriverInterface):
                 raise
         return self.driver
 
-    def terminate(self):
+    def terminate(self, event_name: str | None = None) -> None:
         """End the current Selenium session."""
         if self.driver is not None:
             try:
                 self.driver.quit()
                 internal_logger.debug("Selenium session ended")
+                if event_name:
+                    internal_logger.debug(
+                        f"Ending Selenium session with event: {event_name}")
+                    self.eventSDK.capture_event(event_name)
             except Exception as e:
                 internal_logger.error(f"Failed to end Selenium session: {e}")
             finally:
@@ -107,6 +117,10 @@ class SeleniumDriver(DriverInterface):
             self.start_session()
         try:
             self.driver.get(self.browser_url)
+            if event_name:
+                internal_logger.debug(
+                    f"Launching app at {self.browser_url} with event: {event_name}")
+                self.eventSDK.capture_event(event_name)
             internal_logger.debug(
                 f"Launched web app at {self.browser_url} with event: {event_name}")
         except Exception as e:
@@ -125,9 +139,12 @@ class SeleniumDriver(DriverInterface):
             """
         try:
             for _ in range(repeat):
+                timestamp = self.eventSDK.get_current_time_for_events()
                 element.click()
             internal_logger.debug(
                 f"Pressed element {repeat} times with event: {event_name}")
+            if event_name:
+                self.eventSDK.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
             internal_logger.error(f"Failed to press element: {e}")
             raise
@@ -144,7 +161,10 @@ class SeleniumDriver(DriverInterface):
             var element = document.elementFromPoint({coor_x}, {coor_y});
             if (element) element.click();
             """
+            timestamp = self.eventSDK.get_current_time_for_events()
             self.driver.execute_script(script)
+            if event_name:
+                self.eventSDK.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug(f"Clicked at coordinates ({coor_x}, {coor_y}) with event: {event_name}")
         except Exception as e:
             internal_logger.error(f"Failed to click at coordinates: {e}")
@@ -167,9 +187,13 @@ class SeleniumDriver(DriverInterface):
         active_element = self.driver.switch_to.active_element
         if active_element:
             if text == "KEYS.ENTER":
+                timestamp = self.eventSDK.get_current_time_for_events()
                 active_element.send_keys(Keys.ENTER)
             else:
+                timestamp = self.eventSDK.get_current_time_for_events()
                 active_element.send_keys(text)
+            if event_name:
+                self.eventSDK.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
         else:
             internal_logger.error("No active element to type into.")
@@ -182,9 +206,12 @@ class SeleniumDriver(DriverInterface):
                 "Selenium session not started. Call start_session() first.")
         try:
             element.clear()  # Clear existing text first
+            timestamp = self.eventSDK.get_current_time_for_events()
             element.send_keys(text)
             internal_logger.debug(
                 f"Entered text '{text}' into element with event: {event_name}")
+            if event_name:
+                self.eventSDK.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
             internal_logger.error(f"Failed to enter text into element: {e}")
             raise
@@ -204,10 +231,13 @@ class SeleniumDriver(DriverInterface):
 
         try:
             active_element = self.driver.switch_to.active_element
+            timestamp = self.eventSDK.get_current_time_for_events()
             if isinstance(input_value, SpecialKey):
                 active_element.send_keys(key_map[input_value])
             else:
                 active_element.send_keys(input_value)
+            if event_name:
+                self.eventSDK.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
             internal_logger.error(f"Failed to enter input using keyboard: {e}")
             raise RuntimeError(f"Selenium failed to enter input: {e}")
@@ -216,6 +246,8 @@ class SeleniumDriver(DriverInterface):
         """Clear the active element (if possible)."""
         try:
             active_element = self.driver.switch_to.active_element
+            if event_name:
+                self.eventSDK.capture_event(event_name)
             active_element.clear()
             internal_logger.debug(f"Cleared text in active element with event: {event_name}")
         except Exception as e:
@@ -225,6 +257,8 @@ class SeleniumDriver(DriverInterface):
 
     def clear_text_element(self, element, event_name: str | None = None) -> None:
         try:
+            if event_name:
+                self.eventSDK.capture_event(event_name)
             element.clear()
             internal_logger.debug(f"Cleared text in specified element with event: {event_name}")
         except Exception as e:
@@ -243,6 +277,8 @@ class SeleniumDriver(DriverInterface):
 
     def scroll(self, direction: str, duration: int = 1000, event_name: str | None = None) -> None:
         try:
+            if event_name:
+                self.eventSDK.capture_event(event_name)
             if direction == "down":
                 self.driver.execute_script("window.scrollBy(0, window.innerHeight);")
             elif direction == "up":
