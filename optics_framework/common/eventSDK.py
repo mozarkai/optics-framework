@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.runner.printers import TreeResultPrinter
 from optics_framework.common import test_context
 import json
 import os
@@ -24,7 +25,6 @@ class EventSDK:
             self.event_attributes_json = self.config_handler.get('event_attributes_json')
             self.all_events = []
             self.real_time = False
-
 
     def get_current_time_for_events(self):
         try:
@@ -168,6 +168,9 @@ class EventSDK:
         dict2[name].update(dict1)
         return dict2
 
+    def print_event(self, event_data):
+        printer = TreeResultPrinter.get_instance()
+        printer.print_event_log(event_data)
 
     def capture_event(self, event_name, **args):
         """
@@ -185,15 +188,17 @@ class EventSDK:
             # Capture and process the events
             file_path = self.event_attributes_json
             if not file_path:
-                raise ValueError("Environment variable 'ATTRIBUTES_JSON' is not set.")
+                raise ValueError("Event attributes JSON file path is not set.")
 
             mozark_event_attributes = self.get_mozark_event_attributes(file_path)
 
             combined_dict = self.merge_dictionaries(user_event_attrb, mozark_event_attributes)
+            #print event to console
+            self.print_event(combined_dict)
             self.all_events.append(combined_dict)
 
         except Exception as e:
-            self.logger.error("Unable to capture events", exc_info=e)
+            internal_logger.error("Unable to capture events", exc_info=e)
 
     def capture_event_with_time_input(self, event_name, current_time, **event_attributes):
         """
@@ -214,11 +219,12 @@ class EventSDK:
                 raise ValueError("Environment variable 'ATTRIBUTES_JSON' is not set.")
             mozark_event_attributes = self.get_mozark_event_attributes(file_path)
             combined_dict = self.merge_dictionaries(user_event_attrb, mozark_event_attributes)
-            print(combined_dict)
+            #print event to console
+            self.print_event(combined_dict)
             self.all_events.append(combined_dict)
 
         except Exception as e:
-            self.logger.error("Unable to capture events", exc_info=e)
+            internal_logger.error("Unable to capture events", exc_info=e)
 
     def send_all_events(self):
         self.send_batch_events(self.all_events)

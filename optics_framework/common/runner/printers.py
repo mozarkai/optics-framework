@@ -8,6 +8,7 @@ from rich.panel import Panel
 from rich.progress import Progress, TaskID
 from rich.console import Console, Group
 import shutil
+import json
 
 
 class TestCaseResult(BaseModel):
@@ -51,6 +52,10 @@ class IResultPrinter(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def print_event_log(self, event_data: dict) -> None:
+        pass
+
+    @abc.abstractmethod
     def start_live(self) -> None:
         pass
 
@@ -88,6 +93,12 @@ class NullResultPrinter(IResultPrinter):
         #   - No logging or output is generated, as per the null object pattern.
         pass
 
+    def print_event_log(self, event_data: dict) -> None:
+        # This method does nothing because:
+        #   - It’s part of the no-op behavior.
+        #   - No event logging or output is generated.
+        pass
+
     def start_live(self) -> None:
         # This method does nothing because:
         #   - It’s part of the no-op behavior.
@@ -116,6 +127,7 @@ class TerminalWidthProvider:
 
 
 class TreeResultPrinter(IResultPrinter):
+    _instance: "TreeResultPrinter" = None
     STATUS_COLORS: Dict[str, str] = {
         "NOT RUN": "grey50",
         "RUNNING": "yellow",
@@ -128,11 +140,22 @@ class TreeResultPrinter(IResultPrinter):
     }
 
     def __init__(self, terminal_width_provider: TerminalWidthProvider) -> None:
+        if hasattr(self, "_initialized") and self._initialized:
+            return
         self.terminal_width_provider = terminal_width_provider
         self._live: Live | None = None
         self._test_state: Dict[str, TestCaseResult] = {}
         self.progress = Progress()
         self.task_id: TaskID | None = None
+        self.initialized = True
+
+    @classmethod
+    def get_instance(cls, terminal_width_provider: TerminalWidthProvider = None):
+        if cls._instance is None:
+            if terminal_width_provider is None:
+                raise ValueError("First call to get_instance() must include terminal_width_provider.")
+            cls._instance = cls(terminal_width_provider)
+        return cls._instance
 
     @property
     def test_state(self) -> Dict[str, TestCaseResult]:
@@ -196,6 +219,14 @@ class TreeResultPrinter(IResultPrinter):
         self.test_state[test_case_result.name] = test_case_result
         if self._live:
             self._live.update(self._render_tree())
+
+    def print_event_log(self, event_data: dict) -> None:
+        if not self._live:
+            print(event_data)
+            return
+        formatted = json.dumps(event_data, indent=2)
+        event_panel = Panel(Text(formatted, style="yellow"), title="Event Captured", border_style="bright_blue")
+        self._live.console.print(event_panel)
 
     def start_live(self) -> None:
         if not self._live:

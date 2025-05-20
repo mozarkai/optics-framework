@@ -167,7 +167,7 @@ class RunnerFactory:
         verifier = session.optics.build(Verifier)
 
         if runner_type == "test_runner":
-            result_printer = TreeResultPrinter(
+            result_printer = TreeResultPrinter.get_instance(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
             runner = TestRunner(
                 test_cases, modules, elements, {}, result_printer, session_id=session.session_id
