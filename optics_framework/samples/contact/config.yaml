@@ -9,8 +9,6 @@ driver_sources:
         automationName: UiAutomator2
         deviceName: emulator-5554
         platformName: Android
-  - ble:
-      enabled: false
 
 elements_sources:
   - appium_find_element:
@@ -19,16 +17,11 @@ elements_sources:
       enabled: false
   - appium_screenshot:
       enabled: true
-  - webcam_screenshot:
-      enabled: false
 
 text_detection:
   - easyocr:
       enabled: false
-  - pytesseract:
-      enabled: false
-  - google_vision:
-      enabled: false
+
 
 image_detection:
   - templatematch:

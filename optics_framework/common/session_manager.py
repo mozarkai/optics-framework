@@ -30,10 +30,10 @@ class Session:
         self.config = config
 
         # Fetch enabled dependency names
-        driver_sources = self.config_handler.get("driver_sources", [])
-        element_sources = self.config_handler.get("elements_sources", [])
-        text_detection = self.config_handler.get("text_detection", [])
-        image_detection = self.config_handler.get("image_detection", [])
+        driver_sources = self.config.driver_sources or []
+        element_sources = self.config.elements_sources or []
+        text_detection = self.config.text_detection or []
+        image_detection = self.config.image_detection or []
 
         if not driver_sources:
             raise ValueError("No enabled drivers found in configuration")
