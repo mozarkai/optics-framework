@@ -7,6 +7,7 @@ import cv2
 import base64
 import numpy as np
 from enum import Enum
+from datetime import timezone, timedelta
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 
@@ -31,6 +32,16 @@ def determine_element_type(element):
     # Default case: consider the input as Text
     return "Text"
 
+def get_timestamp():
+    try:
+        current_utc_time = datetime.now(timezone.utc)
+        desired_timezone = timezone(timedelta(hours=5, minutes=30))
+        current_time_in_desired_timezone = current_utc_time.astimezone(desired_timezone)
+        formatted_time = current_time_in_desired_timezone.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+        return formatted_time[:-2] + ":" + formatted_time[-2:]
+    except Exception as e:
+        internal_logger.error('Unable to get current time', exc_info=e)
+        return None
 
 def encode_numpy_to_base64(image: np.ndarray) -> str:
     """

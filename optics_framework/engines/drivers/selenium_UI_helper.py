@@ -24,7 +24,7 @@ class UIHelper:
         """
         Fetch the current UI tree (page source) from the Appium driver.
         """
-        time_stamp = utils.get_current_time_for_events()
+        time_stamp = utils.get_timestamp()
         driver = self._get_selenium_driver()
         page_source = driver.page_source
         # Parse using BeautifulSoup

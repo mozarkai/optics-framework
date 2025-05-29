@@ -25,7 +25,7 @@ class UIHelper:
         """
         Fetch the current UI tree (page source) from the Appium driver.
         """
-        time_stamp = utils.get_current_time_for_events()
+        time_stamp = utils.get_timestamp()
         driver = self._get_appium_driver()
         page_source = driver.page_source
 
@@ -44,7 +44,7 @@ class UIHelper:
         Fetch the current UI tree (page source) from the Appium driver continuously.
         Update instance's root and tree attributes when there's a change in page UI.
         """
-        time_stamp = utils.get_current_time_for_events()
+        time_stamp = utils.get_timestamp()
         driver = self._get_appium_driver()
         page_source = driver.page_source
         # Compute hash

@@ -46,7 +46,7 @@ class AppiumPageSource(ElementSourceInterface):
         Returns:
             str: The page source.
         """
-        time_stamp = utils.get_current_time_for_events()
+        time_stamp = utils.get_timestamp()
 
         driver = self._get_appium_driver()
         page_source = driver.page_source

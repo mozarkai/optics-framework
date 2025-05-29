@@ -5,10 +5,10 @@ Navigate to Add Contact Page, Assert Presence, ${Add_Contact_Button}
 Navigate to Add Contact Page, Press Element, ${Add_Contact_Button}
 Navigate to Add Contact Page, Assert Presence, ${Add_Contact_Page}
 
-Enter Contact Details in Contact Form, Enter Text Element, ${First_Name_element}, ${First_Name}
-Enter Contact Details in Contact Form, Enter Text Element, ${Last_Name_element}, ${Last_Name}
-Enter Contact Details in Contact Form, Enter Text Element, ${Phone_element}, ${Phone}
-Enter Contact Details in Contact Form, Enter Text Element, ${Company_element}, ${Company}
+Enter Contact Details in Contact Form, Enter Text, ${First_Name_element}, ${First_Name}
+Enter Contact Details in Contact Form, Enter Text, ${Last_Name_element}, ${Last_Name}
+Enter Contact Details in Contact Form, Enter Text, ${Phone_element}, ${Phone}
+Enter Contact Details in Contact Form, Enter Text, ${Company_element}, ${Company}
 
 Click on Save Button, Press Element, ${Save_Button}
 

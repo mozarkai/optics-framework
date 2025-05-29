@@ -7,5 +7,5 @@ Schedule an event for tomorrow,Press Element,${desired_date}
 Schedule an event for tomorrow,Sleep,5
 Schedule an event for tomorrow,Press Element,${add_event_button}
 Schedule an event for tomorrow,Press Element,${event_type}
-Schedule an event for tomorrow,Enter Text Element,${title_field},${title_text}
+Schedule an event for tomorrow,Enter Text,${title_field},${title_text}
 Schedule an event for tomorrow,Press Element,${save_button}
