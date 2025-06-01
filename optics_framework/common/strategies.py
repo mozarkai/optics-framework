@@ -4,6 +4,7 @@ from typing import List, Union, Tuple, Generator, Set, Optional
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
+from optics_framework.common.screenshot_stream import ScreenshotStream
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
 import numpy as np
@@ -104,9 +105,10 @@ class TextElementStrategy(LocatorStrategy):
 class TextDetectionStrategy(LocatorStrategy):
     """Strategy for locating text elements using text detection."""
 
-    def __init__(self, element_source: ElementSourceInterface, text_detection):
+    def __init__(self, element_source: ElementSourceInterface, text_detection, strategy_manager):
         self._element_source = element_source
         self.text_detection = text_detection
+        self.strategy_manager = strategy_manager
 
     @property
     def element_source(self) -> ElementSourceInterface:
@@ -121,20 +123,29 @@ class TextDetectionStrategy(LocatorStrategy):
         end_time = time.time() + timeout
         found_status = {t: False for t in elements}
         result = False
-        while time.time() < end_time:
-            screenshot = self.element_source.capture()
-            annotated_frame = screenshot.copy()
-            _, ocr_results = self.text_detection.detect_text(annotated_frame)
-            match_and_annotate(ocr_results, elements, found_status, annotated_frame)
+        ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
+        try:
+            while time.time() < end_time:
+                # screenshot = self.element_source.capture()
+                screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
+                if screenshot is None:
+                    continue
+                utils.save_screenshot(screenshot, "assert_elements_test")
+                annotated_frame = screenshot.copy()
+                _, ocr_results = self.text_detection.detect_text(annotated_frame)
+                match_and_annotate(ocr_results, elements, found_status, annotated_frame)
 
-            # Check rule
-            if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
-                result = True
-                break
-            time.sleep(0.3)
+                # Check rule
+                if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
+                    result = True
+                    break
+                else:
+                    continue
+                # time.sleep(0.3)
+        finally:
+            ss_stream.stop_capture()
         utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
         return result
-
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
@@ -143,9 +154,10 @@ class TextDetectionStrategy(LocatorStrategy):
 class ImageDetectionStrategy(LocatorStrategy):
     """Strategy for locating image elements using image detection."""
 
-    def __init__(self, element_source: ElementSourceInterface, image_detection):
+    def __init__(self, element_source: ElementSourceInterface, image_detection, strategy_manager):
         self._element_source = element_source
         self.image_detection = image_detection
+        self.strategy_manager = strategy_manager
 
     @property
     def element_source(self) -> ElementSourceInterface:
@@ -158,6 +170,8 @@ class ImageDetectionStrategy(LocatorStrategy):
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
         screenshot = self.element_source.capture()
+        # TODO: for synthetic screenshots, fetch the latest screenshot
+        # TODO: add loop for timeout handling
         result = self.image_detection.assert_elements(screenshot, elements, timeout, rule)
         return result
 
@@ -176,20 +190,27 @@ class ScreenshotStrategy:
             return screenshot
         raise ValueError("Invalid screenshot captured")
 
+    def capture_stream(self, timeout: int = 30):
+        """Capture a screenshot stream from the element source."""
+        if hasattr(self.element_source, "capture_stream"):
+            return self.element_source.capture_stream(timeout=timeout)
+        raise NotImplementedError("Element source does not support screenshot streaming.")
+
     @staticmethod
     def supports(element_source: ElementSourceInterface) -> bool:
         return LocatorStrategy._is_method_implemented(element_source, "capture")
 
 class StrategyFactory:
     """Factory for creating locator strategies with priority ordering."""
-    def __init__(self, text_detection, image_detection):
+    def __init__(self, text_detection, image_detection, strategy_manager):
         self.text_detection = text_detection
         self.image_detection = image_detection
+        self.strategy_manager = strategy_manager
         self._registry = [
             (XPathStrategy, "XPath", {}, 1),
             (TextElementStrategy, "Text", {}, 2),
-            (TextDetectionStrategy, "Text", {"text_detection": self.text_detection}, 3),
-            (ImageDetectionStrategy, "Image", {"image_detection": self.image_detection}, 4),
+            (TextDetectionStrategy, "Text", {"text_detection": self.text_detection, "strategy_manager": self.strategy_manager}, 3),
+            (ImageDetectionStrategy, "Image", {"image_detection": self.image_detection, "strategy_manager": self.strategy_manager}, 4),
         ]
 
     def create_strategies(self, element_source: ElementSourceInterface) -> List[LocatorStrategy]:
@@ -221,10 +242,12 @@ class LocateResult:
 class StrategyManager:
     def __init__(self, element_source: ElementSourceInterface, text_detection, image_detection):
         self.element_source = element_source
-        self.locator_factory = StrategyFactory(text_detection, image_detection)
+        self.locator_factory = StrategyFactory(text_detection, image_detection, strategy_manager=self)
         self.screenshot_factory = ScreenshotFactory()
         self.locator_strategies = self._build_locator_strategies()
         self.screenshot_strategies = self._build_screenshot_strategies()
+        # for stream
+        self.screenshot_stream = None
 
     def _build_locator_strategies(self) -> List[LocatorStrategy]:
         strategies = []
@@ -236,7 +259,6 @@ class StrategyManager:
             strategies.extend(
                 self.locator_factory.create_strategies(self.element_source))
         return strategies
-
 
     def _build_screenshot_strategies(self) -> Set[ScreenshotStrategy]:
         strategies = set()
@@ -286,3 +308,23 @@ class StrategyManager:
                     f"Screenshot failed with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No screenshot captured.")
         return None
+
+    def capture_screenshot_stream(self, timeout: int = 30):
+        for strategy in self.screenshot_strategies:
+            try:
+                self.screenshot_stream = ScreenshotStream(strategy.capture, max_queue_size=10)
+                self.screenshot_stream.start_capture(timeout, deduplication=True)
+            except NotImplementedError as e:
+                internal_logger.debug(
+                    f"Screenshot streaming not supported by {strategy.__class__.__name__}: {e}")
+            except Exception as e:
+                internal_logger.error(
+                    f"Screenshot streaming failed with {strategy.__class__.__name__}: {e}")
+        return self.screenshot_stream
+
+    def stop_screenshot_stream(self):
+        if self.screenshot_stream:
+            self.screenshot_stream.stop_capture()
+            self.screenshot_stream = None
+        else:
+            internal_logger.warning("No active screenshot stream to stop.")
