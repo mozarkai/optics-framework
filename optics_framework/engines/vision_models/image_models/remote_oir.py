@@ -4,7 +4,6 @@ import json
 import cv2
 import numpy as np
 import requests
-import time
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
@@ -182,7 +181,7 @@ class RemoteImageDetection(ImageInterface):
         raise NotImplementedError(
             "The 'locate' method is not implemented for RemoteImageDetection. Use 'find_element' instead.")
 
-    def assert_elements(self, frame, image_templates, timeout=30, rule="any"):
+    def assert_elements(self, frame, image_templates, rule="any"):
         """
         Assert that elements are present in the input data based on the specified rule.
 
@@ -201,27 +200,20 @@ class RemoteImageDetection(ImageInterface):
         # encode frame to base64
         frame_base64 = utils.encode_numpy_to_base64(frame)
         encoded_templates = self._prepare_encoded_templates(image_templates)
-        end_time = time.time() + timeout
-        while time.time() < end_time:
-            found_status = []
 
-            for template_name, encoded_template in encoded_templates.items():
-                match_found = self._detect_and_match_template(
-                    frame_base64, template_name, encoded_template, annotated_frame)
-                found_status.append(match_found)
+        found_status = []
 
-            if rule == "any" and any(found_status):
-                utils.save_screenshot(annotated_frame, "assert_elements_result")
-                return True
-            if rule == "all" and all(found_status):
-                utils.save_screenshot(annotated_frame, "assert_elements_result")
-                return True
+        for template_name, encoded_template in encoded_templates.items():
+            match_found = self._detect_and_match_template(
+                frame_base64, template_name, encoded_template, annotated_frame)
+            found_status.append(match_found)
 
-            time.sleep(0.3)
+        match_rule = any(found_status) if rule == "any" else all(found_status)
 
-        internal_logger.warning("Element assertion failed within timeout.")
-        utils.save_screenshot(annotated_frame, "assert_elements_result_failed")
-        return False
+        if match_rule:
+            return True, annotated_frame
+        internal_logger.warning("Remote template matching failed.")
+        return False, annotated_frame
 
     def _prepare_encoded_templates(self, templates: list) -> Dict[str, Optional[str]]:
         encoded = {}
