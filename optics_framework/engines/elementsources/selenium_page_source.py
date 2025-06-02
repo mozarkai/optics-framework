@@ -4,6 +4,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 from selenium.webdriver.remote.webelement import WebElement
+from typing import Tuple
 import time
 
 
@@ -107,7 +108,7 @@ class SeleniumPageSource(ElementSourceInterface):
         return self.locate(element, index)
 
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> bool:
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
         """
         Assert the presence of elements in the page source (text or xpath based).
 
@@ -125,35 +126,30 @@ class SeleniumPageSource(ElementSourceInterface):
         if rule not in {"any", "all"}:
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
 
-        def check_texts(texts: list) -> list:
-            return [text for text in texts if self._is_text_found(text)]
-
-        def check_xpaths(xpaths: list) -> list:
-            return [xpath for xpath in xpaths if self._is_xpath_found(xpath)]
-
         start_time = time.time()
+        texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
+        xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
 
         while time.time() - start_time < timeout:
-            texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
-            xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
+            found_texts = [text for text in texts if self._is_text_found(text)]
+            found_xpaths = [xpath for xpath in xpaths if self._is_xpath_found(xpath)]
 
-            found_texts = check_texts(texts)
-            found_xpaths = check_xpaths(xpaths)
+            if (rule == "any" and (found_texts or found_xpaths)) or \
+            (rule == "all" and len(found_texts) == len(texts) and len(found_xpaths) == len(xpaths)):
+                timestamp = utils.get_timestamp()
+                internal_logger.debug(f"Elements found with rule '{rule}' at {timestamp}")
+                return True, timestamp
 
-        is_any = rule == "any" and (found_texts or found_xpaths)
-        is_all = rule == "all" and len(found_texts) == len(texts) and len(found_xpaths) == len(xpaths)
+            # time.sleep(0.3)  # Optional: Polling interval
 
-        if is_any or is_all:
-            return True
-
-        # ----- Timeout Handling -----
-        if rule == "all":
-            missing_texts = list(set(texts) - set(found_texts))
-            missing_xpaths = list(set(xpaths) - set(found_xpaths))
-            raise TimeoutError(f"Timeout reached: Not all elements were found.\nMissing texts: {missing_texts}\nMissing xpaths: {missing_xpaths}")
-        else:
-            raise TimeoutError(f"Timeout reached: None of the specified elements were found: {elements}")
-
+        # Timeout reached
+        missing_texts = list(set(texts) - set(found_texts))
+        missing_xpaths = list(set(xpaths) - set(found_xpaths))
+        internal_logger.warning(f"Timeout reached: Missing texts: {missing_texts}, Missing xpaths: {missing_xpaths}")
+        raise TimeoutError(
+            f"Timeout reached: Not all elements were found.\n"
+            f"Missing texts: {missing_texts}\nMissing xpaths: {missing_xpaths}"
+        )
 
     # ----- Supporting Methods -----
     def _is_text_found(self, text: str) -> bool:

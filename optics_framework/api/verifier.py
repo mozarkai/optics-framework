@@ -111,7 +111,7 @@ class Verifier:
             if event_name and earliest_timestamp:
                 self.event_sdk.capture_event_with_time_input(event_name, earliest_timestamp)
 
-        if not result and fail:
+        elif fail:
             raise AssertionError("Presence assertion failed based on rule: " + rule)
 
         return result

@@ -76,7 +76,7 @@ class ActionKeyword:
             internal_logger.debug(
                 f"Pressing at coordinates ({x + offset_x}, {y + offset_y})")
             self.driver.press_coordinates(
-                x + offset_x, y + offset_y, event_name)
+                x + offset_x, y + offset_y,repeat, event_name)
         else:
             internal_logger.debug(f"Pressing element '{element}'")
             self.driver.press_element(located, repeat, event_name)

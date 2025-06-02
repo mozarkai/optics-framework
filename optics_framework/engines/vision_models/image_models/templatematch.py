@@ -103,18 +103,16 @@ class TemplateMatchingHelper(ImageInterface):
 
     def assert_elements(self, frame, templates, rule="any"):
         """
-        Assert that elements are present in the input data based on the specified rule.
+        Assert that elements (templates) are present in the input frame based on the specified rule.
 
-        :param input_data: The input source (e.g., image, video frame) for detection.
-        :type input_data: Any
-        :param elements: List of elements to locate.
-        :type elements: list
-        :param timeout: Maximum time to wait for elements.
-        :type timeout: int
+        :param frame: Input source (e.g., image, video frame) for detection.
+        :type frame: np.ndarray
+        :param templates: List of template paths to locate.
+        :type templates: list
         :param rule: Rule to apply ("any" or "all").
         :type rule: str
-        :return: True if the assertion passes.
-        :rtype: bool
+        :return: Tuple (bool, annotated_frame), where bool indicates match success and annotated_frame is the annotated image.
+        :rtype: tuple
         """
         annotated_frame = frame.copy()
         found_status = {template: False for template in templates}

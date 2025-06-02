@@ -46,21 +46,11 @@ class TextInterface(ABC):
         """
         pass
 
-    def assert_elements(self, input_data , elements, timeout=30, rule="any"):
+    def detect_text(self, input_data):
         """
         Assert that elements are present in the input data based on the specified rule.
 
         :param input_data: The input source (e.g., image, video frame) for detection.
         :type input_data: Any
-        :param elements: List of elements (e.g., text or reference data) to locate.
-        :type elements: list
-        :param timeout: Maximum time to wait for elements to be detected.
-        :type timeout: int
-        :param rule: Rule to apply for assertion ("any" or "all").
-                 "any" - Passes if at least one element is found.
-                 "all" - Passes only if all elements are found.
-        :type rule: str
-        :return: True if the assertion passes, otherwise False.
-        :rtype: bool
         """
         pass

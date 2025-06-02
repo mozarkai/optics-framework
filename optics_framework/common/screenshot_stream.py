@@ -82,10 +82,6 @@ class ScreenshotStream:
                 self.filtered_queue.get()
             self.filtered_queue.put((frame, timestamp))
 
-            # if self.debug_folder:
-            #     cv2.imwrite(f'{self.debug_folder}/{timestamp}.png', frame)
-            # internal_logger.debug(f"Filtered unique screenshot stored at {timestamp}")
-
     def start_capture(self, timeout, deduplication=False):
         """
         Starts screenshot capture in a separate thread.

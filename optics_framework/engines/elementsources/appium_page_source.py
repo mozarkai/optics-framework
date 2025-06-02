@@ -5,6 +5,7 @@ from optics_framework.common import utils
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from lxml import etree
+from typing import Tuple
 import time
 
 
@@ -39,7 +40,7 @@ class AppiumPageSource(ElementSourceInterface):
         raise NotImplementedError(
             'Appium Find Element does not support capturing the screen state.')
 
-    def get_page_source(self) -> str:
+    def get_page_source(self) -> Tuple[str, str]:
         """
         Get the page source of the current page.
 
@@ -57,7 +58,7 @@ class AppiumPageSource(ElementSourceInterface):
         internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
         internal_logger.debug(f'Page source fetched at: {time_stamp}')
         internal_logger.debug('\n==========================================\n')
-        return page_source
+        return page_source, time_stamp
 
 
     def locate(self, element: str, index=None) -> dict:
@@ -145,41 +146,26 @@ class AppiumPageSource(ElementSourceInterface):
             texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
             xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
 
-            self.get_page_source()  # Refresh page source before checking
+            _, timestamp = self.get_page_source()  # Refresh page source
 
             # Check text-based elements
-            if texts:
-                text_found = self.ui_text_search(texts, rule)
-                if rule == "all" and not text_found:
-                    time.sleep(0.3)
-                    continue
-                if rule == "any" and text_found:
-                    return True  # Early exit if any text is found
+            text_found = self.ui_text_search(texts, rule) if texts else (rule == "all")
 
             # Check XPath-based elements
-            xpath_found = False
-            for xpath in xpaths:
-                xpath_result,_ = self.ui_helper.find_xpath(xpath)
-                if rule == "all" and not xpath_result:
-                    xpath_found = False
-                    break  # Stop checking further if one is missing
-                if rule == "any" and xpath_result:
-                    return True  # Early exit if any XPath is found
-                xpath_found = True  # If all xpaths found in "all" mode
+            xpath_results = [self.ui_helper.find_xpath(xpath)[0] for xpath in xpaths] if xpaths else [rule == "all"]
+            xpath_found = (all(xpath_results) if rule == "all" else any(xpath_results))
 
-            if rule == "all" and text_found and xpath_found:
-                return True  # All required elements are found
+            # Rule evaluation
+            if (rule == "any" and (text_found or xpath_found)) or (rule == "all" and text_found and xpath_found):
+                return True, timestamp
 
-            time.sleep(0.3)  # Wait before retrying
+            # Optional: time.sleep(0.3)  # Delay to reduce busy looping
 
-        # Timeout reached, raise an exception based on rule
-        if rule == "all":
-            raise TimeoutError(f"Timeout reached: Not all elements were found: {elements}")
-
-        if rule == "any":
-            raise TimeoutError("Timeout reached: None of the specified elements were found.")
-
-        return False  # This should never be reached due to exceptions
+        # Timeout reached
+        internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
+        raise TimeoutError(
+            f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
+        )
 
 
     def find_xpath_from_text(self, text):

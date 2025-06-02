@@ -120,7 +120,7 @@ class SeleniumFindElement(ElementSourceInterface):
         return None
 
 
-    def assert_elements(self, elements, timeout=10, rule="any") -> None:
+    def assert_elements(self, elements, timeout=10, rule="any") -> Tuple[bool, str]:
         """
         Assert that elements are present based on the specified rule using Selenium.
 
@@ -130,11 +130,8 @@ class SeleniumFindElement(ElementSourceInterface):
             rule (str): Rule to apply ("any" or "all").
 
         Returns:
-            None: This method does not return a value.
+            Tuple (bool, timestamp) if elements are found before timeout.
 
-        Raises:
-            ValueError: If an invalid rule is provided.
-            TimeoutError: If elements are not found based on the rule within the timeout.
         """
         if rule not in ["any", "all"]:
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
@@ -151,28 +148,14 @@ class SeleniumFindElement(ElementSourceInterface):
                 element) is not None for element in elements]
 
             if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
+                timestamp = utils.get_timestamp()
                 internal_logger.debug(
                     f"Assertion passed with rule '{rule}' for elements: {elements}")
-                return
+                return True,timestamp
 
             time.sleep(0.3)  # Polling interval
-
-        # If timeout is reached, raise appropriate exception
-        if rule == "all":
-            missing_elements = [elem for elem, found in zip(
-                elements, found_elements) if not found]
-            internal_logger.error(
-                f"Timeout reached: Elements not found: {missing_elements}")
-            raise TimeoutError(
-                f"Timeout reached: Elements not found: {missing_elements}")
-
-        if rule == "any":
-            internal_logger.error(
-                f"Timeout reached: None of the elements were found: {elements}")
-            raise TimeoutError(
-                "Timeout reached: None of the specified elements were found.")
-
-        return  # This should never be reached due to exceptions
+        raise TimeoutError(
+            "Timeout reached: None of the specified elements were found.")
 
 
     def locate_using_index(self, element: Any, index: int) -> Tuple[int, int] | None:
