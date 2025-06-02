@@ -1,7 +1,5 @@
 import cv2
-import time
 import numpy as np
-from optics_framework.common import utils
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.vision_models.base_methods import load_template
@@ -103,7 +101,7 @@ class TemplateMatchingHelper(ImageInterface):
 
         return True, centers[0], frame
 
-    def assert_elements(self, frame, templates, timeout=30, rule="any"):
+    def assert_elements(self, frame, templates, rule="any"):
         """
         Assert that elements are present in the input data based on the specified rule.
 
@@ -118,36 +116,29 @@ class TemplateMatchingHelper(ImageInterface):
         :return: True if the assertion passes.
         :rtype: bool
         """
-        end_time = time.time() + timeout
         annotated_frame = frame.copy()
         found_status = {template: False for template in templates}
 
-        while time.time() < end_time:
-            for template_path in templates:
-                if found_status[template_path]:  # Skip if already found (for 'all' rule)
-                    continue
+        for template_path in templates:
+            if found_status[template_path]:  # Skip if already found (for 'all' rule)
+                continue
 
-                success, _ , annotated = self.find_element(
-                    frame.copy(),  # use a copy of the frame to avoid overwriting annotations across templates
-                    reference_data=template_path,
-                )
-                if success:
-                    found_status[template_path] = True
-                    annotated_frame = annotated  # use the latest annotated version
+            success, _ , annotated = self.find_element(
+                frame.copy(),  # use a copy of the frame to avoid overwriting annotations across templates
+                reference_data=template_path,
+            )
+            if success:
+                found_status[template_path] = True
+                annotated_frame = annotated  # use the latest annotated version
 
-            # Rule evaluation
-            if rule == "any" and any(found_status.values()):
-                utils.save_screenshot(annotated_frame, "assert_elements_templatematching_result")
-                return True
-            if rule == "all" and all(found_status.values()):
-                utils.save_screenshot(annotated_frame, "assert_elements_templatematching_result")
-                return True
+        match_rule = (any(found_status.values()) if rule == "any" else all(found_status.values()))
 
-            time.sleep(0.5)  # Prevent busy looping
+        # Rule evaluation
+        if match_rule:
+            return True, annotated_frame
 
-        internal_logger.warning("SIFT assert_elements failed within timeout.")
-        utils.save_screenshot(annotated_frame, "assert_elements_templatematching_failed")
-        return False
+        internal_logger.warning("SIFT assert_elements failed.")
+        return False, annotated_frame
 
 
     def element_exist(self,frame, reference_data, offset=[0, 0], confidence_level=0.85, min_inliers=10):

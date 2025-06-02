@@ -96,6 +96,7 @@ class TextElementStrategy(LocatorStrategy):
         return self.element_source.locate(element)
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+        #TODO: return timestamp
         return self.element_source.assert_elements(elements, timeout, rule)
 
     @staticmethod
@@ -130,7 +131,6 @@ class TextDetectionStrategy(LocatorStrategy):
                 screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
                 if screenshot is None:
                     continue
-                utils.save_screenshot(screenshot, "assert_elements_test")
                 annotated_frame = screenshot.copy()
                 _, ocr_results = self.text_detection.detect_text(annotated_frame)
                 match_and_annotate(ocr_results, elements, found_status, annotated_frame)
@@ -145,7 +145,8 @@ class TextDetectionStrategy(LocatorStrategy):
         finally:
             ss_stream.stop_capture()
         utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
-        return result
+        return result, timestamp
+
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
@@ -169,11 +170,24 @@ class ImageDetectionStrategy(LocatorStrategy):
         return centre
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
-        screenshot = self.element_source.capture()
-        # TODO: for synthetic screenshots, fetch the latest screenshot
-        # TODO: add loop for timeout handling
-        result = self.image_detection.assert_elements(screenshot, elements, timeout, rule)
-        return result
+        end_time = time.time() + timeout
+        result = False
+        ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
+        try:
+            while time.time() < end_time:
+                # screenshot = self.element_source.capture()
+                screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
+                if screenshot is None:
+                    continue
+                # need to pass ther rule
+                result, annotated_frame = self.image_detection.assert_elements(screenshot, elements, rule)
+                if result:
+                    break
+        finally:
+            ss_stream.stop_capture()
+        if annotated_frame is not None:
+            utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
+        return result, timestamp
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -290,9 +304,9 @@ class StrategyManager:
         for strategy in self.locator_strategies:
             if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
                 try:
-                    result = strategy.assert_elements(elements, timeout, rule)
+                    result, timestamp = strategy.assert_elements(elements, timeout, rule)
                     if result:
-                        return result
+                        return result, timestamp
                 except Exception as e:
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")

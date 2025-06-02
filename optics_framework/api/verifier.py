@@ -86,32 +86,30 @@ class Verifier:
         timeout = int(timeout)
         elements_list = elements.split(',')
         # Group elements by type
-        texts = [
-            el for el in elements_list if utils.determine_element_type(el) == 'Text']
-        xpaths = [
-            el for el in elements_list if utils.determine_element_type(el) == 'XPath']
-        images = [
-            el for el in elements_list if utils.determine_element_type(el) == 'Image']
+        grouped_elements = {
+            'Text': [el for el in elements_list if utils.determine_element_type(el) == 'Text'],
+            'XPath': [el for el in elements_list if utils.determine_element_type(el) == 'XPath'],
+            'Image': [el for el in elements_list if utils.determine_element_type(el) == 'Image']
+        }
         result_parts = []
+        timestamps = []
 
-        if texts:
-            result_parts.append(self.strategy_manager.assert_presence(texts, 'Text', timeout, rule))
-        if xpaths:
-            result_parts.append(self.strategy_manager.assert_presence(xpaths, 'XPath', timeout, rule))
-        if images:
-            result_parts.append(self.strategy_manager.assert_presence(images, 'Image', timeout, rule))
+        for elem_type, elem_group in grouped_elements.items():
+            if elem_group:
+                status, timestamp = self.strategy_manager.assert_presence(elem_group, elem_type, timeout, rule)
+                result_parts.append(status)
+                if timestamp:
+                    timestamps.append(timestamp)
+
         if not result_parts:
             internal_logger.warning("No valid elements provided for assertion.")
             return False
 
-        if rule == 'any':
-            result = any(result_parts)
-
-        else:  # rule == 'all'
-            result = all(result_parts)
-
-        if event_name and result:
-            self.event_sdk.capture_event(event_name)
+        result = any(result_parts) if rule == 'any' else all(result_parts)
+        if result:
+            earliest_timestamp = min(timestamps) if timestamps else None
+            if event_name and earliest_timestamp:
+                self.event_sdk.capture_event_with_time_input(event_name, earliest_timestamp)
 
         if not result and fail:
             raise AssertionError("Presence assertion failed based on rule: " + rule)
