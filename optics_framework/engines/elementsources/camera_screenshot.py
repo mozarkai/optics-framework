@@ -188,6 +188,5 @@ class CameraScreenshot(ElementSourceInterface):
         if self.deskew_corners:
             frame = self.deskew_image(frame)
         rotation = str(self.camera_screenshot_config.capabilities.get('rotation', None) if self.camera_screenshot_config else None)
-        if rotation is not None:
-            frame = self.rotate(frame, rotation)
+        frame = self.rotate(frame, rotation)
         return frame

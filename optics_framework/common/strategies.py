@@ -96,7 +96,6 @@ class TextElementStrategy(LocatorStrategy):
         return self.element_source.locate(element)
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
-        #TODO: return timestamp
         return self.element_source.assert_elements(elements, timeout, rule)
 
     @staticmethod
@@ -120,14 +119,13 @@ class TextDetectionStrategy(LocatorStrategy):
         _, coor, _ = self.text_detection.find_element(screenshot, element)
         return coor
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
         end_time = time.time() + timeout
         found_status = {t: False for t in elements}
         result = False
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
         try:
             while time.time() < end_time:
-                # screenshot = self.element_source.capture()
                 screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
                 if screenshot is None:
                     continue
@@ -169,17 +167,15 @@ class ImageDetectionStrategy(LocatorStrategy):
         _, centre, _ = self.image_detection.find_element(screenshot, element)
         return centre
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
         end_time = time.time() + timeout
         result = False
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
         try:
             while time.time() < end_time:
-                # screenshot = self.element_source.capture()
                 screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
                 if screenshot is None:
                     continue
-                # need to pass ther rule
                 result, annotated_frame = self.image_detection.assert_elements(screenshot, elements, rule)
                 if result:
                     break
@@ -311,7 +307,7 @@ class StrategyManager:
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
-        return False
+        return False, None
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         for strategy in self.screenshot_strategies:

@@ -183,16 +183,17 @@ class RemoteImageDetection(ImageInterface):
 
     def assert_elements(self, frame, image_templates, rule="any"):
         """
-        Assert that elements are present in the input data based on the specified rule.
+        Assert that one or more template images are present in the given frame using remote detection.
 
         Args:
-            input_data: The input source (e.g., image, video frame) for detection.
-            elements: List of elements to locate.
-            timeout: Maximum time to wait for elements.
-            rule: Rule to apply ("any" or "all").
+            frame (np.ndarray): The source image/frame to search in.
+            image_templates (list): List of template image names or paths to locate.
+            rule (str, optional): Rule to apply for matching; "any" (default) returns True if any template matches,
+                      "all" returns True only if all templates match.
 
         Returns:
-            bool: True if the assertion passes, otherwise False.
+            Tuple[bool, np.ndarray]: Tuple containing a boolean indicating if the assertion passes,
+                         and the annotated frame with detected templates highlighted.
         """
         annotated_frame = frame.copy()
         found_status = []
