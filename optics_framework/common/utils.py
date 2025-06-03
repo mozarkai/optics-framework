@@ -8,6 +8,7 @@ import base64
 import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
+from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 
@@ -58,6 +59,17 @@ def compute_hash(xml_string):
     """Computes the SHA-256 hash of the XML string."""
     return hashlib.sha256(xml_string.encode('utf-8')).hexdigest()
 
+def detect_change(frame1, frame2, threshold=0.95):
+    """
+    Returns True if the 2 frames have differences above threshold.
+    Can be used to detect screen transitions.
+    """
+    if frame1 is None or frame2 is None:
+        return True
+    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+    score, _ = ssim(gray1, gray2, full=True)
+    return score < threshold
 
 def compare_text(given_text, target_text):
     """

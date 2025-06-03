@@ -3,6 +3,7 @@ from optics_framework.engines.drivers.appium_driver_manager import get_appium_dr
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
+from typing import Tuple
 from lxml import etree
 import time
 
@@ -102,7 +103,7 @@ class AppiumFindElement(ElementSourceInterface):
                 return None
             return element
 
-    def assert_elements(self, elements, timeout=10, rule="any") -> bool:
+    def assert_elements(self, elements, timeout=10, rule="any") -> Tuple[bool, str]:
         """
         Assert that elements are present based on the specified rule.
 
@@ -122,21 +123,22 @@ class AppiumFindElement(ElementSourceInterface):
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
 
         start_time = time.time()
+        found = {el: False for el in elements}
 
         while time.time() - start_time < timeout:
-            found_elements = [self.locate(element) for element in elements]
+            for el in elements:
+                if not found[el] and self.locate(el):
+                    timestamp = utils.get_timestamp()
+                    found[el] = True
+                    if rule == "any":
+                        return True, timestamp
+            if rule == "all" and all(found.values()):
+                return True, utils.get_timestamp()
 
-            if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
-                return True
-
-            time.sleep(0.3)  # Wait before retrying
-
-        # If timeout is reached and conditions are not met, raise an exception
-        if rule == "all":
-            missing_elements = [elem for elem, found in zip(elements, found_elements) if not found]
-            raise TimeoutError(f"Timeout reached: Elements not found: {missing_elements}")
-
-        if rule == "any":
-            raise TimeoutError("Timeout reached: None of the specified elements were found.")
-
-        return False  # This should never be reached due to exceptions
+        missing_elements = [el for el, ok in found.items() if not ok]
+        internal_logger.error(
+            f"Elements not found based on rule '{rule}': {missing_elements}"
+        )
+        raise TimeoutError(
+            f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
+        )
