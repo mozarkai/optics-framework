@@ -60,7 +60,7 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: int = 1, offset_x: int = 0, offset_y: int = 0, event_name: Optional[str] = None, *, located: Any
+        self, element: str, repeat: int = 1, offset_x: int = 0, offset_y: int = 0, event_name: Optional[str] = None, *, located: Any = None
     ) -> None:
         """
         Press a specified element.
@@ -165,7 +165,7 @@ class ActionKeyword:
                 'XPath is not supported for index based location. Provide the attribute as text.')
 
     @with_self_healing
-    def detect_and_press(self, element: str, timeout: int, event_name: Optional[str] = None, *, located: Any) -> None:
+    def detect_and_press(self, element: str, timeout: int, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Detect and press a specified element.
 
@@ -191,7 +191,7 @@ class ActionKeyword:
 
     @DeprecationWarning
     @with_self_healing
-    def press_checkbox(self, element: str, event_name: Optional[str] = None, *, located: Any) -> None:
+    def press_checkbox(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Press a specified checkbox element.
 
@@ -202,7 +202,7 @@ class ActionKeyword:
 
     @DeprecationWarning
     @with_self_healing
-    def press_radio_button(self, element: str, event_name: Optional[str] = None, *, located: Any) -> None:
+    def press_radio_button(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Press a specified radio button.
 
@@ -268,7 +268,7 @@ class ActionKeyword:
             time.sleep(3)
 
     @with_self_healing
-    def swipe_from_element(self, element: str, direction: str, swipe_length: int, event_name: Optional[str] = None, *, located: Any) -> None:
+    def swipe_from_element(self, element: str, direction: str, swipe_length: int, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Perform a swipe action starting from a specified element.
 
@@ -318,7 +318,7 @@ class ActionKeyword:
             time.sleep(3)
 
     @with_self_healing
-    def scroll_from_element(self, element: str, direction: str, scroll_length: int, event_name: Optional[str] = None, *, located: Any) -> None:
+    def scroll_from_element(self, element: str, direction: str, scroll_length: int, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Perform a scroll action starting from a specified element.
 
@@ -340,7 +340,7 @@ class ActionKeyword:
 
     # Text input actions
     @with_self_healing
-    def enter_text(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any) -> None:
+    def enter_text(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Enter text into a specified element.
 
@@ -392,7 +392,7 @@ class ActionKeyword:
         self.driver.enter_text_using_keyboard(text_input, event_name)
 
     @with_self_healing
-    def enter_number(self, element: str, number: float, event_name: Optional[str] = None, *, located: Any) -> None:
+    def enter_number(self, element: str, number: float, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Enter a specified number into an element.
 
@@ -416,7 +416,7 @@ class ActionKeyword:
         self.driver.press_keycode(keycode, event_name)
 
     @with_self_healing
-    def clear_element_text(self, element: str, event_name: Optional[str] = None, *, located: Any) -> None:
+    def clear_element_text(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Clear text from a specified element.
 

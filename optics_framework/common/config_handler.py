@@ -6,7 +6,6 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-
 def deep_merge(d1: dict, d2: dict) -> dict:
     """
     Recursively merge two dictionaries, giving priority to d2.
@@ -28,21 +27,16 @@ class DependencyConfig(BaseModel):
 
     class Config:
         """Pydantic V2 configuration."""
-        # Allow arbitrary types for capabilities (e.g., Any)
         arbitrary_types_allowed = True
 
 
 class Config(BaseModel):
     """Default configuration structure."""
     console: bool = True
-    driver_sources: List[Dict[str, DependencyConfig]
-                         ] = Field(default_factory=list)
-    elements_sources: List[Dict[str, DependencyConfig]
-                           ] = Field(default_factory=list)
-    text_detection: List[Dict[str, DependencyConfig]
-                         ] = Field(default_factory=list)
-    image_detection: List[Dict[str, DependencyConfig]
-                          ] = Field(default_factory=list)
+    driver_sources: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
+    elements_sources: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
+    text_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
+    image_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     file_log: bool = False
     json_log: bool = False
     json_path: Optional[str] = None
@@ -57,56 +51,36 @@ class Config(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        # Post-init logic from the original dataclass
         if not self.driver_sources:
             self.driver_sources = [
-                {"appium": DependencyConfig(
-                    enabled=False,
-                    url="http://127.0.0.1:4723",
-                    capabilities={})},
-                {"selenium": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"ble": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-
+                {"appium": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"selenium": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"ble": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
         if not self.elements_sources:
             self.elements_sources = [
-                {"appium_find_element": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"appium_page_source": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"appium_screenshot": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"camera_screenshot": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"selenium_find_element": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"selenium_screenshot": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
+                {"appium_find_element": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"appium_page_source": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"appium_screenshot": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"camera_screenshot": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"selenium_find_element": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"selenium_screenshot": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
         if not self.text_detection:
             self.text_detection = [
-                {"easyocr": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"pytesseract": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"google_vision": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"remote_ocr": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
+                {"easyocr": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"pytesseract": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"google_vision": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"remote_ocr": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
         if not self.image_detection:
             self.image_detection = [
-                {"templatematch": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
-                {"remote_oir": DependencyConfig(
-                    enabled=False, url=None, capabilities={})},
+                {"templatematch": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"remote_oir": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
 
     class Config:
         """Pydantic V2 configuration."""
-        # Allow arbitrary types in capabilities
         arbitrary_types_allowed = True
 
 
@@ -137,8 +111,7 @@ class ConfigHandler:
 
     def set_project(self, project_name: str) -> None:
         self.project_name = project_name
-        self.project_config_path = os.path.join(
-            project_name, "config.yaml") if project_name else None
+        self.project_config_path = os.path.join(project_name, "config.yaml") if project_name else None
         self.config.project_path = self.get_project_path()
 
     def get_project_path(self) -> Optional[str]:
@@ -146,16 +119,13 @@ class ConfigHandler:
 
     def _ensure_global_config(self) -> None:
         if not os.path.exists(self.global_config_path):
-            os.makedirs(os.path.dirname(
-                self.global_config_path), exist_ok=True)
+            os.makedirs(os.path.dirname(self.global_config_path), exist_ok=True)
             with open(self.global_config_path, "w", encoding="utf-8") as f:
-                yaml.dump(self.config.model_dump(),
-                          f, default_flow_style=False)
+                yaml.dump(self.config.model_dump(), f, default_flow_style=False)
 
     def load(self) -> Config:
         global_config = self._load_yaml(self.global_config_path) or {}
-        project_config = self._load_yaml(
-            self.project_config_path) if self.project_config_path else {}
+        project_config = self._load_yaml(self.project_config_path) if self.project_config_path else {}
         default_dict = self.config.model_dump()
         merged = deep_merge(default_dict, global_config)
         merged = deep_merge(merged, project_config)
@@ -188,7 +158,6 @@ class ConfigHandler:
             ]
 
     def get_dependency_config(self, dependency_type: str, name: str) -> Optional[Dict[str, Any]]:
-        # Still available if detailed config is needed elsewhere
         for item in getattr(self.config, dependency_type):
             if name in item and item[name].enabled:
                 return {
@@ -205,8 +174,7 @@ class ConfigHandler:
     def save_config(self) -> None:
         try:
             with open(self.global_config_path, "w", encoding="utf-8") as f:
-                yaml.dump(self.config.model_dump(),
-                          f, default_flow_style=False)
+                yaml.dump(self.config.model_dump(), f, default_flow_style=False)
         except Exception as e:
             raise e
 
