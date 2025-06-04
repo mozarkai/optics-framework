@@ -87,7 +87,7 @@ class Config(BaseModel):
 class ConfigHandler:
     _instance = None
     _initialized = False
-    DEFAULT_GLOBAL_CONFIG = os.path.expanduser("~/.optics/global_config.yaml")
+    DEFAULT_GLOBAL_CONFIG_PATH = os.path.expanduser("~/.optics/global_config.yaml")
     DEPENDENCY_KEYS: List[str] = [
         "driver_sources",
         "elements_sources",
@@ -104,7 +104,7 @@ class ConfigHandler:
         if not self._initialized:
             self.project_name: Optional[str] = None
             self.project_config_path: Optional[str] = None
-            self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG
+            self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
             self.config: Config = Config()
             self._enabled_configs: Dict[str, List[str]] = {}
             self._initialized = True
