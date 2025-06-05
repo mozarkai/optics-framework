@@ -5,6 +5,7 @@ import time
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.eventSDK import EventSDK
 
 class CapabilitiesConfig(BaseModel):
     device_id: str
@@ -29,6 +30,7 @@ class BLEDriver(DriverInterface):
     NAME = "ble"
     def __init__(self):
         config_handler = ConfigHandler.get_instance()
+        self.event_sdk = EventSDK.get_instance()
         config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(self.DEPENDENCY_TYPE, self.NAME)
 
         if not config:
@@ -162,7 +164,7 @@ class BLEDriver(DriverInterface):
         self.translate_coordinates_relative(
             button_state, x_coor_mic, y_coor_mic)
 
-    def move_tap(self, x_coor_px, y_coor_px, time_press=0.1):
+    def move_tap(self, x_coor_px, y_coor_px, time_press=0.1,event_name=None):
         """
         Move the mouse to the specified coordinates and perform a tap (click).
 
@@ -172,6 +174,8 @@ class BLEDriver(DriverInterface):
         """
         x_coor_px,y_coor_px,time_press = int(x_coor_px), int(y_coor_px),int(time_press)
         self.translate_coordinates_relative_pixel(0, x_coor_px, y_coor_px)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
         self.mouse_tap()
         time.sleep(time_press)
         self.mouse_reset_position()
@@ -226,7 +230,7 @@ class BLEDriver(DriverInterface):
         :type event_name: str
         """
         internal_logger.debug(f"Pressing coordinates ({coor_x}, {coor_y}) via BLE.")
-        self.move_tap(coor_x, coor_y)
+        self.move_tap(coor_x, coor_y, event_name=event_name)
 
     hid_key_codes = {
         'a': 4, 'b': 5, 'c': 6, 'd': 7, 'e': 8, 'f': 9, 'g': 10,
@@ -331,9 +335,13 @@ class BLEDriver(DriverInterface):
         x_coor = int(percentage_x * self.pixel_width)
         y_coor = int(percentage_y * self.pixel_height)
         self.translate_coordinates_relative_pixel(0, x_coor, y_coor)
+        timestamp: str | None = self.event_sdk.get_current_time_for_events()
         for _ in range(repeat):
             self.mouse_tap()
             time.sleep(0.1)
+        if event_name:
+            self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+
         self.mouse_reset_position()
 
 
@@ -347,6 +355,7 @@ class BLEDriver(DriverInterface):
         :type event_name: str | None
         """
         internal_logger.debug(f"Entering text '{text}' via BLE.")
+        self.event_sdk.capture_event(event_name) if event_name else None
         self.keyboard(text)
 
     def press_keycode(self, keycode, event_name) -> None:
@@ -359,6 +368,7 @@ class BLEDriver(DriverInterface):
         :type event_name: str
         """
         internal_logger.debug(f"Pressing keycode '{keycode}' via BLE.")
+        self.event_sdk.capture_event(event_name) if event_name else None
         self.keyboard(keycode)
 
     def enter_text_element(self, element, text, event_name) -> None:
@@ -374,6 +384,7 @@ class BLEDriver(DriverInterface):
         :type event_name: str
         """
         internal_logger.debug(f"Entering text '{text}' using keyboard via BLE.")
+        self.event_sdk.capture_event(event_name) if event_name else None
         self.keyboard(text)
 
     def clear_text(self, event_name) -> None:
@@ -386,7 +397,8 @@ class BLEDriver(DriverInterface):
         internal_logger.debug("Clearing text via BLE.")
         self.send_keyboard_command("1 0 4 0 0 0 0 0")  # Send a command to select all text
         self.send_keyboard_command("0 0 42 0 0 0 0 0")  # Send a command to backspace the selected text
-
+        if event_name:
+            self.event_sdk.capture_event(event_name)
 
     def clear_text_element(self, element, event_name) -> None:
         raise NotImplementedError("BLE driver does not support clearing text in elements.")
@@ -408,6 +420,8 @@ class BLEDriver(DriverInterface):
         """
         internal_logger.debug(f"Swiping {direction} from ({x_coor}, {y_coor}) with length {swipe_length} via BLE.")
         self.translate_coordinates_relative_pixel(0, x_coor, y_coor)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
         self.swipe_ble(direction, swipe_length)
 
     def swipe_percentage(self, x_percentage, y_percentage, direction, swipe_percentage, event_name) -> None:
@@ -430,6 +444,8 @@ class BLEDriver(DriverInterface):
         y_coor = int(y_percentage * self.pixel_height)
         swipe_length = int(swipe_percentage * self.pixel_width)
         self.translate_coordinates_relative_pixel(0, x_coor, y_coor)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
         self.swipe_ble(direction, swipe_length)
 
     def swipe_element(self, element, direction, swipe_length, event_name) -> None:
@@ -455,6 +471,8 @@ class BLEDriver(DriverInterface):
                 self.keyboard('PageDown')  # HID code for PageDown (usually 0x4e, but here sending '\x4e' as placeholder)
         else:
             internal_logger.warning(f"Scroll direction '{direction}' not supported.")
+        if event_name:
+            self.event_sdk.capture_event(event_name)
         # Implementation for scrolling has to be added first at firmware level(Mouse HID characteristics.
         # for now, we will use keyboard style page up and down.
 
