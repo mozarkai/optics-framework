@@ -39,8 +39,13 @@ def _create_csv_files(project_path: str) -> None:
 def _create_config_file(project_path: str) -> None:
     """Create config.yaml with default values from ConfigHandler."""
     config_path = os.path.join(project_path, "config.yaml")
+    try:
+        with open(ConfigHandler.DEFAULT_GLOBAL_CONFIG_PATH,'r') as f:
+            global_yaml_data = yaml.safe_load(f)
+    except Exception:
+            global_yaml_data = ""
     with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(ConfigHandler.DEFAULT_GLOBAL_CONFIG, # This is wrong as we need to use the default config not the path
+        yaml.dump(global_yaml_data,
                   f, default_flow_style=False)
     print("Created config.yaml with default values.")
 
