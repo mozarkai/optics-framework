@@ -24,7 +24,6 @@ requests = "^2.32.3"
 textual = "^3.0.0"
 pytest = "^8.3.5"
 pydantic = "^2.11.2"
-pyserial = "^3.5"
 scikit-image = "^0.25.2"
 
 [tool.poetry.group.dev.dependencies]
