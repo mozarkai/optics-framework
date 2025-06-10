@@ -1,5 +1,5 @@
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.0.8"  # Sync with pyproject.toml version
+version = "1.2.0"  # Sync with pyproject.toml version
 tag_format = "v$version"
 update_changelog_on_bump = true

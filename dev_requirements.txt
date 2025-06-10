@@ -1,8 +1,0 @@
-tox==4.24.1
-pytest==8.3.4
-pytest-cov==6.0.0
-setuptools==78.1.1
-wheel==0.45.1
-pylint==3.3.4
-loguru==0.7.3
-black==25.1.0
