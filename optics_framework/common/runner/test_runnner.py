@@ -486,8 +486,15 @@ class PytestRunner(Runner):
             ))
             pytest.fail(f"Keyword not found: {keyword}")
         try:
-            resolved_params = [self.resolve_param(param) for param in params]
-            method(*resolved_params)
+            kw_params = DataReader.get_keyword_params(params)
+            positional_params = DataReader.get_positional_params(params)
+            resolved_positional_params = [self.resolve_param(param) for param in positional_params]
+            resolved_kw_params = {}
+            for key, value in kw_params.items():
+                if value.startswith("${") and value.endswith("}"):
+                    value = self.resolve_param(value)
+                resolved_kw_params[key] = value
+            method(*resolved_positional_params, **resolved_kw_params)
             time.sleep(0.1)
             queue_event_sync(Event(
                 entity_type="keyword",
