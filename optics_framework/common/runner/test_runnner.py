@@ -14,6 +14,7 @@ from optics_framework.common import test_context
 from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, NullResultPrinter
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
 from optics_framework.common.events import get_event_manager, EventStatus, CommandType, Event
+from optics_framework.common.runner.data_reader import DataReader
 
 
 class KeywordResult(BaseModel):
@@ -250,11 +251,18 @@ class TestRunner(Runner):
 
         try:
             raw_indices = getattr(method, '_raw_param_indices', [])
-            resolved_params = [param if i in raw_indices else self.resolve_param(
-                param) for i, param in enumerate(keyword_node.params)]
+            kw_params = DataReader.get_keyword_params(keyword_node.params)
+            positional_params = DataReader.get_positional_params(keyword_node.params)
+            resolved_positional_params = [param if i in raw_indices else self.resolve_param(
+                param) for i, param in enumerate(positional_params)]
+            resolved_kw_params = {}
+            for key, value in kw_params.items():
+                if value.startswith("${") and value.endswith("}"):
+                    value = self.resolve_param(value)
+                resolved_kw_params[key] = value
             if isinstance(keyword_result, KeywordResult):
-                keyword_result.resolved_name = f"{keyword_node.name} ({', '.join(str(p) for p in resolved_params)})" if resolved_params else keyword_node.name
-            method(*resolved_params)
+                keyword_result.resolved_name = f"{keyword_node.name} ({', '.join(str(p) for p in resolved_positional_params)})" if resolved_positional_params else keyword_node.name
+            method(*resolved_positional_params, **resolved_kw_params)
             await asyncio.sleep(0.1)
             keyword_node.state = State.COMPLETED_PASSED
             await self._send_event("keyword", keyword_node, EventStatus.PASS, parent_id=module_node.id)

@@ -2,7 +2,7 @@ import csv
 import yaml
 import re
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List
 from optics_framework.common.logging_config import internal_logger
 
 
@@ -20,6 +20,29 @@ class DataReader(ABC):
         :rtype: Union[list, dict]
         """
         pass
+
+    @staticmethod
+    def get_keyword_params(param_strings:List[str]) -> Dict[str, str]:
+        """
+        Parses a list of params (string) and filters only keyword params (i.e in format key=value) and returns them as a Dictionary
+        """
+        args = {}
+        for param in param_strings:
+            if '=' in param:
+                arg_name,value = param.split('=', 1)
+                args[arg_name.strip()] = value.strip()
+        return args
+
+    @staticmethod
+    def get_positional_params(param_strings:List[str]) -> List[str]:
+        """
+        Parses a list of params (string) and returns a list of positional params (i.e not in key=value format)
+        """
+        args = []
+        for param in param_strings:
+            if ('$' in param or '=' not in param) and not ('$' in param and '=' in param):
+                args.append(param.strip())
+        return args
 
     @abstractmethod
     def read_test_cases(self, file_path: str) -> dict:
