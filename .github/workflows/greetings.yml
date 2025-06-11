@@ -1,0 +1,23 @@
+name: Greetings
+
+on: [pull_request_target, issues]
+
+jobs:
+  greeting:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+    - uses: actions/first-interaction@v1
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        issue-message: |
+          Thanks for opening your first issue.
+          Please make sure to include as much detail as possible (steps to reproduce, expected behavior, screenshots).
+          Our members will take a look shortly.
+
+        pr-message: |
+          Congrats on your first pull request to optics-framework
+          Welcome aboard—as a first-time contributor, we'd love to help you get set up.
+          Feel free to ask questions if any part of the contribution process is unclear.
