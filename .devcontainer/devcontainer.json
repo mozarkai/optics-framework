@@ -1,0 +1,74 @@
+{
+	"name": "Optics Framework",
+	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
+	"features": {
+		"ghcr.io/devcontainers/features/common-utils:2": {},
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+		"ghcr.io/devcontainers/features/python:1": {},
+		"ghcr.io/devcontainers/features/git:1": {},
+		"ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {},
+		"ghcr.io/devcontainers-extra/features/apt-get-packages:1": {},
+		"ghcr.io/devcontainers-extra/features/poetry:2": {},
+		"ghcr.io/devcontainers-extra/features/scancode-toolkit:1": {}
+	},
+	"runArgs": [
+		"--add-host=host.docker.internal:host-gateway"
+	],
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0 default-jre-headless && poetry env use python3.12 && poetry install && poetry run pre-commit install",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"njpwerner.autodocstring",
+				"ms-azuretools.vscode-docker",
+				"charliermarsh.ruff",
+				"davidanson.vscode-markdownlint",
+				"docker.docker",
+				"github.codespaces",
+				"github.remotehub",
+				"github.vscode-github-actions",
+				"kamikillerto.vscode-colorize",
+				"ms-azuretools.vscode-containers",
+				"ms-python.debugpy",
+				"ms-python.pylint",
+				"ms-vscode-remote.remote-containers",
+				"ms-vscode-remote.remote-ssh",
+				"ms-vscode-remote.remote-ssh-edit",
+				"ms-vscode-remote.vscode-remote-extensionpack",
+				"ms-vscode.remote-explorer",
+				"ms-vscode.remote-repositories",
+				"ms-vscode.remote-server",
+				"postman.postman-for-vscode",
+				"redhat.vscode-yaml",
+				"ritwickdey.liveserver",
+				"tamasfe.even-better-toml",
+				"visualstudioexptteam.intellicode-api-usage-examples",
+				"visualstudioexptteam.vscodeintellicode",
+				"visualstudioexptteam.vscodeintellicode-completions",
+				"vivaxy.vscode-conventional-commits",
+				"vscode-icons-team.vscode-icons"
+			]
+		},
+		"settings": {
+			"python.linting.pylintEnabled": true,
+			"python.linting.enabled": true,
+			"python.formatting.provider": "black",
+			"editor.formatOnSave": true,
+			"python.interpreter.infoVisibility": "always",
+			"python.analysis.typeCheckingMode": "standard",
+			"python.createEnvironment.contentButton": "show",
+			"python.analysis.generateWithTypeAnnotation": true,
+			"python.analysis.inlayHints.variableTypes": true,
+			"python.analysis.inlayHints.functionReturnTypes": true,
+			"python.analysis.supportDocstringTemplate": true,
+			"python.analysis.autoImportCompletions": true,
+			"python.analysis.completeFunctionParens": true,
+			"python.analysis.languageServerMode": "full",
+			"python.languageServer": "Pylance",
+			"python.missingPackage.severity": "Hint",
+			"python.testing.unittestEnabled": false,
+			"python.testing.pytestEnabled": true
+		}
+	}
+}
