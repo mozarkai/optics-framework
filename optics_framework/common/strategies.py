@@ -6,6 +6,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common import utils
 from optics_framework.common.screenshot_stream import ScreenshotStream
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_utils import log_strategy_attempt
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
 import numpy as np
 import time
@@ -288,8 +289,10 @@ class StrategyManager:
                 try:
                     result = strategy.locate(element)
                     if result:
+                        log_strategy_attempt(strategy, element, "success")
                         yield LocateResult(result, strategy)
                 except Exception as e:
+                    log_strategy_attempt(strategy, element, "fail", str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
@@ -302,8 +305,10 @@ class StrategyManager:
                 try:
                     result, timestamp = strategy.assert_elements(elements, timeout, rule)
                     if result:
+                        log_strategy_attempt(strategy, str(elements), "success")
                         return result, timestamp
                 except Exception as e:
+                    log_strategy_attempt(strategy, str(elements), "fail", str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
@@ -312,7 +317,9 @@ class StrategyManager:
     def capture_screenshot(self) -> Optional[np.ndarray]:
         for strategy in self.screenshot_strategies:
             try:
-                return strategy.capture()
+                img = strategy.capture()
+                log_strategy_attempt(strategy, "screenshot", "success")
+                return img
             except Exception as e:
                 internal_logger.debug(
                     f"Screenshot failed with {strategy.__class__.__name__}: {e}")

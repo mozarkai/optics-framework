@@ -77,10 +77,10 @@ class CameraScreenshot(ElementSourceInterface):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((ip, port))
-            internal_logger(f"TCP connection established with {ip}:{port}")
+            internal_logger.debug(f"TCP connection established with {ip}:{port}")
             return sock
         except Exception as e:
-            internal_logger(f"Error creating TCP connection: {e}")
+            internal_logger.debug(f"Error creating TCP connection: {e}")
             return None
 
     def take_screenshot(self):
@@ -93,7 +93,7 @@ class CameraScreenshot(ElementSourceInterface):
 
             # Send the screenshot command
             self.sock.sendall(b'screenshot\n')
-            internal_logger("Taking screenshot...")
+            internal_logger.debug("Taking screenshot...")
 
             # Read the first 8 bytes to get the length of the image data
             length_bytes = self.sock.recv(8)
@@ -101,7 +101,7 @@ class CameraScreenshot(ElementSourceInterface):
                 raise ValueError("Failed to read the length of the image data.")
 
             image_length = int.from_bytes(length_bytes, byteorder='little', signed=False)
-            internal_logger(f"Expected image data length: {image_length} bytes")
+            internal_logger.debug(f"Expected image data length: {image_length} bytes")
 
             # Initialize a bytearray for the image data
             image_data = bytearray()
@@ -114,18 +114,18 @@ class CameraScreenshot(ElementSourceInterface):
                     raise ValueError("Socket connection closed prematurely.")
                 image_data.extend(chunk)
                 remaining_bytes -= len(chunk)
-            internal_logger("Transferred image data...")
+            internal_logger.debug("Transferred image data...")
 
             # Convert the received image data to a numpy array
             nparr = np.frombuffer(image_data, np.uint8)
 
             # Decode the image data to an OpenCV image
             screenshot = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            internal_logger("Image ready, setting screenshot")
+            internal_logger.debug("Image ready, setting screenshot")
             self.set_screenshot(screenshot)
             return screenshot
         except Exception as e:
-            internal_logger(f"An error occurred: {e}")
+            internal_logger.debug(f"An error occurred: {e}")
             return None
 
 
@@ -171,16 +171,16 @@ class CameraScreenshot(ElementSourceInterface):
 
             if rotation.lower == 'clockwise':
                 rotated_img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-                internal_logger('Image rotated clockwise.')
+                internal_logger.debug('Image rotated clockwise.')
             elif rotation.lower == 'counterclockwise':
                 rotated_img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                internal_logger('Image rotated counterclockwise')
+                internal_logger.debug('Image rotated counterclockwise')
             else:
-                internal_logger('Rotation argument not defined, returning unrotated image.')
+                internal_logger.debug('Rotation argument not defined, returning unrotated image.')
                 return img
             return rotated_img
         except Exception as e:
-            internal_logger(f'An error occurred while performing rotation: {e}, returning unrotated image.')
+            internal_logger.debug(f'An error occurred while performing rotation: {e}, returning unrotated image.')
             return img
 
     def take_ext_screenshot(self):

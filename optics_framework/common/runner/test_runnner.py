@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 import pytest
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common import test_context
 from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, KeywordResult, ModuleResult, NullResultPrinter
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
@@ -77,7 +77,7 @@ class TestRunner(Runner):
         self.result_printer = result_printer
         self.session_id = session_id
         self.config = ConfigHandler.get_instance().config
-        internal_logger.debug(
+        execution_logger.debug(
             f"Initialized test_state: {list(modules.keys())} with {len(modules)} modules")
         self._initialize_test_state()
 
@@ -116,7 +116,7 @@ class TestRunner(Runner):
             test_state[current_test.name] = test_result
             current_test = current_test.next
         self.result_printer.test_state = test_state
-        internal_logger.debug(
+        execution_logger.debug(
             f"Initialized test_state: {list(test_state.keys())} with {sum(len(m.modules) for m in test_state.values())} modules")
 
     def _extra(self, test_case: str, module: str = "N/A", keyword: str = "N/A") -> Dict[str, str]:
@@ -212,7 +212,7 @@ class TestRunner(Runner):
     ) -> bool:
         keyword_result = self._find_result(
             test_case_result.name, module_node.name, keyword_node.id)
-        internal_logger.debug(
+        execution_logger.debug(
             f"Executing keyword: {keyword_node.name} (id: {keyword_node.id})")
         start_time = time.time()
 

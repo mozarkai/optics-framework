@@ -18,23 +18,9 @@ config_handler = ConfigHandler.get_instance()
 config = config_handler.load()
 
 # Global Queues
-user_log_queue = queue.Queue(-1)
 internal_log_queue = queue.Queue(-1)
+execution_log_queue = queue.Queue(-1)
 
-# User Logger
-user_logger = logging.getLogger("optics.user")
-user_logger.propagate = False
-
-user_console_handler = RichHandler(
-    rich_tracebacks=False, show_time=False, show_level=False, markup=True)
-user_console_handler.setFormatter(logging.Formatter("%(message)s"))
-
-user_queue_handler = QueueHandler(user_log_queue)
-user_logger.addHandler(user_queue_handler)
-
-user_listener = QueueListener(
-    user_log_queue, user_console_handler, respect_handler_level=True)
-user_listener.start()
 
 # Internal Logger
 internal_logger = logging.getLogger("optics.internal")
@@ -48,6 +34,23 @@ internal_console_handler.setFormatter(logging.Formatter(
 internal_queue_handler = QueueHandler(internal_log_queue)
 internal_logger.addHandler(internal_queue_handler)
 
+# Execution Logger
+execution_logger = logging.getLogger("optics.execution")
+execution_logger.propagate = True
+
+execution_console_handler = RichHandler(
+    rich_tracebacks=False, show_time=True, show_level=True, markup=True)
+execution_console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+execution_queue_handler = QueueHandler(execution_log_queue)
+execution_logger.addHandler(execution_queue_handler)
+
+execution_listener = QueueListener(
+    execution_log_queue, execution_console_handler, respect_handler_level=True)
+execution_listener.start()
+
+
+
 # SessionLoggerAdapter
 class SessionLoggerAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
@@ -60,15 +63,15 @@ class SessionLoggerAdapter(logging.LoggerAdapter):
 class LoggerContext:
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.original_user_logger = user_logger
+        self.original_execution_logger = execution_logger
         self.original_internal_logger = internal_logger
 
     def __enter__(self) -> Tuple[logging.LoggerAdapter, logging.LoggerAdapter]:
-        session_user_logger = SessionLoggerAdapter(
-            self.original_user_logger, {"session_id": self.session_id})
+        session_execution_logger = SessionLoggerAdapter(
+            self.original_execution_logger, {"session_id": self.session_id})
         session_internal_logger = SessionLoggerAdapter(
             self.original_internal_logger, {"session_id": self.session_id})
-        return session_user_logger, session_internal_logger
+        return session_execution_logger, session_internal_logger
 
     def __exit__(self, exc_type, exc_value, traceback):
         """
@@ -98,6 +101,8 @@ class JUnitEventHandler(EventSubscriber):
         if not session_id and event.entity_type == "test_case":
             internal_logger.warning(
                 f"Test case event missing session_id: {event.model_dump()}")
+            execution_logger.warning(
+                f"Test case event missing session_id: {event.model_dump()}")
             return
 
         if event.entity_type == "test_case" and session_id:
@@ -117,6 +122,8 @@ class JUnitEventHandler(EventSubscriber):
     async def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
         event_time = getattr(event, 'timestamp', time.time())
         internal_logger.debug(
+            f"Handling test_case event: id={event.entity_id}, status={event.status}, timestamp={event_time}")
+        execution_logger.debug(
             f"Handling test_case event: id={event.entity_id}, status={event.status}, timestamp={event_time}")
         if event.status == EventStatus.RUNNING:
             testcase = ET.SubElement(
@@ -219,10 +226,11 @@ class JUnitEventHandler(EventSubscriber):
 
 junit_handler = None
 internal_listener = None
+execution_listener = None
 
 
 def initialize_handlers():
-    global config, junit_handler, internal_listener
+    global config, junit_handler, internal_listener, execution_listener
     config = config_handler.load()
     internal_logger.debug("Initializing logging handlers")
 
@@ -231,14 +239,15 @@ def initialize_handlers():
     internal_logger.debug(
         f"Setting log level to {log_level_str} ({log_level})")
 
-    if user_logger is None or internal_logger is None:
+    if execution_logger is None or internal_logger is None:
         raise RuntimeError(
-            f"Loggers not initialized: user_logger={user_logger}, internal_logger={internal_logger}")
+            f"Loggers not initialized: execution_logger={execution_logger}, internal_logger={internal_logger}")
 
-    user_logger.setLevel(log_level)
-    user_console_handler.setLevel(log_level)
     internal_logger.setLevel(log_level)
     internal_console_handler.setLevel(log_level)
+    execution_logger.setLevel(log_level)
+    execution_console_handler.setLevel(log_level)
+
 
     project_path = config.project_path or Path.home() / ".optics"
     log_dir = Path(project_path) / "execution_output"
@@ -248,6 +257,11 @@ def initialize_handlers():
 
     if internal_listener:
         internal_listener.stop()
+    if execution_listener:
+        execution_listener.stop()
+
+    execution_listener = QueueListener(
+        execution_log_queue, execution_console_handler, respect_handler_level=True)
 
     internal_listener = QueueListener(
         internal_log_queue, internal_console_handler, respect_handler_level=True)
@@ -262,8 +276,21 @@ def initialize_handlers():
             datefmt="%Y-%m-%d %H:%M:%S"
         ))
         file_handler.setLevel(log_level)
+
         internal_listener.handlers += (file_handler,)
-        internal_logger.debug(f"Added file handler: {log_path}")
+        execution_listener.handlers += (file_handler,)
+        exec_log_path = Path(config.log_path or log_dir /
+                             "execution_logs.log").expanduser()
+        exec_file_handler = RotatingFileHandler(
+            exec_log_path, maxBytes=10*1024*1024, backupCount=10)
+        exec_file_handler.setFormatter(logging.Formatter(
+            "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        exec_file_handler.setLevel(log_level)
+
+        execution_listener.handlers += (exec_file_handler,)
+        internal_logger.debug(f"Added file handler: {exec_log_path}")
 
     if getattr(config, 'json_log', False):
         junit_path = log_dir / "junit_output.xml"
@@ -276,6 +303,8 @@ def initialize_handlers():
             f"Subscribed JUnitEventHandler to EventManager: {junit_path}")
 
     internal_listener.start()
+    execution_listener.start()
+
     internal_logger.debug("Logging handlers initialized")
 
 
@@ -298,9 +327,10 @@ def disable_logger():
 
 def stop_listeners():
     """Stops user and internal listeners."""
-    user_listener.stop()
     if internal_listener:
         internal_listener.stop()
+    if execution_listener:
+        execution_listener.stop()
 
 
 def wait_for_threads():
@@ -308,7 +338,7 @@ def wait_for_threads():
     timeout = 2.0
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if not (is_thread_alive(user_listener) or is_thread_alive(internal_listener)):
+        if not (is_thread_alive(internal_listener)) or is_thread_alive(execution_listener):
             return
         time.sleep(0.1)
     check_thread_status()
@@ -320,11 +350,10 @@ def is_thread_alive(listener):
 
 
 def check_thread_status():
-    if is_thread_alive(user_listener):
-        internal_logger.warning("user_listener thread did not terminate")
     if is_thread_alive(internal_listener):
         internal_logger.warning("internal_listener thread did not terminate")
-
+    if is_thread_alive(execution_listener):
+        internal_logger.warning("execution_listener thread did not terminate")
 
 def flush_handlers():
     if junit_handler:
@@ -335,7 +364,7 @@ def flush_handlers():
 
 
 def clear_queues():
-    for log_queue in [user_log_queue, internal_log_queue]:
+    for log_queue in [internal_log_queue, execution_log_queue]:
         while not log_queue.empty():
             try:
                 log_queue.get_nowait()
@@ -353,5 +382,5 @@ def reconfigure_logging():
     initialize_handlers()
 
 
-__all__ = ["user_logger", "internal_logger",
+__all__ = ["internal_logger","execution_logger",
            "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter"]
