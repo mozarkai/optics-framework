@@ -40,7 +40,7 @@ class DataReader(ABC):
         """
         args = []
         for param in param_strings:
-            if ('$' in param or '=' not in param) and not ('$' in param and '=' in param):
+            if '=' not in param:
                 args.append(param.strip())
         return args
 

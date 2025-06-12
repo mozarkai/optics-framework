@@ -6,32 +6,14 @@ import shutil
 import sys
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 import pytest
-from pydantic import BaseModel, Field
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import test_context
-from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, NullResultPrinter
+from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, KeywordResult, ModuleResult, NullResultPrinter
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
 from optics_framework.common.events import get_event_manager, EventStatus, CommandType, Event
 from optics_framework.common.runner.data_reader import DataReader
-
-
-class KeywordResult(BaseModel):
-    id: str
-    name: str
-    resolved_name: str
-    elapsed: str
-    status: str
-    reason: str
-
-
-class ModuleResult(BaseModel):
-    name: str
-    elapsed: str
-    status: str
-    keywords: List[KeywordResult] = Field(default_factory=list)
-
 
 class Runner:
     test_case: TestCaseNode
@@ -261,7 +243,10 @@ class TestRunner(Runner):
                     value = self.resolve_param(value)
                 resolved_kw_params[key] = value
             if isinstance(keyword_result, KeywordResult):
-                keyword_result.resolved_name = f"{keyword_node.name} ({', '.join(str(p) for p in resolved_positional_params)})" if resolved_positional_params else keyword_node.name
+                positional_str = ", ".join(str(p) for p in resolved_positional_params)
+                keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
+                combined_params = ", ".join(filter(None, [positional_str, keyword_str]))
+                keyword_result.resolved_name = f"{keyword_node.name} ({combined_params})" if combined_params else keyword_node.name
             method(*resolved_positional_params, **resolved_kw_params)
             await asyncio.sleep(0.1)
             keyword_node.state = State.COMPLETED_PASSED
