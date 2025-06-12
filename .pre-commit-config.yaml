@@ -30,3 +30,9 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.16.3
+    hooks:
+      - id: gitleaks
+        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|tests/)'
