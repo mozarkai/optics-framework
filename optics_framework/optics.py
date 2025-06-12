@@ -58,7 +58,7 @@ class Optics:
         self.config_handler.config.elements_sources = element_source_config
         self.config_handler.config.image_detection = image_config or []
         self.config_handler.config.text_detection = text_config or []
-
+        self.config_handler.load()
         # Configure OpticsBuilder
         try:
             # Convert DependencyConfig objects to dictionaries if needed
@@ -324,7 +324,7 @@ if __name__ == "__main__":
                     enabled=True,
                     url="http://localhost:4723",
                     capabilities={
-                        "appActivity": "com.android.contacts.activities.activities.PeopleActivity",
+                        "appActivity": "com.android.contacts.activities.PeopleActivity",
                         "appPackage": "com.google.android.contacts",
                         "automationName": "UiAutomator2",
                         "deviceName": "emulator-5554",
@@ -343,7 +343,7 @@ if __name__ == "__main__":
             },
             {
                 "appium_page_source": DependencyConfig(
-                    enabled=False,
+                    enabled=True,
                     url=None,
                     capabilities={}
                 )
