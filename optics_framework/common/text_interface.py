@@ -1,5 +1,5 @@
-from abc import ABC
-from typing import Optional, Tuple, Any
+from abc import ABC, abstractmethod
+from typing import Optional, Tuple, Any, List
 
 
 class TextInterface(ABC):
@@ -14,7 +14,10 @@ class TextInterface(ABC):
     and reference data as needed.
     """
 
-    def element_exist(self, input_data: Any, reference_data: Any) -> Optional[Tuple[int, int]]:
+    @abstractmethod
+    def element_exist(
+        self, input_data: Any, reference_data: Any
+    ) -> Optional[Tuple[int, int]]:
         """
         Find the location of a reference image within the input data.
 
@@ -28,8 +31,12 @@ class TextInterface(ABC):
         """
         pass
 
-
-    def find_element(self, input_data, text, index=None) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
+    @abstractmethod
+    def find_element(
+        self, input_data, text, index=None
+    ) -> Optional[
+        Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]
+    ]:
         """
         Locate specific text in the input data using OCR and return detailed detection info.
 
@@ -46,7 +53,10 @@ class TextInterface(ABC):
         """
         pass
 
-    def detect_text(self, input_data):
+    @abstractmethod
+    def detect_text(
+        self, input_data
+    ) -> Optional[List[Tuple[List[Tuple[int, int]], str, float]]]:
         """
         Assert that elements are present in the input data based on the specified rule.
 

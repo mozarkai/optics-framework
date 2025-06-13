@@ -31,27 +31,25 @@ class RemoteOCR(TextInterface):
         self.method: str = self.capabilities.get("method", "easyocr")
         self.language: str = self.capabilities.get("language", "en")
 
-    def detect_text(self, image_base64: str, text_detection_name: str, language: str = "en") -> List[Dict[str, Any]]:
+    def detect_text(self, input_data: str) -> List[Tuple[List[Tuple[int, int]], str, float]]:
         """
         Detect text in an image via REST API and return text with bounding boxes.
 
         Args:
-            image_base64 (str): Base64 encoded image string
-            text_detection_name (str): Name of the text detection method
-            language (str): Language code for OCR (default: "en")
+            input_data (str): Base64 encoded image string
 
         Returns:
-            List[Dict[str, Any]]: List of detected texts with their bounding boxes
-                                 Each dict contains: {'text': str, 'bbox': List[Tuple[int, int]], 'confidence': float}
+            List[Tuple[List[Tuple[int, int]], str, float]]: List of detected texts with their bounding boxes
+                                 Each tuple contains: (bbox, text, confidence)
 
         Raises:
             RuntimeError: If API request fails
         """
         try:
             payload = {
-                "method": text_detection_name,
-                "image": image_base64,
-                "language": language
+                "method": self.method,
+                "image": input_data,
+                "language": self.language
             }
             response = requests.post(
                 f"{self.ocr_url}/detect-text",
@@ -103,8 +101,7 @@ class RemoteOCR(TextInterface):
             return None
 
         # Get all detected texts
-        detections = self.detect_text(
-            input_data, self.method, self.language)
+        detections = self.detect_text(input_data)
 
         matching_elements = []
 
@@ -135,7 +132,7 @@ class RemoteOCR(TextInterface):
 
         # Annotate and save screenshot if a match was found
         if result is not None:
-            success, center, (top_left, bottom_right) = result
+            _, center, (top_left, bottom_right) = result
             # Draw bounding box
 
             cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)  # pylint: disable=no-member

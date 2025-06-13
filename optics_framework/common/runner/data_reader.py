@@ -2,7 +2,7 @@ import csv
 import yaml
 import re
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Union, List
+from typing import Optional, Dict, Union, List, Tuple
 from optics_framework.common.logging_config import internal_logger
 
 
@@ -22,25 +22,25 @@ class DataReader(ABC):
         pass
 
     @staticmethod
-    def get_keyword_params(param_strings:List[str]) -> Dict[str, str]:
+    def get_keyword_params(param_strings: List[str]) -> Dict[str, str]:
         """
         Parses a list of params (string) and filters only keyword params (i.e in format key=value) and returns them as a Dictionary
         """
         args = {}
         for param in param_strings:
-            if '=' in param:
-                arg_name,value = param.split('=', 1)
+            if "=" in param:
+                arg_name, value = param.split("=", 1)
                 args[arg_name.strip()] = value.strip()
         return args
 
     @staticmethod
-    def get_positional_params(param_strings:List[str]) -> List[str]:
+    def get_positional_params(param_strings: List[str]) -> List[str]:
         """
         Parses a list of params (string) and returns a list of positional params (i.e not in key=value format)
         """
         args = []
         for param in param_strings:
-            if '=' not in param:
+            if "=" not in param:
                 args.append(param.strip())
         return args
 
@@ -136,19 +136,20 @@ class CSVDataReader(DataReader):
         modules = {}
         for row in rows:
             if "module_name" not in row or not row["module_name"]:
-                internal_logger.warning(
-                    f"Warning: Row missing 'module_name': {row}")
+                internal_logger.warning(f"Warning: Row missing 'module_name': {row}")
                 continue
             if "module_step" not in row or not row["module_step"]:
-                internal_logger.warning(
-                    f"Warning: Row missing 'module_step': {row}")
+                internal_logger.warning(f"Warning: Row missing 'module_step': {row}")
                 continue
             module_name = row["module_name"].strip()
             keyword = row["module_step"].strip()
             params = [
                 row[key].strip()
                 for key in row
-                if key is not None and key.startswith("param_") and row[key] and row[key].strip()
+                if key is not None
+                and key.startswith("param_")
+                and row[key]
+                and row[key].strip()
             ]
             if module_name not in modules:
                 modules[module_name] = []
@@ -215,11 +216,46 @@ class YAMLDataReader(DataReader):
                 name = name.strip()
                 if not name or not steps:
                     continue
-                test_cases[name] = [step.strip()
-                                    for step in steps if step.strip()]
+                test_cases[name] = [step.strip() for step in steps if step.strip()]
         return test_cases
 
-    def read_modules(self, file_path: str) -> dict:
+    def _parse_module_step(self, step: str) -> Tuple[str, List[str]]:
+        """
+        Parse a module step to extract the keyword and parameters.
+
+        :param step: The module step string.
+        :return: Tuple of (keyword, list of parameters).
+        """
+        step = step.strip()
+        if not step:
+            return "", []
+
+        param_pattern = re.compile(r"\${[^{}]+}")
+        params = param_pattern.findall(step)
+        if not params:
+            return step, []
+
+        param_start = step.index(params[0])
+        keyword = step[:param_start].strip()
+        param_str = step[param_start:].strip()
+        param_parts = param_str.split()
+        return keyword, [p.strip() for p in param_parts if p.strip()]
+
+    def _process_module_steps(self, steps: List[str]) -> List[Tuple[str, List[str]]]:
+        """
+        Process a list of module steps into a list of (keyword, params) tuples.
+
+        :param steps: List of step strings.
+        :return: List of (keyword, params) tuples.
+        """
+        module_steps = []
+        for step in steps:
+            keyword, params = self._parse_module_step(step)
+            if keyword:
+                module_steps.append((keyword, params))
+        return module_steps
+
+    def read_modules(self, file_path: str) -> Dict[str, List[Tuple[str, List[str]]]]:
         """
         Read a YAML file containing module information and return a dictionary mapping
         module names to lists of tuples (module_step, params).
@@ -232,35 +268,17 @@ class YAMLDataReader(DataReader):
         data = self.read_file(file_path)
         modules = {}
         modules_data = data.get("Modules", [])
+
         for module in modules_data:
             for name, steps in module.items():
                 name = name.strip()
                 if not name or not steps:
                     internal_logger.warning(
-                        f"Warning: Module '{name}' is empty or invalid")
+                        f"Warning: Module '{name}' is empty or invalid"
+                    )
                     continue
-                module_steps = []
-                for step in steps:
-                    step = step.strip()
-                    if not step:
-                        continue
-                    # Check if the step contains parameters (e.g., ${variable})
-                    param_pattern = re.compile(r'\${[^{}]+}')
-                    params = param_pattern.findall(step)
-                    if params:
-                        # Extract keyword as everything before the first parameter
-                        param_start = step.index(params[0])
-                        keyword = step[:param_start].strip()
-                        # Remaining part after keyword is parameters
-                        param_str = step[param_start:].strip()
-                        param_parts = param_str.split()
-                        params = [p.strip() for p in param_parts if p.strip()]
-                    else:
-                        # No parameters; entire step is the keyword
-                        keyword = step
-                        params = []
-                    module_steps.append((keyword, params))
-                modules[name] = module_steps
+                modules[name] = self._process_module_steps(steps)
+
         return modules
 
     def read_elements(self, file_path: Optional[str]) -> dict:

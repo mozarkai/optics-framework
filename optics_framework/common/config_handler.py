@@ -172,11 +172,8 @@ class ConfigHandler:
         return getattr(self.config, key, default)
 
     def save_config(self) -> None:
-        try:
-            with open(self.global_config_path, "w", encoding="utf-8") as f:
-                yaml.dump(self.config.model_dump(), f, default_flow_style=False)
-        except Exception as e:
-            raise e
+        with open(self.global_config_path, "w", encoding="utf-8") as f:
+            yaml.dump(self.config.model_dump(), f, default_flow_style=False)
 
     @classmethod
     def get_instance(cls) -> 'ConfigHandler':

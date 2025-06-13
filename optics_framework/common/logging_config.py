@@ -100,9 +100,7 @@ class JUnitEventHandler(EventSubscriber):
                 f"Test case event missing session_id: {event.model_dump()}")
             return
 
-        if event.entity_type == "test_case":
-            if not session_id:
-                return
+        if event.entity_type == "test_case" and session_id:
             if session_id not in self.session_suites:
                 session_suite = ET.SubElement(
                     self.testsuites, "testsuite",

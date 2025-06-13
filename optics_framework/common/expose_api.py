@@ -66,10 +66,10 @@ async def create_session(config: SessionConfig):
     try:
         # Transform SessionConfig into Config format
         session_config_dict = {
-            "driver_sources": [{"name": DependencyConfig(enabled=True)} for name in config.driver_sources],
-            "elements_sources": [{"name": DependencyConfig(enabled=True)} for name in config.elements_sources],
-            "text_detection": [{"name": DependencyConfig(enabled=True)} for name in config.text_detection],
-            "image_detection": [{"name": DependencyConfig(enabled=True)} for name in config.image_detection],
+            "driver_sources": [{"name": DependencyConfig(enabled=True)} for _ in config.driver_sources],
+            "elements_sources": [{"name": DependencyConfig(enabled=True)} for _ in config.elements_sources],
+            "text_detection": [{"name": DependencyConfig(enabled=True)} for _ in config.text_detection],
+            "image_detection": [{"name": DependencyConfig(enabled=True)} for _ in config.image_detection],
             "project_path": config.project_path
         }
         session_config = Config(**session_config_dict)
