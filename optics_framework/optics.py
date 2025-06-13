@@ -1,6 +1,6 @@
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
+from optics_framework.common.config_handler import ConfigHandler,DependencyConfig
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
@@ -28,18 +28,83 @@ class Optics:
         self.verifier: Optional[Verifier] = None
         self.session_id: Optional[str] = None
 
+    def _create_dependency_config(self, config_dict: Dict[str, Any]) -> DependencyConfig:
+        """
+        Convert a dictionary to a DependencyConfig instance.
+
+        Args:
+            config_dict: Dictionary containing configuration (enabled, url, capabilities).
+
+        Returns:
+            DependencyConfig: Validated configuration object.
+        """
+        return DependencyConfig(
+            enabled=config_dict.get('enabled', True),
+            url=config_dict.get('url'),
+            capabilities=config_dict.get('capabilities', {})
+        )
+
+    def _process_config_list(self, config_list: List[Dict[str, Any]]) -> List[Dict[str, DependencyConfig]]:
+        """
+        Convert a list of configuration dictionaries to a list of DependencyConfig dictionaries.
+
+        Args:
+            config_list: List of configuration dictionaries.
+
+        Returns:
+            List of dictionaries with DependencyConfig values.
+        """
+        return [{key: self._create_dependency_config(value)} for item in config_list for key, value in item.items()]
+
+    def _flatten_config(self, config_list: List[Dict[str, DependencyConfig]]) -> List[Dict[str, Any]]:
+        """
+        Flatten DependencyConfig objects to dictionaries for OpticsBuilder.
+
+        Args:
+            config_list: List of dictionaries with DependencyConfig values.
+
+        Returns:
+            List of dictionaries with serializable values compatible with OpticsBuilder.
+        """
+        return [{k: v.__dict__} for item in config_list for k, v in item.items()]
+
+    def _configure_builder(self, config_type: str, config_list: List[Dict[str, DependencyConfig]]) -> None:
+        """
+        Configure OpticsBuilder for a specific configuration type.
+
+        Args:
+            config_type: Type of configuration ('driver', 'element', 'image', 'text').
+            config_list: List of configuration dictionaries.
+
+        Raises:
+            ValueError: If configuration fails.
+        """
+        try:
+            flattened = self._flatten_config(config_list)
+            if config_type == 'driver':
+                self.builder.add_driver(flattened)  # type: ignore
+            elif config_type == 'element':
+                self.builder.add_element_source(flattened)  # type: ignore
+            elif config_type == 'image':
+                self.builder.add_image_detection(flattened)  # type: ignore
+            elif config_type == 'text':
+                self.builder.add_text_detection(flattened)  # type: ignore
+        except Exception as e:
+            internal_logger.error(f"Failed to configure {config_type} in OpticsBuilder: {e}")
+            raise ValueError(f"Failed to configure {config_type} in OpticsBuilder: {e}")
+
     def setup(
         self,
-        driver_config: List[Dict[str, DependencyConfig]],
-        element_source_config: List[Dict[str, DependencyConfig]],
-        image_config: Optional[List[Dict[str, DependencyConfig]]] = None,
-        text_config: Optional[List[Dict[str, DependencyConfig]]] = None,
+        driver_config: List[Dict[str, Dict[str, Any]]],
+        element_source_config: List[Dict[str, Dict[str, Any]]],
+        image_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        text_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
     ) -> None:
         """
         Configure the Optics Framework with required driver and element source settings.
 
         Args:
-            driver_config: List of driver configurations (e.g., [{"appium": DependencyConfig(...)}]).
+            driver_config: List of driver configurations (e.g., [{"appium": {"enabled": True, "url": "...", "capabilities": {...}}}]).
             element_source_config: List of element source configurations.
             image_config: Optional list of image detection configurations.
             text_config: Optional list of text detection configurations.
@@ -47,61 +112,26 @@ class Optics:
         Raises:
             ValueError: If configuration or session creation fails.
         """
-        # Apply configurations
-        self.config.driver_sources = driver_config
-        self.config.elements_sources = element_source_config
-        self.config.image_detection = image_config or []
-        self.config.text_detection = text_config or []
+        # Convert user-provided dictionaries to DependencyConfig
+        driver_deps = self._process_config_list(driver_config)
+        element_deps = self._process_config_list(element_source_config)
+        image_deps = self._process_config_list(image_config) if image_config else []
+        text_deps = self._process_config_list(text_config) if text_config else []
 
-        # Sync ConfigHandler
-        self.config_handler.config.driver_sources = driver_config
-        self.config_handler.config.elements_sources = element_source_config
-        self.config_handler.config.image_detection = image_config or []
-        self.config_handler.config.text_detection = text_config or []
+        # Update ConfigHandler
+        self.config_handler.config.driver_sources = driver_deps
+        self.config_handler.config.elements_sources = element_deps
+        self.config_handler.config.image_detection = image_deps
+        self.config_handler.config.text_detection = text_deps
         self.config_handler.load()
-        # Configure OpticsBuilder
-        try:
-            # Convert DependencyConfig objects to dictionaries if needed
-            def convert_dependency_config_list(config_list: List[Dict[str, DependencyConfig]]) -> List[Dict[str, dict]]:
-                """
-                Convert a list of dicts with DependencyConfig values to a list of dicts with serializable dict values.
-                """
-                result = []
-                for item in config_list:
-                    converted = {}
-                    for k, v in item.items():
-                        if isinstance(v, DependencyConfig):
-                            converted[k] = v.__dict__
-                        else:
-                            converted[k] = v
-                    result.append(converted)
-                return result
 
-            flattened_driver_config = []
-            for d in convert_dependency_config_list(driver_config):
-                for k, v in d.items():
-                    flattened_driver_config.append({k: v})
-            self.builder.add_driver(flattened_driver_config)
-            flattened_element_source_config = []
-            for d in convert_dependency_config_list(element_source_config):
-                for k, v in d.items():
-                    flattened_element_source_config.append({k: v})
-            self.builder.add_element_source(flattened_element_source_config)
-            if image_config:
-                flattened_image_config = []
-                for d in convert_dependency_config_list(image_config):
-                    for k, v in d.items():
-                        flattened_image_config.append({k: v})
-                self.builder.add_image_detection(flattened_image_config)
-            if text_config:
-                flattened_text_config = []
-                for d in convert_dependency_config_list(text_config):
-                    for k, v in d.items():
-                        flattened_text_config.append({k: v})
-                self.builder.add_text_detection(flattened_text_config)
-        except Exception as e:
-            internal_logger.error(f"Failed to configure OpticsBuilder: {e}")
-            raise ValueError(f"Failed to configure OpticsBuilder: {e}")
+        # Configure OpticsBuilder
+        self._configure_builder('driver', driver_deps)
+        self._configure_builder('element', element_deps)
+        if image_deps:
+            self._configure_builder('image', image_deps)
+        if text_deps:
+            self._configure_builder('text', text_deps)
 
         # Build API instances
         self.app_management = self.builder.build(AppManagement)
@@ -113,7 +143,7 @@ class Optics:
             self.session_id = self.session_manager.create_session(self.config)
         except Exception as e:
             internal_logger.error(f"Failed to create session: {e}")
-            raise ValueError(f"Failed to create session: {e}")
+
 
     ### AppManagement Methods ###
     def launch_app(self, event_name: Optional[str] = None) -> None:
@@ -316,62 +346,62 @@ if __name__ == "__main__":
         "Contact_Name": '//android.widget.TextView[@resource-id="com.google.android.contacts:id/title" and @text="John Doe"]',
     }
 
-    # Configuration from config.yaml
+    # Configuration from config.yaml (updated to use dictionaries instead of DependencyConfig)
     CONFIG = {
         "driver_config": [
             {
-                "appium": DependencyConfig(
-                    enabled=True,
-                    url="http://localhost:4723",
-                    capabilities={
+                "appium": {
+                    "enabled": True,
+                    "url": "http://localhost:4723",
+                    "capabilities": {
                         "appActivity": "com.android.contacts.activities.PeopleActivity",
                         "appPackage": "com.google.android.contacts",
                         "automationName": "UiAutomator2",
                         "deviceName": "emulator-5554",
                         "platformName": "Android"
                     }
-                )
+                }
             },
         ],
         "element_source_config": [
             {
-                "appium_find_element": DependencyConfig(
-                    enabled=True,
-                    url=None,
-                    capabilities={}
-                )
+                "appium_find_element": {
+                    "enabled": True,
+                    "url": None,
+                    "capabilities": {}
+                }
             },
             {
-                "appium_page_source": DependencyConfig(
-                    enabled=True,
-                    url=None,
-                    capabilities={}
-                )
+                "appium_page_source": {
+                    "enabled": True,
+                    "url": None,
+                    "capabilities": {}
+                }
             },
             {
-                "appium_screenshot": DependencyConfig(
-                    enabled=True,
-                    url=None,
-                    capabilities={}
-                )
+                "appium_screenshot": {
+                    "enabled": True,
+                    "url": None,
+                    "capabilities": {}
+                }
             },
         ],
         "text_detection": [
             {
-                "easyocr": DependencyConfig(
-                    enabled=False,
-                    url=None,
-                    capabilities={}
-                )
+                "easyocr": {
+                    "enabled": False,
+                    "url": None,
+                    "capabilities": {}
+                }
             },
         ],
         "image_detection": [
             {
-                "templatematch": DependencyConfig(
-                    enabled=False,
-                    url=None,
-                    capabilities={}
-                )
+                "templatematch": {
+                    "enabled": False,
+                    "url": None,
+                    "capabilities": {}
+                }
             }
         ]
     }
@@ -385,7 +415,6 @@ if __name__ == "__main__":
         optics.assert_presence(
             ELEMENTS["Add_Contact_Button"],
             timeout=10,
-
         )
         optics.press_element(
             ELEMENTS["Add_Contact_Button"]
@@ -400,22 +429,18 @@ if __name__ == "__main__":
         optics.enter_text(
             element=ELEMENTS["First_Name_element"],
             text=ELEMENTS["First_Name"],
-
         )
         optics.enter_text(
             element=ELEMENTS["Last_Name_element"],
             text=ELEMENTS["Last_Name"],
-
         )
         optics.enter_text(
             element=ELEMENTS["Phone_element"],
             text=ELEMENTS["Phone"],
-
         )
         optics.enter_text(
             element=ELEMENTS["Company_element"],
             text=ELEMENTS["Company"],
-
         )
 
     def click_save_button(optics: Optics) -> None:
@@ -425,11 +450,11 @@ if __name__ == "__main__":
         )
 
     def verify_contact_added(optics: Optics) -> None:
-            """Verify the contact was added."""
-            optics.assert_presence(
-                ELEMENTS["Contact_Name"],
-                timeout=10
-            )
+        """Verify the contact was added."""
+        optics.assert_presence(
+            ELEMENTS["Contact_Name"],
+            timeout=10
+        )
 
     def add_contact_with_contact_app(optics: Optics) -> None:
         """Test case: Add contact with Contact app."""
