@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Literal, Optional, Tuple, Any
 
 
@@ -14,7 +14,7 @@ class ImageInterface(ABC):
     and reference data as needed.
     """
 
-
+    @abstractmethod
     def element_exist(
         self, input_data: Any, reference_data: Any
     ) -> (
@@ -34,8 +34,12 @@ class ImageInterface(ABC):
         """
         pass
 
-
-    def find_element(self, input_data, image, index=None) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
+    @abstractmethod
+    def find_element(
+        self, input_data, image, index=None
+    ) -> Optional[
+        Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]
+    ]:
         """
         Locate a specific image in the input data and return detailed detection info.
 
@@ -52,6 +56,7 @@ class ImageInterface(ABC):
         """
         pass
 
+    @abstractmethod
     def assert_elements(self, input_data, elements, rule="any") -> Optional[Tuple[bool, Any]]:
         """
         Assert that elements are present in the input data based on the specified rule.
