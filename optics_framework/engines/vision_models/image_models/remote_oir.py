@@ -142,7 +142,7 @@ class RemoteImageDetection(ImageInterface):
 
         # Annotate and save screenshot if a match was found
         if result is not None:
-            success, center, (top_left, bottom_right) = result
+            _, center, (top_left, bottom_right) = result
             # Draw bounding box
             cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)
             # Draw center point
