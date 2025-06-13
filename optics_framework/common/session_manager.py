@@ -30,11 +30,10 @@ class Session:
         self.config = config
 
         # Fetch enabled dependency names
-        driver_sources = self.config.driver_sources or []
-        element_sources = self.config.elements_sources or []
-        text_detection = self.config.text_detection or []
-        image_detection = self.config.image_detection or []
-
+        driver_sources = self.config_handler.get("driver_sources", [])
+        element_sources = self.config_handler.get("elements_sources", [])
+        text_detection = self.config_handler.get("text_detection", [])
+        image_detection = self.config_handler.get("image_detection", [])
         if not driver_sources:
             raise ValueError("No enabled drivers found in configuration")
 
@@ -44,7 +43,7 @@ class Session:
         self.optics.add_text_detection(text_detection)
         self.optics.add_image_detection(image_detection)
 
-        self.driver = self.optics.get_driver() if driver_sources else None
+        self.driver = self.optics.get_driver()
         self.event_queue = asyncio.Queue()
 
 
@@ -67,4 +66,5 @@ class SessionManager(SessionHandler):
     def terminate_session(self, session_id: str) -> None:
         """Terminates a session and cleans up resources."""
         session = self.sessions.pop(session_id, None)
-        session.driver.terminate()
+        if session and session.driver:
+            session.driver.terminate()
