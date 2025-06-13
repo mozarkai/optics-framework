@@ -152,12 +152,12 @@ class RemoteImageDetection(ImageInterface):
 
         return result
 
-    def element_exist(self, frame, reference_data: str) -> Tuple[int, int] | None:
+    def element_exist(self, input_data, reference_data: str) -> Tuple[int, int] | None:
         """
         Check if reference image exists in the input frame.
 
         Args:
-            frame: Image data to search in
+            input_data: Image data to search in
             reference_data: Template image to search for
 
         Returns:
@@ -181,26 +181,25 @@ class RemoteImageDetection(ImageInterface):
         raise NotImplementedError(
             "The 'locate' method is not implemented for RemoteImageDetection. Use 'find_element' instead.")
 
-    def assert_elements(self, frame, image_templates, rule="any"):
+    def assert_elements(self, input_data, elements, rule="any") -> Tuple[bool, np.ndarray]:
         """
         Assert that one or more template images are present in the given frame using remote detection.
 
         Args:
-            frame (np.ndarray): The source image/frame to search in.
-            image_templates (list): List of template image names or paths to locate.
+            input_data (np.ndarray): The source image/frame to search in.
+            elements (list): List of template image names or paths to locate.
             rule (str, optional): Rule to apply for matching; "any" (default) returns True if any template matches,
                       "all" returns True only if all templates match.
 
         Returns:
-            Tuple[bool, np.ndarray]: Tuple containing a boolean indicating if the assertion passes,
-                         and the annotated frame with detected templates highlighted.
+            None
         """
-        annotated_frame = frame.copy()
+        annotated_frame = input_data.copy()
         found_status = []
 
         # encode frame to base64
-        frame_base64 = utils.encode_numpy_to_base64(frame)
-        encoded_templates = self._prepare_encoded_templates(image_templates)
+        frame_base64 = utils.encode_numpy_to_base64(input_data)
+        encoded_templates = self._prepare_encoded_templates(elements)
 
         found_status = []
 

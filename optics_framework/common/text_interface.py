@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, List
 
 
 class TextInterface(ABC):
@@ -46,7 +46,7 @@ class TextInterface(ABC):
         """
         pass
 
-    def detect_text(self, input_data):
+    def detect_text(self, input_data) -> Optional[List[Tuple[List[Tuple[int, int]], str, float]]]:
         """
         Assert that elements are present in the input data based on the specified rule.
 

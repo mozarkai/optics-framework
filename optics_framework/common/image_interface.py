@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Tuple, Any
+from typing import Literal, Optional, Tuple, Any
 
 
 class ImageInterface(ABC):
@@ -15,7 +15,12 @@ class ImageInterface(ABC):
     """
 
 
-    def element_exist(self, input_data: Any, reference_data: Any) -> Optional[Tuple[int, int]]:
+    def element_exist(
+        self, input_data: Any, reference_data: Any
+    ) -> (
+        tuple[Literal[False], tuple[None, None], None]
+        | tuple[Literal[True], tuple[int, int], list[tuple[int, int]]]
+    ):
         """
         Find the location of a reference image within the input data.
 
@@ -47,7 +52,7 @@ class ImageInterface(ABC):
         """
         pass
 
-    def assert_elements(self, input_data, elements, rule="any"):
+    def assert_elements(self, input_data, elements, rule="any") -> Optional[Tuple[bool, Any]]:
         """
         Assert that elements are present in the input data based on the specified rule.
 
