@@ -5,8 +5,8 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.screenshot_stream import ScreenshotStream
-from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.logging_utils import log_strategy_attempt
+from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
 import numpy as np
 import time
@@ -289,10 +289,10 @@ class StrategyManager:
                 try:
                     result = strategy.locate(element)
                     if result:
-                        log_strategy_attempt(strategy, element, "success")
+                        execution_tracer.log_attempt(strategy, element, "success", keyword="locate")
                         yield LocateResult(result, strategy)
                 except Exception as e:
-                    log_strategy_attempt(strategy, element, "fail", str(e))
+                    execution_tracer.log_attempt(strategy, element, "fail", keyword="locate", error=str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
@@ -305,11 +305,15 @@ class StrategyManager:
                 try:
                     result, timestamp = strategy.assert_elements(elements, timeout, rule)
                     if result:
-                        log_strategy_attempt(strategy, str(elements), "success")
+                        execution_tracer.log_attempt(strategy, str(elements), "success", keyword="assert_presence")
                         return result, timestamp
+                    else:
+                        execution_tracer.log_attempt(strategy, str(elements), "fail", keyword="assert_presence", error="Elements not found")
+                        internal_logger.debug(
+                            f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
-                    log_strategy_attempt(strategy, str(elements), "fail", str(e))
-                    internal_logger.error(
+                    execution_tracer.log_attempt(strategy, str(elements), "fail", str(e))
+                    execution_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
         return False, None
@@ -318,11 +322,10 @@ class StrategyManager:
         for strategy in self.screenshot_strategies:
             try:
                 img = strategy.capture()
-                log_strategy_attempt(strategy, "screenshot", "success")
+                execution_tracer.log_attempt(strategy, "screenshot", "success", keyword="capture_screenshot")
                 return img
             except Exception as e:
-                internal_logger.debug(
-                    f"Screenshot failed with {strategy.__class__.__name__}: {e}")
+                execution_tracer.log_attempt(strategy, "screenshot", "fail", keyword="capture_screenshot", error=str(e))
         internal_logger.error("No screenshot captured.")
         return None
 
@@ -332,10 +335,10 @@ class StrategyManager:
                 self.screenshot_stream = ScreenshotStream(strategy.capture, max_queue_size=10)
                 self.screenshot_stream.start_capture(timeout, deduplication=True)
             except NotImplementedError as e:
-                internal_logger.debug(
+                execution_logger.debug(
                     f"Screenshot streaming not supported by {strategy.__class__.__name__}: {e}")
             except Exception as e:
-                internal_logger.error(
+                execution_logger.error(
                     f"Screenshot streaming failed with {strategy.__class__.__name__}: {e}")
         return self.screenshot_stream
 

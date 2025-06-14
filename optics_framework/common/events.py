@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Union, Optional, Dict, List, Any
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 
@@ -43,6 +43,11 @@ class Event(BaseModel):
     extra: Dict[str, str] = Field(
         default_factory=dict, description="Additional metadata (e.g., session_id for test_case)")
     timestamp: float = Field(default_factory=time.time, description="Event creation time in seconds")
+    # NEW FIELDS
+    args: Optional[Union[List[Any], Dict[str, Any]]] = Field(default=None, description="Arguments passed to the keyword (if applicable)")
+    start_time: Optional[float] = Field(default=None, description="Start time of keyword/module execution (seconds since epoch)")
+    end_time: Optional[float] = Field(default=None, description="End time of keyword/module execution (seconds since epoch)")
+    elapsed: Optional[float] = Field(default=None, description="Elapsed time for execution (seconds)")
 
 
 class Command(BaseModel):
@@ -158,6 +163,21 @@ class EventManager:
         """Log the current state of the EventManager."""
         internal_logger.debug(
             f"EventManager state: running={self._running}, subscribers={self.subscribers}, event_queue_size={self.event_queue.qsize()}")
+
+    def shutdown(self):
+        """Shutdown EventManager and cleanup subscribers."""
+        internal_logger.debug("Shutting down EventManager...")
+
+        for subscriber_id, subscriber in self.subscribers.items():
+            if hasattr(subscriber, 'close'):
+                internal_logger.debug(f"Closing subscriber {subscriber_id}")
+                try:
+                    subscriber.close()
+                except Exception as e:
+                    internal_logger.error(f"Error while closing subscriber {subscriber_id}: {e}")
+
+        self.dump_state()
+        self.stop()
 
 
 def get_event_manager() -> EventManager:

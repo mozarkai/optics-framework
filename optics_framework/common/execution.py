@@ -295,5 +295,4 @@ class ExecutionEngine:
                     internal_logger.debug(
                         "Waiting for %d events to process", self.event_manager.event_queue.qsize())
                     await asyncio.sleep(0.1)
-                self.event_manager.dump_state()
-                self.event_manager.stop()
+                self.event_manager.shutdown()

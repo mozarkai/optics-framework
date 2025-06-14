@@ -5,6 +5,7 @@ from typing import Optional, Tuple, List, Dict, Set
 import yaml
 from pydantic import BaseModel, field_validator
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
+from optics_framework.common.Junit_eventhandler import setup_junit
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
@@ -417,6 +418,7 @@ class BaseRunner:
         self.config.project_path = self.folder_path
         internal_logger.debug(f"Loaded configuration: {self.config}")
         reconfigure_logging()
+        setup_junit()  # Setup JUnit event handler if configured
 
         # Validate required configs
         required_configs = ["driver_sources", "elements_sources"]

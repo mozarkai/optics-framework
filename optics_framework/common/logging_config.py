@@ -2,18 +2,14 @@ import logging
 import queue
 import os
 import time
-from typing import Tuple, Dict
-from builtins import open
+from typing import Tuple
 import atexit
-import xml.etree.ElementTree as ET  # For JUnit XML generation # nosec B405
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pathlib import Path
 from rich.logging import RichHandler
-
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.events import EventSubscriber, Event, EventStatus, get_event_manager
 
-# Initialize ConfigHandler
+# Global variables
 config_handler = ConfigHandler.get_instance()
 config = config_handler.load()
 
@@ -228,6 +224,19 @@ junit_handler = None
 internal_listener = None
 execution_listener = None
 
+def create_file_handler(path, log_level, formatter=None):
+    handler = RotatingFileHandler(
+        path, maxBytes=10 * 1024 * 1024, backupCount=10)
+    handler.setFormatter(formatter or LOG_FORMATTER)
+    handler.setLevel(log_level)
+    return handler
+
+
+LOG_FORMATTER = logging.Formatter(
+    "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+
 
 def initialize_handlers():
     global config, junit_handler, internal_listener, execution_listener
@@ -236,77 +245,54 @@ def initialize_handlers():
 
     log_level_str = config.log_level.upper()
     log_level = getattr(logging, log_level_str, logging.INFO)
-    internal_logger.debug(
-        f"Setting log level to {log_level_str} ({log_level})")
+    internal_logger.debug(f"Setting log level to {log_level_str} ({log_level})")
 
     if execution_logger is None or internal_logger is None:
         raise RuntimeError(
-            f"Loggers not initialized: execution_logger={execution_logger}, internal_logger={internal_logger}")
+            f"Loggers not initialized: execution_logger={execution_logger}, internal_logger={internal_logger}"
+        )
 
+    # Set levels for console loggers
     internal_logger.setLevel(log_level)
     internal_console_handler.setLevel(log_level)
     execution_logger.setLevel(log_level)
     execution_console_handler.setLevel(log_level)
 
-
+    # Prepare directories
     project_path = config.project_path or Path.home() / ".optics"
     log_dir = Path(project_path) / "execution_output"
     log_dir.mkdir(parents=True, exist_ok=True)
-    internal_logger.debug(
-        f"Output directory: {log_dir}, writable={os.access(log_dir, os.W_OK)}")
+    internal_logger.debug(f"Output directory: {log_dir}, writable={os.access(log_dir, os.W_OK)}")
 
+    # Stop old listeners if exist
     if internal_listener:
         internal_listener.stop()
     if execution_listener:
         execution_listener.stop()
 
-    execution_listener = QueueListener(
-        execution_log_queue, execution_console_handler, respect_handler_level=True)
+    # Start listeners with console handlers first
+    internal_listener = QueueListener(internal_log_queue, internal_console_handler, respect_handler_level=True)
+    execution_listener = QueueListener(execution_log_queue, execution_console_handler, respect_handler_level=True)
 
-    internal_listener = QueueListener(
-        internal_log_queue, internal_console_handler, respect_handler_level=True)
-
+    # Add file handlers only if enabled
     if config.file_log or log_level <= logging.DEBUG:
-        log_path = Path(config.log_path or log_dir /
-                        "internal_logs.log").expanduser()
-        file_handler = RotatingFileHandler(
-            log_path, maxBytes=10*1024*1024, backupCount=10)
-        file_handler.setFormatter(logging.Formatter(
-            "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        ))
-        file_handler.setLevel(log_level)
+        internal_log_path = Path(config.log_path or log_dir / "internal_logs.log").expanduser()
+        execution_log_path = Path(config.log_path or log_dir / "execution_logs.log").expanduser()
 
-        internal_listener.handlers += (file_handler,)
-        execution_listener.handlers += (file_handler,)
-        exec_log_path = Path(config.log_path or log_dir /
-                             "execution_logs.log").expanduser()
-        exec_file_handler = RotatingFileHandler(
-            exec_log_path, maxBytes=10*1024*1024, backupCount=10)
-        exec_file_handler.setFormatter(logging.Formatter(
-            "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        ))
-        exec_file_handler.setLevel(log_level)
+        internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER)
+        execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER)
 
-        execution_listener.handlers += (exec_file_handler,)
-        internal_logger.debug(f"Added file handler: {exec_log_path}")
+        internal_listener.handlers += (internal_file_handler,)
+        execution_listener.handlers += (internal_file_handler, execution_file_handler,)
 
-    if getattr(config, 'json_log', False):
-        junit_path = log_dir / "junit_output.xml"
-        if junit_handler:
-            junit_handler.close()
-            get_event_manager().unsubscribe("junit")
-        junit_handler = JUnitEventHandler(junit_path)
-        get_event_manager().subscribe("junit", junit_handler)
-        internal_logger.debug(
-            f"Subscribed JUnitEventHandler to EventManager: {junit_path}")
+        internal_logger.debug(f"Added internal log file: {internal_log_path}")
+        internal_logger.debug(f"Added execution log file: {execution_log_path}")
+
 
     internal_listener.start()
     execution_listener.start()
 
     internal_logger.debug("Logging handlers initialized")
-
 
 def shutdown_logging():
     try:

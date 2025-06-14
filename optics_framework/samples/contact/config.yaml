@@ -27,4 +27,6 @@ image_detection:
   - templatematch:
       enabled: false
 
-log_level: INFO
+log_level: DEBUG
+
+json_log: true
