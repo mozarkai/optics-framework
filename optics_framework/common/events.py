@@ -48,7 +48,7 @@ class Event(BaseModel):
     start_time: Optional[float] = Field(default=None, description="Start time of keyword/module execution (seconds since epoch)")
     end_time: Optional[float] = Field(default=None, description="End time of keyword/module execution (seconds since epoch)")
     elapsed: Optional[float] = Field(default=None, description="Elapsed time for execution (seconds)")
-
+    logs: Optional[List[str]] = None
 
 class Command(BaseModel):
     """Structure for a command."""

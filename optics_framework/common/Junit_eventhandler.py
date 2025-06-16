@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 import xml.dom.minidom  #nosec B408
 import time
+import logging
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.config_handler import ConfigHandler
 
@@ -16,9 +17,14 @@ def setup_junit():
     project_path = config.project_path or Path.home() / ".optics"
     log_dir = Path(project_path) / "execution_output"
 
-    # Setup JUnit handler if needed
-    if getattr(config, 'json_log', False):
+    junit_path = getattr(config, 'json_log_path', None)
+    if junit_path:
+        junit_path = Path(junit_path).expanduser()
+    else:
         junit_path = log_dir / "junit_output.xml"
+
+    # Setup JUnit handler if enabled
+    if getattr(config, 'json_log', False):
         if junit_handler:
             junit_handler.close()
             get_event_manager().unsubscribe("junit")
@@ -26,6 +32,22 @@ def setup_junit():
         get_event_manager().subscribe("junit", junit_handler)
         internal_logger.debug(f"Subscribed JUnitEventHandler to EventManager: {junit_path}")
 
+class LogCaptureBuffer(logging.Handler):
+    """
+    Custom log handler to capture logs emitted during keyword execution.
+    """
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+    def clear(self):
+        self.records.clear()
+
+    def get_records(self):
+        return self.records
 
 class JUnitEventHandler(EventSubscriber):
     def __init__(self, output_path: Path):
@@ -37,6 +59,9 @@ class JUnitEventHandler(EventSubscriber):
         self.start_times: Dict[str, float] = {}
         self.module_names: Dict[str, str] = {}
         self.module_elements: Dict[str, ET.Element] = {}
+        self.active_keyword_elements: Dict[str, ET.Element] = {}  # Per keyword_id for update during execution
+        self.keyword_log_buffers: Dict[str, LogCaptureBuffer] = {}
+
         internal_logger.debug(f"Initialized JUnitEventHandler with output: {self.output_path}")
 
 
@@ -135,6 +160,17 @@ class JUnitEventHandler(EventSubscriber):
             args_element = ET.SubElement(kw_element, "arguments")
             for arg in event.args:
                 ET.SubElement(args_element, "arg").text = str(arg)
+
+        if event.logs:
+            internal_logger.info(f"Keyword {event.name} has logs: {event.logs}")
+            for message in event.logs:
+                log_element = ET.SubElement(kw_element, "log")
+                log_element.text = message
+
+        if event.parent_id not in self.keyword_elements:
+            self.keyword_elements[event.parent_id] = []
+        self.keyword_elements[event.parent_id].append(kw_element)
+
 
     def _update_testcase_status(self, testcase: ET.Element, event: Event, testsuite: ET.Element) -> None:
         testcase.set("status", event.status.value)

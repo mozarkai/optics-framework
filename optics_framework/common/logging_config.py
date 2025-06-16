@@ -55,6 +55,24 @@ class SessionLoggerAdapter(logging.LoggerAdapter):
         kwargs["extra"]["session_id"] = session_id
         return msg, kwargs
 
+class LogCaptureBuffer(logging.Handler):
+    """
+    Custom log handler to capture logs emitted during keyword execution.
+    """
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+    def clear(self):
+        self.records.clear()
+
+    def get_records(self):
+        return self.records
+
+
 # LoggerContext
 class LoggerContext:
     def __init__(self, session_id: str):

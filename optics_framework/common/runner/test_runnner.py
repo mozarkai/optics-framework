@@ -6,9 +6,10 @@ import shutil
 import sys
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 import pytest
+import logging
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger, LogCaptureBuffer
 from optics_framework.common import test_context
 from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, KeywordResult, ModuleResult, NullResultPrinter
 from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
@@ -183,7 +184,8 @@ class TestRunner(Runner):
         args: Optional[List[Any]] = None,
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
-        elapsed: Optional[float] = None
+        elapsed: Optional[float] = None,
+        logs: Optional[List[logging.LogRecord]] = None
     ) -> None:
         event = Event(
             entity_type=entity_type,
@@ -196,7 +198,8 @@ class TestRunner(Runner):
             args=args,
             start_time=start_time,
             end_time=end_time,
-            elapsed=elapsed
+            elapsed=elapsed,
+            logs=logs
         )
         await queue_event(event)
 
@@ -229,6 +232,8 @@ class TestRunner(Runner):
             test_case_result.name, module_node.name, keyword_node.id)
         execution_logger.debug(
             f"Executing keyword: {keyword_node.name} (id: {keyword_node.id})")
+        execution_logger.info(f"Dummy log: Successfully started keyword [{keyword_node.name}]")
+
         start_time = time.time()
 
         keyword_node.state = State.RUNNING
@@ -256,6 +261,9 @@ class TestRunner(Runner):
             self._update_status(keyword_result, "FAIL",
                                 time.time() - start_time, test_case_result.name)
             return False
+        # starting log capture for lower level logging
+        capture_handler = LogCaptureBuffer()
+        execution_logger.addHandler(capture_handler)
 
         try:
             raw_indices = getattr(method, '_raw_param_indices', [])
@@ -278,13 +286,17 @@ class TestRunner(Runner):
             await asyncio.sleep(0.1)
             keyword_node.state = State.COMPLETED_PASSED
             end_time = time.time()
+            log_messages = [record.getMessage() for record in capture_handler.get_records()]
+
             await self._send_event(
                 "keyword", keyword_node, EventStatus.PASS,
                 parent_id=module_node.id,
                 args=resolved_kw_params,
                 start_time=start_time,
                 end_time=end_time,
-                elapsed=end_time - start_time
+                elapsed=end_time - start_time,
+                logs=log_messages
+
             )
             self._update_status(keyword_result, "PASS",
                                 time.time() - start_time, test_case_result.name)
@@ -294,6 +306,7 @@ class TestRunner(Runner):
             keyword_node.state = State.COMPLETED_FAILED
             keyword_node.last_failure_reason = str(e)
             end_time = time.time()
+            log_messages = [record.getMessage() for record in capture_handler.get_records()]
             await self._send_event(
                 "keyword", keyword_node, EventStatus.FAIL,
                 reason=str(e),
@@ -301,7 +314,8 @@ class TestRunner(Runner):
                 args=resolved_kw_params,
                 start_time=start_time,
                 end_time=end_time,
-                elapsed=end_time - start_time
+                elapsed=end_time - start_time,
+                logs=log_messages
             )
             self._update_status(keyword_result, "FAIL",
                                 time.time() - start_time, test_case_result.name)
