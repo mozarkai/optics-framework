@@ -94,7 +94,7 @@ class JUnitEventHandler(EventSubscriber):
 
     async def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
         event_time = getattr(event, 'timestamp', time.time())
-        execution_logger.debug(
+        internal_logger.debug(
             f"Handling test_case event: id={event.entity_id}, status={event.status}, timestamp={event_time}")
         if event.status == EventStatus.RUNNING:
             testcase = ET.SubElement(

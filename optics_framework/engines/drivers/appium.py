@@ -6,7 +6,7 @@ from appium.options.ios import XCUITestOptions
 from optics_framework.common.config_handler import ConfigHandler
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
@@ -176,7 +176,7 @@ class Appium(DriverInterface):
         """Launch the app using the Appium driver."""
         if self.driver is None:
             self.start_session(event_name)
-        internal_logger.debug(f"Launched application with event: {event_name}")
+        execution_logger.debug(f"Launched application with event: {event_name}")
 
     def get_driver(self):
         """Return the Appium driver instance."""

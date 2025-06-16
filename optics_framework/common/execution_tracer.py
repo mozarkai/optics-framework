@@ -10,8 +10,6 @@ class ExecutionTracer:
     def log_attempt(strategy,
                     element: str,
                     status: str,
-                    keyword: str,
-                    session: str = "global",
                     duration: Optional[float] = None,
                     error: Optional[str] = None):
 
@@ -22,11 +20,9 @@ class ExecutionTracer:
         # Push into execution logger (structured)
         execution_logger.info({
             "event": "strategy_attempt",
-            "keyword": keyword,
             "strategy": strategy.__class__.__name__,
             "element": element_str,
             "status": status.lower(),
-            "session": session,
             "duration": duration,
             "error": error
         })

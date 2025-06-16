@@ -289,10 +289,10 @@ class StrategyManager:
                 try:
                     result = strategy.locate(element)
                     if result:
-                        execution_tracer.log_attempt(strategy, element, "success", keyword="locate")
+                        execution_tracer.log_attempt(strategy, element, "success")
                         yield LocateResult(result, strategy)
                 except Exception as e:
-                    execution_tracer.log_attempt(strategy, element, "fail", keyword="locate", error=str(e))
+                    execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
 
@@ -305,10 +305,10 @@ class StrategyManager:
                 try:
                     result, timestamp = strategy.assert_elements(elements, timeout, rule)
                     if result:
-                        execution_tracer.log_attempt(strategy, str(elements), "success", keyword="assert_presence")
+                        execution_tracer.log_attempt(strategy, str(elements), "success")
                         return result, timestamp
                     else:
-                        execution_tracer.log_attempt(strategy, str(elements), "fail", keyword="assert_presence", error="Elements not found")
+                        execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found")
                         internal_logger.debug(
                             f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
@@ -322,10 +322,10 @@ class StrategyManager:
         for strategy in self.screenshot_strategies:
             try:
                 img = strategy.capture()
-                execution_tracer.log_attempt(strategy, "screenshot", "success", keyword="capture_screenshot")
+                execution_tracer.log_attempt(strategy, "screenshot", "success")
                 return img
             except Exception as e:
-                execution_tracer.log_attempt(strategy, "screenshot", "fail", keyword="capture_screenshot", error=str(e))
+                execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
         internal_logger.error("No screenshot captured.")
         return None
 

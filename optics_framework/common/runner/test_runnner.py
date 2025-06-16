@@ -192,7 +192,7 @@ class TestRunner(Runner):
             entity_id=node.id,
             name=node.name,
             status=status,
-            message=f"{reason or ''} (Attempt {node.attempt_count})",
+            message=reason or "",
             parent_id=parent_id,
             extra={"session_id": self.session_id},
             args=args,
@@ -281,7 +281,7 @@ class TestRunner(Runner):
                 keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
                 combined_params = ", ".join(filter(None, [positional_str, keyword_str]))
                 keyword_result.resolved_name = f"{keyword_node.name} ({combined_params})" if combined_params else keyword_node.name
-            execution_logger.debug(f"Executing keyword: {keyword_node.name} with params: {resolved_kw_params}")
+            execution_logger.debug(f"PARAMS: positional=({resolved_positional_params}), keyword=({resolved_kw_params})")
             method(*resolved_positional_params, **resolved_kw_params)
             await asyncio.sleep(0.1)
             keyword_node.state = State.COMPLETED_PASSED
