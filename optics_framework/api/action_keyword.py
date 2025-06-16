@@ -1,7 +1,7 @@
 from functools import wraps
 import time
 from typing import Callable, Optional, Any
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
@@ -73,12 +73,12 @@ class ActionKeyword:
         """
         if isinstance(located, tuple):
             x, y = located
-            internal_logger.debug(
+            execution_logger.debug(
                 f"Pressing at coordinates ({x + offset_x}, {y + offset_y})")
             self.driver.press_coordinates(
                 x + offset_x, y + offset_y,repeat, event_name)
         else:
-            internal_logger.debug(f"Pressing element '{element}'")
+            execution_logger.debug(f"Pressing element '{element}'")
             self.driver.press_element(located, repeat, event_name)
 
     def press_by_percentage(self, percent_x: int, percent_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
@@ -279,10 +279,9 @@ class ActionKeyword:
         """
         if isinstance(located, tuple):
             x, y = located
-            internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
+            execution_logger.debug(f"Swiping from coordinates ({x}, {y})")
             self.driver.swipe(x, y, direction, swipe_length, event_name)
         else:
-            internal_logger.debug(f"Swiping from element '{element}'")
             self.driver.swipe_element(
                 located, direction, swipe_length, event_name)
 
@@ -331,10 +330,9 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "scroll_from_element")
         if isinstance(located, tuple):
             x, y = located
-            internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
+            execution_logger.debug(f"Swiping from coordinates ({x}, {y})")
             self.driver.swipe(x, y, direction, scroll_length, event_name)
         else:
-            internal_logger.debug(f"Swiping from element '{element}'")
             self.driver.swipe_element(
                 located, direction, scroll_length, event_name)
 

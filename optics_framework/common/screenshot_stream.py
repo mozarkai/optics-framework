@@ -4,7 +4,7 @@ import threading
 import queue
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common import utils
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 
 class ScreenshotStream:
     def __init__(self, capture_screenshot_callable, max_queue_size=100, debug_folder=None):
@@ -92,11 +92,11 @@ class ScreenshotStream:
         """
         if self.stop_event.is_set():
             self.stop_event.clear()
-        internal_logger.debug("Starting screenshot capture threads.")
+        execution_logger.debug("Starting screenshot capture threads.")
         threading.Thread(target=self.capture_stream, args=(timeout,), daemon=True).start()
         if deduplication:
             threading.Thread(target=self.process_screenshot_queue, daemon=True).start()
-            internal_logger.debug("Started screenshot deduplication thread.")
+            execution_logger.debug("Started screenshot deduplication thread.")
 
     def stop_capture(self):
         """

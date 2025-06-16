@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.runner.printers import TreeResultPrinter
 from optics_framework.common import test_context
 import json
@@ -51,7 +51,7 @@ class EventSDK:
         except Exception as e:
             internal_logger.error(f"Unable to get {key} from JSON file", exc_info=e)
 
-    def get_mozark_event_attributes(self, file_path):
+    def get_event_attributes(self, file_path):
         try:
             with open(file_path, 'r') as f:
                 data = json.load(f)
@@ -84,7 +84,7 @@ class EventSDK:
     def submit_single_event(self, event_name, event_attributes, real_time=False, time_interval=0):
         try:
             final_event_data = self.form_event_name(event_name) | self.form_event_attributes(event_attributes)
-            mozark_event_attributes = self.get_mozark_event_attributes(self.event_attributes_json)
+            mozark_event_attributes = self.get_event_attributes(self.event_attributes_json)
             event_data = {**final_event_data, **mozark_event_attributes}
             self.all_events.append(event_data)
             self.event_sdk_initializer(real_time, time_interval)
@@ -117,7 +117,7 @@ class EventSDK:
     def send_batch_events(self, event_data):
         try:
             if not event_data:
-                internal_logger.info("No events to send.")
+                execution_logger.info("No events to send.")
                 return
             url = self.event_attributes_json.get("eventUrl") + "/v1/event/batchevent"
             bearer = self.event_attributes_json.get("testParameters_bearer")
@@ -126,11 +126,11 @@ class EventSDK:
                 'Content-Type': 'application/json'
             }
             payload = json.dumps(event_data)
-            internal_logger.debug(f"Sending event to {url}: {payload}")
+            execution_logger.debug(f"Sending event to {url}: {payload}")
             response = requests.post(url, headers=headers, data=payload, timeout=10)
-            internal_logger.info(f"Event API response: {response.text}")
+            execution_logger.info(f"Event API response: {response.text}")
         except Exception as e:
-            internal_logger.error("Unable to send batch events", exc_info=e)
+            execution_logger.error("Unable to send batch events", exc_info=e)
 
     def add_to_array(self, event_data):
         try:
@@ -190,15 +190,16 @@ class EventSDK:
             if not file_path:
                 raise ValueError("Event attributes JSON file path is not set.")
 
-            mozark_event_attributes = self.get_mozark_event_attributes(file_path)
+            event_attributes = self.get_event_attributes(file_path)
 
-            combined_dict = self.merge_dictionaries(user_event_attrb, mozark_event_attributes)
+            combined_dict = self.merge_dictionaries(user_event_attrb, event_attributes)
             #print event to console
             self.print_event(combined_dict)
+            execution_logger.debug(f"Captured event: {combined_dict}")
             self.all_events.append(combined_dict)
 
         except Exception as e:
-            internal_logger.error("Unable to capture events", exc_info=e)
+            execution_logger.error("Unable to capture events", exc_info=e)
 
     def capture_event_with_time_input(self, event_name, current_time, **event_attributes):
         """
@@ -217,16 +218,18 @@ class EventSDK:
             file_path = self.event_attributes_json
             if not file_path:
                 raise ValueError("Environment variable 'ATTRIBUTES_JSON' is not set.")
-            mozark_event_attributes = self.get_mozark_event_attributes(file_path)
+            mozark_event_attributes = self.get_event_attributes(file_path)
             combined_dict = self.merge_dictionaries(user_event_attrb, mozark_event_attributes)
             #print event to console
             self.print_event(combined_dict)
+            execution_logger.debug(f"Captured event: {combined_dict}")
             self.all_events.append(combined_dict)
 
         except Exception as e:
             internal_logger.error("Unable to capture events", exc_info=e)
 
     def send_all_events(self):
+        execution_logger.info("Sending all captured events...")
         self.send_batch_events(self.all_events)
 
 

@@ -167,7 +167,7 @@ class TestRunner(Runner):
         if elapsed is not None:
             result.elapsed = f"{elapsed:.2f}s"
         if test_case_name:
-            execution_logger.debug(
+            internal_logger.debug(
                 f"Updating status for {result.__class__.__name__}: {result.name} -> {status}")
             test_case_result = self.result_printer.test_state.get(
                 test_case_name)
@@ -228,12 +228,14 @@ class TestRunner(Runner):
         test_case_result: TestCaseResult,
         extra: Dict[str, str]
     ) -> bool:
+        # starting log capture for lower level logging
+        capture_handler = LogCaptureBuffer()
+        execution_logger.addHandler(capture_handler)
+
         keyword_result = self._find_result(
             test_case_result.name, module_node.name, keyword_node.id)
         execution_logger.debug(
             f"Executing keyword: {keyword_node.name} (id: {keyword_node.id})")
-        execution_logger.info(f"Dummy log: Successfully started keyword [{keyword_node.name}]")
-
         start_time = time.time()
 
         keyword_node.state = State.RUNNING
@@ -261,9 +263,6 @@ class TestRunner(Runner):
             self._update_status(keyword_result, "FAIL",
                                 time.time() - start_time, test_case_result.name)
             return False
-        # starting log capture for lower level logging
-        capture_handler = LogCaptureBuffer()
-        execution_logger.addHandler(capture_handler)
 
         try:
             raw_indices = getattr(method, '_raw_param_indices', [])
@@ -281,7 +280,10 @@ class TestRunner(Runner):
                 keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
                 combined_params = ", ".join(filter(None, [positional_str, keyword_str]))
                 keyword_result.resolved_name = f"{keyword_node.name} ({combined_params})" if combined_params else keyword_node.name
-            execution_logger.debug(f"PARAMS: positional=({resolved_positional_params}), keyword=({resolved_kw_params})")
+            positional_str = ", ".join(str(p) for p in resolved_positional_params)
+            keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
+            combined_params_str = ", ".join(filter(None, [positional_str, keyword_str]))
+            execution_logger.debug(f"PARAMS: {combined_params_str}")
             method(*resolved_positional_params, **resolved_kw_params)
             await asyncio.sleep(0.1)
             keyword_node.state = State.COMPLETED_PASSED

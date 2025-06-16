@@ -284,6 +284,7 @@ class StrategyManager:
 
     def locate(self, element: str) -> Generator[LocateResult, None, None]:
         element_type = utils.determine_element_type(element)
+        execution_logger.info(f"Locating element: {element} of type: {element_type}...")
         for strategy in self.locator_strategies:
             if strategy.supports(element_type, strategy.element_source):
                 try:
@@ -300,6 +301,8 @@ class StrategyManager:
         rule = rule.lower()
         if rule not in ("any", "all"):
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
+        execution_logger.info(
+            f"Asserting presence of elements: {elements} with rule: {rule} and timeout: {timeout}s")
         for strategy in self.locator_strategies:
             if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
                 try:
@@ -308,17 +311,16 @@ class StrategyManager:
                         execution_tracer.log_attempt(strategy, str(elements), "success")
                         return result, timestamp
                     else:
-                        execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found")
+                        execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
                         internal_logger.debug(
                             f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
                     execution_tracer.log_attempt(strategy, str(elements), "fail", str(e))
-                    execution_logger.error(
-                        f"Strategy {strategy.__class__.__name__} failed: {e}")
-
         return False, None
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
+        """Capture a screenshot using the available strategies."""
+        execution_logger.info("Capturing screenshot using available strategies.")
         for strategy in self.screenshot_strategies:
             try:
                 img = strategy.capture()
@@ -330,6 +332,8 @@ class StrategyManager:
         return None
 
     def capture_screenshot_stream(self, timeout: int = 30):
+        """Capture a screenshot stream using the available strategies."""
+        execution_logger.info("Starting screenshot stream with available strategies.")
         for strategy in self.screenshot_strategies:
             try:
                 self.screenshot_stream = ScreenshotStream(strategy.capture, max_queue_size=10)
@@ -345,6 +349,7 @@ class StrategyManager:
     def stop_screenshot_stream(self):
         if self.screenshot_stream:
             self.screenshot_stream.stop_capture()
+            execution_logger.info("Screenshot stream stopped successfully.")
             self.screenshot_stream = None
         else:
-            internal_logger.warning("No active screenshot stream to stop.")
+            execution_logger.warning("No active screenshot stream to stop.")
