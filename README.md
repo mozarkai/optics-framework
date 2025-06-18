@@ -1,9 +1,10 @@
 # Optics Framework
-
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![Documentation](https://img.shields.io/badge/docs-Mkdocs-blue)](docs/)
-
+[![Documentation](https://img.shields.io/badge/docs-Mkdocs-blue)](https://mozarkai.github.io/optics-framework/)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=coverage)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 **Optics Framework** is a powerful, extensible no code test automation framework designed for **vision powered**, **data-driven testing** and **production app synthetic monitoring**. It enables seamless integration with intrusive action & detection drivers such as Appium / WebDriver as well as non-intrusive action drivers such as BLE mouse / keyboard and detection drivers such as video capture card and external web cams.
 
 This framework was designed primarily for the following use cases:
@@ -31,7 +32,7 @@ This framework was designed primarily for the following use cases:
 ### Install via `pip`
 
 ```bash
-pip install --index-url https://pypi.org/simple/ --extra-index-url https://test.pypi.org/simple/ optics-framework
+pip install optics-framework
 ```
 
 ---
@@ -50,12 +51,13 @@ source venv/bin/activate
 pip install optics-framework
 ```
 
+> **⚠️ Important:** Conda environments are not supported for `easyocr` and `optics-framework` together, due to conflicting requirements for `numpy` (version 1.x vs 2.x). Please use a standard Python virtual environment instead.
+
 ### 2 Create a New Test Project
 
 ```bash
-optics setup --install Appium
-optics setup --install easyOCR
-optics init --name my_test_project --path . --template youtube
+optics setup --install Appium EasyOCR
+optics init --name my_test_project --path . --template contact
 ```
 
 ### 📌 Dry Run Test Cases
@@ -77,7 +79,7 @@ optics execute my_test_project
 ### Execute Tests
 
 ```bash
-optics execute <project_name> --test-cases <test_case_name>
+optics execute <project_name>
 ```
 
 ### Initialize a New Project
@@ -338,7 +340,7 @@ poetry run pytest
 
 ```bash
 poetry install --with docs
-poetry run sphinx-build -b html docs/ docs/_build/
+poetry run mkdocs serve
 ```
 
 ### Packaging the Project
@@ -380,6 +382,7 @@ This project is licensed under the **Apache 2.0 License**. See the [LICENSE](htt
 ---
 
 ## 📞 Support
+
 For support, please open an issue on GitHub or contact us at [@malto101], [@davidamo9] or [lalit@mozark.ai] .
 
 Happy Testing! 🚀
