@@ -299,8 +299,9 @@ class Appium(DriverInterface):
     def enter_text_element(self, element, text, event_name=None):
         if event_name:
             self.event_sdk.capture_event(event_name)
+
         execution_logger.debug(f"Entering text '{text}' into element: {element}")
-        element.send_keys(text)
+        element.send_keys(utils.strip_sensitive_prefix(text))
 
     def clear_text_element(self, element, event_name=None):
         if event_name:
@@ -312,7 +313,8 @@ class Appium(DriverInterface):
         if event_name:
             self.event_sdk.capture_event(event_name)
         execution_logger.debug(f"Entering text: {text}")
-        self.driver.execute_script("mobile: type", {"text": text})
+        text_to_send = utils.strip_sensitive_prefix(text)
+        self.driver.execute_script("mobile: type", {"text": text_to_send})
 
     def clear_text(self, event_name=None):
         if event_name:
@@ -324,7 +326,7 @@ class Appium(DriverInterface):
         if event_name:
             self.event_sdk.capture_event(event_name)
         execution_logger.debug(f"Pressing keycode: {keycode}")
-        self.driver.press_keycode(keycode)
+        self.driver.press_keycode(utils.strip_sensitive_prefix(keycode))
 
     def enter_text_using_keyboard(self, input_value: Union[str, SpecialKey], event_name=None):
         keycode_map = {
@@ -344,7 +346,7 @@ class Appium(DriverInterface):
                 timestamp = self.event_sdk.get_current_time_for_events()
                 input_value = str(input_value)
                 execution_logger.debug(f"Entering text using keyboard: {input_value}")
-                self.driver.execute_script("mobile: type", {"text": input_value})
+                self.driver.execute_script("mobile: type", {"text": utils.strip_sensitive_prefix(input_value)})
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:

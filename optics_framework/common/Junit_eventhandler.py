@@ -5,7 +5,7 @@ from typing import List, Dict
 import xml.dom.minidom  #nosec B408
 import time
 import logging
-from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger, SensitiveDataFormatter
 from optics_framework.common.config_handler import ConfigHandler
 
 junit_handler = None
@@ -160,11 +160,13 @@ class JUnitEventHandler(EventSubscriber):
             for arg in event.args:
                 ET.SubElement(args_element, "arg").text = str(arg)
 
+        sensitive_formatter = SensitiveDataFormatter()
         if event.logs:
             internal_logger.info(f"Keyword {event.name} has logs: {event.logs}")
             for message in event.logs:
+                senitised_message = sensitive_formatter._sanitize(message)
                 log_element = ET.SubElement(kw_element, "log")
-                log_element.text = message
+                log_element.text = senitised_message
 
         if event.parent_id not in self.keyword_elements:
             self.keyword_elements[event.parent_id] = []

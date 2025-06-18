@@ -258,6 +258,11 @@ def save_page_source_html(html: str, time_stamp):
 
     internal_logger.debug(f"HTML page source saved to: {page_source_file_path}")
 
+def strip_sensitive_prefix(value: str) -> str:
+    if isinstance(value, str) and value.startswith("SENSITIVE:"):
+        return value[len("SENSITIVE:"):]
+    return value
+
 
 def save_interactable_elements(elements):
     output_dir = get_execution_output_dir()

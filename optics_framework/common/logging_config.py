@@ -2,6 +2,7 @@ import logging
 import queue
 import os
 import time
+import re
 from typing import Tuple
 import atexit
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
@@ -22,9 +23,25 @@ execution_log_queue = queue.Queue(-1)
 internal_logger = logging.getLogger("optics.internal")
 internal_logger.propagate = False
 
+
+class SensitiveDataFormatter(logging.Formatter):
+    def format(self, record):
+        if isinstance(record.msg, str):
+            record.msg = self._sanitize(record.msg)
+        elif hasattr(record, "args") and record.args:
+            record.args = tuple(self._sanitize(str(arg)) for arg in record.args)
+        return super().format(record)
+
+    def _sanitize(self, message: str) -> str:
+        def replacer(match):
+            sensitive_value = match.group(1)
+            return '*' * len(sensitive_value)
+
+        return re.sub(r"SENSITIVE:([^\s,)\]]+)", replacer, message)
+
 internal_console_handler = RichHandler(
     rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
-internal_console_handler.setFormatter(logging.Formatter(
+internal_console_handler.setFormatter(SensitiveDataFormatter(
     "%(levelname)s | %(asctime)s | %(message)s", datefmt="%H:%M:%S"))
 
 internal_queue_handler = QueueHandler(internal_log_queue)
@@ -36,7 +53,7 @@ execution_logger.propagate = True
 
 execution_console_handler = RichHandler(
     rich_tracebacks=False, show_time=True, show_level=True, markup=True)
-execution_console_handler.setFormatter(logging.Formatter("%(message)s"))
+execution_console_handler.setFormatter(SensitiveDataFormatter("%(message)s"))
 
 execution_queue_handler = QueueHandler(execution_log_queue)
 execution_logger.addHandler(execution_queue_handler)
@@ -100,13 +117,15 @@ junit_handler = None
 internal_listener = None
 execution_listener = None
 
-def create_file_handler(path, log_level, formatter=None):
+def create_file_handler(path, log_level, formatter=None, use_sensitive=False):
     handler = RotatingFileHandler(
         path, maxBytes=10 * 1024 * 1024, backupCount=10)
-    handler.setFormatter(formatter or LOG_FORMATTER)
+    if use_sensitive:
+        handler.setFormatter(SensitiveDataFormatter('%(asctime)s - %(levelname)s - %(message)s'))
+    else:
+        handler.setFormatter(formatter or LOG_FORMATTER)
     handler.setLevel(log_level)
     return handler
-
 
 LOG_FORMATTER = logging.Formatter(
     "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
@@ -134,6 +153,7 @@ def initialize_handlers():
     execution_logger.setLevel(log_level)
     execution_console_handler.setLevel(log_level)
 
+
     # Prepare directories
     log_dir = Path(config.execution_output_path)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -154,8 +174,8 @@ def initialize_handlers():
         internal_log_path = Path(config.log_path or log_dir / "internal_logs.log").expanduser()
         execution_log_path = Path(config.log_path or log_dir / "execution_logs.log").expanduser()
 
-        internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER)
-        execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER)
+        internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
+        execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
 
         internal_listener.handlers += (internal_file_handler,)
         execution_listener.handlers += (internal_file_handler, execution_file_handler,)
