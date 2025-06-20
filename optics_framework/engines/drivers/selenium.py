@@ -3,7 +3,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
 from typing import Any, Dict, Optional
-from optics_framework.common.utils import SpecialKey
+from optics_framework.common.utils import SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
@@ -191,7 +191,7 @@ class SeleniumDriver(DriverInterface):
                 active_element.send_keys(Keys.ENTER)
             else:
                 timestamp = self.eventSDK.get_current_time_for_events()
-                active_element.send_keys(text)
+                active_element.send_keys(strip_sensitive_prefix(text))
             if event_name:
                 self.eventSDK.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug(f"Typed '{text}' into active element with event: {event_name}")
@@ -207,7 +207,7 @@ class SeleniumDriver(DriverInterface):
         try:
             element.clear()  # Clear existing text first
             timestamp = self.eventSDK.get_current_time_for_events()
-            element.send_keys(text)
+            element.send_keys(strip_sensitive_prefix(text))
             internal_logger.debug(
                 f"Entered text '{text}' into element with event: {event_name}")
             if event_name:
@@ -235,7 +235,7 @@ class SeleniumDriver(DriverInterface):
             if isinstance(input_value, SpecialKey):
                 active_element.send_keys(key_map[input_value])
             else:
-                active_element.send_keys(input_value)
+                active_element.send_keys(strip_sensitive_prefix(input_value))
             if event_name:
                 self.eventSDK.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
