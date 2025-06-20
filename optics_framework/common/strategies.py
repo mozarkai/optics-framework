@@ -122,7 +122,7 @@ class TextDetectionStrategy(LocatorStrategy):
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
         end_time = time.time() + timeout
-        found_status = {t: False for t in elements}
+        found_status = dict.fromkeys(elements, False)
         result = False
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
         try:
@@ -316,8 +316,6 @@ class StrategyManager:
                             f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
                     execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-                    # internal_logger.error(
-                    #     f"Strategy {strategy.__class__.__name__} failed to assert elements: {elements} with error: {e}")
         return False, None
 
     def capture_screenshot(self) -> Optional[np.ndarray]:

@@ -121,7 +121,7 @@ class TemplateMatchingHelper(ImageInterface):
         :return: None
         """
         annotated_frame = input_data.copy()
-        found_status = {template: False for template in elements}
+        found_status = dict.fromkeys(elements, False)
 
         for template_path in elements:
             if found_status[template_path]:  # Skip if already found (for 'all' rule)
