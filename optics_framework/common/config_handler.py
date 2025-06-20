@@ -43,6 +43,7 @@ class Config(BaseModel):
     log_level: str = "INFO"
     log_path: Optional[str] = None
     project_path: Optional[str] = None
+    execution_output_path: Optional[str] = None
     include: Optional[List[str]] = None
     exclude: Optional[List[str]] = None
     event_attributes_json: Optional[str] = None
@@ -113,9 +114,15 @@ class ConfigHandler:
         self.project_name = project_name
         self.project_config_path = os.path.join(project_name, "config.yaml") if project_name else None
         self.config.project_path = self.get_project_path()
+        self.config.execution_output_path = self.get_execution_output_path()
 
     def get_project_path(self) -> Optional[str]:
         return os.path.dirname(self.project_config_path) if self.project_config_path else None
+
+    def get_execution_output_path(self) -> Optional[str]:
+        if self.project_config_path:
+            return os.path.join(os.path.dirname(self.project_config_path), "execution_output")
+        return None
 
     def _ensure_global_config(self) -> None:
         if not os.path.exists(self.global_config_path):
@@ -131,6 +138,9 @@ class ConfigHandler:
         merged = deep_merge(merged, project_config)
         self.config = Config(**merged)
         self._precompute_enabled_configs()
+
+        if "execution_output_path" in merged:
+            self.config.execution_output_path = merged["execution_output_path"]
         return self.config
 
     def update_config(self, new_config: dict) -> None:

@@ -111,15 +111,12 @@ def compare_text(given_text, target_text):
     return False
 
 def get_execution_output_dir():
-    """
-    Returns the path to the execution output directory.
-    Creates the directory if it does not exist.
-    """
-    base_dir = ConfigHandler.get_instance().get_project_path()
-    if not base_dir:
-        internal_logger.error("Project path is not set. Cannot get execution output directory.")
+    config_handler = ConfigHandler.get_instance()
+    config = config_handler.load()
+    output_dir = config.execution_output_path
+    if output_dir is None:
+        internal_logger.error("Execution output path is not set in the configuration.")
         return None
-    output_dir = os.path.join(str(base_dir), "execution_output")
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
 
@@ -185,7 +182,6 @@ def annotate_element(frame, centre_coor, bbox):
     cv2.circle(frame, centre_coor, 5, (0, 0, 255), -1)
     return frame
 
-
 def annotate_and_save(frame, element_status):
     """
     Draw bounding boxes on the frame for found elements and save the annotated image.
@@ -206,6 +202,8 @@ def annotate_and_save(frame, element_status):
 
     # Save annotated frame
     save_screenshot(frame, name="annotated_frame")
+
+
 
 
 def save_page_source(tree, time_stamp):
