@@ -5,6 +5,7 @@
 [![Documentation](https://img.shields.io/badge/docs-Mkdocs-blue)](https://mozarkai.github.io/optics-framework/)
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=coverage)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
+
 **Optics Framework** is a powerful, extensible no code test automation framework designed for **vision powered**, **data-driven testing** and **production app synthetic monitoring**. It enables seamless integration with intrusive action & detection drivers such as Appium / WebDriver as well as non-intrusive action drivers such as BLE mouse / keyboard and detection drivers such as video capture card and external web cams.
 
 This framework was designed primarily for the following use cases:
