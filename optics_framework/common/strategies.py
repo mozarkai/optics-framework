@@ -315,7 +315,9 @@ class StrategyManager:
                         internal_logger.debug(
                             f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
-                    execution_tracer.log_attempt(strategy, str(elements), "fail", str(e))
+                    execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
+                    # internal_logger.error(
+                    #     f"Strategy {strategy.__class__.__name__} failed to assert elements: {elements} with error: {e}")
         return False, None
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
