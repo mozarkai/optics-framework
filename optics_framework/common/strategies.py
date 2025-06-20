@@ -122,7 +122,7 @@ class TextDetectionStrategy(LocatorStrategy):
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
         end_time = time.time() + timeout
-        found_status = {t: False for t in elements}
+        found_status = dict.fromkeys(elements, False)
         result = False
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
         try:

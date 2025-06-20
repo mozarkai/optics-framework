@@ -123,7 +123,7 @@ class AppiumFindElement(ElementSourceInterface):
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
 
         start_time = time.time()
-        found = {el: False for el in elements}
+        found = dict.fromkeys(elements, False)
 
         while time.time() - start_time < timeout:
             for el in elements:
