@@ -93,6 +93,7 @@ class JUnitEventHandler(EventSubscriber):
             await self._handle_keyword_event(event)
 
     async def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
+        # sonarcloud: disable=no-async-without-await
         event_time = getattr(event, 'timestamp', time.time())
         internal_logger.debug(
             f"Handling test_case event: id={event.entity_id}, status={event.status}, timestamp={event_time}")
@@ -127,6 +128,7 @@ class JUnitEventHandler(EventSubscriber):
                 del self.module_names[event.entity_id]
 
     async def _handle_module_event(self, event: Event) -> None:
+        # sonarcloud: disable=no-async-without-await
         testcase_id = event.parent_id
         if not testcase_id or testcase_id not in self.testcase_cases:
             return
@@ -142,6 +144,7 @@ class JUnitEventHandler(EventSubscriber):
                 module_kw.set("status", event.status.value)
 
     async def _handle_keyword_event(self, event: Event) -> None:
+        # sonarcloud: disable=no-async-without-await
         module_id = event.parent_id
         module_kw = self.module_elements.get(module_id)
         if module_kw is None:

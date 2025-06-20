@@ -30,8 +30,7 @@ class CapabilitiesConfig(BaseModel):
         if self.platform_name.lower() == "android":
             if not self.app_package or not self.app_activity:
                 raise ValueError("Android requires 'appPackage' and 'appActivity'")
-        elif self.platform_name.lower() == "ios":
-            if not self.app:
+        elif self.platform_name.lower() == "ios" and not self.app:
                 raise ValueError("iOS requires a valid 'app'")
         return self
 
