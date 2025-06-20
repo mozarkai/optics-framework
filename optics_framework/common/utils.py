@@ -109,6 +109,11 @@ def compare_text(given_text, target_text):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
+def get_output_path():
+    config_handler = ConfigHandler.get_instance()
+    config = config_handler.load()
+    output_dir = config.execution_output_path
+    return output_dir
 
 def save_screenshot(img, name, time_stamp = None):
     """
@@ -120,8 +125,7 @@ def save_screenshot(img, name, time_stamp = None):
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    base_dir = str(ConfigHandler.get_instance().get_project_path())
-    output_dir = os.path.join(base_dir, "execution_output")
+    output_dir = get_output_path()
     os.makedirs(output_dir, exist_ok=True)
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
@@ -171,7 +175,6 @@ def annotate_element(frame, centre_coor, bbox):
     cv2.circle(frame, centre_coor, 5, (0, 0, 255), -1)
     return frame
 
-
 def annotate_and_save(frame, element_status):
     """
     Draw bounding boxes on the frame for found elements and save the annotated image.
@@ -194,9 +197,10 @@ def annotate_and_save(frame, element_status):
     save_screenshot(frame, name="annotated_frame")
 
 
+
+
 def save_page_source(tree, time_stamp):
-    base_dir = str(ConfigHandler.get_instance().get_project_path())
-    output_dir = os.path.join(base_dir, "execution_output")
+    output_dir = get_output_path()
     os.makedirs(output_dir, exist_ok=True)
 
     page_source_file_path = os.path.join(output_dir, "page_sources_log.xml")
@@ -227,8 +231,7 @@ def save_page_source(tree, time_stamp):
 
 
 def save_page_source_html(html: str, time_stamp):
-    base_dir = str(ConfigHandler.get_instance().get_project_path())
-    output_dir = os.path.join(base_dir, "execution_output")
+    output_dir = get_output_path()
     os.makedirs(output_dir, exist_ok=True)
 
     page_source_file_path = os.path.join(output_dir, "page_sources_log.html")

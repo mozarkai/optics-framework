@@ -14,14 +14,13 @@ def setup_junit():
     global junit_handler
     config_handler = ConfigHandler.get_instance()
     config = config_handler.load()
-    project_path = config.project_path or Path.home() / ".optics"
-    log_dir = Path(project_path) / "execution_output"
+    log_dir = config.execution_output_path
 
     junit_path = getattr(config, 'json_log_path', None)
     if junit_path:
         junit_path = Path(junit_path).expanduser()
     else:
-        junit_path = log_dir / "junit_output.xml"
+        junit_path = Path(log_dir) / "junit_output.xml"
 
     # Setup JUnit handler if enabled
     if getattr(config, 'json_log', False):
