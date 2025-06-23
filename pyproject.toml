@@ -28,7 +28,7 @@ scikit-image = "^0.25.2"
 
 [tool.poetry.group.dev.dependencies]
 tox = "~4.24.1"
-pytest = "~8.3.4"
+pytest = ">=8.3.4,<8.5.0"
 pytest-cov = ">=6.0,<6.3"
 commitizen = "^4.4.1"
 pre-commit = "^4.2.0"
@@ -36,7 +36,7 @@ ruff = "^0.11.2"
 bandit = "^1.8.3"
 
 [tool.poetry.group.test.dependencies]
-pytest = "~8.3.4"
+pytest = ">=8.3.4,<8.5.0"
 pytest-cov = ">=6.0,<6.3"
 pytest-mock = "~3.14.0"
 
