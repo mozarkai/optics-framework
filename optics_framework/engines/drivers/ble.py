@@ -16,7 +16,7 @@ class CapabilitiesConfig(BaseModel):
     pixel_width: int = Field(default=0, ge=0, description="Width of the device in pixels")
     mickeys_height: int = Field(default=0, ge=0, description="Height of the device in mickeys")
     mickeys_width: int = Field(default=0, ge=0, description="Width of the device in mickeys")
-    app_element: str = Field(default="app", description="Element to launch the app")
+    # app_element: str = Field(default="app", description="Element to launch the app")
     class Config:
         populate_by_name = True
 
@@ -42,7 +42,7 @@ class BLEDriver(DriverInterface):
         except ValidationError as ve:
             internal_logger.error(f"Invalid Bluetooth capabilities: {ve}")
             raise
-        cap = self.capabilities_model
+        cap: CapabilitiesConfig = self.capabilities_model
 
         self.device_id = cap.device_id
         self.port = cap.port

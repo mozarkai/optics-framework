@@ -1,43 +1,96 @@
-"""
-Capture Camera Module
-
-This module provides a concrete implementation of `ScreenshotInterface`
-that captures images from a webcam.
-"""
-
 import cv2
 import numpy as np
 import socket
-from typing import Optional
+from pydantic import BaseModel, Field, ValidationError
+from typing import Optional, Dict, Any
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 
+
+class CapabilitiesConfig(BaseModel):
+    camera_index: Optional[int] = Field(None, description="Index of the camera to use")
+    url: Optional[str] = Field(None, description="URL of the camera stream (e.g., 127.0.0.1:3000)")
+    out_width: int = Field(1080, description="Output width of the screenshot")
+    out_height: int = Field(1920, description="Output height of the screenshot")
+    deskew_corners: Optional[list[str]] = Field(
+        None, description="List of corner coordinates for deskewing the image"
+    )
+    rotation: Optional[str] = Field(None, description="Rotation of the image (clockwise/counterclockwise)")
+
+    class Config:
+        populate_by_name = True
+
+    @property
+    def has_camera_index_or_url(self) -> Any:
+        return self.camera_index if self.camera_index is not None else self.url
+
+
 class CameraScreenshot(ElementSourceInterface):
     """
-    Capture screenshots using a webcam.
+    Capture screenshots using a webcam or TCP connection.
     """
 
-    def __init__(self, camera_index: int = 0):
-        """
-        Initialize the camera capture.
+    DEPENDENCY_TYPE = "elements_sources"
+    NAME = "camera_screenshot"
 
-        Args:
-            camera_index (int): Index of the camera device (default: 0).
+    def __init__(self) -> None:
         """
-        self.camera_index = camera_index
-        self.cap = cv2.VideoCapture(self.camera_index)
-        self.camera_screenshot_config = next((item['camera_screenshot'] for item in ConfigHandler.get_instance().config.elements_sources if 'camera_screenshot' in item),None)
-        self.port = self.camera_screenshot_config.capabilities.get('port', 3000) if self.camera_screenshot_config else 3000
-        self.ip_address = self.camera_screenshot_config.capabilities.get('ip_address', '127.0.0.1')
-        self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
-        self.deskew_corners = self.camera_screenshot_config.capabilities.get('deskew_corners', None) if self.camera_screenshot_config else None
-        self.out_width = self.camera_screenshot_config.capabilities.get('out_width', 1080) if self.camera_screenshot_config else 1080
-        self.out_height = self.camera_screenshot_config.capabilities.get('out_height', 488) if self.camera_screenshot_config else 488
+        Initialize the camera capture with either webcam or TCP connection.
+        """
+        config_handler = ConfigHandler.get_instance()
+        config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
+            self.DEPENDENCY_TYPE, self.NAME
+        )
+        if not config:
+            internal_logger.error(
+                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
+            )
+            raise ValueError("Camera screenshot not enabled in config")
+        try:
+            self.capabilities_model = CapabilitiesConfig(
+                **config.get("capabilities", {})
+            )
+        except ValidationError as ve:
+            internal_logger.error(f"Invalid capabilities: {ve}")
+            raise
+        capabilities: CapabilitiesConfig = self.capabilities_model
+
+        # Initialize configuration variables
+        self.camera_index: Optional[int] = capabilities.camera_index
+        self.deskew_corners: Optional[list[str]] = capabilities.deskew_corners
+        self.out_width: int = capabilities.out_width
+        self.out_height: int = capabilities.out_height
+        self.rotation: Optional[str] = capabilities.rotation
+
+        # Initialize webcam or TCP connection
+        if self.camera_index is not None:
+            self.cap = cv2.VideoCapture(self.camera_index)
+            self.sock = None
+            self.ip_address = None
+            self.port = None
+        else:
+            if capabilities.url:
+                try:
+                    # Parse URL to extract IP address and port
+                    ip_port = capabilities.url.split(':')
+                    if len(ip_port) != 2:
+                        raise ValueError(f"Invalid URL format: {capabilities.url}. Expected format: ip:port")
+                    self.ip_address, port_str = ip_port
+                    self.port = int(port_str)
+                except (ValueError, TypeError) as e:
+                    internal_logger.error(f"Failed to parse URL {capabilities.url}: {e}")
+                    raise ValueError(f"Invalid URL format: {capabilities.url}")
+            else:
+                raise ValueError("No camera_index or valid URL provided")
+            self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
+            self.cap = None
+
+        self.camera_screenshot_config = config
 
     def capture(self) -> Optional[np.ndarray]:
         """
-        Capture an image from the webcam.
+        Capture an image from the webcam or TCP connection.
 
         Returns:
             Optional[np.ndarray]: The captured image as a NumPy array, or `None` on failure.
@@ -45,34 +98,48 @@ class CameraScreenshot(ElementSourceInterface):
         if self.sock:
             frame = self.take_screenshot()
             return frame
-        if not self.cap.isOpened():
+        if self.cap is None or not self.cap.isOpened():
+            internal_logger.error("No valid webcam connection.")
             return None
 
         ret, frame = self.cap.read()
         if ret:
             return frame
+        internal_logger.error("Failed to capture frame from webcam.")
         return None
 
     def __del__(self):
-        """Release the camera when the object is destroyed."""
-        if self.cap.isOpened():
+        """Release the camera or socket when the object is destroyed."""
+        if hasattr(self, 'cap') and self.cap is not None and self.cap.isOpened():
             self.cap.release()
+        if hasattr(self, 'sock') and self.sock is not None:
+            self.sock.close()
 
-    def locate(self, image: np.ndarray, template: np.ndarray) -> Optional[tuple]:
-        internal_logger.exception("CameraScreenshot does not support locating elements.")
-        raise NotImplementedError("CameraScreenshot does not support locating elements.")
+    def locate(self, element, index, *args, **kwargs) -> tuple:
+        internal_logger.exception(
+            "CameraScreenshot does not support locating elements."
+        )
+        raise NotImplementedError(
+            "CameraScreenshot does not support locating elements."
+        )
 
     def locate_using_index(self, element, index):
-        internal_logger.exception("CameraScreenshot does not support locating elements using index.")
-        raise NotImplementedError("CameraScreenshot does not support locating elements using index.")
-
-    def assert_elements(self, elements):
-        internal_logger.exception("CameraScreenshot does not support asserting elements.")
+        internal_logger.exception(
+            "CameraScreenshot does not support locating elements using index."
+        )
         raise NotImplementedError(
-            "CameraScreenshot does not support asserting elements.")
+            "CameraScreenshot does not support locating elements using index."
+        )
 
+    def assert_elements(self, elements, timeout=None, rule=None):
+        internal_logger.exception(
+            "CameraScreenshot does not support asserting elements."
+        )
+        raise NotImplementedError(
+            "CameraScreenshot does not support asserting elements."
+        )
 
-    def create_tcp_connection(self, ip, port):
+    def create_tcp_connection(self, ip: str, port: int):
         port = int(port)
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -89,10 +156,12 @@ class CameraScreenshot(ElementSourceInterface):
         """
         try:
             if not self.sock:
-                raise ConnectionError("No valid socket connection. Unable to take screenshot.")
+                raise ConnectionError(
+                    "No valid socket connection. Unable to take screenshot."
+                )
 
             # Send the screenshot command
-            self.sock.sendall(b'screenshot\n')
+            self.sock.sendall(b"screenshot\n")
             internal_logger.debug("Taking screenshot...")
 
             # Read the first 8 bytes to get the length of the image data
@@ -100,7 +169,9 @@ class CameraScreenshot(ElementSourceInterface):
             if len(length_bytes) < 8:
                 raise ValueError("Failed to read the length of the image data.")
 
-            image_length = int.from_bytes(length_bytes, byteorder='little', signed=False)
+            image_length = int.from_bytes(
+                length_bytes, byteorder="little", signed=False
+            )
             internal_logger.debug(f"Expected image data length: {image_length} bytes")
 
             # Initialize a bytearray for the image data
@@ -122,12 +193,10 @@ class CameraScreenshot(ElementSourceInterface):
             # Decode the image data to an OpenCV image
             screenshot = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             internal_logger.debug("Image ready, setting screenshot")
-            self.set_screenshot(screenshot)
             return screenshot
         except Exception as e:
             internal_logger.debug(f"An error occurred: {e}")
             return None
-
 
     def deskew_image(self, image):
         """
@@ -135,58 +204,73 @@ class CameraScreenshot(ElementSourceInterface):
 
         Args:
             image (numpy.ndarray): The input image as a NumPy array.
-            corners (list): The 4 corner coordinates [[x1, y1], [x2, y2], [x3, y3], [x4, y4]].
-            output_width (int): The width of the output deskewed image.
-            output_height (int): The height of the output deskewed image.
 
         Returns:
             numpy.ndarray: The deskewed image as a NumPy array.
         """
+        if not self.deskew_corners:
+            return image
         try:
-            corners = self.deskew_corners
-            out_width, out_height = self.out_width, self.out_height
-            src_points = np.array([list(map(float, point.split(','))) for point in corners], dtype=np.float32)
-            # Define the destination points for the perspective transform
-            dst_points = np.array([
-                [0, 0],
-                [out_width - 1, 0],
-                [0, out_height - 1],
-                [out_width - 1, out_height - 1]
-            ], dtype=np.float32)
-
-            # Compute the perspective transform matrix
+            src_points = np.array(
+                [list(map(float, point.split(','))) for point in self.deskew_corners],
+                dtype=np.float32
+            )
+            dst_points = np.array(
+                [
+                    [0, 0],
+                    [self.out_width - 1, 0],
+                    [self.out_width - 1, self.out_height - 1],
+                    [0, self.out_height - 1]
+                ],
+                dtype=np.float32
+            )
             transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-
-            # Perform the perspective warp
-            deskewed_image = cv2.warpPerspective(image, transform_matrix, (out_width, out_height))
-
+            deskewed_image = cv2.warpPerspective(image, transform_matrix, (self.out_width, self.out_height))
             return deskewed_image
-
         except Exception as e:
-            raise ValueError(f"Error performing deskew: {e}")
+            internal_logger.error(f"Error performing deskew: {e}")
+            return image
 
+    def rotate(self, img: np.ndarray, rotation: str) -> np.ndarray:
+        """
+        Rotates the given image based on the rotation parameter.
 
-    def rotate(self, img, rotation: str):
+        Args:
+            img (numpy.ndarray): The input image as a NumPy array.
+            rotation (str): The rotation direction ('clockwise' or 'counterclockwise').
+
+        Returns:
+            numpy.ndarray: The rotated image as a NumPy array.
+        """
+        if not rotation:
+            return img
         try:
-
-            if rotation.lower == 'clockwise':
+            if rotation.lower() == 'clockwise':
                 rotated_img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
                 internal_logger.debug('Image rotated clockwise.')
-            elif rotation.lower == 'counterclockwise':
+            elif rotation.lower() == 'counterclockwise':
                 rotated_img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 internal_logger.debug('Image rotated counterclockwise')
             else:
-                internal_logger.debug('Rotation argument not defined, returning unrotated image.')
+                internal_logger.debug('Invalid rotation argument, returning unrotated image.')
                 return img
             return rotated_img
         except Exception as e:
-            internal_logger.debug(f'An error occurred while performing rotation: {e}, returning unrotated image.')
+            internal_logger.error(f'Error performing rotation: {e}, returning unrotated image.')
             return img
 
-    def take_ext_screenshot(self):
-        frame = self.take_screenshot()
+    def take_ext_screenshot(self) -> Optional[np.ndarray]:
+        """
+        Captures a screenshot and applies deskewing and rotation if configured.
+
+        Returns:
+            Optional[np.ndarray]: The processed image as a NumPy array, or None on failure.
+        """
+        frame = self.capture()
+        if frame is None:
+            return None
         if self.deskew_corners:
             frame = self.deskew_image(frame)
-        rotation = str(self.camera_screenshot_config.capabilities.get('rotation', None) if self.camera_screenshot_config else None)
-        frame = self.rotate(frame, rotation)
+        if self.rotation:
+            frame = self.rotate(frame, self.rotation)
         return frame
