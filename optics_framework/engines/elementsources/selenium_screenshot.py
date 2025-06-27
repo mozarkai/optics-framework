@@ -46,6 +46,13 @@ class SeleniumScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
+    def get_interative_elements(self):
+
+        internal_logger.exception("Selenium Screenshot does not support getting interactive elements.")
+        raise NotImplementedError(
+            "Selenium Screenshot does not support getting interactive elements."
+        )
+
     def capture_screenshot_as_numpy(self) -> Optional[np.ndarray]:
         """
         Captures a screenshot using Selenium and returns it as a NumPy array.

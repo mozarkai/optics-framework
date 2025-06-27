@@ -13,7 +13,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
 from selenium.common.exceptions import ScreenshotException
 
-class DeviceScreenshot(ElementSourceInterface):
+class AppiumScreenshot(ElementSourceInterface):
     """
     Capture screenshots of the screen using the `mss` library.
     """
@@ -45,6 +45,12 @@ class DeviceScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
+
+    def get_interactive_elements(self):
+        internal_logger.exception("AppiumScreenshot does not support getting interactive elements.")
+        raise NotImplementedError(
+            "AppiumScreenshot does not support getting interactive elements."
+        )
 
     def capture_screenshot_as_numpy(self):
         """

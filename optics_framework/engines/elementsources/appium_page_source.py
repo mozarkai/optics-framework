@@ -60,6 +60,8 @@ class AppiumPageSource(ElementSourceInterface):
         internal_logger.debug('\n==========================================\n')
         return page_source, time_stamp
 
+    def get_interactive_elements(self):
+        return self.ui_helper.get_interactive_elements()
 
     def locate(self, element: str, index=None) -> dict:
         """

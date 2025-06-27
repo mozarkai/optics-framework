@@ -71,6 +71,9 @@ class CameraScreenshot(ElementSourceInterface):
         raise NotImplementedError(
             "CameraScreenshot does not support asserting elements.")
 
+    def get_interative_elements(self):
+        internal_logger.exception("CameraScreenshot does not support getting interactive elements.")
+        raise NotImplementedError("CameraScreenshot does not support getting interactive elements.")
 
     def create_tcp_connection(self, ip, port):
         port = int(port)

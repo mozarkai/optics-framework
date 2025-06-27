@@ -56,6 +56,12 @@ class SeleniumPageSource(ElementSourceInterface):
         ui_helper = UIHelper()
         return ui_helper.get_page_source()
 
+    def get_interative_elements(self):
+
+        internal_logger.exception("Selenium Page Source does not support getting interactive elements.")
+        raise NotImplementedError(
+            "Selenium Page Source does not support getting interactive elements."
+        )
 
     def locate(self, element: str, index: int = None) -> WebElement:
         """

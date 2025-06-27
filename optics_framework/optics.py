@@ -304,6 +304,23 @@ class Optics:
             raise ValueError(INVALID_SETUP)
         self.verifier.validate_screen(elements, timeout, rule, event_name)
 
+    def get_interactive_elements(self) -> Dict:
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.get_interactive_elements()
+
+    def capture_screenshot(self):
+        """Capture a screenshot of the current screen."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.capture_screenshot()
+
+    def capture_pagesource(self) -> str:
+        """Capture the page source of the current screen."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.capture_pagesource()
+
     def quit(self) -> None:
         """Clean up session resources and terminate the session."""
         if self.session_id:

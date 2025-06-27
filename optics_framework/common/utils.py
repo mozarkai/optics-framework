@@ -4,6 +4,7 @@ from fuzzywuzzy import fuzz
 import re
 import os
 import cv2
+import json
 import base64
 import numpy as np
 from enum import Enum
@@ -245,3 +246,13 @@ def save_page_source_html(html: str, time_stamp):
         internal_logger.debug(f"Appended new page source entry at: {time_stamp}")
 
     internal_logger.debug(f"HTML page source saved to: {page_source_file_path}")
+
+
+def save_interactable_elements(elements : dict):
+    base_dir = str(ConfigHandler.get_instance().get_project_path())
+    output_dir = os.path.join(base_dir, "execution_output")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "interactable_elements.json")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(elements, f, indent=2, ensure_ascii=False)

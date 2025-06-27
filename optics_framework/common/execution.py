@@ -128,7 +128,7 @@ class KeywordExecutor(Executor):
         event_manager = get_event_manager()
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
         if method:
-            method(*self.params)
+            result = method(*self.params)
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,
@@ -137,6 +137,7 @@ class KeywordExecutor(Executor):
                 message="Keyword executed successfully",
                 extra={"session_id": session.session_id}
             ))
+            return result
         else:
             await event_manager.publish_event(Event(
                 entity_type="keyword",
@@ -273,7 +274,9 @@ class ExecutionEngine:
                     ))
                     raise ValueError(f"Unknown mode: {params.mode}")
 
-                await executor.execute(session, runner)
+                result =  await executor.execute(session, runner)
+                return result
+
             except Exception as e:
                 await self.event_manager.publish_event(Event(
                     entity_type="execution",
@@ -283,7 +286,8 @@ class ExecutionEngine:
                     message=f"Execution failed: {str(e)}",
                     extra={"session_id": params.session_id}
                 ))
-                raise
+                internal_logger.error(f"Execution error in session {params.session_id}: {e}")
+                return None
             finally:
                 if hasattr(runner, 'result_printer') and runner.result_printer:
                     internal_logger.debug(

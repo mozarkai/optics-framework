@@ -41,6 +41,12 @@ class SeleniumFindElement(ElementSourceInterface):
         """
         return UIHelper.get_page_source()
 
+    def get_interative_elements(self):
+
+        internal_logger.exception("Selenium Find Element does not support getting interactive elements.")
+        raise NotImplementedError(
+            "Selenium Find Element does not support getting interactive elements."
+        )
 
     def locate(self, element: str, index: int = None) -> Any:
         """
