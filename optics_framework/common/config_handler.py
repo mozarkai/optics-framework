@@ -133,6 +133,21 @@ class ConfigHandler:
         self._precompute_enabled_configs()
         return self.config
 
+    def update_config(self, new_config: dict) -> None:
+        """
+        Update the current configuration with a new configuration dictionary.
+        This will merge the new configuration into the existing one.
+        """
+        current_config_dict = self.config.model_dump()
+        new_config_dict = new_config if isinstance(new_config, dict) else new_config.model_dump()
+        # Merge new_config into current_dict
+        merged_config = deep_merge(current_config_dict, new_config_dict)
+        # Reconstruct the Config model from merged data
+        self.config = Config(**merged_config)
+        # Refresh the enabled config keys
+        self._precompute_enabled_configs()
+
+
     def _load_yaml(self, path: str) -> dict:
         if os.path.exists(path):
             try:

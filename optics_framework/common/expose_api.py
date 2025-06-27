@@ -1,18 +1,19 @@
 import json
 import uuid
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.execution import ExecutionEngine
+from optics_framework.common.execution import ExecutionEngine, ExecutionParams, TestCaseNode, ElementData
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import Config, DependencyConfig
 
 app = FastAPI(title="Optics Framework API", version="1.0")
 session_manager = SessionManager()
 
+SESSION_NOT_FOUND = "Session not found"
 
 class SessionConfig(BaseModel):
     """Schema for session creation, aligned with Config expectations."""
@@ -21,7 +22,13 @@ class SessionConfig(BaseModel):
     text_detection: list[str] = []
     image_detection: list[str] = []
     project_path: Optional[str] = None
+    appium_url: Optional[str] = None  # Optional Appium URL
+    appium_config: Optional[Dict[str, Any]] = None  # Optional Appium config
 
+class AppiumUpdateRequest(BaseModel):
+    session_id: str
+    url: str
+    capabilities: Dict[str, Any]
 
 class ExecuteRequest(BaseModel):
     """Schema for execution requests."""
@@ -64,15 +71,35 @@ async def create_session(config: SessionConfig):
     :return: Details of the created session.
     """
     try:
+        # Construct driver_sources with Appium config if "appium" is in driver_sources
+        driver_sources = []
+        for name in config.driver_sources:
+            if name == "appium":
+                driver_sources.append({
+                    "appium": DependencyConfig(
+                        enabled=True,
+                        url=config.appium_url,
+                        capabilities=config.appium_config or {}
+                    )
+                })
+            else:
+                driver_sources.append({name: DependencyConfig(enabled=True)})
+
+        # Similarly construct other sources
+        def build_source(source_list):
+            return [{name: DependencyConfig(enabled=True)} for name in source_list]
+
+        elements_sources = build_source(config.elements_sources)
+        text_detection = build_source(config.text_detection)
+        image_detection = build_source(config.image_detection)
         # Transform SessionConfig into Config format
-        session_config_dict = {
-            "driver_sources": [{"name": DependencyConfig(enabled=True)} for _ in config.driver_sources],
-            "elements_sources": [{"name": DependencyConfig(enabled=True)} for _ in config.elements_sources],
-            "text_detection": [{"name": DependencyConfig(enabled=True)} for _ in config.text_detection],
-            "image_detection": [{"name": DependencyConfig(enabled=True)} for _ in config.image_detection],
-            "project_path": config.project_path
-        }
-        session_config = Config(**session_config_dict)
+        session_config = Config(
+            driver_sources=driver_sources,
+            elements_sources=elements_sources,
+            text_detection=text_detection,
+            image_detection=image_detection,
+            project_path=config.project_path
+        )
         session_id = session_manager.create_session(session_config)
         internal_logger.info(
             f"Created session {session_id} with config: {config.model_dump()}")
@@ -100,7 +127,7 @@ async def execute(
     session = session_manager.get_session(session_id)
     if not session:
         internal_logger.error(f"Session not found: {session_id}")
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
 
     execution_id = str(uuid.uuid4())
     internal_logger.info(
@@ -132,7 +159,7 @@ async def stream_events(session_id: str):
     session = session_manager.get_session(session_id)
     if not session:
         internal_logger.error(f"Session not found for event streaming: {session_id}")
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
 
     internal_logger.info(f"Starting event stream for session {session_id}")
     return EventSourceResponse(event_generator(session))
@@ -182,15 +209,19 @@ async def run_execution(
         return
 
     try:
-        await engine.execute(
+        # Construct ExecutionParams for keyword execution
+        execution_params = ExecutionParams(
             session_id=session_id,
             mode=mode,
-            test_case=test_case,
             keyword=keyword,
             params=params,
-            event_queue=event_queue
+            test_cases=TestCaseNode(id="dummy", name="keyword_execution"),
+            modules={},
+            elements=ElementData(),
+            runner_type="test_runner",
+            use_printer=False
         )
-        internal_logger.info(f"Execution {execution_id} completed successfully")
+        await engine.execute(params=execution_params)
         await event_queue.put(
             ExecutionEvent(
                 execution_id=execution_id,

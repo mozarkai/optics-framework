@@ -28,7 +28,8 @@ class Session:
         self.session_id = session_id
         self.config_handler = ConfigHandler.get_instance()
         self.config = config
-
+        # update config with session-specific values
+        self.config_handler.update_config(self.config)
         # Fetch enabled dependency names
         driver_sources = self.config_handler.get("driver_sources", [])
         element_sources = self.config_handler.get("elements_sources", [])
