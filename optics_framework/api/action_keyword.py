@@ -400,7 +400,7 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "enter_number")
-        self.enter_text_element(element, str(number), event_name, located=located)
+        self.driver.enter_text_element(element, str(number), event_name, located=located)
 
     def press_keycode(self, keycode: int, event_name: str=None) -> None:
         """

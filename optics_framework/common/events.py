@@ -124,7 +124,7 @@ class EventManager:
                 self.event_queue.task_done()
             except asyncio.CancelledError:
                 internal_logger.debug("Event processing loop cancelled")
-                break
+                raise
             except Exception as e:
                 internal_logger.error(f"Error processing event: {e}")
         internal_logger.debug("Event processing loop stopped")

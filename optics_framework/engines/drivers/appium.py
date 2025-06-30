@@ -30,8 +30,7 @@ class CapabilitiesConfig(BaseModel):
         if self.platform_name.lower() == "android":
             if not self.app_package or not self.app_activity:
                 raise ValueError("Android requires 'appPackage' and 'appActivity'")
-        elif self.platform_name.lower() == "ios":
-            if not self.app:
+        elif self.platform_name.lower() == "ios" and not self.app:
                 raise ValueError("iOS requires a valid 'app'")
         return self
 
@@ -165,7 +164,7 @@ class Appium(DriverInterface):
                     return line.split("versionName=")[-1].strip()
         except subprocess.CalledProcessError as e:
             internal_logger.error("Error executing adb command:", e.output)
-        return None
+        return ""
 
     def initialise_setup(self) -> None:
         """Initialize the Appium setup by starting the session."""

@@ -1,6 +1,4 @@
 test_case,test_step
 Suite Setup,     Launch Youtube App
 Suite Teardown,   Close Youtube App
-Running youtube using Text,Interact using text
-Running youtube using Xpath,Interact using xpath
 Running youtube Repeat,     Repeat Test
