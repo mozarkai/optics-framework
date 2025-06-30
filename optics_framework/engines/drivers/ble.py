@@ -6,6 +6,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.eventSDK import EventSDK
+from optics_framework.common import utils
 
 class CapabilitiesConfig(BaseModel):
     device_id: str
@@ -288,6 +289,7 @@ class BLEDriver(DriverInterface):
             None
         """
         # Convert each character of the command string to HID report and send it
+
         for char in text:
             key_code = self.hid_key_codes.get(char)
             # Check if the character is uppercase
@@ -356,7 +358,7 @@ class BLEDriver(DriverInterface):
         """
         internal_logger.debug(f"Entering text '{text}' via BLE.")
         self.event_sdk.capture_event(event_name) if event_name else None
-        self.keyboard(text)
+        self.keyboard(utils.strip_sensitive_prefix(text))
 
     def press_keycode(self, keycode, event_name) -> None:
         """
@@ -369,7 +371,7 @@ class BLEDriver(DriverInterface):
         """
         internal_logger.debug(f"Pressing keycode '{keycode}' via BLE.")
         self.event_sdk.capture_event(event_name) if event_name else None
-        self.keyboard(keycode)
+        self.keyboard(utils.strip_sensitive_prefix(keycode))
 
     def enter_text_element(self, element, text, event_name) -> None:
         raise NotImplementedError("BLE driver does not support entering text into elements.")
@@ -385,7 +387,7 @@ class BLEDriver(DriverInterface):
         """
         internal_logger.debug(f"Entering text '{text}' using keyboard via BLE.")
         self.event_sdk.capture_event(event_name) if event_name else None
-        self.keyboard(text)
+        self.keyboard(utils.strip_sensitive_prefix(text))
 
     def clear_text(self, event_name) -> None:
         """
