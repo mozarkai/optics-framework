@@ -4,6 +4,7 @@ from fuzzywuzzy import fuzz
 import re
 import os
 import cv2
+import json
 import base64
 import numpy as np
 from enum import Enum
@@ -109,6 +110,18 @@ def compare_text(given_text, target_text):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
+def get_execution_output_dir():
+    """
+    Returns the path to the execution output directory.
+    Creates the directory if it does not exist.
+    """
+    base_dir = ConfigHandler.get_instance().get_project_path()
+    if not base_dir:
+        internal_logger.error("Project path is not set. Cannot get execution output directory.")
+        return None
+    output_dir = os.path.join(str(base_dir), "execution_output")
+    os.makedirs(output_dir, exist_ok=True)
+    return output_dir
 
 def save_screenshot(img, name, time_stamp = None):
     """
@@ -120,9 +133,10 @@ def save_screenshot(img, name, time_stamp = None):
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    base_dir = str(ConfigHandler.get_instance().get_project_path())
-    output_dir = os.path.join(base_dir, "execution_output")
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = get_execution_output_dir()
+    if output_dir is None:
+        internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
+        return
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
         cv2.imwrite(screenshot_file_path, img)
@@ -195,10 +209,10 @@ def annotate_and_save(frame, element_status):
 
 
 def save_page_source(tree, time_stamp):
-    base_dir = str(ConfigHandler.get_instance().get_project_path())
-    output_dir = os.path.join(base_dir, "execution_output")
-    os.makedirs(output_dir, exist_ok=True)
-
+    output_dir = get_execution_output_dir()
+    if output_dir is None:
+        internal_logger.error("Failed to get execution output directory. Cannot save page source.")
+        return
     page_source_file_path = os.path.join(output_dir, "page_sources_log.xml")
 
     # Remove any XML declaration
@@ -227,10 +241,10 @@ def save_page_source(tree, time_stamp):
 
 
 def save_page_source_html(html: str, time_stamp):
-    base_dir = str(ConfigHandler.get_instance().get_project_path())
-    output_dir = os.path.join(base_dir, "execution_output")
-    os.makedirs(output_dir, exist_ok=True)
-
+    output_dir = get_execution_output_dir()
+    if output_dir is None:
+        internal_logger.error("Failed to get execution output directory. Cannot save HTML page source.")
+        return
     page_source_file_path = os.path.join(output_dir, "page_sources_log.html")
     # Prepare entry block with timestamp comment
     entry_block = f'\n<!-- timestamp: {time_stamp} -->\n{html}\n'
@@ -245,3 +259,14 @@ def save_page_source_html(html: str, time_stamp):
         internal_logger.debug(f"Appended new page source entry at: {time_stamp}")
 
     internal_logger.debug(f"HTML page source saved to: {page_source_file_path}")
+
+
+def save_interactable_elements(elements):
+    output_dir = get_execution_output_dir()
+    if output_dir is None:
+        internal_logger.error("Failed to get execution output directory. Cannot save interactable elements.")
+        return
+    output_path = os.path.join(output_dir, "interactable_elements.json")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(elements, f, indent=2, ensure_ascii=False)
