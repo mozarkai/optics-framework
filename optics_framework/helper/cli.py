@@ -9,6 +9,7 @@ from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
 from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, install_packages, ALL_DRIVERS
+from optics_framework.helper.serve import run_uvicorn_server
 
 class Command:
     """
@@ -77,6 +78,33 @@ class GenerateCommand(Command):
         generate_framework_code(
             generate_args.project_path, generate_args.output_file)
 
+class ServerArgs(BaseModel):
+    """Arguments for the server command."""
+    host: str = "127.0.0.1"
+    port: int = 8000
+
+class ServerCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "serve", help="Run the Optics Framework API server"
+        )
+        parser.add_argument(
+            "--host", default="127.0.0.1", help="Host to bind the server (default: 127.0.0.1)"
+        )
+        parser.add_argument(
+            "--port", type=int, default=8000, help="Port to bind the server (default: 8000)"
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        server_args = ServerArgs(
+            host=args.host,
+            port=args.port
+        )
+        run_uvicorn_server(
+            host=server_args.host,
+            port=server_args.port
+        )
 
 class ConfigCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
@@ -286,6 +314,7 @@ def main():
         VersionCommand(),
         GenerateCommand(),
         DriverInstaller(),
+        ServerCommand(),
     ]
     for cmd in commands:
         cmd.register(subparsers)
