@@ -8,6 +8,8 @@ local -a _optics_subcommands=(
   'version: Show version'
   'generate: Generate framework code'
   'setup: Install drivers'
+  'serve: Start a server'
+  'completion: Enable shell completion'
 )
 
 # Static or dynamic values
@@ -28,7 +30,7 @@ _optics_completions() {
       ;;
     args)
       case $words[2] in
-        list|config|version)
+        list|config|version|completion)
           _arguments '--help[-h]'
           ;;
 
@@ -61,6 +63,13 @@ _optics_completions() {
           _arguments \
             "--install=[Drivers]:drivers:(${drivers[@]})" \
             '--list[List all drivers]' \
+            '--help[-h]'
+          ;;
+
+        serve)
+          _arguments \
+            '--host=[Host address]' \
+            '--port=[Port number]' \
             '--help[-h]'
           ;;
       esac

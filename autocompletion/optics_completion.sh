@@ -4,7 +4,7 @@ _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute version generate setup"
+  local subcommands="list config dry_run init execute version generate setup serve completion"
 
   local template_options="calender contact gmail_web youtube"
   local runner_options="test_runner pytest"
@@ -18,7 +18,7 @@ _optics_completions() {
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|version)
+    list|config|version|completion)
       COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
       ;;
 
@@ -54,6 +54,10 @@ _optics_completions() {
           COMPREPLY=( $(compgen -W "--install --list -h --help" -- "$cur") )
           ;;
       esac
+      ;;
+
+    serve)
+      COMPREPLY=( $(compgen -W "--host --port -h --help" -- "$cur") )
       ;;
   esac
 }

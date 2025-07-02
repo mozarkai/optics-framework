@@ -10,6 +10,7 @@ from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
 from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, install_packages, ALL_DRIVERS
 from optics_framework.helper.serve import run_uvicorn_server
+from optics_framework.helper.autocompletion import update_shell_rc
 
 class Command:
     """
@@ -52,6 +53,15 @@ class ListCommand(Command):
     def execute(self, args):
         list_main()
 
+class AutocompletionCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "completion", help="Enable shell autocompletion for optics CLI"
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        update_shell_rc()
 
 class GenerateArgs(BaseModel):
     """Arguments for the generate command."""
@@ -315,6 +325,7 @@ def main():
         GenerateCommand(),
         DriverInstaller(),
         ServerCommand(),
+        AutocompletionCommand(),
     ]
     for cmd in commands:
         cmd.register(subparsers)
