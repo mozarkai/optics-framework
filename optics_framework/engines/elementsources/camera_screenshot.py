@@ -139,7 +139,7 @@ class CameraScreenshot(ElementSourceInterface):
             "CameraScreenshot does not support asserting elements."
         )
 
-    def get_interative_elements(self):
+    def get_interactive_elements(self):
         internal_logger.exception("CameraScreenshot does not support getting interactive elements.")
         raise NotImplementedError("CameraScreenshot does not support getting interactive elements.")
 

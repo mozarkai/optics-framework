@@ -46,7 +46,7 @@ class SeleniumScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
-    def get_interative_elements(self):
+    def get_interactive_elements(self):
 
         internal_logger.exception("Selenium Screenshot does not support getting interactive elements.")
         raise NotImplementedError(

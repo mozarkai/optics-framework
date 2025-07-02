@@ -56,7 +56,7 @@ class SeleniumPageSource(ElementSourceInterface):
         ui_helper = UIHelper()
         return ui_helper.get_page_source()
 
-    def get_interative_elements(self):
+    def get_interactive_elements(self):
 
         internal_logger.exception("Getting interactive elements is not yet suppored using Selenium Page Source.")
         raise NotImplementedError(

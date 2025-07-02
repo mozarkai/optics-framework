@@ -61,7 +61,7 @@ class AppiumFindElement(ElementSourceInterface):
         self.root = self.tree.getroot()
         return page_source
 
-    def get_interative_elements(self):
+    def get_interactive_elements(self):
         """
         Get all interactive elements from the current page source.
 

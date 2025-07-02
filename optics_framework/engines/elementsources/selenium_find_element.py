@@ -41,7 +41,7 @@ class SeleniumFindElement(ElementSourceInterface):
         """
         return UIHelper.get_page_source()
 
-    def get_interative_elements(self):
+    def get_interactive_elements(self):
 
         internal_logger.exception("Getting interactive elements is not yet suppored using Selenium Find Element.")
         raise NotImplementedError(
