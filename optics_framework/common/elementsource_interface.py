@@ -52,3 +52,13 @@ class ElementSourceInterface(ABC):
         :raises AssertionError: If the assertion fails based on the rule.
         """
         pass
+
+    @abstractmethod
+    def get_interactive_elements(self) -> list:
+        """
+        Retrieve a list of interactive elements on the current screen.
+
+        :return: A list of interactive elements (e.g., buttons, links).
+        :rtype: list
+        """
+        pass

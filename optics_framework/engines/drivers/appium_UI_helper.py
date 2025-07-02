@@ -4,6 +4,7 @@ from lxml import etree
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
+from typing import List, Dict
 
 class UIHelper:
     def __init__(self):
@@ -31,7 +32,6 @@ class UIHelper:
 
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
         self.root = self.tree.getroot()
-
         internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
         internal_logger.debug(f'Page source fetched at: {time_stamp}')
         internal_logger.debug('\n==========================================\n')
@@ -685,3 +685,108 @@ class UIHelper:
                 return None
         except etree.XPathSyntaxError as e:
             internal_logger.debug(f"Invalid XPath syntax: {xpath} - Error: {str(e)}")
+
+
+# element extraction
+    def get_interactive_elements(self) -> List[Dict]:
+        page_source, _ = self.get_page_source()
+        tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
+        root = tree.getroot()
+        elements = root.xpath(".//*[@bounds]")
+        results = []
+
+        for node in elements:
+            attrs = node.attrib
+            bounds_str = attrs.get("bounds", "")
+            match = re.findall(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_str)
+            if not match:
+                continue
+            x1, y1, x2, y2 = map(int, match[0])
+            bounds = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+            # Cross-platform text fallback priority list
+            text_candidates = [
+                ("text", attrs.get("text")),
+                ("content-desc", attrs.get("content-desc")),
+                ("name", attrs.get("name")),
+                ("value", attrs.get("value")),
+                ("label", attrs.get("label")),
+                ("resource-id", attrs.get("resource-id").split("/")[-1] if "resource-id" in attrs else None)
+            ]
+
+            text = None
+            used_key = None
+            for key, val in text_candidates:
+                if val:
+                    text = val
+                    used_key = key
+                    break
+
+            if not text:
+                continue  # skip elements with no meaningful descriptor
+
+            xpath = self.get_xpath(node)
+
+            # Build extra attributes — skip false-like values and the used key for text
+            extra = {}
+            for k, v in attrs.items():
+                if k == used_key:
+                    continue  # skip the one used as 'text'
+                if v is None or v == "" or v.lower() == "false":
+                    continue  # skip false/empty
+                extra[k] = v
+
+            # Add structural metadata
+            extra["class"] = attrs.get("class")
+            extra["resource-id"] = attrs.get("resource-id")
+            extra["tag"] = node.tag
+
+            element_info = {
+                "text": text,
+                "bounds": bounds,
+                "xpath": xpath,
+                "extra": extra
+            }
+            results.append(element_info)
+
+        return results
+
+    def get_xpath(self, node: etree.Element) -> str:
+        """
+        Generate a concise XPath using unique attributes if possible,
+        falling back to structural path if necessary.
+        """
+        attr_priority = ["resource-id", "content-desc", "text", "name", "label", "value"]
+
+        for attr in attr_priority:
+            val = node.attrib.get(attr)
+            if val:
+                # Escape quotes inside the value for XPath safety
+                val = val.replace('"', '\\"')
+                return f'.//*[{self._build_attribute_condition(attr, val)}]'
+
+        # Fallback to structural path
+        return self._build_structural_xpath(node)
+
+    def _build_attribute_condition(self, attr: str, val: str) -> str:
+        """
+        Return the appropriate condition expression for the attribute match.
+        """
+        if attr == "resource-id" and "/" in val:
+            return f'@{attr}="{val}"'
+        return f'contains(@{attr}, "{val}")'
+
+    def _build_structural_xpath(self, node: etree.Element) -> str:
+        """
+        Fallback method to build full XPath based on element structure.
+        """
+        path = []
+        while node is not None and node.tag != "hierarchy":
+            parent = node.getparent()
+            if parent is None:
+                break
+            siblings = [sib for sib in parent if sib.tag == node.tag]
+            index = siblings.index(node) + 1 if len(siblings) > 1 else 1
+            path.append(f"{node.tag}[{index}]")
+            node = parent
+        return "/" + "/".join(reversed(path))

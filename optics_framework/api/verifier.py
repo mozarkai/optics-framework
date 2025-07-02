@@ -127,3 +127,53 @@ class Verifier:
         :param event_name: The name of the event associated with the verification, if any.
         """
         self.assert_presence(elements, timeout, rule, event_name, fail=False)
+
+    def capture_screenshot(self, event_name: Optional[str] = None) -> str:
+        """
+        Captures a screenshot of the current screen.
+
+        :param event_name: The name of the event associated with the screenshot capture, if any.
+        :return: The path to the captured screenshot.
+        """
+        screenshot = self.strategy_manager.capture_screenshot()
+        screenshot = utils.encode_numpy_to_base64(screenshot)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        return screenshot
+
+
+    def capture_pagesource(self, event_name: Optional[str] = None) -> str:
+        """
+        Captures the page source of the current screen.
+
+        :param event_name: The name of the event associated with the page source capture, if any.
+        :return: The page source as a string.
+        """
+        page_source = self.strategy_manager.capture_pagesource()
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        return page_source
+
+    def get_interactive_elements(self) -> list:
+        """
+        Retrieves a list of interactive elements on the current screen.
+
+        :return: A list of interactive elements.
+        """
+        elements = self.strategy_manager.get_interactive_elements()
+        utils.save_interactable_elements(elements)
+        return elements
+
+    def get_screen_elements(self) -> dict:
+        """
+        Captures a screenshot and retrieves interactive elements for API response.
+
+        :return: Dict with base64-encoded screenshot and list of elements.
+        """
+        screenshot_path = self.capture_screenshot()
+        elements = self.get_interactive_elements()
+
+        return {
+            "screenshot": utils.encode_numpy_to_base64(screenshot_path),
+            "elements": elements
+        }

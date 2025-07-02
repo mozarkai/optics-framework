@@ -139,7 +139,11 @@ class CameraScreenshot(ElementSourceInterface):
             "CameraScreenshot does not support asserting elements."
         )
 
-    def create_tcp_connection(self, ip: str, port: int):
+    def get_interative_elements(self):
+        internal_logger.exception("CameraScreenshot does not support getting interactive elements.")
+        raise NotImplementedError("CameraScreenshot does not support getting interactive elements.")
+
+    def create_tcp_connection(self, ip, port):
         port = int(port)
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

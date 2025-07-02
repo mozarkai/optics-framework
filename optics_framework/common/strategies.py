@@ -52,6 +52,9 @@ class LocatorStrategy(ABC):
         :param method_name: The name of the method to check.
         :return: True if implemented, False if abstract or a stub.
         """
+        if not hasattr(element_source, method_name):
+            # The method is not implemented at all
+            return False
         method = getattr(element_source, method_name)
         if inspect.isabstract(method):
             return False
@@ -60,7 +63,6 @@ class LocatorStrategy(ABC):
             return "raise NotImplementedError" not in source
         except (OSError, TypeError):
             return True
-
 
 class XPathStrategy(LocatorStrategy):
     """Strategy for locating elements via XPath."""
@@ -190,6 +192,28 @@ class ImageDetectionStrategy(LocatorStrategy):
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Image" and LocatorStrategy._is_method_implemented(element_source, "capture")
 
+class PagesourceStrategy:
+    def __init__(self, element_source: ElementSourceInterface):
+        self.element_source = element_source
+
+    def capture_pagesource(self) -> Optional[np.ndarray]:
+        pagesource = self.element_source.get_page_source()
+        if pagesource is not None:
+            return pagesource
+        raise ValueError("Invalid pagesource captured")
+
+    def get_interactive_elements(self) -> List[dict]:
+        """Retrieve interactive elements from the element source."""
+
+        elements_dict = self.element_source.get_interactive_elements()
+        if elements_dict is not None:
+            return elements_dict
+        raise NotImplementedError("Interactive elements retrieval failed.")
+
+    @staticmethod
+    def supports(element_source: ElementSourceInterface) -> bool:
+        return LocatorStrategy._is_method_implemented(element_source, "get_page_source")
+
 
 class ScreenshotStrategy:
     def __init__(self, element_source: ElementSourceInterface):
@@ -233,6 +257,14 @@ class StrategyFactory:
         strategies.sort(key=lambda x: x[1])  # Sort by priority value
         return [strategy for strategy, _ in strategies]
 
+class PagesourceFactory:
+    def __init__(self):
+        self._registry = [(PagesourceStrategy, {})]
+
+    def create_strategies(self, element_source: ElementSourceInterface) -> List[PagesourceStrategy]:
+        return [cls(element_source, **args) for cls, args in self._registry if cls.supports(element_source)]
+
+
 class ScreenshotFactory:
     def __init__(self):
         self._registry = [(ScreenshotStrategy, {})]
@@ -255,8 +287,10 @@ class StrategyManager:
         self.element_source = element_source
         self.locator_factory = StrategyFactory(text_detection, image_detection, strategy_manager=self)
         self.screenshot_factory = ScreenshotFactory()
+        self.pagesource_factory = PagesourceFactory()
         self.locator_strategies = self._build_locator_strategies()
         self.screenshot_strategies = self._build_screenshot_strategies()
+        self.pagesource_strategies = self._build_pagesource_strategies()
         # for stream
         self.screenshot_stream = None
 
@@ -280,6 +314,17 @@ class StrategyManager:
         else:
             strategies.update(
                 self.screenshot_factory.create_strategies(self.element_source))
+        return strategies
+
+    def _build_pagesource_strategies(self) -> Set[PagesourceStrategy]:
+        strategies = set()
+        if isinstance(self.element_source, InstanceFallback):
+            for instance in self.element_source.instances:
+                strategies.update(
+                    self.pagesource_factory.create_strategies(instance))
+        else:
+            strategies.update(
+                self.pagesource_factory.create_strategies(self.element_source))
         return strategies
 
     def locate(self, element: str) -> Generator[LocateResult, None, None]:
@@ -353,3 +398,24 @@ class StrategyManager:
             self.screenshot_stream = None
         else:
             execution_logger.warning("No active screenshot stream to stop.")
+
+    def capture_pagesource(self) -> Optional[str]:
+        for strategy in self.pagesource_strategies:
+            try:
+                return strategy.capture_pagesource()
+            except Exception as e:
+                internal_logger.debug(
+                    f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
+        internal_logger.error("No pagesource captured.")
+        return None
+
+    def get_interactive_elements(self) -> List[dict]:
+        """Retrieve interactive elements from the element source."""
+        for strategy in self.pagesource_strategies:
+            try:
+                return strategy.get_interactive_elements()
+            except Exception as e:
+                internal_logger.debug(
+                    f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
+        internal_logger.error("No interactive elements retrieved.")
+        return []
