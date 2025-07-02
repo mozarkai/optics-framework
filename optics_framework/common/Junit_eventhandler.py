@@ -14,7 +14,7 @@ def setup_junit():
     global junit_handler
     config_handler = ConfigHandler.get_instance()
     config = config_handler.load()
-    log_dir = config.execution_output_path
+    log_dir = config.execution_output_path or (Path.cwd() / "logs")
 
     junit_path = getattr(config, 'json_log_path', None)
     if junit_path:

@@ -33,11 +33,7 @@ class SensitiveDataFormatter(logging.Formatter):
         return super().format(record)
 
     def _sanitize(self, message: str) -> str:
-        def replacer(match):
-            sensitive_value = match.group(1)
-            return '*' * len(sensitive_value)
-
-        return re.sub(r"SENSITIVE:([^\s,)\]]+)", replacer, message)
+        return re.sub(r"@:([^\s,)\]]+)", "****", message)
 
 internal_console_handler = RichHandler(
     rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
@@ -155,7 +151,8 @@ def initialize_handlers():
 
 
     # Prepare directories
-    log_dir = Path(config.execution_output_path)
+    execution_output_path = config.execution_output_path or (Path.cwd() / "logs")
+    log_dir = Path(execution_output_path).expanduser()
     log_dir.mkdir(parents=True, exist_ok=True)
     internal_logger.debug(f"Output directory: {log_dir}, writable={os.access(log_dir, os.W_OK)}")
 
