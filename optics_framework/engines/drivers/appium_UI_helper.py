@@ -690,66 +690,63 @@ class UIHelper:
 # element extraction
     def get_interactive_elements(self) -> List[Dict]:
         page_source, _ = self.get_page_source()
-        tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
-        root = tree.getroot()
+        root = etree.ElementTree(etree.fromstring(page_source.encode("utf-8"))).getroot()
         elements = root.xpath(".//*[@bounds]")
         results = []
 
         for node in elements:
-            attrs = node.attrib
-            bounds_str = attrs.get("bounds", "")
-            match = re.findall(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_str)
-            if not match:
+            bounds = self._extract_bounds(node)
+            if not bounds:
                 continue
-            x1, y1, x2, y2 = map(int, match[0])
-            bounds = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
-            # Cross-platform text fallback priority list
-            text_candidates = [
-                ("text", attrs.get("text")),
-                ("content-desc", attrs.get("content-desc")),
-                ("name", attrs.get("name")),
-                ("value", attrs.get("value")),
-                ("label", attrs.get("label")),
-                ("resource-id", attrs.get("resource-id").split("/")[-1] if "resource-id" in attrs else None)
-            ]
-
-            text = None
-            used_key = None
-            for key, val in text_candidates:
-                if val:
-                    text = val
-                    used_key = key
-                    break
-
+            text, used_key = self._extract_display_text(node.attrib)
             if not text:
-                continue  # skip elements with no meaningful descriptor
+                continue
 
             xpath = self.get_xpath(node)
+            extra = self._build_extra_metadata(node.attrib, used_key, node.tag)
 
-            # Build extra attributes — skip false-like values and the used key for text
-            extra = {}
-            for k, v in attrs.items():
-                if k == used_key:
-                    continue  # skip the one used as 'text'
-                if v is None or v == "" or v.lower() == "false":
-                    continue  # skip false/empty
-                extra[k] = v
-
-            # Add structural metadata
-            extra["class"] = attrs.get("class")
-            extra["resource-id"] = attrs.get("resource-id")
-            extra["tag"] = node.tag
-
-            element_info = {
+            results.append({
                 "text": text,
                 "bounds": bounds,
                 "xpath": xpath,
                 "extra": extra
-            }
-            results.append(element_info)
+            })
 
         return results
+
+    def _extract_bounds(self, node: etree.Element) -> dict | None:
+        bounds_str = node.attrib.get("bounds", "")
+        match = re.findall(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_str)
+        if not match:
+            return None
+        x1, y1, x2, y2 = map(int, match[0])
+        return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+    def _extract_display_text(self, attrs: dict) -> tuple[str | None, str | None]:
+        text_candidates = [
+            ("text", attrs.get("text")),
+            ("content-desc", attrs.get("content-desc")),
+            ("name", attrs.get("name")),
+            ("value", attrs.get("value")),
+            ("label", attrs.get("label")),
+            ("resource-id", attrs.get("resource-id").split("/")[-1] if "resource-id" in attrs else None),
+        ]
+        for key, val in text_candidates:
+            if val:
+                return val, key
+        return None, None
+
+    def _build_extra_metadata(self, attrs: dict, used_key: str | None, tag: str) -> dict:
+        extra = {
+            k: v for k, v in attrs.items()
+            if k != used_key and v and v.lower() != "false"
+        }
+        extra["class"] = attrs.get("class")
+        extra["resource-id"] = attrs.get("resource-id")
+        extra["tag"] = tag
+        return extra
+
 
     def get_xpath(self, node: etree.Element) -> str:
         """

@@ -58,9 +58,9 @@ class SeleniumPageSource(ElementSourceInterface):
 
     def get_interative_elements(self):
 
-        internal_logger.exception("Selenium Page Source does not support getting interactive elements.")
+        internal_logger.exception("Getting interactive elements is not yet suppored using Selenium Page Source.")
         raise NotImplementedError(
-            "Selenium Page Source does not support getting interactive elements."
+            "Getting interactive elements is not yet suppored using Selenium Page Source."
         )
 
     def locate(self, element: str, index: int = None) -> WebElement:

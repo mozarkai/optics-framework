@@ -68,8 +68,8 @@ class AppiumFindElement(ElementSourceInterface):
         Returns:
             list: A list of interactive elements (buttons, links, etc.) found in the page source.
         """
-        internal_logger.exception('Appium Find Element does not support getting interactive elements.')
-        raise NotImplementedError('Appium Find Element does not support getting interactive elements.')
+        internal_logger.exception('Appium Find Element does not support getting interactive elements. Please use AppiumPageSource for this functionality.')
+        raise NotImplementedError('Appium Find Element does not support getting interactive elements. Please use AppiumPageSource for this functionality.')
 
 
     def locate(self, element: str, index = None):

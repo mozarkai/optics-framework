@@ -43,9 +43,9 @@ class SeleniumFindElement(ElementSourceInterface):
 
     def get_interative_elements(self):
 
-        internal_logger.exception("Selenium Find Element does not support getting interactive elements.")
+        internal_logger.exception("Getting interactive elements is not yet suppored using Selenium Find Element.")
         raise NotImplementedError(
-            "Selenium Find Element does not support getting interactive elements."
+            "Getting interactive elements is not yet suppored using Selenium Find Element."
         )
 
     def locate(self, element: str, index: int = None) -> Any:
