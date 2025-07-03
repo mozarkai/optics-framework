@@ -67,6 +67,7 @@ class GenerateArgs(BaseModel):
     """Arguments for the generate command."""
     project_path: str
     output_file: str = "generated_test.py"
+    framework: str = "pytest"
 
 
 class GenerateCommand(Command):
@@ -75,18 +76,27 @@ class GenerateCommand(Command):
             "generate", help="Generate test framework code")
         parser.add_argument("project_path", help="Project name (required)")
         parser.add_argument(
-            "output_file",
+            "--output",
             help="Path to the output file where the code will be generated",
             default="generated_test.py",
             nargs="?",
+        )
+        parser.add_argument(
+            "--framework",
+            choices=["pytest", "robot"],
+            default="pytest",
+            help="Test framework to use for code generation (default: pytest)",
         )
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
         generate_args = GenerateArgs(
-            project_path=args.project_path, output_file=args.output_file)
+            project_path=args.project_path, output_file=args.output, framework=args.framework)
         generate_framework_code(
-            generate_args.project_path, generate_args.output_file)
+            generate_args.project_path,
+            generate_args.framework,
+            generate_args.output_file,
+        )
 
 class ServerArgs(BaseModel):
     """Arguments for the server command."""
@@ -268,7 +278,7 @@ class ExecuteCommand(Command):
 class VersionCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "version", help="Print the current version")
+            "--version", help="Print the current version")
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):

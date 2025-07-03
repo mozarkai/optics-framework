@@ -16,6 +16,7 @@ local -a _optics_subcommands=(
 local -a templates=("calender" "contact" "gmail_web" "youtube")
 local -a runners=("test_runner" "pytest")
 local -a drivers=("${(f)$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')}")
+local -a frameworks=("pytest" "robot")
 
 _optics_completions() {
   local state
@@ -56,6 +57,7 @@ _optics_completions() {
           _arguments \
             '*:project_path:_files' \
             '*:output_file:_files' \
+            '--framework=[Framework]:framework:(${frameworks[@]})' \
             '--help[-h]'
           ;;
 

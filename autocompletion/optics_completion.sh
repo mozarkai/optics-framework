@@ -43,6 +43,13 @@ _optics_completions() {
 
     generate)
       COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
+      if [[ $prev == "--framework" ]]; then
+        COMPREPLY=( $(compgen -W "pytest robot" -- "$cur") )
+      elif [[ $prev == "--output" ]]; then
+        COMPREPLY=( $(compgen -f -- "$cur") )
+      elif [[ $prev == "--project_path" ]]; then
+        COMPREPLY=( $(compgen -d -- "$cur") )
+      fi
       ;;
 
     setup)
