@@ -23,6 +23,7 @@ class CapabilitiesConfig(BaseModel):
     automation_name: str = Field(..., alias="automationName")
     app_package: Optional[str] = Field(None, alias="appPackage")
     app_activity: Optional[str] = Field(None, alias="appActivity")
+    udid: Optional[str] = Field(None, alias="udid")  # Unique device identifier
     app: Optional[str] = None  # iOS apps often use just 'app'
 
     @model_validator(mode="after")
@@ -78,6 +79,7 @@ class Appium(DriverInterface):
         app_activity = cap.app_activity
         platform = cap.platform_name
         device_serial = cap.device_name
+        udid = cap.udid
         automation_name = cap.automation_name
 
         internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
@@ -93,7 +95,7 @@ class Appium(DriverInterface):
             options = UiAutomator2Options()
             options.platform_name = platform
             options.device_name = device_serial
-            options.udid = device_serial
+            options.udid = udid
             options.ensure_webviews_have_pages = True
             options.native_web_screenshot = True
             options.new_command_timeout = new_comm_timeout
