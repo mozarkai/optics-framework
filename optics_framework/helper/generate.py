@@ -542,7 +542,7 @@ def find_files(
 
 
 def generate_test_file(
-    folder_path: str, framework: str = "pytest", output_filename: str = "test.py"
+    folder_path: str, framework: str = "pytest", output_filename: str | None = None
 ) -> None:
     """
     Generate a test file from mixed CSV and YAML files in the specified folder.

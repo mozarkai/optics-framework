@@ -66,8 +66,16 @@ class AutocompletionCommand(Command):
 class GenerateArgs(BaseModel):
     """Arguments for the generate command."""
     project_path: str
-    output_file: str = "generated_test.py"
     framework: str = "pytest"
+    output_file: str|None = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.output_file is None:
+            if self.framework == "robot":
+                self.output_file = "test_generated.robot"
+            else:
+                self.output_file = "test_generated.py"
 
 
 class GenerateCommand(Command):
@@ -78,7 +86,6 @@ class GenerateCommand(Command):
         parser.add_argument(
             "--output",
             help="Path to the output file where the code will be generated",
-            default="generated_test.py",
             nargs="?",
         )
         parser.add_argument(
