@@ -1,6 +1,7 @@
-import subprocess # nosec
+import subprocess  # nosec
 from typing import Any, Dict, Optional
 from appium import webdriver
+from appium.webdriver.webdriver import WebDriver
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions
 from optics_framework.common.config_handler import ConfigHandler
@@ -12,30 +13,8 @@ from optics_framework.common.utils import SpecialKey
 from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
-from pydantic import BaseModel, Field, model_validator, ValidationError
 from typing import Union
-# Hotfix: Disable debug logs from Appium to prevent duplicates on live logs
-# logging.disable(logging.DEBUG)
 
-class CapabilitiesConfig(BaseModel):
-    platform_name: str = Field(..., alias="platformName", pattern="^(Android|iOS)$")
-    device_name: str = Field(..., alias="deviceName")
-    automation_name: str = Field(..., alias="automationName")
-    app_package: Optional[str] = Field(None, alias="appPackage")
-    app_activity: Optional[str] = Field(None, alias="appActivity")
-    app: Optional[str] = None  # iOS apps often use just 'app'
-
-    @model_validator(mode="after")
-    def validate_platform_requirements(self):
-        if self.platform_name.lower() == "android":
-            if not self.app_package or not self.app_activity:
-                raise ValueError("Android requires 'appPackage' and 'appActivity'")
-        elif self.platform_name.lower() == "ios" and not self.app:
-                raise ValueError("iOS requires a valid 'app'")
-        return self
-
-    class Config:
-        populate_by_name = True
 
 class Appium(DriverInterface):
     _instance = None
@@ -53,91 +32,93 @@ class Appium(DriverInterface):
         self.driver = None
         self.event_sdk = EventSDK.get_instance()
         config_handler = ConfigHandler.get_instance()
-        config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(self.DEPENDENCY_TYPE, self.NAME)
+        config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
+            self.DEPENDENCY_TYPE, self.NAME
+        )
 
         if not config:
-            internal_logger.error(f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
+            internal_logger.error(
+                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
+            )
             raise ValueError("Appium driver not enabled in config")
 
         self.appium_server_url: str = config.get("url", "http://127.0.0.1:4723")
 
-        try:
-            self.capabilities_model = CapabilitiesConfig(**config.get("capabilities", {}))
-        except ValidationError as ve:
-            internal_logger.error(f"Invalid Appium capabilities: {ve}")
-            raise
+        self.capabilities = config.get("capabilities", {})
+        if not self.capabilities:
+            internal_logger.error("No capabilities found in config")
+            raise ValueError("Appium capabilities not found in config")
+
         # UI Tree handling
         self.ui_helper = None
         self.initialized = True
 
-    # session management
-    def start_session(self, event_name: str | None = None) -> webdriver.Remote:
-        """Start the Appium session if not already started."""
-        cap = self.capabilities_model
-        app_package = cap.app_package
-        app_activity = cap.app_activity
-        platform = cap.platform_name
-        device_serial = cap.device_name
-        automation_name = cap.automation_name
+    def start_session(self, event_name: str | None = None) -> WebDriver:
+        """Start the Appium session if not already started, incorporating custom capabilities."""
+        all_caps = self.capabilities
+        options, default_options = self._get_platform_and_options(all_caps)
 
-        internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
-        new_comm_timeout = 3600  # Command timeout
+        # Combine default and user-provided capabilities, with user's config taking precedence
+        final_caps = {**default_options, **all_caps}
+        internal_logger.debug(f"Final capabilities being applied: {final_caps}")
 
-        if not platform or not device_serial or not automation_name:
-            raise ValueError("Missing required capability: platformName, deviceName, or automationName")
-
-        if platform.lower() == "android":
-            if not app_package or not app_activity:
-                raise ValueError("Android requires 'app_package' and 'app_activity'.")
-
-            options = UiAutomator2Options()
-            options.platform_name = platform
-            options.device_name = device_serial
-            options.udid = device_serial
-            options.ensure_webviews_have_pages = True
-            options.native_web_screenshot = True
-            options.new_command_timeout = new_comm_timeout
-            options.connect_hardware_keyboard = True
-            options.force_app_launch = True
-            options.should_terminate_app = False
-            options.automation_name = automation_name
-            options.no_reset = False
-            options.app_package = app_package
-            options.app_activity = app_activity
-            options.ignore_hidden_api_policy_error = True
-
-        elif platform.lower() == "ios":
-            if not app_package:
-                raise ValueError("iOS requires a valid 'app' path.")
-
-            options = XCUITestOptions()
-            options.platform_name = platform
-            options.device_name = device_serial
-            options.udid = device_serial
-            options.ensure_webviews_have_pages = True
-            options.native_web_screenshot = True
-            options.new_command_timeout = new_comm_timeout
-            options.connect_hardware_keyboard = True
-            options.force_app_launch = True
-            options.should_terminate_app = False
-            options.automation_name = automation_name
-            options.no_reset = True
-            options.app = app_package
-
-        else:
-            raise ValueError("Unsupported platform. Use 'Android' or 'iOS'.")
+        # Apply all final capabilities to the options object
+        for key, value in final_caps.items():
+            options.set_capability(key, value)
 
         try:
             if self.driver is None:
                 if event_name:
                     self.event_sdk.capture_event(event_name)
+                internal_logger.debug(
+                    f"Starting Appium session with capabilities: {options.to_capabilities()}"
+                )
                 self.driver = webdriver.Remote(self.appium_server_url, options=options)
                 set_appium_driver(self.driver)
                 self.ui_helper = UIHelper()
-                return self.driver
         except Exception as e:
-            internal_logger.debug(f"Failed to start Appium session: {e}")
+            internal_logger.error(f"Failed to start Appium session: {e}")
             raise
+        return self.driver
+
+    def _get_platform_and_options(self, all_caps):
+        """Helper to determine platform, create options, and set defaults."""
+        platform = all_caps.get("platformName") or all_caps.get("appium:platformName")
+
+        if not platform:
+            # Fallback for case-insensitivity, though keys are usually case-sensitive
+            for key in all_caps:
+                if key.lower() == "platformname":
+                    platform = all_caps[key]
+                    break
+            if not platform:
+                raise ValueError("'platformName' capability is required.")
+
+        internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
+        internal_logger.debug(f"All capabilities from config: {all_caps}")
+
+        # Set default options that can be overridden by user config
+        default_options = {
+            "newCommandTimeout": 3600,
+            "ensureWebviewsHavePages": True,
+            "nativeWebScreenshot": True,
+            "noReset": True,
+            "shouldTerminateApp": False,
+            "forceAppLaunch": True,
+            "connectHardwareKeyboard": True,
+        }
+
+        if platform.lower() == "android":
+            options = UiAutomator2Options()
+            # Add Android-specific defaults
+            default_options["ignoreHiddenApiPolicyError"] = True
+        elif platform.lower() == "ios":
+            options = XCUITestOptions()
+        else:
+            raise ValueError(
+                f"Unsupported platform: {platform}. Use 'Android' or 'iOS'."
+            )
+        return options, default_options
 
     def terminate(self, event_name: str | None = None) -> None:
         """End the Appium session if active."""
@@ -149,9 +130,13 @@ class Appium(DriverInterface):
 
     def get_app_version(self) -> str:
         """Get the version of the application."""
-        app_package = self.app_details.get('appPackage')
+        app_package = self.capabilities.get("appPackage") or self.capabilities.get(
+            "appium:appPackage"
+        )
         if not app_package:
-            raise ValueError("Missing required capability: appPackage")
+            raise ValueError(
+                "Missing required capability: appPackage or appium:appPackage"
+            )
 
         command = f"adb shell dumpsys package {app_package} | grep versionName"
         try:
@@ -163,7 +148,7 @@ class Appium(DriverInterface):
                     # Extract the version string.
                     return line.split("versionName=")[-1].strip()
         except subprocess.CalledProcessError as e:
-            internal_logger.error("Error executing adb command:", e.output)
+            internal_logger.error(f"Error executing adb command: {e.output}")
         return ""
 
     def initialise_setup(self) -> None:
@@ -181,7 +166,7 @@ class Appium(DriverInterface):
         """Return the Appium driver instance."""
         return self.driver
 
-# APPIUM api wrappers
+    # APPIUM api wrappers
     def click_element(self, element, event_name=None):
         """
         Click on the specified element using Appium's click method.
@@ -208,7 +193,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.debug(f"Failed to tap at ({x}, {y}): {e}")
 
-    def swipe(self, start_x, start_y,direction, swipe_length, event_name=None):
+    def swipe(self, start_x, start_y, direction, swipe_length, event_name=None):
         """
         Perform a swipe action using Appium's W3C Actions API.
 
@@ -234,17 +219,23 @@ class Appium(DriverInterface):
             end_y = start_y
         timestamp = self.event_sdk.get_current_time_for_events()
         try:
-            execution_logger.debug(f"Swiping from ({start_x}, {start_y}) to ({end_x}, {end_y})")
+            execution_logger.debug(
+                f"Swiping from ({start_x}, {start_y}) to ({end_x}, {end_y})"
+            )
             self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
-            execution_logger.debug(f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}")
+            execution_logger.debug(
+                f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}"
+            )
 
-    def swipe_percentage(self, x_percentage, y_percentage, direction, swipe_percentage, event_name=None):
+    def swipe_percentage(
+        self, x_percentage, y_percentage, direction, swipe_percentage, event_name=None
+    ):
         window_size = self.driver.get_window_size()
-        width = window_size['width']
-        height = window_size['height']
+        width = window_size["width"]
+        height = window_size["height"]
         start_x = int(width * x_percentage / 100)
         start_y = int(height * y_percentage / 100)
         if direction == "up" or direction == "down":
@@ -257,27 +248,39 @@ class Appium(DriverInterface):
         location = element.location
         swipe_length = int(swipe_length)
         size = element.size
-        start_x = location['x'] + size['width'] // 2
-        start_y = location['y'] + size['height'] // 2
+        start_x = location["x"] + size["width"] // 2
+        start_y = location["y"] + size["height"] // 2
         if direction == "up" or direction == "down":
             end_x = start_x
-            end_y = start_y + swipe_length if direction == "down" else start_y - swipe_length
+            end_y = (
+                start_y + swipe_length
+                if direction == "down"
+                else start_y - swipe_length
+            )
         elif direction == "left" or direction == "right":
             end_y = start_y
-            end_x = start_x + swipe_length if direction == "right" else start_x - swipe_length
+            end_x = (
+                start_x + swipe_length
+                if direction == "right"
+                else start_x - swipe_length
+            )
         timestamp = self.event_sdk.get_current_time_for_events()
         try:
-            execution_logger.debug(f"Swiped from ({start_x}, {start_y}) to ({end_x}, {end_y})")
+            execution_logger.debug(
+                f"Swiped from ({start_x}, {start_y}) to ({end_x}, {end_y})"
+            )
             self.driver.swipe(start_x, start_y, end_x, end_y, 1000)
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
-            execution_logger.debug(f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}")
+            execution_logger.debug(
+                f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}"
+            )
 
     def scroll(self, direction, duration=1000, event_name=None):
         window_size = self.driver.get_window_size()
-        width = window_size['width']
-        height = window_size['height']
+        width = window_size["width"]
+        height = window_size["height"]
         if direction == "up":
             start_x = width // 2
             start_y = int(height * 0.8)
@@ -288,13 +291,14 @@ class Appium(DriverInterface):
             end_y = int(height * 0.8)
         timestamp = self.event_sdk.get_current_time_for_events()
         try:
-            internal_logger.debug(f"Scrolling {direction} from ({start_x}, {start_y}) to ({start_x}, {end_y})")
+            internal_logger.debug(
+                f"Scrolling {direction} from ({start_x}, {start_y}) to ({start_x}, {end_y})"
+            )
             self.driver.swipe(start_x, start_y, start_x, end_y, duration)
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
             execution_logger.debug(f"Failed to scroll {direction}: {e}")
-
 
     def enter_text_element(self, element, text, event_name=None):
         if event_name:
@@ -322,13 +326,15 @@ class Appium(DriverInterface):
         execution_logger.debug("Clearing text input")
         self.driver.execute_script("mobile: clear")
 
-    def press_keycode(self,keycode, event_name=None):
+    def press_keycode(self, keycode, event_name=None):
         if event_name:
             self.event_sdk.capture_event(event_name)
         execution_logger.debug(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(utils.strip_sensitive_prefix(keycode))
 
-    def enter_text_using_keyboard(self, input_value: Union[str, SpecialKey], event_name=None):
+    def enter_text_using_keyboard(
+        self, input_value: Union[str, SpecialKey], event_name=None
+    ):
         keycode_map = {
             SpecialKey.ENTER: 66,
             SpecialKey.TAB: 61,
@@ -338,7 +344,9 @@ class Appium(DriverInterface):
         }
         try:
             if isinstance(input_value, SpecialKey):
-                internal_logger.debug(f"Pressing Detected SpecialKey: {input_value}. Keycode: {keycode_map[input_value]}")
+                internal_logger.debug(
+                    f"Pressing Detected SpecialKey: {input_value}. Keycode: {keycode_map[input_value]}"
+                )
                 timestamp = self.event_sdk.get_current_time_for_events()
                 execution_logger.debug(f"Pressing SpecialKey: {input_value}")
                 self.driver.press_keycode(keycode_map[input_value])
@@ -346,51 +354,82 @@ class Appium(DriverInterface):
                 timestamp = self.event_sdk.get_current_time_for_events()
                 input_value = str(input_value)
                 execution_logger.debug(f"Entering text using keyboard: {input_value}")
-                self.driver.execute_script("mobile: type", {"text": utils.strip_sensitive_prefix(input_value)})
+                self.driver.execute_script(
+                    "mobile: type", {"text": utils.strip_sensitive_prefix(input_value)}
+                )
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
             raise RuntimeError(f"Appium failed to enter input: {e}")
 
-
     def get_char_as_keycode(self, char):
         # Basic lowercase mapping; extend as needed
         mapping = {
-            'a': 29, 'b': 30, 'c': 31, 'd': 32, 'e': 33, 'f': 34, 'g': 35,
-            'h': 36, 'i': 37, 'j': 38, 'k': 39, 'l': 40, 'm': 41, 'n': 42,
-            'o': 43, 'p': 44, 'q': 45, 'r': 46, 's': 47, 't': 48, 'u': 49,
-            'v': 50, 'w': 51, 'x': 52, 'y': 53, 'z': 54,
-            '0': 7,  '1': 8,  '2': 9,  '3': 10, '4': 11,
-            '5': 12, '6': 13, '7': 14, '8': 15, '9': 16,
-            ' ': 62,
-            '\n': 66  # Enter key
+            "a": 29,
+            "b": 30,
+            "c": 31,
+            "d": 32,
+            "e": 33,
+            "f": 34,
+            "g": 35,
+            "h": 36,
+            "i": 37,
+            "j": 38,
+            "k": 39,
+            "l": 40,
+            "m": 41,
+            "n": 42,
+            "o": 43,
+            "p": 44,
+            "q": 45,
+            "r": 46,
+            "s": 47,
+            "t": 48,
+            "u": 49,
+            "v": 50,
+            "w": 51,
+            "x": 52,
+            "y": 53,
+            "z": 54,
+            "0": 7,
+            "1": 8,
+            "2": 9,
+            "3": 10,
+            "4": 11,
+            "5": 12,
+            "6": 13,
+            "7": 14,
+            "8": 15,
+            "9": 16,
+            " ": 62,
+            "\n": 66,  # Enter key
         }
 
         return mapping.get(char.lower())  # handle lowercase input
 
     def get_text_element(self, element):
-        text = element.get_attribute('text') or element.get_attribute('value')
+        text = element.get_attribute("text") or element.get_attribute("value")
         internal_logger.info(f"Text of element: {text}")
         return text
 
-# helper functions
+    # helper functions
     def pixel_2_appium(self, x, y, screenshot):
         if not x or not y:
             return None
         window_size = self.driver.get_window_size()
-        screen_width = window_size['width']
-        screen_height = window_size['height']
-        internal_logger.debug(f'Appium Window Size: {screen_width, screen_height}')
+        screen_width = window_size["width"]
+        screen_height = window_size["height"]
+        internal_logger.debug(f"Appium Window Size: {screen_width, screen_height}")
         screenshot_height, screenshot_width = screenshot.shape[:2]
-        internal_logger.debug(f'screenshot size: {screenshot_width, screen_height}')
+        internal_logger.debug(f"screenshot size: {screenshot_width, screen_height}")
         scaled_x = int(x * screen_width / screenshot_width)
         scaled_y = int(y * screen_height / screenshot_height)
-        internal_logger.debug(f'scaled values : {scaled_x, scaled_y}')
+        internal_logger.debug(f"scaled values : {scaled_x, scaled_y}")
         return scaled_x, scaled_y
 
-# action keywords
+    # action keywords
 
-    def press_element(self, element,repeat, event_name=None):
+    def press_element(self, element, repeat, event_name=None):
         for _ in range(repeat):
             try:
                 timestamp = self.event_sdk.get_current_time_for_events()
@@ -416,11 +455,13 @@ class Appium(DriverInterface):
             execution_logger.debug(f"Pressing at coordinates: ({x}, {y})")
             self.tap_at_coordinates(x, y, event_name)
 
-    def press_percentage_coordinates(self, percentage_x, percentage_y, repeat, event_name=None):
+    def press_percentage_coordinates(
+        self, percentage_x, percentage_y, repeat, event_name=None
+    ):
         percentage_x, percentage_y = int(percentage_x), int(percentage_y)
         window_size = self.driver.get_window_size()
-        x = int(window_size['width'] * percentage_x/100)
-        y = int(window_size['height'] * percentage_y/100)
+        x = int(window_size["width"] * percentage_x / 100)
+        y = int(window_size["height"] * percentage_y / 100)
         self.press_coordinates(x, y, repeat, event_name)
 
     def press_xpath_using_coordinates(self, xpath, event_name):
@@ -437,11 +478,13 @@ class Appium(DriverInterface):
             y_centre = (bbox[1] + bbox[3]) // 2
             self.tap_at_coordinates(x_centre, y_centre, event_name)
         else:
-            internal_logger.debug(f"Bounding box not found for element with xpath: {xpath}")
+            internal_logger.debug(
+                f"Bounding box not found for element with xpath: {xpath}"
+            )
 
     def appium_find_element(self, element):
         element_type = utils.determine_element_type(element)
-        if element_type == 'XPath':
+        if element_type == "XPath":
             return self.driver.find_element(AppiumBy.XPATH, element)
-        elif element_type == 'Text':
+        elif element_type == "Text":
             return self.driver.find_element(AppiumBy.ACCESSIBILITY_ID, element)
