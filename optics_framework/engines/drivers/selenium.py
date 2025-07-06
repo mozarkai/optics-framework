@@ -2,7 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from optics_framework.common.utils import SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.config_handler import ConfigHandler
@@ -10,20 +10,6 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.selenium_driver_manager import set_selenium_driver
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
-from pydantic import BaseModel, Field,ValidationError, ConfigDict
-from typing import Literal, Union
-
-class SeleniumCapabilities(BaseModel):
-    browser_name: Literal["chrome", "firefox"] = Field(..., alias="browserName")
-    browser_url: str = Field("about:blank", alias="browserURL")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-class SeleniumDriverConfig(BaseModel):
-    url: str = "http://localhost:4444/wd/hub"
-    capabilities: SeleniumCapabilities
-
-    model_config = ConfigDict(populate_by_name=True)
 
 
 class SeleniumDriver(DriverInterface):
@@ -43,39 +29,60 @@ class SeleniumDriver(DriverInterface):
         self.driver: Optional[webdriver.Remote] = None
         config_handler = ConfigHandler.get_instance()
         config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
-            self.DEPENDENCY_TYPE, self.NAME)
+            self.DEPENDENCY_TYPE, self.NAME
+        )
         if not config:
             internal_logger.error(
-                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
+                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
+            )
             raise ValueError("Selenium driver not enabled in config")
-        try:
-            parsed_config = SeleniumDriverConfig(**config)
-        except ValidationError as e:
-            internal_logger.error(f"Invalid Selenium config: {e}")
-            raise
 
-        self.selenium_server_url = parsed_config.url
-        self.capabilities = parsed_config.capabilities
-        self.browser_url = parsed_config.capabilities.browser_url
+        self.selenium_server_url: str = config.get("url", "http://localhost:4444/wd/hub")
+        self.capabilities = config.get("capabilities", {})
+        if not self.capabilities:
+            internal_logger.error("No capabilities found in config")
+            raise ValueError("Selenium capabilities not found in config")
+
+        self.browser_url = self.capabilities.get("browserURL", "about:blank")
         self.eventSDK = EventSDK.get_instance()
         self.initialized = True
         self.ui_helper = None
 
-
     def start_session(self, event_name: str | None = None) -> webdriver.Remote:
         """Start a new Selenium session with the specified browser."""
         if self.driver is None:
-            browser_name = self.capabilities.browser_name.lower()
+            all_caps = self.capabilities
+            browser_name = all_caps.get("browserName")
+
+            if not browser_name:
+                raise ValueError("'browserName' capability is required.")
+
+            browser_name = browser_name.lower()
+
+            default_options = {}
             if browser_name == "chrome":
                 options = ChromeOptions()
-                options.add_argument("--remote-debugging-address=0.0.0.0")
-                options.add_argument("--no-sandbox")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
+                default_options = {
+                    "goog:chromeOptions": {
+                        "args": [
+                            "--remote-debugging-address=0.0.0.0",
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                        ]
+                    }
+                }
             elif browser_name == "firefox":
                 options = FirefoxOptions()
             else:
                 raise ValueError(f"Unsupported browser: {browser_name}")
+
+            final_caps = {**default_options, **all_caps}
+            internal_logger.debug(f"Final capabilities being applied: {final_caps}")
+
+            for key, value in final_caps.items():
+                options.set_capability(key, value)
+
             try:
                 self.driver = webdriver.Remote(
                     command_executor=self.selenium_server_url,
