@@ -440,20 +440,19 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             execution_logger.debug(f"Clicked on element: {element} at {timestamp}")
 
-    def press_coordinates(self, x, y, repeat, event_name=None):
+    def press_coordinates(self, coor_x, coor_y, event_name=None):
         """
         Press an element by absolute coordinates.
 
         Args:
-            self.tap_at_coordinates(x, y, event_name)
+            self.tap_at_coordinates(coor_x, coor_y, event_name)
             coor_y (int): The y-coordinate to press.
             repeat (int): The number of times to repeat the press.
             event_name (str | None): The name of the event to trigger, if any.
         """
-        x, y = int(x), int(y)
-        for _ in range(repeat):
-            execution_logger.debug(f"Pressing at coordinates: ({x}, {y})")
-            self.tap_at_coordinates(x, y, event_name)
+        coor_x, coor_y = int(coor_x), int(coor_y)
+        execution_logger.debug(f"Pressing at coordinates: ({coor_x}, {coor_y})")
+        self.tap_at_coordinates(coor_x, coor_y, event_name)
 
     def press_percentage_coordinates(
         self, percentage_x, percentage_y, repeat, event_name=None
@@ -462,7 +461,11 @@ class Appium(DriverInterface):
         window_size = self.driver.get_window_size()
         x = int(window_size["width"] * percentage_x / 100)
         y = int(window_size["height"] * percentage_y / 100)
-        self.press_coordinates(x, y, repeat, event_name)
+        for _ in range(repeat):
+            execution_logger.debug(
+                f"Pressing at percentage coordinates: ({percentage_x}%, {percentage_y}%)"
+            )
+            self.press_coordinates(x, y, event_name)
 
     def press_xpath_using_coordinates(self, xpath, event_name):
         """

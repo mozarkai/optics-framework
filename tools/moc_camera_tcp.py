@@ -95,7 +95,7 @@ class ScreenshotTcpServer:
             logger.info(f"Connection with {addr} closed")
 
 
-async def _create_dummy_img_bytes() -> bytes:
+def _create_dummy_img_bytes() -> bytes:
     # Create a 100x50 red RGB image
     width = 100
     height = 50
