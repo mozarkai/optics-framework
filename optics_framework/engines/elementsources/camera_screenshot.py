@@ -1,12 +1,12 @@
+from typing import Optional, Dict, Any
+import struct
+import socket
 import cv2
 import numpy as np
-import socket
 from pydantic import BaseModel, Field, ValidationError
-from typing import Optional, Dict, Any
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
-
 
 class CapabilitiesConfig(BaseModel):
     camera_index: Optional[int] = Field(None, description="Index of the camera to use")
@@ -168,14 +168,12 @@ class CameraScreenshot(ElementSourceInterface):
             self.sock.sendall(b"screenshot\n")
             internal_logger.debug("Taking screenshot...")
 
-            # Read the first 8 bytes to get the length of the image data
-            length_bytes = self.sock.recv(8)
-            if len(length_bytes) < 8:
+            # Read the 4-byte image size header (big-endian uint32)
+            size_data = self.sock.recv(4)
+            if len(size_data) < 4:
                 raise ValueError("Failed to read the length of the image data.")
 
-            image_length = int.from_bytes(
-                length_bytes, byteorder="little", signed=False
-            )
+            image_length = struct.unpack(">I", size_data)[0]
             internal_logger.debug(f"Expected image data length: {image_length} bytes")
 
             # Initialize a bytearray for the image data
