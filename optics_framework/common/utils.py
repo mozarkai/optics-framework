@@ -52,7 +52,13 @@ def encode_numpy_to_base64(image: np.ndarray) -> str:
     :param image: The input image as a NumPy array (BGR format).
     :return: Base64 encoded string.
     """
-    _, buffer = cv2.imencode('.jpg', image)
+    if image is None or not isinstance(image, np.ndarray):
+        raise ValueError("Input image must be a valid NumPy array")
+
+    if image.size == 0 or image.shape[0] == 0 or image.shape[1] == 0:
+        raise ValueError("Input image is empty or has invalid dimensions")
+
+    _, buffer = cv2.imencode('.png', image)
     encoded_string = base64.b64encode(buffer).decode('utf-8')
     return encoded_string
 
