@@ -134,6 +134,8 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to launch app at {self.browser_url}: {e}")
             raise
 
+    def launch_other_app(self, app_name, event_name):
+        raise NotImplementedError("Selenium driver does not support launching apps yet.")
 
     def press_element(self, element, repeat: int = 1, event_name: str | None = None) -> None:
         """

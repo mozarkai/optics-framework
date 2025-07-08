@@ -14,6 +14,7 @@ from optics_framework.engines.drivers.appium_driver_manager import set_appium_dr
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from typing import Union
+from rapidfuzz import process
 
 
 class Appium(DriverInterface):
@@ -161,6 +162,85 @@ class Appium(DriverInterface):
         if self.driver is None:
             self.start_session(event_name)
         execution_logger.debug(f"Launched application with event: {event_name}")
+
+
+    def launch_other_app(self, app_name: str, event_name: str) -> None:
+        """Launch an app on the Appium-connected device using ADB by fuzzy matching the app name."""
+        try:
+            configured_device = self.capabilities.get("deviceName")
+            if not configured_device:
+                execution_logger.error(
+                    "No deviceName configured in Appium capabilities. Cannot launch app."
+                )
+                return
+
+            result = subprocess.run(["adb", "devices"], capture_output=True, text=True) # nosec B603 B607
+            devices = [
+                line.split("\t")[0]
+                for line in result.stdout.splitlines()
+                if "\tdevice" in line
+            ]
+            if not devices:
+                execution_logger.error("No ADB devices found.")
+                return
+
+            matching_device = next((d for d in devices if configured_device in d), None)
+            if not matching_device:
+                execution_logger.error(
+                    f"No matching device found for configured device: {configured_device}")
+                return
+
+            result_system = subprocess.run(    # nosec B603 B607
+                ["adb", "-s", matching_device, "shell", "pm", "list", "packages", "-s"],
+                capture_output=True,
+                text=True,
+            )
+            result_user = subprocess.run(      # nosec B603 B607
+                ["adb", "-s", matching_device, "shell", "pm", "list", "packages", "-3"],
+                capture_output=True,
+                text=True,
+            )
+            all_packages = list(set(
+                [line.replace("package:", "").strip() for line in result_system.stdout.splitlines()]
+                + [line.replace("package:", "").strip() for line in result_user.stdout.splitlines()]
+            ))
+
+            apps = [(pkg, pkg) for pkg in all_packages]
+
+            labels = [label for label, _ in apps]
+            closest_match = process.extractOne(app_name, labels, score_cutoff=50)
+            if not closest_match:
+                execution_logger.error(
+                    f"No close match found for app name: {app_name}. Available apps: {labels}"
+                )
+                return
+
+            matched_label, _, _ = closest_match
+            target_package = next(pkg for label, pkg in apps if label == matched_label)
+
+            subprocess.run(        # nosec B603 B607
+                [
+                    "adb",
+                    "-s",
+                    matching_device,
+                    "shell",
+                    "monkey",
+                    "-p",
+                    target_package,
+                    "-c",
+                    "android.intent.category.LAUNCHER",
+                    "1",
+                ],
+                check=True,
+            )
+            if event_name:
+                self.event_sdk.capture_event(event_name)
+            execution_logger.info(
+                f"Successfully launched app '{app_name}' with package '{target_package}' on device '{matching_device}'"
+            )
+        except Exception as e:
+            internal_logger.error(f"Failed to launch app via ADB: {str(e)}")
+
 
     def get_driver(self):
         """Return the Appium driver instance."""

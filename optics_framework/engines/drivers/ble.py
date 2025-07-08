@@ -314,6 +314,9 @@ class BLEDriver(DriverInterface):
         """
         raise NotImplementedError("BLE driver does not support launching apps.")
 
+    def launch_other_app(self, app_name, event_name):
+        raise NotImplementedError("BLE driver does not support launching apps.")
+
     def get_app_version(self) -> str:
         raise NotImplementedError("BLE driver does not support getting app version.")
 

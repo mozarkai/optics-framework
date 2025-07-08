@@ -46,14 +46,14 @@ class AppManagement:
         """
         self.driver.launch_app(event_name)
 
-    def start_other_app(self, package_name: str, event_name: Optional[str] = None) -> None:
+    def launch_other_app(self, app_name: str, event_name: Optional[str] = None) -> None:
         """
         Starts another application.
 
         :param package_name: The package name of the application.
         :param event_name: The event triggering the app start, if any.
         """
-        pass
+        self.driver.launch_other_app(app_name, event_name)
 
     def close_and_terminate_app(self) -> None:
         """

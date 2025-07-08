@@ -23,6 +23,19 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
+    def launch_other_app(self, app_name: str, event_name: str | None) -> None:
+        """
+        Launch an application.
+
+        :param event_name: The event triggering the app launch.
+        :type event_name: str
+        :raises NotImplementedError: If the method is not implemented in a subclass.
+        :return: None
+        :rtype: None
+        """
+        pass
+
+    @abstractmethod
     def get_app_version(self) -> str:
         """
         Get the version of the application.
