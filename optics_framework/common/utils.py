@@ -3,6 +3,7 @@ import hashlib
 from fuzzywuzzy import fuzz
 import re
 import os
+import ast
 import cv2
 import json
 import base64
@@ -279,3 +280,28 @@ def save_interactable_elements(elements):
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(elements, f, indent=2, ensure_ascii=False)
+
+def load_config(default_config: dict) -> dict:
+    """Load config from environment variable and override the default config."""
+    env_config = os.environ.get("TEST_SESSION_ENV_VARIABLES")
+    if not env_config:
+        return default_config  # No override
+
+    try:
+        config = json.loads(env_config)
+        for key, value in config.items():
+            if isinstance(value, str):
+                try:
+                    value = re.sub(r"'(\w+?)'\s*:", r'"\1":', value)
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    value = ast.literal_eval(
+                        value.replace("true", "True")
+                             .replace("false", "False")
+                             .replace("null", "None")
+                    )
+            default_config[key] = value  # Overwrite
+        return default_config
+    except Exception as e:
+        print(f"Failed to load config from env: {e}")
+        return default_config
