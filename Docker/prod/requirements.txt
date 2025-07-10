@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+optics-framework
+appium-python-client
+easyocr
