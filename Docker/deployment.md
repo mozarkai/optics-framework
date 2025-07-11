@@ -20,9 +20,8 @@ This guide outlines how to deploy the Optics API in two modes:
 
 ### 📁 Folder Structure
 ```
-prod/\
-├── Dockerfile\
-└── requirements.txt
+prod/
+└── Dockerfile
 ```
 
 ### Build
@@ -42,14 +41,13 @@ docker run -d -p 8000:8000 --name optics-api-prod optics-api-prod
 
 ### 📁 Folder Structure
 ```
-prod/\
-├── Dockerfile\
-└── requirements.txt
+prod/
+└── Dockerfile
 ├── dist/
 │   └── optics_framework-0.x.x-py3-none-any.whl
 ```
 
-### Built the .whl package
+### Build the .whl package
 ```
 cd /path/to/optics-framework
 poetry build
@@ -71,3 +69,6 @@ docker build \
 ```
 docker run -d -p 8000:8000 --name optics-api-dev optics-api-dev
 ```
+When running local host appium:
+
+appium_url: "http://host.docker.internal:4723"
