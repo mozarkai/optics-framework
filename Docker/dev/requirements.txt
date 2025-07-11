@@ -1,4 +1,0 @@
-fastapi
-uvicorn
-appium-python-client
-easyocr

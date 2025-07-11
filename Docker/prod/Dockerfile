@@ -10,13 +10,13 @@ RUN apt-get update && apt-get install -y \
     curl \
     libgl1 \
     libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy dependency list
-COPY requirements.txt .
-
-# Install all dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+ && pip install --no-cache-dir \
+    appium-python-client \
+    easyocr \
+    fastapi \
+    optics-framework \
+    uvicorn \
+ && rm -rf /var/lib/apt/lists/*
 
 # Expose the default port used by optics serve
 EXPOSE 8000
