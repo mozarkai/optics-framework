@@ -1,25 +1,20 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
-WORKDIR /app
+# Create a non-root user
+RUN useradd --create-home --shell /bin/bash appuser
 
-# Install system dependencies for cv2, etc.
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    libgl1 \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 
 # Accept the .whl filename as a build argument
 ARG WHL_FILE
 ENV WHL_FILE=${WHL_FILE}
 
-# Copy the specified wheel into the container
+# Copy the wheel into the container
 COPY dist/${WHL_FILE} /app/
 
-# Install all at once
-RUN apt-get update && apt-get install -y \
+# Install system dependencies and Python packages
+RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     curl \
     libgl1 \
@@ -29,7 +24,11 @@ RUN apt-get update && apt-get install -y \
     easyocr \
     fastapi \
     uvicorn \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 8000
 

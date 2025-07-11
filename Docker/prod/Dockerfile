@@ -1,11 +1,14 @@
-# Base lightweight Python image
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim
+
+# Create a non-root user
+RUN useradd --create-home --shell /bin/bash appuser
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (if needed)
-RUN apt-get update && apt-get install -y \
+# Install system dependencies and Python packages, then clean up
+RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     curl \
     libgl1 \
@@ -16,10 +19,12 @@ RUN apt-get update && apt-get install -y \
     fastapi \
     optics-framework \
     uvicorn \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && chown -R appuser:appuser /app
 
-# Expose the default port used by optics serve
+# Switch to non-root user
+USER appuser
+
 EXPOSE 8000
 
-# Run the Optics API using the built-in CLI
 CMD ["optics", "serve", "--host", "0.0.0.0", "--port", "8000"]
