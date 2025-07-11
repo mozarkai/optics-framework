@@ -293,6 +293,9 @@ class PytestGenerator(TestFrameworkGenerator):
                 f"    'image_detection': {config.get('image_detection', [])},"
                 if config.get("image_detection")
                 else "    'image_detection': [],",
+                f"    'execution_output_path': {config.get('execution_output_path')},"
+                if config.get("execution_output_path")
+                else "    'execution_output_path': None,",
                 "}\n",
                 "# Override with environment values if available",
                 "CONFIG = load_config(CONFIG)",
@@ -318,6 +321,7 @@ class PytestGenerator(TestFrameworkGenerator):
                 "        element_source_config=CONFIG['element_source_config'],",
                 "        image_config=CONFIG['image_detection'],",
                 "        text_config=CONFIG['text_detection'],",
+                "        execution_output_path=CONFIG.get('execution_output_path', None),",
                 "    )",
                 "    yield optics",
                 "    optics.quit()\n",

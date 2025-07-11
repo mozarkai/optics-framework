@@ -284,8 +284,13 @@ def save_interactable_elements(elements):
 def load_config(default_config: dict) -> dict:
     """Load config from environment variable and override the default config."""
     env_config = os.environ.get("TEST_SESSION_ENV_VARIABLES")
+    env_output_path = os.environ.get("EXEC_OUTPUT")
+    if env_output_path:
+        default_config["execution_output_path"] = env_output_path
+
     if not env_config:
         return default_config  # No override
+
 
     try:
         config = json.loads(env_config)

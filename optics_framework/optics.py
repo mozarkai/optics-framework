@@ -100,6 +100,7 @@ class Optics:
         element_source_config: List[Dict[str, Dict[str, Any]]],
         image_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         text_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        execution_output_path: Optional[str] = None,
     ) -> None:
         """
         Configure the Optics Framework with required driver and element source settings.
@@ -120,11 +121,14 @@ class Optics:
         text_deps = self._process_config_list(text_config) if text_config else []
 
         # Update ConfigHandler
+        self.config_handler.load()
         self.config_handler.config.driver_sources = driver_deps
         self.config_handler.config.elements_sources = element_deps
         self.config_handler.config.image_detection = image_deps
         self.config_handler.config.text_detection = text_deps
-        self.config_handler.load()
+        if execution_output_path:
+            self.config_handler.config.execution_output_path = execution_output_path
+
 
         # # Initialize session
         try:
