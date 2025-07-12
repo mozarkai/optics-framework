@@ -14,7 +14,6 @@ from optics_framework.engines.drivers.appium_driver_manager import set_appium_dr
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from typing import Union
-from rapidfuzz import process
 
 
 class Appium(DriverInterface):
@@ -56,6 +55,8 @@ class Appium(DriverInterface):
 
     def start_session(self, event_name: str | None = None) -> WebDriver:
         """Start the Appium session if not already started, incorporating custom capabilities."""
+        if self.driver is not None:
+            return self.driver
         all_caps = self.capabilities
         options, default_options = self._get_platform_and_options(all_caps)
 
@@ -67,19 +68,18 @@ class Appium(DriverInterface):
         for key, value in final_caps.items():
             options.set_capability(key, value)
 
-        try:
-            if self.driver is None:
-                if event_name:
-                    self.event_sdk.capture_event(event_name)
-                internal_logger.debug(
-                    f"Starting Appium session with capabilities: {options.to_capabilities()}"
-                )
-                self.driver = webdriver.Remote(self.appium_server_url, options=options)
-                set_appium_driver(self.driver)
-                self.ui_helper = UIHelper()
-        except Exception as e:
-            internal_logger.error(f"Failed to start Appium session: {e}")
-            raise
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        internal_logger.debug(
+            f"Starting Appium session with capabilities: {options.to_capabilities()}"
+        )
+        self.driver = webdriver.Remote(self.appium_server_url, options=options)
+        if self.driver is None:
+            raise RuntimeError("Failed to create Appium WebDriver instance")
+
+        set_appium_driver(self.driver)
+        self.ui_helper = UIHelper()
+
         return self.driver
 
     def _get_platform_and_options(self, all_caps):
@@ -164,83 +164,15 @@ class Appium(DriverInterface):
         execution_logger.debug(f"Launched application with event: {event_name}")
 
 
-    def launch_other_app(self, app_name: str, event_name: str) -> None:
+    def launch_other_app(self, app_name: str, event_name: str|None) -> None:
         """Launch an app on the Appium-connected device using ADB by fuzzy matching the app name."""
-        try:
-            configured_device = self.capabilities.get("deviceName")
-            if not configured_device:
-                execution_logger.error(
-                    "No deviceName configured in Appium capabilities. Cannot launch app."
-                )
-                return
-
-            result = subprocess.run(["adb", "devices"], capture_output=True, text=True) # nosec B603 B607
-            devices = [
-                line.split("\t")[0]
-                for line in result.stdout.splitlines()
-                if "\tdevice" in line
-            ]
-            if not devices:
-                execution_logger.error("No ADB devices found.")
-                return
-
-            matching_device = next((d for d in devices if configured_device in d), None)
-            if not matching_device:
-                execution_logger.error(
-                    f"No matching device found for configured device: {configured_device}")
-                return
-
-            result_system = subprocess.run(    # nosec B603 B607
-                ["adb", "-s", matching_device, "shell", "pm", "list", "packages", "-s"],
-                capture_output=True,
-                text=True,
-            )
-            result_user = subprocess.run(      # nosec B603 B607
-                ["adb", "-s", matching_device, "shell", "pm", "list", "packages", "-3"],
-                capture_output=True,
-                text=True,
-            )
-            all_packages = list(set(
-                [line.replace("package:", "").strip() for line in result_system.stdout.splitlines()]
-                + [line.replace("package:", "").strip() for line in result_user.stdout.splitlines()]
-            ))
-
-            apps = [(pkg, pkg) for pkg in all_packages]
-
-            labels = [label for label, _ in apps]
-            closest_match = process.extractOne(app_name, labels, score_cutoff=50)
-            if not closest_match:
-                execution_logger.error(
-                    f"No close match found for app name: {app_name}. Available apps: {labels}"
-                )
-                return
-
-            matched_label, _, _ = closest_match
-            target_package = next(pkg for label, pkg in apps if label == matched_label)
-
-            subprocess.run(        # nosec B603 B607
-                [
-                    "adb",
-                    "-s",
-                    matching_device,
-                    "shell",
-                    "monkey",
-                    "-p",
-                    target_package,
-                    "-c",
-                    "android.intent.category.LAUNCHER",
-                    "1",
-                ],
-                check=True,
-            )
-            if event_name:
-                self.event_sdk.capture_event(event_name)
-            execution_logger.info(
-                f"Successfully launched app '{app_name}' with package '{target_package}' on device '{matching_device}'"
-            )
-        except Exception as e:
-            internal_logger.error(f"Failed to launch app via ADB: {str(e)}")
-
+        if self.driver is None:
+            self.start_session(event_name)
+        if self.driver:
+            self.driver.activate_app(app_name)
+            internal_logger.debug(f"Activated app: {app_name} with event: {event_name}")
+        else:
+            internal_logger.error("Appium driver is not initialized.")
 
     def get_driver(self):
         """Return the Appium driver instance."""
