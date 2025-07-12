@@ -114,6 +114,7 @@ class YAMLDataReader(DataReader):
         modules = {}
         keyword_registry = {
             "Launch App",
+            "Launch Other App",
             "Start Appium Session",
             "Close and Terminate App",
             "Get App Version",

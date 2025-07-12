@@ -157,6 +157,13 @@ class Optics:
             raise ValueError(INVALID_SETUP)
         self.app_management.launch_app(event_name)
 
+    @keyword("Launch Other App")
+    def launch_other_app(self, bundleid: str) -> None:
+        """Launch another application."""
+        if not self.app_management:
+            raise ValueError(INVALID_SETUP)
+        self.app_management.launch_other_app(bundleid)
+
     @keyword("Start Appium Session")
     def start_appium_session(self, event_name: Optional[str] = None) -> None:
         """Start an Appium session."""
