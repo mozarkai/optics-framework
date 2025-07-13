@@ -301,9 +301,6 @@ class BLEDriver(DriverInterface):
         """
         self.ser.write((keyboard_command + "\n").encode("utf-8"))
         time.sleep(0.1)
-        self.ser.write(
-            "0 0 0 0 0 0 0 0\n".encode("utf-8")
-        )  # Reset the command after sending
 
     def keyboard(self, text):
         """
@@ -553,10 +550,13 @@ class BLEDriver(DriverInterface):
         :rtype: None
         """
         internal_logger.debug("Closing all applications.")
-        self.send_keyboard_command("4 0 43 0 0 0 0 0")  # press Alt + Tab
+        # self.send_keyboard_command("4 0 43 0 0 0 0 0")  # press Alt + Tab
         self.send_keyboard_command(
             "4 0 61 0 0 0 0 0"
         )  # press Alt + F4 to close the active window
+        self.send_keyboard_command(
+            "0 0 0 0 0 0 0 0"
+        )
         internal_logger.debug("Terminating the BLE connection.")
         if self.ser.is_open:
             self.ser.close()
