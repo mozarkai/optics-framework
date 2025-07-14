@@ -12,7 +12,7 @@ from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger, execution_logger, LogCaptureBuffer
 from optics_framework.common import test_context
 from optics_framework.common.runner.printers import IResultPrinter, TestCaseResult, KeywordResult, ModuleResult, NullResultPrinter
-from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node
+from optics_framework.common.models import TestCaseNode, ModuleNode, KeywordNode, State, Node, ApiData
 from optics_framework.common.events import get_event_manager, EventStatus, CommandType, Event
 from optics_framework.common.runner.data_reader import DataReader
 
@@ -20,6 +20,8 @@ class Runner:
     test_case: TestCaseNode
     result_printer: IResultPrinter
     keyword_map: Dict[str, Callable[..., Any]]
+    apis: ApiData
+    elements: Dict[str, Any]
 
     def execute_test_case(self, test_case: str) -> Optional[TestCaseResult]:
         """Empty implementation to satisfy the interface contract.
@@ -66,10 +68,11 @@ class TestRunner(Runner):
         self,
         test_cases: TestCaseNode,
         modules: Dict[str, List[Tuple[str, List[str]]]],
-        elements: Dict[str, str],
+        elements: Dict[str, Any],
         keyword_map: Dict[str, Callable[..., Any]],
         result_printer: IResultPrinter,
-        session_id: str
+        session_id: str,
+        apis: ApiData,
     ) -> None:
         self.test_cases = test_cases
         self.modules = modules
@@ -77,6 +80,7 @@ class TestRunner(Runner):
         self.keyword_map = keyword_map
         self.result_printer = result_printer
         self.session_id = session_id
+        self.apis = apis
         self.config = ConfigHandler.get_instance().config
         execution_logger.debug(
             f"Initialized test_state: {list(modules.keys())} with {len(modules)} modules")
@@ -129,8 +133,10 @@ class TestRunner(Runner):
         var_name = param[2:-1].strip()
         resolved_value = self.elements.get(var_name)
         if resolved_value is None:
+            internal_logger.warning(f"Variable '{var_name}' not found in elements. Current elements: {self.elements}")
             raise ValueError(
                 f"Variable '{param}' not found in elements dictionary")
+        internal_logger.debug(f"Resolved '{param}' to '{resolved_value}'")
         return resolved_value
 
     def _init_test_case(self, test_case: str) -> TestCaseResult:

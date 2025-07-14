@@ -1,14 +1,18 @@
 import re
 from typing import Optional, Any, List, Union, Tuple, Callable, Dict
+from urllib.parse import urlparse, parse_qsl
 import os.path
 import ast
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
 import csv
+from jsonpath_ng import parse
 import requests
+from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.runner.test_runnner import Runner
+from optics_framework.common.models import ApiData
 
 NO_RUNNER_PRESENT = "Runner is None after ensure_runner call."
 
@@ -43,10 +47,12 @@ class FlowControl:
             return str(param)
         if self.runner is None:
             raise ValueError("Runner is None in resolve_param.")
-        runner_elements = getattr(self.runner, 'elements', {})
         var_name = param[2:-1].strip()
-        # Fallback to raw if not found
-        value = runner_elements.get(var_name, param)
+        # Access the shared elements dictionary from the runner
+        value = self.runner.elements.get(var_name)
+        if value is None:
+            raise ValueError(
+                f"Variable '{param}' not found in elements dictionary")
         return str(value)
 
     def execute_module(self, module_name: str) -> List[Any]:
@@ -499,3 +505,253 @@ class FlowControl:
 
         runner_elements[var_name] = result
         return result
+
+    def invoke_api(self, api_identifier: str) -> None:
+        """Invokes an API call based on a definition from the runner's API data."""
+        self._ensure_runner()
+        if self.runner is None:
+            raise ValueError(NO_RUNNER_PRESENT)
+        collection_name, api_name = self._parse_api_identifier(api_identifier)
+        collection = self._get_api_collection(collection_name)
+        api_def = self._get_api_definition(collection, api_name)
+
+        url, headers, body = self._prepare_request_details(collection, api_def)
+        response = self._execute_request(url, headers, body, api_def.request.method)
+        self._process_response(response, api_def)
+
+    def _parse_api_identifier(self, identifier: str) -> Tuple[str, str]:
+        """Parses 'collection.api' into a tuple."""
+        parts = identifier.split('.', 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid API identifier format: '{identifier}'. Expected 'collection.api_name'.")
+        return parts[0], parts[1]
+    def _get_api_collection(self, name: str):
+        """Retrieves an API collection from the runner."""
+        if self.runner is None:
+            raise ValueError(NO_RUNNER_PRESENT)
+        if not isinstance(self.runner.apis, ApiData):
+            raise ValueError("Runner instance does not have a valid 'apis' attribute.")
+        collection = self.runner.apis.collections.get(name)
+        if not collection:
+            raise ValueError(f"API collection '{name}' not found.")
+        return collection
+
+    def _get_api_definition(self, collection, name: str):
+        """Retrieves a specific API definition from a collection."""
+        api_def = collection.apis.get(name)
+        if not api_def:
+            raise ValueError(f"API '{name}' not found in collection '{collection.name}'.")
+        return api_def
+
+    def _prepare_request_details(self, collection, api_def) -> Tuple[str, Dict[str, str], Optional[Any]]:
+        """Constructs the full request URL, headers, and body."""
+        base_url = collection.base_url
+        endpoint = self._resolve_placeholders(api_def.endpoint)
+        if endpoint.startswith(("http://", "https://")):
+            full_url = endpoint
+        else:
+            full_url = f"{base_url}{endpoint}"
+
+        headers = {**collection.global_headers, **api_def.request.headers}
+        resolved_headers = self._resolve_placeholders(headers)
+
+        body = self._resolve_placeholders(api_def.request.body)
+        return full_url, resolved_headers, body
+
+    def _resolve_placeholders(self, data: Any) -> Any:
+        """Recursively resolves ${...} placeholders in strings, dicts, or lists."""
+        if isinstance(data, str):
+            return re.sub(r'\$\{([^}]+)\}', lambda m: self._resolve_param(m.group(0)), data)
+        if isinstance(data, dict):
+            return {k: self._resolve_placeholders(v) for k, v in data.items()}
+        if isinstance(data, list):
+            return [self._resolve_placeholders(i) for i in data]
+        return data
+
+    def _execute_request(self, url: str, headers: Dict, body: Optional[Any], method: str) -> requests.Response:
+        """Executes the HTTP request and returns the response."""
+        try:
+            config_handler = ConfigHandler.get_instance()
+            execution_output_path = config_handler.get_execution_output_path()
+            api_log_dir = execution_output_path
+
+            api_log_file_path = None
+            api_har_file_path = None
+            if api_log_dir:
+                os.makedirs(api_log_dir, exist_ok=True)
+                api_log_file_path = os.path.join(api_log_dir, "api_details.log")
+                api_har_file_path = os.path.join(api_log_dir, "api_details.har")
+
+            start_time = datetime.now(timezone.utc)
+            response = requests.request(method, url, headers=headers, json=body, timeout=30)
+            time_taken = response.elapsed.total_seconds() * 1000
+
+            if api_log_dir and api_log_file_path is not None:
+                self._write_api_log(api_log_file_path, method, url, headers, body, response)
+                self._write_api_har(api_har_file_path, start_time, time_taken, method, url, headers, body, response)
+
+            return response
+        except requests.RequestException as e:
+            raise RuntimeError(f"API request to {url} failed: {e}") from e
+
+    def _write_api_log(self, log_file_path, method, url, headers, body, response):
+        """Writes API request/response details to a log file."""
+        with open(log_file_path, "a", encoding="utf-8") as f:
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Method: {method}\n")
+            f.write(f"URL: {url}\n")
+            f.write(f"Headers: {json.dumps(headers, indent=2)}\n")
+            f.write(f"Body: {json.dumps(body, indent=2) if body else 'None'}\n")
+            f.write(f"Response Status Code: {response.status_code}\n")
+            try:
+                f.write(f"Response Body: {json.dumps(response.json(), indent=2)}\n")
+            except json.JSONDecodeError:
+                f.write(f"Response Body: {response.text}\n")
+            f.write("-" * 50 + "\n")
+
+    def _write_api_har(self, har_file_path, start_time, time_taken, method, url, headers, body, response):
+        """Writes API request/response details to a HAR file."""
+        parsed_url = urlparse(url)
+        query_string = [{"name": k, "value": v} for k, v in parse_qsl(parsed_url.query)]
+
+        post_data = None
+        request_body_size = 0
+        if body:
+            request_body_text = json.dumps(body)
+            request_body_size = len(request_body_text.encode('utf-8'))
+            post_data = {
+                "mimeType": "application/json",
+                "text": request_body_text
+            }
+
+        har_entry = {
+            "startedDateTime": start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + "Z",
+            "time": time_taken,
+            "request": {
+                "method": method,
+                "url": url,
+                "httpVersion": "HTTP/1.1",
+                "cookies": [],
+                "headers": [{"name": k, "value": v} for k, v in headers.items()],
+                "queryString": query_string,
+                "postData": post_data,
+                "headersSize": -1,
+                "bodySize": request_body_size
+            },
+            "response": {
+                "status": response.status_code,
+                "statusText": response.reason,
+                "httpVersion": "HTTP/1.1",
+                "cookies": [],
+                "headers": [{"name": k, "value": v} for k, v in response.headers.items()],
+                "content": {
+                    "size": len(response.content),
+                    "mimeType": response.headers.get('Content-Type', ''),
+                    "text": response.text
+                },
+                "redirectURL": response.headers.get('Location', ''),
+                "headersSize": -1,
+                "bodySize": len(response.content)
+            },
+            "cache": {},
+            "timings": { "wait": response.elapsed.total_seconds() * 1000, "send": -1, "receive": -1 }
+        }
+
+        if har_file_path is not None and os.path.exists(har_file_path):
+            with open(har_file_path, "r", encoding="utf-8") as f:
+                try:
+                    har_data = json.load(f)
+                    if "log" not in har_data or "entries" not in har_data["log"]:
+                        har_data = self._create_har_structure()
+                except json.JSONDecodeError:
+                    har_data = self._create_har_structure()
+        else:
+            har_data = self._create_har_structure()
+
+        har_data["log"]["entries"].append(har_entry)
+
+        if har_file_path is not None:
+            with open(har_file_path, "w", encoding="utf-8") as f:
+                json.dump(har_data, f, indent=2)
+
+    def _create_har_structure(self) -> Dict[str, Any]:
+        """Creates a basic HAR file structure."""
+        return {
+            "log": {
+                "version": "1.2",
+                "creator": {
+                    "name": "Optics Framework",
+                    "version": "1.0"
+                },
+                "entries": []
+            }
+        }
+
+    def _process_response(self, response: requests.Response, api_def) -> None:
+        """Extracts data from the response and saves it to runner elements."""
+        if not api_def.expected_result:
+            internal_logger.debug("No expected_result defined in API definition.")
+            return
+
+        if not api_def.expected_result.extract:
+            internal_logger.debug("No extraction paths defined in API definition.")
+        else:
+            internal_logger.debug(f"Attempting to extract values using paths: {api_def.expected_result.extract}")
+        if self.runner is None:
+            raise ValueError(NO_RUNNER_PRESENT)
+
+        try:
+            response_data = response.json()
+        except json.JSONDecodeError:
+            internal_logger.warning("API response is not valid JSON; cannot extract values.")
+            return
+
+        if api_def.expected_result.extract:
+            for element_name, path in api_def.expected_result.extract.items():
+                value = self._extract_from_json(response_data, path)
+                if value is not None:
+                    self.runner.elements[element_name] = value
+                    internal_logger.debug(f"Extracted '{element_name}' = '{value}' from response.")
+                else:
+                    internal_logger.warning(f"Could not extract '{element_name}' using path '{path}'.")
+            internal_logger.debug(f"Current runner elements after extraction: {self.runner.elements}")
+
+        if api_def.expected_result.jsonpath_assertions:
+            self._evaluate_jsonpath_assertions(response_data, api_def.expected_result.jsonpath_assertions)
+
+    def _evaluate_jsonpath_assertions(self, data: Any, assertions: List[Dict[str, Any]]) -> None:
+        """Evaluates JSONPath assertions against the response data."""
+        for assertion in assertions:
+            path = assertion.get("path")
+            condition = assertion.get("condition")
+            if not path or not condition:
+                internal_logger.warning(f"Skipping malformed JSONPath assertion: {assertion}")
+                continue
+
+            try:
+                jsonpath_expr = parse(path)
+                match = jsonpath_expr.find(data)
+                if not match:
+                    raise AssertionError(f"JSONPath '{path}' found no match.")
+
+                matched_value = match[0].value
+                eval_condition = condition.replace('$', repr(matched_value))
+
+                if not eval(eval_condition): # nosec B307 # pylint: disable=eval-used
+                    raise AssertionError(f"JSONPath assertion failed: Path '{path}', Condition '{condition}', Matched value '{matched_value}'.")
+                internal_logger.debug(f"JSONPath assertion passed: Path '{path}', Condition '{condition}'.")
+            except Exception as e:
+                raise AssertionError(f"Error evaluating JSONPath assertion {assertion}: {e}") from e
+
+    def _extract_from_json(self, data: Any, path: str) -> Optional[Any]:
+        """Extracts a value from a nested dictionary using a dot-separated path."""
+        current_data = data
+        for key in path.split('.'):
+            internal_logger.debug(f"_extract_from_json: Current data type: {type(current_data)}, Key: {key}")
+            if isinstance(current_data, dict):
+                current_data = current_data.get(key)
+                internal_logger.debug(f"_extract_from_json: Value after get('{key}'): {current_data}")
+            else:
+                internal_logger.warning(f"_extract_from_json: Data is not a dictionary at key '{key}'. Current data: {current_data}")
+                return None
+        return current_data

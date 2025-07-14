@@ -18,21 +18,22 @@ from optics_framework.common.models import (
     TestCaseNode,
     ModuleNode,
     KeywordNode,
-    ElementData,
+    ApiData
 )
 
 
-def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str]]:
+def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
     Search for CSV and YAML files in a folder and categorize them by content.
     Exits the program if required files (test cases and modules) are missing.
 
     :param folder_path: Path to the project folder.
-    :return: Tuple of lists of paths to test case files, module files, and element files.
+    :return: Tuple of lists of paths to test case files, module files, element files, and API files.
     """
     test_case_files = []
     module_files = []
     element_files = []
+    api_files = []
 
     for file in os.listdir(folder_path):
         if file.endswith((".csv", ".yml", ".yaml")):
@@ -44,9 +45,11 @@ def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str]]:
                 module_files.append(file_path)
             if "elements" in content_type:
                 element_files.append(file_path)
+            if "api" in content_type:
+                api_files.append(file_path)
 
     validate_required_files(test_case_files, module_files, folder_path)
-    return test_case_files, module_files, element_files
+    return test_case_files, module_files, element_files, api_files
 
 
 def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
@@ -72,7 +75,7 @@ def _identify_yaml_content(data: Dict) -> Set[str]:
     Identify content types based on YAML keys.
 
     :param data: Dictionary loaded from YAML file.
-    :return: Set of content types ('test_cases', 'modules', 'elements').
+    :return: Set of content types ('test_cases', 'modules', 'elements', 'api').
     """
     content_types = set()
     if "Test Cases" in data:
@@ -81,6 +84,8 @@ def _identify_yaml_content(data: Dict) -> Set[str]:
         content_types.add("modules")
     if "Elements" in data:
         content_types.add("elements")
+    if "api" in data:
+        content_types.add("api")
     return content_types
 
 
@@ -322,6 +327,20 @@ def populate_module_nodes(
     tc_node.modules_head = module_head
 
 
+def load_api_data(file_path: str) -> ApiData:
+    """Loads API data from a YAML file and validates it."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"API specification file not found: {file_path}")
+    with open(file_path, "r", encoding="utf-8") as f:
+        try:
+            data = yaml.safe_load(f)
+            return ApiData(**data)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing YAML file: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Invalid API data structure: {e}") from e
+
+
 def build_linked_list(test_cases_data: Dict, modules_data: Dict) -> TestCaseNode:
     """
     Build a nested linked list structure representing the test execution flow.
@@ -378,7 +397,7 @@ class BaseRunner:
         internal_logger.debug(f"Using runner: {self.runner}")
 
         # Find all relevant files
-        test_case_files, module_files, element_files = find_files(self.folder_path)
+        test_case_files, module_files, element_files, api_files = find_files(self.folder_path)
 
         # Initialize data readers
         csv_reader = CSVDataReader()
@@ -406,6 +425,12 @@ class BaseRunner:
             reader = csv_reader if file_path.endswith(".csv") else yaml_reader
             elements = reader.read_elements(file_path)
             self.elements_data = merge_dicts(self.elements_data, elements, "elements")
+
+        # Read and merge API data
+        self.api_data = ApiData()
+        for file_path in api_files:
+            reader = yaml_reader # API files are expected to be YAML
+            self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
 
         if not self.test_cases_data:
             internal_logger.debug(f"No test cases found in {test_case_files}")
@@ -458,7 +483,8 @@ class BaseRunner:
                 mode=mode,
                 test_cases=self.execution_queue,
                 modules=self.modules_data,
-                elements=ElementData(elements=self.elements_data),
+                elements=self.elements_data,
+                apis=self.api_data,
                 runner_type=self.runner,
                 use_printer=self.use_printer,
             )

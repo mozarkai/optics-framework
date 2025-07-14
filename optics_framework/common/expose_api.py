@@ -10,7 +10,6 @@ from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
     TestCaseNode,
-    ElementData,
 )
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import Config, DependencyConfig
@@ -136,7 +135,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         params=request.params,
         test_cases=TestCaseNode(id="direct", name="direct_keyword"),
         modules={},
-        elements=ElementData(),
+        elements={},
         runner_type="test_runner",
         use_printer=False
     )

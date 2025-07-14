@@ -26,6 +26,7 @@ pytest = "^8.3.5"
 pydantic = "^2.11.2"
 scikit-image = "^0.25.2"
 uvicorn = "^0.35.0"
+jsonpath-ng = "^1.7.0"
 
 [tool.poetry.group.dev.dependencies]
 tox = ">=4.24.1,<4.29.0"
