@@ -163,7 +163,7 @@ class ConfigHandler:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     return yaml.safe_load(f) or {}
-            except yaml.YAMLError as e:
+            except (yaml.YAMLError, IOError) as e:
                 logging.error(f"Error parsing YAML file {path}: {e}")
                 return {}
         return {}
@@ -197,6 +197,7 @@ class ConfigHandler:
         return getattr(self.config, key, default)
 
     def save_config(self) -> None:
+        os.makedirs(os.path.dirname(self.global_config_path), exist_ok=True)
         with open(self.global_config_path, "w", encoding="utf-8") as f:
             yaml.dump(self.config.model_dump(), f, default_flow_style=False)
 
