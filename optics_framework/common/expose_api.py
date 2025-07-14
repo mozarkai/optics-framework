@@ -14,6 +14,7 @@ from optics_framework.common.execution import (
 )
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import Config, DependencyConfig
+from fastapi import status
 
 app = FastAPI(title="Optics Framework API", version="1.0")
 session_manager = SessionManager()
@@ -64,6 +65,10 @@ class ExecutionEvent(BaseModel):
     execution_id: str
     status: str
     message: Optional[str] = None
+
+@app.get("/", response_model=List[str], status_code=status.HTTP_200_OK)
+async def health_check():
+    return ["Optics Framework API is running", "Ready for requests"]
 
 @app.post("/v1/sessions/start", response_model=SessionResponse)
 async def create_session(config: SessionConfig):
