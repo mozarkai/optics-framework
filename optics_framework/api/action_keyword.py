@@ -3,7 +3,6 @@ import time
 from typing import Callable, Optional, Any
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
 from .verifier import Verifier
 
@@ -54,9 +53,7 @@ class ActionKeyword:
         self.image_detection = builder.get_image_detection()
         self.text_detection = builder.get_text_detection()
         self.verifier = Verifier(builder)
-        self.strategy_manager = StrategyManager(
-            self.element_source, self.text_detection, self.image_detection)
-
+        self.strategy_manager = builder.get_strategy_manager()
     # Click actions
     @with_self_healing
     def press_element(
