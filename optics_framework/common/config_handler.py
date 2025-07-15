@@ -49,6 +49,7 @@ class Config(BaseModel):
     event_attributes_json: Optional[str] = None
     halt_duration: float = 0.1
     max_attempts: int = 3
+    synthetic: bool = False
 
     def __init__(self, **data):
         super().__init__(**data)
