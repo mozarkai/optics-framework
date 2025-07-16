@@ -123,7 +123,7 @@ class Appium(DriverInterface):
             "ensureWebviewsHavePages": True,
             "nativeWebScreenshot": True,
             "noReset": True,
-            "shouldTerminateApp": False,
+            "shouldTerminateApp": True,
             "forceAppLaunch": True,
             "connectHardwareKeyboard": True,
         }
