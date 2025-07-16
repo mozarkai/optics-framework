@@ -18,8 +18,7 @@ class UIHelper:
         self.prev_hash = None
 
     def _get_appium_driver(self):
-        if self.driver is None:
-            self.driver = get_appium_driver()
+        self.driver = get_appium_driver()
         return self.driver
 
     def get_page_source(self):
@@ -760,7 +759,7 @@ class UIHelper:
             if val:
                 # Escape quotes inside the value for XPath safety
                 val = val.replace('"', '\\"')
-                return f'.//*[{self._build_attribute_condition(attr, val)}]'
+                return f'//*[{self._build_attribute_condition(attr, val)}]'
 
         # Fallback to structural path
         return self._build_structural_xpath(node)

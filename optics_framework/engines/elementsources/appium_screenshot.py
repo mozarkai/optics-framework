@@ -31,8 +31,7 @@ class AppiumScreenshot(ElementSourceInterface):
         Returns:
             WebDriver: The Appium driver instance.
         """
-        if self.driver is None:
-            self.driver = get_appium_driver()
+        self.driver = get_appium_driver()
         return self.driver
 
     def capture(self) -> Optional[np.ndarray]:
@@ -62,6 +61,8 @@ class AppiumScreenshot(ElementSourceInterface):
         try:
             # Use Base64 encoding for faster processing
             driver = self._get_appium_driver()
+
+            internal_logger.info(f'driver session_id: {driver.session_id}')
             # internal_logger.debug(f'{driver}, type(driver): {type(driver)}')
             screenshot_base64 = driver.get_screenshot_as_base64()
             screenshot_bytes = base64.b64decode(screenshot_base64)
