@@ -99,9 +99,9 @@ class TestRunner(Runner):
                     name=current_module.name, elapsed="0.00s", status="NOT_RUN", keywords=[])
                 current_keyword = current_module.keywords_head
                 while current_keyword:
-                    resolved_params = [self.resolve_param(
-                        param) for param in current_keyword.params]
-                    resolved_name = f"{current_keyword.name} ({', '.join(str(p) for p in resolved_params)})" if resolved_params else current_keyword.name
+                    # Use raw parameters for display instead of resolved ones
+                    raw_params = current_keyword.params
+                    resolved_name = f"{current_keyword.name} ({', '.join(str(p) for p in raw_params)})" if raw_params else current_keyword.name
                     keyword_result = KeywordResult(
                         id=current_keyword.id,
                         name=current_keyword.name,
@@ -276,10 +276,9 @@ class TestRunner(Runner):
                     value = self.resolve_param(value)
                 resolved_kw_params[key] = value
             if isinstance(keyword_result, KeywordResult):
-                positional_str = ", ".join(str(p) for p in resolved_positional_params)
-                keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
-                combined_params = ", ".join(filter(None, [positional_str, keyword_str]))
-                keyword_result.resolved_name = f"{keyword_node.name} ({combined_params})" if combined_params else keyword_node.name
+                # Use raw parameters for display instead of resolved ones
+                raw_params = keyword_node.params
+                keyword_result.resolved_name = f"{keyword_node.name} ({', '.join(str(p) for p in raw_params)})" if raw_params else keyword_node.name
             positional_str = ", ".join(str(p) for p in resolved_positional_params)
             keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
             combined_params_str = ", ".join(filter(None, [positional_str, keyword_str]))
@@ -426,9 +425,10 @@ class TestRunner(Runner):
             self._update_status(keyword_result, "RUNNING", 0.0, test_case_result.name)
 
             try:
-                resolved_params = [self.resolve_param(param) for param in keyword_current.params]
                 if isinstance(keyword_result, KeywordResult):
-                    keyword_result.resolved_name = f"{keyword_current.name} ({', '.join(resolved_params)})" if resolved_params else keyword_current.name
+                    # Use raw parameters for display instead of resolved ones
+                    raw_params = keyword_current.params
+                    keyword_result.resolved_name = f"{keyword_current.name} ({', '.join(str(p) for p in raw_params)})" if raw_params else keyword_current.name
                 func_name = "_".join(keyword_current.name.split()).lower()
                 if func_name not in self.keyword_map:
                     raise ValueError("Keyword not found")
