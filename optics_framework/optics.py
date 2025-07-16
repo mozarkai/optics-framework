@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Any, Callable, TypeVar, cast
+from typing import Optional, Dict, List, Any, Callable, TypeVar, cast, Union
 from functools import wraps
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
@@ -7,7 +7,8 @@ from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
 from optics_framework.common.optics_builder import OpticsBuilder
-
+import json
+import yaml
 
 T = TypeVar("T", bound=Callable[..., Any])
 
@@ -96,8 +97,9 @@ class Optics:
     @keyword("Setup")
     def setup(
         self,
-        driver_config: List[Dict[str, Dict[str, Any]]],
-        element_source_config: List[Dict[str, Dict[str, Any]]],
+        config: Union[str, Dict[str, Any], None] = None,
+        driver_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        element_source_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         image_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         text_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         execution_output_path: Optional[str] = None,
@@ -106,14 +108,53 @@ class Optics:
         Configure the Optics Framework with required driver and element source settings.
 
         Args:
-            driver_config: List of driver configurations (e.g., [{"appium": {"enabled": True, "url": "...", "capabilities": {...}}}]).
-            element_source_config: List of element source configurations.
-            image_config: Optional list of image detection configurations.
-            text_config: Optional list of text detection configurations.
+            config: Configuration as JSON/YAML string or dictionary. If provided, legacy parameters are ignored.
+                   Expected structure:
+                   {
+                       "driver_config": [...],
+                       "element_source_config": [...],
+                       "image_config": [...],  # optional
+                       "text_config": [...],   # optional
+                       "execution_output_path": "..."  # optional
+                   }
+            driver_config: [DEPRECATED] List of driver configurations.
+            element_source_config: [DEPRECATED] List of element source configurations.
+            image_config: [DEPRECATED] Optional list of image detection configurations.
+            text_config: [DEPRECATED] Optional list of text detection configurations.
+            execution_output_path: [DEPRECATED] Optional execution output path.
 
         Raises:
             ValueError: If configuration or session creation fails.
         """
+        # Handle new config parameter (string, dict, or None)
+        if config is not None:
+            if isinstance(config, str):
+                parsed_config = self._parse_config_string(config)
+            elif isinstance(config, dict):
+                parsed_config = config
+            else:
+                raise ValueError("Config must be a string (JSON/YAML) or dictionary")
+
+            self._validate_required_keys(parsed_config)
+
+            # Extract configuration values
+            driver_config = parsed_config["driver_config"]
+            element_source_config = parsed_config["element_source_config"]
+            image_config = parsed_config.get("image_config")
+            text_config = parsed_config.get("text_config")
+            execution_output_path = parsed_config.get("execution_output_path")
+
+        # Handle legacy parameters
+        elif driver_config is not None and element_source_config is not None:
+            # Using legacy parameters - this path maintains backward compatibility
+            internal_logger.warning(
+                "Using deprecated parameter format. Consider migrating to the new config parameter."
+            )
+        else:
+            raise ValueError(
+                "Either 'config' parameter or legacy parameters ('driver_config' and 'element_source_config') must be provided"
+            )
+
         # Convert user-provided dictionaries to DependencyConfig
         driver_deps = self._process_config_list(driver_config)
         element_deps = self._process_config_list(element_source_config)
@@ -129,8 +170,7 @@ class Optics:
         if execution_output_path:
             self.config_handler.config.execution_output_path = execution_output_path
 
-
-        # # Initialize session
+        # Initialize session
         try:
             self.session_id = self.session_manager.create_session(
                 self.config_handler.config
@@ -148,6 +188,98 @@ class Optics:
         self.verifier = self.session_manager.sessions[self.session_id].optics.build(
             Verifier
         )
+
+    @keyword("Setup From File")
+    def setup_from_file(self, config_file_path: str) -> None:
+        """
+        Configure the Optics Framework from a JSON or YAML configuration file.
+
+        Args:
+            config_file_path: Path to the configuration file (JSON or YAML).
+
+        Raises:
+            ValueError: If the file cannot be read or parsed.
+            FileNotFoundError: If the configuration file doesn't exist.
+        """
+        try:
+            with open(config_file_path, 'r', encoding='utf-8') as file:
+                config_content = file.read()
+
+            # Parse the configuration
+            config = self._parse_config_from_file(config_content)
+
+            # Validate structure
+            self._validate_required_keys(config)
+
+            # Call existing setup method with extracted parameters
+            self.setup(
+                driver_config=config["driver_config"],
+                element_source_config=config["element_source_config"],
+                image_config=config.get("image_config"),
+                text_config=config.get("text_config"),
+                execution_output_path=config.get("execution_output_path"),
+            )
+
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {config_file_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to read configuration file {config_file_path}: {e}") from e
+
+    def _parse_config_from_file(self, config_string: str) -> Dict[str, Any]:
+        """
+        Parse a JSON or YAML configuration string from file.
+
+        Args:
+            config_string: JSON or YAML formatted configuration string.
+
+        Returns:
+            Dict[str, Any]: Parsed configuration dictionary.
+
+        Raises:
+            ValueError: If the configuration string is invalid or cannot be parsed.
+        """
+        config_string = config_string.strip()
+
+        try:
+            # Try JSON first (faster and more strict)
+            if config_string.startswith('{') or config_string.startswith('['):
+                return json.loads(config_string)
+
+            # Try YAML for more flexible format
+            return yaml.safe_load(config_string)
+
+        except json.JSONDecodeError as e:
+            try:
+                # Fallback to YAML if JSON fails
+                return yaml.safe_load(config_string)
+            except yaml.YAMLError as yaml_e:
+                raise ValueError(
+                    f"Invalid configuration format. JSON error: {e}, YAML error: {yaml_e}"
+                ) from e
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML configuration: {e}") from e
+
+
+    def _validate_required_keys(self, config: Dict[str, Any]) -> None:
+        """
+        Validate required configuration keys.
+
+        Args:
+            config: Configuration dictionary to validate.
+
+        Raises:
+            ValueError: If required keys are missing or invalid.
+        """
+        required_keys = ["driver_config", "element_source_config"]
+
+        for key in required_keys:
+            if key not in config:
+                raise ValueError(f"Missing required configuration key: {key}")
+
+            if not isinstance(config[key], list):
+                raise ValueError(f"Configuration key '{key}' must be a list")
+
+
 
     ### AppManagement Methods ###
     @keyword("Launch App")
@@ -534,6 +666,7 @@ if __name__ == "__main__":
         "image_detection": [
             {"templatematch": {"enabled": False, "url": None, "capabilities": {}}}
         ],
+        "log_level": "DEBUG",
     }
 
     def launch_contact_application(optics: Optics) -> None:
@@ -595,12 +728,7 @@ if __name__ == "__main__":
 
         try:
             # Setup configuration
-            optics.setup(
-                driver_config=CONFIG["driver_config"],
-                element_source_config=CONFIG["element_source_config"],
-                image_config=CONFIG["image_detection"],
-                text_config=CONFIG["text_detection"],
-            )
+            optics.setup(config=CONFIG)
 
             # Run test case
             add_contact_with_contact_app(optics)

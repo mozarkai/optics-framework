@@ -1,9 +1,10 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, List, Literal, Tuple, Optional, Union
+from typing import Dict, List, Literal, Tuple, Optional, Union, Any
 import logging
 import pandas as pd
 import yaml
+import json
 
 TestCaseKey = Literal["Test Cases"]
 
@@ -216,7 +217,6 @@ class TestFrameworkGenerator(ABC):
         modules: Modules,
         elements: Elements,
         config: Config,
-        output_path: str,
     ) -> str:
         pass
 
@@ -247,7 +247,6 @@ class PytestGenerator(TestFrameworkGenerator):
         modules: Modules,
         elements: Elements,
         config: Config,
-        output_path: str,
     ) -> str:
         code_parts = [
             self._generate_header(),
@@ -317,13 +316,7 @@ class PytestGenerator(TestFrameworkGenerator):
                 "@pytest.fixture(scope='module')",
                 "def optics():",
                 "    optics = Optics()",
-                "    optics.setup(",
-                "        driver_config=CONFIG['driver_config'],",
-                "        element_source_config=CONFIG['element_source_config'],",
-                "        image_config=CONFIG['image_detection'],",
-                "        text_config=CONFIG['text_detection'],",
-                "        execution_output_path=CONFIG.get('execution_output_path', None),",
-                "    )",
+                "    optics.setup(config=CONFIG)",
                 "    yield optics",
                 "    optics.quit()\n",
             ]
@@ -363,7 +356,6 @@ class RobotGenerator(TestFrameworkGenerator):
         modules: Modules,
         elements: Elements,
         config: Config,
-        output_path: str,
     ) -> str:
         code_parts = [
             self._generate_header(),
@@ -384,27 +376,73 @@ class RobotGenerator(TestFrameworkGenerator):
             ]
         )
 
+    def _transform_config_structure(self, config: Config) -> Dict[str, Any]:
+        """
+        Transform the config object to match the expected Optics setup structure.
+
+        Args:
+            config: The original config object
+
+        Returns:
+            Dict with the structure expected by the new Optics setup method
+        """
+        transformed = {
+            "driver_config": config.get('driver_sources', []),
+            "element_source_config": config.get('elements_sources', []),
+        }
+
+        # Add optional configurations only if they exist and are not empty
+        if config.get('image_detection'):
+            transformed["image_config"] = config.get('image_detection', [])
+
+        if config.get('text_detection'):
+            transformed["text_config"] = config.get('text_detection', [])
+
+        if config.get('execution_output_path'):
+            transformed["execution_output_path"] = config.get('execution_output_path')
+
+        return transformed
+
+    def _escape_json_for_robot(self, json_str: str) -> str:
+        """
+        Escape JSON string for Robot Framework variable assignment.
+
+        Args:
+            json_str: JSON string to escape
+
+        Returns:
+            Escaped string suitable for Robot Framework
+        """
+        # Replace backslashes first, then quotes
+        escaped = json_str.replace('\\', '\\\\')
+        escaped = escaped.replace('"', '\\"')
+        escaped = escaped.replace('\n', '\\n')
+        escaped = escaped.replace('\r', '\\r')
+        escaped = escaped.replace('\t', '\\t')
+        return escaped
+
     def _generate_variables(self, elements: Elements, config: Config) -> str:
-        lines = ["*** Variables ***", "# Element dictionary", "&{ELEMENTS}="]
+        lines = ["*** Variables ***"]
+
+        # Generate element dictionary
+        lines.extend(["# Element dictionary", "&{ELEMENTS}="])
         for name, value in elements.items():
             lines.append(f"...    {name}={value}")
         lines.append("")
-        lines.extend(
-            [
-                "# Driver configuration as a single-line list",
-                f"${{DRIVER_CONFIG_LIST}}=    {config.get('driver_sources', [])}",
-                "",
-                "# Element source configuration as a single-line list",
-                f"${{ELEMENT_SOURCE_CONFIG_LIST}}=    {config.get('elements_sources', [])}",
-                "",
-                "# Image detection configuration as a single-line list",
-                f"${{IMAGE_DETECTION_CONFIG_LIST}}=    {config.get('image_detection', [])}",
-                "",
-                "# Text detection configuration as a single-line list",
-                f"${{TEXT_DETECTION_CONFIG_LIST}}=    {config.get('text_detection', [])}",
-                "",
-            ]
-        )
+
+        # Transform config to the new structure
+        transformed_config = self._transform_config_structure(config)
+
+        # Generate configuration as JSON string
+        config_json = json.dumps(transformed_config, separators=(',', ':'))  # Compact format
+        escaped_config = self._escape_json_for_robot(config_json)
+
+        lines.extend([
+            "# Optics configuration as JSON string",
+            f"${{OPTICS_CONFIG_JSON}}=    {escaped_config}",
+            "",
+        ])
+
         return "\n".join(lines)
 
     def _generate_test_cases(self, test_cases: TestCases) -> str:
@@ -419,14 +457,25 @@ class RobotGenerator(TestFrameworkGenerator):
         return "\n".join(lines)
 
     def _generate_keywords(self, modules: Modules, elements: Elements) -> str:
-        lines = ["*** Keywords ***", "Setup Optics"]
-        lines.append(
-            "    Setup    ${DRIVER_CONFIG_LIST}    ${ELEMENT_SOURCE_CONFIG_LIST}    ${IMAGE_DETECTION_CONFIG_LIST}    ${TEXT_DETECTION_CONFIG_LIST}"
-        )
-        lines.append("")
-        lines.append("Quit Optics")
-        lines.append("    Quit")
-        lines.append("")
+        lines = ["*** Keywords ***"]
+
+        # Setup keyword using JSON configuration
+        lines.extend([
+            "Setup Optics",
+            "    # Parse JSON configuration and setup Optics",
+            "    ${config_dict}=    Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
+            "    Setup    config=${config_dict}",
+            "",
+        ])
+
+        # Quit keyword
+        lines.extend([
+            "Quit Optics",
+            "    Quit",
+            "",
+        ])
+
+        # Generate module keywords
         for module_name, steps in modules.items():
             lines.append(module_name)
             for keyword, params in steps:
@@ -434,6 +483,7 @@ class RobotGenerator(TestFrameworkGenerator):
                 param_str = "    ".join(resolved_params)
                 lines.append(f"    {keyword}    {param_str}")
             lines.append("")
+
         return "\n".join(lines)
 
 
@@ -617,5 +667,5 @@ def generate_test_file(
     output_filename = output_filename or default_filename
     generated_folder = os.path.join(folder_path, "generated")
     os.makedirs(generated_folder, exist_ok=True)
-    code = generator.generate(test_cases, modules, elements, config, generated_folder)
+    code = generator.generate(test_cases, modules, elements, config)
     FileWriter().write(generated_folder, output_filename, code, framework)
