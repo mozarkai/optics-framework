@@ -10,7 +10,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
-from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver
+from optics_framework.engines.drivers.appium_driver_manager import set_appium_driver, quit_appium_driver
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from typing import Union
@@ -56,7 +56,16 @@ class Appium(DriverInterface):
     def start_session(self, event_name: str | None = None) -> WebDriver:
         """Start the Appium session if not already started, incorporating custom capabilities."""
         if self.driver is not None:
-            return self.driver
+            old_session_id = self.driver.session_id
+            internal_logger.info(f"Cleaning up old driver with session_id: {old_session_id}")
+            try:
+                internal_logger.info("Cleaning up existing driver before starting new session")
+                self.driver.quit()
+            except Exception as cleanup_error:
+                internal_logger.warning(f"Failed to clean up existing driver: {cleanup_error}")
+            finally:
+                self.driver = None
+
         all_caps = self.capabilities
         options, default_options = self._get_platform_and_options(all_caps)
 
@@ -73,14 +82,24 @@ class Appium(DriverInterface):
         internal_logger.debug(
             f"Starting Appium session with capabilities: {options.to_capabilities()}"
         )
-        self.driver = webdriver.Remote(self.appium_server_url, options=options)
-        if self.driver is None:
-            raise RuntimeError("Failed to create Appium WebDriver instance")
+        try:
+            self.driver = webdriver.Remote(self.appium_server_url, options=options)
+            if self.driver is None:
+                raise RuntimeError("Failed to create Appium WebDriver instance")
+            # CRITICAL: Log the new session ID
 
-        set_appium_driver(self.driver)
-        self.ui_helper = UIHelper()
+            new_session_id = self.driver.session_id
+            internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
 
-        return self.driver
+
+            set_appium_driver(self.driver)
+            self.ui_helper = UIHelper()
+            return self.driver
+        except Exception as e:
+            internal_logger.error(f"Failed to create new Appium session: {e}")
+            self.driver = None
+            raise
+
 
     def _get_platform_and_options(self, all_caps):
         """Helper to determine platform, create options, and set defaults."""
@@ -124,9 +143,15 @@ class Appium(DriverInterface):
     def terminate(self, event_name: str | None = None) -> None:
         """End the Appium session if active."""
         if self.driver:
+
+            current_session_id = self.driver.session_id
+            internal_logger.info(
+                f"Terminating Appium session with session_id: {current_session_id}"
+            )
             if event_name:
                 self.event_sdk.capture_event(event_name)
             self.driver.quit()
+            quit_appium_driver()
             self.driver = None
 
     def get_app_version(self) -> str:

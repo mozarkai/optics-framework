@@ -27,8 +27,7 @@ class AppiumPageSource(ElementSourceInterface):
         self.root = None
 
     def _get_appium_driver(self):
-        if self.driver is None:
-            self.driver = get_appium_driver()
+        self.driver = get_appium_driver()
         return self.driver
 
     def capture(self):

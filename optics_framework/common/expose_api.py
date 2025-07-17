@@ -216,6 +216,12 @@ async def event_generator(session: Session):
 @app.delete("/v1/sessions/{session_id}/stop", response_model=TerminationResponse)
 async def delete_session(session_id: str):
     try:
+        kill_request = ExecuteRequest(
+            mode="keyword",
+            keyword="close_and_terminate_app",
+            params=[]
+        )
+        await execute_keyword(session_id, kill_request)
         session_manager.terminate_session(session_id)
         internal_logger.info(f"Terminated session: {session_id}")
         return TerminationResponse()
