@@ -284,7 +284,7 @@ class PytestGenerator(TestFrameworkGenerator):
             [
                 "# Get project path and setup execution output path",
                 "PROJECT_PATH = os.path.dirname(os.path.abspath(__file__))",
-                "EXECUTION_OUTPUT_PATH = os.path.join(PROJECT_PATH, 'tmp', 'execution_outputs')",
+                "EXECUTION_OUTPUT_PATH = os.environ.get('EXEC_OUTPUT', os.path.join(PROJECT_PATH, 'execution_outputs'))",
                 "os.makedirs(EXECUTION_OUTPUT_PATH, exist_ok=True)",
                 "",
                 "CONFIG = {",
@@ -302,6 +302,7 @@ class PytestGenerator(TestFrameworkGenerator):
                 else "    'image_detection': [],",
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
+                "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
                 "}\n",
                 "# Override with environment values if available",
                 "CONFIG = load_config(CONFIG)",
