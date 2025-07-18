@@ -294,12 +294,12 @@ class PytestGenerator(TestFrameworkGenerator):
                 f"    'element_source_config': {config.get('elements_sources', [])},"
                 if config.get("elements_sources")
                 else "    'element_source_config': [],",
-                f"    'text_detection': {config.get('text_detection', [])},"
+                f"    'text_config': {config.get('text_detection', [])},"
                 if config.get("text_detection")
-                else "    'text_detection': [],",
-                f"    'image_detection': {config.get('image_detection', [])},"
+                else "    'text_config': [],",
+                f"    'image_config': {config.get('image_detection', [])},"
                 if config.get("image_detection")
-                else "    'image_detection': [],",
+                else "    'image_config': [],",
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
                 "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
