@@ -12,6 +12,7 @@ from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, ins
 from optics_framework.helper.serve import run_uvicorn_server
 from optics_framework.helper.autocompletion import update_shell_rc
 
+
 class Command:
     """
     Abstract base class for CLI commands.
@@ -282,15 +283,6 @@ class ExecuteCommand(Command):
         )
 
 
-class VersionCommand(Command):
-    def register(self, subparsers: argparse._SubParsersAction):
-        parser = subparsers.add_parser(
-            "--version", help="Print the current version")
-        parser.set_defaults(func=self.execute)
-
-    def execute(self, args):
-        print(f"Optics Framework {VERSION}")
-
 class DriverInstaller(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -327,9 +319,17 @@ def main():
     This function sets up the argument parser, registers all commands, parses the
     command-line arguments, and dispatches the appropriate command function.
     """
-    parser = argparse.ArgumentParser(
-        prog="optics", description="Optics Framework CLI")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(prog="optics", description="Optics Framework CLI")
+
+    # Handle the --version argument directly on the main parser
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"Optics Framework {VERSION}",
+        help="Print the current version",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
 
     # Register all commands.
     commands = [
@@ -338,7 +338,6 @@ def main():
         DryRunCommand(),
         InitCommand(),
         ExecuteCommand(),
-        VersionCommand(),
         GenerateCommand(),
         DriverInstaller(),
         ServerCommand(),
@@ -348,12 +347,23 @@ def main():
         cmd.register(subparsers)
 
     args = parser.parse_args()
-
-    try:
-        args.func(args)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    if hasattr(args, "func"):
+        try:
+            args.func(args)
+        except KeyboardInterrupt:
+            print("Operation cancelled by user.", file=sys.stderr)
+            sys.exit(130)
+        except argparse.ArgumentError as e:
+            print(f"Argument error: {e}", file=sys.stderr)
+            sys.exit(2)
+        except ValueError as e:
+            print(f"Value error: {e}", file=sys.stderr)
+            sys.exit(3)
+        except Exception as e:
+            print(f"Unexpected error: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif len(sys.argv) == 1:
+        parser.print_help()
 
 
 if __name__ == "__main__":
