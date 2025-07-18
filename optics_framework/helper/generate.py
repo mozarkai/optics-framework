@@ -221,23 +221,21 @@ class TestFrameworkGenerator(ABC):
     ) -> str:
         pass
 
-    def _resolve_params(
-        self, params: List[str], elements: Elements, framework: str
-    ) -> List[str]:
+    def _resolve_params(self, params: List[str], elements: Elements, framework: str) -> List[str]:
         resolved = []
         for param in params:
             if param.startswith("${") and param.endswith("}"):
                 var_name = param[2:-1]
                 if var_name not in elements:
                     raise ValueError(f"Element '{var_name}' not found in elements.")
-                if framework == "pytest":
-                    resolved.append(f"ELEMENTS['{var_name}']")
-                else:  # robot
-                    resolved.append(f"${{ELEMENTS.{var_name}}}")
+                resolved.append(f"ELEMENTS['{var_name}']" if framework == "pytest" else f"${{ELEMENTS.{var_name}}}")
+            elif "=" in param and not param.startswith(("'", '"')):
+                resolved.append(param)
+            elif framework == "pytest":
+                resolved.append(f"'{param}'")
             else:
-                resolved.append(f"'{param}'" if framework == "pytest" else param)
+                resolved.append(param)
         return resolved
-
 
 class PytestGenerator(TestFrameworkGenerator):
     """Generator for pytest-compatible test code."""
