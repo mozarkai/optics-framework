@@ -143,7 +143,7 @@ class Optics:
             image_config = parsed_config.get("image_config")
             text_config = parsed_config.get("text_config")
             execution_output_path = parsed_config.get("execution_output_path")
-
+            event_attributes_json = parsed_config.get("event_attributes_json", None)
         # Handle legacy parameters
         elif driver_config is not None and element_source_config is not None:
             # Using legacy parameters - this path maintains backward compatibility
@@ -169,7 +169,8 @@ class Optics:
         self.config_handler.config.text_detection = text_deps
         if execution_output_path:
             self.config_handler.config.execution_output_path = execution_output_path
-
+        if event_attributes_json:
+            self.config_handler.config.event_attributes_json = event_attributes_json
         # Initialize session
         try:
             self.session_id = self.session_manager.create_session(

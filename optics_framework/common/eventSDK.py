@@ -169,8 +169,12 @@ class EventSDK:
         return dict2
 
     def print_event(self, event_data):
-        printer = TreeResultPrinter.get_instance()
-        printer.print_event_log(event_data)
+        try:
+            printer = TreeResultPrinter.get_instance()
+            printer.print_event_log(event_data)
+        except Exception as e:
+            internal_logger.error("Unable to print event using printer", exc_info=e)
+            execution_logger.info(f"Event data: {event_data}")
 
     def capture_event(self, event_name, **args):
         """
