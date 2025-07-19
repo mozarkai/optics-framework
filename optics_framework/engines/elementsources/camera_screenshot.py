@@ -96,8 +96,26 @@ class CameraScreenshot(ElementSourceInterface):
             Optional[np.ndarray]: The captured image as a NumPy array, or `None` on failure.
         """
         if self.sock:
-            frame = self.take_screenshot()
-            return frame
+            try:
+                frame = self.take_screenshot()
+                if frame is None:  # take_screenshot might return None on error
+                    internal_logger.warning(
+                        "Failed to capture frame from TCP connection."
+                    )
+                return frame
+            except (ConnectionError, socket.timeout, socket.error) as e:
+                internal_logger.error(
+                    f"TCP connection error during capture: {e}. Attempting to re-establish."
+                )
+                self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
+                if self.sock:
+                    internal_logger.info(
+                        "TCP connection re-established. Retrying capture."
+                    )
+                    return self.take_screenshot()  # Retry capture
+                else:
+                    internal_logger.error("Failed to re-establish TCP connection.")
+                    return None
         if self.cap is None or not self.cap.isOpened():
             internal_logger.error("No valid webcam connection.")
             return None
@@ -144,14 +162,25 @@ class CameraScreenshot(ElementSourceInterface):
         raise NotImplementedError("CameraScreenshot does not support getting interactive elements.")
 
     def create_tcp_connection(self, ip, port):
+        tcp_timeout_seconds = 5
         port = int(port)
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(tcp_timeout_seconds)
             sock.connect((ip, port))
             internal_logger.debug(f"TCP connection established with {ip}:{port}")
             return sock
+        except socket.timeout:
+            internal_logger.error(f"TCP connection to {ip}:{port} timed out.")
+            return None
+        except ConnectionRefusedError:
+            internal_logger.error(f"TCP connection to {ip}:{port} refused. Is the server running?")
+            return None
+        except socket.error as e:
+            internal_logger.error(f"Error creating TCP connection to {ip}:{port}: {e}")
+            return None
         except Exception as e:
-            internal_logger.debug(f"Error creating TCP connection: {e}")
+            internal_logger.error(f"An unexpected error occurred during TCP connection setup: {e}")
             return None
 
     def take_screenshot(self):
@@ -168,9 +197,11 @@ class CameraScreenshot(ElementSourceInterface):
             self.sock.sendall(b"screenshot\n")
             internal_logger.debug("Taking screenshot...")
 
-            # Read the 4-byte image size header (big-endian uint32)
             size_data = self.sock.recv(4)
             if len(size_data) < 4:
+                internal_logger.error(
+                    "Failed to read the full length of the image data header (less than 4 bytes received)."
+                )
                 raise ValueError("Failed to read the length of the image data.")
 
             image_length = struct.unpack(">I", size_data)[0]
@@ -181,10 +212,31 @@ class CameraScreenshot(ElementSourceInterface):
             remaining_bytes = image_length
 
             while remaining_bytes > 0:
-                chunk_size = min(1024, remaining_bytes)
-                chunk = self.sock.recv(chunk_size)
+                chunk_size = min(
+                    4096, remaining_bytes
+                )  # Increased chunk size for potentially better performance
+                try:
+                    chunk = self.sock.recv(chunk_size)
+                except socket.timeout as exc:
+                    internal_logger.error(
+                        f"Socket receive timed out while reading image data. Remaining: {remaining_bytes} bytes."
+                    )
+                    raise TimeoutError(
+                        "Socket receive timed out during image data transfer."
+                    ) from exc
+                except socket.error as e:
+                    internal_logger.error(
+                        f"Socket error during image data transfer: {e}"
+                    )
+                    raise ConnectionError(
+                        f"Socket error during image data transfer: {e}"
+                    ) from e
+
                 if not chunk:
-                    raise ValueError("Socket connection closed prematurely.")
+                    internal_logger.error(
+                        "Socket connection closed prematurely while receiving image data."
+                    )
+                    raise ConnectionError("Socket connection closed prematurely.")
                 image_data.extend(chunk)
                 remaining_bytes -= len(chunk)
             internal_logger.debug("Transferred image data...")
@@ -194,10 +246,21 @@ class CameraScreenshot(ElementSourceInterface):
 
             # Decode the image data to an OpenCV image
             screenshot = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if screenshot is None:
+                internal_logger.error(
+                    "cv2.imdecode failed to decode image data. Data might be corrupt or invalid."
+                )
             internal_logger.debug("Image ready, setting screenshot")
             return screenshot
+        except (ConnectionError, ValueError, TimeoutError, socket.error) as e:
+            internal_logger.error(f"An error occurred during take_screenshot: {e}")
+            # Do not re-raise if you want the capture method to handle reconnection.
+            # Return None to indicate failure.
+            return None
         except Exception as e:
-            internal_logger.debug(f"An error occurred: {e}")
+            internal_logger.error(
+                f"An unexpected error occurred in take_screenshot: {e}"
+            )
             return None
 
     def deskew_image(self, image):
