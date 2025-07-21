@@ -28,7 +28,7 @@ scikit-image = "^0.25.2"
 uvicorn = "^0.35.0"
 
 [tool.poetry.group.dev.dependencies]
-tox = ">=4.24.1,<4.28.0"
+tox = ">=4.24.1,<4.29.0"
 pytest = ">=8.3.4,<8.5.0"
 pytest-cov = ">=6.0,<6.3"
 commitizen = "^4.4.1"
