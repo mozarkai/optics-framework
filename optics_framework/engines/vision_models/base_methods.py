@@ -38,12 +38,12 @@ def match_and_annotate(
     :param frame: Image to annotate in place.
     """
     for (bbox, detected_text, _) in ocr_results:
-        clean_text = detected_text.strip()
+        clean_text = detected_text.strip().lower()
         for target in target_texts:
             if found_status[target]:
                 continue
 
-            if target in clean_text:
+            if target.lower() in clean_text:
                 top_left = tuple(map(int, bbox[0]))
                 bottom_right = tuple(map(int, bbox[2]))
                 center_x = (top_left[0] + bottom_right[0]) // 2
