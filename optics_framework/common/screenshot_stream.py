@@ -98,7 +98,7 @@ class ScreenshotStream:
 
         # Process remaining items with limit
         remaining_items = 0
-        max_remaining = self.MA_REMAINING_ITEMS
+        max_remaining = self.MAX_REMAINING_ITEMS
 
         while remaining_items < max_remaining and not self.screenshot_queue.empty():
             try:
