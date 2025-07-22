@@ -133,7 +133,8 @@ class TextDetectionStrategy(LocatorStrategy):
                 if screenshot is None:
                     continue
                 annotated_frame = screenshot.copy()
-                _, ocr_results = self.text_detection.detect_text(annotated_frame)
+                detected_texts, ocr_results = self.text_detection.detect_text(annotated_frame)
+                execution_logger.info(f"Detected texts: {detected_texts}")
                 match_and_annotate(ocr_results, elements, found_status, annotated_frame)
 
                 # Check rule
@@ -142,7 +143,6 @@ class TextDetectionStrategy(LocatorStrategy):
                     break
                 else:
                     continue
-                # time.sleep(0.3)
         finally:
             ss_stream.stop_capture()
         utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")

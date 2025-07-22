@@ -49,7 +49,7 @@ class EasyOCRHelper(TextInterface):
         - tuple: (x, y) coordinates of the center of the indexed text in the frame or (None, None) if out of bounds.
         - tuple: Bounding box coordinates of the detected text.
         """
-        ocr_results = self.detect_text(input_data)
+        _, ocr_results = self.detect_text(input_data)
 
         detected_texts = []
 
@@ -97,7 +97,7 @@ class EasyOCRHelper(TextInterface):
         )
         return detected_texts[0]
 
-    def detect_text(self, input_data) -> Optional[List[Tuple[List[Tuple[int, int]], str, float]]]:
+    def detect_text(self, input_data) -> Optional[Tuple[str, List[Tuple[List[List[int]], str, float]]]]:
         """
         Detects text in the given image using EasyOCR.
 
@@ -108,14 +108,8 @@ class EasyOCRHelper(TextInterface):
         results = self.reader.readtext(gray_image)
         if not results:
             return None
-        # Each result: (bbox, text, confidence)
-        # Ensure bbox is a list of (x, y) tuples
-        formatted_results = []
-        for bbox, text, confidence in results:
-            # bbox is typically a list of 4 (x, y) tuples
-            formatted_bbox = [(int(x), int(y)) for x, y in bbox]
-            formatted_results.append((formatted_bbox, text, float(confidence)))
-        return formatted_results
+        detected_text = ' '.join(result[1] for result in results)
+        return detected_text, results
 
     def element_exist(self, input_data, reference_data):
         return super().element_exist(input_data, reference_data)

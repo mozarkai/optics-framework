@@ -21,6 +21,11 @@ class ScreenshotStream:
         self.filtered_queue = queue.Queue(maxsize=max_queue_size)
         self.stop_event = threading.Event()
         self.debug_folder = debug_folder
+        self.MAX_REMAINING_ITEMS = 10  # Maximum items to process after stop event
+
+        # Thread references for proper cleanup
+        self.capture_thread = None
+        self.dedup_thread = None
 
     def capture_stream(self, timeout):
         """
@@ -54,33 +59,56 @@ class ScreenshotStream:
 
         internal_logger.debug("Screenshot capture completed after timeout or stop event.")
 
+    def _process_frame_for_deduplication(self, frame, timestamp, last_processed_frame):
+        """Helper method to process a single frame for deduplication."""
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        if last_processed_frame is not None:
+            gray_last_frame = cv2.cvtColor(last_processed_frame, cv2.COLOR_BGR2GRAY)
+            similarity = ssim(gray_last_frame, gray_frame, data_range=gray_frame.max() - gray_frame.min())
+
+            if similarity >= 0.80:
+                internal_logger.debug(f"Skipping duplicate frame at {timestamp} (SSIM: {similarity:.4f})")
+                return last_processed_frame
+
+        # Frame is unique, add to filtered queue
+        try:
+            if self.filtered_queue.full():
+                self.filtered_queue.get_nowait()
+            self.filtered_queue.put_nowait((frame, timestamp))
+        except queue.Full:
+            internal_logger.debug("Filtered queue is full. Dropping frame.")
+
+        return frame
+
     def process_screenshot_queue(self):
         """
         Continuously processes screenshots from the queue, applying SSIM-based deduplication.
         """
         last_processed_frame = None
+        internal_logger.debug("Deduplication thread started.")
 
-        while not self.stop_event.is_set() or not self.screenshot_queue.empty():
+        # Main processing loop
+        while not self.stop_event.is_set():
             try:
-                frame, timestamp = self.screenshot_queue.get(timeout=1)
+                frame, timestamp = self.screenshot_queue.get(timeout=0.5)
+                last_processed_frame = self._process_frame_for_deduplication(frame, timestamp, last_processed_frame)
             except queue.Empty:
                 continue
 
-            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Process remaining items with limit
+        remaining_items = 0
+        max_remaining = self.MA_REMAINING_ITEMS
 
-            if last_processed_frame is not None:
-                gray_last_frame = cv2.cvtColor(last_processed_frame, cv2.COLOR_BGR2GRAY)
-                similarity = ssim(gray_last_frame, gray_frame, data_range=gray_frame.max() - gray_frame.min())
+        while remaining_items < max_remaining and not self.screenshot_queue.empty():
+            try:
+                frame, timestamp = self.screenshot_queue.get_nowait()
+                last_processed_frame = self._process_frame_for_deduplication(frame, timestamp, last_processed_frame)
+                remaining_items += 1
+            except queue.Empty:
+                break
 
-                if similarity >= 0.80:
-                    internal_logger.debug(f"Skipping duplicate frame at {timestamp} (SSIM: {similarity:.4f})")
-                    continue
-
-            last_processed_frame = frame
-
-            if self.filtered_queue.full():
-                self.filtered_queue.get()
-            self.filtered_queue.put((frame, timestamp))
+        internal_logger.debug(f"Deduplication thread stopped. Processed {remaining_items} remaining items.")
 
     def start_capture(self, timeout, deduplication=False):
         """
@@ -92,17 +120,45 @@ class ScreenshotStream:
         """
         if self.stop_event.is_set():
             self.stop_event.clear()
+
         execution_logger.debug("Starting screenshot capture threads.")
-        threading.Thread(target=self.capture_stream, args=(timeout,), daemon=True).start()
+
+        self.capture_thread = threading.Thread(target=self.capture_stream, args=(timeout,), daemon=True)
+        self.capture_thread.start()
+
         if deduplication:
-            threading.Thread(target=self.process_screenshot_queue, daemon=True).start()
+            self.dedup_thread = threading.Thread(target=self.process_screenshot_queue, daemon=True)
+            self.dedup_thread.start()
             execution_logger.debug("Started screenshot deduplication thread.")
 
-    def stop_capture(self):
+    def stop_capture(self, wait_for_threads=True, timeout=5):
         """
         Stops screenshot capturing and processing.
+
+        Args:
+            wait_for_threads (bool): Whether to wait for threads to finish
+            timeout (int): Maximum time to wait for threads to finish
         """
+        execution_logger.debug("Stopping screenshot capture...")
         self.stop_event.set()
+
+        if wait_for_threads:
+            threads_to_wait = []
+
+            if self.capture_thread and self.capture_thread.is_alive():
+                threads_to_wait.append(("Capture", self.capture_thread))
+
+            if self.dedup_thread and self.dedup_thread.is_alive():
+                threads_to_wait.append(("Deduplication", self.dedup_thread))
+
+            for thread_name, thread in threads_to_wait:
+                thread.join(timeout=timeout)
+                if thread.is_alive():
+                    internal_logger.warning(f"{thread_name} thread did not stop within {timeout} seconds")
+                else:
+                    internal_logger.debug(f"{thread_name} thread stopped successfully")
+
+        execution_logger.debug("Screenshot capture stopped.")
 
     def get_latest_screenshot(self, wait_time=1):
         """
@@ -137,3 +193,33 @@ class ScreenshotStream:
             except queue.Empty:
                 break
         return frames_to_process
+
+    def clear_queues(self):
+        """
+        Clear both queues. Useful for cleanup between operations.
+        """
+        while not self.screenshot_queue.empty():
+            try:
+                self.screenshot_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        while not self.filtered_queue.empty():
+            try:
+                self.filtered_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        internal_logger.debug("Queues cleared.")
+
+    def get_queue_sizes(self):
+        """
+        Returns the current sizes of both queues for debugging.
+
+        Returns:
+            dict: Dictionary with queue sizes
+        """
+        return {
+            'screenshot_queue_size': self.screenshot_queue.qsize(),
+            'filtered_queue_size': self.filtered_queue.qsize()
+        }
