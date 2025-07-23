@@ -22,7 +22,7 @@ class Verifier:
         self.text_detection = builder.get_text_detection()
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection)
-        self.event_sdk = EventSDK().get_instance()
+        self.event_sdk = EventSDK.get_instance()
 
     def validate_element(
         self,
