@@ -1,14 +1,14 @@
 from uuid import uuid4
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
-from optics_framework.common.models import TestCaseNode, ElementData
+from optics_framework.common.models import TestCaseNode, ApiData
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.events import Event, get_event_manager, EventStatus
 
@@ -24,7 +24,8 @@ class ExecutionParams(BaseModel):
     test_cases: TestCaseNode
     modules: Dict[str, List[tuple[str, List[str]]]
                   ] = Field(default_factory=dict)
-    elements: ElementData = Field(default_factory=ElementData)
+    elements: Dict[str, Any] = Field(default_factory=dict)
+    apis: ApiData = Field(default_factory=ApiData)
     runner_type: str = "test_runner"
     use_printer: bool = True
 
@@ -159,7 +160,8 @@ class RunnerFactory:
         use_printer: bool,
         test_cases: TestCaseNode,
         modules: Dict[str, List[tuple[str, List[str]]]],
-        elements: Dict[str, str]
+        elements: Dict[str, str],
+        apis: ApiData
     ) -> Runner:
 
         registry = KeywordRegistry()
@@ -171,7 +173,7 @@ class RunnerFactory:
             result_printer = TreeResultPrinter.get_instance(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
             runner = TestRunner(
-                test_cases, modules, elements, {}, result_printer, session_id=session.session_id
+                test_cases, modules, elements, {}, result_printer, session_id=session.session_id, apis=apis
             )
             flow_control = FlowControl(runner, modules)
         elif runner_type == "pytest":
@@ -232,7 +234,8 @@ class ExecutionEngine:
                 use_printer,
                 params.test_cases,
                 params.modules,
-                params.elements.elements
+                params.elements,
+                params.apis,
             )
             if hasattr(runner, 'result_printer') and runner.result_printer and use_printer:
                 internal_logger.debug("Starting result printer live display")
