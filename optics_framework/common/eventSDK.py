@@ -5,6 +5,7 @@ from optics_framework.common.runner.printers import TreeResultPrinter
 from optics_framework.common import test_context
 import json
 import os
+import time
 import threading
 import requests
 
@@ -167,16 +168,16 @@ class EventSDK:
             }
             payload = json.dumps(event_data)
             execution_logger.debug(f"Sending event to {url}: {payload}")
-            print(f"Sending event to {url}: {payload}")
             response = requests.post(url, headers=headers, data=payload, timeout=10)
             response.raise_for_status()  # Raises HTTPError for bad responses
-
             execution_logger.info(f"Event API response: {response.text}")
-            print(f"Event API response: {response.text}")
+            return True
         except requests.exceptions.RequestException as e:
             execution_logger.error(f"HTTP request failed: {e}")
+            return False
         except Exception as e:
             execution_logger.error("Unable to send batch events", exc_info=e)
+            return False
 
     def add_to_array(self, event_data):
         try:
@@ -295,9 +296,33 @@ class EventSDK:
             execution_logger.error("Unable to capture events", exc_info=e)
 
     def send_all_events(self):
-        execution_logger.info("Sending all captured events...")
-        self.send_batch_events(self.all_events)
+        if not self.all_events:
+            execution_logger.info("No events to send.")
+            return
+        execution_logger.debug(f"Sending {len(self.all_events)} captured events...")
+        # Create a copy for retry attempts
+        events_to_send = self.all_events.copy()
+        max_retries = 3
+        retry_delay = 2  # seconds
+        for attempt in range(max_retries):
+            if attempt > 0:
+                execution_logger.info(f"Retry attempt {attempt}/{max_retries}")
+                time.sleep(retry_delay * attempt)
+
+            success = self.send_batch_events(events_to_send)
+
+            if success:
+                # clear events after successful transmission
+                self.all_events.clear()
+                execution_logger.info("Events successfully sent and cleared from buffer")
+                return True
+            else:
+                execution_logger.warning(f"Failed to send events (attempt {attempt + 1}/{max_retries})")
+
+        # All retry attempts failed
         self.all_events.clear()
+        execution_logger.info(f"Failed to send {len(events_to_send)} events after {max_retries} attempts.")
+        return False
 
     def get_test_case_name(self):
         return test_context.current_test_case.get()
