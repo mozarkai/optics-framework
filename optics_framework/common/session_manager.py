@@ -3,7 +3,6 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
 from optics_framework.common.config_handler import Config, ConfigHandler
-from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.optics_builder import OpticsBuilder
 
 
@@ -54,7 +53,6 @@ class SessionManager(SessionHandler):
 
     def __init__(self):
         self.sessions: Dict[str, Session] = {}
-        self.event_sdk = EventSDK.get_instance()
 
     def create_session(self, config: Config) -> str:
         """Creates a new session with a unique ID."""
@@ -70,5 +68,4 @@ class SessionManager(SessionHandler):
         """Terminates a session and cleans up resources."""
         session = self.sessions.pop(session_id, None)
         if session and session.driver:
-            self.event_sdk.send_all_events()
             session.driver.terminate()

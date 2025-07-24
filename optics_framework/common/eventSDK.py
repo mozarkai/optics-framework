@@ -23,7 +23,7 @@ class EventSDK:
             self.initialized = True
             self.config_handler = ConfigHandler.get_instance()
             # fetch json file path from config
-            self.event_attributes_json_path = self.config_handler.get('event_attributes_json')
+            self.event_attributes_json_path = self.config_handler.config.event_attributes_json
             # Load and cache the parsed JSON data
             self.event_attributes_data = self._load_event_attributes_json()
             self.all_events = []
@@ -63,16 +63,16 @@ class EventSDK:
     def get_json_attribute(self, key):
         try:
             if not self.event_attributes_data:
-                execution_logger.warning("Event attributes JSON data not loaded")
+                internal_logger.warning("Event attributes JSON data not loaded")
                 return None
 
             value = self.event_attributes_data.get(key)
             if value is None:
-                execution_logger.warning(f"Attribute '{key}' not found in event attributes JSON")
+                internal_logger.warning(f"Attribute '{key}' not found in event attributes JSON")
 
             return value
         except Exception as e:
-            execution_logger.error(f"Unable to get {key} from JSON data", exc_info=e)
+            internal_logger.error(f"Unable to get {key} from JSON data", exc_info=e)
             return None
 
     def get_event_attributes(self, file_path):
@@ -167,11 +167,12 @@ class EventSDK:
             }
             payload = json.dumps(event_data)
             execution_logger.debug(f"Sending event to {url}: {payload}")
+            print(f"Sending event to {url}: {payload}")
             response = requests.post(url, headers=headers, data=payload, timeout=10)
             response.raise_for_status()  # Raises HTTPError for bad responses
 
             execution_logger.info(f"Event API response: {response.text}")
-
+            print(f"Event API response: {response.text}")
         except requests.exceptions.RequestException as e:
             execution_logger.error(f"HTTP request failed: {e}")
         except Exception as e:

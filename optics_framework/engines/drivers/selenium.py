@@ -117,6 +117,7 @@ class SeleniumDriver(DriverInterface):
                 internal_logger.error(f"Failed to end Selenium session: {e}")
             finally:
                 self.driver = None
+                self.eventSDK.send_all_events()
 
     def launch_app(self, event_name: str | None = None) -> None:
         """Launch the web application by navigating to the browser URL."""

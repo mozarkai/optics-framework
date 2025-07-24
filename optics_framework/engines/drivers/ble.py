@@ -562,3 +562,4 @@ class BLEDriver(DriverInterface):
             self.ser.close()
         else:
             internal_logger.warning("Serial port is not open.")
+        self.event_sdk.send_all_events()

@@ -153,6 +153,7 @@ class Appium(DriverInterface):
             self.driver.quit()
             quit_appium_driver()
             self.driver = None
+            self.event_sdk.send_all_events()
 
     def get_app_version(self) -> str:
         """Get the version of the application."""
