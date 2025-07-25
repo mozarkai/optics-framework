@@ -34,10 +34,13 @@ class AppiumPageSource(ElementSourceInterface):
         """
         Capture the current screen state.
 
-        return """
-        internal_logger.exception('Appium Find Element does not support capturing the screen state.')
+        return"""
+        internal_logger.exception(
+            "Appium Find Element does not support capturing the screen state."
+        )
         raise NotImplementedError(
-            'Appium Find Element does not support capturing the screen state.')
+            "Appium Find Element does not support capturing the screen state."
+        )
 
     def get_page_source(self) -> Tuple[str, str]:
         """
@@ -51,12 +54,12 @@ class AppiumPageSource(ElementSourceInterface):
         driver = self._get_appium_driver()
         page_source = driver.page_source
 
-        self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
+        self.tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
         self.root = self.tree.getroot()
 
-        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
-        internal_logger.debug(f'Page source fetched at: {time_stamp}')
-        internal_logger.debug('\n==========================================\n')
+        internal_logger.debug("\n\n========== PAGE SOURCE FETCHED ==========\n")
+        internal_logger.debug(f"Page source fetched at: {time_stamp}")
+        internal_logger.debug("\n==========================================\n")
         return page_source, time_stamp
 
     def get_interactive_elements(self):
@@ -80,12 +83,14 @@ class AppiumPageSource(ElementSourceInterface):
         driver = self._get_appium_driver()
         element_type = utils.determine_element_type(element)
 
-        if element_type == 'Image':
+        if element_type == "Image":
             # Find the element by image
-            internal_logger.debug('Appium Find Element does not support finding images.')
+            internal_logger.debug(
+                "Appium Find Element does not support finding images."
+            )
             return None
         else:
-            if element_type == 'Text':
+            if element_type == "Text":
                 if index is not None:
                     xpath = self.find_xpath_from_text_index(element, index)
                 else:
@@ -95,34 +100,36 @@ class AppiumPageSource(ElementSourceInterface):
                     element = driver.find_element(AppiumBy.XPATH, xpath)
                 except Exception as e:
                     internal_logger.exception(f"Error finding element by text: {e}")
-                    raise Exception (f"Error finding element by text: {e}")
+                    raise Exception(f"Error finding element by text: {e}")
                 return element
-            elif element_type == 'XPath':
+            elif element_type == "XPath":
                 xpath, _ = self.ui_helper.find_xpath(element)
                 try:
                     element = driver.find_element(AppiumBy.XPATH, xpath)
                 except Exception as e:
                     internal_logger.exception(f"Error finding element by xpath: {e}")
-                    raise Exception (f"Error finding element by xpath: {e}")
+                    raise Exception(f"Error finding element by xpath: {e}")
                 return element
 
-
     def locate_using_index(self, element, index, strategy=None) -> dict:
-        locators = self.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
+        locators = self.ui_helper.get_locator_and_strategy_using_index(
+            element, index, strategy
+        )
         if locators:
-            strategy = locators['strategy']
-            locator = locators['locator']
+            strategy = locators["strategy"]
+            locator = locators["locator"]
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             try:
                 element = self.driver.find_element(AppiumBy.XPATH, xpath)
             except Exception as e:
                 internal_logger.exception(f"Error finding element by index: {e}")
-                raise Exception (f"Error finding element by index: {e}")
+                raise Exception(f"Error finding element by index: {e}")
             return element
         return {}
 
-
-    def assert_elements(self, elements, timeout=30, rule='any'):
+    def assert_elements(
+        self, elements, timeout=30, rule="any"
+    ) -> Tuple[bool, str | None]:
         """
         Assert the presence of elements on the current page.
 
@@ -144,8 +151,12 @@ class AppiumPageSource(ElementSourceInterface):
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
-            xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
+            texts = [
+                el for el in elements if utils.determine_element_type(el) == "Text"
+            ]
+            xpaths = [
+                el for el in elements if utils.determine_element_type(el) == "XPath"
+            ]
 
             _, timestamp = self.get_page_source()  # Refresh page source
 
@@ -153,11 +164,17 @@ class AppiumPageSource(ElementSourceInterface):
             text_found = self.ui_text_search(texts, rule) if texts else (rule == "all")
 
             # Check XPath-based elements
-            xpath_results = [self.ui_helper.find_xpath(xpath)[0] for xpath in xpaths] if xpaths else [rule == "all"]
-            xpath_found = (all(xpath_results) if rule == "all" else any(xpath_results))
+            xpath_results = (
+                [self.ui_helper.find_xpath(xpath)[0] for xpath in xpaths]
+                if xpaths
+                else [rule == "all"]
+            )
+            xpath_found = all(xpath_results) if rule == "all" else any(xpath_results)
 
             # Rule evaluation
-            if (rule == "any" and (text_found or xpath_found)) or (rule == "all" and text_found and xpath_found):
+            if (rule == "any" and (text_found or xpath_found)) or (
+                rule == "all" and text_found and xpath_found
+            ):
                 return True, timestamp
 
             # Optional: time.sleep(0.3)  # Delay to reduce busy looping
@@ -167,7 +184,6 @@ class AppiumPageSource(ElementSourceInterface):
         raise TimeoutError(
             f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
         )
-
 
     def find_xpath_from_text(self, text):
         """
@@ -182,23 +198,24 @@ class AppiumPageSource(ElementSourceInterface):
         """
         locators = self.ui_helper.get_locator_and_strategy(text)
         if locators:
-            strategy = locators['strategy']
-            locator = locators['locator']
+            strategy = locators["strategy"]
+            locator = locators["locator"]
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
 
     def find_xpath_from_text_index(self, text, index, strategy=None):
-        locators = self.ui_helper.get_locator_and_strategy_using_index(text, index, strategy)
+        locators = self.ui_helper.get_locator_and_strategy_using_index(
+            text, index, strategy
+        )
         if locators:
-            strategy = locators['strategy']
-            locator = locators['locator']
+            strategy = locators["strategy"]
+            locator = locators["locator"]
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             return xpath
         return None
 
-
-    def ui_text_search(self, texts, rule='any'):
+    def ui_text_search(self, texts, rule="any"):
         """
         Checks if any or all given texts exist in the UI tree.
 
@@ -211,26 +228,24 @@ class AppiumPageSource(ElementSourceInterface):
         """
         strategies = ["text", "resource-id", "content-desc", "name", "value", "label"]
 
-        found_texts = set()
-
-        for text in texts:
-            internal_logger.debug(f'Searching for text: {text}')
-
+        def is_text_found(text):
+            internal_logger.debug(f"Searching for text: {text}")
             for attrib in strategies:
                 matching_elements = self.tree.xpath(f"//*[@{attrib}]")
-
                 for elem in matching_elements:
-                    attrib_value = elem.attrib.get(attrib, '').strip()
-
+                    attrib_value = elem.attrib.get(attrib, "").strip()
                     if attrib_value and utils.compare_text(attrib_value, text):
-                        internal_logger.debug(f"Match found using {attrib} for '{text}'")
-                        found_texts.add(text)  # Mark this text as found
-                        break  # Stop searching other elements for this text
+                        internal_logger.debug(
+                            f"Match found using {attrib} for '{text}'"
+                        )
+                        return True
+            return False
 
-                if text in found_texts:  # Stop checking other strategies if already found
-                    break
+        found_texts = set()
+        for text in texts:
+            if is_text_found(text):
+                found_texts.add(text)
+                if rule == "any":
+                    return True  # Early exit if at least one match is found
 
-            if rule == 'any' and text in found_texts:
-                return True  # Early exit if at least one match is found
-
-        return len(found_texts) == len(texts) if rule == 'all' else False
+        return len(found_texts) == len(texts) if rule == "all" else False

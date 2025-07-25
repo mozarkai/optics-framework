@@ -112,7 +112,7 @@ class AppiumFindElement(ElementSourceInterface):
                 return None
             return element
 
-    def assert_elements(self, elements, timeout=10, rule="any") -> Tuple[bool, str]:
+    def assert_elements(self, elements, timeout=10, rule="any") -> Tuple[bool, str|None]:
         """
         Assert that elements are present based on the specified rule.
 
