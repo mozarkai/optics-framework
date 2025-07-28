@@ -513,6 +513,9 @@ class FileWriter:
             "optics-framework",
             "Appium-Python-Client",
             "pytest" if framework == "pytest" else "robotframework",
+            "easyocr",
+            "pyserial",
+            "pytest-tagging"
         ]
         requirements_file = os.path.join(folder_path, "requirements.txt")
         with open(requirements_file, "w", encoding="utf-8") as f:
