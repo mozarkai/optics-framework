@@ -15,7 +15,7 @@ def load_template(element: str) -> np.ndarray:
 
     :raises ValueError: If the project path is not set.
     """
-    project_path = str(ConfigHandler.get_instance().get_project_path())
+    project_path = str(ConfigHandler.get_instance().config.project_path)
 
     templates_folder = os.path.join(project_path, "input_templates")
     template_path = os.path.join(templates_folder, element)
