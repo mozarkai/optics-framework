@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Tuple
 
 
 class ElementSourceInterface(ABC):
@@ -37,7 +37,9 @@ class ElementSourceInterface(ABC):
         pass
 
     @abstractmethod
-    def assert_elements(self, elements: Any, timeout: int = 30, rule: str = 'any') -> None:
+    def assert_elements(
+        self, elements: Any, timeout: int = 30, rule: str = "any"
+    ) -> Tuple[bool, str | None]:
         """
         Assert the presence of elements on the screen.
 
