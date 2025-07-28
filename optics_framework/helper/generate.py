@@ -285,6 +285,9 @@ class PytestGenerator(TestFrameworkGenerator):
                 "PROJECT_PATH = os.path.dirname(os.path.abspath(__file__))",
                 "EXECUTION_OUTPUT_PATH = os.environ.get('EXEC_OUTPUT', os.path.join(PROJECT_PATH, 'execution_outputs'))",
                 "os.makedirs(EXECUTION_OUTPUT_PATH, exist_ok=True)",
+                "env_config = os.environ.get('TEST_SESSION_ENV_VARIABLES')",
+                "print(f'test env_config: {env_config}')",
+
                 "",
                 "CONFIG = {",
                 f"    'driver_config': {config.get('driver_sources', [])},"
@@ -305,6 +308,7 @@ class PytestGenerator(TestFrameworkGenerator):
                 "}\n",
                 "# Override with environment values if available",
                 "CONFIG = load_config(CONFIG)",
+                "print(f'config: {CONFIG}')",
                 "",
             ]
         )
@@ -510,12 +514,12 @@ class FileWriter:
 
         # Create requirements.txt in generated/ directory
         requirements = [
-            "optics-framework",
-            "Appium-Python-Client",
+            "optics-framework",  # core framework for execution
+            "Appium-Python-Client",  # appium driver
             "pytest" if framework == "pytest" else "robotframework",
-            "easyocr",
-            "pyserial",
-            "pytest-tagging"
+            "easyocr",  # default ocr model
+            "pyserial",  # to communicate with BLE devices
+            "pytest-tagging"  # for tagging tests in pytest
         ]
         requirements_file = os.path.join(folder_path, "requirements.txt")
         with open(requirements_file, "w", encoding="utf-8") as f:

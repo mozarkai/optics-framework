@@ -142,7 +142,7 @@ class Optics:
             element_source_config = parsed_config["element_source_config"]
             image_config = parsed_config.get("image_config")
             text_config = parsed_config.get("text_config")
-            project_path = parsed_config.get("project_path", None)
+            project_path = parsed_config.get("project_path")
             execution_output_path = parsed_config.get("execution_output_path")
             event_attributes_json = parsed_config.get("event_attributes_json", None)
         # Handle legacy parameters
