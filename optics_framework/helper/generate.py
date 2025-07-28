@@ -327,6 +327,7 @@ class PytestGenerator(TestFrameworkGenerator):
                 "def optics():",
                 "    optics = Optics()",
                 "    optics.setup(config=CONFIG)",
+                "    print(f'Optics setup complete. Config: {optics.config}')",
                 "    yield optics",
                 "    optics.quit()\n",
             ]
