@@ -93,8 +93,7 @@ class EasyOCRHelper(TextInterface):
             return None
 
         utils.save_screenshot(
-            input_data, "annotated_frame"
-        )
+            input_data, "text_location_annotation")
         return detected_texts[0]
 
     def detect_text(self, input_data) -> Optional[Tuple[str, List[Tuple[List[List[int]], str, float]]]]:

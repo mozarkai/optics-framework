@@ -37,6 +37,7 @@ class ScreenshotStream:
             timestamp = utils.get_timestamp()
             try:
                 frame = self.capture_screenshot()
+                execution_logger.debug(f"Captured screenshot at {timestamp} as a stream")
             except Exception as e:
                 internal_logger.debug(f"ERROR: Failed to capture screenshot: {e}")
                 continue
@@ -50,6 +51,7 @@ class ScreenshotStream:
                     self.screenshot_queue.get()
                 self.screenshot_queue.put((frame, timestamp))
                 internal_logger.debug(f"Screenshot added to queue at {timestamp}")
+                # utils.save_screenshot(frame, f"debug_{timestamp}") # uncomment to save debug images
             except queue.Full:
                 internal_logger.debug("Screenshot queue is full. Dropping oldest frame.")
 
@@ -67,8 +69,8 @@ class ScreenshotStream:
             gray_last_frame = cv2.cvtColor(last_processed_frame, cv2.COLOR_BGR2GRAY)
             similarity = ssim(gray_last_frame, gray_frame, data_range=gray_frame.max() - gray_frame.min())
 
-            if similarity >= 0.80:
-                internal_logger.debug(f"Skipping duplicate frame at {timestamp} (SSIM: {similarity:.4f})")
+            if similarity >= 0.75:
+                execution_logger.debug(f"Skipping duplicate frame at {timestamp} (SSIM: {similarity:.4f})")
                 return last_processed_frame
 
         # Frame is unique, add to filtered queue
@@ -174,6 +176,27 @@ class ScreenshotStream:
             return self.filtered_queue.get(timeout=wait_time)
         except queue.Empty:
             return None, None
+
+    def get_all_available_screenshots(self, wait_time=0.1) -> list:
+        """
+        Retrieves all currently available screenshots from the filtered queue.
+
+        Args:
+            wait_time (float): How long to wait (non-blocking) before assuming queue is empty.
+
+        Returns:
+            List of (frame, timestamp) tuples.
+        """
+        frames = []
+        end_time = time.time() + wait_time
+        while time.time() < end_time:
+            try:
+                frame, timestamp = self.filtered_queue.get(timeout=0.05)
+                frames.append((frame, timestamp))
+            except queue.Empty:
+                break
+        return frames
+
 
     def fetch_frames_from_queue(self, num_frames):
         """

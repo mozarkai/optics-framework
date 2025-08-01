@@ -112,6 +112,7 @@ class TextDetectionStrategy(LocatorStrategy):
         self._element_source = element_source
         self.text_detection = text_detection
         self.strategy_manager = strategy_manager
+        self.screenshot_timeout = 1.5
 
     @property
     def element_source(self) -> ElementSourceInterface:
@@ -126,26 +127,35 @@ class TextDetectionStrategy(LocatorStrategy):
         end_time = time.time() + timeout
         found_status = dict.fromkeys(elements, False)
         result = False
+        annotated_frame = None
+        timestamp = None
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
         try:
             while time.time() < end_time:
-                screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
-                if screenshot is None:
+                time.sleep(self.screenshot_timeout)  # Allow some time for screenshots to be captured
+                frames = ss_stream.get_all_available_screenshots(wait_time=1)
+                if not frames:
+                    time.sleep(self.screenshot_timeout)
                     continue
-                annotated_frame = screenshot.copy()
-                detected_texts, ocr_results = self.text_detection.detect_text(annotated_frame)
-                execution_logger.info(f"Detected texts: {detected_texts}")
-                match_and_annotate(ocr_results, elements, found_status, annotated_frame)
+                for frame, ts in frames:
+                    current_frame = frame.copy()
+                    detected_texts, ocr_results = self.text_detection.detect_text(current_frame)
+                    execution_logger.info(f"Detected texts: {detected_texts}")
+                    match_and_annotate(ocr_results, elements, found_status, current_frame)
 
-                # Check rule
-                if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
-                    result = True
+                    if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
+                        result = True
+                        timestamp = ts
+                        execution_logger.info(f"Elements found: {found_status} on screenshot taken at {timestamp}")
+                        annotated_frame = current_frame
+                        break
+
+                if result:
                     break
-                else:
-                    continue
         finally:
             ss_stream.stop_capture()
-        utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
+        if annotated_frame is not None:
+            utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
         return result, timestamp
 
     @staticmethod
@@ -160,6 +170,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         self._element_source = element_source
         self.image_detection = image_detection
         self.strategy_manager = strategy_manager
+        self.screenshot_timeout = 1.5
 
     @property
     def element_source(self) -> ElementSourceInterface:
@@ -174,18 +185,29 @@ class ImageDetectionStrategy(LocatorStrategy):
         end_time = time.time() + timeout
         result = False
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
+        annotated_frame = None
+        timestamp = None
         try:
             while time.time() < end_time:
-                screenshot, timestamp = ss_stream.get_latest_screenshot(wait_time=1)
-                if screenshot is None:
+                time.sleep(self.screenshot_timeout)  # Allow some time for screenshots to be captured
+                frames = ss_stream.get_all_available_screenshots(wait_time=1)
+                if not frames:
+                    time.sleep(self.screenshot_timeout)
                     continue
-                result, annotated_frame = self.image_detection.assert_elements(screenshot, elements, rule)
+                for frame, ts in frames:
+                    current_frame = frame.copy()
+                    result, annotated = self.image_detection.assert_elements(current_frame, elements, rule)
+                    if result:
+                        timestamp = ts
+                        annotated_frame = annotated  # assuming assert_elements returns the annotated image
+                        execution_logger.info(f"Image elements found on screenshot taken at {timestamp}")
+                        break
                 if result:
                     break
         finally:
             ss_stream.stop_capture()
         if annotated_frame is not None:
-            utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
+            utils.save_screenshot(annotated_frame, "assert_elements_image_detection_result")
         return result, timestamp
 
     @staticmethod
