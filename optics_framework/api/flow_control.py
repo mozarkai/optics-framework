@@ -253,13 +253,13 @@ class FlowControl:
         return pattern.sub(replacer, cond)
 
     @raw_params(0)
-    def read_data(self, input_element: str, file_path: Union[str, List[Any]], index: Optional[int] = None) -> List[Any]:
+    def read_data(self, input_element: str, file_path: Union[str, List[Any]], index: str = "0") -> List[Any]:
         """Reads data from a file, API, or list and stores it in runner.elements."""
         self._ensure_runner()
         if self.runner is None:
             raise ValueError(NO_RUNNER_PRESENT)
         elem_name = self._extract_element_name(input_element)
-        data = self._load_data(file_path, index)
+        data = self._load_data(file_path, int(index))
         if isinstance(data, list) and len(data) == 1:
             data = data[0]
         runner_elements: Dict[str, Any] = getattr(self.runner, 'elements', {})

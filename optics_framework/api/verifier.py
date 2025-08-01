@@ -27,7 +27,7 @@ class Verifier:
     def validate_element(
         self,
         element: str,
-        timeout: int = 10,
+        timeout: str = "10",
         rule: str = "all",
         event_name: Optional[str] = None,
     ) -> None:
@@ -71,7 +71,7 @@ class Verifier:
         pass
 
 
-    def assert_presence(self, elements: str, timeout: int = 30, rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
+    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
         """
         Asserts the presence of elements.
 
@@ -83,7 +83,7 @@ class Verifier:
         """
 
         rule = rule.lower()
-        timeout = int(timeout)
+        timeout = int(timeout_str)
         elements_list = elements.split(',')
         # Group elements by type
         grouped_elements = {
@@ -117,7 +117,7 @@ class Verifier:
         return result
 
 
-    def validate_screen(self, elements: str, timeout: int = 30, rule: str = 'any', event_name: Optional[str] = None) -> None:
+    def validate_screen(self, elements: str, timeout: str = "30", rule: str = 'any', event_name: Optional[str] = None) -> None:
         """
         Verifies the specified screen by checking element presence.
 
@@ -136,7 +136,11 @@ class Verifier:
         :return: The path to the captured screenshot.
         """
         screenshot = self.strategy_manager.capture_screenshot()
-        screenshot = utils.encode_numpy_to_base64(screenshot)
+        if screenshot is not None:
+            screenshot = utils.encode_numpy_to_base64(screenshot)
+        else:
+            internal_logger.warning("Screenshot capture returned None.")
+            screenshot = ""
         if event_name:
             self.event_sdk.capture_event(event_name)
         return screenshot
@@ -152,7 +156,10 @@ class Verifier:
         page_source = self.strategy_manager.capture_pagesource()
         if event_name:
             self.event_sdk.capture_event(event_name)
-        return page_source
+        if page_source is not None:
+            return page_source
+        else:
+            raise ValueError("Page source capture returned None.")
 
     def get_interactive_elements(self) -> list:
         """

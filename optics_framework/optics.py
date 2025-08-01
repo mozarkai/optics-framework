@@ -326,9 +326,9 @@ class Optics:
     def press_element(
         self,
         element: str,
-        repeat: int = 1,
-        offset_x: int = 0,
-        offset_y: int = 0,
+        repeat: str = "1",
+        offset_x: str = "0",
+        offset_y: str = "0",
         event_name: Optional[str] = None,
     ) -> None:
         """Press an element with specified parameters."""
@@ -341,9 +341,9 @@ class Optics:
     @keyword("Press By Percentage")
     def press_by_percentage(
         self,
-        percent_x: int,
-        percent_y: int,
-        repeat: int = 1,
+        percent_x: str,
+        percent_y: str,
+        repeat: str = "1",
         event_name: Optional[str] = None,
     ) -> None:
         """Press at percentage coordinates."""
@@ -356,9 +356,9 @@ class Optics:
     @keyword("Press By Coordinates")
     def press_by_coordinates(
         self,
-        coor_x: int,
-        coor_y: int,
-        repeat: int = 1,
+        coor_x: str,
+        coor_y: str,
+        repeat: str = "1",
         event_name: Optional[str] = None,
     ) -> None:
         """Press at absolute coordinates."""
@@ -368,7 +368,7 @@ class Optics:
 
     @keyword("Press Element With Index")
     def press_element_with_index(
-        self, element: str, index: int = 0, event_name: Optional[str] = None
+        self, element: str, index: str = "0", event_name: Optional[str] = None
     ) -> None:
         """Press an element at a specific index."""
         if not self.action_keyword:
@@ -377,7 +377,7 @@ class Optics:
 
     @keyword("Detect and Press")
     def detect_and_press(
-        self, element: str, timeout: int = 10, event_name: Optional[str] = None
+        self, element: str, timeout: str = "10", event_name: Optional[str] = None
     ) -> None:
         """Detect and press an element."""
         if not self.action_keyword:
@@ -387,10 +387,10 @@ class Optics:
     @keyword("Swipe")
     def swipe(
         self,
-        coor_x: int,
-        coor_y: int,
+        coor_x: str,
+        coor_y: str,
         direction: str = "right",
-        swipe_length: int = 50,
+        swipe_length: str = "50",
         event_name: Optional[str] = None,
     ) -> None:
         """Perform a swipe gesture."""
@@ -403,7 +403,7 @@ class Optics:
         self,
         element: str,
         direction: str = "down",
-        timeout: int = 30,
+        timeout: str = "30",
         event_name: Optional[str] = None,
     ) -> None:
         """Swipe until an element appears."""
@@ -418,7 +418,7 @@ class Optics:
         self,
         element: str,
         direction: str = "right",
-        swipe_length: int = 50,
+        swipe_length: str = "50",
         event_name: Optional[str] = None,
     ) -> None:
         """Swipe starting from an element."""
@@ -440,7 +440,7 @@ class Optics:
         self,
         element: str,
         direction: str = "down",
-        timeout: int = 30,
+        timeout: str = "30",
         event_name: Optional[str] = None,
     ) -> None:
         """Scroll until an element appears."""
@@ -492,7 +492,7 @@ class Optics:
 
     @keyword("Enter Number")
     def enter_number(
-        self, element: str, number: float, event_name: Optional[str] = None
+        self, element: str, number: str, event_name: Optional[str] = None
     ) -> None:
         """Enter a number into an element."""
         if not self.action_keyword:
@@ -500,7 +500,7 @@ class Optics:
         self.action_keyword.enter_number(element, number, event_name)
 
     @keyword("Press Keycode")
-    def press_keycode(self, keycode: int, event_name: Optional[str] = None) -> None:
+    def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """Press a keycode."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
@@ -525,7 +525,7 @@ class Optics:
         return self.action_keyword.get_text(element)
 
     @keyword("Sleep")
-    def sleep(self, duration: int) -> None:
+    def sleep(self, duration: str) -> None:
         """Sleep for a specified duration."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
@@ -536,7 +536,7 @@ class Optics:
     def validate_element(
         self,
         element: str,
-        timeout: int = 10,
+        timeout: str = "10",
         rule: str = "all",
         event_name: Optional[str] = None,
     ) -> None:
@@ -549,7 +549,7 @@ class Optics:
     def assert_presence(
         self,
         elements: str,
-        timeout: int = 30,
+        timeout: str = "30",
         rule: str = "any",
         event_name: Optional[str] = None,
     ) -> bool:
@@ -562,7 +562,7 @@ class Optics:
     def validate_screen(
         self,
         elements: str,
-        timeout: int = 30,
+        timeout: str = "30",
         rule: str = "any",
         event_name: Optional[str] = None,
     ) -> None:
@@ -681,12 +681,12 @@ if __name__ == "__main__":
         """Navigate to Add Contact page."""
         optics.assert_presence(
             ELEMENTS["Add_Contact_Button"],
-            timeout=10,
+            timeout="10",
         )
         optics.press_element(ELEMENTS["Add_Contact_Button"])
         optics.assert_presence(
             ELEMENTS["Add_Contact_Page"],
-            timeout=10,
+            timeout="10",
         )
 
     def enter_contact_details(optics: Optics) -> None:
@@ -716,7 +716,7 @@ if __name__ == "__main__":
 
     def verify_contact_added(optics: Optics) -> None:
         """Verify the contact was added."""
-        optics.assert_presence(ELEMENTS["Contact_Name"], timeout=10)
+        optics.assert_presence(ELEMENTS["Contact_Name"], timeout="10")
 
     def add_contact_with_contact_app(optics: Optics) -> None:
         """Test case: Add contact with Contact app."""

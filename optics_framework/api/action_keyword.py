@@ -60,7 +60,7 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: int = 1, offset_x: int = 0, offset_y: int = 0, event_name: Optional[str] = None, *, located: Any = None
+        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", event_name: Optional[str] = None, *, located: Any = None
     ) -> None:
         """
         Press a specified element.
@@ -74,14 +74,14 @@ class ActionKeyword:
         if isinstance(located, tuple):
             x, y = located
             execution_logger.debug(
-                f"Pressing at coordinates ({x + offset_x}, {y + offset_y})")
+                f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
             self.driver.press_coordinates(
-                x + offset_x, y + offset_y, event_name)
+                x + int(offset_x), y + int(offset_y), event_name)
         else:
             execution_logger.debug(f"Pressing element '{element}'")
-            self.driver.press_element(located, repeat, event_name)
+            self.driver.press_element(located, int(repeat), event_name)
 
-    def press_by_percentage(self, percent_x: int, percent_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
+    def press_by_percentage(self, percent_x: str, percent_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
         """
         Press an element by percentage coordinates.
 
@@ -96,7 +96,7 @@ class ActionKeyword:
             self.element_source.current_instance).__name__
         if 'appium' in element_source_type.lower():
             self.driver.press_percentage_coordinates(
-                percent_x, percent_y, repeat, event_name)
+                int(percent_x), int(percent_y), int(repeat), event_name)
         else:
             # TODO: read device's screen specs from config
             # DUMMY IMPLEMENTATION
@@ -106,7 +106,7 @@ class ActionKeyword:
             y_coor = int(screen_height * percent_y)
             self.driver.press_coordinates(x_coor, y_coor, event_name)
 
-    def press_by_coordinates(self, coor_x: int, coor_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
+    def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
         """
         Press an element by absolute coordinates.
 
@@ -117,9 +117,9 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "press_by_coordinates")
-        self.driver.press_coordinates(coor_x, coor_y, event_name)
+        self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
 
-    def press_element_with_index(self, element: str, index: int = 0, event_name: Optional[str] = None) -> None:
+    def press_element_with_index(self, element: str, index: str = "0", event_name: Optional[str] = None) -> None:
         """
         Press a specified text at a given index.
 
@@ -165,7 +165,7 @@ class ActionKeyword:
                 'XPath is not supported for index based location. Provide the attribute as text.')
 
     @with_self_healing
-    def detect_and_press(self, element: str, timeout: int, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def detect_and_press(self, element: str, timeout: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Detect and press a specified element.
 
@@ -222,7 +222,7 @@ class ActionKeyword:
         pass
 
     # Swipe and Scroll actions
-    def swipe(self, coor_x: int, coor_y: int, direction: str = 'right', swipe_length: int = 50, event_name: Optional[str] = None) -> None:
+    def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
         """
         Perform a swipe action in a specified direction.
 
@@ -234,7 +234,7 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "swipe")
-        self.driver.swipe(coor_x, coor_y, direction, swipe_length, event_name)
+        self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name)
 
     @DeprecationWarning
     def swipe_seekbar_to_right_android(self, element: str, event_name: Optional[str] = None) -> None:
@@ -247,7 +247,7 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "swipe_seekbar_to_right_android")
         self.driver.swipe_element(element, 'right', 50, event_name)
 
-    def swipe_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None) -> None:
+    def swipe_until_element_appears(self, element: str, direction: str, timeout: str, event_name: Optional[str] = None) -> None:
         """
         Swipe in a specified direction until an element appears.
 
@@ -261,14 +261,14 @@ class ActionKeyword:
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
-                element, timeout=3, rule="any")
+                element, timeout="3", rule="any")
             if result:
                 break
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
             time.sleep(3)
 
     @with_self_healing
-    def swipe_from_element(self, element: str, direction: str, swipe_length: int, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def swipe_from_element(self, element: str, direction: str, swipe_length: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Perform a swipe action starting from a specified element.
 
@@ -280,10 +280,10 @@ class ActionKeyword:
         if isinstance(located, tuple):
             x, y = located
             execution_logger.debug(f"Swiping from coordinates ({x}, {y})")
-            self.driver.swipe(x, y, direction, swipe_length, event_name)
+            self.driver.swipe(x, y, direction, int(swipe_length), event_name)
         else:
             self.driver.swipe_element(
-                located, direction, swipe_length, event_name)
+                located, direction, int(swipe_length), event_name)
 
     def scroll(self, direction: str, event_name: Optional[str] = None) -> None:
         """
@@ -296,7 +296,7 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "scroll")
         self.driver.scroll(direction, 1000, event_name)
 
-    def scroll_until_element_appears(self, element: str, direction: str, timeout: int, event_name: Optional[str] = None) -> None:
+    def scroll_until_element_appears(self, element: str, direction: str, timeout: str, event_name: Optional[str] = None) -> None:
         """
         Scroll in a specified direction until an element appears.
 
@@ -310,14 +310,14 @@ class ActionKeyword:
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
-                element, timeout=3, rule="any")
+                element, timeout="3", rule="any")
             if result:
                 break
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
 
     @with_self_healing
-    def scroll_from_element(self, element: str, direction: str, scroll_length: int, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def scroll_from_element(self, element: str, direction: str, scroll_length: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Perform a scroll action starting from a specified element.
 
@@ -331,10 +331,10 @@ class ActionKeyword:
         if isinstance(located, tuple):
             x, y = located
             execution_logger.debug(f"Swiping from coordinates ({x}, {y})")
-            self.driver.swipe(x, y, direction, scroll_length, event_name)
+            self.driver.swipe(x, y, direction, int(scroll_length), event_name)
         else:
             self.driver.swipe_element(
-                located, direction, scroll_length, event_name)
+                located, direction, int(scroll_length), event_name)
 
     # Text input actions
     @with_self_healing
@@ -390,7 +390,7 @@ class ActionKeyword:
         self.driver.enter_text_using_keyboard(text_input, event_name)
 
     @with_self_healing
-    def enter_number(self, element: str, number: float, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def enter_number(self, element: str, number: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Enter a specified number into an element.
 
@@ -402,7 +402,7 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "enter_number")
         self.driver.enter_text_element(element, str(number), event_name, located=located)
 
-    def press_keycode(self, keycode: int, event_name: str=None) -> None:
+    def press_keycode(self, keycode: str, event_name: str=None) -> None:
         """
         Press a specified keycode.
 
@@ -456,7 +456,7 @@ class ActionKeyword:
                 'Get Text is not supported for image based search yet.')
             return None
 
-    def sleep(self, duration: int) -> None:
+    def sleep(self, duration: str) -> None:
         """
         Sleep for a specified duration.
 
