@@ -1,13 +1,13 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, List, Literal, Tuple, Optional, Union, Any
+from typing import Dict, List, Tuple, Optional, Union, Any
 import logging
 import pandas as pd
 import yaml
 import json
 import shutil
 
-TestCaseKey = Literal["Test Cases"]
+TestCaseKey = "Test Cases"
 
 # Type aliases for clarity
 TestCases = Dict[str, List[str]]
@@ -49,23 +49,31 @@ class CSVDataReader(DataReader):
         return test_cases
 
     def read_modules(self, source: str) -> Modules:
-        df = pd.read_csv(source)
+        df = pd.read_csv(source, dtype=str)
         modules = {}
         for module_name in df["module_name"].unique():
             module_df = df[df["module_name"] == module_name]
-            steps = [
-                (
-                    row["module_step"].strip(),
+            steps = []
+            for _, row in module_df.iterrows():
+                # Skip rows where module_step is NaN or empty
+                if pd.isna(row["module_step"]) or not str(row["module_step"]).strip():
+                    continue
+
+                step = (
+                    str(row["module_step"]).strip(),
                     [
-                        str(row[f"param_{i + 1}"]).strip()
+                        self._format_param_value(row[f"param_{i + 1}"])
                         for i in range(len(row) - 2)
                         if pd.notna(row[f"param_{i + 1}"])
                     ],
                 )
-                for _, row in module_df.iterrows()
-            ]
-            modules[module_name.strip()] = steps
+                steps.append(step)
+            modules[str(module_name).strip()] = steps
         return modules
+
+    def _format_param_value(self, value) -> str:
+        """Format parameter value, preserving the original format from CSV."""
+        return str(value).strip()
 
     def read_elements(self, source: str) -> Elements:
         df = pd.read_csv(source)
@@ -97,7 +105,8 @@ class YAMLDataReader(DataReader):
         keyword = parts[0] if parts else ""
         params = []
         if len(parts) > 1:
-            for reg_keyword in keyword_registry:
+            # Sort keywords by length in descending order to match longer keywords first
+            for reg_keyword in sorted(keyword_registry, key=len, reverse=True):
                 if step.startswith(reg_keyword):
                     keyword = reg_keyword
                     params = (
@@ -612,8 +621,56 @@ def _assign_yaml_files(yaml_files, files):
                 if content_type == "test_cases"
                 else content_type.capitalize()
             )
-            if data.get(key) and not files[content_type]:
+            if key in data and not files[content_type]:
                 files[content_type] = yaml_file
+
+def find_all_files(folder_path: str) -> dict[str, list[str]]:
+    """Find all CSV and YAML files for each content type, supporting mixed formats with priority rules."""
+    files: dict[str, list[str]] = {
+        "test_cases": [],
+        "modules": [],
+        "elements": [],
+        "config": [],
+    }
+
+    # First pass: collect all files by type
+    all_files_by_type: dict[str, dict[str, list[str]]] = {
+        "test_cases": {"csv": [], "yaml": []},
+        "modules": {"csv": [], "yaml": []},
+        "elements": {"csv": [], "yaml": []},
+        "config": {"csv": [], "yaml": []},
+    }
+
+    for file in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, file)
+        result = detect_file_type(file_path)
+        if not result:
+            continue
+        file_format, content_type = result
+
+        if content_type in all_files_by_type:
+            all_files_by_type[content_type][file_format].append(file_path)
+
+    # Apply merging rules:
+    # - test_cases: Merge all files, raise error on conflicts
+    # - modules: Merge all files, raise error on conflicts
+    # - elements: Merge all files, raise error on conflicts
+    # - config: Always YAML only
+
+    # Test cases: Merge all with conflict detection
+    files["test_cases"] = all_files_by_type["test_cases"]["csv"] + all_files_by_type["test_cases"]["yaml"]
+
+    # Modules: Merge both CSV and YAML with conflict detection
+    files["modules"] = all_files_by_type["modules"]["csv"] + all_files_by_type["modules"]["yaml"]
+
+    # Elements: Merge both CSV and YAML with conflict detection
+    files["elements"] = all_files_by_type["elements"]["csv"] + all_files_by_type["elements"]["yaml"]
+
+    # Config: YAML only
+    files["config"] = all_files_by_type["config"]["yaml"]
+
+    return files
+
 
 def find_files(
     folder_path: str,
@@ -645,6 +702,44 @@ def find_files(
     return files["test_cases"], files["modules"], files["elements"], files["config"]
 
 
+def read_mixed_data(files: list[str], data_type: str) -> dict:
+    """Read and merge data from multiple CSV and YAML files with conflict detection."""
+    merged_data = {}
+    conflict_sources = {}  # Track which file each key came from
+
+    for file_path in files:
+        if file_path.endswith(".csv"):
+            reader = CSVDataReader()
+        else:
+            reader = YAMLDataReader()
+
+        if data_type == "test_cases":
+            data = reader.read_test_cases(file_path)
+        elif data_type == "modules":
+            data = reader.read_modules(file_path)
+        elif data_type == "elements":
+            data = reader.read_elements(file_path)
+        else:
+            continue
+
+        # Check for conflicts and merge the data
+        for key, value in data.items():
+            if key in merged_data:
+                # Conflict detected - raise descriptive error
+                existing_source = conflict_sources[key]
+                current_source = os.path.basename(file_path)
+                raise ValueError(
+                    f"Naming conflict detected in {data_type}: '{key}' is defined in both "
+                    f"'{existing_source}' and '{current_source}'. Please use unique names "
+                    f"across all {data_type} files to avoid conflicts."
+                )
+
+            merged_data[key] = value
+            conflict_sources[key] = os.path.basename(file_path)
+
+    return merged_data
+
+
 def generate_test_file(
     folder_path: str, framework: str = "pytest", output_filename: str | None = None
 ) -> None:
@@ -658,18 +753,20 @@ def generate_test_file(
     """
     logging.basicConfig(level=logging.INFO)
 
-    test_cases_file, modules_file, elements_file, config_file = find_files(folder_path)
+    # Find all files for mixed CSV/YAML support
+    all_files = find_all_files(folder_path)
 
-    if not config_file:
+    # Check for required files
+    if not all_files["config"]:
         logging.error("Error: Missing config.yaml")
         return
-    if not test_cases_file:
+    if not all_files["test_cases"]:
         logging.error("Error: Missing test cases file")
         return
-    if not modules_file:
+    if not all_files["modules"]:
         logging.error("Error: Missing modules file")
         return
-    if not elements_file:
+    if not all_files["elements"]:
         logging.error("Error: Missing elements file")
         return
 
@@ -683,29 +780,14 @@ def generate_test_file(
         logging.error(f"Unsupported framework: {framework}")
         return
 
-    # Initialize readers based on file formats
-    test_cases_reader = (
-        CSVDataReader()
-        if test_cases_file and test_cases_file.endswith(".csv")
-        else YAMLDataReader()
-    )
-    modules_reader = (
-        CSVDataReader()
-        if modules_file and modules_file.endswith(".csv")
-        else YAMLDataReader()
-    )
-    elements_reader = (
-        CSVDataReader()
-        if elements_file and elements_file.endswith(".csv")
-        else YAMLDataReader()
-    )
-    config_reader = YAMLDataReader()  # Config is always YAML
+    # Read and merge data from all files
+    test_cases = read_mixed_data(all_files["test_cases"], "test_cases")
+    modules = read_mixed_data(all_files["modules"], "modules")
+    elements = read_mixed_data(all_files["elements"], "elements")
 
-    # Read data
-    test_cases = test_cases_reader.read_test_cases(test_cases_file)
-    modules = modules_reader.read_modules(modules_file)
-    elements = elements_reader.read_elements(elements_file)
-    config = config_reader.read_config(config_file)
+    # Config is always single YAML file
+    config_reader = YAMLDataReader()
+    config = config_reader.read_config(all_files["config"][0])
 
     output_filename = output_filename or default_filename
     generated_folder = os.path.join(folder_path, "generated")
