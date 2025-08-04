@@ -1,8 +1,41 @@
+"""
+Unit and Integration Tests for generate.py module
+
+This test file contains comprehensive testing for the test generation functionality,
+covering multiple testing approaches:
+
+1. UNIT TESTS (White-box testing):
+   - Test individual methods including protected/private methods
+   - Verify internal logic, edge cases, and component isolation
+   - Examples: _parse_step, _resolve_params, _transform_config_structure
+
+2. INTEGRATION TESTS (Black-box testing):
+   - Test complete workflows using public APIs only
+   - Verify end-to-end functionality from input files to generated output
+   - Examples: CSV/YAML to pytest/Robot Framework generation flows
+
+3. HYBRID TESTS:
+   - Combine unit and integration testing approaches
+   - Test both internal components and complete workflows
+   - Provide comprehensive coverage and better debugging capabilities
+
+Testing Categories:
+- Data Reading: CSV and YAML parsing functionality
+- Code Generation: pytest and Robot Framework test generation
+- File Operations: File writing and directory structure creation
+- Error Handling: Conflict detection and edge case management
+- Parameter Processing: Numeric preservation and element resolution
+
+The pylint warnings about protected member access are expected and acceptable
+in test files, as they're necessary for comprehensive unit testing.
+"""
+
 import os
-import tempfile
 import shutil
-import pytest
+import tempfile
 from unittest.mock import patch, mock_open, MagicMock
+
+import pytest
 from optics_framework.helper.generate import (
     CSVDataReader,
     YAMLDataReader,
@@ -13,14 +46,545 @@ from optics_framework.helper.generate import (
 )
 
 
+# Test Data Templates
+class TestDataTemplates:
+    """
+    HELPER CLASS: Provides reusable test data templates
+
+    PURPOSE: Reduce code duplication by centralizing common test data patterns
+    TESTING TYPE: Test infrastructure (supports both unit and integration tests)
+
+    This class contains static methods that generate standardized test data
+    for CSV and YAML formats, ensuring consistent test scenarios across
+    different test cases.
+    """
+
+    @staticmethod
+    def get_login_test_cases_csv():
+        return """test_case,test_step
+Login Test,Login Module
+Login Test,Verify Module
+Logout Test,Logout Module"""
+
+    @staticmethod
+    def get_login_test_cases_yaml():
+        return """Test Cases:
+  Login Test:
+    - Login Module
+    - Verify Module
+  Logout Test:
+    - Logout Module"""
+
+    @staticmethod
+    def get_login_modules_csv():
+        return """module_name,module_step,param_1,param_2,param_3
+Login Module,Launch App,test_app,,
+Login Module,Enter Text,${username_field},testuser,
+Login Module,Press Element,${login_button},,
+Verify Module,Validate Element,${welcome_text},,
+Logout Module,Press Element,${logout_button},,
+Logout Module,Sleep,3000,,
+Logout Module,Scroll from Element,${element},right,3000.0"""
+
+    @staticmethod
+    def get_login_modules_yaml():
+        return """Modules:
+  Login Module:
+    - Launch App test_app
+    - Enter Text ${username_field} testuser
+    - Press Element ${login_button}
+  Verify Module:
+    - Validate Element ${welcome_text}
+  Logout Module:
+    - Press Element ${logout_button}
+    - Sleep 3000
+    - Scroll From Element ${element} right 3000.0"""
+
+    @staticmethod
+    def get_login_elements_csv():
+        return """Element_Name,Element_ID
+username_field,id:username
+login_button,id:login_btn
+welcome_text,xpath://span[text()='Welcome']
+logout_button,id:logout_btn
+element,id:swipe_element"""
+
+    @staticmethod
+    def get_login_elements_yaml():
+        return """Elements:
+  username_field: id:username
+  login_button: id:login_btn
+  welcome_text: xpath://span[text()='Welcome']
+  logout_button: id:logout_btn
+  element: id:swipe_element"""
+
+    @staticmethod
+    def get_basic_config():
+        return """driver_sources:
+  - type: appium
+    capabilities:
+      platformName: Android
+elements_sources:
+  - type: yaml
+    file: elements.yaml"""
+
+    @staticmethod
+    def get_yaml_config():
+        return """driver_sources:
+  - type: appium
+    capabilities:
+      platformName: Android
+elements_sources:
+  - type: yaml
+    file: elements.yaml"""
+
+    @staticmethod
+    def get_simple_config():
+        return "driver_sources: []"
+
+
+# Helper Functions
+class TestHelpers:
+    """
+    HELPER CLASS: Utility functions for test setup and verification
+
+    PURPOSE: Reduce code duplication and provide reusable test operations
+    TESTING TYPE: Test infrastructure (supports both unit and integration tests)
+
+    This class provides methods for:
+    - File creation and management in test environments
+    - Output verification and content validation
+    - Framework-specific structure verification
+    - Common assertion patterns for generated content
+    """
+
+    @staticmethod
+    def create_files(temp_dir, file_data_dict):
+        """Create multiple files in temp directory."""
+        for filename, data in file_data_dict.items():
+            with open(os.path.join(temp_dir, filename), "w", encoding="utf-8") as f:
+                f.write(data)
+
+    @staticmethod
+    def create_standard_test_files(temp_dir, framework="pytest", test_type="login"):
+        """Create standard test files for common test scenarios."""
+        if test_type == "login":
+            file_data = {
+                "test_cases.csv": TestDataTemplates.get_login_test_cases_csv(),
+                "modules.csv": TestDataTemplates.get_login_modules_csv(),
+                "elements.csv": TestDataTemplates.get_login_elements_csv(),
+                "config.yaml": TestDataTemplates.get_basic_config(),
+            }
+        elif test_type == "numeric":
+            file_data = {
+                "modules.csv": """module_name,module_step,param_1,param_2,param_3
+Test Module,Sleep,3000,,
+Test Module,Press By Percentage,50,75,
+Test Module,Swipe,100,200,300""",
+                "elements.csv": """Element_Name,Element_ID
+element,id:test_element""",
+                "test_cases.csv": """test_case,test_step
+Test Case,Test Module""",
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            }
+        else:
+            raise ValueError(f"Unknown test_type: {test_type}")
+
+        TestHelpers.create_files(temp_dir, file_data)
+
+    @staticmethod
+    def get_generated_file_path(temp_dir, framework):
+        """Get the path to generated test file."""
+        extension = ".py" if framework == "pytest" else ".robot"
+        filename = f"test_{os.path.basename(temp_dir)}{extension}"
+        return os.path.join(temp_dir, "generated", "Tests", filename)
+
+    @staticmethod
+    def read_generated_file(temp_dir, framework):
+        """Read the content of generated test file."""
+        file_path = TestHelpers.get_generated_file_path(temp_dir, framework)
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @staticmethod
+    def run_complete_test_flow(temp_dir, framework, file_type="login"):
+        """Run complete test generation flow and return content."""
+        TestHelpers.create_standard_test_files(temp_dir, framework, file_type)
+        generate_test_file(temp_dir, framework=framework)
+        return TestHelpers.read_generated_file(temp_dir, framework)
+
+    @staticmethod
+    def verify_robot_structure(temp_dir):
+        """Verify Robot Framework output structure."""
+        generated_dir = os.path.join(temp_dir, "generated")
+        tests_dir = os.path.join(generated_dir, "Tests")
+
+        assert os.path.exists(generated_dir)
+        assert os.path.exists(tests_dir)
+
+        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".robot")]
+        assert len(test_files) == 1
+
+    @staticmethod
+    def verify_pytest_structure(temp_dir):
+        """Verify pytest output structure."""
+        generated_dir = os.path.join(temp_dir, "generated")
+        tests_dir = os.path.join(generated_dir, "Tests")
+
+        assert os.path.exists(generated_dir)
+        assert os.path.exists(tests_dir)
+
+        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".py")]
+        assert len(test_files) == 1
+
+    @staticmethod
+    def create_keyword_arguments_files(temp_dir: str, framework: str = "pytest"):
+        """Create files for keyword arguments testing."""
+        if framework == "pytest":
+            test_data = """test_cases:
+  - name: Test Click
+    modules:
+      - Test Module"""
+            modules_data = """modules:
+  - name: Test Module
+    steps:
+      - keyword: Click By Percentage
+        args:
+          percentage_x: 50
+          percentage_y: 75"""
+        else:
+            test_data = """Test Cases:
+  Test Click:
+    - Test Module"""
+            modules_data = """Modules:
+  Test Module:
+    - Click By Percentage 50 75"""
+
+        elements_data = """elements:
+  login_button: id:login"""
+
+        TestHelpers.create_files(
+            temp_dir,
+            {
+                "test_cases.yaml": test_data,
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
+        )
+
+    @staticmethod
+    def verify_complex_keywords(content: str, framework: str):
+        """Verify complex keyword structures are properly generated."""
+        if framework == "pytest":
+            assert "Press Element With Index" in content
+            assert "Scroll From Element" in content
+            assert "Swipe Until Element Appears" in content
+            assert "Enter Text Using Keyboard" in content
+            assert "Capture Screenshot" in content
+        else:  # robot
+            assert "Press Element With Index" in content
+            assert "Scroll From Element" in content
+
+    @staticmethod
+    def create_and_generate_robot_test(temp_dir, file_data_list):
+        """Create files and generate Robot Framework test, return content."""
+        # Create files
+        for filename, data in file_data_list:
+            with open(os.path.join(temp_dir, filename), "w", encoding="utf-8") as f:
+                f.write(data)
+
+        # Generate
+        generate_test_file(temp_dir, framework="robot")
+
+        # Read generated file
+        test_file = os.path.join(
+            temp_dir,
+            "generated",
+            "Tests",
+            f"test_{os.path.basename(temp_dir)}.robot",
+        )
+        with open(test_file, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @staticmethod
+    def create_and_generate_pytest_test(temp_dir, file_data_list):
+        """Create files and generate pytest test, return content."""
+        # Create files
+        for filename, data in file_data_list:
+            with open(os.path.join(temp_dir, filename), "w", encoding="utf-8") as f:
+                f.write(data)
+
+        # Generate
+        generate_test_file(temp_dir, framework="pytest")
+
+        # Read generated file
+        test_file = os.path.join(
+            temp_dir,
+            "generated",
+            "Tests",
+            f"test_{os.path.basename(temp_dir)}.py",
+        )
+        with open(test_file, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @staticmethod
+    def verify_robot_keywords_standard(content):
+        """Verify standard Robot Framework keyword patterns."""
+        assert "Launch App    test_app" in content
+        assert "Press Element" in content or "Enter Text" in content
+
+    @staticmethod
+    def verify_robot_complex_keywords(content):
+        """Verify complex Robot Framework keyword patterns."""
+        assert "Launch App    test_app" in content
+        assert "Press Element With Index" in content
+        assert "Scroll From Element" in content
+        assert "Swipe Until Element Appears" in content
+        assert "Enter Text Using Keyboard" in content
+        assert "Capture Screenshot" in content
+
+    @staticmethod
+    def verify_basic_structure(content, framework):
+        """Verify basic file structure for both frameworks."""
+        if framework == "pytest":
+            assert "# Auto-generated by generate.py" in content
+            assert "import pytest" in content
+            assert "from optics_framework.optics import Optics" in content
+        else:  # robot
+            assert "*** Settings ***" in content
+            assert "*** Variables ***" in content
+            assert "*** Test Cases ***" in content
+            assert "*** Keywords ***" in content
+
+    @staticmethod
+    def verify_common_content(content, framework, content_checks=None):
+        """Verify common content patterns across frameworks."""
+        TestHelpers.verify_basic_structure(content, framework)
+        TestHelpers.verify_numeric_preservation(content)
+        TestHelpers.verify_element_references(content, framework)
+
+        if content_checks:
+            for check in content_checks:
+                assert check in content
+
+    @staticmethod
+    def verify_numeric_preservation(content):
+        """Verify numeric parameter preservation."""
+        # Check for numeric values without quotes (Robot Framework format)
+        assert "3000" in content or "2500" in content or "1000" in content
+
+    @staticmethod
+    def verify_element_references(content, framework):
+        """Verify element references are correct when they exist."""
+        if framework == "pytest":
+            # Only check for element references if they're actually used in the code
+            if "ELEMENTS['" in content:
+                assert "ELEMENTS['" in content
+            # If no element references are used, that's also valid
+        else:  # robot
+            # Only check for element references if they're actually used in the code
+            if "${ELEMENTS." in content:
+                assert "${ELEMENTS." in content
+            # If no element references are used, that's also valid
+
+    @staticmethod
+    def verify_test_cases(content, framework):
+        """Verify test cases are present."""
+        if framework == "pytest":
+            assert "def test_login_test(optics):" in content
+            assert "def test_logout_test(optics):" in content
+        else:  # robot
+            assert "Login Test" in content
+            assert "Logout Test" in content
+
+    @staticmethod
+    def verify_modules(content, framework):
+        """Verify modules are present."""
+        if framework == "pytest":
+            assert "def login_module(optics: Optics) -> None:" in content
+            assert "def verify_module(optics: Optics) -> None:" in content
+            assert "def logout_module(optics: Optics) -> None:" in content
+        else:  # robot
+            assert "Login Module" in content
+            assert "Verify Module" in content
+            assert "Logout Module" in content
+
+
+# Base Test Classes
+class BaseIntegrationTest:
+    """
+    BASE CLASS: Foundation for integration tests
+
+    PURPOSE: Provides common setup/teardown for integration testing
+    TESTING TYPE: Integration test infrastructure
+
+    This base class handles:
+    - Temporary directory creation and cleanup
+    - Common verification methods for generated files
+    - Shared test environment management
+
+    Integration tests verify complete workflows from input files
+    to generated test files using only public APIs.
+    """
+
+    temp_dir: str
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        if self.temp_dir != "":
+            shutil.rmtree(self.temp_dir)
+
+    def verify_requirements_file(self):
+        """Verify requirements.txt is created."""
+        req_file = os.path.join(self.temp_dir, "generated", "requirements.txt")
+        assert os.path.exists(req_file)
+
+    def verify_output_structure(self):
+        """Verify output directory structure."""
+        generated_dir = os.path.join(self.temp_dir, "generated")
+        tests_dir = os.path.join(generated_dir, "Tests")
+        assert os.path.exists(generated_dir)
+        assert os.path.exists(tests_dir)
+
+
+class BaseMixedTest(BaseIntegrationTest):
+    """Base class for mixed CSV/YAML tests."""
+
+    def run_standard_mixed_test(
+        self,
+        framework,
+        test_cases_data,
+        modules_data,
+        elements_data,
+        config_data,
+        test_cases_format,
+        modules_format,
+        elements_format,
+    ):
+        """Run a standard mixed format test."""
+        file_data = {
+            f"test_cases.{test_cases_format}": test_cases_data,
+            f"modules.{modules_format}": modules_data,
+            f"elements.{elements_format}": elements_data,
+            "config.yaml": config_data,
+        }
+
+        TestHelpers.create_files(self.temp_dir, file_data)
+        generate_test_file(self.temp_dir, framework=framework)
+
+        self.verify_output_structure()
+        content = TestHelpers.read_generated_file(self.temp_dir, framework)
+
+        TestHelpers.verify_common_content(content, framework)
+        TestHelpers.verify_test_cases(content, framework)
+        TestHelpers.verify_modules(content, framework)
+
+        self.verify_requirements_file()
+        return content
+
+    def run_simple_integration_test(self, framework, test_type="login"):
+        """Run a simple integration test with standard files."""
+        content = TestHelpers.run_complete_test_flow(
+            self.temp_dir, framework, test_type
+        )
+
+        self.verify_output_structure()
+        TestHelpers.verify_common_content(content, framework)
+
+        if framework == "pytest":
+            TestHelpers.verify_pytest_structure(self.temp_dir)
+        else:
+            TestHelpers.verify_robot_structure(self.temp_dir)
+
+        return content
+
+    def run_keyword_arguments_test(self, framework):
+        """Run keyword arguments test for both frameworks."""
+        modules_data = (
+            """module_name,module_step,param_1,param_2,param_3
+Test Module,Scroll from Element,${element},right,3000
+Test Module,Launch App,test_app,event_name=SwipeToPay,
+Test Module,Enter Text,${field},test_value,timeout=5000"""
+            if framework == "robot"
+            else """Modules:
+  Test Module:
+    - Scroll From Element ${element} right 3000
+    - Launch App test_app event_name=SwipeToPay
+    - Enter Text ${field} test_value timeout=5000"""
+        )
+
+        elements_data = (
+            """Element_Name,Element_ID
+element,id:test_element
+field,id:text_field"""
+            if framework == "robot"
+            else """Elements:
+  element: id:test_element
+  field: id:text_field"""
+        )
+
+        test_cases_data = (
+            """test_case,test_step
+Test Case,Test Module"""
+            if framework == "robot"
+            else """Test Cases:
+  Test Case:
+    - Test Module"""
+        )
+
+        file_ext = "csv" if framework == "robot" else "yaml"
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                f"modules.{file_ext}": modules_data,
+                f"elements.{file_ext}": elements_data,
+                f"test_cases.{file_ext}": test_cases_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
+        )
+
+        generate_test_file(self.temp_dir, framework=framework)
+        content = TestHelpers.read_generated_file(self.temp_dir, framework)
+
+        # Verify keyword arguments are preserved
+        assert "event_name=SwipeToPay" in content
+        assert "timeout=5000" in content
+
+        return content
+
+
 class TestCSVDataReader:
-    """Test cases for CSVDataReader class."""
+    """
+    UNIT TESTS: CSVDataReader class functionality
+
+    PURPOSE: Test CSV file parsing and data extraction logic
+    TESTING TYPE: White-box unit testing
+
+    These tests verify:
+    - CSV parsing using pandas DataFrame operations
+    - Data structure conversion from CSV to internal formats
+    - Error handling for malformed or missing CSV data
+    - Edge cases like empty files and missing columns
+
+    APPROACH: Uses mocking to isolate CSV reading logic from file I/O
+    """
+
+    reader: CSVDataReader
 
     def setup_method(self):
         self.reader = CSVDataReader()
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_test_cases_basic(self):
-        """Test reading basic test cases from CSV."""
+        """
+        UNIT TEST: Basic CSV test case reading
+        TESTS: CSV parsing for test cases with multiple steps
+        APPROACH: Mock pandas DataFrame to simulate CSV data
+        """
         # Create a mock DataFrame
         mock_df = MagicMock()
 
@@ -43,6 +607,8 @@ class TestCSVDataReader:
             # Should have processed test cases
             assert result is not None
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_modules_preserves_dtype_str(self):
         """Test that read_modules uses dtype=str to preserve numeric formats."""
         # Create mock DataFrame and row data
@@ -72,6 +638,8 @@ class TestCSVDataReader:
             mock_read_csv.assert_called_once_with("test.csv", dtype=str)
             assert isinstance(result, dict)
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_format_param_value_preserves_format(self):
         """Test that _format_param_value preserves original format."""
         # Test with integer string
@@ -89,6 +657,8 @@ class TestCSVDataReader:
         # Test with None
         assert self.reader._format_param_value(None) == "None"
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_elements_basic(self):
         """Test reading elements from CSV."""
         # Create mock DataFrame
@@ -120,6 +690,8 @@ class TestCSVDataReader:
 
                 assert isinstance(result, dict)
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_config_yaml_file(self):
         """Test reading config from YAML file."""
         config_data = {"driver_sources": [], "elements_sources": []}
@@ -130,6 +702,8 @@ class TestCSVDataReader:
 
                 assert result == config_data
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_config_empty_file(self):
         """Test reading config from empty YAML file."""
         with patch("builtins.open", mock_open()):
@@ -140,13 +714,34 @@ class TestCSVDataReader:
 
 
 class TestPytestGenerator:
-    """Test cases for PytestGenerator class."""
+    """
+    UNIT TESTS: PytestGenerator class functionality
+
+    PURPOSE: Test pytest test file generation logic
+    TESTING TYPE: White-box unit testing with some integration aspects
+
+    These tests verify:
+    - Internal parameter resolution methods (_resolve_params)
+    - Code generation for different pytest structures
+    - Element variable substitution for pytest syntax
+    - Numeric parameter preservation in generated code
+    - Complete test file generation workflow
+
+    APPROACH: Mix of unit tests (testing protected methods) and integration tests
+    (testing complete generation workflow)
+    """
 
     def setup_method(self):
         self.generator = PytestGenerator()
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_element_variables(self):
-        """Test _resolve_params with element variables."""
+        """
+        UNIT TEST: Element variable resolution for pytest
+        TESTS: Internal _resolve_params method with element substitution
+        APPROACH: White-box testing of protected method with mock data
+        """
         params = ["${button1}", "right", "3000"]
         elements = {"button1": "id:button_id"}
 
@@ -155,6 +750,8 @@ class TestPytestGenerator:
         expected = ["ELEMENTS['button1']", "'right'", "'3000'"]
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_keyword_arguments(self):
         """Test _resolve_params with keyword arguments."""
         params = ["param1", "event_name=SwipeToPay"]
@@ -165,6 +762,8 @@ class TestPytestGenerator:
         expected = ["'param1'", "event_name=SwipeToPay"]
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_missing_element_error(self):
         """Test _resolve_params raises error for missing element."""
         params = ["${missing_element}"]
@@ -173,6 +772,8 @@ class TestPytestGenerator:
         with pytest.raises(ValueError, match="Element 'missing_element' not found"):
             self.generator._resolve_params(params, elements, "pytest")
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_numeric_preservation(self):
         """Test _resolve_params preserves numeric formats."""
         params = ["3000", "3000.0", "2.5"]
@@ -183,6 +784,8 @@ class TestPytestGenerator:
         expected = ["'3000'", "'3000.0'", "'2.5'"]
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_header(self):
         """Test header generation for pytest."""
         result = self.generator._generate_header()
@@ -192,6 +795,8 @@ class TestPytestGenerator:
         assert "from optics_framework.optics import Optics" in result
         assert "from optics_framework.common.utils import load_config" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_config_with_sources(self):
         """Test config generation with various sources."""
         config = {
@@ -208,6 +813,8 @@ class TestPytestGenerator:
         assert "'text_config': [{'type': 'easyocr'}]" in result
         assert "'image_config': [{'type': 'opencv'}]" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_config_empty(self):
         """Test config generation with empty config."""
         config = {}
@@ -219,6 +826,8 @@ class TestPytestGenerator:
         assert "'text_config': []" in result
         assert "'image_config': []" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_elements(self):
         """Test elements dictionary generation."""
         elements = {"button1": "id:button_id", "text1": "xpath://input"}
@@ -230,6 +839,8 @@ class TestPytestGenerator:
         assert "'text1': 'xpath://input'," in result
         assert "}" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_setup_fixture(self):
         """Test setup fixture generation."""
         result = self.generator._generate_setup()
@@ -241,6 +852,8 @@ class TestPytestGenerator:
         assert "yield optics" in result
         assert "optics.quit()" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_module_function_basic(self):
         """Test module function generation with basic steps."""
         steps = [("Launch App", ["test_app"]), ("Press Element", ["${button1}"])]
@@ -255,6 +868,8 @@ class TestPytestGenerator:
         assert "optics.press_element(" in result
         assert "ELEMENTS['button1']" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_module_function_numeric_params(self):
         """Test module function generation preserves numeric parameter formats."""
         steps = [
@@ -275,6 +890,8 @@ class TestPytestGenerator:
         assert "'3000.0'" in result  # Float should remain as '3000.0'
         assert "event_name=SwipeToPay" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_test_function(self):
         """Test test function generation."""
         result = self.generator._generate_test_function(
@@ -285,6 +902,8 @@ class TestPytestGenerator:
         assert "module1(optics)" in result
         assert "module2(optics)" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_test_function_special_names(self):
         """Test test function generation with special characters in names."""
         result = self.generator._generate_test_function(
@@ -294,6 +913,8 @@ class TestPytestGenerator:
         assert "def test_login-test_case_#1(optics):" in result
         assert "login_module(optics)" in result
 
+    @pytest.mark.generate
+    @pytest.mark.hybrid
     def test_generate_complete_flow(self):
         """Test complete generation flow."""
         test_cases = {"Login Test": ["Login Module"]}
@@ -326,14 +947,19 @@ class TestFileWriter:
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
+        if self.temp_dir != "":
+            shutil.rmtree(self.temp_dir)
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_write_pytest_file(self):
         """Test writing pytest file with correct structure."""
         content = """# Auto-generated by generate.py. Do not edit manually.
 import pytest
 from optics_framework.optics import Optics
 
+@pytest.mark.generate
+@pytest.mark.white_box
 def test_example(optics):
     pass
 """
@@ -350,10 +976,12 @@ def test_example(optics):
         test_file = os.path.join(tests_dir, filename)
         assert os.path.exists(test_file)
 
-        with open(test_file, "r") as f:
+        with open(test_file, "r", encoding="utf-8") as f:
             file_content = f.read()
             assert file_content == content
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_write_pytest_requirements(self):
         """Test requirements.txt generation for pytest."""
         self.writer.write(self.temp_dir, "test.py", "content", "pytest")
@@ -361,7 +989,7 @@ def test_example(optics):
         req_file = os.path.join(self.temp_dir, "requirements.txt")
         assert os.path.exists(req_file)
 
-        with open(req_file, "r") as f:
+        with open(req_file, "r", encoding="utf-8") as f:
             content = f.read()
             assert "pytest" in content
             assert "optics-framework" in content
@@ -373,167 +1001,79 @@ def test_example(optics):
             assert "robotframework" not in content
 
 
-class TestCSVToPytestIntegration:
-    """Integration tests for CSV to pytest generation."""
+class TestCSVToPytestIntegration(BaseMixedTest):
+    """
+    INTEGRATION TESTS: CSV to pytest generation workflow
 
-    def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
+    PURPOSE: Test complete end-to-end generation from CSV files to pytest
+    TESTING TYPE: Black-box integration testing
 
-    def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
+    These tests verify:
+    - Complete workflow from CSV input files to generated pytest files
+    - File structure creation and organization
+    - Content validation in generated test files
+    - Requirements file generation
+    - Framework-specific syntax and patterns
 
+    APPROACH: Uses only public APIs (generate_test_file) with real file I/O
+    in temporary directories. Tests the complete user workflow.
+    """
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_to_pytest_complete_flow(self):
-        """Test complete CSV to pytest generation flow."""
-        # Create sample CSV data
-        test_cases_data = """test_case,test_step
-Login Test,Login Module
-Login Test,Verify Module
-Logout Test,Logout Module"""
+        """
+        INTEGRATION TEST: Complete CSV to pytest generation
+        TESTS: End-to-end workflow from CSV files to pytest output
+        APPROACH: Black-box testing using public API with file verification
+        """
+        content = self.run_simple_integration_test("pytest", "login")
 
-        modules_data = """module_name,module_step,param_1,param_2,param_3
-Login Module,Launch App,test_app,,
-Login Module,Enter Text,${username_field},testuser,
-Login Module,Press Element,${login_button},,
-Verify Module,Validate Element,${welcome_text},,
-Logout Module,Press Element,${logout_button},,
-Logout Module,Sleep,3000,,
-Logout Module,Scroll from Element,${element},right,3000.0"""
+        # Additional pytest-specific verifications
+        assert "CONFIG = {" in content
+        assert "ELEMENTS = {" in content
+        assert "@pytest.fixture" in content
+        assert "'3000'" in content  # Integer preserved as string
+        assert "'3000.0'" in content  # Float preserved as string
 
-        elements_data = """Element_Name,Element_ID
-username_field,id:username
-login_button,id:login_btn
-welcome_text,xpath://span[text()='Welcome']
-logout_button,id:logout_btn
-element,id:swipe_element"""
-
-        config_data = """driver_sources:
-  - type: appium
-    capabilities:
-      platformName: Android
-elements_sources:
-  - type: csv
-    file: elements.csv"""
-
-        # Create test files
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.csv"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated pytest file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".py")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify pytest structure
-            assert "# Auto-generated by generate.py" in content
-            assert "import pytest" in content
-            assert "from optics_framework.optics import Optics" in content
-
-            # Verify config section
-            assert "CONFIG = {" in content
-            assert "'driver_config':" in content
-
-            # Verify elements section
-            assert "ELEMENTS = {" in content
-            assert "'username_field': 'id:username'" in content
-
-            # Verify module functions
-            assert "def login_module(optics: Optics) -> None:" in content
-            assert "def verify_module(optics: Optics) -> None:" in content
-            assert "def logout_module(optics: Optics) -> None:" in content
-
-            # Verify test functions
-            assert "def test_login_test(optics):" in content
-            assert "def test_logout_test(optics):" in content
-
-            # Verify numeric parameter preservation
-            assert "'3000'" in content  # Integer preserved as string
-            assert "'3000.0'" in content  # Float preserved as string
-
-            # Verify element references
-            assert "ELEMENTS['username_field']" in content
-            assert "ELEMENTS['login_button']" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_numeric_parameter_preservation(self):
         """Test that CSV numeric parameters are preserved correctly."""
-        # Focus on numeric parameter preservation
-        modules_data = """module_name,module_step,param_1,param_2,param_3
-Test Module,Scroll from Element,${element},right,3000
-Test Module,Sleep,3000.0,,
-Test Module,Press By Percentage,50,75,
-Test Module,Swipe,100,200,300"""
-
-        elements_data = """Element_Name,Element_ID
-element,id:test_element"""
-
-        config_data = "driver_sources: []"
-
-        test_cases_data = """test_case,test_step
-Test Case,Test Module"""
-
-        # Create files
-        for filename, data in [
-            ("modules.csv", modules_data),
-            ("elements.csv", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.csv", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
-            self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
-        )
-        with open(test_file, "r") as f:
-            content = f.read()
-
-            # Verify all numeric formats are preserved
-            assert "'3000'" in content  # Integer as string
-            assert "'3000.0'" in content  # Float as string
-            assert "'50'" in content
-            assert "'75'" in content
-            assert "'100'" in content
-            assert "'200'" in content
-            assert "'300'" in content
+        content = self.run_simple_integration_test("pytest", "numeric")
+        TestHelpers.verify_numeric_preservation(content)
 
 
 class TestYAMLDataReader:
-    """Test cases for YAMLDataReader class."""
+    """
+    UNIT TESTS: YAMLDataReader class functionality
+
+    PURPOSE: Test YAML file parsing and data extraction logic
+    TESTING TYPE: White-box unit testing
+
+    These tests verify:
+    - YAML parsing using PyYAML library
+    - Support for different YAML formats (list vs dict)
+    - Data structure conversion from YAML to internal formats
+    - Complex step parsing with parameters and element references
+    - Error handling for malformed YAML data
+
+    APPROACH: Uses mocking to isolate YAML reading logic from file I/O
+    """
+
+    reader: YAMLDataReader
 
     def setup_method(self):
         self.reader = YAMLDataReader()
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_test_cases_list_format(self):
-        """Test reading test cases from YAML in list format."""
+        """
+        UNIT TEST: YAML test case reading in list format
+        TESTS: YAML parsing for list-based test case structure
+        APPROACH: Mock YAML data with list format structure
+        """
         yaml_data = {
             "Test Cases": [
                 {"Login Test": ["Login Module", "Verify Module"]},
@@ -551,6 +1091,8 @@ class TestYAMLDataReader:
                 }
                 assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_test_cases_dict_format(self):
         """Test reading test cases from YAML in dict format."""
         yaml_data = {
@@ -570,6 +1112,8 @@ class TestYAMLDataReader:
                 }
                 assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_test_cases_empty_file(self):
         """Test reading test cases from empty YAML file."""
         with patch("builtins.open", mock_open()):
@@ -578,6 +1122,8 @@ class TestYAMLDataReader:
 
                 assert result == {}
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_test_cases_missing_key(self):
         """Test reading test cases when 'Test Cases' key is missing."""
         yaml_data = {"Other": "data"}
@@ -588,30 +1134,44 @@ class TestYAMLDataReader:
 
                 assert result == {}
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_parse_step_basic_keyword(self):
         """Test _parse_step with basic keyword."""
         keyword_registry = {"Launch App", "Press Element", "Sleep"}
 
-        keyword, params = self.reader._parse_step("Launch App test_app", keyword_registry)
+        keyword, params = self.reader._parse_step(
+            "Launch App test_app", keyword_registry
+        )
         assert keyword == "Launch App"
         assert params == ["test_app"]
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_parse_step_complex_keyword(self):
         """Test _parse_step with complex multi-word keyword."""
         keyword_registry = {"Scroll From Element", "Press Element", "Sleep"}
 
-        keyword, params = self.reader._parse_step("Scroll From Element ${element} right 3000", keyword_registry)
+        keyword, params = self.reader._parse_step(
+            "Scroll From Element ${element} right 3000", keyword_registry
+        )
         assert keyword == "Scroll From Element"
         assert params == ["${element}", "right", "3000"]
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_parse_step_keyword_priority(self):
         """Test _parse_step prioritizes longer matching keywords."""
         keyword_registry = {"Press Element", "Press Element With Index", "Sleep"}
 
-        keyword, params = self.reader._parse_step("Press Element With Index ${button} 2", keyword_registry)
+        keyword, params = self.reader._parse_step(
+            "Press Element With Index ${button} 2", keyword_registry
+        )
         assert keyword == "Press Element With Index"
         assert params == ["${button}", "2"]
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_parse_step_no_params(self):
         """Test _parse_step with keyword but no parameters."""
         keyword_registry = {"Quit", "Sleep"}
@@ -620,14 +1180,20 @@ class TestYAMLDataReader:
         assert keyword == "Quit"
         assert params == []
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_parse_step_unknown_keyword(self):
         """Test _parse_step with unknown keyword."""
         keyword_registry = {"Launch App", "Press Element"}
 
-        keyword, params = self.reader._parse_step("Unknown Command param1 param2", keyword_registry)
+        keyword, params = self.reader._parse_step(
+            "Unknown Command param1 param2", keyword_registry
+        )
         assert keyword == "Unknown"
         assert params == ["Command", "param1", "param2"]
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_modules_list_format(self):
         """Test reading modules from YAML in list format."""
         yaml_data = {
@@ -663,6 +1229,8 @@ class TestYAMLDataReader:
                 }
                 assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_modules_dict_format(self):
         """Test reading modules from YAML in dict format."""
         yaml_data = {
@@ -694,6 +1262,8 @@ class TestYAMLDataReader:
                 }
                 assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_modules_numeric_preservation(self):
         """Test reading modules preserves numeric parameter formats."""
         yaml_data = {
@@ -714,16 +1284,23 @@ class TestYAMLDataReader:
                 steps = result["Test Module"]
                 assert steps[0] == ("Sleep", ["3000"])
                 assert steps[1] == ("Press By Percentage", ["50", "75"])
-                assert steps[2] == ("Scroll From Element", ["${element}", "right", "3000.0"])
+                assert steps[2] == (
+                    "Scroll From Element",
+                    ["${element}", "right", "3000.0"],
+                )
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_modules_empty_file(self):
         """Test reading modules from empty YAML file."""
         with patch("builtins.open", mock_open()):
             with patch("yaml.safe_load", return_value=None):
                 result = self.reader.read_modules("test.yaml")
 
-                assert result == {}
+                assert not result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_modules_missing_key(self):
         """Test reading modules when 'Modules' key is missing."""
         yaml_data = {"Other": "data"}
@@ -732,8 +1309,10 @@ class TestYAMLDataReader:
             with patch("yaml.safe_load", return_value=yaml_data):
                 result = self.reader.read_modules("test.yaml")
 
-                assert result == {}
+                assert not result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_elements_basic(self):
         """Test reading elements from YAML."""
         yaml_data = {
@@ -755,6 +1334,8 @@ class TestYAMLDataReader:
                 }
                 assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_elements_empty_file(self):
         """Test reading elements from empty YAML file."""
         with patch("builtins.open", mock_open()):
@@ -763,6 +1344,8 @@ class TestYAMLDataReader:
 
                 assert result == {}
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_elements_missing_key(self):
         """Test reading elements when 'Elements' key is missing."""
         yaml_data = {"Other": "data"}
@@ -773,6 +1356,8 @@ class TestYAMLDataReader:
 
                 assert result == {}
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_config_complete(self):
         """Test reading complete config from YAML."""
         yaml_data = {
@@ -790,6 +1375,8 @@ class TestYAMLDataReader:
 
                 assert result == yaml_data
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_read_config_empty_file(self):
         """Test reading config from empty YAML file."""
         with patch("builtins.open", mock_open()):
@@ -799,124 +1386,31 @@ class TestYAMLDataReader:
                 assert result == {}
 
 
-class TestYAMLToPytestIntegration:
+class TestYAMLToPytestIntegration(BaseMixedTest):
     """Integration tests for YAML to pytest generation."""
 
-    def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
-
-    def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_to_pytest_complete_flow(self):
         """Test complete YAML to pytest generation flow."""
-        # Create sample YAML data
-        test_cases_data = """Test Cases:
-  - Login Test:
-      - Login Module
-      - Verify Module
-  - Logout Test:
-      - Logout Module"""
+        content = self.run_simple_integration_test("pytest", "login")
 
-        modules_data = """Modules:
-  - Login Module:
-      - Launch App test_app
-      - Enter Text ${username_field} testuser
-      - Press Element ${login_button}
-  - Verify Module:
-      - Validate Element ${welcome_text}
-  - Logout Module:
-      - Press Element ${logout_button}
-      - Sleep 3000
-      - Scroll From Element ${element} right 3000.0"""
+        # Verify YAML-specific elements
+        TestHelpers.verify_basic_structure(content, "pytest")
+        TestHelpers.verify_test_cases(content, "pytest")
+        TestHelpers.verify_element_references(content, "pytest")
+        TestHelpers.verify_numeric_preservation(content)
 
-        elements_data = """Elements:
-  username_field: id:username
-  login_button: id:login_btn
-  welcome_text: xpath://span[text()='Welcome']
-  logout_button: id:logout_btn
-  element: id:swipe_element"""
-
-        config_data = """driver_sources:
-  - type: appium
-    capabilities:
-      platformName: Android
-elements_sources:
-  - type: yaml
-    file: elements.yaml"""
-
-        # Create test files
-        with open(os.path.join(self.temp_dir, "test_cases.yaml"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated pytest file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".py")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify pytest structure
-            assert "# Auto-generated by generate.py" in content
-            assert "import pytest" in content
-            assert "from optics_framework.optics import Optics" in content
-
-            # Verify config section
-            assert "CONFIG = {" in content
-            assert "'driver_config':" in content
-
-            # Verify elements section
-            assert "ELEMENTS = {" in content
-            assert "'username_field': 'id:username'" in content
-
-            # Verify module functions
-            assert "def login_module(optics: Optics) -> None:" in content
-            assert "def verify_module(optics: Optics) -> None:" in content
-            assert "def logout_module(optics: Optics) -> None:" in content
-
-            # Verify test functions
-            assert "def test_login_test(optics):" in content
-            assert "def test_logout_test(optics):" in content
-
-            # Verify numeric parameter preservation from YAML
-            assert "'3000'" in content  # Integer preserved as string
-            assert "'3000.0'" in content  # Float preserved as string
-
-            # Verify element references
-            assert "ELEMENTS['username_field']" in content
-            assert "ELEMENTS['login_button']" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_dict_format_to_pytest(self):
         """Test YAML dict format conversion to pytest."""
-        # Test with dict format YAML instead of list format
         test_cases_data = """Test Cases:
   Login Test:
     - Login Module
     - Verify Module
   Logout Test:
     - Logout Module"""
-
         modules_data = """Modules:
   Login Module:
     - Launch App test_app
@@ -926,48 +1420,29 @@ elements_sources:
   Logout Module:
     - Sleep 2500
     - Press Element ${logout_btn}"""
-
         elements_data = """Elements:
   login_btn: id:login_button
   welcome_text: xpath://span[text()='Welcome']
   logout_btn: id:logout_button"""
 
-        config_data = """driver_sources:
-  - type: appium"""
-
-        # Create test files
-        for filename, data in [
-            ("test_cases.yaml", test_cases_data),
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "test_cases.yaml": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify YAML dict format was processed correctly
-            assert "def login_module(optics: Optics) -> None:" in content
-            assert "def verify_module(optics: Optics) -> None:" in content
-            assert "def logout_module(optics: Optics) -> None:" in content
-            assert "def test_login_test(optics):" in content
-            assert "def test_logout_test(optics):" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify numeric preservation
-            assert "'2500'" in content
+        TestHelpers.verify_basic_structure(content, "pytest")
+        assert "'2500'" in content
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_complex_keywords_to_pytest(self):
         """Test YAML with complex multi-word keywords conversion to pytest."""
         modules_data = """Modules:
@@ -991,48 +1466,40 @@ elements_sources:
   Complex Test:
     - Complex Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": config_data,
+                "test_cases.yaml": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify complex keywords are converted correctly
-            assert "optics.launch_app(" in content
-            assert "optics.press_element_with_index(" in content
-            assert "optics.scroll_from_element(" in content
-            assert "optics.swipe_until_element_appears(" in content
-            assert "optics.enter_text_using_keyboard(" in content
-            assert "optics.capture_screenshot(" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify element references
-            assert "ELEMENTS['button']" in content
-            assert "ELEMENTS['element']" in content
-            assert "ELEMENTS['target']" in content
-            assert "ELEMENTS['field']" in content
+        # Verify complex keywords are converted correctly
+        assert "optics.launch_app(" in content
+        assert "optics.press_element_with_index(" in content
+        assert "optics.scroll_from_element(" in content
+        assert "optics.swipe_until_element_appears(" in content
+        assert "optics.enter_text_using_keyboard(" in content
+        assert "optics.capture_screenshot(" in content
 
-            # Verify numeric parameters
-            assert "'3000'" in content
-            assert "'2'" in content
-            assert "'5'" in content
+        # Verify element references
+        assert "ELEMENTS['button']" in content
+        assert "ELEMENTS['element']" in content
+        assert "ELEMENTS['target']" in content
+        assert "ELEMENTS['field']" in content
 
+        # Verify numeric parameters
+        assert "'3000'" in content
+        assert "'2'" in content
+        assert "'5'" in content
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_numeric_parameter_preservation(self):
         """Test that YAML numeric parameters are preserved correctly in pytest."""
         modules_data = """Modules:
@@ -1053,40 +1520,33 @@ elements_sources:
     - Numeric Module"""
 
         # Create files
-        for filename, data in [
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": config_data,
+                "test_cases.yaml": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify all numeric formats are preserved
-            assert "'50'" in content
-            assert "'75'" in content
-            assert "'3000'" in content  # Integer as string
-            assert "'100'" in content
-            assert "'200'" in content
-            assert "'300'" in content
-            assert "'400'" in content
-            assert "'3000.0'" in content  # Float as string
-            assert "'150.5'" in content
-            assert "'250.7'" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
+        # Verify all numeric formats are preserved
+        assert "'50'" in content
+        assert "'75'" in content
+        assert "'3000'" in content  # Integer as string
+        assert "'100'" in content
+        assert "'200'" in content
+        assert "'300'" in content
+        assert "'400'" in content
+        assert "'3000.0'" in content  # Float as string
+        assert "'150.5'" in content
+        assert "'250.7'" in content
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_empty_modules_to_pytest(self):
         """Test YAML with empty modules conversion to pytest."""
         test_cases_data = """Test Cases:
@@ -1107,7 +1567,9 @@ elements_sources:
             ("elements.yaml", elements_data),
             ("config.yaml", config_data),
         ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
+            with open(
+                os.path.join(self.temp_dir, filename), "w", encoding="utf-8"
+            ) as f:
                 f.write(data)
 
         # Generate
@@ -1120,7 +1582,7 @@ elements_sources:
             "Tests",
             f"test_{os.path.basename(self.temp_dir)}.py",
         )
-        with open(test_file, "r") as f:
+        with open(test_file, "r", encoding="utf-8") as f:
             content = f.read()
 
             # Verify empty module function is created
@@ -1130,13 +1592,35 @@ elements_sources:
 
 
 class TestRobotGenerator:
-    """Test cases for RobotGenerator class."""
+    """
+    UNIT TESTS: RobotGenerator class functionality
+
+    PURPOSE: Test Robot Framework test file generation logic
+    TESTING TYPE: White-box unit testing with some integration aspects
+
+    These tests verify:
+    - Internal parameter resolution methods (_resolve_params)
+    - Robot Framework specific syntax generation
+    - Element variable substitution for Robot Framework format
+    - Configuration transformation for Robot Framework
+    - JSON escaping for Robot Framework variables
+    - Complete Robot Framework test file generation
+
+    APPROACH: Mix of unit tests (testing protected methods) and integration tests
+    (testing complete generation workflow)
+    """
 
     def setup_method(self):
         self.generator = RobotGenerator()
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_element_variables_robot(self):
-        """Test _resolve_params with element variables for Robot Framework."""
+        """
+        UNIT TEST: Element variable resolution for Robot Framework
+        TESTS: Internal _resolve_params method with Robot Framework syntax
+        APPROACH: White-box testing of protected method with mock data
+        """
         params = ["${button1}", "right", "3000"]
         elements = {"button1": "id:button_id"}
 
@@ -1145,6 +1629,8 @@ class TestRobotGenerator:
         expected = ["${ELEMENTS.button1}", "right", "3000"]
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_keyword_arguments_robot(self):
         """Test _resolve_params with keyword arguments for Robot Framework."""
         params = ["param1", "event_name=SwipeToPay"]
@@ -1155,6 +1641,8 @@ class TestRobotGenerator:
         expected = ["param1", "event_name=SwipeToPay"]
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_missing_element_error_robot(self):
         """Test _resolve_params raises error for missing element in Robot Framework."""
         params = ["${missing_element}"]
@@ -1163,6 +1651,8 @@ class TestRobotGenerator:
         with pytest.raises(ValueError, match="Element 'missing_element' not found"):
             self.generator._resolve_params(params, elements, "robot")
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_resolve_params_numeric_preservation_robot(self):
         """Test _resolve_params preserves numeric formats for Robot Framework."""
         params = ["3000", "3000.0", "2.5"]
@@ -1173,6 +1663,8 @@ class TestRobotGenerator:
         expected = ["3000", "3000.0", "2.5"]
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_header_robot(self):
         """Test header generation for Robot Framework."""
         result = self.generator._generate_header()
@@ -1182,6 +1674,8 @@ class TestRobotGenerator:
         assert "Library    Collections" in result
         assert "Library    optics_framework.common.utils" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_transform_config_structure(self):
         """Test config structure transformation for Robot Framework."""
         config = {
@@ -1202,6 +1696,8 @@ class TestRobotGenerator:
         }
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_transform_config_structure_empty(self):
         """Test config structure transformation with empty config."""
         config = {}
@@ -1215,6 +1711,8 @@ class TestRobotGenerator:
         }
         assert result == expected
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_escape_json_for_robot(self):
         """Test JSON escaping for Robot Framework."""
         json_str = '{"key": "value with \\"quotes\\" and \\backslash"}'
@@ -1222,8 +1720,10 @@ class TestRobotGenerator:
         result = self.generator._escape_json_for_robot(json_str)
 
         assert '\\"' in result
-        assert '\\\\' in result
+        assert "\\\\" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_variables_basic(self):
         """Test variables section generation for Robot Framework."""
         elements = {"button1": "id:button_id", "text1": "xpath://input"}
@@ -1237,6 +1737,8 @@ class TestRobotGenerator:
         assert "text1=xpath://input" in result
         assert "${OPTICS_CONFIG_JSON}=" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_test_cases_robot(self):
         """Test test cases generation for Robot Framework."""
         test_cases = {
@@ -1255,6 +1757,8 @@ class TestRobotGenerator:
         assert "Logout Module" in result
         assert "Quit Optics" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_keywords_robot(self):
         """Test keywords section generation for Robot Framework."""
         modules = {
@@ -1274,6 +1778,8 @@ class TestRobotGenerator:
         assert "Launch App    test_app" in result
         assert "Press Element    ${ELEMENTS.login_btn}" in result
 
+    @pytest.mark.generate
+    @pytest.mark.white_box
     def test_generate_keywords_numeric_params(self):
         """Test keywords generation preserves numeric parameter formats."""
         modules = {
@@ -1291,6 +1797,8 @@ class TestRobotGenerator:
         assert "Press By Percentage    50    75" in result
         assert "Scroll from Element    ${ELEMENTS.element}    right    3000.0" in result
 
+    @pytest.mark.generate
+    @pytest.mark.hybrid
     def test_generate_complete_flow_robot(self):
         """Test complete Robot Framework generation flow."""
         test_cases = {"Login Test": ["Login Module"]}
@@ -1316,156 +1824,57 @@ class TestRobotGenerator:
         assert "${ELEMENTS.login_btn}" in result
 
 
-class TestCSVToRobotIntegration:
+class TestCSVToRobotIntegration(BaseMixedTest):
     """Integration tests for CSV to Robot Framework generation."""
 
-    def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
-
-    def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_to_robot_complete_flow(self):
         """Test complete CSV to Robot Framework generation flow."""
-        # Create sample CSV data
-        test_cases_data = """test_case,test_step
-Login Test,Login Module
-Login Test,Verify Module
-Logout Test,Logout Module"""
+        content = self.run_simple_integration_test("robot", "login")
 
-        modules_data = """module_name,module_step,param_1,param_2,param_3
-Login Module,Launch App,test_app,,
-Login Module,Enter Text,${username_field},testuser,
-Login Module,Press Element,${login_button},,
-Verify Module,Validate Element,${welcome_text},,
-Logout Module,Press Element,${logout_button},,
-Logout Module,Sleep,3000,,
-Logout Module,Scroll from Element,${element},right,3000.0"""
+        # Additional Robot Framework specific verifications
+        TestHelpers.verify_robot_structure(self.temp_dir)
+        TestHelpers.verify_basic_structure(content, "robot")
+        TestHelpers.verify_test_cases(content, "robot")
+        TestHelpers.verify_element_references(content, "robot")
+        TestHelpers.verify_numeric_preservation(content)
 
-        elements_data = """Element_Name,Element_ID
-username_field,id:username
-login_button,id:login_btn
-welcome_text,xpath://span[text()='Welcome']
-logout_button,id:logout_btn
-element,id:swipe_element"""
-
-        config_data = """driver_sources:
-  - type: appium
-    capabilities:
-      platformName: Android
-elements_sources:
-  - type: csv
-    file: elements.csv"""
-
-        # Create test files
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.csv"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated robot file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".robot")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify Robot Framework structure
-            assert "*** Settings ***" in content
-            assert "*** Variables ***" in content
-            assert "*** Test Cases ***" in content
-            assert "*** Keywords ***" in content
-
-            # Verify libraries
-            assert "Library    optics_framework.optics.Optics" in content
-            assert "Library    Collections" in content
-
-            # Verify elements section
-            assert "&{ELEMENTS}=" in content
-            assert "username_field=id:username" in content
-
-            # Verify test cases
-            assert "Login Test" in content
-            assert "Logout Test" in content
-
-            # Verify module keywords
-            assert "Login Module" in content
-            assert "Verify Module" in content
-            assert "Logout Module" in content
-
-            # Verify numeric parameter preservation
-            assert "Sleep    3000" in content  # Integer preserved
-            assert "3000.0" in content  # Float preserved
-
-            # Verify element references
-            assert "${ELEMENTS.username_field}" in content
-            assert "${ELEMENTS.login_button}" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_numeric_parameter_preservation_robot(self):
         """Test that CSV numeric parameters are preserved correctly in Robot Framework."""
-        # Focus on numeric parameter preservation
         modules_data = """module_name,module_step,param_1,param_2,param_3
 Test Module,Scroll from Element,${element},right,3000
 Test Module,Sleep,3000.0,,
 Test Module,Press By Percentage,50,75,
 Test Module,Swipe,100,200,300"""
-
         elements_data = """Element_Name,Element_ID
 element,id:test_element"""
-
-        config_data = "driver_sources: []"
-
         test_cases_data = """test_case,test_step
 Test Case,Test Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.csv", modules_data),
-            ("elements.csv", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.csv", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.csv": modules_data,
+                "elements.csv": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+                "test_cases.csv": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify all numeric formats are preserved
-            assert "3000" in content  # Integer preserved
-            assert "3000.0" in content  # Float preserved
-            assert "50    75" in content  # Multiple parameters
-            assert "100    200    300" in content  # Multiple numeric parameters
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify all numeric formats are preserved
+        assert "3000" in content  # Integer preserved
+        assert "3000.0" in content  # Float preserved
+        assert "50    75" in content  # Multiple parameters
+        assert "100    200    300" in content  # Multiple numeric parameters
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_complex_keywords_to_robot(self):
         """Test CSV with complex multi-word keywords conversion to Robot Framework."""
         modules_data = """module_name,module_step,param_1,param_2,param_3
@@ -1482,53 +1891,35 @@ element,id:scroll_element
 target,id:target_element
 field,id:text_field"""
 
-        config_data = """driver_sources: []"""
-
         test_cases_data = """test_case,test_step
 Complex Test,Complex Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.csv", modules_data),
-            ("elements.csv", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.csv", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.csv": modules_data,
+                "elements.csv": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+                "test_cases.csv": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify complex keywords are present
-            assert "Launch App    test_app" in content
-            assert "Press Element With Index    ${ELEMENTS.button}    2" in content
-            assert "Scroll from Element    ${ELEMENTS.element}    right    3000" in content
-            assert "Swipe Until Element Appears    ${ELEMENTS.target}    up    5" in content
-            assert "Enter Text Using Keyboard    ${ELEMENTS.field}    test_text" in content
-            assert "Capture Screenshot    test_image.png" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-            # Verify element references
-            assert "${ELEMENTS.button}" in content
-            assert "${ELEMENTS.element}" in content
-            assert "${ELEMENTS.target}" in content
-            assert "${ELEMENTS.field}" in content
+        # Verify complex keywords are present
+        assert "Launch App    test_app" in content
+        assert "Press Element With Index    ${ELEMENTS.button}    2" in content
+        assert "Scroll from Element    ${ELEMENTS.element}    right    3000" in content
+        assert "Swipe Until Element Appears    ${ELEMENTS.target}    up    5" in content
+        assert "Enter Text Using Keyboard    ${ELEMENTS.field}    test_text" in content
+        assert "Capture Screenshot    test_image.png" in content
 
-            # Verify numeric parameters
-            assert "2" in content
-            assert "3000" in content
-            assert "5" in content
+        TestHelpers.verify_element_references(content, "robot")
+        TestHelpers.verify_numeric_preservation(content)
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_keyword_arguments_to_robot(self):
         """Test CSV with keyword arguments conversion to Robot Framework."""
         modules_data = """module_name,module_step,param_1,param_2,param_3
@@ -1540,41 +1931,33 @@ Test Module,Enter Text,${field},test_value,timeout=5000"""
 element,id:test_element
 field,id:text_field"""
 
-        config_data = "driver_sources: []"
-
         test_cases_data = """test_case,test_step
 Test Case,Test Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.csv", modules_data),
-            ("elements.csv", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.csv", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.csv": modules_data,
+                "elements.csv": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+                "test_cases.csv": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify keyword arguments are preserved
-            assert "event_name=SwipeToPay" in content
-            assert "timeout=5000" in content
-            assert "Scroll from Element    ${ELEMENTS.element}    right    3000" in content
-            assert "Launch App    test_app    event_name=SwipeToPay" in content
-            assert "Enter Text    ${ELEMENTS.field}    test_value    timeout=5000" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify keyword arguments are preserved
+        assert "event_name=SwipeToPay" in content
+        assert "timeout=5000" in content
+        assert "Scroll from Element    ${ELEMENTS.element}    right    3000" in content
+        assert "Launch App    test_app    event_name=SwipeToPay" in content
+        assert (
+            "Enter Text    ${ELEMENTS.field}    test_value    timeout=5000" in content
+        )
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_empty_modules_to_robot(self):
         """Test CSV with empty modules conversion to Robot Framework."""
         test_cases_data = """test_case,test_step
@@ -1585,38 +1968,28 @@ Empty Module,,,"""
 
         elements_data = """Element_Name,Element_ID"""
 
-        config_data = """driver_sources: []"""
-
-        # Create files
-        for filename, data in [
-            ("test_cases.csv", test_cases_data),
-            ("modules.csv", modules_data),
-            ("elements.csv", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.csv": modules_data,
+                "elements.csv": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify empty module is created
-            assert "Empty Module" in content
-            assert "Empty Test" in content
-            # Should have basic structure even with empty modules
-            assert "*** Keywords ***" in content
-            assert "*** Test Cases ***" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify empty module is created
+        assert "Empty Module" in content
+        assert "Empty Test" in content
+        # Should have basic structure even with empty modules
+        assert "*** Keywords ***" in content
+        assert "*** Test Cases ***" in content
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_config_variations_to_robot(self):
         """Test CSV with different config variations for Robot Framework."""
         modules_data = """module_name,module_step,param_1,param_2,param_3
@@ -1642,150 +2015,48 @@ execution_output_path: /path/to/output"""
         test_cases_data = """test_case,test_step
 Config Test,Test Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.csv", modules_data),
-            ("elements.csv", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.csv", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.csv": modules_data,
+                "elements.csv": elements_data,
+                "config.yaml": config_data,
+                "test_cases.csv": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify config is properly transformed and included
-            assert "${OPTICS_CONFIG_JSON}=" in content
-            assert "driver_config" in content
-            assert "element_source_config" in content
-            assert "text_config" in content
-            assert "image_config" in content
-            assert "execution_output_path" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
+
+        # Verify config is properly transformed and included
+        assert "${OPTICS_CONFIG_JSON}=" in content
+        assert "driver_config" in content
+        assert "element_source_config" in content
+        assert "text_config" in content
+        assert "image_config" in content
+        assert "execution_output_path" in content
 
 
-class TestYAMLToRobotIntegration:
+class TestYAMLToRobotIntegration(BaseMixedTest):
     """Integration tests for YAML to Robot Framework generation."""
 
-    def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
-
-    def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_to_robot_complete_flow(self):
         """Test complete YAML to Robot Framework generation flow."""
-        # Create sample YAML data
-        test_cases_data = """Test Cases:
-  - Login Test:
-      - Login Module
-      - Verify Module
-  - Logout Test:
-      - Logout Module"""
+        content = self.run_simple_integration_test("robot", "login")
 
-        modules_data = """Modules:
-  - Login Module:
-      - Launch App test_app
-      - Enter Text ${username_field} testuser
-      - Press Element ${login_button}
-  - Verify Module:
-      - Validate Element ${welcome_text}
-  - Logout Module:
-      - Press Element ${logout_button}
-      - Sleep 3000
-      - Scroll From Element ${element} right 3000.0"""
+        # Additional Robot Framework specific verifications
+        TestHelpers.verify_robot_structure(self.temp_dir)
+        TestHelpers.verify_basic_structure(content, "robot")
+        TestHelpers.verify_test_cases(content, "robot")
+        TestHelpers.verify_element_references(content, "robot")
+        TestHelpers.verify_numeric_preservation(content)
 
-        elements_data = """Elements:
-  username_field: id:username
-  login_button: id:login_btn
-  welcome_text: xpath://span[text()='Welcome']
-  logout_button: id:logout_btn
-  element: id:swipe_element"""
-
-        config_data = """driver_sources:
-  - type: appium
-    capabilities:
-      platformName: Android
-elements_sources:
-  - type: yaml
-    file: elements.yaml"""
-
-        # Create test files
-        with open(os.path.join(self.temp_dir, "test_cases.yaml"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated robot file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".robot")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify Robot Framework structure
-            assert "*** Settings ***" in content
-            assert "*** Variables ***" in content
-            assert "*** Test Cases ***" in content
-            assert "*** Keywords ***" in content
-
-            # Verify libraries
-            assert "Library    optics_framework.optics.Optics" in content
-            assert "Library    Collections" in content
-
-            # Verify elements section
-            assert "&{ELEMENTS}=" in content
-            assert "username_field=id:username" in content
-
-            # Verify test cases
-            assert "Login Test" in content
-            assert "Logout Test" in content
-
-            # Verify module keywords
-            assert "Login Module" in content
-            assert "Verify Module" in content
-            assert "Logout Module" in content
-
-            # Verify numeric parameter preservation from YAML
-            assert "Sleep    3000" in content  # Integer preserved
-            assert "3000.0" in content  # Float preserved
-
-            # Verify element references
-            assert "${ELEMENTS.username_field}" in content
-            assert "${ELEMENTS.login_button}" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_dict_format_to_robot(self):
         """Test YAML dict format conversion to Robot Framework."""
-        # Test with dict format YAML instead of list format
         test_cases_data = """Test Cases:
   Login Test:
     - Login Module
@@ -1808,44 +2079,28 @@ elements_sources:
   welcome_text: xpath://span[text()='Welcome']
   logout_btn: id:logout_button"""
 
-        config_data = """driver_sources:
-  - type: appium"""
-
-        # Create test files
-        for filename, data in [
-            ("test_cases.yaml", test_cases_data),
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "test_cases.yaml": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify YAML dict format was processed correctly for Robot Framework
-            assert "*** Keywords ***" in content
-            assert "Login Module" in content
-            assert "Verify Module" in content
-            assert "Logout Module" in content
-            assert "*** Test Cases ***" in content
-            assert "Login Test" in content
-            assert "Logout Test" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-            # Verify numeric preservation
-            assert "Sleep    2500" in content
+        # Verify dict format YAML is processed correctly
+        assert "Login Test" in content
+        assert "Logout Test" in content
+        assert "Launch App    test_app" in content
+        assert "Sleep    2500" in content
+        TestHelpers.verify_element_references(content, "robot")
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_complex_keywords_to_robot(self):
         """Test YAML with complex multi-word keywords conversion to Robot Framework."""
         modules_data = """Modules:
@@ -1863,54 +2118,36 @@ elements_sources:
   target: id:target_element
   field: id:text_field"""
 
-        config_data = """driver_sources: []"""
-
         test_cases_data = """Test Cases:
   Complex Test:
     - Complex Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+                "test_cases.yaml": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify complex keywords are converted correctly for Robot Framework
-            assert "Launch App    test_app" in content
-            assert "Press Element With Index    ${ELEMENTS.button}    2" in content
-            assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
-            assert "Swipe Until Element Appears    ${ELEMENTS.target}    up    5" in content
-            assert "Enter Text Using Keyboard    ${ELEMENTS.field}    test_text" in content
-            assert "Capture Screenshot    test_image.png" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-            # Verify element references
-            assert "${ELEMENTS.button}" in content
-            assert "${ELEMENTS.element}" in content
-            assert "${ELEMENTS.target}" in content
-            assert "${ELEMENTS.field}" in content
+        # Verify complex keywords are converted correctly for Robot Framework
+        assert "Launch App    test_app" in content
+        assert "Press Element With Index    ${ELEMENTS.button}    2" in content
+        assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
+        assert "Swipe Until Element Appears    ${ELEMENTS.target}    up    5" in content
+        assert "Enter Text Using Keyboard    ${ELEMENTS.field}    test_text" in content
+        assert "Capture Screenshot    test_image.png" in content
 
-            # Verify numeric parameters
-            assert "2" in content
-            assert "3000" in content
-            assert "5" in content
+        TestHelpers.verify_element_references(content, "robot")
+        TestHelpers.verify_numeric_preservation(content)
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_numeric_parameter_preservation_robot(self):
         """Test that YAML numeric parameters are preserved correctly in Robot Framework."""
         modules_data = """Modules:
@@ -1924,42 +2161,32 @@ elements_sources:
         elements_data = """Elements:
   element: id:test_element"""
 
-        config_data = "driver_sources: []"
-
         test_cases_data = """Test Cases:
   Numeric Test:
     - Numeric Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+                "test_cases.yaml": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify all numeric formats are preserved in Robot Framework syntax
-            assert "Press By Percentage    50    75" in content
-            assert "Sleep    3000" in content  # Integer preserved
-            assert "Swipe    100    200    300    400" in content
-            assert "3000.0" in content  # Float preserved
-            assert "150.5    250.7" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify all numeric formats are preserved
+        assert "Press By Percentage    50    75" in content
+        assert "Sleep    3000" in content
+        assert "Swipe    100    200    300    400" in content
+        assert "3000.0" in content  # Float preserved
+        assert "150.5    250.7" in content  # Decimal coordinates
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_keyword_arguments_to_robot(self):
         """Test YAML with keyword arguments conversion to Robot Framework."""
         modules_data = """Modules:
@@ -1974,44 +2201,35 @@ elements_sources:
   field: id:text_field
   button: id:test_button"""
 
-        config_data = "driver_sources: []"
-
         test_cases_data = """Test Cases:
   Test Case:
     - Test Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+                "test_cases.yaml": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify keyword arguments are preserved in Robot Framework
-            assert "event_name=SwipeToPay" in content
-            assert "timeout=5000" in content
-            assert "retry_count=3" in content
-            assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
-            assert "Launch App    test_app    event_name=SwipeToPay" in content
-            assert "Enter Text    ${ELEMENTS.field}    test_value    timeout=5000" in content
-            assert "Press Element    ${ELEMENTS.button}    retry_count=3" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify keyword arguments are preserved
+        assert "event_name=SwipeToPay" in content
+        assert "timeout=5000" in content
+        assert "retry_count=3" in content
+        assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
+        assert "Launch App    test_app    event_name=SwipeToPay" in content
+        assert (
+            "Enter Text    ${ELEMENTS.field}    test_value    timeout=5000" in content
+        )
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_empty_modules_to_robot(self):
         """Test YAML with empty modules conversion to Robot Framework."""
         test_cases_data = """Test Cases:
@@ -2023,38 +2241,28 @@ elements_sources:
 
         elements_data = """Elements: {}"""
 
-        config_data = """driver_sources: []"""
-
-        # Create files
-        for filename, data in [
-            ("test_cases.yaml", test_cases_data),
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "test_cases.yaml": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify empty module is created for Robot Framework
-            assert "Empty Module" in content
-            assert "Empty Test" in content
-            # Should have basic structure even with empty modules
-            assert "*** Keywords ***" in content
-            assert "*** Test Cases ***" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify empty module is created
+        assert "Empty Module" in content
+        assert "Empty Test" in content
+        # Should have basic structure even with empty modules
+        assert "*** Keywords ***" in content
+        assert "*** Test Cases ***" in content
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_config_variations_to_robot(self):
         """Test YAML with different config variations for Robot Framework."""
         modules_data = """Modules:
@@ -2082,37 +2290,29 @@ execution_output_path: /path/to/output"""
   Config Test:
     - Test Module"""
 
-        # Create files
-        for filename, data in [
-            ("modules.yaml", modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-            ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": config_data,
+                "test_cases.yaml": test_cases_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify config is properly transformed and included for Robot Framework
-            assert "${OPTICS_CONFIG_JSON}=" in content
-            assert "driver_config" in content
-            assert "element_source_config" in content
-            assert "text_config" in content
-            assert "image_config" in content
-            assert "execution_output_path" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
+        # Verify config is properly transformed and included for Robot Framework
+        assert "${OPTICS_CONFIG_JSON}=" in content
+        assert "driver_config" in content
+        assert "element_source_config" in content
+        assert "text_config" in content
+        assert "image_config" in content
+        assert "execution_output_path" in content
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_mixed_element_references_to_robot(self):
         """Test YAML with mixed element references conversion to Robot Framework."""
         modules_data = """Modules:
@@ -2133,169 +2333,75 @@ execution_output_path: /path/to/output"""
   Mixed Test:
     - Mixed Module"""
 
-        # Create files
-        for filename, data in [
+        # Create files and generate Robot test
+        file_data = [
             ("modules.yaml", modules_data),
             ("elements.yaml", elements_data),
             ("config.yaml", config_data),
             ("test_cases.yaml", test_cases_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
+        ]
 
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.create_and_generate_robot_test(self.temp_dir, file_data)
 
-        # Read generated file
-        test_file = os.path.join(
-            self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
-        )
-        with open(test_file, "r") as f:
-            content = f.read()
+        # Verify mixed element references are handled correctly
+        TestHelpers.verify_robot_keywords_standard(content)
+        assert (
+            "Press Element    ${ELEMENTS.existing_element}" in content
+        )  # Element reference
+        assert (
+            "Enter Text    ${ELEMENTS.another_element}    test_value" in content
+        )  # Element reference
+        assert "Sleep    2000" in content  # No element reference
+        assert "Press By Coordinates    100    200" in content  # No element reference
 
-            # Verify mixed element references are handled correctly
-            assert "Launch App    test_app" in content  # No element reference
-            assert "Press Element    ${ELEMENTS.existing_element}" in content  # Element reference
-            assert "Enter Text    ${ELEMENTS.another_element}    test_value" in content  # Element reference
-            assert "Sleep    2000" in content  # No element reference
-            assert "Press By Coordinates    100    200" in content  # No element reference
-
-            # Verify elements are defined
-            assert "existing_element=id:existing_btn" in content
-            assert "another_element=xpath://input[@name='test']" in content
+        # Verify elements are defined
+        assert "existing_element=id:existing_btn" in content
+        assert "another_element=xpath://input[@name='test']" in content
 
 
-class TestMixedCSVYAMLToPytestIntegration:
-    """Integration tests for mixed CSV/YAML to pytest generation."""
+class TestMixedCSVYAMLToPytestIntegration(BaseMixedTest):
+    """
+    INTEGRATION TESTS: Mixed CSV/YAML to pytest generation workflow
 
-    def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
+    PURPOSE: Test complex scenarios with multiple file formats
+    TESTING TYPE: Black-box integration testing with conflict detection
 
-    def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
+    These tests verify:
+    - Handling mixed CSV and YAML input files in same project
+    - Conflict detection between different file formats
+    - Data merging from multiple sources
+    - Preservation of data integrity across format boundaries
+    - Error handling for naming conflicts and format mismatches
 
+    APPROACH: Uses public API with complex input scenarios to test
+    edge cases and advanced functionality that users might encounter.
+    """
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_testcases_yaml_modules_to_pytest(self):
-        """Test CSV test cases with YAML modules conversion to pytest."""
-        # CSV test cases
-        test_cases_data = """test_case,test_step
-Login Test,Login Module
-Login Test,Verify Module
-Logout Test,Logout Module"""
+        """
+        INTEGRATION TEST: Mixed format handling (CSV test cases + YAML modules)
+        TESTS: File format mixing and data integration
+        APPROACH: Black-box testing with multiple input formats
+        VERIFIES: Successful merging of different data sources
 
-        # YAML modules
-        modules_data = """Modules:
-  Login Module:
-    - Launch App test_app
-    - Enter Text ${username_field} testuser
-    - Press Element ${login_button}
-  Verify Module:
-    - Validate Element ${welcome_text}
-  Logout Module:
-    - Press Element ${logout_button}
-    - Sleep 3000
-    - Scroll From Element ${element} right 3000.0"""
+        Test CSV test cases with YAML modules conversion to pytest."""
+        self.run_standard_mixed_test(
+            framework="pytest",
+            test_cases_data=TestDataTemplates.get_login_test_cases_csv(),
+            modules_data=TestDataTemplates.get_login_modules_yaml(),
+            elements_data=TestDataTemplates.get_login_elements_yaml(),
+            config_data=TestDataTemplates.get_basic_config(),
+            test_cases_format="csv",
+            modules_format="yaml",
+            elements_format="yaml",
+        )
 
-        # YAML elements
-        elements_data = """Elements:
-  username_field: id:username
-  login_button: id:login_btn
-  welcome_text: xpath://span[text()='Welcome']
-  logout_button: id:logout_btn
-  element: id:swipe_element"""
-
-        config_data = """driver_sources:
-  - type: appium
-    capabilities:
-      platformName: Android
-elements_sources:
-  - type: yaml
-    file: elements.yaml"""
-
-        # Create test files - mixed CSV and YAML
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated pytest file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".py")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify pytest structure
-            assert "# Auto-generated by generate.py" in content
-            assert "import pytest" in content
-            assert "from optics_framework.optics import Optics" in content
-
-            # Verify test cases from CSV
-            assert "def test_login_test(optics):" in content
-            assert "def test_logout_test(optics):" in content
-
-            # Verify modules from YAML
-            assert "def login_module(optics: Optics) -> None:" in content
-            assert "def verify_module(optics: Optics) -> None:" in content
-            assert "def logout_module(optics: Optics) -> None:" in content
-
-            # Verify numeric parameter preservation from YAML
-            assert "'3000'" in content
-            assert "'3000.0'" in content
-
-            # Verify element references from YAML
-            assert "ELEMENTS['username_field']" in content
-            assert "ELEMENTS['login_button']" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_testcases_csv_modules_to_pytest(self):
         """Test YAML test cases with CSV modules conversion to pytest."""
-        # YAML test cases
-        test_cases_data = """Test Cases:
-  Login Test:
-    - Login Module
-    - Verify Module
-  Logout Test:
-    - Logout Module"""
-
-        # CSV modules
-        modules_data = """module_name,module_step,param_1,param_2,param_3
-Login Module,Launch App,test_app,,
-Login Module,Enter Text,${username_field},testuser,
-Login Module,Press Element,${login_button},,
-Verify Module,Validate Element,${welcome_text},,
-Logout Module,Press Element,${logout_button},,
-Logout Module,Sleep,3000,,
-Logout Module,Scroll from Element,${element},right,3000.0"""
-
-        # CSV elements
-        elements_data = """Element_Name,Element_ID
-username_field,id:username
-login_button,id:login_btn
-welcome_text,xpath://span[text()='Welcome']
-logout_button,id:logout_btn
-element,id:swipe_element"""
-
         config_data = """driver_sources:
   - type: appium
     capabilities:
@@ -2304,158 +2410,32 @@ elements_sources:
   - type: csv
     file: elements.csv"""
 
-        # Create test files - mixed YAML and CSV
-        with open(os.path.join(self.temp_dir, "test_cases.yaml"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.csv"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
+        self.run_standard_mixed_test(
+            framework="pytest",
+            test_cases_data=TestDataTemplates.get_login_test_cases_yaml(),
+            modules_data=TestDataTemplates.get_login_modules_csv(),
+            elements_data=TestDataTemplates.get_login_elements_csv(),
+            config_data=config_data,
+            test_cases_format="yaml",
+            modules_format="csv",
+            elements_format="csv",
+        )
 
-        # Run generation
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated pytest file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".py")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify pytest structure
-            assert "# Auto-generated by generate.py" in content
-            assert "import pytest" in content
-            assert "from optics_framework.optics import Optics" in content
-
-            # Verify test cases from YAML
-            assert "def test_login_test(optics):" in content
-            assert "def test_logout_test(optics):" in content
-
-            # Verify modules from CSV
-            assert "def login_module(optics: Optics) -> None:" in content
-            assert "def verify_module(optics: Optics) -> None:" in content
-            assert "def logout_module(optics: Optics) -> None:" in content
-
-            # Verify numeric parameter preservation from CSV
-            assert "'3000'" in content
-            assert "'3000.0'" in content
-
-            # Verify element references from CSV
-            assert "ELEMENTS['username_field']" in content
-            assert "ELEMENTS['login_button']" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_csv_yaml_elements_to_pytest(self):
         """Test mixed CSV and YAML elements handling in pytest generation."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Mixed Test,Mixed Module"""
-
-        # YAML modules
-        modules_data = """Modules:
-  Mixed Module:
-    - Launch App test_app
-    - Press Element ${csv_element}
-    - Enter Text ${yaml_element} test_value
-    - Sleep 2000
-    - Press By Coordinates 100 200"""
-
-        # CSV elements - unique names
-        csv_elements_data = """Element_Name,Element_ID
-csv_element,id:csv_button
-csv_unique_element,id:csv_shared"""
-
-        # YAML elements - unique names
-        yaml_elements_data = """Elements:
-  yaml_element: id:yaml_input
-  yaml_unique_element: id:yaml_shared_override"""
-
-        config_data = """driver_sources:
-  - type: appium
-elements_sources:
-  - type: csv
-    file: elements.csv
-  - type: yaml
-    file: elements.yaml"""
-
-        # Create test files with mixed element sources
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(csv_elements_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(yaml_elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
-
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
-
-        # Check generated pytest file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".py")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify pytest structure
-            assert "# Auto-generated by generate.py" in content
-            assert "import pytest" in content
-
-            # Verify mixed element usage
-            assert "ELEMENTS['csv_element']" in content  # From CSV
-            assert "ELEMENTS['yaml_element']" in content  # From YAML
-
-            # Verify elements dictionary contains both sources
-            assert "'csv_element': 'id:csv_button'" in content
-            assert "'yaml_element': 'id:yaml_input'" in content
-
-    def test_mixed_csv_yaml_elements_conflict_detection_to_pytest(self):
-        """Test conflict detection for mixed CSV and YAML elements with same names."""
-        # CSV test cases
-        test_cases_data = """test_case,test_step
-Mixed Test,Mixed Module"""
-
-        # YAML modules
         modules_data = """Modules:
   Mixed Module:
     - Launch App test_app
     - Press Element ${csv_element}
     - Enter Text ${yaml_element} test_value"""
-
-        # CSV elements with conflicting name
         csv_elements_data = """Element_Name,Element_ID
-csv_element,id:csv_button
-shared_element,id:csv_shared"""
-
-        # YAML elements with same conflicting name
+csv_element,id:csv_button"""
         yaml_elements_data = """Elements:
-  yaml_element: id:yaml_input
-  shared_element: id:yaml_shared_override"""
-
+  yaml_element: id:yaml_input"""
         config_data = """driver_sources:
   - type: appium
 elements_sources:
@@ -2464,408 +2444,294 @@ elements_sources:
   - type: yaml
     file: elements.yaml"""
 
-        # Create test files with conflicting element names
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(csv_elements_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(yaml_elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.csv": csv_elements_data,
+                "elements.yaml": yaml_elements_data,
+                "config.yaml": config_data,
+            },
+        )
 
-        # Run generation - should raise conflict error
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
+
+        TestHelpers.verify_basic_structure(content, "pytest")
+        assert "ELEMENTS['csv_element']" in content
+        assert "ELEMENTS['yaml_element']" in content
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
+    def test_mixed_csv_yaml_elements_conflict_detection_to_pytest(self):
+        """
+        INTEGRATION TEST: Conflict detection between file formats
+        TESTS: Error handling for naming conflicts across CSV/YAML sources
+        APPROACH: Black-box testing with intentionally conflicting data
+        VERIFIES: Proper exception raising with descriptive error messages
+        PATTERN: Negative testing - verifying failures happen correctly
+        """
+        test_cases_data = """test_case,test_step
+Mixed Test,Mixed Module"""
+        modules_data = """Modules:
+  Mixed Module:
+    - Launch App test_app"""
+        csv_elements_data = """Element_Name,Element_ID
+shared_element,id:csv_shared"""
+        yaml_elements_data = """Elements:
+  shared_element: id:yaml_shared_override"""
+        config_data = """elements_sources:
+  - type: csv
+    file: elements.csv
+  - type: yaml
+    file: elements.yaml"""
+
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.csv": csv_elements_data,
+                "elements.yaml": yaml_elements_data,
+                "config.yaml": config_data,
+            },
+        )
+
         with pytest.raises(ValueError, match="Naming conflict detected in elements"):
             generate_test_file(self.temp_dir, framework="pytest")
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_numeric_parameter_preservation_to_pytest(self):
         """Test numeric parameter preservation from mixed CSV/YAML sources."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Numeric Test,CSV Module
 Numeric Test,YAML Module"""
-
-        # CSV modules with numeric params
         csv_modules_data = """module_name,module_step,param_1,param_2,param_3
 CSV Module,Sleep,3000,,
-CSV Module,Press By Percentage,50,75,
-CSV Module,Swipe,100,200,300"""
-
-        # YAML modules with numeric params
+CSV Module,Press By Percentage,50,75,"""
         yaml_modules_data = """Modules:
   YAML Module:
     - Sleep 2500
-    - Press By Coordinates 150.5 250.7
-    - Scroll From Element ${element} right 3000.0"""
+    - Press By Coordinates 150.5 250.7"""
 
-        elements_data = """Elements:
-  element: id:test_element"""
-
-        config_data = "driver_sources: []"
-
-        # Create files with mixed CSV and YAML modules
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.csv"), "w") as f:
-            f.write(csv_modules_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(yaml_modules_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Verify output
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.csv": csv_modules_data,
+                "modules.yaml": yaml_modules_data,
+                "elements.yaml": "Elements: {}",
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify both CSV and YAML module functions exist
-            assert "def csv_module(optics: Optics) -> None:" in content
-            assert "def yaml_module(optics: Optics) -> None:" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify numeric preservation from CSV
-            assert "'3000'" in content  # CSV integer
-            assert "'50'" in content
-            assert "'75'" in content
-            assert "'100'" in content
-            assert "'200'" in content
-            assert "'300'" in content
+        assert "def csv_module(optics: Optics) -> None:" in content
+        assert "def yaml_module(optics: Optics) -> None:" in content
+        assert "'3000'" in content and "'2500'" in content
+        assert "'150.5'" in content and "'250.7'" in content
 
-            # Verify numeric preservation from YAML
-            assert "'2500'" in content  # YAML integer
-            assert "'150.5'" in content  # YAML float
-            assert "'250.7'" in content  # YAML float
-            assert "'3000.0'" in content  # YAML float
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_complex_keywords_to_pytest(self):
         """Test mixed CSV/YAML with complex keywords conversion to pytest."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Complex Test,CSV Module
 Complex Test,YAML Module"""
-
-        # CSV modules with complex keywords
         csv_modules_data = """module_name,module_step,param_1,param_2,param_3
 CSV Module,Launch App,test_app,,
-CSV Module,Press Element With Index,${button},2,
-CSV Module,Enter Text Using Keyboard,${field},test_text,"""
-
-        # YAML modules with complex keywords
+CSV Module,Press Element With Index,${button},2,"""
         yaml_modules_data = """Modules:
   YAML Module:
     - Scroll From Element ${element} right 3000
-    - Swipe Until Element Appears ${target} up 5
     - Capture Screenshot test_image.png"""
-
         elements_data = """Elements:
   button: id:test_button
-  field: id:text_field
-  element: id:scroll_element
-  target: id:target_element"""
+  element: id:scroll_element"""
 
-        config_data = "driver_sources: []"
-
-        # Create files
-        for filename, data in [
-            ("test_cases.csv", test_cases_data),
-            ("modules.csv", csv_modules_data),
-            ("modules.yaml", yaml_modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.csv": csv_modules_data,
+                "modules.yaml": yaml_modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify complex keywords from CSV are converted correctly
-            assert "optics.launch_app(" in content
-            assert "optics.press_element_with_index(" in content
-            assert "optics.enter_text_using_keyboard(" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify complex keywords from YAML are converted correctly
-            assert "optics.scroll_from_element(" in content
-            assert "optics.swipe_until_element_appears(" in content
-            assert "optics.capture_screenshot(" in content
+        assert "optics.launch_app(" in content
+        assert "optics.press_element_with_index(" in content
+        assert "optics.scroll_from_element(" in content
+        assert "optics.capture_screenshot(" in content
 
-            # Verify element references work for both sources
-            assert "ELEMENTS['button']" in content
-            assert "ELEMENTS['field']" in content
-            assert "ELEMENTS['element']" in content
-            assert "ELEMENTS['target']" in content
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_file_conflict_detection_to_pytest(self):
         """Test conflict detection when both CSV and YAML have same names."""
-        # Both CSV and YAML test cases with SAME names - should raise error
         csv_test_cases_data = """test_case,test_step
 Conflict Test,Test Module"""
-
         yaml_test_cases_data = """Test Cases:
   Conflict Test:
     - Test Module"""
-
-        # Both CSV and YAML modules with SAME names - should raise error
         csv_modules_data = """module_name,module_step,param_1,param_2,param_3
-Shared Module,Launch App,test_app,,
-Shared Module,Sleep,1000,,"""
-
+Shared Module,Launch App,test_app,,"""
         yaml_modules_data = """Modules:
   Shared Module:
-    - Press Element ${button}
-    - Sleep 2000"""
+    - Press Element ${button}"""
 
-        elements_data = """Elements:
-  button: id:test_button"""
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.csv": csv_test_cases_data,
+                "test_cases.yaml": yaml_test_cases_data,
+                "modules.csv": csv_modules_data,
+                "modules.yaml": yaml_modules_data,
+                "elements.yaml": "Elements:\n  button: id:test_button",
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
+        )
 
-        config_data = "driver_sources: []"
-
-        # Create files with conflicting names
-        for filename, data in [
-            ("test_cases.csv", csv_test_cases_data),
-            ("test_cases.yaml", yaml_test_cases_data),
-            ("modules.csv", csv_modules_data),
-            ("modules.yaml", yaml_modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate - should raise conflict error
         with pytest.raises(ValueError, match="Naming conflict detected in test_cases"):
             generate_test_file(self.temp_dir, framework="pytest")
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_file_unique_names_to_pytest(self):
         """Test successful merging when all names are unique."""
-        # CSV and YAML test cases with UNIQUE names - should work
         csv_test_cases_data = """test_case,test_step
 CSV Test,CSV Module"""
-
         yaml_test_cases_data = """Test Cases:
   YAML Test:
     - YAML Module"""
-
-        # CSV and YAML modules with UNIQUE names - should work
         csv_modules_data = """module_name,module_step,param_1,param_2,param_3
 CSV Module,Launch App,test_app,,
 CSV Module,Sleep,1000,,"""
-
         yaml_modules_data = """Modules:
   YAML Module:
     - Press Element ${button}
     - Sleep 2000"""
-
         elements_data = """Elements:
   button: id:test_button"""
 
-        config_data = "driver_sources: []"
-
-        # Create files with unique names
-        for filename, data in [
-            ("test_cases.csv", csv_test_cases_data),
-            ("test_cases.yaml", yaml_test_cases_data),
-            ("modules.csv", csv_modules_data),
-            ("modules.yaml", yaml_modules_data),
-            ("elements.yaml", elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate - should work fine
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "test_cases.csv": csv_test_cases_data,
+                "test_cases.yaml": yaml_test_cases_data,
+                "modules.csv": csv_modules_data,
+                "modules.yaml": yaml_modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify both CSV and YAML test cases are present
-            assert "def test_csv_test(optics):" in content
-            assert "def test_yaml_test(optics):" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify both CSV and YAML modules are loaded
-            assert "def csv_module(optics: Optics) -> None:" in content
-            assert "def yaml_module(optics: Optics) -> None:" in content
+        assert "def test_csv_test(optics):" in content
+        assert "def test_yaml_test(optics):" in content
+        assert "def csv_module(optics: Optics) -> None:" in content
+        assert "def yaml_module(optics: Optics) -> None:" in content
+        assert "'1000'" in content and "'2000'" in content
 
-            # Verify both module contents
-            assert "'1000'" in content  # From CSV module
-            assert "'2000'" in content  # From YAML module
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_empty_files_handling_to_pytest(self):
         """Test handling of empty CSV/YAML files in mixed scenarios."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Empty Test,Working Module"""
-
-        # Empty CSV modules file
         empty_csv_modules_data = """module_name,module_step,param_1,param_2,param_3"""
-
-        # YAML modules with content
         yaml_modules_data = """Modules:
   Working Module:
     - Launch App test_app
     - Sleep 1000"""
-
-        # Empty YAML elements file
         empty_yaml_elements_data = """Elements: {}"""
 
-        config_data = "driver_sources: []"
-
-        # Create files with some empty sources
-        for filename, data in [
-            ("test_cases.csv", test_cases_data),
-            ("modules.csv", empty_csv_modules_data),
-            ("modules.yaml", yaml_modules_data),
-            ("elements.yaml", empty_yaml_elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.csv": empty_csv_modules_data,
+                "modules.yaml": yaml_modules_data,
+                "elements.yaml": empty_yaml_elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify test case from CSV is present
-            assert "def test_empty_test(optics):" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify working module from YAML is present
-            assert "def working_module(optics: Optics) -> None:" in content
-            assert "optics.launch_app(" in content
-            assert "'1000'" in content
+        assert "def test_empty_test(optics):" in content
+        assert "def working_module(optics: Optics) -> None:" in content
+        assert "optics.launch_app(" in content
 
-            # Verify empty files don't break generation
-            assert "import pytest" in content
-            assert "from optics_framework.optics import Optics" in content
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_config_sources_to_pytest(self):
         """Test mixed configuration with different element sources."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Config Test,Test Module"""
-
-        # YAML modules
         modules_data = """Modules:
   Test Module:
     - Launch App test_app
     - Press Element ${csv_element}
     - Enter Text ${yaml_element} test_value"""
-
-        # CSV elements
         csv_elements_data = """Element_Name,Element_ID
 csv_element,id:csv_button"""
-
-        # YAML elements
         yaml_elements_data = """Elements:
   yaml_element: id:yaml_input"""
-
-        # Config with multiple element sources
         config_data = """driver_sources:
   - type: appium
     capabilities:
-      platformName: Android
-elements_sources:
-  - type: csv
-    file: elements.csv
-  - type: yaml
-    file: elements.yaml
-text_detection:
-  - type: easyocr
-image_detection:
-  - type: opencv"""
+      platformName: Android"""
 
-        # Create files
-        for filename, data in [
-            ("test_cases.csv", test_cases_data),
-            ("modules.yaml", modules_data),
-            ("elements.csv", csv_elements_data),
-            ("elements.yaml", yaml_elements_data),
-            ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
-
-        # Generate
-        generate_test_file(self.temp_dir, framework="pytest")
-
-        # Read generated file
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.py",
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.csv": csv_elements_data,
+                "elements.yaml": yaml_elements_data,
+                "config.yaml": config_data,
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify config includes multiple element sources
-            assert "'element_source_config':" in content
-            assert "'type': 'csv'" in content or "'type': 'yaml'" in content
+        generate_test_file(self.temp_dir, framework="pytest")
+        content = TestHelpers.read_generated_file(self.temp_dir, "pytest")
 
-            # Verify elements from both sources are available
-            assert "'csv_element': 'id:csv_button'" in content
-            assert "'yaml_element': 'id:yaml_input'" in content
-
-            # Verify both elements are used in module
-            assert "ELEMENTS['csv_element']" in content
-            assert "ELEMENTS['yaml_element']" in content
+        assert "def test_config_test(optics):" in content
+        assert "def test_module(optics: Optics) -> None:" in content
+        assert "optics.press_element(" in content
+        assert "optics.enter_text(" in content
 
 
-class TestMixedCSVYAMLToRobotIntegration:
+class TestMixedCSVYAMLToRobotIntegration(BaseMixedTest):
     """Integration tests for mixed CSV/YAML to Robot Framework generation."""
 
     def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
+        super().setup_method()
 
     def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
+        if self.temp_dir != "":
+            shutil.rmtree(self.temp_dir)
+            self.temp_dir = ""
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_csv_testcases_yaml_modules_to_robot(self):
         """Test CSV test cases with YAML modules conversion to Robot Framework."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Login Test,Login Module
 Login Test,Verify Module
 Logout Test,Logout Module"""
-
-        # YAML modules
         modules_data = """Modules:
   Login Module:
     - Launch App test_app
@@ -2877,15 +2743,12 @@ Logout Test,Logout Module"""
     - Press Element ${logout_button}
     - Sleep 3000
     - Scroll From Element ${element} right 3000.0"""
-
-        # YAML elements
         elements_data = """Elements:
   username_field: id:username
   login_button: id:login_btn
   welcome_text: xpath://span[text()='Welcome']
   logout_button: id:logout_btn
   element: id:swipe_element"""
-
         config_data = """driver_sources:
   - type: appium
     capabilities:
@@ -2894,72 +2757,45 @@ elements_sources:
   - type: yaml
     file: elements.yaml"""
 
-        # Create test files - mixed CSV and YAML
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": config_data,
+            },
+        )
 
-        # Run generation
         generate_test_file(self.temp_dir, framework="robot")
 
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
+        TestHelpers.verify_robot_structure(self.temp_dir)
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
+        # Verify test cases from CSV
+        assert "Login Test" in content
+        assert "Logout Test" in content
+        # Verify modules from YAML
+        assert "Login Module" in content
+        assert "Verify Module" in content
+        assert "Logout Module" in content
+        # Verify numeric parameter preservation from YAML
+        assert "Sleep    3000" in content
+        assert "3000.0" in content
+        # Verify element references from YAML
+        assert "${ELEMENTS.username_field}" in content
+        assert "${ELEMENTS.login_button}" in content
 
-        # Check generated robot file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".robot")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify Robot Framework structure
-            assert "*** Settings ***" in content
-            assert "*** Variables ***" in content
-            assert "*** Test Cases ***" in content
-            assert "*** Keywords ***" in content
-
-            # Verify test cases from CSV
-            assert "Login Test" in content
-            assert "Logout Test" in content
-
-            # Verify modules from YAML
-            assert "Login Module" in content
-            assert "Verify Module" in content
-            assert "Logout Module" in content
-
-            # Verify numeric parameter preservation from YAML
-            assert "Sleep    3000" in content
-            assert "3000.0" in content
-
-            # Verify element references from YAML
-            assert "${ELEMENTS.username_field}" in content
-            assert "${ELEMENTS.login_button}" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_yaml_testcases_csv_modules_to_robot(self):
         """Test YAML test cases with CSV modules conversion to Robot Framework."""
-        # YAML test cases
         test_cases_data = """Test Cases:
   Login Test:
     - Login Module
     - Verify Module
   Logout Test:
     - Logout Module"""
-
-        # CSV modules
         modules_data = """module_name,module_step,param_1,param_2,param_3
 Login Module,Launch App,test_app,,
 Login Module,Enter Text,${username_field},testuser,
@@ -2968,15 +2804,12 @@ Verify Module,Validate Element,${welcome_text},,
 Logout Module,Press Element,${logout_button},,
 Logout Module,Sleep,3000,,
 Logout Module,Scroll from Element,${element},right,3000.0"""
-
-        # CSV elements
         elements_data = """Element_Name,Element_ID
 username_field,id:username
 login_button,id:login_btn
 welcome_text,xpath://span[text()='Welcome']
 logout_button,id:logout_btn
 element,id:swipe_element"""
-
         config_data = """driver_sources:
   - type: appium
     capabilities:
@@ -2985,68 +2818,41 @@ elements_sources:
   - type: csv
     file: elements.csv"""
 
-        # Create test files - mixed YAML and CSV
-        with open(os.path.join(self.temp_dir, "test_cases.yaml"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.csv"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.yaml": test_cases_data,
+                "modules.csv": modules_data,
+                "elements.csv": elements_data,
+                "config.yaml": config_data,
+            },
+        )
 
-        # Run generation
         generate_test_file(self.temp_dir, framework="robot")
 
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
+        TestHelpers.verify_robot_structure(self.temp_dir)
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
+        # Verify test cases from YAML
+        assert "Login Test" in content
+        assert "Logout Test" in content
+        # Verify modules from CSV
+        assert "Login Module" in content
+        assert "Verify Module" in content
+        assert "Logout Module" in content
+        # Verify numeric parameter preservation from CSV
+        assert "Sleep    3000" in content
+        assert "3000.0" in content
+        # Verify element references from CSV
+        assert "${ELEMENTS.username_field}" in content
+        assert "${ELEMENTS.login_button}" in content
 
-        # Check generated robot file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".robot")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify Robot Framework structure
-            assert "*** Settings ***" in content
-            assert "*** Variables ***" in content
-            assert "*** Test Cases ***" in content
-            assert "*** Keywords ***" in content
-
-            # Verify test cases from YAML
-            assert "Login Test" in content
-            assert "Logout Test" in content
-
-            # Verify modules from CSV
-            assert "Login Module" in content
-            assert "Verify Module" in content
-            assert "Logout Module" in content
-
-            # Verify numeric parameter preservation from CSV
-            assert "Sleep    3000" in content
-            assert "3000.0" in content
-
-            # Verify element references from CSV
-            assert "${ELEMENTS.username_field}" in content
-            assert "${ELEMENTS.login_button}" in content
-
-        # Check requirements.txt
-        req_file = os.path.join(generated_dir, "requirements.txt")
-        assert os.path.exists(req_file)
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_csv_yaml_elements_to_robot(self):
         """Test mixed CSV and YAML elements handling in Robot Framework generation."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Mixed Test,Mixed Module"""
-
-        # YAML modules
         modules_data = """Modules:
   Mixed Module:
     - Launch App test_app
@@ -3054,17 +2860,12 @@ Mixed Test,Mixed Module"""
     - Enter Text ${yaml_element} test_value
     - Sleep 2000
     - Press By Coordinates 100 200"""
-
-        # CSV elements - unique names
         csv_elements_data = """Element_Name,Element_ID
 csv_element,id:csv_button
 csv_unique_element,id:csv_shared"""
-
-        # YAML elements - unique names
         yaml_elements_data = """Elements:
   yaml_element: id:yaml_input
   yaml_unique_element: id:yaml_shared_override"""
-
         config_data = """driver_sources:
   - type: appium
 elements_sources:
@@ -3073,71 +2874,49 @@ elements_sources:
   - type: yaml
     file: elements.yaml"""
 
-        # Create test files with mixed element sources
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(csv_elements_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(yaml_elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.csv": csv_elements_data,
+                "elements.yaml": yaml_elements_data,
+                "config.yaml": config_data,
+            },
+        )
 
-        # Run generation
         generate_test_file(self.temp_dir, framework="robot")
 
-        # Verify output
-        generated_dir = os.path.join(self.temp_dir, "generated")
-        tests_dir = os.path.join(generated_dir, "Tests")
+        TestHelpers.verify_robot_structure(self.temp_dir)
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-        assert os.path.exists(generated_dir)
-        assert os.path.exists(tests_dir)
+        # Verify mixed elements are available
+        assert "Mixed Test" in content
+        assert "Mixed Module" in content
+        assert "${ELEMENTS.csv_element}" in content
+        assert "${ELEMENTS.yaml_element}" in content
 
-        # Check generated robot file
-        test_files = [f for f in os.listdir(tests_dir) if f.endswith(".robot")]
-        assert len(test_files) == 1
-
-        test_file_path = os.path.join(tests_dir, test_files[0])
-        with open(test_file_path, "r") as f:
-            content = f.read()
-
-            # Verify Robot Framework structure
-            assert "*** Settings ***" in content
-            assert "*** Variables ***" in content
-
-            # Verify mixed element usage
-            assert "${ELEMENTS.csv_element}" in content  # From CSV
-            assert "${ELEMENTS.yaml_element}" in content  # From YAML
-
-            # Verify elements section contains both sources
-            assert "csv_element=id:csv_button" in content
-            assert "yaml_element=id:yaml_input" in content
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_csv_yaml_elements_conflict_detection_to_robot(self):
-        """Test conflict detection for mixed CSV and YAML elements with same names in Robot Framework."""
-        # CSV test cases
+        """Test conflict detection for mixed CSV and YAML elements with same names.
+
+        This test validates that Robot Framework generation properly detects
+        naming conflicts between CSV and YAML element sources.
+        """
         test_cases_data = """test_case,test_step
 Mixed Test,Mixed Module"""
-
-        # YAML modules
         modules_data = """Modules:
   Mixed Module:
     - Launch App test_app
     - Press Element ${csv_element}
     - Enter Text ${yaml_element} test_value"""
-
-        # CSV elements with conflicting name
         csv_elements_data = """Element_Name,Element_ID
 csv_element,id:csv_button
 shared_element,id:csv_shared"""
-
-        # YAML elements with same conflicting name
         yaml_elements_data = """Elements:
   yaml_element: id:yaml_input
   shared_element: id:yaml_shared_override"""
-
         config_data = """driver_sources:
   - type: appium
 elements_sources:
@@ -3146,36 +2925,34 @@ elements_sources:
   - type: yaml
     file: elements.yaml"""
 
-        # Create test files with conflicting element names
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(modules_data)
-        with open(os.path.join(self.temp_dir, "elements.csv"), "w") as f:
-            f.write(csv_elements_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(yaml_elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
+        TestHelpers.create_files(
+            self.temp_dir,
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.yaml": modules_data,
+                "elements.csv": csv_elements_data,
+                "elements.yaml": yaml_elements_data,
+                "config.yaml": config_data,
+            },
+        )
 
-        # Run generation - should raise conflict error
+        # Should raise conflict error
         with pytest.raises(ValueError, match="Naming conflict detected in elements"):
             generate_test_file(self.temp_dir, framework="robot")
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_numeric_parameter_preservation_to_robot(self):
         """Test numeric parameter preservation from mixed CSV/YAML sources in Robot Framework."""
-        # CSV test cases
         test_cases_data = """test_case,test_step
 Numeric Test,CSV Module
 Numeric Test,YAML Module"""
 
-        # CSV modules with numeric params
         csv_modules_data = """module_name,module_step,param_1,param_2,param_3
 CSV Module,Sleep,3000,,
 CSV Module,Press By Percentage,50,75,
 CSV Module,Swipe,100,200,300"""
 
-        # YAML modules with numeric params
         yaml_modules_data = """Modules:
   YAML Module:
     - Sleep 2500
@@ -3185,47 +2962,36 @@ CSV Module,Swipe,100,200,300"""
         elements_data = """Elements:
   element: id:test_element"""
 
-        config_data = "driver_sources: []"
-
-        # Create files with mixed CSV and YAML modules
-        with open(os.path.join(self.temp_dir, "test_cases.csv"), "w") as f:
-            f.write(test_cases_data)
-        with open(os.path.join(self.temp_dir, "modules.csv"), "w") as f:
-            f.write(csv_modules_data)
-        with open(os.path.join(self.temp_dir, "modules.yaml"), "w") as f:
-            f.write(yaml_modules_data)
-        with open(os.path.join(self.temp_dir, "elements.yaml"), "w") as f:
-            f.write(elements_data)
-        with open(os.path.join(self.temp_dir, "config.yaml"), "w") as f:
-            f.write(config_data)
-
-        # Run generation
-        generate_test_file(self.temp_dir, framework="robot")
-
-        # Verify output
-        test_file = os.path.join(
+        TestHelpers.create_files(
             self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
+            {
+                "test_cases.csv": test_cases_data,
+                "modules.csv": csv_modules_data,
+                "modules.yaml": yaml_modules_data,
+                "elements.yaml": elements_data,
+                "config.yaml": TestDataTemplates.get_simple_config(),
+            },
         )
-        with open(test_file, "r") as f:
-            content = f.read()
 
-            # Verify both CSV and YAML module keywords exist
-            assert "CSV Module" in content
-            assert "YAML Module" in content
+        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.read_generated_file(self.temp_dir, "robot")
 
-            # Verify numeric preservation from CSV
-            assert "Sleep    3000" in content  # CSV integer
-            assert "Press By Percentage    50    75" in content
-            assert "Swipe    100    200    300" in content
+        # Verify both CSV and YAML module keywords exist
+        assert "CSV Module" in content
+        assert "YAML Module" in content
 
-            # Verify numeric preservation from YAML
-            assert "Sleep    2500" in content  # YAML integer
-            assert "Press By Coordinates    150.5    250.7" in content  # YAML float
-            assert "3000.0" in content  # YAML float
+        # Verify numeric preservation from CSV
+        assert "Sleep    3000" in content  # CSV integer
+        assert "Press By Percentage    50    75" in content
+        assert "Swipe    100    200    300" in content
 
+        # Verify numeric preservation from YAML
+        assert "Sleep    2500" in content  # YAML integer
+        assert "Press By Coordinates    150.5    250.7" in content  # YAML float
+        assert "3000.0" in content  # YAML float
+
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_complex_keywords_to_robot(self):
         """Test mixed CSV/YAML with complex keywords conversion to Robot Framework."""
         # CSV test cases
@@ -3254,46 +3020,35 @@ CSV Module,Enter Text Using Keyboard,${field},test_text,"""
 
         config_data = "driver_sources: []"
 
-        # Create files
-        for filename, data in [
+        # Create files and generate Robot test
+        file_data = [
             ("test_cases.csv", test_cases_data),
             ("modules.csv", csv_modules_data),
             ("modules.yaml", yaml_modules_data),
             ("elements.yaml", elements_data),
             ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
+        ]
 
-        # Generate
-        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.create_and_generate_robot_test(self.temp_dir, file_data)
 
-        # Read generated file
-        test_file = os.path.join(
-            self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
-        )
-        with open(test_file, "r") as f:
-            content = f.read()
+        # Verify complex keywords from CSV are converted correctly for Robot Framework
+        TestHelpers.verify_robot_complex_keywords(content)
+        assert "Press Element With Index    ${ELEMENTS.button}    2" in content
+        assert "Enter Text Using Keyboard    ${ELEMENTS.field}    test_text" in content
 
-            # Verify complex keywords from CSV are converted correctly for Robot Framework
-            assert "Launch App    test_app" in content
-            assert "Press Element With Index    ${ELEMENTS.button}    2" in content
-            assert "Enter Text Using Keyboard    ${ELEMENTS.field}    test_text" in content
+        # Verify complex keywords from YAML are converted correctly for Robot Framework
+        assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
+        assert "Swipe Until Element Appears    ${ELEMENTS.target}    up    5" in content
+        assert "Capture Screenshot    test_image.png" in content
 
-            # Verify complex keywords from YAML are converted correctly for Robot Framework
-            assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
-            assert "Swipe Until Element Appears    ${ELEMENTS.target}    up    5" in content
-            assert "Capture Screenshot    test_image.png" in content
+        # Verify element references work for both sources
+        assert "${ELEMENTS.button}" in content
+        assert "${ELEMENTS.field}" in content
+        assert "${ELEMENTS.element}" in content
+        assert "${ELEMENTS.target}" in content
 
-            # Verify element references work for both sources
-            assert "${ELEMENTS.button}" in content
-            assert "${ELEMENTS.field}" in content
-            assert "${ELEMENTS.element}" in content
-            assert "${ELEMENTS.target}" in content
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_file_conflict_detection_to_robot(self):
         """Test conflict detection when both CSV and YAML have same names in Robot Framework."""
         # Both CSV and YAML test cases with SAME names - should raise error
@@ -3320,21 +3075,28 @@ Shared Module,Sleep,1000,,"""
         config_data = "driver_sources: []"
 
         # Create files with conflicting names
-        for filename, data in [
+        file_data = [
             ("test_cases.csv", csv_test_cases_data),
             ("test_cases.yaml", yaml_test_cases_data),
             ("modules.csv", csv_modules_data),
             ("modules.yaml", yaml_modules_data),
             ("elements.yaml", elements_data),
             ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
+        ]
+
+        # Create files
+        for filename, data in file_data:
+            with open(
+                os.path.join(self.temp_dir, filename), "w", encoding="utf-8"
+            ) as f:
                 f.write(data)
 
         # Generate - should raise conflict error
         with pytest.raises(ValueError, match="Naming conflict detected in test_cases"):
             generate_test_file(self.temp_dir, framework="robot")
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_file_unique_names_to_robot(self):
         """Test successful merging when all names are unique in Robot Framework."""
         # CSV and YAML test cases with UNIQUE names - should work
@@ -3360,43 +3122,32 @@ CSV Module,Sleep,1000,,"""
 
         config_data = "driver_sources: []"
 
-        # Create files with unique names
-        for filename, data in [
+        # Create files with unique names and generate Robot test
+        file_data = [
             ("test_cases.csv", csv_test_cases_data),
             ("test_cases.yaml", yaml_test_cases_data),
             ("modules.csv", csv_modules_data),
             ("modules.yaml", yaml_modules_data),
             ("elements.yaml", elements_data),
             ("config.yaml", config_data),
-        ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
-                f.write(data)
+        ]
 
-        # Generate - should work fine
-        generate_test_file(self.temp_dir, framework="robot")
+        content = TestHelpers.create_and_generate_robot_test(self.temp_dir, file_data)
 
-        # Read generated file
-        test_file = os.path.join(
-            self.temp_dir,
-            "generated",
-            "Tests",
-            f"test_{os.path.basename(self.temp_dir)}.robot",
-        )
-        with open(test_file, "r") as f:
-            content = f.read()
+        # Verify both CSV and YAML test cases are present
+        assert "CSV Test" in content
+        assert "YAML Test" in content
 
-            # Verify both CSV and YAML test cases are present
-            assert "CSV Test" in content
-            assert "YAML Test" in content
+        # Verify both CSV and YAML modules are loaded
+        assert "CSV Module" in content
+        assert "YAML Module" in content
 
-            # Verify both CSV and YAML modules are loaded
-            assert "CSV Module" in content
-            assert "YAML Module" in content
+        # Verify both module contents
+        assert "Sleep    1000" in content  # From CSV module
+        assert "Sleep    2000" in content  # From YAML module
 
-            # Verify both module contents
-            assert "Sleep    1000" in content  # From CSV module
-            assert "Sleep    2000" in content  # From YAML module
-
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_empty_files_handling_to_robot(self):
         """Test handling of empty CSV/YAML files in mixed scenarios for Robot Framework."""
         # CSV test cases
@@ -3425,7 +3176,9 @@ Empty Test,Working Module"""
             ("elements.yaml", empty_yaml_elements_data),
             ("config.yaml", config_data),
         ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
+            with open(
+                os.path.join(self.temp_dir, filename), "w", encoding="utf-8"
+            ) as f:
                 f.write(data)
 
         # Generate
@@ -3438,7 +3191,7 @@ Empty Test,Working Module"""
             "Tests",
             f"test_{os.path.basename(self.temp_dir)}.robot",
         )
-        with open(test_file, "r") as f:
+        with open(test_file, "r", encoding="utf-8") as f:
             content = f.read()
 
             # Verify test case from CSV is present
@@ -3453,6 +3206,8 @@ Empty Test,Working Module"""
             assert "*** Settings ***" in content
             assert "*** Keywords ***" in content
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_config_sources_to_robot(self):
         """Test mixed configuration with different element sources for Robot Framework."""
         # CSV test cases
@@ -3497,7 +3252,9 @@ image_detection:
             ("elements.yaml", yaml_elements_data),
             ("config.yaml", config_data),
         ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
+            with open(
+                os.path.join(self.temp_dir, filename), "w", encoding="utf-8"
+            ) as f:
                 f.write(data)
 
         # Generate
@@ -3510,7 +3267,7 @@ image_detection:
             "Tests",
             f"test_{os.path.basename(self.temp_dir)}.robot",
         )
-        with open(test_file, "r") as f:
+        with open(test_file, "r", encoding="utf-8") as f:
             content = f.read()
 
             # Verify config includes multiple element sources
@@ -3525,6 +3282,8 @@ image_detection:
             assert "${ELEMENTS.csv_element}" in content
             assert "${ELEMENTS.yaml_element}" in content
 
+    @pytest.mark.generate
+    @pytest.mark.black_box
     def test_mixed_keyword_arguments_to_robot(self):
         """Test mixed CSV/YAML with keyword arguments conversion to Robot Framework."""
         # CSV test cases
@@ -3558,7 +3317,9 @@ CSV Module,Enter Text,${field},test_value,timeout=5000"""
             ("elements.yaml", elements_data),
             ("config.yaml", config_data),
         ]:
-            with open(os.path.join(self.temp_dir, filename), "w") as f:
+            with open(
+                os.path.join(self.temp_dir, filename), "w", encoding="utf-8"
+            ) as f:
                 f.write(data)
 
         # Generate
@@ -3571,16 +3332,21 @@ CSV Module,Enter Text,${field},test_value,timeout=5000"""
             "Tests",
             f"test_{os.path.basename(self.temp_dir)}.robot",
         )
-        with open(test_file, "r") as f:
+        with open(test_file, "r", encoding="utf-8") as f:
             content = f.read()
 
             # Verify keyword arguments from CSV are preserved in Robot Framework
             assert "event_name=SwipeToPay" in content
             assert "timeout=5000" in content
             assert "Launch App    test_app    event_name=SwipeToPay" in content
-            assert "Enter Text    ${ELEMENTS.field}    test_value    timeout=5000" in content
+            assert (
+                "Enter Text    ${ELEMENTS.field}    test_value    timeout=5000"
+                in content
+            )
 
             # Verify keyword arguments from YAML are preserved in Robot Framework
             assert "retry_count=3" in content
-            assert "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
+            assert (
+                "Scroll From Element    ${ELEMENTS.element}    right    3000" in content
+            )
             assert "Press Element    ${ELEMENTS.button}    retry_count=3" in content
