@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-
+from typing import Optional
 
 class DriverInterface(ABC):
     """
@@ -46,7 +46,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def press_coordinates(self, coor_x, coor_y, event_name) -> None:
+    def press_coordinates(self, coor_x: int, coor_y: int, event_name: Optional[str] = None) -> None:
         """
         Press an element by absolute coordinates.
         :param coor_x: X coordinate of the press.
@@ -60,7 +60,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def press_element(self, element, repeat, event_name) -> None:
+    def press_element(self, element: str, repeat: int, event_name: Optional[str] = None) -> None:
         """
         Press an element using Appium.
         :param element: The element to be pressed.
@@ -72,12 +72,11 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def press_percentage_coordinates(self, percentage_x, percentage_y, repeat, event_name=None) -> None:
+    def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int, event_name: Optional[str] = None) -> None:
         """
         Press an element by percentage coordinates.
         :param percentage_x: X coordinate of the press.
-        :param
-        percentage_y: Y coordinate of the press.
+        :param percentage_y: Y coordinate of the press.
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         :raises NotImplementedError: If the method is not implemented in a subclass.
@@ -87,7 +86,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def enter_text(self, text, event_name) -> None:
+    def enter_text(self, text: str, event_name: Optional[str] = None) -> None:
         """
         Enter text into an element.
         :param element: The element to receive the text.
@@ -100,7 +99,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def press_keycode(self, keycode, event_name) -> None:
+    def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
         Press a key code.
         :param keycode: The key code to be pressed.
@@ -112,7 +111,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def enter_text_element(self, element, text, event_name) -> None:
+    def enter_text_element(self, element: str, text: str, event_name: Optional[str] = None) -> None:
         """
         Enter text into an element.
         :param element: The element to receive the text.
@@ -125,7 +124,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def enter_text_using_keyboard(self, text, event_name) -> None:
+    def enter_text_using_keyboard(self, text: str, event_name: Optional[str] = None) -> None:
         """
         Enter text using the keyboard.
         :param text: The text to be entered.
@@ -137,7 +136,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def clear_text(self, event_name) -> None:
+    def clear_text(self, event_name: Optional[str] = None) -> None:
         """
         Clear text from an element.
         :param element: The element to receive the text.
@@ -149,7 +148,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def clear_text_element(self, element, event_name) -> None:
+    def clear_text_element(self, element: str, event_name: Optional[str] = None) -> None:
         """
         Clear text from an element.
         :param element: The element to receive the text.
@@ -161,7 +160,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def swipe(self, x_coor, y_coor, direction, swipe_length, event_name) -> None:
+    def swipe(self, x_coor: int, y_coor: int, direction: str, swipe_length: int, event_name: Optional[str] = None) -> None:
         """
         Swipe in a specified direction.
         :param x_coor: The starting x coordinate of the swipe.
@@ -176,7 +175,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def swipe_percentage(self, x_percentage, y_percentage, direction, swipe_percentage, event_name) -> None:
+    def swipe_percentage(self, x_percentage: float, y_percentage: float, direction: str, swipe_percentage: float, event_name: Optional[str] = None) -> None:
         """
         Swipe in a specified direction by percentage.
         :param x_percentage: The starting x coordinate of the swipe as a percentage of the screen width.
@@ -191,7 +190,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def swipe_element(self, element, direction, swipe_length, event_name) -> None:
+    def swipe_element(self, element: str, direction: str, swipe_length: int, event_name: Optional[str] = None) -> None:
         """
         Swipe an element in a specified direction.
         :param element: The element to be swiped.
@@ -205,7 +204,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def scroll(self, direction, duration, event_name) -> None:
+    def scroll(self, direction: str, duration: int, event_name: Optional[str] = None) -> None:
         """
         Scroll in a specified direction.
         :param direction: The direction of the scroll.
@@ -218,7 +217,7 @@ class DriverInterface(ABC):
         pass
 
     @abstractmethod
-    def get_text_element(self, element) -> str:
+    def get_text_element(self, element: str) -> str:
         """
         Get the text of an element.
         :param element: The element to get the text from.

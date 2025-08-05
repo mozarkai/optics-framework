@@ -119,7 +119,7 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "press_by_coordinates")
         self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
 
-    def press_element_with_index(self, element: str, index: str = "0", event_name: Optional[str] = None) -> None:
+    def press_element_with_index(self, element: str, index_str: str = "0", event_name: Optional[str] = None) -> None:
         """
         Press a specified text at a given index.
 
@@ -127,7 +127,7 @@ class ActionKeyword:
         :param index: The index of the element.
         :param event_name: The event triggering the press.
         """
-        index = int(index)
+        index = int(index_str)
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "press_element_with_index")
         element_source_type = type(
@@ -381,7 +381,7 @@ class ActionKeyword:
         if isinstance(text_input, str) and "_" in text_input:
             key_input = text_input.split("_")[0].lower()
             try:
-                text_input = utils.SpecialKey(key_input)
+                text_input = str(utils.SpecialKey(key_input))
             except ValueError:
                 pass
 
@@ -400,9 +400,21 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "enter_number")
-        self.driver.enter_text_element(element, str(number), event_name, located=located)
+        if isinstance(located, tuple):
+            x, y = located
+            internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
+            self.driver.press_coordinates(x, y, event_name=event_name)
+            self.driver.enter_text(str(number), event_name)
+        elif isinstance(located, str):
+            self.driver.enter_text_element(located, str(number), event_name)
+        else:
+            internal_logger.error(
+                "Element location %s is not provided correctly for entering number.", element)
+            raise ValueError(
+                f"Element location {element} is not provided correctly for entering number."
+            )
 
-    def press_keycode(self, keycode: str, event_name: str=None) -> None:
+    def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
         Press a specified keycode.
 

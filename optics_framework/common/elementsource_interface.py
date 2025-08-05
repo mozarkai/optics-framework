@@ -25,7 +25,7 @@ class ElementSourceInterface(ABC):
         pass
 
     @abstractmethod
-    def locate(self, element, index=None) -> tuple:
+    def locate(self, element: Any, index: int | None = None) -> tuple:
         """
         Locate an element within the current screen state.
 
