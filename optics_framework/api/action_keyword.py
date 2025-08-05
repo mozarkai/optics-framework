@@ -176,7 +176,7 @@ class ActionKeyword:
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "detect_and_press")
         result = self.verifier.assert_presence(
-            element, timeout=timeout, rule="any")
+            element, timeout_str=timeout, rule="any")
         if result:
             if isinstance(located, tuple):
                 x, y = located
@@ -261,7 +261,7 @@ class ActionKeyword:
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
-                element, timeout="3", rule="any")
+                element, timeout_str="3", rule="any")
             if result:
                 break
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
@@ -310,7 +310,7 @@ class ActionKeyword:
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
-                element, timeout="3", rule="any")
+                element, timeout_str="3", rule="any")
             if result:
                 break
             self.driver.scroll(direction, 1000, event_name)
