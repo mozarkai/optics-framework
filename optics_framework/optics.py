@@ -314,6 +314,18 @@ class Optics:
             raise ValueError(INVALID_SETUP)
         self.app_management.close_and_terminate_app()
 
+    @keyword("Force Terminate App")
+    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
+        """
+        Forcefully terminate the specified application.
+
+        :param app_name: The name of the application to terminate.
+        :param event_name: The event triggering the forced termination, if any.
+        """
+        if not self.app_management:
+            raise ValueError(INVALID_SETUP)
+        self.app_management.force_terminate_app(app_name, event_name)
+
     @keyword("Get App Version")
     def get_app_version(self) -> Optional[str]:
         """Get the application version."""

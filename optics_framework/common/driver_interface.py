@@ -226,6 +226,17 @@ class DriverInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
+        """
+        Forcefully terminates the specified application.
+        :param app_name: The name of the application to terminate.
+        :param event_name: The event triggering the forced termination, if any.
+        :raises NotImplementedError: If the method is not implemented in a subclass.
+        :return: None
+        :rtype: None
+        """
+        pass
 
     @abstractmethod
     def terminate(self) -> None:

@@ -17,6 +17,7 @@ class SeleniumDriver(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "selenium"
     ACTION_NOT_SUPPORTED = "Action not supported in Selenium."
+    SETUP_NOT_INITIALIZED = "Selenium setup not initialized. Call start_session() first."
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -119,6 +120,26 @@ class SeleniumDriver(DriverInterface):
                 self.driver = None
                 self.eventSDK.send_all_events()
 
+    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
+        """
+        Forcefully terminates the specified application.
+        :param app_name: The name of the application to terminate.
+        :param event_name: The event triggering the forced termination, if any.
+        :raises NotImplementedError: If the method is not implemented in a subclass.
+        :return: None
+        :rtype: None
+        """
+        if self.driver is None:
+            raise RuntimeError(self.SETUP_NOT_INITIALIZED)
+        try:
+            self.driver.close()
+            internal_logger.debug(f"Forcefully terminated app: {app_name}")
+            if event_name:
+                self.eventSDK.capture_event(event_name)
+        except Exception as e:
+            internal_logger.error(f"Failed to force terminate app {app_name}: {e}")
+            raise RuntimeError(f"Selenium failed to force terminate app: {e}")
+
     def launch_app(self, event_name: str | None = None) -> None:
         """Launch the web application by navigating to the browser URL."""
         if self.driver is None:
@@ -135,8 +156,19 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to launch app at {self.browser_url}: {e}")
             raise
 
-    def launch_other_app(self, app_name, event_name):
-        raise NotImplementedError("Selenium driver does not support launching apps yet.")
+    def launch_other_app(self, app_name: str, event_name):
+        try:
+            if self.driver is None:
+                raise RuntimeError(self.SETUP_NOT_INITIALIZED)
+            self.driver.get(app_name)
+            if event_name:
+                internal_logger.debug(
+                    f"Launching other app at {app_name} with event: {event_name}")
+                self.eventSDK.capture_event(event_name)
+            internal_logger.debug(f"Launched other app at {app_name} with event: {event_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to launch other app at {app_name}: {e}")
+            raise RuntimeError(f"Selenium failed to launch other app: {e}")
 
     def press_element(self, element, repeat: int = 1, event_name: str | None = None) -> None:
         """
@@ -226,7 +258,7 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to enter text into element: {e}")
             raise
 
-    def press_keycode(self, keycode: int, event_name: str | None = None) -> None:
+    def press_keycode(self, keycode: str, event_name: str | None = None) -> None:
         """Selenium does not support raw keycodes. Log a warning."""
         self._raise_action_not_supported()
 

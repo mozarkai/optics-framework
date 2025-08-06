@@ -42,6 +42,22 @@ class BLEDriver(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "ble"
 
+    # Mouse button states
+    MOUSE_BUTTON_RELEASED = 0
+    MOUSE_BUTTON_PRESSED = 1
+
+    # Mouse movement constants
+    NO_MOVEMENT = 0
+    MOUSE_MAX_MOVEMENT = 127
+
+    # Keyboard command strings (legacy format)
+    MOUSE_RESET = "0 0 0"
+    MOUSE_PRESS = "1 0 0"
+    KEYBOARD_RESET = "0 0 0 0 0 0 0 0"
+    KEYBOARD_CLOSE_APP = "4 0 61 0 0 0 0 0"
+    KEYBOARD_SELECT_ALL = "1 0 4 0 0 0 0 0"
+    KEYBOARD_BACKSPACE = "0 0 42 0 0 0 0 0"
+
     def __init__(self):
         config_handler = ConfigHandler.get_instance()
         self.event_sdk = EventSDK.get_instance()
@@ -82,7 +98,19 @@ class BLEDriver(DriverInterface):
             internal_logger.error(f"Failed to initialize serial port: {e}")
             raise
 
-    def send_mouse_command(self, button_state:int, x_delta_mic:int, y_delta_mic:int):
+    def _send_mouse_reset(self):
+        """Send a mouse command with no button press and no movement."""
+        self.send_mouse_command(self.MOUSE_BUTTON_RELEASED, self.NO_MOVEMENT, self.NO_MOVEMENT)
+
+    def _send_mouse_press(self):
+        """Send a mouse command with button pressed and no movement."""
+        self.send_mouse_command(self.MOUSE_BUTTON_PRESSED, self.NO_MOVEMENT, self.NO_MOVEMENT)
+
+    def _send_mouse_release(self):
+        """Send a mouse command with button released and no movement."""
+        self.send_mouse_command(self.MOUSE_BUTTON_RELEASED, self.NO_MOVEMENT, self.NO_MOVEMENT)
+
+    def send_mouse_command(self, button_state: int, x_delta_mic: int, y_delta_mic: int):
         """
         Send a mouse command via serial to move the mouse and update the current coordinates.
 
@@ -95,7 +123,9 @@ class BLEDriver(DriverInterface):
         self.ser.write((mouse_command + "\n").encode("utf-8"))
         time.sleep(0.1)
 
-    def translate_coordinates_relative(self, button_state:int, x_coor_mic:int, y_coor_mic:int):
+    def translate_coordinates_relative(
+        self, button_state: int, x_coor_mic: int, y_coor_mic: int
+    ):
         """
         Translate large cartesian coordinates to multiple relative moves, handling
         movements greater than the maximum movement range.
@@ -105,29 +135,28 @@ class BLEDriver(DriverInterface):
             x_coor_mic (int): The X coordinate in mickeys to move to.
             y_coor_mic (int): The Y coordinate in mickeys to move to.
         """
-        max_movement = 127
-        x_steps, x_remainder = divmod(abs(x_coor_mic), max_movement)
-        y_steps, y_remainder = divmod(abs(y_coor_mic), max_movement)
+        x_steps, x_remainder = divmod(abs(x_coor_mic), self.MOUSE_MAX_MOVEMENT)
+        y_steps, y_remainder = divmod(abs(y_coor_mic), self.MOUSE_MAX_MOVEMENT)
 
         x_direction = 1 if x_coor_mic > 0 else -1
         y_direction = 1 if y_coor_mic > 0 else -1
 
         for _ in range(x_steps):
             self.send_mouse_command(
-                button_state, max_movement * x_direction * self.x_invert, 0
+                button_state, self.MOUSE_MAX_MOVEMENT * x_direction * self.x_invert, self.NO_MOVEMENT
             )
         for _ in range(y_steps):
             self.send_mouse_command(
-                button_state, 0, max_movement * y_direction * self.y_invert
+                button_state, self.NO_MOVEMENT, self.MOUSE_MAX_MOVEMENT * y_direction * self.y_invert
             )
 
         if x_remainder != 0:
             self.send_mouse_command(
-                button_state, x_remainder * x_direction * self.x_invert, 0
+                button_state, x_remainder * x_direction * self.x_invert, self.NO_MOVEMENT
             )
         if y_remainder != 0:
             self.send_mouse_command(
-                button_state, 0, y_remainder * y_direction * self.y_invert
+                button_state, self.NO_MOVEMENT, y_remainder * y_direction * self.y_invert
             )
 
     def mouse_reset_position(self):
@@ -136,17 +165,21 @@ class BLEDriver(DriverInterface):
         Mouse moves to bottom corner left of the screen.
         """
         for _ in range(40):
-            self.send_mouse_command(0, -127 * self.x_invert, -127 * self.y_invert)
+            self.send_mouse_command(
+                self.MOUSE_BUTTON_RELEASED,
+                -self.MOUSE_MAX_MOVEMENT * self.x_invert,
+                -self.MOUSE_MAX_MOVEMENT * self.y_invert,
+            )
             time.sleep(0.1)
-        self.send_mouse_command(0, 0, 0)
+        self._send_mouse_reset()
 
     def mouse_tap(self):
         """
         Simulate a mouse tap (click) by sending a press and release command.
         """
-        self.send_mouse_command(0, 0, 0)
-        self.send_mouse_command(1, 0, 0)
-        self.send_mouse_command(0, 0, 0)
+        self._send_mouse_reset()
+        self._send_mouse_press()
+        self._send_mouse_release()
 
     def mouse_double_tap(self):
         """
@@ -155,7 +188,7 @@ class BLEDriver(DriverInterface):
         self.mouse_tap()
         self.mouse_tap()
 
-    def convert_pixel_to_mickeys(self, x_coor_px:int, y_coor_px:int):
+    def convert_pixel_to_mickeys(self, x_coor_px: int, y_coor_px: int):
         """
         Convert pixel coordinates to Mickeys (smallest detectable unit of movement).
 
@@ -171,7 +204,9 @@ class BLEDriver(DriverInterface):
         print(f"Converted Pixel to Mickeys: {x_coor_mic}, {y_coor_mic}")
         return x_coor_mic, y_coor_mic
 
-    def translate_coordinates_relative_pixel(self, button_state:int, x_coor_px:int, y_coor_px:int):
+    def translate_coordinates_relative_pixel(
+        self, button_state: int, x_coor_px: int, y_coor_px: int
+    ):
         """
         Translate pixel coordinates to relative coordinates and send the mouse command.
 
@@ -183,7 +218,9 @@ class BLEDriver(DriverInterface):
         x_coor_mic, y_coor_mic = self.convert_pixel_to_mickeys(x_coor_px, y_coor_px)
         self.translate_coordinates_relative(button_state, x_coor_mic, y_coor_mic)
 
-    def move_tap(self, x_coor_px:int, y_coor_px:int, time_press:float=0.1, event_name=None):
+    def move_tap(
+        self, x_coor_px: int, y_coor_px: int, time_press: float = 0.1, event_name=None
+    ):
         """
         Move the mouse to the specified coordinates and perform a tap (click).
 
@@ -196,14 +233,14 @@ class BLEDriver(DriverInterface):
             int(y_coor_px),
             int(time_press),
         )
-        self.translate_coordinates_relative_pixel(0, x_coor_px, y_coor_px)
+        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor_px, y_coor_px)
         if event_name:
             self.event_sdk.capture_event(event_name)
         self.mouse_tap()
         time.sleep(time_press)
         self.mouse_reset_position()
 
-    def swipe_ble(self, direction:str, distance:int=40, acceleration:int=1):
+    def swipe_ble(self, direction: str, distance: int = 40, acceleration: int = 1):
         """
         Perform a swipe action in the specified direction with optional acceleration,
         and return to the original position without pressing the mouse during the return.
@@ -213,7 +250,7 @@ class BLEDriver(DriverInterface):
             acceleration (int, optional): The acceleration factor for the swipe.
         """
 
-        def drag(distance:int, press:int, x:int=0, y:int=0):
+        def drag(distance: int, press: int, x: int = 0, y: int = 0):
             current_distance = 0
             step = 1
             while current_distance < distance:
@@ -229,21 +266,23 @@ class BLEDriver(DriverInterface):
         # Perform the swipe with the press state active
         match direction.lower():
             case "up":
-                drag(distance, press=1, y=1)
-                drag(distance, press=0, y=-1)  # Return without pressing
+                drag(distance, press=self.MOUSE_BUTTON_PRESSED, y=1)
+                drag(distance, press=self.MOUSE_BUTTON_RELEASED, y=-1)  # Return without pressing
             case "down":
-                drag(distance, press=1, y=-1)
-                drag(distance, press=0, y=1)  # Return without pressing
+                drag(distance, press=self.MOUSE_BUTTON_PRESSED, y=-1)
+                drag(distance, press=self.MOUSE_BUTTON_RELEASED, y=1)  # Return without pressing
             case "left":
-                drag(distance, press=1, x=-1)
-                drag(distance, press=0, x=1)  # Return without pressing
+                drag(distance, press=self.MOUSE_BUTTON_PRESSED, x=-1)
+                drag(distance, press=self.MOUSE_BUTTON_RELEASED, x=1)  # Return without pressing
             case "right":
-                drag(distance, press=1, x=1)
-                drag(distance, press=0, x=-1)  # Return without pressing
+                drag(distance, press=self.MOUSE_BUTTON_PRESSED, x=1)
+                drag(distance, press=self.MOUSE_BUTTON_RELEASED, x=-1)  # Return without pressing
             case _:
                 print("Invalid direction")
 
-    def press_coordinates(self, coor_x: int, coor_y: int, event_name: str) -> None:
+    def press_coordinates(
+        self, coor_x: int, coor_y: int, event_name: Optional[str] = None
+    ) -> None:
         """
         Press an element by absolute coordinates using BLE.
 
@@ -252,7 +291,7 @@ class BLEDriver(DriverInterface):
         :param y_coor: Y coordinate of the press.
         :type y_coor: int
         :param event_name: The event triggering the press.
-        :type event_name: str
+        :type event_name: str | None
         """
         internal_logger.debug(f"Pressing coordinates ({coor_x}, {coor_y}) via BLE.")
         self.move_tap(coor_x, coor_y, event_name=event_name)
@@ -323,7 +362,9 @@ class BLEDriver(DriverInterface):
             key_code = self.hid_key_codes.get(char)
 
             if key_code is None:
-                internal_logger.warning(f"No HID key code found for character: '{char}'")
+                internal_logger.warning(
+                    f"No HID key code found for character: '{char}'"
+                )
                 continue
 
             # Check if the character requires Shift key (uppercase letters or special characters)
@@ -336,11 +377,8 @@ class BLEDriver(DriverInterface):
                 keyboard_command = f"0 0 {key_code} 0 0 0 0 0"
                 self.send_keyboard_command(keyboard_command)
 
-            # Send key release after each character
-            keyboard_command = "0 0 0 0 0 0 0 0"
-            self.send_keyboard_command(keyboard_command)
-        keyboard_command = "0 0 0 0 0 0 0 0"
-        self.send_keyboard_command(keyboard_command)
+            self.send_keyboard_command(self.KEYBOARD_RESET)
+        self.send_keyboard_command(self.KEYBOARD_RESET)
 
     def launch_app(self, event_name: str | None) -> None:
         """
@@ -357,7 +395,9 @@ class BLEDriver(DriverInterface):
     def get_app_version(self) -> str:
         raise NotImplementedError("BLE driver does not support getting app version.")
 
-    def press_element(self, element: str, repeat: int, event_name: str) -> None:
+    def press_element(
+        self, element: str, repeat: int, event_name: Optional[str] = None
+    ) -> None:
         raise NotImplementedError("BLE driver does not support pressing elements.")
 
     def press_percentage_coordinates(
@@ -384,7 +424,7 @@ class BLEDriver(DriverInterface):
         )
         x_coor = int(percentage_x * self.pixel_width)
         y_coor = int(percentage_y * self.pixel_height)
-        self.translate_coordinates_relative_pixel(0, x_coor, y_coor)
+        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
         timestamp: str | None = self.event_sdk.get_current_time_for_events()
         for _ in range(repeat):
             self.mouse_tap()
@@ -408,26 +448,28 @@ class BLEDriver(DriverInterface):
             self.event_sdk.capture_event(event_name)
         self.keyboard(utils.strip_sensitive_prefix(text))
 
-    def press_keycode(self, keycode, event_name) -> None:
+    def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
         Press a keycode using BLE.
 
         :param keycode: The keycode to be pressed.
         :type keycode: str
         :param event_name: The event triggering the key press.
-        :type event_name: str
+        :type event_name: str | None
         """
         internal_logger.debug(f"Pressing keycode '{keycode}' via BLE.")
         if event_name:
             self.event_sdk.capture_event(event_name)
         self.keyboard(utils.strip_sensitive_prefix(keycode))
 
-    def enter_text_element(self, element, text, event_name) -> None:
+    def enter_text_element(self, element, text, event_name=None) -> None:
         raise NotImplementedError(
             "BLE driver does not support entering text into elements."
         )
 
-    def enter_text_using_keyboard(self, text: str, event_name: Optional[str] = None) -> None:
+    def enter_text_using_keyboard(
+        self, text: str, event_name: Optional[str] = None
+    ) -> None:
         """
         Enter text using the keyboard via BLE.
 
@@ -449,23 +491,26 @@ class BLEDriver(DriverInterface):
         :type event_name: str
         """
         internal_logger.debug("Clearing text via BLE.")
-        self.send_keyboard_command(
-            "1 0 4 0 0 0 0 0"
-        )  # Send a command to select all text
-        self.send_keyboard_command(
-            "0 0 42 0 0 0 0 0"
-        )  # Send a command to backspace the selected text
+        self.send_keyboard_command(self.KEYBOARD_SELECT_ALL)
+        self.send_keyboard_command(self.KEYBOARD_BACKSPACE)
         if event_name:
             self.event_sdk.capture_event(event_name)
 
-    def clear_text_element(self, element: str, event_name: Optional[str] = None) -> None:
-        internal_logger.debug(f"Clearing text in element '{element}' via BLE.")
-        self.send_keyboard_command("1 0 4 0 0 0 0 0")  # Select all text
-        self.send_keyboard_command("0 0 42 0 0 0 0 0")  # Backspace to clear text
-        if event_name:
-            self.event_sdk.capture_event(event_name)
+    def clear_text_element(
+        self, element: str, event_name: Optional[str] = None
+    ) -> None:
+        raise NotImplementedError(
+            "BLE driver does not support clearing text from elements."
+        )
 
-    def swipe(self, x_coor: int, y_coor: int, direction: str, swipe_length: int, event_name: Optional[str] = None) -> None:
+    def swipe(
+        self,
+        x_coor: int,
+        y_coor: int,
+        direction: str,
+        swipe_length: int,
+        event_name: Optional[str] = None,
+    ) -> None:
         """
         Perform a swipe action using BLE.
 
@@ -483,13 +528,18 @@ class BLEDriver(DriverInterface):
         internal_logger.debug(
             f"Swiping {direction} from ({x_coor}, {y_coor}) with length {swipe_length} via BLE."
         )
-        self.translate_coordinates_relative_pixel(0, x_coor, y_coor)
+        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
         if event_name:
             self.event_sdk.capture_event(event_name)
         self.swipe_ble(direction, swipe_length)
 
     def swipe_percentage(
-        self, x_percentage: float, y_percentage: float, direction: str, swipe_percentage: float, event_name: Optional[str] = None
+        self,
+        x_percentage: float,
+        y_percentage: float,
+        direction: str,
+        swipe_percentage: float,
+        event_name: Optional[str] = None,
     ) -> None:
         """
         Perform a swipe action using percentage coordinates via BLE.
@@ -511,15 +561,17 @@ class BLEDriver(DriverInterface):
         x_coor = int(x_percentage * self.pixel_width)
         y_coor = int(y_percentage * self.pixel_height)
         swipe_length = int(swipe_percentage * self.pixel_width)
-        self.translate_coordinates_relative_pixel(0, x_coor, y_coor)
+        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
         if event_name:
             self.event_sdk.capture_event(event_name)
         self.swipe_ble(direction, swipe_length)
 
-    def swipe_element(self, element, direction, swipe_length, event_name) -> None:
+    def swipe_element(self, element, direction, swipe_length, event_name=None) -> None:
         raise NotImplementedError("BLE driver does not support swiping elements.")
 
-    def scroll(self, direction: str, duration: int, event_name: Optional[str] = None) -> None:
+    def scroll(
+        self, direction: str, duration: int, event_name: Optional[str] = None
+    ) -> None:
         """
         Perform a scroll action using BLE.
 
@@ -555,6 +607,26 @@ class BLEDriver(DriverInterface):
             "BLE driver does not support getting text from elements."
         )
 
+    def force_terminate_app(
+        self, app_name: str, event_name: Optional[str] = None
+    ) -> None:
+        """
+        Forcefully terminates the specified application.
+
+        :param app_name: The name of the application to terminate.
+        :type app_name: str
+        :param event_name: The event triggering the forced termination, if any.
+        :type event_name: str | None
+        """
+        internal_logger.debug(f"Force terminating app '{app_name}' via BLE.")
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        # Implementation for force terminating an app has to be added first at firmware level.
+        # For now, we will use Alt + F4 to close the active window.
+        self.send_keyboard_command(self.KEYBOARD_CLOSE_APP)
+        self.send_keyboard_command(self.KEYBOARD_RESET)
+        internal_logger.debug(f"App '{app_name}' force terminated via BLE.")
+
     def terminate(self) -> None:
         """
         Terminate the BLE connection.
@@ -564,12 +636,8 @@ class BLEDriver(DriverInterface):
         """
         internal_logger.debug("Closing all applications.")
         # self.send_keyboard_command("4 0 43 0 0 0 0 0")  # press Alt + Tab
-        self.send_keyboard_command(
-            "4 0 61 0 0 0 0 0"
-        )  # press Alt + F4 to close the active window
-        self.send_keyboard_command(
-            "0 0 0 0 0 0 0 0"
-        )
+        self.send_keyboard_command(self.KEYBOARD_CLOSE_APP)
+        self.send_keyboard_command(self.KEYBOARD_RESET)
         internal_logger.debug("Terminating the BLE connection.")
         if self.ser.is_open:
             self.ser.close()

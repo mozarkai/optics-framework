@@ -140,6 +140,27 @@ class Appium(DriverInterface):
             )
         return options, default_options
 
+    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
+        """
+        Forcefully terminates the specified application.
+
+        :param app_name: The name of the application to terminate.
+        :param event_name: The event triggering the forced termination, if any.
+        """
+        if not self.driver:
+            internal_logger.error("Appium driver is not initialized.")
+            return
+
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+        internal_logger.debug(f"Force terminating app: {app_name}")
+        try:
+            self.driver.terminate_app(app_name)
+            internal_logger.info(f"Successfully terminated app: {app_name}")
+        except Exception as e:
+            internal_logger.error(f"Failed to force terminate app '{app_name}': {e}")
+
     def terminate(self, event_name: str | None = None) -> None:
         """End the Appium session if active."""
         if self.driver:

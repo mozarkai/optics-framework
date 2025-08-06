@@ -64,13 +64,14 @@ class AppManagement:
         """
         self.driver.terminate()
 
-    def force_terminate_app(self, event_name: Optional[str] = None) -> None:
+    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
         """
         Forcefully terminates the specified application.
 
+        :param app_name: The name of the application to terminate.
         :param event_name: The event triggering the forced termination, if any.
         """
-        pass
+        self.driver.force_terminate_app(app_name, event_name)
 
     def get_app_version(self) -> Optional[str]:
         """
