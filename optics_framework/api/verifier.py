@@ -2,7 +2,6 @@ from typing import Optional, Any
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.eventSDK import EventSDK
 
 class Verifier:
