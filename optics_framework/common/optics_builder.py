@@ -1,5 +1,6 @@
 from typing import Union, List, Dict, Optional, Type, TypeVar
 from optics_framework.common.factories import DeviceFactory, ElementSourceFactory, ImageFactory, TextFactory
+from optics_framework.common.strategies import StrategyManager
 from pydantic import BaseModel
 
 T = TypeVar('T')  # Generic type for the build method
@@ -20,6 +21,7 @@ class OpticsBuilder:
 
     def __init__(self):
         self.config = OpticsConfig()
+        self._strategy_manager = None
 
     # Fluent methods to set configurations
     def add_driver(self, config: Union[str, List[Union[str, Dict]]]) -> 'OpticsBuilder':
@@ -58,6 +60,23 @@ class OpticsBuilder:
         if not self.config.text_config:
             return None
         return TextFactory.get_driver(self.config.text_config)
+
+    def get_strategy_manager(self):
+        """
+        Get or create the singleton StrategyManager instance.
+
+        :return: A singleton StrategyManager instance configured with the builder's dependencies.
+        :raises ValueError: If required configurations are missing.
+        """
+        if self._strategy_manager is None:
+            element_source = self.get_element_source()
+            text_detection = self.get_text_detection()
+            image_detection = self.get_image_detection()
+
+            self._strategy_manager = StrategyManager(
+                element_source, text_detection, image_detection
+            )
+        return self._strategy_manager
 
     def build(self, cls: Type[T]) -> T:
         """
