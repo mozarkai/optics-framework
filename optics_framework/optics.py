@@ -1,14 +1,17 @@
 from typing import Optional, Dict, List, Any, Callable, TypeVar, cast, Union
 from functools import wraps
+import json
+import yaml
+import os
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
+from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.optics_builder import OpticsBuilder
-import json
-import yaml
+from optics_framework.common.models import TestCaseNode, ModuleData, ElementData, ApiData
 
 T = TypeVar("T", bound=Callable[..., Any])
 
@@ -53,10 +56,29 @@ class Optics:
         self.session_manager = SessionManager()
         self.config = self.config_handler.config
         self.builder = OpticsBuilder()
-        self.app_management: Optional[AppManagement] = None
-        self.action_keyword: Optional[ActionKeyword] = None
-        self.verifier: Optional[Verifier] = None
-        self.session_id: Optional[str] = None
+        self.app_management = None
+        self.action_keyword = None
+        self.verifier = None
+        self.session_id = None
+        self.flow_control = None
+    def _parse_config_string(self, config_string: str) -> Dict[str, Any]:
+        """
+        Parse a JSON or YAML configuration string.
+        """
+        config_string = config_string.strip()
+        try:
+            if config_string.startswith('{') or config_string.startswith('['):
+                return json.loads(config_string)
+            return yaml.safe_load(config_string)
+        except json.JSONDecodeError as e:
+            try:
+                return yaml.safe_load(config_string)
+            except yaml.YAMLError as yaml_e:
+                raise ValueError(
+                    f"Invalid configuration format. JSON error: {e}, YAML error: {yaml_e}"
+                ) from e
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML configuration: {e}") from e
 
     def _create_dependency_config(
         self, config_dict: Dict[str, Any]
@@ -127,6 +149,15 @@ class Optics:
             ValueError: If configuration or session creation fails.
         """
         # Handle new config parameter (string, dict, or None)
+
+        project_path = None
+        execution_output_path = None
+        event_attributes_json = None
+        _driver_config = driver_config
+        _element_source_config = element_source_config
+        _image_config = image_config
+        _text_config = text_config
+
         if config is not None:
             if isinstance(config, str):
                 parsed_config = self._parse_config_string(config)
@@ -138,15 +169,17 @@ class Optics:
             self._validate_required_keys(parsed_config)
 
             # Extract configuration values
-            driver_config = parsed_config["driver_config"]
-            element_source_config = parsed_config["element_source_config"]
-            image_config = parsed_config.get("image_config")
-            text_config = parsed_config.get("text_config")
-            project_path = parsed_config.get("project_path")
-            execution_output_path = parsed_config.get("execution_output_path")
-            event_attributes_json = parsed_config.get("event_attributes_json", None)
-        # Handle legacy parameters
-        elif driver_config is not None and element_source_config is not None:
+            _driver_config = parsed_config["driver_config"]
+            _element_source_config = parsed_config["element_source_config"]
+            _image_config = parsed_config.get("image_config")
+            _text_config = parsed_config.get("text_config")
+            if "project_path" in parsed_config:
+                project_path = parsed_config["project_path"]
+            if "execution_output_path" in parsed_config:
+                execution_output_path = parsed_config["execution_output_path"]
+            if "event_attributes_json" in parsed_config:
+                event_attributes_json = parsed_config["event_attributes_json"]
+        elif _driver_config is not None and _element_source_config is not None:
             # Using legacy parameters - this path maintains backward compatibility
             internal_logger.warning(
                 "Using deprecated parameter format. Consider migrating to the new config parameter."
@@ -157,10 +190,10 @@ class Optics:
             )
 
         # Convert user-provided dictionaries to DependencyConfig
-        driver_deps = self._process_config_list(driver_config)
-        element_deps = self._process_config_list(element_source_config)
-        image_deps = self._process_config_list(image_config) if image_config else []
-        text_deps = self._process_config_list(text_config) if text_config else []
+        driver_deps = self._process_config_list(_driver_config or [])
+        element_deps = self._process_config_list(_element_source_config or [])
+        image_deps = self._process_config_list(_image_config or []) if _image_config else []
+        text_deps = self._process_config_list(_text_config or []) if _text_config else []
 
         # Update ConfigHandler
         self.config_handler.load()
@@ -177,21 +210,20 @@ class Optics:
         # Initialize session
         try:
             self.session_id = self.session_manager.create_session(
-                self.config_handler.config
+                self.config_handler.config,
+                test_cases=TestCaseNode(name="default"),
+                modules=ModuleData(),
+                elements=ElementData(),
+                apis=ApiData()
             )
         except Exception as e:
             internal_logger.error(f"Failed to create session: {e}")
             raise ValueError(f"Failed to create session: {e}") from e
 
-        self.action_keyword = self.session_manager.sessions[
-            self.session_id
-        ].optics.build(ActionKeyword)
-        self.app_management = self.session_manager.sessions[
-            self.session_id
-        ].optics.build(AppManagement)
-        self.verifier = self.session_manager.sessions[self.session_id].optics.build(
-            Verifier
-        )
+        self.action_keyword = self.session_manager.sessions[self.session_id].optics.build(ActionKeyword)
+        self.app_management = self.session_manager.sessions[self.session_id].optics.build(AppManagement)
+        self.verifier = self.session_manager.sessions[self.session_id].optics.build(Verifier)
+        self.flow_control = self.session_manager.sessions[self.session_id].optics.build(FlowControl)
 
     @keyword("Setup From File")
     def setup_from_file(self, config_file_path: str) -> None:
@@ -283,7 +315,72 @@ class Optics:
             if not isinstance(config[key], list):
                 raise ValueError(f"Configuration key '{key}' must be a list")
 
+    @keyword("Add Element")
+    def add_element(self, name: str, value: Any) -> None:
+        """Add or update an element in the current session."""
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise ValueError(INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        if hasattr(session, "elements") and session.elements:
+            session.elements.add_element(name, value)
+        else:
+            raise ValueError("Session does not have an elements store.")
 
+    @keyword("Get Element Value")
+    def get_element_value(self, name: str) -> Any:
+        """Get the value of an element by name from the current session."""
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise ValueError(INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        if hasattr(session, "elements") and session.elements:
+            return session.elements.get_element(name)
+        else:
+            raise ValueError(f"Session does not have an element '{name}' stored.")
+
+    @keyword("Add API")
+    def add_api(self, yaml_path: str) -> None:
+        """Add or update an API definition in the current session by fully replacing session.apis using the YAML file."""
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise ValueError(INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        # Resolve relative path using project_path
+        if not os.path.isabs(yaml_path):
+            project_path = getattr(self.config_handler.config, 'project_path', None)
+            if project_path:
+                yaml_path = os.path.join(project_path, yaml_path)
+        if not os.path.exists(yaml_path):
+            raise FileNotFoundError(f"API YAML file not found: {yaml_path}")
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            try:
+                data = yaml.safe_load(f)
+                api_data_content = data.get("api", data)
+                session.apis = ApiData(**api_data_content)
+            except yaml.YAMLError as e:
+                raise ValueError(f"Error parsing YAML file: {e}") from e
+            except Exception as e:
+                raise ValueError(f"Invalid API data structure: {e}") from e
+
+    @keyword("Add Testcase")
+    def add_testcase(self, testcase: Any) -> None:
+        """Add or update a testcase in the current session."""
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise ValueError(INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        if hasattr(session, "test_cases"):
+            session.test_cases = testcase
+        else:
+            raise ValueError("Session does not have a test_cases store.")
+
+    @keyword("Add Module")
+    def add_module(self, module_name: str, module_def: Any) -> None:
+        """Add or update a module in the current session."""
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise ValueError(INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        if hasattr(session, "modules") and session.modules:
+            session.modules.modules[module_name] = module_def
+        else:
+            raise ValueError("Session does not have a modules store.")
 
     ### AppManagement Methods ###
     @keyword("Launch App")
@@ -604,6 +701,48 @@ class Optics:
             raise ValueError(INVALID_SETUP)
         return self.verifier.capture_pagesource()
 
+    @keyword("Invoke API")
+    def invoke_api(self, api) -> Any:
+        """Invoke a REST API endpoint."""
+        if not self.flow_control:
+            raise ValueError(INVALID_SETUP)
+        return self.flow_control.invoke_api(api)
+
+    @keyword("Read Data")
+    def read_data(self, element: str, source: str, query: str) -> Any:
+        """Read data from a specified source."""
+        if not self.flow_control:
+            raise ValueError(INVALID_SETUP)
+        return self.flow_control.read_data(element, source, query)
+
+    @keyword("Run Loop")
+    def run_loop(self, target: str, *args: str) -> Any:
+        """Run a loop over a target module, by count or with variables."""
+        if not self.flow_control:
+            raise ValueError(INVALID_SETUP)
+        return self.flow_control.run_loop(target, *args)
+
+    @keyword("Condition")
+    def condition(self, *args: str) -> Any:
+        """Evaluate conditions and execute corresponding targets."""
+        if not self.flow_control:
+            raise ValueError(INVALID_SETUP)
+        return self.flow_control.condition(*args)
+
+    @keyword("Evaluate")
+    def evaluate(self, param1: str, param2: str) -> Any:
+        """Evaluate an expression and store the result in session elements."""
+        if not self.flow_control:
+            raise ValueError(INVALID_SETUP)
+        return self.flow_control.evaluate(param1, param2)
+
+    @keyword("Date Evaluate")
+    def date_evaluate(self, param1: str, param2: str, param3: str, param4: str = "%d %B") -> str:
+        """Evaluate a date expression and store the result in session elements."""
+        if not self.flow_control:
+            raise ValueError(INVALID_SETUP)
+        return self.flow_control.date_evaluate(param1, param2, param3, param4)
+
     @keyword("Quit")
     def quit(self) -> None:
         """Clean up session resources and terminate the session."""
@@ -614,6 +753,7 @@ class Optics:
                 self.app_management = None
                 self.action_keyword = None
                 self.verifier = None
+                self.flow_control = None
             except Exception as e:
                 internal_logger.error(
                     f"Failed to terminate session {self.session_id}: {e}"

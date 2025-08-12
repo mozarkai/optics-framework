@@ -1,7 +1,7 @@
 import os
 import sys
 import asyncio
-from typing import Optional, Tuple, List, Dict, Set
+from typing import Optional, Tuple, List, Dict, Set, Any
 import yaml
 from pydantic import BaseModel, field_validator
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
@@ -18,7 +18,10 @@ from optics_framework.common.models import (
     TestCaseNode,
     ModuleNode,
     KeywordNode,
-    ApiData
+    ElementData,
+    ApiData,
+    TestSuite,
+    ModuleData,
 )
 
 
@@ -166,10 +169,10 @@ def _should_include_test_case(
 
 
 def filter_test_cases(
-    test_cases_dict: Dict,
-    include: List[str] | None = None,
-    exclude: List[str] | None = None,
-) -> Dict:
+    test_cases_dict: Dict[str, Any],
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Filter a dictionary of test cases based on include or exclude list.
     Always include setup or teardown test cases.
@@ -199,13 +202,13 @@ def filter_test_cases(
 
 
 def categorize_test_cases(
-    test_cases_data: Dict,
+    test_cases_data: Dict[str, Any],
 ) -> Tuple[
-    Optional[Tuple[str, List]],
-    Optional[Tuple[str, List]],
-    Optional[Tuple[str, List]],
-    Optional[Tuple[str, List]],
-    Dict[str, List],
+    Optional[Tuple[str, Any]],
+    Optional[Tuple[str, Any]],
+    Optional[Tuple[str, Any]],
+    Optional[Tuple[str, Any]],
+    Dict[str, Any],
 ]:
     """
     Categorize test cases into suite setup, suite teardown, setup, teardown, and regular test cases.
@@ -242,7 +245,7 @@ def get_execution_queue(test_cases_data: Dict) -> Dict:
     :param test_cases_data: Dictionary of all test case names and their steps.
     :return: Ordered dictionary of test execution plan.
     """
-    execution_dict = {}
+    execution_dict: Dict[str, Any] = {}
 
     # Categorize test cases
     suite_setup, suite_teardown, setup, teardown, regular_test_cases = (
@@ -266,65 +269,43 @@ def get_execution_queue(test_cases_data: Dict) -> Dict:
     return execution_dict
 
 
-def create_test_case_nodes(execution_dict: Dict) -> TestCaseNode:
+def create_test_case_nodes(execution_dict: Dict) -> Optional[TestCaseNode]:
     """
     Create a linked list of TestCaseNode objects from the execution dictionary.
 
     :param execution_dict: Ordered dictionary of test case names and their modules.
-    :return: Head of the TestCaseNode linked list.
+    :return: Head of the TestCaseNode linked list, or None if empty.
     """
-    head = None
-    prev_tc = None
-
+    test_suite = TestSuite()
     for tc_name in execution_dict:
         tc_node = TestCaseNode(name=tc_name)
-        if not head:
-            head = tc_node
-        if prev_tc:
-            prev_tc.next = tc_node
-        prev_tc = tc_node
-
-    if not head:
-        raise ValueError("No test cases found to build linked list")
-
-    return head
+        test_suite.add_test_case(tc_node)
+    return test_suite.test_cases_head
 
 
 def populate_module_nodes(
-    tc_node: TestCaseNode, modules: List, modules_data: Dict
+    tc_node: TestCaseNode, modules: List[Any], modules_data: ModuleData
 ) -> None:
     """
     Populate a TestCaseNode with its ModuleNodes and their KeywordNodes.
 
     :param tc_node: TestCaseNode to populate.
     :param modules: List of module names for the test case.
-    :param modules_data: Dictionary mapping module names to keyword tuples.
+    :param modules_data: ModuleData object containing module definitions.
     """
-    module_head = None
-    module_prev = None
-
     for module_name in modules:
         module_node = ModuleNode(name=module_name)
-        if not module_head:
-            module_head = module_node
-        if module_prev:
-            module_prev.next = module_node
-        module_prev = module_node
+        tc_node.add_module(module_node)
 
-        keyword_head = None
-        keyword_prev = None
+        # Get the module definition (list of keywords) from ModuleData
+        module_definition = modules_data.get_module_definition(module_name)
 
-        for keyword, params in modules_data.get(module_name, []):
-            keyword_node = KeywordNode(name=keyword, params=params)
-            if not keyword_head:
-                keyword_head = keyword_node
-            if keyword_prev:
-                keyword_prev.next = keyword_node
-            keyword_prev = keyword_node
-
-        module_node.keywords_head = keyword_head
-
-    tc_node.modules_head = module_head
+        if module_definition:  # Check if the module definition exists
+            # Iterate through the keyword definitions in the list
+            for keyword_name, keyword_params in module_definition:
+                # Create a new KeywordNode for the current test case's module
+                keyword_node = KeywordNode(name=keyword_name, params=keyword_params)
+                module_node.add_keyword(keyword_node)
 
 
 def load_api_data(file_path: str) -> ApiData:
@@ -341,7 +322,9 @@ def load_api_data(file_path: str) -> ApiData:
             raise ValueError(f"Invalid API data structure: {e}") from e
 
 
-def build_linked_list(test_cases_data: Dict, modules_data: Dict) -> TestCaseNode:
+def build_linked_list(
+    test_cases_data: Dict[str, Any], modules_data: ModuleData
+) -> TestCaseNode:
     """
     Build a nested linked list structure representing the test execution flow.
 
@@ -349,20 +332,24 @@ def build_linked_list(test_cases_data: Dict, modules_data: Dict) -> TestCaseNode
     :param modules_data: Dictionary mapping module names to a list of (keyword, params) tuples.
     :return: Head of the linked list of TestCaseNode objects representing the full execution flow.
     """
-    # Get the ordered execution dict
-    execution_dict = get_execution_queue(test_cases_data)
+    try:
+        # Get the ordered execution dict
+        execution_dict = get_execution_queue(test_cases_data)
 
-    # Create TestCaseNode linked list
-    head = create_test_case_nodes(execution_dict)
+        # Create TestCaseNode linked list
+        head = create_test_case_nodes(execution_dict)
+        if head is None:
+            raise ValueError("No test cases found to build execution linked list.")
 
-    # Populate modules and keywords for each test case
-    current = head
-    while current:
-        populate_module_nodes(current, execution_dict[current.name], modules_data)
-        current = current.next
-
-    return head
-
+        # Populate modules and keywords for each test case
+        current = head
+        while current:
+            populate_module_nodes(current, execution_dict[current.name], modules_data)
+            current = current.next
+        return head
+    except Exception as e:
+        internal_logger.error(f"Error building linked list: {e}")
+        raise ValueError(f"Failed to build linked list: {e}")
 
 class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
@@ -404,7 +391,7 @@ class BaseRunner:
         yaml_reader = YAMLDataReader()
 
         # Read and merge test cases
-        self.test_cases_data = {}
+        self.test_cases_data: Dict[str, Any] = {}
         for file_path in test_case_files:
             reader = csv_reader if file_path.endswith(".csv") else yaml_reader
             test_cases = reader.read_test_cases(file_path)
@@ -413,21 +400,31 @@ class BaseRunner:
             )
 
         # Read and merge modules
-        self.modules_data = {}
+        self.modules_data: ModuleData = ModuleData() # Initialize as ModuleData object
         for file_path in module_files:
             reader = csv_reader if file_path.endswith(".csv") else yaml_reader
-            modules = reader.read_modules(file_path)
-            self.modules_data = merge_dicts(self.modules_data, modules, "modules")
+            modules = reader.read_modules(file_path) # This returns a dict
+            for name, definition in modules.items():
+                if self.modules_data.get_module_definition(name):
+                    internal_logger.warning(
+                        f"Duplicate modules key '{name}' found. Overwriting."
+                    )
+                self.modules_data.add_module_definition(name, definition)
 
         # Read and merge elements
-        self.elements_data = {}
+        self.elements_data: ElementData = ElementData()
         for file_path in element_files:
             reader = csv_reader if file_path.endswith(".csv") else yaml_reader
             elements = reader.read_elements(file_path)
-            self.elements_data = merge_dicts(self.elements_data, elements, "elements")
+            for name, value in elements.items():
+                if self.elements_data.get_element(name):
+                    internal_logger.warning(
+                        f"Duplicate elements key '{name}' found. Overwriting."
+                    )
+                self.elements_data.add_element(name, value)
 
         # Read and merge API data
-        self.api_data = ApiData()
+        self.api_data: ApiData = ApiData()
         for file_path in api_files:
             reader = yaml_reader # API files are expected to be YAML
             self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
@@ -458,33 +455,34 @@ class BaseRunner:
                 f"Configuration missing required keys: {', '.join(missing_configs)}"
             )
 
-        # Setup session
-        self.manager = SessionManager()
-        self.session_id = self.manager.create_session(self.config)
-        self.engine = ExecutionEngine(self.manager)
-
         # Filter test cases
         included, excluded = (
             self.config_handler.get("include"),
             self.config_handler.get("exclude"),
         )
-        self.filtered_test_cases = filter_test_cases(
+        self.filtered_test_cases: Dict[str, Any] = filter_test_cases(
             self.test_cases_data, included, excluded
         )
-        self.execution_queue = build_linked_list(
+        self.execution_queue: TestCaseNode = build_linked_list(
             self.filtered_test_cases, self.modules_data
         )
 
+        # Setup session
+        self.manager: SessionManager = SessionManager()
+        self.session_id: str = self.manager.create_session(
+            self.config,
+            self.execution_queue,
+            self.modules_data,
+            self.elements_data,
+            self.api_data
+        )
+        self.engine: ExecutionEngine = ExecutionEngine(self.manager)
     async def run(self, mode: str):
         """Run the specified mode using ExecutionEngine."""
         try:
             params = ExecutionParams(
                 session_id=self.session_id,
                 mode=mode,
-                test_cases=self.execution_queue,
-                modules=self.modules_data,
-                elements=self.elements_data,
-                apis=self.api_data,
                 runner_type=self.runner,
                 use_printer=self.use_printer,
             )
