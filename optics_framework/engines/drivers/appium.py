@@ -171,7 +171,6 @@ class Appium(DriverInterface):
             )
             if event_name:
                 self.event_sdk.capture_event(event_name)
-            self.driver.quit()
             quit_appium_driver()
             self.driver = None
             self.event_sdk.send_all_events()

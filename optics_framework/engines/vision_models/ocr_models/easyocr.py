@@ -49,7 +49,11 @@ class EasyOCRHelper(TextInterface):
         - tuple: (x, y) coordinates of the center of the indexed text in the frame or (None, None) if out of bounds.
         - tuple: Bounding box coordinates of the detected text.
         """
-        _, ocr_results = self.detect_text(input_data)
+        detect_result = self.detect_text(input_data)
+        if detect_result is None:
+            ocr_results = None
+        else:
+            _, ocr_results = detect_result
 
         detected_texts = []
 

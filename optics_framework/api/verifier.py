@@ -84,7 +84,7 @@ class Verifier:
 
         rule = rule.lower()
         timeout = int(timeout_str)
-        elements_list = elements.split(',')
+        elements_list = elements.split('|')
         # Group elements by type
         grouped_elements = {
             'Text': [el for el in elements_list if utils.determine_element_type(el) == 'Text'],

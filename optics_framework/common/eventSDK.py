@@ -33,7 +33,7 @@ class EventSDK:
     def _load_event_attributes_json(self):
         """Load and parse the event attributes JSON file once during initialization"""
         if not self.event_attributes_json_path:
-            execution_logger.error("Event attributes JSON file path is not set")
+            execution_logger.info("Event attributes JSON file path is not set")
             return {}
 
         try:

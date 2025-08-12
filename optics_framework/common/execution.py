@@ -1,14 +1,14 @@
 from uuid import uuid4
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, List, Any
+from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
-from optics_framework.common.models import TestCaseNode, ApiData
+from optics_framework.common.models import TestCaseNode
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.events import Event, get_event_manager, EventStatus
 
@@ -21,11 +21,7 @@ class ExecutionParams(BaseModel):
     mode: str
     keyword: Optional[str] = None
     params: List[str] = Field(default_factory=list)
-    test_cases: TestCaseNode
-    modules: Dict[str, List[tuple[str, List[str]]]
-                  ] = Field(default_factory=dict)
-    elements: Dict[str, Any] = Field(default_factory=dict)
-    apis: ApiData = Field(default_factory=ApiData)
+    # test_cases, modules, elements, apis are now part of Session
     runner_type: str = "test_runner"
     use_printer: bool = True
 
@@ -45,7 +41,7 @@ class BatchExecutor(Executor):
 
     async def execute(self, session: Session, runner: Runner) -> None:
         event_manager = get_event_manager()
-        if not runner.test_cases:
+        if not session.test_cases:
             await event_manager.publish_event(Event(
                 entity_type="execution",
                 entity_id=session.session_id,
@@ -57,6 +53,8 @@ class BatchExecutor(Executor):
             raise ValueError("NO_TEST_CASES_LOADED")
 
         try:
+            status = EventStatus.FAIL
+            message = "No test case to execute"
             if self.test_case:
                 await runner.run_all()
                 all_passed = all(
@@ -90,8 +88,11 @@ class DryRunExecutor(Executor):
         self.test_case = test_case
 
     async def execute(self, session: Session, runner: Runner) -> None:
+        status = EventStatus.FAIL
+        message = "No test case to execute"
+
         event_manager = get_event_manager()
-        if not runner.test_cases:
+        if not session.test_cases:
             await event_manager.publish_event(Event(
                 entity_type="execution",
                 entity_id=session.session_id,
@@ -158,10 +159,6 @@ class RunnerFactory:
         session: Session,
         runner_type: str,
         use_printer: bool,
-        test_cases: TestCaseNode,
-        modules: Dict[str, List[tuple[str, List[str]]]],
-        elements: Dict[str, str],
-        apis: ApiData
     ) -> Runner:
 
         registry = KeywordRegistry()
@@ -169,24 +166,23 @@ class RunnerFactory:
         app_management = session.optics.build(AppManagement)
         verifier = session.optics.build(Verifier)
 
+        # Register keywords first
+        registry.register(action_keyword)
+        registry.register(app_management)
+        registry.register(verifier)
+        registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
+
         if runner_type == "test_runner":
             result_printer = TreeResultPrinter.get_instance(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
             runner = TestRunner(
-                test_cases, modules, elements, {}, result_printer, session_id=session.session_id, apis=apis
+                session, registry.keyword_map, result_printer # Pass session and keyword_map
             )
-            flow_control = FlowControl(runner, modules)
         elif runner_type == "pytest":
-            runner = PytestRunner(session, test_cases, modules, elements, {})
-            flow_control = FlowControl(runner, modules)
+            runner = PytestRunner(session, registry.keyword_map) # Pass session and keyword_map
         else:
             raise ValueError(f"Unknown runner type: {runner_type}")
 
-        registry.register(action_keyword)
-        registry.register(app_management)
-        registry.register(flow_control)
-        registry.register(verifier)
-        runner.keyword_map = registry.keyword_map
         return runner
 
 
@@ -210,7 +206,7 @@ class ExecutionEngine:
             ))
             raise ValueError("Session not found")
 
-        if not params.test_cases:
+        if not session.test_cases:
             await self.event_manager.publish_event(Event(
                 entity_type="execution",
                 entity_id=params.session_id,
@@ -232,10 +228,6 @@ class ExecutionEngine:
                 session,
                 params.runner_type,
                 use_printer,
-                params.test_cases,
-                params.modules,
-                params.elements,
-                params.apis,
             )
             if hasattr(runner, 'result_printer') and runner.result_printer and use_printer:
                 internal_logger.debug("Starting result printer live display")
@@ -251,9 +243,9 @@ class ExecutionEngine:
                     extra={"session_id": params.session_id}
                 ))
                 if params.mode == "batch":
-                    executor = BatchExecutor(test_case=params.test_cases)
+                    executor = BatchExecutor(test_case=session.test_cases)
                 elif params.mode == "dry_run":
-                    executor = DryRunExecutor(test_case=params.test_cases)
+                    executor = DryRunExecutor(test_case=session.test_cases)
                 elif params.mode == "keyword":
                     if not params.keyword:
                         await self.event_manager.publish_event(Event(

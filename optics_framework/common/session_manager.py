@@ -4,12 +4,17 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData
 
 
 class SessionHandler(ABC):
     """Abstract interface for session management."""
     @abstractmethod
-    def create_session(self, config: Config) -> str:
+    def create_session(self, config: Config,
+                       test_cases: TestCaseNode,
+                       modules: ModuleData,
+                       elements: ElementData,
+                       apis: ApiData) -> str:
         pass
 
     @abstractmethod
@@ -24,10 +29,20 @@ class SessionHandler(ABC):
 class Session:
     """Represents a single execution session with config and optics."""
 
-    def __init__(self, session_id: str, config: Config):
+    def __init__(self, session_id: str, config: Config,
+                 test_cases: TestCaseNode,
+                 modules: ModuleData,
+                 elements: ElementData,
+                 apis: ApiData):
+
         self.session_id = session_id
         self.config_handler = ConfigHandler.get_instance()
         self.config = config
+        self.test_cases = test_cases
+        self.modules = modules
+        self.elements = elements
+        self.apis = apis
+
         # update config with session-specific values
         self.config_handler.update_config(self.config)
         # Fetch enabled dependency names
@@ -54,10 +69,14 @@ class SessionManager(SessionHandler):
     def __init__(self):
         self.sessions: Dict[str, Session] = {}
 
-    def create_session(self, config: Config) -> str:
+    def create_session(self, config: Config,
+                       test_cases: TestCaseNode,
+                       modules: ModuleData,
+                       elements: ElementData,
+                       apis: ApiData) -> str:
         """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
-        self.sessions[session_id] = Session(session_id, config)
+        self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis)
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Session]:
