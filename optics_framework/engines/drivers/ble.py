@@ -380,7 +380,12 @@ class BLEDriver(DriverInterface):
             self.send_keyboard_command(self.KEYBOARD_RESET)
         self.send_keyboard_command(self.KEYBOARD_RESET)
 
-    def launch_app(self, event_name: str | None) -> None:
+    def launch_app(
+        self,
+        app_identifier: str | None = None,
+        app_activity: str | None = None,
+        event_name: str | None = None,
+    ) -> None:
         """
         Launch an application using BLE.
 

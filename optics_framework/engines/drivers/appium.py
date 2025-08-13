@@ -53,8 +53,16 @@ class Appium(DriverInterface):
         self.ui_helper = None
         self.initialized = True
 
-    def start_session(self, event_name: str | None = None) -> WebDriver:
-        """Start the Appium session if not already started, incorporating custom capabilities."""
+    def start_session(
+        self,
+        app_package: str | None = None,
+        app_activity: str | None = None,
+        event_name: str | None = None,
+    ) -> WebDriver:
+        """
+        Start the Appium session if not already started, incorporating custom capabilities.
+        Optionally override appPackage and appActivity capabilities for Android.
+        """
         if self.driver is not None:
             old_session_id = self.driver.session_id
             internal_logger.info(f"Cleaning up old driver with session_id: {old_session_id}")
@@ -66,7 +74,16 @@ class Appium(DriverInterface):
             finally:
                 self.driver = None
 
-        all_caps = self.capabilities
+        all_caps = self.capabilities.copy() if self.capabilities else {}
+
+        # If app_package or app_activity are provided, update capabilities
+        if app_package:
+            all_caps["appPackage"] = app_package
+            all_caps["appium:appPackage"] = app_package
+        if app_activity:
+            all_caps["appActivity"] = app_activity
+            all_caps["appium:appActivity"] = app_activity
+
         options, default_options = self._get_platform_and_options(all_caps)
 
         # Combine default and user-provided capabilities, with user's config taking precedence
@@ -90,7 +107,6 @@ class Appium(DriverInterface):
 
             new_session_id = self.driver.session_id
             internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
-
 
             set_appium_driver(self.driver)
             self.ui_helper = UIHelper()
@@ -203,17 +219,26 @@ class Appium(DriverInterface):
         self.start_session()
         internal_logger.debug("Appium setup initialized.")
 
-    def launch_app(self, event_name: str | None = None) -> None:
+    def launch_app(
+        self,
+        app_identifier: str | None = None,
+        app_activity: str | None = None,
+        event_name: str | None = None,
+    ) -> None:
         """Launch the app using the Appium driver."""
         if self.driver is None:
-            self.start_session(event_name)
+            self.start_session(
+                app_package=app_identifier,
+                app_activity=app_activity,
+                event_name=event_name,
+            )
         execution_logger.debug(f"Launched application with event: {event_name}")
 
 
     def launch_other_app(self, app_name: str, event_name: str|None) -> None:
         """Launch an app on the Appium-connected device using ADB by fuzzy matching the app name."""
         if self.driver is None:
-            self.start_session(event_name)
+            self.start_session(event_name=event_name)
         if self.driver:
             self.driver.activate_app(app_name)
             internal_logger.debug(f"Activated app: {app_name} with event: {event_name}")
