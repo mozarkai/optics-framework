@@ -169,8 +169,8 @@ class RunnerFactory:
         # Register keywords first
         registry.register(action_keyword)
         registry.register(app_management)
-        registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
         registry.register(verifier)
+        registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
 
         if runner_type == "test_runner":
             result_printer = TreeResultPrinter.get_instance(

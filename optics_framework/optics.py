@@ -11,6 +11,7 @@ from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.models import TestCaseNode, ModuleData, ElementData, ApiData
 
 T = TypeVar("T", bound=Callable[..., Any])
@@ -120,10 +121,10 @@ class Optics:
     def setup(
         self,
         config: Union[str, Dict[str, Any], None] = None,
-        driver_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
-        element_source_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
-        image_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
-        text_config: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        driver_sources: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        elements_sources: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        image_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
+        text_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         execution_output_path: Optional[str] = None,
     ) -> None:
         """
@@ -133,16 +134,16 @@ class Optics:
             config: Configuration as JSON/YAML string or dictionary. If provided, legacy parameters are ignored.
                    Expected structure:
                    {
-                       "driver_config": [...],
-                       "element_source_config": [...],
-                       "image_config": [...],  # optional
-                       "text_config": [...],   # optional
+                       "driver_sources": [...],
+                       "elements_sources": [...],
+                       "image_detection": [...],  # optional
+                       "text_detection": [...],   # optional
                        "execution_output_path": "..."  # optional
                    }
-            driver_config: [DEPRECATED] List of driver configurations.
-            element_source_config: [DEPRECATED] List of element source configurations.
-            image_config: [DEPRECATED] Optional list of image detection configurations.
-            text_config: [DEPRECATED] Optional list of text detection configurations.
+            driver_sources: [DEPRECATED] List of driver configurations.
+            elements_sources: [DEPRECATED] List of element source configurations.
+            image_detection: [DEPRECATED] Optional list of image detection configurations.
+            text_detection: [DEPRECATED] Optional list of text detection configurations.
             execution_output_path: [DEPRECATED] Optional execution output path.
 
         Raises:
@@ -153,10 +154,10 @@ class Optics:
         project_path = None
         execution_output_path = None
         event_attributes_json = None
-        _driver_config = driver_config
-        _element_source_config = element_source_config
-        _image_config = image_config
-        _text_config = text_config
+        _driver_config = driver_sources
+        _element_source_config = elements_sources
+        _image_config = image_detection
+        _text_config = text_detection
 
         if config is not None:
             if isinstance(config, str):
@@ -169,10 +170,10 @@ class Optics:
             self._validate_required_keys(parsed_config)
 
             # Extract configuration values
-            _driver_config = parsed_config["driver_config"]
-            _element_source_config = parsed_config["element_source_config"]
-            _image_config = parsed_config.get("image_config")
-            _text_config = parsed_config.get("text_config")
+            _driver_config = parsed_config["driver_sources"]
+            _element_source_config = parsed_config["elements_sources"]
+            _image_config = parsed_config.get("image_detection")
+            _text_config = parsed_config.get("text_detection")
             if "project_path" in parsed_config:
                 project_path = parsed_config["project_path"]
             if "execution_output_path" in parsed_config:
@@ -186,7 +187,7 @@ class Optics:
             )
         else:
             raise ValueError(
-                "Either 'config' parameter or legacy parameters ('driver_config' and 'element_source_config') must be provided"
+                "Either 'config' parameter or legacy parameters ('driver_sources' and 'elements_sources') must be provided"
             )
 
         # Convert user-provided dictionaries to DependencyConfig
@@ -220,10 +221,17 @@ class Optics:
             internal_logger.error(f"Failed to create session: {e}")
             raise ValueError(f"Failed to create session: {e}") from e
 
-        self.action_keyword = self.session_manager.sessions[self.session_id].optics.build(ActionKeyword)
-        self.app_management = self.session_manager.sessions[self.session_id].optics.build(AppManagement)
-        self.verifier = self.session_manager.sessions[self.session_id].optics.build(Verifier)
-        self.flow_control = self.session_manager.sessions[self.session_id].optics.build(FlowControl)
+        session = self.session_manager.sessions[self.session_id]
+        registry = KeywordRegistry()
+        self.action_keyword = session.optics.build(ActionKeyword)
+        self.app_management = session.optics.build(AppManagement)
+        self.verifier = session.optics.build(Verifier)
+
+        registry.register(self.action_keyword)
+        registry.register(self.app_management)
+        registry.register(self.verifier)
+        self.flow_control = FlowControl(session=session, keyword_map=registry.keyword_map)
+        registry.register(self.flow_control)
 
     @keyword("Setup From File")
     def setup_from_file(self, config_file_path: str) -> None:
@@ -249,15 +257,15 @@ class Optics:
 
             # Call existing setup method with extracted parameters
             self.setup(
-                driver_config=config["driver_config"],
-                element_source_config=config["element_source_config"],
-                image_config=config.get("image_config"),
-                text_config=config.get("text_config"),
+                driver_sources=config["driver_sources"],
+                elements_sources=config["elements_sources"],
+                image_detection=config.get("image_detection"),
+                text_detection=config.get("text_detection"),
                 execution_output_path=config.get("execution_output_path"),
             )
 
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Configuration file not found: {config_file_path}")
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Configuration file not found: {config_file_path}") from exc
         except Exception as e:
             raise ValueError(f"Failed to read configuration file {config_file_path}: {e}") from e
 
@@ -306,7 +314,7 @@ class Optics:
         Raises:
             ValueError: If required keys are missing or invalid.
         """
-        required_keys = ["driver_config", "element_source_config"]
+        required_keys = ["driver_sources", "elements_sources"]
 
         for key in required_keys:
             if key not in config:
@@ -338,27 +346,29 @@ class Optics:
             raise ValueError(f"Session does not have an element '{name}' stored.")
 
     @keyword("Add API")
-    def add_api(self, yaml_path: str) -> None:
-        """Add or update an API definition in the current session by fully replacing session.apis using the YAML file."""
+    def add_api(self, api_data: Union[str, dict]) -> None:
+        """Add or update an API definition in the current session by fully replacing session.apis."""
         if not self.session_id or self.session_id not in self.session_manager.sessions:
             raise ValueError(INVALID_SETUP)
         session = self.session_manager.sessions[self.session_id]
-        # Resolve relative path using project_path
-        if not os.path.isabs(yaml_path):
-            project_path = getattr(self.config_handler.config, 'project_path', None)
-            if project_path:
-                yaml_path = os.path.join(project_path, yaml_path)
-        if not os.path.exists(yaml_path):
-            raise FileNotFoundError(f"API YAML file not found: {yaml_path}")
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            try:
-                data = yaml.safe_load(f)
+        if isinstance(api_data, str):
+            if not os.path.isabs(api_data):
+                project_path = getattr(self.config_handler.config, 'project_path', None)
+                if project_path:
+                    api_data = os.path.join(project_path, api_data)
+            if not os.path.exists(api_data):
+                raise FileNotFoundError(f"API YAML file not found: {api_data}")
+            with open(api_data, "r", encoding="utf-8") as f:
+                try:
+                    data = yaml.safe_load(f)
+                except yaml.YAMLError as e:
+                    raise ValueError(f"Failed to parse API YAML file: {e}") from e
                 api_data_content = data.get("api", data)
-                session.apis = ApiData(**api_data_content)
-            except yaml.YAMLError as e:
-                raise ValueError(f"Error parsing YAML file: {e}") from e
-            except Exception as e:
-                raise ValueError(f"Invalid API data structure: {e}") from e
+        elif isinstance(api_data, dict):
+            api_data_content = api_data.get("api", api_data)
+        else:
+            raise ValueError("api_data must be a file path or a dictionary")
+        session.apis = ApiData(**api_data_content)
 
     @keyword("Add Testcase")
     def add_testcase(self, testcase: Any) -> None:
@@ -771,124 +781,3 @@ class Optics:
     ) -> None:
         """Clean up on context exit."""
         self.quit()
-
-
-if __name__ == "__main__":
-    # Element dictionary from elements.csv
-    ELEMENTS = {
-        "driver": "Appium",
-        "PLATFORM_NAME": "Android",
-        "APP_PACKAGE": "com.google.android.contacts",
-        "AUTOMATION_NAME": "UiAutomator2",
-        "Add_Contact_Button": '//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc="Create contact"]',
-        "Add_Contact_Page": '//android.widget.TextView[@text="Create contact"]',
-        "First_Name_element": '//android.widget.EditText[@text="First name"]',
-        "Last_Name_element": '//android.widget.EditText[@text="Last name"]',
-        "Phone_element": '//android.widget.EditText[@text="+1"]',
-        "Company_element": "//androidx.compose.ui.platform.ComposeView/android.view.View/android.view.View/android.view.View[1]/android.view.View/android.view.View/android.view.View[4]/android.widget.EditText",
-        "Save_Button": "//androidx.compose.ui.platform.ComposeView/android.view.View/android.view.View/android.view.View[2]/android.view.View[2]/android.widget.Button",
-        "First_Name": "John",
-        "Last_Name": "Doe",
-        "Phone": "1234567890",
-        "Company": "Mozark",
-        "Contact_Name": '//android.widget.TextView[@resource-id="com.google.android.contacts:id/title" and @text="John Doe"]',
-    }
-
-    # Configuration from config.yaml (updated to use dictionaries instead of DependencyConfig)
-    CONFIG = {
-        "driver_config": [
-            {
-                "appium": {
-                    "enabled": True,
-                    "url": "http://localhost:4723",
-                    "capabilities": {
-                        "appActivity": "com.android.contacts.activities.PeopleActivity",
-                        "appPackage": "com.google.android.contacts",
-                        "automationName": "UiAutomator2",
-                        "deviceName": "emulator-5554",
-                        "platformName": "Android",
-                    },
-                }
-            },
-        ],
-        "element_source_config": [
-            {"appium_find_element": {"enabled": True, "url": None, "capabilities": {}}},
-            {"appium_page_source": {"enabled": True, "url": None, "capabilities": {}}},
-            {"appium_screenshot": {"enabled": True, "url": None, "capabilities": {}}},
-        ],
-        "text_detection": [
-            {"easyocr": {"enabled": False, "url": None, "capabilities": {}}},
-        ],
-        "image_detection": [
-            {"templatematch": {"enabled": False, "url": None, "capabilities": {}}}
-        ],
-        "log_level": "DEBUG",
-    }
-
-    def launch_contact_application(optics: Optics) -> None:
-        """Launch Contact Application module."""
-        optics.launch_app()
-
-    def navigate_to_add_contact_page(optics: Optics) -> None:
-        """Navigate to Add Contact page."""
-        optics.assert_presence(
-            ELEMENTS["Add_Contact_Button"],
-            timeout="10",
-        )
-        optics.press_element(ELEMENTS["Add_Contact_Button"])
-        optics.assert_presence(
-            ELEMENTS["Add_Contact_Page"],
-            timeout="10",
-        )
-
-    def enter_contact_details(optics: Optics) -> None:
-        """Enter contact details in the contact form."""
-        optics.enter_text(
-            element=ELEMENTS["First_Name_element"],
-            text=ELEMENTS["First_Name"],
-        )
-        optics.enter_text(
-            element=ELEMENTS["Last_Name_element"],
-            text=ELEMENTS["Last_Name"],
-        )
-        optics.enter_text(
-            element=ELEMENTS["Phone_element"],
-            text=ELEMENTS["Phone"],
-        )
-        optics.enter_text(
-            element=ELEMENTS["Company_element"],
-            text=ELEMENTS["Company"],
-        )
-
-    def click_save_button(optics: Optics) -> None:
-        """Click the save button."""
-        optics.press_element(
-            ELEMENTS["Save_Button"],
-        )
-
-    def verify_contact_added(optics: Optics) -> None:
-        """Verify the contact was added."""
-        optics.assert_presence(ELEMENTS["Contact_Name"], timeout="10")
-
-    def add_contact_with_contact_app(optics: Optics) -> None:
-        """Test case: Add contact with Contact app."""
-        launch_contact_application(optics)
-        navigate_to_add_contact_page(optics)
-        enter_contact_details(optics)
-        click_save_button(optics)
-        verify_contact_added(optics)
-
-    if __name__ == "__main__":
-        # Initialize Optics
-        optics = Optics()
-
-        try:
-            # Setup configuration
-            optics.setup(config=CONFIG)
-
-            # Run test case
-            add_contact_with_contact_app(optics)
-
-        finally:
-            # Cleanup
-            optics.quit()
