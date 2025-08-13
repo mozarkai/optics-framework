@@ -95,6 +95,19 @@ def test_read_data_json_single_object(flow_control, tmp_path, monkeypatch):
     assert result == ['123']
     assert flow_control.session.elements.get_element('my_elem') == '123'
 
+def test_read_data_csv_with_variable_in_query(tmp_path, flow_control, monkeypatch):
+    csv_content = 'device_serial,app_package,app_activity\nRZ8RC1KK88R,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE\nRZ8T10TADVR,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE'
+    project_path = tmp_path
+    csv_file = tmp_path / 'devices.csv'
+    csv_file.write_text(csv_content)
+    monkeypatch.setattr('optics_framework.common.config_handler.ConfigHandler.get_instance', lambda: type('C', (), {'config': type('X', (), {'project_path': str(project_path)})()})())
+    # Set element_1 in session elements
+    flow_control.session.elements.add_element('element_1', 'RZ8RC1KK88R')
+    # Use variable in query
+    result = flow_control.read_data('result_elem', 'devices.csv', "device_serial == '${element_1}';select=app_package")
+    assert result == ['com.csam.icici.bank.imobileuat']
+    assert flow_control.session.elements.get_element('result_elem') == 'com.csam.icici.bank.imobileuat'
+
 # ---- invoke_api Tests ----
 def test_invoke_api_extract(monkeypatch, flow_control):
     api_def = DummyApiDef(endpoint='/foo', extract={'result': 'data.value'})

@@ -405,12 +405,33 @@ class FlowControl:
         if df is not None and not df.empty:
             df = df.astype(str)
         if query:
+            # Resolve ${...} variables inside the query string
+            def resolve_query_vars(q):
+                pattern = re.compile(r"\$\{([^}]+)\}")
+                runner_elements = getattr(self.session, "elements", None)
+                if not isinstance(runner_elements, ElementData):
+                    runner_elements = ElementData()
+                    setattr(self.session, "elements", runner_elements)
+                def replacer(match):
+                    var_name = match.group(1).strip()
+                    value = runner_elements.get_element(var_name)
+                    if value is None:
+                        raise ValueError(f"Variable '{var_name}' not found in elements for query resolution.")
+                    # Check if the variable is already inside quotes in the query
+                    start, end = match.span()
+                    before = q[start-1] if start > 0 else ''
+                    after = q[end] if end < len(q) else ''
+                    if isinstance(value, str) and not (before == "'" and after == "'"):
+                        return f"'{value}'"
+                    return str(value)
+                return pattern.sub(replacer, q)
             parts = [p.strip() for p in query.split(';') if p.strip()]
             for part in parts:
-                if part.startswith('select='):
-                    select_cols = [c.strip() for c in part[7:].split(',') if c.strip()]
+                resolved_part = resolve_query_vars(part)
+                if resolved_part.startswith('select='):
+                    select_cols = [c.strip() for c in resolved_part[7:].split(',') if c.strip()]
                 else:
-                    filter_expr = part if filter_expr is None else f"{filter_expr} and {part}"
+                    filter_expr = resolved_part if filter_expr is None else f"{filter_expr} and {resolved_part}"
         # Apply filter
         if filter_expr:
             try:
