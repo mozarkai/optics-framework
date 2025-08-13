@@ -30,13 +30,17 @@ class AppManagement:
         """
         internal_logger.debug("Initialising setup for AppManagement.")
 
-    def launch_app(self, event_name: Optional[str] = None) -> None:
+    def launch_app(self, app_identifier: Optional[str] = None, app_activity: Optional[str] = None, event_name: Optional[str] = None) -> None:
         """
         Launches the specified application.
 
         :param event_name: The event triggering the app launch, if any.
         """
-        self.driver.launch_app(event_name)
+        self.driver.launch_app(
+            app_identifier=app_identifier,
+            app_activity=app_activity,
+            event_name=event_name,
+        )
 
     def start_appium_session(self, event_name: Optional[str] = None) -> None:
         """

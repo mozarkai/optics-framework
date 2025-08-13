@@ -49,19 +49,29 @@ class SeleniumDriver(DriverInterface):
         self.initialized = True
         self.ui_helper = None
 
-    def start_session(self, event_name: str | None = None) -> webdriver.Remote:
-        """Start a new Selenium session with the specified browser."""
+    def start_session(
+        self,
+        browser_url: str | None = None,
+        browser_name: str | None = None,
+        event_name: str | None = None,
+    ) -> webdriver.Remote:
+        """
+        Start a new Selenium session with the specified browser.
+        Optionally override browser_url and browser_name.
+        """
         if self.driver is None:
-            all_caps = self.capabilities
-            browser_name = all_caps.get("browserName")
+            all_caps = self.capabilities.copy() if self.capabilities else {}
 
-            if not browser_name:
+            # Allow browser_name override
+            if browser_name:
+                all_caps["browserName"] = browser_name
+            browser_name_val = all_caps.get("browserName")
+            if not browser_name_val:
                 raise ValueError("'browserName' capability is required.")
-
-            browser_name = browser_name.lower()
+            browser_name_val = browser_name_val.lower()
 
             default_options = {}
-            if browser_name == "chrome":
+            if browser_name_val == "chrome":
                 options = ChromeOptions()
                 default_options = {
                     "goog:chromeOptions": {
@@ -73,10 +83,13 @@ class SeleniumDriver(DriverInterface):
                         ]
                     }
                 }
-            elif browser_name == "firefox":
+            elif browser_name_val == "firefox":
                 options = FirefoxOptions()
             else:
-                raise ValueError(f"Unsupported browser: {browser_name}")
+                raise ValueError(f"Unsupported browser: {browser_name_val}")
+            if browser_url:
+                self.browser_url = browser_url
+                all_caps["browserURL"] = self.browser_url
 
             final_caps = {**default_options, **all_caps}
             internal_logger.debug(f"Final capabilities being applied: {final_caps}")
@@ -97,7 +110,7 @@ class SeleniumDriver(DriverInterface):
                     self.eventSDK.capture_event(event_name)
                 self.ui_helper = UIHelper()
                 internal_logger.debug(
-                    f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name}")
+                    f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name_val}")
 
             except Exception as e:
                 internal_logger.error(f"Failed to start Selenium session: {e}")
@@ -140,10 +153,19 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to force terminate app {app_name}: {e}")
             raise RuntimeError(f"Selenium failed to force terminate app: {e}")
 
-    def launch_app(self, event_name: str | None = None) -> None:
+    def launch_app(
+        self,
+        app_identifier: str | None = None,
+        app_activity: str | None = None,
+        event_name: str | None = None,
+    ) -> None:
         """Launch the web application by navigating to the browser URL."""
         if self.driver is None:
-            self.start_session()
+            self.start_session(
+                browser_url=app_identifier,
+                browser_name=app_activity,
+                event_name=event_name,
+            )
         try:
             self.driver.get(self.browser_url)
             if event_name:

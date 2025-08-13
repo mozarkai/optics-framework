@@ -394,11 +394,11 @@ class Optics:
 
     ### AppManagement Methods ###
     @keyword("Launch App")
-    def launch_app(self, event_name: Optional[str] = None) -> None:
+    def launch_app(self, app_identifier: Optional[str] = None, app_activity: Optional[str] = None, event_name: Optional[str] = None) -> None:
         """Launch the application."""
         if not self.app_management:
             raise ValueError(INVALID_SETUP)
-        self.app_management.launch_app(event_name)
+        self.app_management.launch_app(app_identifier=app_identifier, app_activity=app_activity, event_name=event_name)
 
     @keyword("Launch Other App")
     def launch_other_app(self, bundleid: str) -> None:
@@ -719,7 +719,7 @@ class Optics:
         return self.flow_control.invoke_api(api)
 
     @keyword("Read Data")
-    def read_data(self, element: str, source: str, query: str) -> Any:
+    def read_data(self, element: str, source: str, query: str = "") -> Any:
         """Read data from a specified source."""
         if not self.flow_control:
             raise ValueError(INVALID_SETUP)

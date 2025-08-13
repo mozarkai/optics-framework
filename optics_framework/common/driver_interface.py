@@ -10,7 +10,12 @@ class DriverInterface(ABC):
     """
 
     @abstractmethod
-    def launch_app(self, event_name: str | None) -> None:
+    def launch_app(
+        self,
+        app_identifier: str | None = None,
+        app_activity: str | None = None,
+        event_name: str | None = None,
+    ) -> None:
         """
         Launch an application.
 

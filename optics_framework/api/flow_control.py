@@ -109,15 +109,19 @@ class FlowControl:
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
     def run_loop(self, target: str, *args: str) -> List[Any]:
         """Runs a loop over a target module, either by count or with variables."""
+        internal_logger.debug(f"[RUN_LOOP] Called with target={target}, args={args}")
         self._ensure_session()
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
         if len(args) == 1:
+            internal_logger.debug(f"[RUN_LOOP] Looping by count: {args[0]}")
             return self._loop_by_count(target, args[0])
+        internal_logger.debug(f"[RUN_LOOP] Looping with variables: {args}")
         return self._loop_with_variables(target, args)
 
     def _loop_by_count(self, target: str, count_str: str) -> List[Any]:
         """Runs a loop a specified number of times."""
+        internal_logger.debug(f"[_LOOP_BY_COUNT] target={target}, count_str={count_str}")
         try:
             iterations = int(count_str)
             if iterations < 1:
@@ -125,30 +129,30 @@ class FlowControl:
         except ValueError as e:
             if str(e) == "Iteration count must be at least 1.":
                 raise
+            internal_logger.error(f"[_LOOP_BY_COUNT] Invalid count_str: {count_str}")
             raise ValueError(f"Expected an integer for loop count, got '{count_str}'.")
 
         results = []
         for i in range(iterations):
-            internal_logger.debug(
-                f"[RUN LOOP] Iteration {i + 1}: Executing target '{target}'"
-            )
+            internal_logger.debug(f"[_LOOP_BY_COUNT] Iteration {i + 1} of {iterations} for target '{target}'")
             result = self.execute_module(target)
             results.append(result)
+        internal_logger.debug(f"[_LOOP_BY_COUNT] Completed {iterations} iterations for target '{target}'")
         return results
 
     def _loop_with_variables(self, target: str, args: Tuple[str, ...]) -> List[Any]:
         """Runs a loop with variable-iterable pairs."""
+        internal_logger.debug(f"[_LOOP_WITH_VARIABLES] target={target}, args={args}")
         if len(args) % 2 != 0:
-            raise ValueError(
-                "Expected an even number of arguments for variable-iterable pairs."
-            )
+            internal_logger.error(f"[_LOOP_WITH_VARIABLES] Uneven number of arguments for variable-iterable pairs: {args}")
+            raise ValueError("Expected an even number of arguments for variable-iterable pairs.")
 
         variables = args[0::2]
         iterables = args[1::2]
-        var_names, parsed_iterables = self._parse_variable_iterable_pairs(
-            variables, iterables
-        )
+        internal_logger.debug(f"[_LOOP_WITH_VARIABLES] variables={variables}, iterables={iterables}")
+        var_names, parsed_iterables = self._parse_variable_iterable_pairs(variables, iterables)
         min_length = min(len(lst) for lst in parsed_iterables)
+        internal_logger.debug(f"[_LOOP_WITH_VARIABLES] min_length={min_length}, var_names={var_names}")
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
@@ -158,17 +162,15 @@ class FlowControl:
 
         results = []
         for i in range(min_length):
+            internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Iteration {i + 1} of {min_length}")
             for var_name, iterable_values in zip(var_names, parsed_iterables):
                 value = iterable_values[i]
-                internal_logger.debug(
-                    f"[RUN LOOP] Iteration {i + 1}: Setting {var_name} = {value}"
-                )
+                internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Setting {var_name} = {value}")
                 runner_elements.add_element(var_name, value)
-            internal_logger.debug(
-                f"[RUN LOOP] Iteration {i + 1}: Executing target '{target}'"
-            )
+            internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Executing target '{target}'")
             result = self.execute_module(target)
             results.append(result)
+        internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Completed {min_length} iterations for target '{target}'")
         return results
 
     def _parse_variable_iterable_pairs(
@@ -228,12 +230,15 @@ class FlowControl:
 
     def condition(self, *args: str) -> Optional[List[Any]]:
         """Evaluates conditions and executes corresponding targets."""
+        internal_logger.debug(f"[CONDITION] Called with args={args}")
         self._ensure_session()
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
         if not args:
+            internal_logger.error("[CONDITION] No condition-target pairs provided.")
             raise ValueError("No condition-target pairs provided.")
         pairs, else_target = self._split_condition_args(args)
+        internal_logger.debug(f"[CONDITION] Parsed pairs={pairs}, else_target={else_target}")
         return self._evaluate_conditions(pairs, else_target)
 
     def _split_condition_args(
@@ -255,21 +260,20 @@ class FlowControl:
         self, pairs: List[Tuple[str, str]], else_target: Optional[str]
     ) -> Optional[List[Any]]:
         """Evaluates conditions and executes the first true target's module."""
+        internal_logger.debug(f"[_EVALUATE_CONDITIONS] pairs={pairs}, else_target={else_target}")
         for cond, target in pairs:
             cond_str = cond.strip()
+            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Evaluating condition: '{cond_str}' for target '{target}'")
             if not cond_str:
                 continue
             if self._is_condition_true(cond_str):
-                internal_logger.debug(
-                    f"[CONDITION] Condition '{cond_str}' is True. Executing target '{target}'."
-                )
+                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Condition '{cond_str}' is True. Executing target '{target}'.")
                 return self.execute_module(target)
-            internal_logger.debug(f"[CONDITION] Condition '{cond_str}' is False.")
+            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Condition '{cond_str}' is False.")
         if else_target is not None:
-            internal_logger.debug(
-                f"[CONDITION] No condition met. Executing ELSE target '{else_target}'."
-            )
+            internal_logger.debug(f"[_EVALUATE_CONDITIONS] No condition met. Executing ELSE target '{else_target}'.")
             return self.execute_module(else_target)
+        internal_logger.debug("[_EVALUATE_CONDITIONS] No condition met and no ELSE target provided.")
         return None
 
     def _is_condition_true(self, cond: str) -> bool:
@@ -334,16 +338,18 @@ class FlowControl:
             - All returned values are converted to strings.
             - Data is stored in the session's elements as a comma-separated string.
             - Only CSV and JSON file formats are supported.
-
         """
+        internal_logger.debug(f"[READ_DATA] Called with input_element={input_element}, file_path={file_path}, query={query}")
         self._ensure_session()
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
         elem_name = self._extract_element_name(input_element)
+        internal_logger.debug(f"[READ_DATA] Extracted element name: {elem_name}")
         # Load data as DataFrame (CSV, 2D list, or JSON)
         df = None
         if isinstance(file_path, list):
             data = file_path
+            internal_logger.debug(f"[READ_DATA] Loading data from list, first row as headers: {data[0] if data and isinstance(data[0], list) else data}")
             if not data or not isinstance(data, list) or not data[0]:
                 df = pd.DataFrame()
             else:
@@ -353,11 +359,13 @@ class FlowControl:
             if file_path.startswith('ENV:'):
                 env_var = file_path[4:]
                 env_data = os.environ.get(env_var)
+                internal_logger.debug(f"[READ_DATA] Loading data from environment variable: {env_var}")
                 if env_data is None:
                     raise ValueError(f"Environment variable '{env_var}' not found.")
                 # Try JSON first
                 try:
                     json_data = json.loads(env_data)
+                    internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
                     if isinstance(json_data, dict):
                         for v in json_data.values():
                             if isinstance(v, list):
@@ -367,24 +375,52 @@ class FlowControl:
                             json_data = [json_data]
                     df = pd.json_normalize(json_data)
                 except Exception:
-                    # Try CSV
+                    internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
                     try:
                         df = pd.read_csv(StringIO(env_data))
-                    except Exception as e:
-                        raise ValueError(f"Failed to parse environment variable '{env_var}' as JSON or CSV: {e}")
+                        internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
+                        # If CSV parsing yields an empty DataFrame, treat as direct value
+                        if df.empty:
+                            runner_elements = self.session.elements
+                            if isinstance(runner_elements, ElementData):
+                                internal_logger.debug("[READ_DATA] Storing direct env value under element '%s': %s", elem_name, env_data)
+                                runner_elements.add_element(elem_name, env_data)
+                            else:
+                                internal_logger.warning("[READ_DATA] Cannot store direct env value: session.elements is not an ElementData instance.")
+                            return [env_data]
+                    except ValueError:
+                        internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+                        # If not JSON or CSV, treat as direct value
+                        runner_elements = self.session.elements
+                        if isinstance(runner_elements, ElementData):
+                            internal_logger.debug("[READ_DATA] Storing direct env value under element '%s': %s", elem_name, env_data)
+                            runner_elements.add_element(elem_name, env_data)
+                        else:
+                            internal_logger.warning("[READ_DATA] Cannot store direct env value: session.elements is not an ElementData instance.")
+                        return [env_data]
             else:
                 # Handle relative path: prepend project_path if not absolute
                 if not os.path.isabs(file_path):
                     config_handler = ConfigHandler.get_instance()
                     project_path = getattr(config_handler.config, 'project_path', None)
+                    internal_logger.debug(f"[READ_DATA] Resolving relative file path. Project path: {project_path}")
                     if project_path:
                         file_path = os.path.join(project_path, file_path)
+                        internal_logger.debug(f"[READ_DATA] Resolved file path: {file_path}")
                 ext = os.path.splitext(file_path)[-1].lower()
+                internal_logger.debug(f"[READ_DATA] File extension: {ext}")
+                # Explicit file existence check for CSV/JSON
+                if ext in ['.csv', '.json']:
+                    if not os.path.exists(file_path):
+                        internal_logger.error(f"[READ_DATA] File not found: {file_path}")
+                        raise FileNotFoundError(f"File '{file_path}' not found.")
                 if ext == '.csv':
                     df = pd.read_csv(file_path)
+                    internal_logger.debug(f"[READ_DATA] Loaded CSV file: {file_path}")
                 elif ext == '.json':
                     with open(file_path, 'r', encoding='utf-8') as f:
                         json_data = json.load(f)
+                    internal_logger.debug(f"[READ_DATA] Loaded JSON file: {file_path}")
                     # If the JSON is a dict with a single top-level list, use that list
                     if isinstance(json_data, dict):
                         for v in json_data.values():
@@ -395,8 +431,10 @@ class FlowControl:
                             json_data = [json_data]
                     df = pd.json_normalize(json_data)
                 else:
+                    internal_logger.error(f"[READ_DATA] Unsupported file extension: {ext}")
                     raise ValueError(f"Unsupported file extension: {ext}")
         else:
+            internal_logger.error("[READ_DATA] file_path must be a list or a file path string.")
             raise ValueError("file_path must be a list or a file path string.")
         # Parse query
         select_cols = None
@@ -405,6 +443,7 @@ class FlowControl:
         if df is not None and not df.empty:
             df = df.astype(str)
         if query:
+            internal_logger.debug(f"[READ_DATA] Parsing query: {query}")
             # Resolve ${...} variables inside the query string
             def resolve_query_vars(q):
                 pattern = re.compile(r"\$\{([^}]+)\}")
@@ -415,6 +454,7 @@ class FlowControl:
                 def replacer(match):
                     var_name = match.group(1).strip()
                     value = runner_elements.get_element(var_name)
+                    internal_logger.debug(f"[READ_DATA] Resolving variable in query: {var_name} -> {value}")
                     if value is None:
                         raise ValueError(f"Variable '{var_name}' not found in elements for query resolution.")
                     # Check if the variable is already inside quotes in the query
@@ -428,24 +468,36 @@ class FlowControl:
             parts = [p.strip() for p in query.split(';') if p.strip()]
             for part in parts:
                 resolved_part = resolve_query_vars(part)
+                internal_logger.debug(f"[READ_DATA] Resolved query part: {resolved_part}")
                 if resolved_part.startswith('select='):
                     select_cols = [c.strip() for c in resolved_part[7:].split(',') if c.strip()]
+                    internal_logger.debug(f"[READ_DATA] Selected columns: {select_cols}")
                 else:
                     filter_expr = resolved_part if filter_expr is None else f"{filter_expr} and {resolved_part}"
+                    internal_logger.debug(f"[READ_DATA] Filter expression: {filter_expr}")
         # Apply filter
         if filter_expr:
             try:
                 df = df.query(filter_expr)
+                internal_logger.debug(f"[READ_DATA] Applied filter expression: {filter_expr}")
             except Exception as e:
+                internal_logger.error(f"[READ_DATA] Invalid query expression: {filter_expr}. Error: {e}")
                 raise ValueError(f"Invalid query expression: {filter_expr}. Error: {e}")
         # Select columns
         if select_cols:
             missing = [c for c in select_cols if c not in df.columns]
             if missing:
+                internal_logger.error(f"[READ_DATA] Columns not found in data: {missing}")
                 raise ValueError(f"Columns not found in data: {missing}")
             df = df.loc[:, select_cols]
+            internal_logger.debug(f"[READ_DATA] Selected columns from DataFrame: {select_cols}")
         # Convert result to list of lists
         result = df.values.tolist()
+        internal_logger.debug(f"[READ_DATA] Resulting data: {result}")
+        # Fail if no data found after query/filter
+        if df is not None and df.empty:
+            internal_logger.error(f"[READ_DATA] No data found matching the query/filter: '{query}'")
+            raise ValueError(f"No data found matching the query/filter: '{query}'")
         if len(result) == 1:
             data = result[0]
         else:
@@ -456,16 +508,23 @@ class FlowControl:
                 return [str(v) for v in val]
             return str(val)
         data_str = to_str(data)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
-        # If data_str is a list, join as comma-separated string for storage
-        if isinstance(data_str, list):
-            store_value = ','.join(data_str)
+        internal_logger.debug(f"[READ_DATA] Data to store: {data_str}")
+        runner_elements = self.session.elements
+        if isinstance(runner_elements, ElementData):
+            # If data_str is a list, join as comma-separated string for storage
+            if isinstance(data_str, list):
+                store_value = ','.join(data_str)
+            else:
+                store_value = data_str
+            internal_logger.debug(f"[READ_DATA] Storing value under element '{elem_name}': {store_value}")
+            runner_elements.add_element(elem_name, store_value)
         else:
-            store_value = data_str
-        runner_elements.add_element(elem_name, store_value)
+            internal_logger.warning("[READ_DATA] Cannot store value: session.elements is not an ElementData instance.")
+            # Ensure store_value is assigned even if runner_elements is not ElementData
+            if isinstance(data_str, list):
+                store_value = ','.join(data_str)
+            else:
+                store_value = data_str
         return [store_value] if not isinstance(data_str, list) else data_str
 
     def _load_data_with_query(self, file_path: Union[str, List[Any]], query: str) -> List[Any]:
@@ -757,16 +816,23 @@ class FlowControl:
 
     def invoke_api(self, api_identifier: str) -> None:
         """Invokes an API call based on a definition from the session's API data."""
+        internal_logger.debug(f"[INVOKE_API] Called with api_identifier={api_identifier}")
         self._ensure_session()
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
         collection_name, api_name = self._parse_api_identifier(api_identifier)
+        internal_logger.debug(f"[INVOKE_API] Parsed collection_name={collection_name}, api_name={api_name}")
         collection = self._get_api_collection(collection_name)
+        internal_logger.debug(f"[INVOKE_API] Retrieved API collection: {collection_name}")
         api_def = self._get_api_definition(collection, api_name)
+        internal_logger.debug(f"[INVOKE_API] Retrieved API definition: {api_name}")
 
         url, headers, body = self._prepare_request_details(collection, api_def)
+        internal_logger.debug(f"[INVOKE_API] Prepared request details: url={url}, headers={headers}, body={body}, method={api_def.request.method}")
         response = self._execute_request(url, headers, body, api_def.request.method)
+        internal_logger.debug(f"[INVOKE_API] Received response: status_code={response.status_code}")
         self._process_response(response, api_def)
+        internal_logger.debug(f"[INVOKE_API] Finished processing response for API: {api_name}")
 
     def _parse_api_identifier(self, identifier: str) -> Tuple[str, str]:
         """Parses 'collection.api' into a tuple."""
