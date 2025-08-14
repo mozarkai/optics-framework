@@ -379,9 +379,25 @@ class FlowControl:
                     try:
                         df = pd.read_csv(StringIO(env_data))
                         internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
-                    except Exception as e:
-                        internal_logger.error(f"[READ_DATA] Failed to parse environment variable '{env_var}' as JSON or CSV: {e}")
-                        raise ValueError(f"Failed to parse environment variable '{env_var}' as JSON or CSV: {e}")
+                        # If CSV parsing yields an empty DataFrame, treat as direct value
+                        if df.empty:
+                            runner_elements = self.session.elements
+                            if isinstance(runner_elements, ElementData):
+                                internal_logger.debug("[READ_DATA] Storing direct env value under element '%s': %s", elem_name, env_data)
+                                runner_elements.add_element(elem_name, env_data)
+                            else:
+                                internal_logger.warning("[READ_DATA] Cannot store direct env value: session.elements is not an ElementData instance.")
+                            return [env_data]
+                    except ValueError:
+                        internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+                        # If not JSON or CSV, treat as direct value
+                        runner_elements = self.session.elements
+                        if isinstance(runner_elements, ElementData):
+                            internal_logger.debug("[READ_DATA] Storing direct env value under element '%s': %s", elem_name, env_data)
+                            runner_elements.add_element(elem_name, env_data)
+                        else:
+                            internal_logger.warning("[READ_DATA] Cannot store direct env value: session.elements is not an ElementData instance.")
+                        return [env_data]
             else:
                 # Handle relative path: prepend project_path if not absolute
                 if not os.path.isabs(file_path):
@@ -393,6 +409,11 @@ class FlowControl:
                         internal_logger.debug(f"[READ_DATA] Resolved file path: {file_path}")
                 ext = os.path.splitext(file_path)[-1].lower()
                 internal_logger.debug(f"[READ_DATA] File extension: {ext}")
+                # Explicit file existence check for CSV/JSON
+                if ext in ['.csv', '.json']:
+                    if not os.path.exists(file_path):
+                        internal_logger.error(f"[READ_DATA] File not found: {file_path}")
+                        raise FileNotFoundError(f"File '{file_path}' not found.")
                 if ext == '.csv':
                     df = pd.read_csv(file_path)
                     internal_logger.debug(f"[READ_DATA] Loaded CSV file: {file_path}")
@@ -488,17 +509,22 @@ class FlowControl:
             return str(val)
         data_str = to_str(data)
         internal_logger.debug(f"[READ_DATA] Data to store: {data_str}")
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
-        # If data_str is a list, join as comma-separated string for storage
-        if isinstance(data_str, list):
-            store_value = ','.join(data_str)
+        runner_elements = self.session.elements
+        if isinstance(runner_elements, ElementData):
+            # If data_str is a list, join as comma-separated string for storage
+            if isinstance(data_str, list):
+                store_value = ','.join(data_str)
+            else:
+                store_value = data_str
+            internal_logger.debug(f"[READ_DATA] Storing value under element '{elem_name}': {store_value}")
+            runner_elements.add_element(elem_name, store_value)
         else:
-            store_value = data_str
-        internal_logger.debug(f"[READ_DATA] Storing value under element '{elem_name}': {store_value}")
-        runner_elements.add_element(elem_name, store_value)
+            internal_logger.warning("[READ_DATA] Cannot store value: session.elements is not an ElementData instance.")
+            # Ensure store_value is assigned even if runner_elements is not ElementData
+            if isinstance(data_str, list):
+                store_value = ','.join(data_str)
+            else:
+                store_value = data_str
         return [store_value] if not isinstance(data_str, list) else data_str
 
     def _load_data_with_query(self, file_path: Union[str, List[Any]], query: str) -> List[Any]:
