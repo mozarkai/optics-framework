@@ -719,7 +719,7 @@ class Optics:
         return self.flow_control.invoke_api(api)
 
     @keyword("Read Data")
-    def read_data(self, element: str, source: str, query: Optional[str] = None) -> Any:
+    def read_data(self, element: str, source: str, query: str = "") -> Any:
         """Read data from a specified source."""
         if not self.flow_control:
             raise ValueError(INVALID_SETUP)
