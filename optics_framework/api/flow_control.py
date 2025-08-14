@@ -473,6 +473,10 @@ class FlowControl:
         # Convert result to list of lists
         result = df.values.tolist()
         internal_logger.debug(f"[READ_DATA] Resulting data: {result}")
+        # Fail if no data found after query/filter
+        if df is not None and df.empty:
+            internal_logger.error(f"[READ_DATA] No data found matching the query/filter: '{query}'")
+            raise ValueError(f"No data found matching the query/filter: '{query}'")
         if len(result) == 1:
             data = result[0]
         else:
