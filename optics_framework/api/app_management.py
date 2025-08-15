@@ -1,4 +1,5 @@
 from typing import Optional
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 
@@ -15,7 +16,7 @@ class AppManagement:
     """
 
     def __init__(self, builder: OpticsBuilder):
-        self.driver = builder.get_driver()
+        self.driver: InstanceFallback = builder.get_driver()
         if self.driver is None:
             internal_logger.error("Driver could not be initialized due to not being provided.")
             # Optionally raise an exception if this should halt execution

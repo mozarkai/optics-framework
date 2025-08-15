@@ -1079,3 +1079,7 @@ def runner():
                 )
             )
             return False
+
+class KeywordRunner(Runner):
+    def __init__(self, keyword_map):
+        self.keyword_map = keyword_map

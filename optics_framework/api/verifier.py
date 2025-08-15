@@ -1,6 +1,7 @@
 from typing import Optional, Any
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.eventSDK import EventSDK
@@ -9,19 +10,15 @@ class Verifier:
     """
     Provides methods to verify elements, screens, and data integrity.
     """
-    _instance = None
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super(Verifier, cls).__new__(cls)
-        return cls._instance
 
     def __init__(self, builder: OpticsBuilder):
-        self.element_source = builder.get_element_source()
-        self.image_detection = builder.get_image_detection()
-        self.text_detection = builder.get_text_detection()
+        self.driver: InstanceFallback = builder.get_driver()
+        self.element_source: InstanceFallback = builder.get_element_source()
+        self.image_detection: Optional[InstanceFallback] = builder.get_image_detection()
+        self.text_detection: Optional[InstanceFallback] = builder.get_text_detection()
         self.strategy_manager = StrategyManager(
-            self.element_source, self.text_detection, self.image_detection)
+            self.element_source, self.text_detection, self.image_detection
+        )
         self.event_sdk = EventSDK.get_instance()
 
     def validate_element(

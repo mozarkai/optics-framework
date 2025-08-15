@@ -81,7 +81,7 @@ class FlowControl:
         self._ensure_session()
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
-        if module_name not in self.modules.modules:
+        if self.modules is None or not hasattr(self.modules, "modules") or module_name not in self.modules.modules:
             raise ValueError(f"Module '{module_name}' not found in modules.")
         results = []
         module_def = self.modules.get_module_definition(module_name)
@@ -711,11 +711,13 @@ class FlowControl:
                     raise ValueError(f"Unsafe expression detected: {expression}")
             if self.session is None:
                 raise ValueError(NO_SESSION_PRESENT)
-            runner_elements = self.session.elements.elements
+            runner_elements = getattr(self.session, "elements", None)
+            if not isinstance(runner_elements, ElementData):
+                raise ValueError("Session elements is not an ElementData instance or is None.")
             return eval(
                 expression,
                 {"__builtins__": None},
-                {k: str(v) for k, v in runner_elements.items()},
+                {k: str(v) for k, v in runner_elements.elements.items()},
             )  # nosec B307 # pylint: disable=eval-used
             # Note: eval() is used here for simplicity, i know it should be should be avoided in production code.
             # In some time, i will replace it with a safer alternative.
@@ -1060,7 +1062,10 @@ class FlowControl:
             for element_name, path in api_def.expected_result.extract.items():
                 value = self._extract_from_json(response_data, path)
                 if value is not None:
-                    self.session.elements.add_element(element_name, value)
+                    runner_elements = getattr(self.session, "elements", None)
+                    if not isinstance(runner_elements, ElementData):
+                        raise ValueError("Session elements are not properly initialized.")
+                    runner_elements.add_element(element_name, value)
                     internal_logger.debug(
                         f"Extracted '{element_name}' = '{value}' from response."
                     )

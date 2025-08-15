@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 import inspect
+import time
 from typing import List, Union, Tuple, Generator, Set, Optional
+import numpy as np
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
@@ -8,8 +10,6 @@ from optics_framework.common.screenshot_stream import ScreenshotStream
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
-import numpy as np
-import time
 
 
 class LocatorStrategy(ABC):
@@ -30,7 +30,7 @@ class LocatorStrategy(ABC):
         pass
 
     @abstractmethod
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         pass
 
     @staticmethod
@@ -77,8 +77,12 @@ class XPathStrategy(LocatorStrategy):
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         return self.element_source.locate(element)
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
-        return self.element_source.assert_elements(elements, timeout, rule)
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
+        try:
+            self.element_source.assert_elements(elements, timeout, rule)
+            return True, None
+        except Exception:
+            return False, None
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -98,8 +102,12 @@ class TextElementStrategy(LocatorStrategy):
     def locate(self, element: str) -> Union[object, Tuple[int, int]]:
         return self.element_source.locate(element)
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Union[bool, None]:
-        return self.element_source.assert_elements(elements, timeout, rule)
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
+        try:
+            self.element_source.assert_elements(elements, timeout, rule)
+            return True, None
+        except Exception:
+            return False, None
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -123,7 +131,7 @@ class TextDetectionStrategy(LocatorStrategy):
         _, coor, _ = self.text_detection.find_element(screenshot, element)
         return coor
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         end_time = time.time() + timeout
         found_status = dict.fromkeys(elements, False)
         result = False
@@ -181,7 +189,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         _, centre, _ = self.image_detection.find_element(screenshot, element)
         return centre
 
-    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, str]:
+    def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         end_time = time.time() + timeout
         result = False
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
@@ -216,12 +224,18 @@ class ImageDetectionStrategy(LocatorStrategy):
 
 class PagesourceStrategy:
     def __init__(self, element_source: ElementSourceInterface):
-        self.element_source = element_source
+        self.element_source: ElementSourceInterface = element_source
 
-    def capture_pagesource(self) -> Optional[np.ndarray]:
+    def capture_pagesource(self) -> Optional[str]:
         pagesource = self.element_source.get_page_source()
         if pagesource is not None:
-            return pagesource
+            if isinstance(pagesource, str):
+                return pagesource
+            # If it's an ndarray, convert to string (or handle as needed)
+            try:
+                return str(pagesource)
+            except Exception:
+                raise ValueError("Invalid pagesource captured: not a string or convertible")
         raise ValueError("Invalid pagesource captured")
 
     def get_interactive_elements(self) -> List[dict]:
@@ -239,7 +253,7 @@ class PagesourceStrategy:
 
 class ScreenshotStrategy:
     def __init__(self, element_source: ElementSourceInterface):
-        self.element_source = element_source
+        self.element_source: ElementSourceInterface = element_source
 
     def capture(self) -> Optional[np.ndarray]:
         screenshot = self.element_source.capture()
@@ -305,7 +319,10 @@ class LocateResult:
 
 
 class StrategyManager:
-    def __init__(self, element_source: ElementSourceInterface, text_detection, image_detection):
+    def __init__(self, element_source: InstanceFallback[ElementSourceInterface], text_detection, image_detection):
+        # Defensive: always wrap in InstanceFallback if not already
+        if not isinstance(element_source, InstanceFallback):
+            element_source = InstanceFallback([element_source])
         self.element_source = element_source
         self.locator_factory = StrategyFactory(text_detection, image_detection, strategy_manager=self)
         self.screenshot_factory = ScreenshotFactory()
@@ -313,40 +330,24 @@ class StrategyManager:
         self.locator_strategies = self._build_locator_strategies()
         self.screenshot_strategies = self._build_screenshot_strategies()
         self.pagesource_strategies = self._build_pagesource_strategies()
-        # for stream
         self.screenshot_stream = None
 
     def _build_locator_strategies(self) -> List[LocatorStrategy]:
         strategies = []
-        if isinstance(self.element_source, InstanceFallback):
-            for instance in self.element_source.instances:
-                strategies.extend(
-                    self.locator_factory.create_strategies(instance))
-        else:
-            strategies.extend(
-                self.locator_factory.create_strategies(self.element_source))
+        for instance in self.element_source.instances:
+            strategies.extend(self.locator_factory.create_strategies(instance))
         return strategies
 
     def _build_screenshot_strategies(self) -> Set[ScreenshotStrategy]:
         strategies = set()
-        if isinstance(self.element_source, InstanceFallback):
-            for instance in self.element_source.instances:
-                strategies.update(
-                    self.screenshot_factory.create_strategies(instance))
-        else:
-            strategies.update(
-                self.screenshot_factory.create_strategies(self.element_source))
+        for instance in self.element_source.instances:
+            strategies.update(self.screenshot_factory.create_strategies(instance))
         return strategies
 
     def _build_pagesource_strategies(self) -> Set[PagesourceStrategy]:
         strategies = set()
-        if isinstance(self.element_source, InstanceFallback):
-            for instance in self.element_source.instances:
-                strategies.update(
-                    self.pagesource_factory.create_strategies(instance))
-        else:
-            strategies.update(
-                self.pagesource_factory.create_strategies(self.element_source))
+        for instance in self.element_source.instances:
+            strategies.update(self.pagesource_factory.create_strategies(instance))
         return strategies
 
     def locate(self, element: str) -> Generator[LocateResult, None, None]:
@@ -363,6 +364,7 @@ class StrategyManager:
                     execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
+        raise ValueError(f"Element '{element}' not found using any strategy.")
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         rule = rule.lower()
@@ -373,7 +375,11 @@ class StrategyManager:
         for strategy in self.locator_strategies:
             if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
                 try:
-                    result, timestamp = strategy.assert_elements(elements, timeout, rule)
+                    result_tuple = strategy.assert_elements(elements, timeout, rule)
+                    if isinstance(result_tuple, tuple):
+                        result, timestamp = result_tuple
+                    else:
+                        result, timestamp = result_tuple, None
                     if result:
                         execution_tracer.log_attempt(strategy, str(elements), "success")
                         return result, timestamp
@@ -383,7 +389,7 @@ class StrategyManager:
                             f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
                     execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-        return False, None
+        raise ValueError("No elements found.")
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""
@@ -396,7 +402,7 @@ class StrategyManager:
             except Exception as e:
                 execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
         internal_logger.error("No screenshot captured.")
-        return None
+        raise ValueError("No screenshot captured using available strategies.")
 
     def capture_screenshot_stream(self, timeout: int = 30):
         """Capture a screenshot stream using the available strategies."""
@@ -420,6 +426,7 @@ class StrategyManager:
             self.screenshot_stream = None
         else:
             execution_logger.warning("No active screenshot stream to stop.")
+            raise ValueError("No active screenshot stream to stop.")
 
     def capture_pagesource(self) -> Optional[str]:
         for strategy in self.pagesource_strategies:
@@ -429,7 +436,7 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No pagesource captured.")
-        return None
+        raise ValueError("No pagesource captured using available strategies.")
 
     def get_interactive_elements(self) -> List[dict]:
         """Retrieve interactive elements from the element source."""
@@ -440,4 +447,4 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No interactive elements retrieved.")
-        return []
+        raise ValueError("No interactive elements retrieved using available strategies.")
