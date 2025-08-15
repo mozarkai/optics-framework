@@ -1,12 +1,11 @@
-from optics_framework.common.elementsource_interface import ElementSourceInterface
+import time
 from typing import Optional, Any, List
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.common.appiumby import AppiumBy
+from lxml import etree # type: ignore
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
-from lxml import etree
-    # removed unused Tuple import
-import time
 
 
 class AppiumFindElement(ElementSourceInterface):
@@ -15,11 +14,11 @@ class AppiumFindElement(ElementSourceInterface):
     Appium Find Element Class
     """
 
-    driver: Optional[WebDriver]
+    driver: Optional[Any]  # Can be Appium WebDriver or Appium wrapper
     tree: Optional[Any]
     root: Optional[Any]
 
-    def __init__(self, driver: Optional[WebDriver] = None):
+    def __init__(self, driver: Optional[Any] = None):
         """
         Initialize the Appium Find Element Class.
         Args:
@@ -30,10 +29,11 @@ class AppiumFindElement(ElementSourceInterface):
         self.root = None
 
     def _require_driver(self) -> WebDriver:
-        """Helper to ensure self.driver is initialized, else raise error."""
         if self.driver is None:
             internal_logger.error("Appium driver is not initialized for AppiumFindElement.")
             raise RuntimeError("Appium driver is not initialized for AppiumFindElement.")
+        if hasattr(self.driver, "driver"):
+            return self.driver.driver
         return self.driver
 
     def capture(self) -> None:
@@ -81,7 +81,7 @@ class AppiumFindElement(ElementSourceInterface):
         )
 
 
-    def locate(self, element: str, index: Optional[int] = None) -> tuple:
+    def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
         Find the specified element on the current page.
 
@@ -89,7 +89,7 @@ class AppiumFindElement(ElementSourceInterface):
             element: The element to find on the page.
 
         Returns:
-            bool: True if the element is found, None otherwise.
+            The found element object if found, None otherwise.
         """
         """
         Find the specified element on the current page using the Appium driver.
@@ -101,24 +101,24 @@ class AppiumFindElement(ElementSourceInterface):
             raise ValueError('Appium Find Element does not support locating elements using index.')
 
         if element_type == 'Image':
-            return ()
+            return None
         elif element_type == 'XPath':
             try:
                 found_element = driver.find_element(AppiumBy.XPATH, element)
                 if not found_element:
-                    return ()
-                return (found_element,)
+                    return None
+                return found_element
             except (AttributeError, TypeError):
                 internal_logger.error('Error finding element: %s', element, exc_info=True)
-                return ()
+                return None
         elif element_type == 'Text':
             try:
                 found_element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, element)
             except (AttributeError, TypeError):
                 internal_logger.exception('Element: %s', element, exc_info=True)
-                return ()
-            return (found_element,)
-        return ()
+                return None
+            return found_element
+        return None
 
     def assert_elements(self, elements: List[str], timeout: int = 10, rule: str = "any") -> None:
         """

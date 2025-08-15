@@ -4,6 +4,7 @@ from typing import Callable, Optional, Any
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
 from .verifier import Verifier
 
@@ -49,13 +50,16 @@ class ActionKeyword:
     XPAHT_NOT_SUPPORTED_MSG = "XPath is not supported for vision based search."
 
     def __init__(self, builder: OpticsBuilder):
-        self.driver = builder.get_driver()
-        self.element_source = builder.get_element_source()
-        self.image_detection = builder.get_image_detection()
-        self.text_detection = builder.get_text_detection()
+        self.driver: InstanceFallback = builder.get_driver()
+        self.element_source: InstanceFallback = builder.get_element_source()
+        self.image_detection: Optional[InstanceFallback] = builder.get_image_detection()
+        self.text_detection: Optional[InstanceFallback] = builder.get_text_detection()
         self.verifier = Verifier(builder)
+        # Unwrap InstanceFallback to pass current_instance to StrategyManager
+
         self.strategy_manager = StrategyManager(
-            self.element_source, self.text_detection, self.image_detection)
+            self.element_source, self.text_detection, self.image_detection
+        )
 
     # Click actions
     @with_self_healing
@@ -92,8 +96,7 @@ class ActionKeyword:
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "press_by_percentage")
-        element_source_type = type(
-            self.element_source.current_instance).__name__
+        element_source_type = type(getattr(self.element_source, 'current_instance', self.element_source)).__name__
         if 'appium' in element_source_type.lower():
             self.driver.press_percentage_coordinates(
                 int(percent_x), int(percent_y), int(repeat), event_name)
@@ -130,8 +133,7 @@ class ActionKeyword:
         index = int(index_str)
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "press_element_with_index")
-        element_source_type = type(
-            self.element_source.current_instance).__name__
+        element_source_type = type(self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)
         if element_type == 'Text':
             if element_source_type == 'AppiumFindElement':
@@ -146,23 +148,54 @@ class ActionKeyword:
                 if 'screenshot' not in element_source_type.lower():
                     internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
                 screenshot_image = self.element_source.capture()
-                _, coor, _ = self.text_detection.find_element(
-                    screenshot_image, element, index)
-                x_coor, y_coor = coor
-                self.driver.press_coordinates(
-                    x_coor, y_coor, event_name=event_name)
+                coor = None
+                if self.text_detection and hasattr(self.text_detection, 'find_element'):
+                    try:
+                        result = self.text_detection.find_element(
+                            screenshot_image, element, index)
+                        if result is not None and isinstance(result, (tuple, list)) and len(result) == 3:
+                            _, coor, _ = result
+                        else:
+                            coor = None
+                    except Exception:
+                        coor = None
+                else:
+                    coor = None
+                if coor is not None and isinstance(coor, (tuple, list)) and len(coor) == 2:
+                    x_coor, y_coor = coor
+                    self.driver.press_coordinates(
+                        x_coor, y_coor, event_name=event_name)
+                else:
+                    internal_logger.error("Text detection failed or returned invalid coordinates.")
+                    raise ValueError("Text detection failed or returned invalid coordinates.")
         elif element_type == 'Image':
             if 'screenshot' not in element_source_type.lower():
                 internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
             screenshot_image = self.element_source.capture()
-            _, centre, _ = self.image_detection.find_element(
-                screenshot_image, element, index)
-            x_coor, y_coor = centre
-            self.driver.press_coordinates(
-                x_coor, y_coor, event_name=event_name)
+            centre = None
+            if self.image_detection and hasattr(self.image_detection, 'find_element'):
+                try:
+                    result = self.image_detection.find_element(
+                        screenshot_image, element, index)
+                    if result is not None and isinstance(result, (tuple, list)) and len(result) == 3:
+                        _, centre, _ = result
+                    else:
+                        centre = None
+                except Exception:
+                    centre = None
+            else:
+                centre = None
+            if centre is not None and isinstance(centre, (tuple, list)) and len(centre) == 2:
+                x_coor, y_coor = centre
+                self.driver.press_coordinates(
+                    x_coor, y_coor, event_name=event_name)
+            else:
+                internal_logger.error("Image detection failed or returned invalid coordinates.")
+                raise ValueError("Image detection failed or returned invalid coordinates.")
         elif element_type == 'XPath':
             internal_logger.debug(
                 'XPath is not supported for index based location. Provide the attribute as text.')
+            raise NotImplementedError("XPath is not supported for index based location.")
 
     @with_self_healing
     def detect_and_press(self, element: str, timeout: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
@@ -457,8 +490,12 @@ class ActionKeyword:
         element_type = utils.determine_element_type(element)
         if element_type in ["Text", "XPath"]:
             if 'appium' in element_source_type.lower():
-                element = self.element_source.locate(element)
-                return self.driver.get_text_element(element)
+                result = self.element_source.locate(element)
+                if result is not None:
+                    return self.driver.get_text_element(result)
+                else:
+                    internal_logger.error('Locate returned None for get_text.')
+                    return None
             else:
                 internal_logger.error(
                     'Get Text is not supported for vision based search yet.')

@@ -1,17 +1,12 @@
-"""
-Capture Screen Module
-
-This module provides a concrete implementation of `ScreenshotInterface`
-that captures images from the screen.
-"""
-import cv2
 import base64
+from typing import Optional, Any
 import numpy as np
-from typing import Optional
-from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.logging_config import internal_logger
+import cv2
 from appium.webdriver.webdriver import WebDriver
 from selenium.common.exceptions import ScreenshotException
+from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.logging_config import internal_logger
+
 
 class AppiumScreenshot(ElementSourceInterface):
     REQUIRED_DRIVER_TYPE = "appium"
@@ -19,24 +14,31 @@ class AppiumScreenshot(ElementSourceInterface):
     Capture screenshots of the screen using the `mss` library.
     """
 
-    driver: Optional[WebDriver]
+    driver: Optional[Any]  # Can be Appium WebDriver or Appium wrapper
 
-    def __init__(self, driver: Optional[WebDriver] = None):
+    def __init__(self, driver: Optional[Any] = None):
         """
-        Initialize the screen capture utility.
+        Initialize the Appium Screenshot Class.
         Args:
             driver: The Appium driver instance (should be passed explicitly).
         """
         self.driver = driver
 
     def _require_driver(self) -> WebDriver:
-        """Helper to ensure self.driver is initialized, else raise error."""
+        # If self.driver is None, raise error first
         if self.driver is None:
-            internal_logger.error("Appium driver is not initialized for AppiumScreenshot.")
-            raise RuntimeError("Appium driver is not initialized for AppiumScreenshot.")
+            internal_logger.error(
+                "Appium driver is not initialized for AppiumScreenshot."
+            )
+            raise RuntimeError(
+                "Appium driver is not initialized for AppiumScreenshot."
+            )
+        # If self.driver is a wrapper, extract the raw driver
+        if hasattr(self.driver, "driver"):
+            return self.driver.driver
         return self.driver
 
-    def capture(self) -> Optional[np.ndarray]:
+    def capture(self) -> np.ndarray:
         """
         Capture a screenshot of the screen.
         Returns:
@@ -51,7 +53,7 @@ class AppiumScreenshot(ElementSourceInterface):
             "AppiumScreenshot does not support getting interactive elements."
         )
 
-    def capture_screenshot_as_numpy(self) -> Optional[np.ndarray]:
+    def capture_screenshot_as_numpy(self) -> np.ndarray:
         """
         Captures a screenshot using Appium and returns it as a NumPy array.
 
@@ -65,19 +67,19 @@ class AppiumScreenshot(ElementSourceInterface):
             screenshot_base64 = driver.get_screenshot_as_base64()
             screenshot_bytes = base64.b64decode(screenshot_base64)
             numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
-            numpy_image = cv2.imdecode(numpy_image, cv2.IMREAD_COLOR)
+            numpy_image = cv2.imdecode(numpy_image, cv2.IMREAD_COLOR) # type: ignore
             return numpy_image
 
         except ScreenshotException as se:
             # internal_logger.debug(f'ScreenshotException: {se}. Using external camera')
             internal_logger.warning(f'ScreenshotException : {se}. Using external camera.')
-            return None
+            raise RuntimeError("ScreenshotException occurred.")
         except Exception as e:
             # Log the error and fallback to external camera
             internal_logger.warning(f"Error capturing Appium screenshot: {e}. Using external camera.")
-            return None
+            raise RuntimeError("Error capturing Appium screenshot.")
 
-    def assert_elements(self, elements,timeout=30, rule='any') -> None:
+    def assert_elements(self, elements, timeout=30, rule='any') -> None:
         internal_logger.exception("AppiumScreenshot does not support asserting elements.")
         raise NotImplementedError(
             "AppiumScreenshot does not support asserting elements.")

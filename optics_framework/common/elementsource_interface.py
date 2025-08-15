@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any
-
+import numpy
 
 class ElementSourceInterface(ABC):
     """
@@ -15,7 +15,7 @@ class ElementSourceInterface(ABC):
     """
 
     @abstractmethod
-    def capture(self) -> None:
+    def capture(self) -> numpy.ndarray:
         """
         Capture the current screen state.
 

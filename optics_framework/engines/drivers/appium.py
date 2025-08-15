@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.options.android.uiautomator2.base import UiAutomator2Options
-from appium.options.ios import XCUITestOptions
+from appium.options.ios import XCUITestOptions # type: ignore
 from optics_framework.common.config_handler import ConfigHandler
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.driver_interface import DriverInterface
@@ -18,12 +18,6 @@ from typing import Union
 
 
 class Appium(DriverInterface):
-    def _require_driver(self) -> WebDriver:
-        """Helper to ensure self.driver is initialized, else raise error."""
-        if self.driver is None:
-            internal_logger.error("Appium driver is not initialized.")
-            raise RuntimeError("Appium driver is not initialized.")
-        return self.driver
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
 
@@ -51,6 +45,13 @@ class Appium(DriverInterface):
         # UI Tree handling
         self.ui_helper: Optional[UIHelper] = None
         self.initialized: bool = True
+
+    def _require_driver(self) -> WebDriver:
+        """Helper to ensure self.driver is initialized, else raise error."""
+        if self.driver is None:
+            internal_logger.error("Appium driver is not initialized.")
+            raise RuntimeError("Appium driver is not initialized.")
+        return self.driver
 
     def start_session(
         self,
@@ -99,7 +100,7 @@ class Appium(DriverInterface):
             f"Starting Appium session with capabilities: {options.to_capabilities()}"
         )
         try:
-            self.driver = webdriver.Remote(self.appium_server_url, options=options)
+            self.driver = webdriver.Remote(self.appium_server_url, options=options)  # type: ignore
             if self.driver is None:
                 raise RuntimeError("Failed to create Appium WebDriver instance")
             # CRITICAL: Log the new session ID
@@ -275,39 +276,39 @@ class Appium(DriverInterface):
 
     def swipe(
         self,
-        start_x: int,
-        start_y: int,
+        x_coor: int,
+        y_coor: int,
         direction: str,
         swipe_length: int,
         event_name: Optional[str] = None
     ) -> None:
         driver = self._require_driver()
-        start_x = int(start_x)
-        start_y = int(start_y)
-        end_x: int = start_x
-        end_y: int = start_y
+        x_coor = int(x_coor)
+        y_coor = int(y_coor)
+        end_x: int = x_coor
+        end_y: int = y_coor
         if direction == "up":
-            end_y = start_y - swipe_length
+            end_y = y_coor - swipe_length
         elif direction == "down":
-            end_y = start_y + swipe_length
+            end_y = y_coor + swipe_length
         elif direction == "left":
-            end_x = start_x - swipe_length
+            end_x = x_coor - swipe_length
         elif direction == "right":
-            end_x = start_x + swipe_length
+            end_x = x_coor + swipe_length
         else:
             internal_logger.error(f"Unknown swipe direction: {direction}")
             return
         timestamp = self.event_sdk.get_current_time_for_events()
         try:
             execution_logger.debug(
-                f"Swiping from ({start_x}, {start_y}) to ({end_x}, {end_y})"
+                f"Swiping from ({x_coor}, {y_coor}) to ({end_x}, {end_y})"
             )
-            driver.swipe(start_x, start_y, end_x, end_y, 1000)
+            driver.swipe(x_coor, y_coor, end_x, end_y, 1000)
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
             execution_logger.debug(
-                f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}"
+                f"Failed to swipe from ({x_coor}, {y_coor}) to ({end_x}, {end_y}): {e}"
             )
 
 

@@ -8,15 +8,20 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 
+
 class CapabilitiesConfig(BaseModel):
     camera_index: Optional[int] = Field(None, description="Index of the camera to use")
-    url: Optional[str] = Field(None, description="URL of the camera stream (e.g., 127.0.0.1:3000)")
+    url: Optional[str] = Field(
+        None, description="URL of the camera stream (e.g., 127.0.0.1:3000)"
+    )
     out_width: int = Field(1080, description="Output width of the screenshot")
     out_height: int = Field(1920, description="Output height of the screenshot")
     deskew_corners: Optional[list[str]] = Field(
         None, description="List of corner coordinates for deskewing the image"
     )
-    rotation: Optional[str] = Field(None, description="Rotation of the image (clockwise/counterclockwise)")
+    rotation: Optional[str] = Field(
+        None, description="Rotation of the image (clockwise/counterclockwise)"
+    )
 
     class Config:
         populate_by_name = True
@@ -73,13 +78,17 @@ class CameraScreenshot(ElementSourceInterface):
             if capabilities.url:
                 try:
                     # Parse URL to extract IP address and port
-                    ip_port = capabilities.url.split(':')
+                    ip_port = str(self.capabilities_model.url).split(":")
                     if len(ip_port) != 2:
-                        raise ValueError(f"Invalid URL format: {capabilities.url}. Expected format: ip:port")
+                        raise ValueError(
+                            f"Invalid URL format: {capabilities.url}. Expected format: ip:port"
+                        )
                     self.ip_address, port_str = ip_port
                     self.port = int(port_str)
                 except (ValueError, TypeError) as e:
-                    internal_logger.error(f"Failed to parse URL {capabilities.url}: {e}")
+                    internal_logger.error(
+                        f"Failed to parse URL {capabilities.url}: {e}"
+                    )
                     raise ValueError(f"Invalid URL format: {capabilities.url}")
             else:
                 raise ValueError("No camera_index or valid URL provided")
@@ -88,12 +97,12 @@ class CameraScreenshot(ElementSourceInterface):
 
         self.camera_screenshot_config = config
 
-    def capture(self) -> Optional[np.ndarray]:
+    def capture(self) -> np.ndarray:
         """
         Capture an image from the webcam or TCP connection.
 
         Returns:
-            Optional[np.ndarray]: The captured image as a NumPy array, or `None` on failure.
+            np.ndarray: The captured image as a NumPy array, or an empty array on failure.
         """
         if self.sock:
             try:
@@ -103,11 +112,13 @@ class CameraScreenshot(ElementSourceInterface):
                         "Failed to capture frame from TCP connection."
                     )
                 return frame
-            except (ConnectionError, socket.timeout, socket.error) as e:
+            except (ConnectionError, socket.timeout, socket.error, ValueError) as e:
                 internal_logger.error(
                     f"TCP connection error during capture: {e}. Attempting to re-establish."
                 )
-                self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
+                self.sock = self.create_tcp_connection(
+                    ip=self.ip_address, port=self.port
+                )
                 if self.sock:
                     internal_logger.info(
                         "TCP connection re-established. Retrying capture."
@@ -115,22 +126,22 @@ class CameraScreenshot(ElementSourceInterface):
                     return self.take_screenshot()  # Retry capture
                 else:
                     internal_logger.error("Failed to re-establish TCP connection.")
-                    return None
+                    raise RuntimeError("Failed to re-establish TCP connection.") from e
         if self.cap is None or not self.cap.isOpened():
             internal_logger.error("No valid webcam connection.")
-            return None
+            raise RuntimeError("No valid webcam connection.")
 
         ret, frame = self.cap.read()
         if ret:
             return frame
         internal_logger.error("Failed to capture frame from webcam.")
-        return None
+        raise RuntimeError("Failed to capture frame from webcam.")
 
     def __del__(self):
         """Release the camera or socket when the object is destroyed."""
-        if hasattr(self, 'cap') and self.cap is not None and self.cap.isOpened():
+        if hasattr(self, "cap") and self.cap is not None and self.cap.isOpened():
             self.cap.release()
-        if hasattr(self, 'sock') and self.sock is not None:
+        if hasattr(self, "sock") and self.sock is not None:
             self.sock.close()
 
     def locate(self, element, index, *args, **kwargs) -> tuple:
@@ -158,8 +169,12 @@ class CameraScreenshot(ElementSourceInterface):
         )
 
     def get_interactive_elements(self):
-        internal_logger.exception("CameraScreenshot does not support getting interactive elements.")
-        raise NotImplementedError("CameraScreenshot does not support getting interactive elements.")
+        internal_logger.exception(
+            "CameraScreenshot does not support getting interactive elements."
+        )
+        raise NotImplementedError(
+            "CameraScreenshot does not support getting interactive elements."
+        )
 
     def create_tcp_connection(self, ip, port):
         tcp_timeout_seconds = 5
@@ -174,13 +189,17 @@ class CameraScreenshot(ElementSourceInterface):
             internal_logger.error(f"TCP connection to {ip}:{port} timed out.")
             return None
         except ConnectionRefusedError:
-            internal_logger.error(f"TCP connection to {ip}:{port} refused. Is the server running?")
+            internal_logger.error(
+                f"TCP connection to {ip}:{port} refused. Is the server running?"
+            )
             return None
         except socket.error as e:
             internal_logger.error(f"Error creating TCP connection to {ip}:{port}: {e}")
             return None
         except Exception as e:
-            internal_logger.error(f"An unexpected error occurred during TCP connection setup: {e}")
+            internal_logger.error(
+                f"An unexpected error occurred during TCP connection setup: {e}"
+            )
             return None
 
     def take_screenshot(self):
@@ -250,18 +269,21 @@ class CameraScreenshot(ElementSourceInterface):
                 internal_logger.error(
                     "cv2.imdecode failed to decode image data. Data might be corrupt or invalid."
                 )
+                raise ValueError(
+                    "Failed to decode image data. Data might be corrupt or invalid."
+                )
             internal_logger.debug("Image ready, setting screenshot")
             return screenshot
         except (ConnectionError, ValueError, TimeoutError, socket.error) as e:
             internal_logger.error(f"An error occurred during take_screenshot: {e}")
             # Do not re-raise if you want the capture method to handle reconnection.
             # Return None to indicate failure.
-            return None
+            return np.array([])
         except Exception as e:
             internal_logger.error(
                 f"An unexpected error occurred in take_screenshot: {e}"
             )
-            return None
+            raise RuntimeError(f"An unexpected error occurred in take_screenshot: {e}")
 
     def deskew_image(self, image):
         """
@@ -277,20 +299,22 @@ class CameraScreenshot(ElementSourceInterface):
             return image
         try:
             src_points = np.array(
-                [list(map(float, point.split(','))) for point in self.deskew_corners],
-                dtype=np.float32
+                [list(map(float, point.split(","))) for point in self.deskew_corners],
+                dtype=np.float32,
             )
             dst_points = np.array(
                 [
                     [0, 0],
                     [self.out_width - 1, 0],
                     [self.out_width - 1, self.out_height - 1],
-                    [0, self.out_height - 1]
+                    [0, self.out_height - 1],
                 ],
-                dtype=np.float32
+                dtype=np.float32,
             )
             transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-            deskewed_image = cv2.warpPerspective(image, transform_matrix, (self.out_width, self.out_height))
+            deskewed_image = cv2.warpPerspective(
+                image, transform_matrix, (self.out_width, self.out_height)
+            )
             return deskewed_image
         except Exception as e:
             internal_logger.error(f"Error performing deskew: {e}")
@@ -310,18 +334,22 @@ class CameraScreenshot(ElementSourceInterface):
         if not rotation:
             return img
         try:
-            if rotation.lower() == 'clockwise':
+            if rotation.lower() == "clockwise":
                 rotated_img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-                internal_logger.debug('Image rotated clockwise.')
-            elif rotation.lower() == 'counterclockwise':
+                internal_logger.debug("Image rotated clockwise.")
+            elif rotation.lower() == "counterclockwise":
                 rotated_img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                internal_logger.debug('Image rotated counterclockwise')
+                internal_logger.debug("Image rotated counterclockwise")
             else:
-                internal_logger.debug('Invalid rotation argument, returning unrotated image.')
+                internal_logger.debug(
+                    "Invalid rotation argument, returning unrotated image."
+                )
                 return img
             return rotated_img
         except Exception as e:
-            internal_logger.error(f'Error performing rotation: {e}, returning unrotated image.')
+            internal_logger.error(
+                f"Error performing rotation: {e}, returning unrotated image."
+            )
             return img
 
     def take_ext_screenshot(self) -> Optional[np.ndarray]:

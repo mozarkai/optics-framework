@@ -1,12 +1,11 @@
-from optics_framework.common.elementsource_interface import ElementSourceInterface
 from typing import Optional, Any, Tuple
+import time
+from lxml import etree # type: ignore
 from appium.webdriver.webdriver import WebDriver
+from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
-from appium.webdriver.common.appiumby import AppiumBy
-from optics_framework.engines.drivers.appium_UI_helper import UIHelper
-from lxml import etree
-import time
+from optics_framework.common.elementsource_interface import ElementSourceInterface
 
 
 class AppiumPageSource(ElementSourceInterface):
@@ -15,28 +14,33 @@ class AppiumPageSource(ElementSourceInterface):
     Appium Find Element Class
     """
 
-    driver: Optional[WebDriver]
-    ui_helper: UIHelper
+    driver: Optional[Any]  # Can be Appium WebDriver or Appium wrapper
     tree: Optional[Any]
     root: Optional[Any]
 
-    def __init__(self, driver: Optional[WebDriver] = None):
+    def __init__(self, driver: Optional[Any] = None):
         """
-        Initialize the AppiumPageSource Class.
+        Initialize the Appium Page Source Class.
         Args:
             driver: The Appium driver instance (should be passed explicitly).
         """
         self.driver = driver
-        self.ui_helper = UIHelper()
         self.tree = None
         self.root = None
 
-    def _require_driver(self) -> WebDriver:
-        """Helper to ensure self.driver is initialized, else raise error."""
+    def _require_webdriver(self) -> WebDriver:
+        # If self.driver is None, raise error first
         if self.driver is None:
-            internal_logger.error("Appium driver is not initialized for AppiumPageSource.")
-            raise RuntimeError("Appium driver is not initialized for AppiumPageSource.")
-        return self.driver
+            internal_logger.error(
+                "Appium driver is not initialized for AppiumPageSource."
+            )
+            raise RuntimeError(
+                "Appium driver is not initialized for AppiumPageSource."
+            )
+        # If self.driver is a wrapper, extract the raw driver
+        if hasattr(self.driver, "driver"):
+            return self.driver.driver
+        raise RuntimeError("Appium driver is not initialized for AppiumPageSource.")
 
     def capture(self):
         """
@@ -56,7 +60,7 @@ class AppiumPageSource(ElementSourceInterface):
         """
         time_stamp = utils.get_timestamp()
 
-        driver = self._require_driver()
+        driver = self._require_webdriver()
         page_source = driver.page_source
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
         if self.tree is not None:
@@ -69,9 +73,12 @@ class AppiumPageSource(ElementSourceInterface):
         return str(page_source), str(time_stamp)
 
     def get_interactive_elements(self):
-        return self.ui_helper.get_interactive_elements()
+        if self.driver is not None and hasattr(self.driver, "ui_helper"):
+            return self.driver.ui_helper.get_interactive_elements()
+        internal_logger.error("Appium driver or its ui_helper is not initialized.")
+        raise RuntimeError("Appium driver or its ui_helper is not initialized.")
 
-    def locate(self, element: str, index: Optional[int] = None) -> Tuple[Any, ...]:
+    def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
         Locate a UI element on the current page using Appium.
 
@@ -84,14 +91,14 @@ class AppiumPageSource(ElementSourceInterface):
                 which one to retrieve. Used only when element type is text.
 
         Returns:
-            tuple: A tuple containing the found WebElement(s), or an empty tuple for unsupported types (e.g., image).
+            The found WebElement object if found, None otherwise. For unsupported types (e.g., image), returns None.
         """
-        driver = self._require_driver()
+        driver = self._require_webdriver()
         element_type = utils.determine_element_type(element)
 
         if element_type == 'Image':
             internal_logger.debug('Appium Find Element does not support finding images.')
-            return ()
+            raise NotImplementedError("Image-based element finding is not supported in Appium Page source.")
         elif element_type == 'Text':
             if index is not None:
                 xpath = self.find_xpath_from_text_index(element, index)
@@ -99,34 +106,42 @@ class AppiumPageSource(ElementSourceInterface):
                 xpath = self.find_xpath_from_text(element)
             try:
                 element_obj = driver.find_element(AppiumBy.XPATH, xpath)
-                return (element_obj,)
+                return element_obj
             except Exception:
                 internal_logger.exception("Error finding element by text: %s", xpath)
-                return ()
+                raise RuntimeError("Error finding element by text.")
         elif element_type == 'XPath':
-            xpath, _ = self.ui_helper.find_xpath(element)
-            try:
-                element_obj = driver.find_element(AppiumBy.XPATH, xpath)
-                return (element_obj,)
-            except Exception:
-                internal_logger.exception("Error finding element by xpath: %s", xpath)
-                return ()
-        return ()
+            if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
+                xpath, _ = self.driver.ui_helper.find_xpath(element)
+                try:
+                    element_obj = driver.find_element(AppiumBy.XPATH, xpath)
+                    return element_obj
+                except Exception:
+                    internal_logger.exception("Error finding element by xpath: %s", xpath)
+                    raise RuntimeError("Error finding element by xpath.")
+            else:
+                internal_logger.error("Appium driver or its ui_helper is not initialized.")
+                raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+        raise RuntimeError("Unknown element type.")
 
 
     def locate_using_index(self, element, index, strategy=None) -> Optional[Any]:
-        locators = self.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
-        if locators:
-            strategy = locators['strategy']
-            locator = locators['locator']
-            xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
-            try:
-                element_obj = self._require_driver().find_element(AppiumBy.XPATH, xpath)
-            except Exception:
-                internal_logger.exception("Error finding element by index: %s", xpath)
-                return None
-            return element_obj
-        return None
+        if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
+            locators = self.driver.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
+            if locators:
+                strategy = locators['strategy']
+                locator = locators['locator']
+                xpath = self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
+                try:
+                    element_obj = self._require_webdriver().find_element(AppiumBy.XPATH, xpath)
+                except Exception:
+                    internal_logger.exception("Error finding element by index: %s", xpath)
+                    return None
+                return element_obj
+            return None
+        else:
+            internal_logger.error("Appium driver or its ui_helper is not initialized.")
+            raise RuntimeError("Appium driver or its ui_helper is not initialized.")
 
 
     def assert_elements(self, elements, timeout=30, rule='any'):
@@ -160,7 +175,10 @@ class AppiumPageSource(ElementSourceInterface):
             text_found = self.ui_text_search(texts, rule) if texts else (rule == "all")
 
             # Check XPath-based elements
-            xpath_results = [self.ui_helper.find_xpath(xpath)[0] for xpath in xpaths] if xpaths else [rule == "all"]
+            if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None and xpaths:
+                xpath_results = [self.driver.ui_helper.find_xpath(xpath)[0] for xpath in xpaths]
+            else:
+                xpath_results = [rule == "all"]
             xpath_found = (all(xpath_results) if rule == "all" else any(xpath_results))
 
             # Rule evaluation
@@ -187,22 +205,31 @@ class AppiumPageSource(ElementSourceInterface):
             str: The XPath of the element containing the
             text content, or None if not found.
         """
-        locators = self.ui_helper.get_locator_and_strategy(text)
-        if locators:
-            strategy = locators['strategy']
-            locator = locators['locator']
-            xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
-            return xpath
-        return None
+        if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
+            locators = self.driver.ui_helper.get_locator_and_strategy(text)
+            if locators:
+                strategy = locators['strategy']
+                locator = locators['locator']
+                xpath = self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
+                return xpath
+        else:
+            internal_logger.error("Appium driver or its ui_helper is not initialized.")
+            raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+        raise RuntimeError("Failed to find XPath from text.")
 
     def find_xpath_from_text_index(self, text, index, strategy=None):
-        locators = self.ui_helper.get_locator_and_strategy_using_index(text, index, strategy)
-        if locators:
-            strategy = locators['strategy']
-            locator = locators['locator']
-            xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
-            return xpath
-        return None
+        if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
+            locators = self.driver.ui_helper.get_locator_and_strategy_using_index(text, index, strategy)
+            if locators:
+                strategy = locators['strategy']
+                locator = locators['locator']
+                xpath = self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
+                return xpath
+            return None
+        else:
+            internal_logger.error("Appium driver or its ui_helper is not initialized.")
+            raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+        raise RuntimeError("Failed to find XPath from text.")
 
 
     def ui_text_search(self, texts, rule='any'):
@@ -224,7 +251,11 @@ class AppiumPageSource(ElementSourceInterface):
             internal_logger.debug(f'Searching for text: {text}')
 
             for attrib in strategies:
-                matching_elements = self.tree.xpath(f"//*[@{attrib}]")
+                if self.tree is not None:
+                    matching_elements = self.tree.xpath(f"//*[@{attrib}]")
+                else:
+                    internal_logger.error("Element tree is not initialized. Cannot perform xpath search.")
+                    raise RuntimeError("Element tree is not initialized.")
 
                 for elem in matching_elements:
                     attrib_value = elem.attrib.get(attrib, '').strip()
