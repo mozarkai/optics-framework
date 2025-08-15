@@ -1,33 +1,41 @@
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.engines.drivers.appium_driver_manager import get_appium_driver
+from typing import Optional, Any, Tuple
+from appium.webdriver.webdriver import WebDriver
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from lxml import etree
-from typing import Tuple
 import time
 
 
 class AppiumPageSource(ElementSourceInterface):
+    REQUIRED_DRIVER_TYPE = "appium"
     """
     Appium Find Element Class
     """
 
-    def __init__(self):
-        """
-        Initialize the Appium Find Element Class.
+    driver: Optional[WebDriver]
+    ui_helper: UIHelper
+    tree: Optional[Any]
+    root: Optional[Any]
 
-        Args:
-            driver: The Appium driver instance.
+    def __init__(self, driver: Optional[WebDriver] = None):
         """
-        self.driver = None
+        Initialize the AppiumPageSource Class.
+        Args:
+            driver: The Appium driver instance (should be passed explicitly).
+        """
+        self.driver = driver
         self.ui_helper = UIHelper()
         self.tree = None
         self.root = None
 
-    def _get_appium_driver(self):
-        self.driver = get_appium_driver()
+    def _require_driver(self) -> WebDriver:
+        """Helper to ensure self.driver is initialized, else raise error."""
+        if self.driver is None:
+            internal_logger.error("Appium driver is not initialized for AppiumPageSource.")
+            raise RuntimeError("Appium driver is not initialized for AppiumPageSource.")
         return self.driver
 
     def capture(self):
@@ -48,21 +56,22 @@ class AppiumPageSource(ElementSourceInterface):
         """
         time_stamp = utils.get_timestamp()
 
-        driver = self._get_appium_driver()
+        driver = self._require_driver()
         page_source = driver.page_source
-
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode('utf-8')))
-        self.root = self.tree.getroot()
-
-        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
-        internal_logger.debug(f'Page source fetched at: {time_stamp}')
-        internal_logger.debug('\n==========================================\n')
-        return page_source, time_stamp
+        if self.tree is not None:
+            self.root = self.tree.getroot()
+        else:
+            self.root = None
+        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========' )
+        internal_logger.debug('Page source fetched at: %s', time_stamp)
+        internal_logger.debug('\n==========================================')
+        return str(page_source), str(time_stamp)
 
     def get_interactive_elements(self):
         return self.ui_helper.get_interactive_elements()
 
-    def locate(self, element: str, index=None) -> dict:
+    def locate(self, element: str, index: Optional[int] = None) -> Tuple[Any, ...]:
         """
         Locate a UI element on the current page using Appium.
 
@@ -75,51 +84,49 @@ class AppiumPageSource(ElementSourceInterface):
                 which one to retrieve. Used only when element type is text.
 
         Returns:
-            dict or None: A WebElement dictionary if the element is found; otherwise, None for unsupported types (e.g., image).
+            tuple: A tuple containing the found WebElement(s), or an empty tuple for unsupported types (e.g., image).
         """
-        driver = self._get_appium_driver()
+        driver = self._require_driver()
         element_type = utils.determine_element_type(element)
 
         if element_type == 'Image':
-            # Find the element by image
             internal_logger.debug('Appium Find Element does not support finding images.')
-            return None
-        else:
-            if element_type == 'Text':
-                if index is not None:
-                    xpath = self.find_xpath_from_text_index(element, index)
-                else:
-                    xpath = self.find_xpath_from_text(element)
+            return ()
+        elif element_type == 'Text':
+            if index is not None:
+                xpath = self.find_xpath_from_text_index(element, index)
+            else:
+                xpath = self.find_xpath_from_text(element)
+            try:
+                element_obj = driver.find_element(AppiumBy.XPATH, xpath)
+                return (element_obj,)
+            except Exception:
+                internal_logger.exception("Error finding element by text: %s", xpath)
+                return ()
+        elif element_type == 'XPath':
+            xpath, _ = self.ui_helper.find_xpath(element)
+            try:
+                element_obj = driver.find_element(AppiumBy.XPATH, xpath)
+                return (element_obj,)
+            except Exception:
+                internal_logger.exception("Error finding element by xpath: %s", xpath)
+                return ()
+        return ()
 
-                try:
-                    element = driver.find_element(AppiumBy.XPATH, xpath)
-                except Exception as e:
-                    internal_logger.exception(f"Error finding element by text: {e}")
-                    raise Exception (f"Error finding element by text: {e}")
-                return element
-            elif element_type == 'XPath':
-                xpath, _ = self.ui_helper.find_xpath(element)
-                try:
-                    element = driver.find_element(AppiumBy.XPATH, xpath)
-                except Exception as e:
-                    internal_logger.exception(f"Error finding element by xpath: {e}")
-                    raise Exception (f"Error finding element by xpath: {e}")
-                return element
 
-
-    def locate_using_index(self, element, index, strategy=None) -> dict:
+    def locate_using_index(self, element, index, strategy=None) -> Optional[Any]:
         locators = self.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
         if locators:
             strategy = locators['strategy']
             locator = locators['locator']
             xpath = self.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             try:
-                element = self.driver.find_element(AppiumBy.XPATH, xpath)
-            except Exception as e:
-                internal_logger.exception(f"Error finding element by index: {e}")
-                raise Exception (f"Error finding element by index: {e}")
-            return element
-        return {}
+                element_obj = self._require_driver().find_element(AppiumBy.XPATH, xpath)
+            except Exception:
+                internal_logger.exception("Error finding element by index: %s", xpath)
+                return None
+            return element_obj
+        return None
 
 
     def assert_elements(self, elements, timeout=30, rule='any'):
@@ -133,7 +140,7 @@ class AppiumPageSource(ElementSourceInterface):
             polling_interval (float): Interval between retries in seconds.
 
         Returns:
-            bool: True if the elements are found.
+            None
 
         Raises:
             Exception: If elements are not found based on the rule within the timeout.
@@ -147,7 +154,7 @@ class AppiumPageSource(ElementSourceInterface):
             texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
             xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
 
-            _, timestamp = self.get_page_source()  # Refresh page source
+            self.get_page_source()  # Refresh page source
 
             # Check text-based elements
             text_found = self.ui_text_search(texts, rule) if texts else (rule == "all")
@@ -158,7 +165,7 @@ class AppiumPageSource(ElementSourceInterface):
 
             # Rule evaluation
             if (rule == "any" and (text_found or xpath_found)) or (rule == "all" and text_found and xpath_found):
-                return True, timestamp
+                return
 
             # Optional: time.sleep(0.3)  # Delay to reduce busy looping
 
