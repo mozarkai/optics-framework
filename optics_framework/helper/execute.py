@@ -383,27 +383,44 @@ class BaseRunner:
         self.use_printer = args.use_printer
         internal_logger.debug(f"Using runner: {self.runner}")
 
-        # Find all relevant files
-        test_case_files, module_files, element_files, api_files = find_files(self.folder_path)
+        (
+            test_case_files,
+            module_files,
+            element_files,
+            api_files,
+        ) = find_files(self.folder_path)
 
-        # Initialize data readers
-        csv_reader = CSVDataReader()
-        yaml_reader = YAMLDataReader()
+        self._init_data_readers()
+        self._load_test_cases(test_case_files)
+        self._load_modules(module_files)
+        self._load_elements(element_files)
+        self._load_api_data(api_files)
 
-        # Read and merge test cases
+        if not self.test_cases_data:
+            internal_logger.debug(f"No test cases found in {test_case_files}")
+
+        self._load_and_validate_config()
+        self._filter_and_build_execution_queue()
+        self._setup_session()
+
+    def _init_data_readers(self):
+        self.csv_reader = CSVDataReader()
+        self.yaml_reader = YAMLDataReader()
+
+    def _load_test_cases(self, test_case_files):
         self.test_cases_data: Dict[str, Any] = {}
         for file_path in test_case_files:
-            reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
             test_cases = reader.read_test_cases(file_path)
             self.test_cases_data = merge_dicts(
                 self.test_cases_data, test_cases, "test_cases"
             )
 
-        # Read and merge modules
-        self.modules_data: ModuleData = ModuleData() # Initialize as ModuleData object
+    def _load_modules(self, module_files):
+        self.modules_data: ModuleData = ModuleData()
         for file_path in module_files:
-            reader = csv_reader if file_path.endswith(".csv") else yaml_reader
-            modules = reader.read_modules(file_path) # This returns a dict
+            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
+            modules = reader.read_modules(file_path)
             for name, definition in modules.items():
                 if self.modules_data.get_module_definition(name):
                     internal_logger.warning(
@@ -411,10 +428,10 @@ class BaseRunner:
                     )
                 self.modules_data.add_module_definition(name, definition)
 
-        # Read and merge elements
+    def _load_elements(self, element_files):
         self.elements_data: ElementData = ElementData()
         for file_path in element_files:
-            reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
             elements = reader.read_elements(file_path)
             for name, value in elements.items():
                 if self.elements_data.get_element(name):
@@ -423,16 +440,13 @@ class BaseRunner:
                     )
                 self.elements_data.add_element(name, value)
 
-        # Read and merge API data
+    def _load_api_data(self, api_files):
         self.api_data: ApiData = ApiData()
         for file_path in api_files:
-            reader = yaml_reader # API files are expected to be YAML
+            reader = self.yaml_reader  # API files are expected to be YAML
             self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
 
-        if not self.test_cases_data:
-            internal_logger.debug(f"No test cases found in {test_case_files}")
-
-        # Load and validate configuration
+    def _load_and_validate_config(self):
         self.config_handler = ConfigHandler.get_instance()
         self.config_handler.set_project(self.folder_path)
         self.config_handler.load()
@@ -442,7 +456,6 @@ class BaseRunner:
         reconfigure_logging()
         setup_junit()  # Setup JUnit event handler if configured
 
-        # Validate required configs
         required_configs = ["driver_sources", "elements_sources"]
         missing_configs = [
             key for key in required_configs if not self.config_handler.get(key)
@@ -455,7 +468,7 @@ class BaseRunner:
                 f"Configuration missing required keys: {', '.join(missing_configs)}"
             )
 
-        # Filter test cases
+    def _filter_and_build_execution_queue(self):
         included, excluded = (
             self.config_handler.get("include"),
             self.config_handler.get("exclude"),
@@ -467,14 +480,14 @@ class BaseRunner:
             self.filtered_test_cases, self.modules_data
         )
 
-        # Setup session
+    def _setup_session(self):
         self.manager: SessionManager = SessionManager()
         self.session_id: str = self.manager.create_session(
             self.config,
             self.execution_queue,
             self.modules_data,
             self.elements_data,
-            self.api_data
+            self.api_data,
         )
         self.engine: ExecutionEngine = ExecutionEngine(self.manager)
     async def run(self, mode: str):

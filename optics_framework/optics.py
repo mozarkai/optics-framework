@@ -12,12 +12,17 @@ from optics_framework.api.verifier import Verifier
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.runner.keyword_register import KeywordRegistry
-from optics_framework.common.models import TestCaseNode, ModuleData, ElementData, ApiData
+from optics_framework.common.models import (
+    TestCaseNode,
+    ModuleData,
+    ElementData,
+    ApiData,
+)
 
 T = TypeVar("T", bound=Callable[..., Any])
 
 try:
-    from robot.api.deco import keyword, library # type: ignore
+    from robot.api.deco import keyword, library  # type: ignore
 except ImportError:
 
     def keyword(name: Optional[str] = None) -> Callable[[T], T]:
@@ -27,9 +32,9 @@ except ImportError:
                 return func(*args, **kwargs)
 
             return cast(T, wrapper)
+
         _ = name
         return decorator
-
 
     def library(scope: Optional[str] = None) -> Callable[[T], T]:
         def decorator(cls: T) -> T:
@@ -37,6 +42,8 @@ except ImportError:
 
         _ = scope
         return decorator
+
+
 INVALID_SETUP = "Setup not complete. Call setup() first."
 
 
@@ -62,13 +69,14 @@ class Optics:
         self.verifier = None
         self.session_id = None
         self.flow_control = None
+
     def _parse_config_string(self, config_string: str) -> Dict[str, Any]:
         """
         Parse a JSON or YAML configuration string.
         """
         config_string = config_string.strip()
         try:
-            if config_string.startswith('{') or config_string.startswith('['):
+            if config_string.startswith("{") or config_string.startswith("["):
                 return json.loads(config_string)
             return yaml.safe_load(config_string)
         except json.JSONDecodeError as e:
@@ -125,7 +133,7 @@ class Optics:
         elements_sources: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         image_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         text_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
-        execution_output_path: Optional[str] = None,
+        execution_output_path_param: Optional[str] = None,
     ) -> None:
         """
         Configure the Optics Framework with required driver and element source settings.
@@ -144,15 +152,36 @@ class Optics:
             elements_sources: [DEPRECATED] List of element source configurations.
             image_detection: [DEPRECATED] Optional list of image detection configurations.
             text_detection: [DEPRECATED] Optional list of text detection configurations.
-            execution_output_path: [DEPRECATED] Optional execution output path.
+            execution_output_path_param: [DEPRECATED] Optional execution output path.
 
         Raises:
             ValueError: If configuration or session creation fails.
         """
-        # Handle new config parameter (string, dict, or None)
+        config_data = self._extract_config_data(
+            config,
+            driver_sources,
+            elements_sources,
+            image_detection,
+            text_detection,
+            execution_output_path_param,
+        )
+        self._update_config_handler(config_data)
+        self._initialize_session_and_keywords()
 
+    def _extract_config_data(
+        self,
+        config: Union[str, Dict[str, Any], None],
+        driver_sources: Optional[List[Dict[str, Dict[str, Any]]]],
+        elements_sources: Optional[List[Dict[str, Dict[str, Any]]]],
+        image_detection: Optional[List[Dict[str, Dict[str, Any]]]],
+        text_detection: Optional[List[Dict[str, Dict[str, Any]]]],
+        execution_output_path_param: Optional[str],
+    ) -> Dict[str, Any]:
+        """
+        Extract and validate configuration data from parameters.
+        """
         project_path = None
-        execution_output_path = None
+        execution_output_path = execution_output_path_param
         event_attributes_json = None
         _driver_config = driver_sources
         _element_source_config = elements_sources
@@ -169,19 +198,16 @@ class Optics:
 
             self._validate_required_keys(parsed_config)
 
-            # Extract configuration values
             _driver_config = parsed_config["driver_sources"]
             _element_source_config = parsed_config["elements_sources"]
             _image_config = parsed_config.get("image_detection")
             _text_config = parsed_config.get("text_detection")
-            if "project_path" in parsed_config:
-                project_path = parsed_config["project_path"]
-            if "execution_output_path" in parsed_config:
-                execution_output_path = parsed_config["execution_output_path"]
-            if "event_attributes_json" in parsed_config:
-                event_attributes_json = parsed_config["event_attributes_json"]
+            project_path = parsed_config.get("project_path")
+            execution_output_path = parsed_config.get(
+                "execution_output_path", execution_output_path_param
+            )
+            event_attributes_json = parsed_config.get("event_attributes_json")
         elif _driver_config is not None and _element_source_config is not None:
-            # Using legacy parameters - this path maintains backward compatibility
             internal_logger.warning(
                 "Using deprecated parameter format. Consider migrating to the new config parameter."
             )
@@ -190,32 +216,59 @@ class Optics:
                 "Either 'config' parameter or legacy parameters ('driver_sources' and 'elements_sources') must be provided"
             )
 
-        # Convert user-provided dictionaries to DependencyConfig
-        driver_deps = self._process_config_list(_driver_config or [])
-        element_deps = self._process_config_list(_element_source_config or [])
-        image_deps = self._process_config_list(_image_config or []) if _image_config else []
-        text_deps = self._process_config_list(_text_config or []) if _text_config else []
+        return {
+            "driver_sources": _driver_config or [],
+            "elements_sources": _element_source_config or [],
+            "image_detection": _image_config or [],
+            "text_detection": _text_config or [],
+            "project_path": project_path,
+            "execution_output_path": execution_output_path,
+            "event_attributes_json": event_attributes_json,
+        }
 
-        # Update ConfigHandler
+    def _update_config_handler(self, config_data: Dict[str, Any]) -> None:
+        """
+        Update the ConfigHandler with extracted configuration data.
+        """
         self.config_handler.load()
-        self.config_handler.config.driver_sources = driver_deps
-        self.config_handler.config.elements_sources = element_deps
-        self.config_handler.config.image_detection = image_deps
-        self.config_handler.config.text_detection = text_deps
-        if project_path:
-            self.config_handler.config.project_path = project_path
-        if execution_output_path:
-            self.config_handler.config.execution_output_path = execution_output_path
-        if event_attributes_json:
-            self.config_handler.config.event_attributes_json = event_attributes_json
-        # Initialize session
+        self.config_handler.config.driver_sources = self._process_config_list(
+            config_data["driver_sources"]
+        )
+        self.config_handler.config.elements_sources = self._process_config_list(
+            config_data["elements_sources"]
+        )
+        self.config_handler.config.image_detection = (
+            self._process_config_list(config_data["image_detection"])
+            if config_data["image_detection"]
+            else []
+        )
+        self.config_handler.config.text_detection = (
+            self._process_config_list(config_data["text_detection"])
+            if config_data["text_detection"]
+            else []
+        )
+        if config_data["project_path"]:
+            self.config_handler.config.project_path = config_data["project_path"]
+        if config_data["execution_output_path"]:
+            self.config_handler.config.execution_output_path = config_data[
+                "execution_output_path"
+            ]
+        if config_data["event_attributes_json"]:
+            self.config_handler.config.event_attributes_json = config_data[
+                "event_attributes_json"
+            ]
+
+    def _initialize_session_and_keywords(self) -> None:
+        """
+        Initialize session and register keywords.
+        """
         try:
             self.session_id = self.session_manager.create_session(
                 self.config_handler.config,
                 test_cases=TestCaseNode(name="default"),
                 modules=ModuleData(),
                 elements=ElementData(),
-                apis=ApiData()
+                apis=ApiData(),
             )
         except Exception as e:
             internal_logger.error(f"Failed to create session: {e}")
@@ -230,7 +283,9 @@ class Optics:
         registry.register(self.action_keyword)
         registry.register(self.app_management)
         registry.register(self.verifier)
-        self.flow_control = FlowControl(session=session, keyword_map=registry.keyword_map)
+        self.flow_control = FlowControl(
+            session=session, keyword_map=registry.keyword_map
+        )
         registry.register(self.flow_control)
 
     @keyword("Setup From File")
@@ -246,11 +301,11 @@ class Optics:
             FileNotFoundError: If the configuration file doesn't exist.
         """
         try:
-            with open(config_file_path, 'r', encoding='utf-8') as file:
+            with open(config_file_path, "r", encoding="utf-8") as file:
                 config_content = file.read()
 
-            # Parse the configuration
-            config = self._parse_config_from_file(config_content)
+            # Parse the configuration directly
+            config = self._parse_config_string(config_content)
 
             # Validate structure
             self._validate_required_keys(config)
@@ -261,48 +316,17 @@ class Optics:
                 elements_sources=config["elements_sources"],
                 image_detection=config.get("image_detection"),
                 text_detection=config.get("text_detection"),
-                execution_output_path=config.get("execution_output_path"),
+                execution_output_path_param=config.get("execution_output_path"),
             )
 
         except FileNotFoundError as exc:
-            raise FileNotFoundError(f"Configuration file not found: {config_file_path}") from exc
+            raise FileNotFoundError(
+                f"Configuration file not found: {config_file_path}"
+            ) from exc
         except Exception as e:
-            raise ValueError(f"Failed to read configuration file {config_file_path}: {e}") from e
-
-    def _parse_config_from_file(self, config_string: str) -> Dict[str, Any]:
-        """
-        Parse a JSON or YAML configuration string from file.
-
-        Args:
-            config_string: JSON or YAML formatted configuration string.
-
-        Returns:
-            Dict[str, Any]: Parsed configuration dictionary.
-
-        Raises:
-            ValueError: If the configuration string is invalid or cannot be parsed.
-        """
-        config_string = config_string.strip()
-
-        try:
-            # Try JSON first (faster and more strict)
-            if config_string.startswith('{') or config_string.startswith('['):
-                return json.loads(config_string)
-
-            # Try YAML for more flexible format
-            return yaml.safe_load(config_string)
-
-        except json.JSONDecodeError as e:
-            try:
-                # Fallback to YAML if JSON fails
-                return yaml.safe_load(config_string)
-            except yaml.YAMLError as yaml_e:
-                raise ValueError(
-                    f"Invalid configuration format. JSON error: {e}, YAML error: {yaml_e}"
-                ) from e
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML configuration: {e}") from e
-
+            raise ValueError(
+                f"Failed to read configuration file {config_file_path}: {e}"
+            ) from e
 
     def _validate_required_keys(self, config: Dict[str, Any]) -> None:
         """
@@ -353,7 +377,7 @@ class Optics:
         session = self.session_manager.sessions[self.session_id]
         if isinstance(api_data, str):
             if not os.path.isabs(api_data):
-                project_path = getattr(self.config_handler.config, 'project_path', None)
+                project_path = getattr(self.config_handler.config, "project_path", None)
                 if project_path:
                     api_data = os.path.join(project_path, api_data)
             if not os.path.exists(api_data):
@@ -394,11 +418,20 @@ class Optics:
 
     ### AppManagement Methods ###
     @keyword("Launch App")
-    def launch_app(self, app_identifier: Optional[str] = None, app_activity: Optional[str] = None, event_name: Optional[str] = None) -> None:
+    def launch_app(
+        self,
+        app_identifier: Optional[str] = None,
+        app_activity: Optional[str] = None,
+        event_name: Optional[str] = None,
+    ) -> None:
         """Launch the application."""
         if not self.app_management:
             raise ValueError(INVALID_SETUP)
-        self.app_management.launch_app(app_identifier=app_identifier, app_activity=app_activity, event_name=event_name)
+        self.app_management.launch_app(
+            app_identifier=app_identifier,
+            app_activity=app_activity,
+            event_name=event_name,
+        )
 
     @keyword("Launch Other App")
     def launch_other_app(self, bundleid: str) -> None:
@@ -422,7 +455,9 @@ class Optics:
         self.app_management.close_and_terminate_app()
 
     @keyword("Force Terminate App")
-    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
+    def force_terminate_app(
+        self, app_name: str, event_name: Optional[str] = None
+    ) -> None:
         """
         Forcefully terminate the specified application.
 
@@ -747,7 +782,9 @@ class Optics:
         return self.flow_control.evaluate(param1, param2)
 
     @keyword("Date Evaluate")
-    def date_evaluate(self, param1: str, param2: str, param3: str, param4: str = "%d %B") -> str:
+    def date_evaluate(
+        self, param1: str, param2: str, param3: str, param4: str = "%d %B"
+    ) -> str:
         """Evaluate a date expression and store the result in session elements."""
         if not self.flow_control:
             raise ValueError(INVALID_SETUP)

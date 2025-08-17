@@ -7,17 +7,19 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
 import csv
-
+import pandas as pd
+from io import StringIO
 from jsonpath_ng import parse as jsonpath_parse
 import requests
 from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
-import pandas as pd
-from io import StringIO
+
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
+NO_SESSION_ELEMENT_PRESENT = "Session elements is not an ElementData instance or is None."
+VAR_PATTERN = r"\$\{([^}]+)\}"
 
 
 def raw_params(*indices):
@@ -68,7 +70,7 @@ class FlowControl:
         # Access the shared elements dictionary from the session
         elements = getattr(self.session, "elements", None)
         if not isinstance(elements, ElementData):
-            raise ValueError("Session elements is not an ElementData instance or is None.")
+            raise ValueError(NO_SESSION_ELEMENT_PRESENT)
         value = elements.get_element(var_name)
         if value is None:
             raise ValueError(f"Variable '{param}' not found in elements dictionary")
@@ -290,8 +292,8 @@ class FlowControl:
             raise ValueError(NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise ValueError("Session elements is not an ElementData instance or is None.")
-        pattern = re.compile(r"\$\{([^}]+)\}")
+            raise ValueError(NO_SESSION_ELEMENT_PRESENT)
+        pattern = re.compile(VAR_PATTERN)
 
         def replacer(match):
             var_name = match.group(1).strip()
@@ -311,33 +313,6 @@ class FlowControl:
         """
         Reads tabular data from a CSV file, JSON file, environment variable, or a 2D list,
         applies optional filtering and column selection, and stores the result in the session's elements.
-
-        Parameters:
-            input_element (str): The name or identifier for the element to store the data under.
-            file_path (Union[str, List[Any]]):
-                - Path to a CSV or JSON file (relative or absolute).
-                - "ENV:<env_var_name>" to read data from an environment variable (supports JSON or CSV content).
-                - A 2D list (first row as headers, subsequent rows as data).
-            query (str, optional):
-                Query string to filter and/or select columns from the data.
-                - Filtering: e.g., "col1 == 'val1'" or "col1 == 'val1' and col2 == 'val2'"
-                - Column selection: "select=col1,col2"
-                - Combine with semicolon: "col1 == 'val1';select=col2"
-                If empty, all rows and columns are returned.
-
-        Returns:
-            List[Any]:
-                - If a single row is selected, returns a list of string values for that row.
-                - If multiple rows are selected, returns a list of lists (each inner list is a row of string values).
-
-        Raises:
-            ValueError: If session is not present, file_path is invalid, environment variable is missing,
-                        file extension is unsupported, query is invalid, or selected columns are missing.
-
-        Notes:
-            - All returned values are converted to strings.
-            - Data is stored in the session's elements as a comma-separated string.
-            - Only CSV and JSON file formats are supported.
         """
         internal_logger.debug(f"[READ_DATA] Called with input_element={input_element}, file_path={file_path}, query={query}")
         self._ensure_session()
@@ -345,129 +320,128 @@ class FlowControl:
             raise ValueError(NO_SESSION_PRESENT)
         elem_name = self._extract_element_name(input_element)
         internal_logger.debug(f"[READ_DATA] Extracted element name: {elem_name}")
-        # Load data as DataFrame (CSV, 2D list, or JSON)
-        df = None
+
+        df, direct_env_value = self._load_data_frame(file_path, elem_name)
+        if direct_env_value is not None:
+            return [direct_env_value]
+
+        df = self._ensure_df_string(df)
+        select_cols, filter_expr = self._parse_query_string(query)
+        df = self._apply_filter(df, filter_expr, query)
+        df = self._apply_column_selection(df, select_cols)
+        result = self._format_result(df)
+        store_value = self._store_result(elem_name, result)
+        return store_value
+
+    def _load_data_frame(self, file_path, elem_name):
+        """Loads data into a DataFrame from list, file, or environment variable."""
         if isinstance(file_path, list):
             data = file_path
             internal_logger.debug(f"[READ_DATA] Loading data from list, first row as headers: {data[0] if data and isinstance(data[0], list) else data}")
             if not data or not isinstance(data, list) or not data[0]:
-                df = pd.DataFrame()
-            else:
-                df = pd.DataFrame(data[1:], columns=data[0])
+                return pd.DataFrame(), None
+            return pd.DataFrame(data[1:], columns=data[0]), None
         elif isinstance(file_path, str):
-            # ENV:<env_var_name> support
             if file_path.startswith('ENV:'):
-                env_var = file_path[4:]
-                env_data = os.environ.get(env_var)
-                internal_logger.debug(f"[READ_DATA] Loading data from environment variable: {env_var}")
-                if env_data is None:
-                    raise ValueError(f"Environment variable '{env_var}' not found.")
-                # Try JSON first
-                try:
-                    json_data = json.loads(env_data)
-                    internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
-                    if isinstance(json_data, dict):
-                        for v in json_data.values():
-                            if isinstance(v, list):
-                                json_data = v
-                                break
-                        if isinstance(json_data, dict):
-                            json_data = [json_data]
-                    df = pd.json_normalize(json_data)
-                except Exception:
-                    internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
-                    try:
-                        df = pd.read_csv(StringIO(env_data))
-                        internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
-                        # If CSV parsing yields an empty DataFrame, treat as direct value
-                        if df.empty:
-                            runner_elements = self.session.elements
-                            if isinstance(runner_elements, ElementData):
-                                internal_logger.debug("[READ_DATA] Storing direct env value under element '%s': %s", elem_name, env_data)
-                                runner_elements.add_element(elem_name, env_data)
-                            else:
-                                internal_logger.warning("[READ_DATA] Cannot store direct env value: session.elements is not an ElementData instance.")
-                            return [env_data]
-                    except ValueError:
-                        internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
-                        # If not JSON or CSV, treat as direct value
-                        runner_elements = self.session.elements
-                        if isinstance(runner_elements, ElementData):
-                            internal_logger.debug("[READ_DATA] Storing direct env value under element '%s': %s", elem_name, env_data)
-                            runner_elements.add_element(elem_name, env_data)
-                        else:
-                            internal_logger.warning("[READ_DATA] Cannot store direct env value: session.elements is not an ElementData instance.")
-                        return [env_data]
+                return self._load_env_data(file_path[4:])
             else:
-                # Handle relative path: prepend project_path if not absolute
-                if not os.path.isabs(file_path):
-                    config_handler = ConfigHandler.get_instance()
-                    project_path = getattr(config_handler.config, 'project_path', None)
-                    internal_logger.debug(f"[READ_DATA] Resolving relative file path. Project path: {project_path}")
-                    if project_path:
-                        file_path = os.path.join(project_path, file_path)
-                        internal_logger.debug(f"[READ_DATA] Resolved file path: {file_path}")
-                ext = os.path.splitext(file_path)[-1].lower()
-                internal_logger.debug(f"[READ_DATA] File extension: {ext}")
-                # Explicit file existence check for CSV/JSON
-                if ext in ['.csv', '.json']:
-                    if not os.path.exists(file_path):
-                        internal_logger.error(f"[READ_DATA] File not found: {file_path}")
-                        raise FileNotFoundError(f"File '{file_path}' not found.")
-                if ext == '.csv':
-                    df = pd.read_csv(file_path)
-                    internal_logger.debug(f"[READ_DATA] Loaded CSV file: {file_path}")
-                elif ext == '.json':
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        json_data = json.load(f)
-                    internal_logger.debug(f"[READ_DATA] Loaded JSON file: {file_path}")
-                    # If the JSON is a dict with a single top-level list, use that list
-                    if isinstance(json_data, dict):
-                        for v in json_data.values():
-                            if isinstance(v, list):
-                                json_data = v
-                                break
-                        if isinstance(json_data, dict):
-                            json_data = [json_data]
-                    df = pd.json_normalize(json_data)
-                else:
-                    internal_logger.error(f"[READ_DATA] Unsupported file extension: {ext}")
-                    raise ValueError(f"Unsupported file extension: {ext}")
+                return self._load_file_data(file_path), None
         else:
             internal_logger.error("[READ_DATA] file_path must be a list or a file path string.")
             raise ValueError("file_path must be a list or a file path string.")
-        # Parse query
+
+    def _load_env_data(self, env_var):
+        env_data = os.environ.get(env_var)
+        internal_logger.debug(f"[READ_DATA] Loading data from environment variable: {env_var}")
+        if env_data is None:
+            raise ValueError(f"Environment variable '{env_var}' not found.")
+        try:
+            json_data = json.loads(env_data)
+            internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
+            if isinstance(json_data, dict):
+                for v in json_data.values():
+                    if isinstance(v, list):
+                        json_data = v
+                        break
+                if isinstance(json_data, dict):
+                    json_data = [json_data]
+            return pd.json_normalize(json_data), None
+        except (json.JSONDecodeError, ValueError):
+            internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
+            try:
+                df = pd.read_csv(StringIO(env_data))
+                internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
+                if df.empty:
+                    return pd.DataFrame(), env_data
+                return df, None
+            except ValueError:
+                internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+                return pd.DataFrame(), env_data
+        except Exception as e:
+            internal_logger.error(f"[READ_DATA] Unexpected error occurred: {e}")
+            raise ValueError(f"Unexpected error while loading environment variable '{env_var}': {e}") from e
+
+    def _load_file_data(self, file_path):
+        file_path = self._resolve_file_path(file_path)
+        ext = self._get_file_extension(file_path)
+        self._check_file_exists(file_path, ext)
+        if ext == '.csv':
+            return self._load_csv_file(file_path)
+        elif ext == '.json':
+            return self._load_json_file(file_path)
+        else:
+            internal_logger.error(f"[READ_DATA] Unsupported file extension: {ext}")
+            raise ValueError(f"Unsupported file extension: {ext}")
+
+    def _resolve_file_path(self, file_path):
+        if not os.path.isabs(file_path):
+            config_handler = ConfigHandler.get_instance()
+            project_path = getattr(config_handler.config, 'project_path', None)
+            internal_logger.debug(f"[READ_DATA] Resolving relative file path. Project path: {project_path}")
+            if project_path:
+                file_path = os.path.join(project_path, file_path)
+                internal_logger.debug(f"[READ_DATA] Resolved file path: {file_path}")
+        return file_path
+
+    def _get_file_extension(self, file_path):
+        ext = os.path.splitext(file_path)[-1].lower()
+        internal_logger.debug(f"[READ_DATA] File extension: {ext}")
+        return ext
+
+    def _check_file_exists(self, file_path, ext):
+        if ext in ['.csv', '.json'] and not os.path.exists(file_path):
+            internal_logger.error(f"[READ_DATA] File not found: {file_path}")
+            raise FileNotFoundError(f"File '{file_path}' not found.")
+
+    def _load_csv_file(self, file_path):
+        return pd.read_csv(file_path)
+
+    def _load_json_file(self, file_path):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        internal_logger.debug(f"[READ_DATA] Loaded JSON file: {file_path}")
+        if isinstance(json_data, dict):
+            for v in json_data.values():
+                if isinstance(v, list):
+                    json_data = v
+                    break
+            if isinstance(json_data, dict):
+                json_data = [json_data]
+        return pd.json_normalize(json_data)
+
+    def _ensure_df_string(self, df):
+        if df is not None and not df.empty:
+            return df.astype(str)
+        return df
+
+    def _parse_query_string(self, query):
         select_cols = None
         filter_expr = None
-        # Ensure all columns are string for consistent querying
-        if df is not None and not df.empty:
-            df = df.astype(str)
         if query:
             internal_logger.debug(f"[READ_DATA] Parsing query: {query}")
-            # Resolve ${...} variables inside the query string
-            def resolve_query_vars(q):
-                pattern = re.compile(r"\$\{([^}]+)\}")
-                runner_elements = getattr(self.session, "elements", None)
-                if not isinstance(runner_elements, ElementData):
-                    runner_elements = ElementData()
-                    setattr(self.session, "elements", runner_elements)
-                def replacer(match):
-                    var_name = match.group(1).strip()
-                    value = runner_elements.get_element(var_name)
-                    internal_logger.debug(f"[READ_DATA] Resolving variable in query: {var_name} -> {value}")
-                    if value is None:
-                        raise ValueError(f"Variable '{var_name}' not found in elements for query resolution.")
-                    # Check if the variable is already inside quotes in the query
-                    start, end = match.span()
-                    before = q[start-1] if start > 0 else ''
-                    after = q[end] if end < len(q) else ''
-                    if isinstance(value, str) and not (before == "'" and after == "'"):
-                        return f"'{value}'"
-                    return str(value)
-                return pattern.sub(replacer, q)
             parts = [p.strip() for p in query.split(';') if p.strip()]
             for part in parts:
-                resolved_part = resolve_query_vars(part)
+                resolved_part = self._resolve_query_vars(part)
                 internal_logger.debug(f"[READ_DATA] Resolved query part: {resolved_part}")
                 if resolved_part.startswith('select='):
                     select_cols = [c.strip() for c in resolved_part[7:].split(',') if c.strip()]
@@ -475,7 +449,29 @@ class FlowControl:
                 else:
                     filter_expr = resolved_part if filter_expr is None else f"{filter_expr} and {resolved_part}"
                     internal_logger.debug(f"[READ_DATA] Filter expression: {filter_expr}")
-        # Apply filter
+        return select_cols, filter_expr
+
+    def _resolve_query_vars(self, q):
+        pattern = re.compile(VAR_PATTERN)
+        runner_elements = getattr(self.session, "elements", None)
+        if not isinstance(runner_elements, ElementData):
+            runner_elements = ElementData()
+            setattr(self.session, "elements", runner_elements)
+        def replacer(match):
+            var_name = match.group(1).strip()
+            value = runner_elements.get_element(var_name)
+            internal_logger.debug(f"[READ_DATA] Resolving variable in query: {var_name} -> {value}")
+            if value is None:
+                raise ValueError(f"Variable '{var_name}' not found in elements for query resolution.")
+            start, end = match.span()
+            before = q[start-1] if start > 0 else ''
+            after = q[end] if end < len(q) else ''
+            if isinstance(value, str) and not (before == "'" and after == "'"):
+                return f"'{value}'"
+            return str(value)
+        return pattern.sub(replacer, q)
+
+    def _apply_filter(self, df, filter_expr, query):
         if filter_expr:
             try:
                 df = df.query(filter_expr)
@@ -483,7 +479,12 @@ class FlowControl:
             except Exception as e:
                 internal_logger.error(f"[READ_DATA] Invalid query expression: {filter_expr}. Error: {e}")
                 raise ValueError(f"Invalid query expression: {filter_expr}. Error: {e}")
-        # Select columns
+        if df is not None and df.empty and query:
+            internal_logger.error(f"[READ_DATA] No data found matching the query/filter: '{query}'")
+            raise ValueError(f"No data found matching the query/filter: '{query}'")
+        return df
+
+    def _apply_column_selection(self, df, select_cols):
         if select_cols:
             missing = [c for c in select_cols if c not in df.columns]
             if missing:
@@ -491,27 +492,24 @@ class FlowControl:
                 raise ValueError(f"Columns not found in data: {missing}")
             df = df.loc[:, select_cols]
             internal_logger.debug(f"[READ_DATA] Selected columns from DataFrame: {select_cols}")
-        # Convert result to list of lists
+        return df
+
+    def _format_result(self, df):
         result = df.values.tolist()
         internal_logger.debug(f"[READ_DATA] Resulting data: {result}")
-        # Fail if no data found after query/filter
-        if df is not None and df.empty:
-            internal_logger.error(f"[READ_DATA] No data found matching the query/filter: '{query}'")
-            raise ValueError(f"No data found matching the query/filter: '{query}'")
         if len(result) == 1:
             data = result[0]
         else:
             data = result
-        # Ensure all values are string (for both single and list cases)
         def to_str(val):
             if isinstance(val, list):
                 return [str(v) for v in val]
             return str(val)
-        data_str = to_str(data)
-        internal_logger.debug(f"[READ_DATA] Data to store: {data_str}")
+        return to_str(data)
+
+    def _store_result(self, elem_name, data_str):
         runner_elements = self.session.elements
         if isinstance(runner_elements, ElementData):
-            # If data_str is a list, join as comma-separated string for storage
             if isinstance(data_str, list):
                 store_value = ','.join(data_str)
             else:
@@ -520,7 +518,6 @@ class FlowControl:
             runner_elements.add_element(elem_name, store_value)
         else:
             internal_logger.warning("[READ_DATA] Cannot store value: session.elements is not an ElementData instance.")
-            # Ensure store_value is assigned even if runner_elements is not ElementData
             if isinstance(data_str, list):
                 store_value = ','.join(data_str)
             else:
@@ -662,7 +659,7 @@ class FlowControl:
             raise ValueError(NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise ValueError("Session elements is not an ElementData instance or is None.")
+            raise ValueError(NO_SESSION_ELEMENT_PRESENT)
 
         def replace_var(match):
             var_name = match.group(1)
@@ -671,7 +668,7 @@ class FlowControl:
                 raise ValueError(f"Variable '{var_name}' not found in elements.")
             return str(value)
 
-        param2_resolved = re.sub(r"\$\{([^}]+)\}", replace_var, param2)
+        param2_resolved = re.sub(VAR_PATTERN, replace_var, param2)
         return self._safe_eval(param2_resolved)
 
     def _safe_eval(self, expression: str) -> Any:
@@ -884,7 +881,7 @@ class FlowControl:
         """Recursively resolves ${...} placeholders in strings, dicts, or lists."""
         if isinstance(data, str):
             return re.sub(
-                r"\$\{([^}]+)\}", lambda m: self._resolve_param(m.group(0)), data
+                VAR_PATTERN, lambda m: self._resolve_param(m.group(0)), data
             )
         if isinstance(data, dict):
             return {k: self._resolve_placeholders(v) for k, v in data.items()}

@@ -59,63 +59,75 @@ class SeleniumDriver(DriverInterface):
         Start a new Selenium session with the specified browser.
         Optionally override browser_url and browser_name.
         """
-        if self.driver is None:
-            all_caps = self.capabilities.copy() if self.capabilities else {}
+        if self.driver is not None:
+            return self.driver
 
-            # Allow browser_name override
-            if browser_name:
-                all_caps["browserName"] = browser_name
-            browser_name_val = all_caps.get("browserName")
-            if not browser_name_val:
-                raise ValueError("'browserName' capability is required.")
-            browser_name_val = browser_name_val.lower()
+        all_caps = self.capabilities.copy() if self.capabilities else {}
+        browser_name_val = self._get_browser_name(all_caps, browser_name)
+        options, default_options = self._get_browser_options(browser_name_val)
+        self._update_browser_url(all_caps, browser_url)
+        final_caps = self._merge_capabilities(default_options, all_caps)
+        internal_logger.debug(f"Final capabilities being applied: {final_caps}")
 
-            default_options = {}
-            if browser_name_val == "chrome":
-                options = ChromeOptions()
-                default_options = {
-                    "goog:chromeOptions": {
-                        "args": [
-                            "--remote-debugging-address=0.0.0.0",
-                            "--no-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-gpu",
-                        ]
-                    }
-                }
-            elif browser_name_val == "firefox":
-                options = FirefoxOptions()
-            else:
-                raise ValueError(f"Unsupported browser: {browser_name_val}")
-            if browser_url:
-                self.browser_url = browser_url
-                all_caps["browserURL"] = self.browser_url
+        self._set_options_capabilities(options, final_caps)
 
-            final_caps = {**default_options, **all_caps}
-            internal_logger.debug(f"Final capabilities being applied: {final_caps}")
-
-            for key, value in final_caps.items():
-                options.set_capability(key, value)
-
-            try:
-                self.driver = webdriver.Remote(
-                    command_executor=self.selenium_server_url,
-                    options=options
-                )
-
-                set_selenium_driver(self.driver)
-                if event_name:
-                    internal_logger.debug(
-                        f"Starting Selenium session with event: {event_name}")
-                    self.eventSDK.capture_event(event_name)
-                self.ui_helper = UIHelper()
+        try:
+            self.driver = webdriver.Remote(
+                command_executor=self.selenium_server_url,
+                options=options
+            )
+            set_selenium_driver(self.driver)
+            if event_name:
                 internal_logger.debug(
-                    f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name_val}")
-
-            except Exception as e:
-                internal_logger.error(f"Failed to start Selenium session: {e}")
-                raise
+                    f"Starting Selenium session with event: {event_name}")
+                self.eventSDK.capture_event(event_name)
+            self.ui_helper = UIHelper()
+            internal_logger.debug(
+                f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name_val}")
+        except Exception as e:
+            internal_logger.error(f"Failed to start Selenium session: {e}")
+            raise
         return self.driver
+
+    def _get_browser_name(self, all_caps: dict, browser_name: str | None) -> str:
+        if browser_name:
+            all_caps["browserName"] = browser_name
+        browser_name_val = all_caps.get("browserName")
+        if not browser_name_val:
+            raise ValueError("'browserName' capability is required.")
+        return browser_name_val.lower()
+
+    def _get_browser_options(self, browser_name_val: str):
+        if browser_name_val == "chrome":
+            options = ChromeOptions()
+            default_options = {
+                "goog:chromeOptions": {
+                    "args": [
+                        "--remote-debugging-address=0.0.0.0",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                    ]
+                }
+            }
+        elif browser_name_val == "firefox":
+            options = FirefoxOptions()
+            default_options = {}
+        else:
+            raise ValueError(f"Unsupported browser: {browser_name_val}")
+        return options, default_options
+
+    def _update_browser_url(self, all_caps: dict, browser_url: str | None):
+        if browser_url:
+            self.browser_url = browser_url
+            all_caps["browserURL"] = self.browser_url
+
+    def _merge_capabilities(self, default_options: dict, all_caps: dict) -> dict:
+        return {**default_options, **all_caps}
+
+    def _set_options_capabilities(self, options: Any, final_caps: dict):
+        for key, value in final_caps.items():
+            options.set_capability(key, value)
 
     def terminate(self, event_name: str | None = None) -> None:
         """End the current Selenium session."""

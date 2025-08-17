@@ -109,6 +109,46 @@ class TestRunner(Runner):
         self._initialize_test_state()
 
     def _initialize_test_state(self) -> None:
+        def _init_keywords(module_node):
+            keywords = []
+            current_keyword = module_node.keywords_head
+            while current_keyword:
+                resolved_params = [
+                    self.resolve_param(param) for param in current_keyword.params
+                ]
+                resolved_name = (
+                    f"{current_keyword.name} ({', '.join(str(p) for p in resolved_params)})"
+                    if resolved_params
+                    else current_keyword.name
+                )
+                keyword_result = KeywordResult(
+                    id=current_keyword.id,
+                    name=current_keyword.name,
+                    resolved_name=resolved_name,
+                    elapsed="0.00s",
+                    status="NOT_RUN",
+                    reason="",
+                )
+                keywords.append(keyword_result)
+                current_keyword = current_keyword.next
+            return keywords
+
+        def _init_modules(test_case_node):
+            modules = []
+            current_module = test_case_node.modules_head
+            while current_module:
+                module_result = ModuleResult(
+                    name=current_module.name,
+                    elapsed="0.00s",
+                    status="NOT_RUN",
+                    keywords=_init_keywords(current_module),
+                )
+                if not isinstance(module_result.keywords, list):
+                    module_result.keywords = []
+                modules.append(module_result)
+                current_module = current_module.next
+            return modules
+
         test_state = {}
         current_test = self.test_cases
         while current_test:
@@ -117,43 +157,10 @@ class TestRunner(Runner):
                 name=current_test.name,
                 elapsed="0.00s",
                 status="NOT_RUN",
-                modules=[],
+                modules=_init_modules(current_test),
             )
-            current_module = current_test.modules_head
-            while current_module:
-                module_result = ModuleResult(
-                    name=current_module.name,
-                    elapsed="0.00s",
-                    status="NOT_RUN",
-                    keywords=[],
-                )
-                # Ensure keywords is a list, not a FieldInfo object
-                if not isinstance(module_result.keywords, list):
-                    module_result.keywords = []
-                if not isinstance(test_result.modules, list):
-                    test_result.modules = []
-                current_keyword = current_module.keywords_head
-                while current_keyword:
-                    resolved_params = [
-                        self.resolve_param(param) for param in current_keyword.params
-                    ]
-                    resolved_name = (
-                        f"{current_keyword.name} ({', '.join(str(p) for p in resolved_params)})"
-                        if resolved_params
-                        else current_keyword.name
-                    )
-                    keyword_result = KeywordResult(
-                        id=current_keyword.id,
-                        name=current_keyword.name,
-                        resolved_name=resolved_name,
-                        elapsed="0.00s",
-                        status="NOT_RUN",
-                        reason="",
-                    )
-                    module_result.keywords.append(keyword_result)
-                    current_keyword = current_keyword.next
-                test_result.modules.append(module_result)
-                current_module = current_module.next
+            if not isinstance(test_result.modules, list):
+                test_result.modules = []
             test_state[current_test.name] = test_result
             current_test = current_test.next
         self.result_printer.test_state = test_state
