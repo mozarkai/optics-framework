@@ -1,12 +1,15 @@
+
 import os
 import yaml
 import csv
+import pytest
 from optics_framework.optics import Optics
-import sys
-import time
-import importlib.util
+from tests.mock_servers.single_server import run_single_server
+
+
 CONTACT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/config.yaml')
 ELEMENTS_CSV_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/elements.csv')
+
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
@@ -20,10 +23,17 @@ def load_elements(elements_path):
             elements[row['Element_Name']] = row['Element_ID']
     return elements
 
+@pytest.fixture(scope="module")
+def live_servers():
+    server_instance, thread = run_single_server()
+    yield
+    server_instance.should_exit = True
+    thread.join()
+
 
 def test_setup_and_elements():
-    config = load_config(CONTACT_CONFIG_PATH)
     elements = load_elements(ELEMENTS_CSV_PATH)
+    config = load_config(CONTACT_CONFIG_PATH)
     optics = Optics()
     optics.setup(config=config)
     for name, value in elements.items():
@@ -37,36 +47,22 @@ def test_setup_from_file():
     optics.setup_from_file(CONTACT_CONFIG_PATH)
     optics.quit()
 
-def test_add_api_and_invoke():
+def test_add_api_and_invoke(live_servers):
     MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
-    server_path = os.path.join(os.path.dirname(__file__), '../mock_servers/single_server.py')
-    spec = importlib.util.spec_from_file_location("single_server", server_path)
-    if spec and spec.loader:
-        single_server = importlib.util.module_from_spec(spec)
-        sys.modules["single_server"] = single_server
-        spec.loader.exec_module(single_server)
-        server, thread = single_server.run_single_server()
-        time.sleep(0.5)
-    else:
-        raise ImportError("Could not import single_server module for mock API test.")
-    try:
-        optics = Optics()
-        optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-        with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
-            api_yaml_dict = yaml.safe_load(f)
-        optics.add_api(api_yaml_dict)
-        optics.invoke_api("mock.token")
-        access_token = optics.get_element_value("access_token")
-        user_id = optics.get_element_value("userId")
-        optics.add_element("access_token", access_token)
-        optics.add_element("userId", user_id)
-        optics.invoke_api("mock.sendotp")
-        txn_type = optics.get_element_value("txnType")
-        assert txn_type == "GEN", f"Expected txnType 'GEN', got {txn_type}"
-        optics.quit()
-    finally:
-        server.should_exit = True
-        thread.join()
+    optics = Optics()
+    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
+    with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
+        api_yaml_dict = yaml.safe_load(f)
+    optics.add_api(api_yaml_dict)
+    optics.invoke_api("mock.token")
+    access_token = optics.get_element_value("access_token")
+    user_id = optics.get_element_value("userId")
+    optics.add_element("access_token", access_token)
+    optics.add_element("userId", user_id)
+    optics.invoke_api("mock.sendotp")
+    txn_type = optics.get_element_value("txnType")
+    assert txn_type == "GEN", f"Expected txnType 'GEN', got {txn_type}"
+    optics.quit()
 
 def test_add_testcase_and_module():
     optics = Optics()
@@ -104,39 +100,21 @@ def test_context_manager():
         optics.add_element('foo', 'bar')
         assert optics.get_element_value('foo') == 'bar'
 
-def test_mock_api():
+def test_mock_api(live_servers):
     MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
-    # Dynamically import the mock server module
-    server_path = os.path.join(os.path.dirname(__file__), '../mock_servers/single_server.py')
-    spec = importlib.util.spec_from_file_location("single_server", server_path)
-    if spec and spec.loader:
-        single_server = importlib.util.module_from_spec(spec)
-        sys.modules["single_server"] = single_server
-        spec.loader.exec_module(single_server)
-        # Start the mock server
-        server, thread = single_server.run_single_server()
-        time.sleep(0.5)  # Ensure server is up
-    else:
-        raise ImportError("Could not import single_server module for mock API test.")
-
-    try:
-        optics = Optics()
-        optics.setup(config=load_config(CONTACT_CONFIG_PATH))  # Minimal setup for API-only test
-        with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
-            api_yaml_dict = yaml.safe_load(f)
-        optics.add_api(api_yaml_dict)
-        optics.invoke_api("mock.token")
-        access_token = optics.get_element_value("access_token")
-        user_id = optics.get_element_value("userId")
-        print("Access token from mock API:", access_token)
-        print("User ID from mock API:", user_id)
-        optics.add_element("access_token", access_token)
-        optics.add_element("userId", user_id)
-        optics.invoke_api("mock.sendotp")
-        txn_type = optics.get_element_value("txnType")
-        print("OTP txnType from mock API:", txn_type)
-        optics.quit()
-    finally:
-        # Stop the mock server
-        server.should_exit = True
-        thread.join()
+    optics = Optics()
+    optics.setup(config=load_config(CONTACT_CONFIG_PATH))  # Minimal setup for API-only test
+    with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
+        api_yaml_dict = yaml.safe_load(f)
+    optics.add_api(api_yaml_dict)
+    optics.invoke_api("mock.token")
+    access_token = optics.get_element_value("access_token")
+    user_id = optics.get_element_value("userId")
+    print("Access token from mock API:", access_token)
+    print("User ID from mock API:", user_id)
+    optics.add_element("access_token", access_token)
+    optics.add_element("userId", user_id)
+    optics.invoke_api("mock.sendotp")
+    txn_type = optics.get_element_value("txnType")
+    print("OTP txnType from mock API:", txn_type)
+    optics.quit()
