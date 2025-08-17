@@ -30,10 +30,10 @@ class Session:
     """Represents a single execution session with config and optics."""
 
     def __init__(self, session_id: str, config: Config,
-                 test_cases: TestCaseNode,
-                 modules: ModuleData,
-                 elements: ElementData,
-                 apis: ApiData):
+                 test_cases: Optional[TestCaseNode],
+                 modules: Optional[ModuleData],
+                 elements: Optional[ElementData],
+                 apis: Optional[ApiData]):
 
         self.session_id = session_id
         self.config_handler = ConfigHandler.get_instance()
@@ -70,10 +70,10 @@ class SessionManager(SessionHandler):
         self.sessions: Dict[str, Session] = {}
 
     def create_session(self, config: Config,
-                       test_cases: TestCaseNode,
-                       modules: ModuleData,
-                       elements: ElementData,
-                       apis: ApiData) -> str:
+                       test_cases: Optional[TestCaseNode],
+                       modules: Optional[ModuleData],
+                       elements: Optional[ElementData],
+                       apis: Optional[ApiData]) -> str:
         """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
         self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis)
@@ -85,6 +85,6 @@ class SessionManager(SessionHandler):
 
     def terminate_session(self, session_id: str) -> None:
         """Terminates a session and cleans up resources."""
-        session = self.sessions.pop(session_id, None)
+        session: Session | None = self.sessions.pop(session_id, None)
         if session and session.driver:
             session.driver.terminate()

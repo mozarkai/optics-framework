@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
-from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner
+from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
@@ -36,8 +36,10 @@ class Executor(ABC):
 class BatchExecutor(Executor):
     """Executes batch test cases."""
 
-    def __init__(self, test_case: TestCaseNode):
+    def __init__(self, test_case: Optional[TestCaseNode]):
         self.test_case = test_case
+        if not self.test_case:
+            raise ValueError("Test case is required")
 
     async def execute(self, session: Session, runner: Runner) -> None:
         event_manager = get_event_manager()
@@ -84,8 +86,10 @@ class BatchExecutor(Executor):
 class DryRunExecutor(Executor):
     """Performs dry run of test cases."""
 
-    def __init__(self, test_case: TestCaseNode):
+    def __init__(self, test_case: Optional[TestCaseNode]):
         self.test_case = test_case
+        if not self.test_case:
+            raise ValueError("Test case is required")
 
     async def execute(self, session: Session, runner: Runner) -> None:
         status = EventStatus.FAIL
@@ -129,8 +133,20 @@ class KeywordExecutor(Executor):
     async def execute(self, session: Session, runner: Runner) -> None:
         event_manager = get_event_manager()
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
+        result = None
         if method:
-            result = method(*self.params)
+            try:
+                result = method(*self.params)
+            except Exception as e:
+                await event_manager.publish_event(Event(
+                    entity_type="keyword",
+                    entity_id=session.session_id,
+                    name=self.keyword,
+                    status=EventStatus.FAIL,
+                    message="Keyword execution failed: %s" % str(e),
+                    extra={"session_id": session.session_id}
+                ))
+                raise ValueError(f"Keyword execution failed: {str(e)}") from e
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,
@@ -165,8 +181,6 @@ class RunnerFactory:
         action_keyword = session.optics.build(ActionKeyword)
         app_management = session.optics.build(AppManagement)
         verifier = session.optics.build(Verifier)
-
-        # Register keywords first
         registry.register(action_keyword)
         registry.register(app_management)
         registry.register(verifier)
@@ -176,13 +190,14 @@ class RunnerFactory:
             result_printer = TreeResultPrinter.get_instance(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
             runner = TestRunner(
-                session, registry.keyword_map, result_printer # Pass session and keyword_map
+                session, registry.keyword_map, result_printer
             )
         elif runner_type == "pytest":
-            runner = PytestRunner(session, registry.keyword_map) # Pass session and keyword_map
+            runner = PytestRunner(session, registry.keyword_map)
+        elif runner_type == "keyword_runner":
+            runner = KeywordRunner(registry.keyword_map)
         else:
             raise ValueError(f"Unknown runner type: {runner_type}")
-
         return runner
 
 
@@ -206,7 +221,7 @@ class ExecutionEngine:
             ))
             raise ValueError("Session not found")
 
-        if not session.test_cases:
+        if params.mode in ("batch", "dry_run") and not session.test_cases:
             await self.event_manager.publish_event(Event(
                 entity_type="execution",
                 entity_id=params.session_id,
@@ -223,10 +238,16 @@ class ExecutionEngine:
         internal_logger.debug(
             "Using printer: %s for runner: %s", 'TreeResultPrinter' if use_printer else 'NullResultPrinter', params.runner_type)
 
+        # Use minimal runner for keyword mode
+        if params.mode == "keyword":
+            runner_type = "keyword_runner"
+        else:
+            runner_type = params.runner_type
+
         with LoggerContext(params.session_id):
             runner = RunnerFactory.create_runner(
                 session,
-                params.runner_type,
+                runner_type,
                 use_printer,
             )
             if hasattr(runner, 'result_printer') and runner.result_printer and use_printer:
@@ -257,7 +278,18 @@ class ExecutionEngine:
                             extra={"session_id": params.session_id}
                         ))
                         raise ValueError("Keyword mode requires a keyword")
-                    executor = KeywordExecutor(params.keyword, params.params)
+                    try:
+                        executor = KeywordExecutor(params.keyword, params.params)
+                    except Exception as e:
+                        await self.event_manager.publish_event(Event(
+                            entity_type="execution",
+                            entity_id=params.session_id,
+                            name="Execution",
+                            status=EventStatus.ERROR,
+                            message=f"Failed to create keyword executor: {str(e)}",
+                            extra={"session_id": params.session_id}
+                        ))
+                        raise ValueError(f"Failed to create keyword executor: {str(e)}") from e
                 else:
                     await self.event_manager.publish_event(Event(
                         entity_type="execution",
@@ -268,10 +300,19 @@ class ExecutionEngine:
                         extra={"session_id": params.session_id}
                     ))
                     raise ValueError(f"Unknown mode: {params.mode}")
-
-                result =  await executor.execute(session, runner)
-                return result
-
+                try:
+                    result =  await executor.execute(session, runner)
+                    return result
+                except Exception as e:
+                    await self.event_manager.publish_event(Event(
+                        entity_type="execution",
+                        entity_id=params.session_id,
+                        name="Execution",
+                        status=EventStatus.ERROR,
+                        message=f"Execution failed: {str(e)}",
+                        extra={"session_id": params.session_id}
+                    ))
+                    raise ValueError(f"Execution failed: {str(e)}") from e
             except Exception as e:
                 await self.event_manager.publish_event(Event(
                     entity_type="execution",
@@ -282,7 +323,7 @@ class ExecutionEngine:
                     extra={"session_id": params.session_id}
                 ))
                 internal_logger.error(f"Execution error in session {params.session_id}: {e}")
-                return None
+                raise ValueError(f"Execution failed: {str(e)}") from e
             finally:
                 if hasattr(runner, 'result_printer') and runner.result_printer:
                     internal_logger.debug(

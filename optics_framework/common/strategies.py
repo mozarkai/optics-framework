@@ -364,6 +364,7 @@ class StrategyManager:
                     execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
+        raise ValueError(f"Element '{element}' not found using any strategy.")
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         rule = rule.lower()
@@ -388,7 +389,7 @@ class StrategyManager:
                             f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
                 except Exception as e:
                     execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-        return False, None
+        raise ValueError("No elements found.")
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""
@@ -401,7 +402,7 @@ class StrategyManager:
             except Exception as e:
                 execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
         internal_logger.error("No screenshot captured.")
-        return None
+        raise ValueError("No screenshot captured using available strategies.")
 
     def capture_screenshot_stream(self, timeout: int = 30):
         """Capture a screenshot stream using the available strategies."""
@@ -425,6 +426,7 @@ class StrategyManager:
             self.screenshot_stream = None
         else:
             execution_logger.warning("No active screenshot stream to stop.")
+            raise ValueError("No active screenshot stream to stop.")
 
     def capture_pagesource(self) -> Optional[str]:
         for strategy in self.pagesource_strategies:
@@ -434,7 +436,7 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No pagesource captured.")
-        return None
+        raise ValueError("No pagesource captured using available strategies.")
 
     def get_interactive_elements(self) -> List[dict]:
         """Retrieve interactive elements from the element source."""
@@ -445,4 +447,4 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No interactive elements retrieved.")
-        return []
+        raise ValueError("No interactive elements retrieved using available strategies.")

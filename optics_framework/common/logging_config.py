@@ -63,7 +63,8 @@ execution_listener.start()
 # SessionLoggerAdapter
 class SessionLoggerAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
-        session_id = self.extra.get("session_id", "unknown")
+        extra = self.extra if isinstance(self.extra, dict) else {}
+        session_id = extra.get("session_id", "unknown")
         kwargs.setdefault("extra", {})
         kwargs["extra"]["session_id"] = session_id
         return msg, kwargs
@@ -157,10 +158,7 @@ def initialize_handlers():
     internal_logger.debug(f"Output directory: {log_dir}, writable={os.access(log_dir, os.W_OK)}")
 
     # Stop old listeners if exist
-    if internal_listener:
-        internal_listener.stop()
-    if execution_listener:
-        execution_listener.stop()
+    stop_listeners()
 
     # Start listeners with console handlers first
     internal_listener = QueueListener(internal_log_queue, internal_console_handler, respect_handler_level=True)
@@ -205,10 +203,29 @@ def disable_logger():
 
 def stop_listeners():
     """Stops user and internal listeners."""
-    if internal_listener:
-        internal_listener.stop()
-    if execution_listener:
-        execution_listener.stop()
+    global internal_listener, execution_listener
+    def safe_stop(listener, name):
+        if listener:
+            try:
+                # Enqueue sentinel manually if thread is alive
+                if hasattr(listener, '_thread') and listener._thread and listener._thread.is_alive():
+                    try:
+                        listener.enqueue_sentinel()
+                    except Exception as e:
+                        internal_logger.error(
+                            f"Failed to enqueue sentinel for listener: {e}"
+                        )
+                    # Try to join with timeout to avoid infinite hang
+                    listener._thread.join(timeout=2.0)
+                    if listener._thread.is_alive():
+                        internal_logger.warning(f"{name} thread did not terminate after timeout.")
+                listener._thread = None
+            except Exception as e:
+                internal_logger.warning(f"Error stopping {name}: {e}")
+    safe_stop(internal_listener, "internal_listener")
+    internal_listener = None
+    safe_stop(execution_listener, "execution_listener")
+    execution_listener = None
 
 
 def wait_for_threads():
@@ -216,7 +233,8 @@ def wait_for_threads():
     timeout = 2.0
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if not (is_thread_alive(internal_listener)) or is_thread_alive(execution_listener):
+        # Exit if BOTH listeners are not alive
+        if not is_thread_alive(internal_listener) and not is_thread_alive(execution_listener):
             return
         time.sleep(0.1)
     check_thread_status()

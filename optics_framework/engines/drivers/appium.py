@@ -111,7 +111,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to create new Appium session: {e}")
             self.driver = None
-            raise
+            raise RuntimeError("Failed to create new Appium session due to: " + str(e)) from e
 
 
     def _get_platform_and_options(self, all_caps: Dict[str, Any]) -> tuple[Any, Dict[str, Any]]:
