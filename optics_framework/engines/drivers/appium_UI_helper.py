@@ -4,7 +4,6 @@ from fuzzywuzzy import fuzz
 from lxml import etree
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
-
 ## Removed import of get_appium_driver (no longer needed)
 
 
@@ -29,7 +28,7 @@ class UIHelper:
         internal_logger.debug("\n\n========== PAGE SOURCE FETCHED ==========")
         internal_logger.debug(f"Page source fetched at: {time_stamp}")
         internal_logger.debug("\n==========================================")
-        utils.save_page_source(page_source, time_stamp)
+        utils.save_page_source(page_source, time_stamp, self.driver.event_sdk.config_handler.config.execution_output_path)
         return page_source, time_stamp
 
     # fetching page source and handling UI tree

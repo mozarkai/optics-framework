@@ -1,5 +1,4 @@
-from typing import Union, List
-import inspect
+from typing import List
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.base_factory import GenericFactory
 from optics_framework.common.driver_interface import DriverInterface
@@ -12,12 +11,20 @@ class DeviceFactory(GenericFactory[DriverInterface]):
     DEFAULT_PACKAGE = "optics_framework.engines.drivers"
 
     @classmethod
-    def get_driver(cls, name: Union[str, List[Union[str, dict]], None]) -> InstanceFallback[DriverInterface]:
-        # Always return InstanceFallback, even for single instance
-        instance = cls.create_instance(name, DriverInterface, cls.DEFAULT_PACKAGE)
-        if isinstance(instance, InstanceFallback):
-            return instance
-        return InstanceFallback([instance])
+    def get_driver(cls, name: List[dict], event_sdk=None) -> InstanceFallback[DriverInterface]:
+        """
+        Instantiate all driver instances, passing event_sdk to those that accept it.
+        """
+        instances = [
+            cls.create_instance_dynamic(
+                config_dict,
+                DriverInterface,
+                cls.DEFAULT_PACKAGE,
+                extra_kwargs={"event_sdk": event_sdk} if event_sdk is not None else {}
+            )
+            for config_dict in name
+        ]
+        return InstanceFallback(instances)
 
 
 class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
@@ -26,101 +33,51 @@ class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
     @classmethod
     def get_driver(
         cls,
-        name: Union[str, List[Union[str, dict]], None],
+        name: List[dict],
         driver: InstanceFallback[DriverInterface]
     ) -> InstanceFallback[ElementSourceInterface]:
-        def normalize_name(n):
-            if isinstance(n, dict):
-                return next(iter(n.keys()))
-            return str(n)
-
-        # Extract driver instances from InstanceFallback
         driver_instances = driver.instances if hasattr(driver, "instances") else [driver]
-
-        def matches_required_type(implementation, driver_instance):
-            required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
-            driver_type = getattr(driver_instance, "NAME", None)
-            return required_type is None or driver_type == required_type
-
-        if isinstance(name, list):
-            instances = []
-            for idx, n in enumerate(name):
-                norm_name = normalize_name(n)
-                if norm_name not in cls._registry.module_paths:
-                    cls._load_module(norm_name, cls.DEFAULT_PACKAGE)
-                module_path = cls._registry.module_paths[norm_name]
-                module = __import__(module_path, fromlist=[''])
-                implementation = cls._locate_implementation(module, ElementSourceInterface)
-                driver_instance = driver_instances[idx] if idx < len(driver_instances) else driver_instances[0]
-                if isinstance(driver_instance, InstanceFallback):
-                    driver_instance = driver_instance.instances[0]
-                if matches_required_type(implementation, driver_instance):
-                    instance = cls.create_instance_with_driver(norm_name, ElementSourceInterface, cls.DEFAULT_PACKAGE, driver_instance)
-                    instances.append(instance)
-                else:
-                    continue
-            # Always wrap in InstanceFallback, even if only one instance
-            return InstanceFallback(instances)
-        else:
-            norm_name = normalize_name(name)
-            if norm_name not in cls._registry.module_paths:
-                cls._load_module(norm_name, cls.DEFAULT_PACKAGE)
-            module_path = cls._registry.module_paths[norm_name]
+        instances = []
+        for config_dict in name:
+            # Extract element source name
+            es_name = next(iter(config_dict.keys()))
+            # Load module and implementation
+            if es_name not in cls._registry.module_paths:
+                cls._load_module(es_name, cls.DEFAULT_PACKAGE)
+            module_path = cls._registry.module_paths[es_name]
             module = __import__(module_path, fromlist=[''])
             implementation = cls._locate_implementation(module, ElementSourceInterface)
-            driver_instance = driver_instances[0]
-            if isinstance(driver_instance, InstanceFallback):
-                driver_instance = driver_instance.instances[0]
-            if matches_required_type(implementation, driver_instance):
-                instance = cls.create_instance_with_driver(norm_name, ElementSourceInterface, cls.DEFAULT_PACKAGE, driver_instance)
-                # Always wrap in InstanceFallback, even for single instance
-                return InstanceFallback([instance])
-            else:
-                return InstanceFallback([])
-
-    @classmethod
-    def create_instance_with_driver(
-        cls,
-        name: str,
-        interface,
-        package,
-        driver: DriverInterface
-    ) -> ElementSourceInterface:
-        # Load module and inject driver into constructor if supported
-        if name is None:
-            raise ValueError("Name cannot be None for element source instance retrieval")
-        if name not in cls._registry.module_paths:
-            cls._load_module(name, package)
-        module_path = cls._registry.module_paths[name]
-        module = __import__(module_path, fromlist=[''])
-        implementation = cls._locate_implementation(module, interface)
-        if not implementation:
-            raise RuntimeError(f"No implementation found in '{module_path}' for {interface.__name__}")
-        # Check if implementation accepts driver argument
-        sig = inspect.signature(implementation.__init__)
-        if 'driver' in sig.parameters:
-            return implementation(driver=driver)  # type: ignore
-        else:
-            return implementation()
+            # Determine required driver type
+            required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
+            matched_driver = None
+            if required_type:
+                for drv in driver_instances:
+                    drv_type = getattr(drv, "NAME", None)
+                    if drv_type == required_type:
+                        matched_driver = drv
+                        break
+            # Build extra_kwargs only if driver is matched and required
+            extra_kwargs = {}
+            if required_type and matched_driver:
+                extra_kwargs['driver'] = matched_driver
+            instance = cls.create_instance_dynamic(config_dict, ElementSourceInterface, cls.DEFAULT_PACKAGE, extra_kwargs=extra_kwargs)
+            instances.append(instance)
+        return InstanceFallback(instances)
 
 
 class ImageFactory(GenericFactory[ImageInterface]):
     DEFAULT_PACKAGE = "optics_framework.engines.vision_models.image_models"
 
     @classmethod
-    def get_driver(cls, name: Union[str, List[Union[str, dict]], None]) -> InstanceFallback[ImageInterface]:
-        instance = cls.create_instance(name, ImageInterface, cls.DEFAULT_PACKAGE)
-        if isinstance(instance, InstanceFallback):
-            return instance
-        return InstanceFallback([instance])
+    def get_driver(cls, name: List[dict]) -> InstanceFallback[ImageInterface]:
+        instances = [cls.create_instance_dynamic(config_dict, ImageInterface, cls.DEFAULT_PACKAGE) for config_dict in name]
+        return InstanceFallback(instances)
 
 
 class TextFactory(GenericFactory[TextInterface]):
     DEFAULT_PACKAGE = "optics_framework.engines.vision_models.ocr_models"
 
     @classmethod
-    def get_driver(cls, name: Union[str, List[Union[str, dict]], None]) -> InstanceFallback[TextInterface]:
-        instance = cls.create_instance(name, TextInterface, cls.DEFAULT_PACKAGE)
-        if isinstance(instance, InstanceFallback):
-            return instance
-        return InstanceFallback([instance])
+    def get_driver(cls, name: List[dict]) -> InstanceFallback[TextInterface]:
+        instances = [cls.create_instance_dynamic(config_dict, TextInterface, cls.DEFAULT_PACKAGE) for config_dict in name]
+        return InstanceFallback(instances)

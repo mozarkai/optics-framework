@@ -12,7 +12,6 @@ from enum import Enum
 from datetime import timezone, timedelta
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.config_handler import ConfigHandler
 
 
 class SpecialKey(Enum):
@@ -117,27 +116,18 @@ def compare_text(given_text, target_text):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
-def get_execution_output_dir():
-    config_handler = ConfigHandler.get_instance()
-    config = config_handler.load()
-    output_dir = config.execution_output_path
-    if output_dir is None:
-        internal_logger.error("Execution output path is not set in the configuration.")
-        return None
-    os.makedirs(output_dir, exist_ok=True)
-    return output_dir
 
-def save_screenshot(img, name, time_stamp = None):
+
+def save_screenshot(img, name, time_stamp = None, output_dir = None):
     """
     Save the screenshot with a timestamp and keyword in the filename.
     """
     if img is None:
         internal_logger.error("Image is empty. Cannot save screenshot.")
-        return
+        raise ValueError("Image is empty. Cannot save screenshot.")
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    output_dir = get_execution_output_dir()
     if output_dir is None:
         internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
         return
@@ -213,8 +203,7 @@ def annotate_and_save(frame, element_status):
 
 
 
-def save_page_source(tree, time_stamp):
-    output_dir = get_execution_output_dir()
+def save_page_source(tree, time_stamp, output_dir = None):
     if output_dir is None:
         internal_logger.error("Failed to get execution output directory. Cannot save page source.")
         return
@@ -245,8 +234,7 @@ def save_page_source(tree, time_stamp):
     internal_logger.debug(f"Page source saved to: {page_source_file_path}")
 
 
-def save_page_source_html(html: str, time_stamp):
-    output_dir = get_execution_output_dir()
+def save_page_source_html(html: str, time_stamp, output_dir=None):
     if output_dir is None:
         internal_logger.error("Failed to get execution output directory. Cannot save HTML page source.")
         return
@@ -271,8 +259,7 @@ def strip_sensitive_prefix(value: str) -> str:
     return value
 
 
-def save_interactable_elements(elements):
-    output_dir = get_execution_output_dir()
+def save_interactable_elements(elements, output_dir=None):
     if output_dir is None:
         internal_logger.error("Failed to get execution output directory. Cannot save interactable elements.")
         return
@@ -287,7 +274,6 @@ def load_config(default_config: dict) -> dict:
 
     if not env_config:
         return default_config  # No override
-
 
     try:
         config = json.loads(env_config)

@@ -19,7 +19,8 @@ class Verifier:
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection
         )
-        self.event_sdk = EventSDK.get_instance()
+        self.event_sdk: EventSDK = builder.event_sdk
+        self.execution_dir = builder.event_sdk.config_handler.config.execution_output_path
 
     def validate_element(
         self,
@@ -165,7 +166,7 @@ class Verifier:
         :return: A list of interactive elements.
         """
         elements = self.strategy_manager.get_interactive_elements()
-        utils.save_interactable_elements(elements)
+        utils.save_interactable_elements(elements, self.execution_dir)
         return elements
 
     def get_screen_elements(self) -> dict:

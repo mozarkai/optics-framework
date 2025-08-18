@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Optional, Union, Any
 import pytest
 import logging
 from optics_framework.common.session_manager import Session
-from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
     internal_logger,
     execution_logger,
@@ -98,11 +98,11 @@ class TestRunner(Runner):
         self.session_id = session.session_id
         self.test_cases = self.session.test_cases
         self.modules = self.session.modules
-        self.elements = self.session.elements
-        self.apis = self.session.apis
+        self.elements = self.session.elements if self.session.elements is not None else ElementData()
+        self.apis = self.session.apis if self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
         self.result_printer = result_printer
-        self.config = ConfigHandler.get_instance().config
+        self.config = session.config
         execution_logger.debug(
             f"Initialized test_state: {list(self.modules.modules.keys())} with {len(self.modules.modules)} modules"
         )
@@ -728,6 +728,8 @@ class PytestRunner(Runner):
         self.apis = self.session.apis if self.session and hasattr(self.session, "apis") and self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
         self.result_printer = NullResultPrinter()
+        self.config_handler: ConfigHandler = self.session.config_handler
+        self.config: Config = self.session.config
         PytestRunner.instance = self
 
     def resolve_param(self, param: str) -> str:
@@ -1041,7 +1043,7 @@ def runner():
             if module_name.startswith("test_generated"):
                 del sys.modules[module_name]
 
-        junit_path = f"{ConfigHandler.get_instance().get_project_path()}/execution_output/junit_output.xml"
+        junit_path = f"{self.session.config.execution_output_path}/junit_output.xml"
         result = pytest.main(
             [
                 temp_dir,

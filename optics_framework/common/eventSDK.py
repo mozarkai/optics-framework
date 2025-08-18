@@ -1,34 +1,22 @@
-from datetime import datetime, timezone, timedelta
-from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger, execution_logger
-from optics_framework.common.runner.printers import TreeResultPrinter
-from optics_framework.common import test_context
 import json
 import os
 import time
 import threading
 import requests
+from datetime import datetime, timezone, timedelta
+from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.runner.printers import TreeResultPrinter
+from optics_framework.common import test_context
+
 
 class EventSDK:
-    _instance = None
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            cls._instance = super(EventSDK, cls).__new__(cls)
-            cls._instance.__init__()
-        return cls._instance
-
-    def __init__(self):
-        if not hasattr(self, 'initialized'):
-            self.initialized = True
-            self.config_handler = ConfigHandler.get_instance()
-            # fetch json file path from config
-            self.event_attributes_json_path = self.config_handler.config.event_attributes_json
-            # Load and cache the parsed JSON data
-            self.event_attributes_data = self._load_event_attributes_json()
-            self.all_events = []
-            self.real_time = False
+    def __init__(self, config_handler:ConfigHandler):
+        self.config_handler = config_handler
+        self.event_attributes_json_path = self.config_handler.config.event_attributes_json
+        self.event_attributes_data = self._load_event_attributes_json()
+        self.all_events = []
+        self.real_time = False
 
     def _load_event_attributes_json(self):
         """Load and parse the event attributes JSON file once during initialization"""

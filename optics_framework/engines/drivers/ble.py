@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field, ValidationError
 from serial import Serial
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common import utils
 
@@ -58,14 +57,12 @@ class BLEDriver(DriverInterface):
     KEYBOARD_SELECT_ALL = "1 0 4 0 0 0 0 0"
     KEYBOARD_BACKSPACE = "0 0 42 0 0 0 0 0"
 
-    def __init__(self):
-        config_handler = ConfigHandler.get_instance()
-        self.event_sdk = EventSDK.get_instance()
-        config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
-            self.DEPENDENCY_TYPE, self.NAME
-        )
-
-        if not config:
+    def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
+        if event_sdk is None:
+            internal_logger.error("No EventSDK instance provided to BLE driver.")
+            raise ValueError("BLE driver requires an EventSDK instance.")
+        self.event_sdk = event_sdk
+        if config is None:
             internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
             )

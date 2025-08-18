@@ -8,11 +8,8 @@ import atexit
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pathlib import Path
 from rich.logging import RichHandler
-from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.config_handler import Config
 
-# Global variables
-config_handler = ConfigHandler.get_instance()
-config = config_handler.load()
 
 # Global Queues
 internal_log_queue = queue.Queue(-1)
@@ -130,9 +127,8 @@ LOG_FORMATTER = logging.Formatter(
 )
 
 
-def initialize_handlers():
-    global config, junit_handler, internal_listener, execution_listener
-    config = config_handler.load()
+def initialize_handlers(config: Config):
+    global junit_handler, internal_listener, execution_listener
     internal_logger.debug("Initializing logging handlers")
 
     log_level_str = config.log_level.upper()
@@ -273,9 +269,9 @@ atexit.register(shutdown_logging)
 # Dynamic Reconfiguration
 
 
-def reconfigure_logging():
+def reconfigure_logging(config: Config):
     internal_logger.debug("Reconfiguring logging due to config change")
-    initialize_handlers()
+    initialize_handlers(config)
 
 
 __all__ = ["internal_logger","execution_logger",

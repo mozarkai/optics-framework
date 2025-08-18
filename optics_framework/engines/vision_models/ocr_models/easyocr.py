@@ -108,9 +108,20 @@ class EasyOCRHelper(TextInterface):
         :return: List of tuples (bounding box, text, confidence) or None.
         """
         gray_image = cv2.cvtColor(input_data, cv2.COLOR_BGR2GRAY)
-        results = self.reader.readtext(gray_image)
-        if not results:
-            return None
+        raw_results = self.reader.readtext(gray_image)
+        if not raw_results:
+            raise ValueError("No text detected")
+        # Ensure results are List[Tuple[List[List[int]], str, float]]
+        results: List[Tuple[List[List[int]], str, float]] = []
+        for item in raw_results:
+            if (
+                isinstance(item, tuple)
+                and len(item) == 3
+                and isinstance(item[0], list)
+                and isinstance(item[1], str)
+                and isinstance(item[2], float)
+            ):
+                results.append((item[0], item[1], item[2]))
         detected_text = ' '.join(result[1] for result in results)
         return detected_text, results
 

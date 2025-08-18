@@ -6,19 +6,6 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-def deep_merge(d1: dict, d2: dict) -> dict:
-    """
-    Recursively merge two dictionaries, giving priority to d2.
-    """
-    merged = d1.copy()
-    for key, value in d2.items():
-        if isinstance(value, Mapping) and key in merged and isinstance(merged[key], Mapping):
-            merged[key] = deep_merge(dict(merged[key]), dict(value))
-        else:
-            merged[key] = value
-    return merged
-
-
 class DependencyConfig(BaseModel):
     """Configuration for all dependency types."""
     enabled: bool
@@ -42,7 +29,7 @@ class Config(BaseModel):
     json_path: Optional[str] = None
     log_level: str = "INFO"
     log_path: Optional[str] = None
-    project_path: Optional[str] = None
+    project_path: str = str(os.getcwd())
     execution_output_path: Optional[str] = None
     include: Optional[List[str]] = None
     exclude: Optional[List[str]] = None
@@ -52,6 +39,8 @@ class Config(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
+        if self.execution_output_path is None:
+            self.execution_output_path = os.path.join(self.project_path, "execution_output")
         if not self.driver_sources:
             self.driver_sources = [
                 {"appium": DependencyConfig(enabled=False, url=None, capabilities={})},
@@ -84,10 +73,37 @@ class Config(BaseModel):
         """Pydantic V2 configuration."""
         arbitrary_types_allowed = True
 
+    def get(self, key: str, default: Any = None) -> Any:
+        """
+        Get a config attribute by key, returning default if not present.
+        """
+        return getattr(self, key, default)
+
+def deep_merge(c1: Config, c2: Config) -> Config:
+    """
+    Recursively merge two Config objects, giving priority to c2.
+    """
+    d1 = c1.model_dump()
+    d2 = c2.model_dump()
+
+    def _merge_dicts(d1, d2):
+        merged = d1.copy()
+        for key, value in d2.items():
+            if (
+                isinstance(value, Mapping)
+                and key in merged
+                and isinstance(merged[key], Mapping)
+            ):
+                merged[key] = _merge_dicts(dict(merged[key]), dict(value))
+            else:
+                merged[key] = value
+        return merged
+
+    merged_dict = _merge_dicts(d1, d2)
+    return Config(**merged_dict)
+
 
 class ConfigHandler:
-    _instance = None
-    _initialized = False
     DEFAULT_GLOBAL_CONFIG_PATH = os.path.expanduser("~/.optics/global_config.yaml")
     DEPENDENCY_KEYS: List[str] = [
         "driver_sources",
@@ -96,33 +112,18 @@ class ConfigHandler:
         "image_detection"
     ]
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ConfigHandler, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        if not self._initialized:
-            self.project_name: Optional[str] = None
-            self.project_config_path: Optional[str] = None
-            self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
-            self.config: Config = Config()
-            self._enabled_configs: Dict[str, List[str]] = {}
-            self._initialized = True
+    def __init__(self, config: Optional[Config] = None):
+        self.project_name: Optional[str] = None
+        self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
+        if config is None:
+            raise ValueError("ConfigHandler requires a Config object on initialization.")
+        self.config: Config = config
+        self._enabled_configs: Dict[str, List[str]] = {}
+        self._precompute_enabled_configs()
 
     def set_project(self, project_name: str) -> None:
         self.project_name = project_name
-        self.project_config_path = os.path.join(project_name, "config.yaml") if project_name else None
-        self.config.project_path = self.get_project_path()
-        self.config.execution_output_path = self.get_execution_output_path()
 
-    def get_project_path(self) -> Optional[str]:
-        return os.path.dirname(self.project_config_path) if self.project_config_path else None
-
-    def get_execution_output_path(self) -> Optional[str]:
-        if self.project_config_path:
-            return os.path.join(os.path.dirname(self.project_config_path), "execution_output")
-        return None
 
     def _ensure_global_config(self) -> None:
         if not os.path.exists(self.global_config_path):
@@ -131,42 +132,46 @@ class ConfigHandler:
                 yaml.dump(self.config.model_dump(), f, default_flow_style=False)
 
     def load(self) -> Config:
-        global_config = self._load_yaml(self.global_config_path) or {}
-        project_config = self._load_yaml(self.project_config_path) if self.project_config_path else {}
-        default_dict = self.config.model_dump()
-        merged = deep_merge(default_dict, global_config)
-        merged = deep_merge(merged, project_config)
-        self.config = Config(**merged)
+        default_config = Config()
+        global_config = self._load_yaml(self.global_config_path)
+        if global_config is None:
+            global_config = Config()
+        project_config = self.config
+        merged = deep_merge(default_config, global_config)
+        self.config = deep_merge(merged, project_config)
         self._precompute_enabled_configs()
 
-        if "execution_output_path" in merged:
-            self.config.execution_output_path = merged["execution_output_path"]
+        if hasattr(merged, "execution_output_path"):
+            self.config.execution_output_path = merged.execution_output_path
         return self.config
 
     def update_config(self, new_config: dict) -> None:
         """
-        Update the current configuration with a new configuration dictionary.
+        Update the current configuration with a new configuration dictionary or Config object.
         This will merge the new configuration into the existing one.
         """
-        current_config_dict = self.config.model_dump()
-        new_config_dict = new_config if isinstance(new_config, dict) else new_config.model_dump()
-        # Merge new_config into current_dict
-        merged_config = deep_merge(current_config_dict, new_config_dict)
-        # Reconstruct the Config model from merged data
-        self.config = Config(**merged_config)
-        # Refresh the enabled config keys
+        current_config = self.config
+        if isinstance(new_config, dict):
+            new_config_obj = Config(**new_config)
+        elif isinstance(new_config, Config):
+            new_config_obj = new_config
+        else:
+            raise ValueError("new_config must be a dict or Config object")
+        merged_config = deep_merge(current_config, new_config_obj)
+        self.config = merged_config
         self._precompute_enabled_configs()
 
 
-    def _load_yaml(self, path: str) -> dict:
+    def _load_yaml(self, path: str) -> Optional[Config]:
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
-                    return yaml.safe_load(f) or {}
+                    data = yaml.safe_load(f) or {}
+                    return Config(**data)
             except (yaml.YAMLError, IOError) as e:
                 logging.error(f"Error parsing YAML file {path}: {e}")
-                return {}
-        return {}
+                return None
+        return None
 
     def _is_enabled(self, details: Any) -> bool:
         """Check if a configuration is enabled."""
@@ -200,9 +205,3 @@ class ConfigHandler:
         os.makedirs(os.path.dirname(self.global_config_path), exist_ok=True)
         with open(self.global_config_path, "w", encoding="utf-8") as f:
             yaml.dump(self.config.model_dump(), f, default_flow_style=False)
-
-    @classmethod
-    def get_instance(cls) -> 'ConfigHandler':
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance

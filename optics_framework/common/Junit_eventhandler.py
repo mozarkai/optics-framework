@@ -10,9 +10,8 @@ from optics_framework.common.config_handler import ConfigHandler
 
 junit_handler = None
 
-def setup_junit():
+def setup_junit(config_handler: ConfigHandler):
     global junit_handler
-    config_handler = ConfigHandler.get_instance()
     config = config_handler.load()
     log_dir = config.execution_output_path or (Path.cwd() / "logs")
 

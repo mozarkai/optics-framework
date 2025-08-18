@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData
-
+from optics_framework.common.eventSDK import EventSDK
 
 class SessionHandler(ABC):
     """Abstract interface for session management."""
@@ -34,30 +34,52 @@ class Session:
                  modules: Optional[ModuleData],
                  elements: Optional[ElementData],
                  apis: Optional[ApiData]):
-
         self.session_id = session_id
-        self.config_handler = ConfigHandler.get_instance()
-        self.config = config
+        self.config_handler = ConfigHandler(config)
+        self.config = self.config_handler.config
         self.test_cases = test_cases
         self.modules = modules
         self.elements = elements
         self.apis = apis
 
-        # update config with session-specific values
-        self.config_handler.update_config(self.config)
-        # Fetch enabled dependency names
-        driver_sources = self.config_handler.get("driver_sources", [])
-        element_sources = self.config_handler.get("elements_sources", [])
-        text_detection = self.config_handler.get("text_detection", [])
-        image_detection = self.config_handler.get("image_detection", [])
-        if not driver_sources:
+        # Fetch full config dicts for enabled dependencies
+        def to_dict_list(configs):
+            result = []
+            for item in configs:
+                new_item = {}
+                for name, details in item.items():
+                    if hasattr(details, 'model_dump'):
+                        new_item[name] = details.model_dump()
+                    else:
+                        new_item[name] = details
+                result.append(new_item)
+            return result
+
+        all_driver_configs = self.config.driver_sources if hasattr(self.config, 'driver_sources') else []
+        enabled_driver_configs = [item for item in all_driver_configs for name, details in item.items() if details.enabled]
+        enabled_driver_configs = to_dict_list(enabled_driver_configs)
+
+        all_element_configs = self.config.elements_sources if hasattr(self.config, 'elements_sources') else []
+        enabled_element_configs = [item for item in all_element_configs for name, details in item.items() if details.enabled]
+        enabled_element_configs = to_dict_list(enabled_element_configs)
+
+        all_text_configs = self.config.text_detection if hasattr(self.config, 'text_detection') else []
+        enabled_text_configs = [item for item in all_text_configs for name, details in item.items() if details.enabled]
+        enabled_text_configs = to_dict_list(enabled_text_configs)
+
+        all_image_configs = self.config.image_detection if hasattr(self.config, 'image_detection') else []
+        enabled_image_configs = [item for item in all_image_configs for name, details in item.items() if details.enabled]
+        enabled_image_configs = to_dict_list(enabled_image_configs)
+
+        if not enabled_driver_configs:
             raise ValueError("No enabled drivers found in configuration")
 
-        self.optics = OpticsBuilder()
-        self.optics.add_driver(driver_sources)
-        self.optics.add_element_source(element_sources)
-        self.optics.add_text_detection(text_detection)
-        self.optics.add_image_detection(image_detection)
+        self.event_sdk = EventSDK(self.config_handler)
+        self.optics = OpticsBuilder(self.event_sdk)
+        self.optics.add_driver(enabled_driver_configs)
+        self.optics.add_element_source(enabled_element_configs)
+        self.optics.add_text_detection(enabled_text_configs)
+        self.optics.add_image_detection(enabled_image_configs, self.config.project_path)
 
         self.driver = self.optics.get_driver()
         self.event_queue = asyncio.Queue()

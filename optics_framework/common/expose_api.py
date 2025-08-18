@@ -153,7 +153,7 @@ async def create_session(config: SessionConfig):
             elements=None,
             apis=None
         )
-        reconfigure_logging()
+        reconfigure_logging(session_config)
         internal_logger.info(
             "Created session %s with config: %s",
             session_id,

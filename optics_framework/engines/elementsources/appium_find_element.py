@@ -23,6 +23,7 @@ class AppiumFindElement(ElementSourceInterface):
         Initialize the Appium Find Element Class.
         Args:
             driver: The Appium driver instance (should be passed explicitly).
+            config: Optional config dictionary for extensibility.
         """
         self.driver = driver
         self.tree = None
@@ -42,9 +43,6 @@ class AppiumFindElement(ElementSourceInterface):
 
         Returns:
             None
-        """
-        """
-        Capture the current screen state using the Appium driver.
         """
         internal_logger.exception('Appium Find Element does not support capturing the screen state.')
         raise NotImplementedError('Appium Find Element does not support capturing the screen state.')

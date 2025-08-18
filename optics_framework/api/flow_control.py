@@ -48,6 +48,7 @@ class FlowControl:
         # modules is a ModuleData instance
         self.modules = self.session.modules
         self.keyword_map = keyword_map
+        self.config_handler: ConfigHandler = self.session.config_handler
 
     def _ensure_session(self) -> None:
         """Ensures a Session instance is set."""
@@ -395,7 +396,7 @@ class FlowControl:
 
     def _resolve_file_path(self, file_path):
         if not os.path.isabs(file_path):
-            config_handler = ConfigHandler.get_instance()
+            config_handler = self.config_handler
             project_path = getattr(config_handler.config, 'project_path', None)
             internal_logger.debug(f"[READ_DATA] Resolving relative file path. Project path: {project_path}")
             if project_path:
@@ -896,8 +897,8 @@ class FlowControl:
     ) -> requests.Response:
         """Executes the HTTP request and returns the response."""
         try:
-            config_handler = ConfigHandler.get_instance()
-            execution_output_path = config_handler.get_execution_output_path()
+            config_handler = self.config_handler
+            execution_output_path = config_handler.config.execution_output_path
             api_log_dir = execution_output_path
 
             api_log_file_path = None

@@ -14,24 +14,25 @@ class TemplateMatchingHelper(ImageInterface):
     of a template (reference image) within a larger image.
     """
 
+    def __init__(self, config=None):
+        """
+        Initialize TemplateMatchingHelper with config dict.
+        Args:
+            config: dict containing configuration, including project_path.
+        """
+        self.config = config
+        if config is None:
+            raise ValueError("Configuration must be provided.")
+        self.project_path = self.config.get("project_path", "")
+
     def find_element(
         self, input_data, image, index=None, confidence_level=0.85, min_inliers=10
     ):
         """
         Match a template image within a single frame image using SIFT and FLANN-based matching.
         Returns the location of a specific match by index.
-
-        Parameters:
-        - input_data (np.array): Image data of the frame.
-        - image (np.array): Image data of the template.
-        - index (int): The index of the match to retrieve.
-        - confidence_level (float): Confidence level for the ratio test (default is 0.85).
-        - min_inliers (int): Minimum number of inliers required to consider a match valid (default is 10).
-
-        Returns:
-        - Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]] | None
         """
-        image = load_template(image)
+        image = load_template(self.project_path, image)
         sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -39,7 +40,7 @@ class TemplateMatchingHelper(ImageInterface):
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         if image is None or input_data is None:
-            return None
+            raise ValueError("Input data or template image is None.")
 
         frame_gray = cv2.cvtColor(input_data, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -48,19 +49,19 @@ class TemplateMatchingHelper(ImageInterface):
         kp_template, des_template = sift.detectAndCompute(template_gray, None)
 
         if des_template is None or des_frame is None:
-            return None
+            raise RuntimeError("SIFT feature detection failed.")
 
         try:
             matches = flann.knnMatch(des_template, des_frame, k=2)
         except cv2.error:
-            return None
+            raise RuntimeError("FLANN matching failed.")
 
         good_matches = [
             m for m, n in matches if m.distance < confidence_level * n.distance
         ]
 
         if len(good_matches) < min_inliers:
-            return None
+            raise RuntimeError("Not enough good matches found.")
 
         src_pts = np.float32(
             [kp_template[m.queryIdx].pt for m in good_matches]
@@ -71,12 +72,12 @@ class TemplateMatchingHelper(ImageInterface):
 
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if M is None:
-            return None
+            raise RuntimeError("Homography computation failed.")
 
         matches_mask = mask.ravel().tolist()
         inliers = np.sum(matches_mask)
         if inliers < min_inliers:
-            return None
+            raise RuntimeError("Not enough inliers found.")
 
         h, w = image.shape[:2]
         centers = []
@@ -98,13 +99,13 @@ class TemplateMatchingHelper(ImageInterface):
                 bboxes.append(bbox)
 
         if not centers or not bboxes:
-            return None
+            raise RuntimeError("No valid centers or bounding boxes found.")
 
         if index is not None:
             if 0 <= index < len(centers):
                 return True, centers[index], bboxes[index]
             else:
-                return None
+                raise IndexError("Index out of bounds for detected centers.")
 
         return True, centers[0], bboxes[0]
 
@@ -146,8 +147,7 @@ class TemplateMatchingHelper(ImageInterface):
             return True, annotated_frame
 
         internal_logger.warning("SIFT assert_elements failed.")
-        return False, annotated_frame
-
+        raise RuntimeError("SIFT assert_elements failed.")
 
     def element_exist(
         self,
@@ -184,7 +184,7 @@ class TemplateMatchingHelper(ImageInterface):
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         if reference_data is None or input_data is None:
-            return False, (None, None), None
+            raise ValueError("Input image and reference image must be provided.")
 
         frame_gray = cv2.cvtColor(input_data, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(reference_data, cv2.COLOR_BGR2GRAY)
@@ -194,13 +194,13 @@ class TemplateMatchingHelper(ImageInterface):
         kp_template, des_template = sift.detectAndCompute(template_gray, None)
 
         if des_template is None or des_frame is None:
-            return False, (None, None), None
+            raise RuntimeError("Feature detection failed.")
 
         try:
             matches = flann.knnMatch(des_template, des_frame, k=2)
         except cv2.error as e:
             internal_logger.debug(f"Error in FLANN matching: {e}")
-            return False, (None, None), None
+            raise RuntimeError(f"FLANN matching failed: {str(e)}")
 
         # Apply Lowe's ratio test to filter good matches
         good_matches = [
@@ -208,7 +208,7 @@ class TemplateMatchingHelper(ImageInterface):
         ]
 
         if len(good_matches) < min_inliers:
-            return False, (None, None), None
+            raise RuntimeError("Not enough good matches found.")
 
         # Extract matched keypoints
         src_pts = np.float32([kp_template[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
@@ -217,13 +217,13 @@ class TemplateMatchingHelper(ImageInterface):
         # Compute homography matrix
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if M is None:
-            return False, (None, None), None
+            raise RuntimeError("Homography computation failed.")
 
         matches_mask = mask.ravel().tolist()
         inliers = np.sum(matches_mask)
 
         if inliers < min_inliers:
-            return False, (None, None), None
+            raise RuntimeError("Not enough inliers found.")
 
         # Find center of the template in the frame
         h, w = reference_data.shape[:2]
@@ -244,7 +244,7 @@ class TemplateMatchingHelper(ImageInterface):
             bottom_right = bbox_corners[2]
         except cv2.error as e:
             internal_logger.debug(f"Error in perspective transformation: {e}")
-            return False, (None, None), None
+            raise RuntimeError(f"Perspective transformation failed: {str(e)}")
 
         # internal_logger.debug(f"Template found at center: ({center_x}, {center_y}) with bbox: {top_left} -> {bottom_right}")
 

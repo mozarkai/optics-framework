@@ -1,37 +1,33 @@
 import subprocess  # nosec
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
-from optics_framework.common.config_handler import ConfigHandler
 from appium.webdriver.common.appiumby import AppiumBy
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
-# Removed global driver manager import
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
-from typing import Union
 
 
 
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
+    NOT_INITIALIZED = "Appium driver is not initialized. Please start the session first."
 
-    def __init__(self) -> None:
+    def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None) -> None:
         self.driver: Optional[WebDriver] = None
-        self.event_sdk: EventSDK = EventSDK.get_instance()
-        config_handler: ConfigHandler = ConfigHandler.get_instance()
-        config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
-            self.DEPENDENCY_TYPE, self.NAME
-        )
-
-        if not config:
+        if event_sdk is None:
+            internal_logger.error("No EventSDK instance provided to Appium driver.")
+            raise ValueError("Appium driver requires an EventSDK instance.")
+        self.event_sdk: EventSDK = event_sdk
+        if config is None:
             internal_logger.error(
-                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
+                f"No configuration provided for {self.DEPENDENCY_TYPE}: {self.NAME}"
             )
             raise ValueError("Appium driver not enabled in config")
 
@@ -49,8 +45,8 @@ class Appium(DriverInterface):
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
         if self.driver is None:
-            internal_logger.error("Appium driver is not initialized.")
-            raise RuntimeError("Appium driver is not initialized.")
+            internal_logger.error(self.NOT_INITIALIZED)
+            raise RuntimeError(self.NOT_INITIALIZED)
         return self.driver
 
     def start_session(
@@ -161,7 +157,7 @@ class Appium(DriverInterface):
         :param event_name: The event triggering the forced termination, if any.
         """
         if not self.driver:
-            internal_logger.error("Appium driver is not initialized.")
+            internal_logger.error(self.NOT_INITIALIZED)
             return
 
         if event_name:
@@ -240,7 +236,7 @@ class Appium(DriverInterface):
             self.driver.activate_app(app_name)
             internal_logger.debug(f"Activated app: {app_name} with event: {event_name}")
         else:
-            internal_logger.error("Appium driver is not initialized.")
+            internal_logger.error(self.NOT_INITIALIZED)
 
     def get_driver(self) -> Optional[WebDriver]:
         """Return the Appium driver instance."""
@@ -615,7 +611,7 @@ class Appium(DriverInterface):
     def appium_find_element(self, element: str) -> Optional[Any]:
         element_type: str = utils.determine_element_type(element)
         if self.driver is None:
-            internal_logger.error("Appium driver is not initialized.")
+            internal_logger.error(self.NOT_INITIALIZED)
             return None
         if element_type == "XPath":
             return self.driver.find_element(AppiumBy.XPATH, element)

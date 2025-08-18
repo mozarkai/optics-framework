@@ -1,12 +1,13 @@
 import numpy as np
 import cv2
 import os
-from optics_framework.common.config_handler import ConfigHandler
 
-def load_template(element: str) -> np.ndarray:
+def load_template(project_path: str, element: str) -> np.ndarray:
     """
     Load a template image from the input_templates folder.
 
+    :param project_path: The path to the project directory.
+    :type project_path: str
     :param element: The name of the template image file.
     :type element: str
 
@@ -15,7 +16,6 @@ def load_template(element: str) -> np.ndarray:
 
     :raises ValueError: If the project path is not set.
     """
-    project_path = str(ConfigHandler.get_instance().config.project_path)
 
     templates_folder = os.path.join(project_path, "input_templates")
     template_path = os.path.join(templates_folder, element)

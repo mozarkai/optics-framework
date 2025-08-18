@@ -68,18 +68,70 @@ class GenericFactory(Generic[T]):
         return None
 
     @classmethod
-    def create_instance(cls, name: Union[str, List[Union[str, dict]], None], interface: Type[T], package: str) -> T:
-        """Creates or retrieves an instance implementing the specified interface."""
-        if isinstance(name, (list, dict)):
-            return cls._create_fallback(name, interface, package)
-        if name is None:
+    def create_instance_dynamic(
+        cls,
+        config_dict: dict,
+        interface: Type[T],
+        package: str,
+        extra_kwargs: dict|None = None,
+    ) -> T:
+        """Unified instance creation supporting config and extra dependencies (e.g., driver)."""
+        if not isinstance(config_dict, dict):
+            raise ValueError("Each item must be a dict of {name: config}")
+        key = next(iter(config_dict.keys()))
+        config = config_dict[key]
+        name = key
+        if name in cls._registry.instances:
+            internal_logger.debug(f"Returning cached instance for: {name}")
+            return cls._registry.instances[name]
+
+        if name not in cls._registry.module_paths:
+            cls._load_module(name, package)
+
+        try:
+            module_path = cls._registry.module_paths[name]
+        except KeyError as exc:
             raise ValueError(
-                "Name cannot be None for single instance retrieval")
-        return cls._create_or_retrieve(name, interface, package)
+                f"Unknown module requested: '{name}' in package '{package}'"
+            ) from exc
+
+        module = importlib.import_module(module_path)
+        implementation = cls._locate_implementation(module, interface)
+        if not implementation:
+            raise RuntimeError(
+                f"No implementation found in '{module_path}' for {interface.__name__}"
+            )
+
+        sig = inspect.signature(implementation.__init__)
+        kwargs = {}
+        if "config" in sig.parameters:
+            kwargs["config"] = config
+        if extra_kwargs:
+            for k, v in extra_kwargs.items():
+                if k in sig.parameters:
+                    kwargs[k] = v
+        instance = implementation(**kwargs)
+        cls._registry.instances[name] = instance
+        internal_logger.debug(
+            f"Instantiated {implementation.__name__} from {module_path}"
+        )
+        return instance
 
     @classmethod
-    def _create_or_retrieve(cls, name: str, interface: Type[T], package: str) -> T:
-        """Creates a new instance or retrieves a cached one for the given name."""
+    def create_instance(cls, name: List[dict], interface: Type[T], package: str) -> T:
+        """Creates or retrieves instances from a list of config dicts."""
+        if not isinstance(name, list):
+            raise ValueError("Name must be a list of config dicts")
+        return cls._create_fallback(name, interface, package)
+
+    @classmethod
+    def _create_or_retrieve(cls, config_dict: dict, interface: Type[T], package: str) -> T:
+        """Creates a new instance or retrieves a cached one for the given config dict."""
+        if not isinstance(config_dict, dict):
+            raise ValueError("Each item must be a dict of {name: config}")
+        key = next(iter(config_dict.keys()))
+        config = config_dict[key]
+        name = key
         if name in cls._registry.instances:
             internal_logger.debug(f"Returning cached instance for: {name}")
             return cls._registry.instances[name]
@@ -99,7 +151,15 @@ class GenericFactory(Generic[T]):
             raise RuntimeError(
                 f"No implementation found in '{module_path}' for {interface.__name__}")
 
-        instance = implementation()
+        sig = inspect.signature(implementation.__init__)
+        try:
+            if 'config' in sig.parameters:
+                instance = implementation(config=config)
+            else:
+                instance = implementation()
+        except TypeError as e:
+            internal_logger.warning(f"TypeError when passing config to {implementation.__name__}: {e}. Retrying without config.")
+            instance = implementation()
         cls._registry.instances[name] = instance
         internal_logger.debug(
             f"Instantiated {implementation.__name__} from {module_path}")
@@ -137,11 +197,13 @@ class GenericFactory(Generic[T]):
         return normalized
 
     @classmethod
-    def _create_fallback(cls, name: Union[List[Union[str, dict]], dict], interface: Type[T], package: str) -> T:
-        """Creates a fallback instance from a list of module names."""
-        name_list = cls._extract_names(name)
-        instances = [cls._create_or_retrieve(
-            single_name, interface, package) for single_name in name_list]
+    def _create_fallback(cls, name: List[dict], interface: Type[T], package: str) -> T:
+        """Creates a fallback instance from a list of config dicts."""
+        instances = []
+        for config_dict in name:
+            if not isinstance(config_dict, dict):
+                continue
+            instances.append(cls._create_or_retrieve(config_dict, interface, package))
         return cast(T, InstanceFallback(instances))
 
     @classmethod

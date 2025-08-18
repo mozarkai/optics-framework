@@ -1,125 +1,71 @@
-"""
-Capture Screen Module for Selenium
-
-This module provides a concrete implementation of `ElementSourceInterface`
-that captures images from the screen using Selenium WebDriver.
-"""
-from typing import Optional
-import cv2
+from typing import Optional, Any
 import base64
+import cv2
 import numpy as np
 from selenium.common.exceptions import ScreenshotException
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
 
 
 class SeleniumScreenshot(ElementSourceInterface):
-    """
-    Capture screenshots of the screen using Selenium WebDriver.
-    """
+    REQUIRED_DRIVER_TYPE = "selenium"
 
-    def __init__(self):
-        """
-        Initialize the screen capture utility with a Selenium driver.
-        """
-        self.driver = None
+    driver: Optional[Any]
 
-    def _get_selenium_driver(self):
+    def __init__(self, driver: Optional[Any] = None):
         """
-        Get the Selenium driver instance.
+        Initialize the Selenium Screenshot Class.
+        Args:
+            driver: The Selenium driver instance (should be passed explicitly).
+        """
+        self.driver = driver
 
-        Returns:
-            WebDriver: The Selenium driver instance.
-        """
+    def _require_driver(self):
         if self.driver is None:
-            self.driver = get_selenium_driver()
+            internal_logger.error("Selenium driver is not initialized for SeleniumScreenshot.")
+            raise RuntimeError("Selenium driver is not initialized for SeleniumScreenshot.")
         return self.driver
 
     def capture(self) -> np.ndarray:
         """
-        Capture a screenshot of the screen using Selenium.
-
+        Capture a screenshot of the screen.
         Returns:
-            Optional[np.ndarray]: The captured screen image as a NumPy array,
-            or `None` if capture fails.
+            np.ndarray: The captured screen image as a NumPy array.
         """
         return self.capture_screenshot_as_numpy()
 
     def get_interactive_elements(self):
+        internal_logger.exception("SeleniumScreenshot does not support getting interactive elements.")
+        raise NotImplementedError("SeleniumScreenshot does not support getting interactive elements.")
 
-        internal_logger.exception("Selenium Screenshot does not support getting interactive elements.")
-        raise NotImplementedError(
-            "Selenium Screenshot does not support getting interactive elements."
-        )
-
-    def capture_screenshot_as_numpy(self) -> Optional[np.ndarray]:
+    def capture_screenshot_as_numpy(self) -> np.ndarray:
         """
         Captures a screenshot using Selenium and returns it as a NumPy array.
-
         Returns:
-            Optional[numpy.ndarray]: The captured screenshot as a NumPy array,
-            or None if capture fails.
+            np.ndarray: The captured screenshot as a NumPy array.
         """
         try:
-            # Use Base64 encoding for faster processing
-            driver = self._get_selenium_driver()
+            driver = self._require_driver()
             screenshot_base64 = driver.get_screenshot_as_base64()
             screenshot_bytes = base64.b64decode(screenshot_base64)
-
-            # Convert to NumPy array
             numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
             numpy_image = cv2.imdecode(numpy_image, cv2.IMREAD_COLOR)
             return numpy_image
-
         except ScreenshotException as se:
-            internal_logger.warning(
-                f"ScreenshotException: {se}. Using external camera.")
-            return None
+            internal_logger.warning("ScreenshotException : %s. Using external camera.", se)
+            raise RuntimeError("ScreenshotException occurred.") from se
         except Exception as e:
-            internal_logger.warning(
-                f"Error capturing Selenium screenshot: {e}. Using external camera.")
-            return None
+            internal_logger.warning("Error capturing Selenium screenshot: %s. Using external camera.", e)
+            raise RuntimeError("Error capturing Selenium screenshot.") from e
 
     def assert_elements(self, elements, timeout=30, rule='any') -> None:
-        """
-        Placeholder for asserting elements (not implemented).
+        internal_logger.exception("SeleniumScreenshot does not support asserting elements.")
+        raise NotImplementedError("SeleniumScreenshot does not support asserting elements.")
 
-        Args:
-            elements: List of elements to assert.
-            timeout (int): Maximum time to wait in seconds (default: 30).
-            rule (str): 'any' or 'all' to specify if any or all elements must be present (default: 'any').
-        """
-        raise NotImplementedError(
-            "SeleniumScreenshot does not implement assert_elements.")
+    def locate(self, element, index=None) -> tuple:
+        internal_logger.exception("SeleniumScreenshot does not support locating elements.")
+        raise NotImplementedError("SeleniumScreenshot does not support locating elements.")
 
-    def locate(self, element) -> tuple:
-        """
-        Placeholder for locating elements (not implemented).
-
-        Args:
-            element: The element to locate.
-
-        Returns:
-            tuple: Coordinates of the element, or None.
-        """
-        internal_logger.exception(
-            "SeleniumScreenshot does not support locating elements.")
-        raise NotImplementedError(
-            "SeleniumScreenshot does not support locate.")
-
-    def locate_using_index(self, element, index) -> tuple:
-        """
-        Placeholder for locating elements by index (not implemented).
-
-        Args:
-            element: The element to locate.
-            index (int): Index of the instance to locate.
-
-        Returns:
-            tuple: Coordinates of the element, or None.
-        """
-        internal_logger.exception(
-            "SeleniumScreenshot does not support locating elements using index.")
-        raise NotImplementedError(
-            "SeleniumScreenshot does not support locate_using_index.")
+    def locate_using_index(self):
+        internal_logger.exception("SeleniumScreenshot does not support locating elements using index.")
+        raise NotImplementedError("SeleniumScreenshot does not support locating elements using index.")

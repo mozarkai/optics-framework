@@ -4,9 +4,8 @@ import asyncio
 from typing import Optional, Tuple, List, Dict, Set, Any
 import yaml
 from pydantic import BaseModel, field_validator
-from optics_framework.common.logging_config import internal_logger, reconfigure_logging
-from optics_framework.common.Junit_eventhandler import setup_junit
-from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.config_handler import Config
+from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
@@ -25,22 +24,52 @@ from optics_framework.common.models import (
 )
 
 
-def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str], List[str]]:
+def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[Any], Config | None]:
     """
     Search for CSV and YAML files in a folder and categorize them by content.
+    Also loads config.yaml if present.
     Exits the program if required files (test cases and modules) are missing.
 
     :param folder_path: Path to the project folder.
-    :return: Tuple of lists of paths to test case files, module files, element files, and API files.
+    :return: Tuple of lists of paths to test case files, module files, element files, API files, and Config object.
     """
     test_case_files = []
     module_files = []
     element_files = []
     api_files = []
+    config_obj = None
 
     for file in os.listdir(folder_path):
-        if file.endswith((".csv", ".yml", ".yaml")):
-            file_path = os.path.join(folder_path, file)
+        file_path = os.path.join(folder_path, file)
+        if file.endswith((".yml", ".yaml")):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    yaml_data = yaml.safe_load(f) or {}
+                # If both driver_sources and element_sources are present, treat as config
+                if (
+                    isinstance(yaml_data, dict)
+                    and "driver_sources" in yaml_data
+                    and (
+                        "element_sources" in yaml_data
+                        or "elements_sources" in yaml_data
+                    )
+                ):
+                    if "element_sources" in yaml_data and "elements_sources" not in yaml_data:
+                        yaml_data["elements_sources"] = yaml_data.pop("element_sources")
+                    config_obj = Config(**yaml_data)
+            except Exception as e:
+                internal_logger.error(f"Failed to load config from {file_path}: {e}")
+                continue
+            content_type = identify_file_content(file_path)
+            if "test_cases" in content_type:
+                test_case_files.append(file_path)
+            if "modules" in content_type:
+                module_files.append(file_path)
+            if "elements" in content_type:
+                element_files.append(file_path)
+            if "api" in content_type:
+                api_files.append(file_path)
+        elif file.endswith(".csv"):
             content_type = identify_file_content(file_path)
             if "test_cases" in content_type:
                 test_case_files.append(file_path)
@@ -52,7 +81,7 @@ def find_files(folder_path: str) -> Tuple[List[str], List[str], List[str], List[
                 api_files.append(file_path)
 
     validate_required_files(test_case_files, module_files, folder_path)
-    return test_case_files, module_files, element_files, api_files
+    return test_case_files, module_files, element_files, api_files, config_obj
 
 
 def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
@@ -388,6 +417,7 @@ class BaseRunner:
             module_files,
             element_files,
             api_files,
+            config_obj,
         ) = find_files(self.folder_path)
 
         self._init_data_readers()
@@ -399,7 +429,13 @@ class BaseRunner:
         if not self.test_cases_data:
             internal_logger.debug(f"No test cases found in {test_case_files}")
 
-        self._load_and_validate_config()
+        # Set self.config from config.yaml (or default if missing)
+        if config_obj is not None:
+            self.config = config_obj
+            self.config.project_path = self.folder_path
+        else:
+            self.config = Config()
+
         self._filter_and_build_execution_queue()
         self._setup_session()
 
@@ -446,33 +482,11 @@ class BaseRunner:
             reader = self.yaml_reader  # API files are expected to be YAML
             self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
 
-    def _load_and_validate_config(self):
-        self.config_handler = ConfigHandler.get_instance()
-        self.config_handler.set_project(self.folder_path)
-        self.config_handler.load()
-        self.config = self.config_handler.config
-        self.config.project_path = self.folder_path
-        internal_logger.debug(f"Loaded configuration: {self.config}")
-        reconfigure_logging()
-        setup_junit()  # Setup JUnit event handler if configured
 
-        required_configs = ["driver_sources", "elements_sources"]
-        missing_configs = [
-            key for key in required_configs if not self.config_handler.get(key)
-        ]
-        if missing_configs:
-            internal_logger.error(
-                f"Missing required configuration keys: {', '.join(missing_configs)}"
-            )
-            raise ValueError(
-                f"Configuration missing required keys: {', '.join(missing_configs)}"
-            )
 
     def _filter_and_build_execution_queue(self):
-        included, excluded = (
-            self.config_handler.get("include"),
-            self.config_handler.get("exclude"),
-        )
+        included = self.config.get("include")
+        excluded = self.config.get("exclude")
         self.filtered_test_cases: Dict[str, Any] = filter_test_cases(
             self.test_cases_data, included, excluded
         )

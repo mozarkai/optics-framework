@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 from pydantic import BaseModel, Field, ValidationError
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 
 
@@ -39,17 +38,15 @@ class CameraScreenshot(ElementSourceInterface):
     DEPENDENCY_TYPE = "elements_sources"
     NAME = "camera_screenshot"
 
-    def __init__(self) -> None:
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         """
         Initialize the camera capture with either webcam or TCP connection.
+        Args:
+            config: Optional config dictionary for extensibility.
         """
-        config_handler = ConfigHandler.get_instance()
-        config: Optional[Dict[str, Any]] = config_handler.get_dependency_config(
-            self.DEPENDENCY_TYPE, self.NAME
-        )
         if not config:
             internal_logger.error(
-                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
+                f"No configuration provided for {self.DEPENDENCY_TYPE}: {self.NAME}"
             )
             raise ValueError("Camera screenshot not enabled in config")
         try:

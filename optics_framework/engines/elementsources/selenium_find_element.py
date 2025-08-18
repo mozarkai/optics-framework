@@ -1,12 +1,10 @@
-from typing import Any, Tuple
+import time
+from typing import Any
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
-from selenium.webdriver.common.by import By
-from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
-from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 from optics_framework.common import utils
-import time
 
 
 class SeleniumFindElement(ElementSourceInterface):
@@ -14,41 +12,43 @@ class SeleniumFindElement(ElementSourceInterface):
     Selenium Find Element Class
     """
 
-    def __init__(self):
+    def __init__(self, driver: Any = None):
         """
         Initialize the Selenium Find Element Class.
+        Args:
+            driver: The Selenium driver instance (should be passed explicitly).
         """
-        self.driver = None
+        self.driver = driver
         self.tree = None
         self.root = None
-
-
-    def _get_selenium_driver(self):
-        if self.driver is None:
-            self.driver = get_selenium_driver()
-        return self.driver
 
     def capture(self) -> None:
         """
         Capture the current screen state.
         """
-        internal_logger.exception('Selenium Find Element does not support capturing the screen state.')
-        raise NotImplementedError('Selenium Find Element does not support capturing the screen state.')
+        msg = 'Selenium Find Element does not support capturing the screen state.'
+        internal_logger.exception(msg)
+        raise NotImplementedError(msg)
 
     def get_page_source(self) -> str:
         """
         Get the page source of the current page.
+        Returns:
+            str: The page source.
         """
-        return UIHelper.get_page_source()
+        if self.driver is None:
+            internal_logger.error("Selenium driver is not initialized for SeleniumFindElement.")
+            raise RuntimeError("Selenium driver is not initialized for SeleniumFindElement.")
+        page_source = self.driver.page_source
+        # Optionally parse tree/root for future extensibility
+        return page_source
 
     def get_interactive_elements(self):
+        msg = "Getting interactive elements is not yet supported using Selenium Find Element."
+        internal_logger.exception(msg)
+        raise NotImplementedError(msg)
 
-        internal_logger.exception("Getting interactive elements is not yet suppored using Selenium Find Element.")
-        raise NotImplementedError(
-            "Getting interactive elements is not yet suppored using Selenium Find Element."
-        )
-
-    def locate(self, element: str, index: int = None) -> Any:
+    def locate(self, element: str, index: int = 0) -> Any:
         """
         Locate an element on the current webpage using Selenium.
 
@@ -69,29 +69,30 @@ class SeleniumFindElement(ElementSourceInterface):
         Raises:
             ValueError: If the `index` argument is provided, as it's unsupported in Selenium.
         """
+        if self.driver is None:
+            msg = "Selenium driver is not initialized for SeleniumFindElement."
+            internal_logger.error(msg)
+            raise RuntimeError(msg)
         element_type = utils.determine_element_type(element)
-        driver = self._get_selenium_driver()
-
-        if index is not None:
-            raise ValueError('Selenium Find Element does not support locating elements using index.')
-
+        if index != 0:
+            msg = 'Selenium Find Element does not support locating elements using index.'
+            internal_logger.error(msg)
+            raise ValueError(msg)
         try:
             if element_type == "Image":
                 internal_logger.debug("Selenium does not support locating elements by image.")
                 return None
-
             elif element_type == "XPath":
                 internal_logger.debug(f"Locating by XPath: {element}")
-                return driver.find_element(By.XPATH, element)
-
+                found_element = self.driver.find_element(By.XPATH, element)
+                return found_element if found_element else None
             elif element_type == "Text":
-                # First try using text-based XPath
                 try:
-                    xpath = f"//*[contains(text(), '{element}')]"
+                    xpath = f"//*[contains(text(), '{element}') or normalize-space(text())='{element}']"
                     internal_logger.debug(f"Trying text-based XPath: {xpath}")
-                    return driver.find_element(By.XPATH, xpath)
+                    found_element = self.driver.find_element(By.XPATH, xpath)
+                    return found_element if found_element else None
                 except NoSuchElementException:
-                    # Fallback to other strategies if text fails
                     internal_logger.debug(f"Text not found, falling back to ID: {element}")
                     return self._find_element_by_any(element)
         except NoSuchElementException:
@@ -101,11 +102,14 @@ class SeleniumFindElement(ElementSourceInterface):
             internal_logger.error(f"Unexpected error locating element {element}: {e}")
             return None
 
-    def _find_element_by_any(self, locator_value: str):
+    def _find_element_by_any(self, locator_value: str) -> Any:
         """
         Try locating an element using all known Selenium strategies.
         """
-        driver = self._get_selenium_driver()
+        if self.driver is None:
+            msg = "Selenium driver is not initialized for SeleniumFindElement."
+            internal_logger.error(msg)
+            raise RuntimeError(msg)
         strategies = [
             (By.ID, locator_value),
             (By.NAME, locator_value),
@@ -119,14 +123,16 @@ class SeleniumFindElement(ElementSourceInterface):
         for strategy, value in strategies:
             try:
                 internal_logger.debug(f"Trying {strategy}: {value}")
-                return driver.find_element(strategy, value)
+                found_element = self.driver.find_element(strategy, value)
+                if found_element:
+                    return found_element
             except NoSuchElementException:
                 continue
         internal_logger.warning(f"No matching element found using any strategy for: {locator_value}")
         return None
 
 
-    def assert_elements(self, elements, timeout=10, rule="any") -> Tuple[bool, str]:
+    def assert_elements(self, elements: list, timeout: int = 10, rule: str = "any") -> None:
         """
         Assert that elements are present based on the specified rule using Selenium.
 
@@ -140,30 +146,35 @@ class SeleniumFindElement(ElementSourceInterface):
 
         """
         if rule not in ["any", "all"]:
-            raise ValueError("Invalid rule. Use 'any' or 'all'.")
+            msg = "Invalid rule. Use 'any' or 'all'."
+            internal_logger.error(msg)
+            raise ValueError(msg)
 
         if self.driver is None:
-            raise RuntimeError(
-                "Selenium session not started. Call start_session() first.")
+            msg = "Selenium session not started. Call start_session() first."
+            internal_logger.error(msg)
+            raise RuntimeError(msg)
 
         start_time = time.time()
-        found_elements = []  # Initialize found_elements to avoid unbound error
+        found_elements = []
 
         while time.time() - start_time < timeout:
-            found_elements = [self.locate(
-                element) is not None for element in elements]
+            found_elements = [self.locate(element) is not None for element in elements]
 
             if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
                 timestamp = utils.get_timestamp()
-                internal_logger.debug(
-                    f"Assertion passed with rule '{rule}' for elements: {elements}")
-                return True,timestamp
+                if timestamp is None:
+                    timestamp = ""
+                internal_logger.debug(f"Assertion passed with rule '{rule}' for elements: {elements}")
+                return
 
-            time.sleep(0.3)  # Polling interval
-        raise TimeoutError(
-            "Timeout reached: None of the specified elements were found.")
+            time.sleep(0.3)
+        msg = "Timeout reached: None of the specified elements were found."
+        internal_logger.error(msg)
+        raise TimeoutError(msg)
 
 
-    def locate_using_index(self, element: Any, index: int) -> Tuple[int, int] | None:
-        raise NotImplementedError(
-            'Selenium Find Element does not support locating elements using index.')
+    def locate_using_index(self, element: Any, index: int) -> None:
+        msg = 'Selenium Find Element does not support locating elements using index.'
+        internal_logger.error(msg)
+        raise NotImplementedError(msg)

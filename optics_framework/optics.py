@@ -4,7 +4,7 @@ import json
 import yaml
 import os
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
+from optics_framework.common.config_handler import ConfigHandler, DependencyConfig, Config
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
@@ -56,19 +56,21 @@ class Optics:
     Supports Robot Framework as a library when Robot Framework is installed.
     """
 
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the Optics instance. Call setup() to configure the driver and sources.
         """
-        self.config_handler = ConfigHandler.get_instance()
+        self.config_handler: Optional[ConfigHandler] = None
         self.session_manager = SessionManager()
-        self.config = self.config_handler.config
+        self.config = None
         self.builder = OpticsBuilder()
         self.app_management = None
         self.action_keyword = None
         self.verifier = None
         self.session_id = None
         self.flow_control = None
+        if config is not None:
+            self.setup(config)
 
     def _parse_config_string(self, config_string: str) -> Dict[str, Any]:
         """
@@ -137,25 +139,6 @@ class Optics:
     ) -> None:
         """
         Configure the Optics Framework with required driver and element source settings.
-
-        Args:
-            config: Configuration as JSON/YAML string or dictionary. If provided, legacy parameters are ignored.
-                   Expected structure:
-                   {
-                       "driver_sources": [...],
-                       "elements_sources": [...],
-                       "image_detection": [...],  # optional
-                       "text_detection": [...],   # optional
-                       "execution_output_path": "..."  # optional
-                   }
-            driver_sources: [DEPRECATED] List of driver configurations.
-            elements_sources: [DEPRECATED] List of element source configurations.
-            image_detection: [DEPRECATED] Optional list of image detection configurations.
-            text_detection: [DEPRECATED] Optional list of text detection configurations.
-            execution_output_path_param: [DEPRECATED] Optional execution output path.
-
-        Raises:
-            ValueError: If configuration or session creation fails.
         """
         config_data = self._extract_config_data(
             config,
@@ -165,7 +148,9 @@ class Optics:
             text_detection,
             execution_output_path_param,
         )
-        self._update_config_handler(config_data)
+        config_obj = Config(**{k: v for k, v in config_data.items() if v is not None})
+        self.config_handler = ConfigHandler(config_obj)
+        self.config = config_obj
         self._initialize_session_and_keywords()
 
     def _extract_config_data(
@@ -226,45 +211,16 @@ class Optics:
             "event_attributes_json": event_attributes_json,
         }
 
-    def _update_config_handler(self, config_data: Dict[str, Any]) -> None:
-        """
-        Update the ConfigHandler with extracted configuration data.
-        """
-        self.config_handler.load()
-        self.config_handler.config.driver_sources = self._process_config_list(
-            config_data["driver_sources"]
-        )
-        self.config_handler.config.elements_sources = self._process_config_list(
-            config_data["elements_sources"]
-        )
-        self.config_handler.config.image_detection = (
-            self._process_config_list(config_data["image_detection"])
-            if config_data["image_detection"]
-            else []
-        )
-        self.config_handler.config.text_detection = (
-            self._process_config_list(config_data["text_detection"])
-            if config_data["text_detection"]
-            else []
-        )
-        if config_data["project_path"]:
-            self.config_handler.config.project_path = config_data["project_path"]
-        if config_data["execution_output_path"]:
-            self.config_handler.config.execution_output_path = config_data[
-                "execution_output_path"
-            ]
-        if config_data["event_attributes_json"]:
-            self.config_handler.config.event_attributes_json = config_data[
-                "event_attributes_json"
-            ]
 
     def _initialize_session_and_keywords(self) -> None:
         """
         Initialize session and register keywords.
         """
+        if self.config is None:
+            raise ValueError("Optics config is not set. Call setup() with a valid config before creating a session.")
         try:
             self.session_id = self.session_manager.create_session(
-                self.config_handler.config,
+                self.config,
                 test_cases=TestCaseNode(name="default"),
                 modules=ModuleData(),
                 elements=ElementData(),
@@ -377,7 +333,7 @@ class Optics:
         session = self.session_manager.sessions[self.session_id]
         if isinstance(api_data, str):
             if not os.path.isabs(api_data):
-                project_path = getattr(self.config_handler.config, "project_path", None)
+                project_path = getattr(self.config, "project_path", None)
                 if project_path:
                     api_data = os.path.join(project_path, api_data)
             if not os.path.exists(api_data):

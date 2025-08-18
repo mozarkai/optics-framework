@@ -1,35 +1,32 @@
+from typing import Optional, Tuple, Any
 from fuzzywuzzy import fuzz
 from bs4 import BeautifulSoup
 from lxml import html
-from typing import Optional, Tuple, Any
-from optics_framework.common.logging_config import internal_logger
-from optics_framework.common import utils
-from optics_framework.engines.drivers.selenium_driver_manager import get_selenium_driver
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
+from optics_framework.common.logging_config import internal_logger
+from optics_framework.common import utils
+from optics_framework.engines.drivers.selenium import SeleniumDriver
+
 
 class UIHelper:
-    def __init__(self):
+    def __init__(self, driver: SeleniumDriver):
         """
-        Initialize
+        Initialize UIHelper with explicit driver instance.
         """
-        self.driver = None
+        self.driver = driver
 
-    def _get_selenium_driver(self):
-        if self.driver is None:
-            self.driver = get_selenium_driver()
-        return self.driver
+    # Removed: driver is always provided explicitly
 
     def get_page_source(self):
         """
-        Fetch the current UI tree (page source) from the Appium driver.
+        Fetch the current UI tree (page source) from the Selenium driver.
         """
         time_stamp = utils.get_timestamp()
-        driver = self._get_selenium_driver()
-        page_source = driver.page_source
+        page_source = self.driver.page_source
         # Parse using BeautifulSoup
         soup = BeautifulSoup(page_source, 'lxml')
-        utils.save_page_source_html(soup.prettify(), time_stamp)
+        utils.save_page_source_html(soup.prettify(), time_stamp, self.driver.event_sdk.config_handler.config.execution_output_path)
         internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
         internal_logger.debug(f'Page source fetched at: {time_stamp}')
         internal_logger.debug('\n==========================================\n')
@@ -49,8 +46,7 @@ class UIHelper:
         Raises:
             NoSuchElementException: If no element is found above threshold.
         """
-        driver = self._get_selenium_driver()
-        candidates = driver.find_elements(By.XPATH, "//*[normalize-space(text()) != '']")
+        candidates = self.driver.find_elements(By.XPATH, "//*[normalize-space(text()) != '']")
         best_score = 0
         best_match = None
 

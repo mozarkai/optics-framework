@@ -13,7 +13,7 @@ def with_self_healing(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(self, element, *args, **kwargs):
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, func.__name__)
+        utils.save_screenshot(screenshot_np, func.__name__, self.execution_dir)
 
         results = self.strategy_manager.locate(element)
         last_exception = None
@@ -60,12 +60,13 @@ class ActionKeyword:
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection
         )
+        self.execution_dir = builder.event_sdk.config_handler.config.execution_output_path
 
     # Click actions
     @with_self_healing
     def press_element(
         self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", event_name: Optional[str] = None, *, located: Any = None
-    ) -> None:
+        ) -> None:
         """
         Press a specified element.
 
