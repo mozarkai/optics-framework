@@ -6,6 +6,20 @@ authors = ["Lalitanand Dandge <lalit@mozark.ai>"]
 license = "Apache-2.0"
 readme = "README.md"
 keywords = ["test automation", "framework", "mobile automation"]
+homepage = "https://github.com/mozarkai/optics-framework"
+repository = "https://github.com/mozarkai/optics-framework"
+documentation = "https://mozarkai.github.io/optics-framework/"
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.12",
+	"License :: OSI Approved :: Apache Software License",
+	"Operating System :: OS Independent",
+	"Intended Audience :: Developers",
+	"Topic :: Software Development :: Testing",
+]
+include = [
+	"optics_framework/py.typed"
+]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
