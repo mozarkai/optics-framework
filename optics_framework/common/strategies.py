@@ -354,6 +354,7 @@ class StrategyManager:
         element_type = utils.determine_element_type(element)
         execution_logger.info(f"Locating element: {element} of type: {element_type}...")
         for strategy in self.locator_strategies:
+            internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for element: {element}")
             if strategy.supports(element_type, strategy.element_source):
                 try:
                     result = strategy.locate(element)
@@ -373,6 +374,7 @@ class StrategyManager:
         execution_logger.info(
             f"Asserting presence of elements: {elements} with rule: {rule} and timeout: {timeout}s")
         for strategy in self.locator_strategies:
+            internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
             if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
                 try:
                     result_tuple = strategy.assert_elements(elements, timeout, rule)

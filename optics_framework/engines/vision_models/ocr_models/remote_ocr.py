@@ -6,20 +6,16 @@ import numpy as np
 import base64
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
+from optics_framework.common.config_handler import Config
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.config_handler import ConfigHandler
 
 
 class RemoteOCR(TextInterface):
     DEPENDENCY_TYPE = "text_detection"
     NAME = "remote_ocr"
 
-    def __init__(self):
+    def __init__(self, config: Config):
         """Initialize the Remote OCR client with configuration."""
-        config_handler: ConfigHandler = ConfigHandler().get_instance()
-        config = config_handler.get_dependency_config(
-            self.DEPENDENCY_TYPE, self.NAME)
-
         if not config:
             internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")

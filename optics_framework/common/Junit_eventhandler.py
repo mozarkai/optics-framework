@@ -6,13 +6,11 @@ import xml.dom.minidom  #nosec B408
 import time
 import logging
 from optics_framework.common.logging_config import internal_logger, execution_logger, SensitiveDataFormatter
-from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.config_handler import Config
 
-junit_handler = None
 
-def setup_junit(config_handler: ConfigHandler):
-    global junit_handler
-    config = config_handler.load()
+def setup_junit(config: Config):
+    junit_handler = None
     log_dir = config.execution_output_path or (Path.cwd() / "logs")
 
     junit_path = getattr(config, 'json_log_path', None)

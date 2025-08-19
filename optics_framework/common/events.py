@@ -69,23 +69,13 @@ class EventSubscriber(ABC):
 
 class EventManager:
     """Centralized manager for events and commands."""
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(EventManager, cls).__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self):
-        if not self._initialized:
-            self.event_queue: asyncio.Queue[Event] = asyncio.Queue()
-            self.command_queue: asyncio.Queue[Command] = asyncio.Queue()
-            self.subscribers: Dict[str, EventSubscriber] = {}
-            self._running = False
-            self._process_task = None
-            self._initialized = True
-            internal_logger.debug(f"EventManager initialized: {id(self)}")
+        self.event_queue: asyncio.Queue[Event] = asyncio.Queue()
+        self.command_queue: asyncio.Queue[Command] = asyncio.Queue()
+        self.subscribers: Dict[str, EventSubscriber] = {}
+        self._running = False
+        self._process_task = None
+        internal_logger.debug(f"EventManager initialized: {id(self)}")
 
     def start(self):
         """Start the event processing loop."""

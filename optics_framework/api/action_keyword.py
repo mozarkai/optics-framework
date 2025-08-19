@@ -13,7 +13,7 @@ def with_self_healing(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(self, element, *args, **kwargs):
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, func.__name__, self.execution_dir)
+        utils.save_screenshot(screenshot_np, func.__name__, output_dir=self.execution_dir)
 
         results = self.strategy_manager.locate(element)
         last_exception = None

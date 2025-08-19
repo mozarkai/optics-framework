@@ -2,6 +2,8 @@ import uuid
 import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
+from pathlib import Path
+from optics_framework.common.Junit_eventhandler import setup_junit
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData
@@ -80,6 +82,9 @@ class Session:
         self.optics.add_element_source(enabled_element_configs)
         self.optics.add_text_detection(enabled_text_configs)
         self.optics.add_image_detection(enabled_image_configs, self.config.project_path)
+        if config.json_log is True and self.config.execution_output_path is not None:
+            config.json_path = str(Path(config.json_path).expanduser()) if config.json_path else str((Path(self.config.execution_output_path) / "logs.json").expanduser())
+            setup_junit(config)
 
         self.driver = self.optics.get_driver()
         self.event_queue = asyncio.Queue()

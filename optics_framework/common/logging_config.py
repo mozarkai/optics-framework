@@ -1,25 +1,106 @@
 import logging
 import queue
-import os
 import time
 import re
-from typing import Tuple
 import atexit
-from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
-from pathlib import Path
+from logging.handlers import QueueHandler, RotatingFileHandler
 from rich.logging import RichHandler
-from optics_framework.common.config_handler import Config
+from pydantic import BaseModel
+from typing import Optional, Tuple
+from pathlib import Path
+
+class LoggingConfig(BaseModel):
+    log_level: str = "INFO"
+    log_path: Optional[str] = None
+    file_log: bool = False
+    execution_output_path: Optional[str] = None
 
 
-# Global Queues
-internal_log_queue = queue.Queue(-1)
-execution_log_queue = queue.Queue(-1)
+class LoggingManager:
+    def initialize_handlers(self, config):
+        """
+        Dynamically reconfigure logging handlers based on config.
+        """
+        log_level = getattr(logging, getattr(config, "log_level", "INFO").upper(), logging.INFO)
+        self.internal_logger.setLevel(log_level)
+        self.execution_logger.setLevel(log_level)
+        self.internal_console_handler.setLevel(log_level)
+        self.execution_console_handler.setLevel(log_level)
+        # Optionally, add file handlers if config.file_log is True
+        if getattr(config, "file_log", False):
+            log_path = getattr(config, "log_path", None)
+            execution_output_path = getattr(config, "execution_output_path", None)
+            log_dir = Path(execution_output_path or (Path.cwd() / "logs")).expanduser()
+            log_dir.mkdir(parents=True, exist_ok=True)
+            internal_log_path = Path(log_path or log_dir / "internal_logs.log").expanduser()
+            execution_log_path = Path(log_path or log_dir / "execution_logs.log").expanduser()
+            internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
+            execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
+            self.internal_logger.addHandler(internal_file_handler)
+            self.execution_logger.addHandler(execution_file_handler)
 
+    def stop_listeners(self):
+        def safe_stop(listener, name):
+            if listener:
+                try:
+                    if hasattr(listener, '_thread') and listener._thread and listener._thread.is_alive():
+                        try:
+                            listener.enqueue_sentinel()
+                        except Exception as e:
+                            self.internal_logger.error(
+                                f"Failed to enqueue sentinel for listener: {e}"
+                            )
+                        listener._thread.join(timeout=2.0)
+                        if listener._thread.is_alive():
+                            self.internal_logger.warning(f"{name} thread did not terminate after timeout.")
+                    listener._thread = None
+                except Exception as e:
+                    self.internal_logger.warning(f"Error stopping {name}: {e}")
+        safe_stop(self.internal_listener, "internal_listener")
+        self.internal_listener = None
+        safe_stop(self.execution_listener, "execution_listener")
+        self.execution_listener = None
 
-# Internal Logger
-internal_logger = logging.getLogger("optics.internal")
-internal_logger.propagate = False
+    def shutdown_logging(self):
+        try:
+            self.disable_logger()
+            self.stop_listeners()
+            self.internal_logger.debug("Logging shutdown completed")
+        except Exception as e:
+            self.internal_logger.error(f"Shutdown error: {e}")
 
+    def disable_logger(self):
+        logging.getLogger().disabled = True
+
+    def get_internal_logger(self):
+        return self.internal_logger
+
+    def get_execution_logger(self):
+        return self.execution_logger
+
+    def get_listeners(self):
+        return self.internal_listener, self.execution_listener
+
+    def __init__(self):
+        self.internal_log_queue = queue.Queue(-1)
+        self.execution_log_queue = queue.Queue(-1)
+        self.internal_logger = logging.getLogger("optics.internal")
+        self.internal_logger.propagate = False
+        self.execution_logger = logging.getLogger("optics.execution")
+        self.execution_logger.propagate = True
+        self.internal_console_handler = RichHandler(
+            rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
+        self.internal_console_handler.setFormatter(SensitiveDataFormatter(
+            "%(asctime)s | %(message)s", datefmt="%H:%M:%S"))
+        self.execution_console_handler = RichHandler(
+            rich_tracebacks=False, show_time=True, show_level=True, markup=True)
+        self.execution_console_handler.setFormatter(SensitiveDataFormatter("%(message)s"))
+        self.execution_queue_handler = QueueHandler(self.execution_log_queue)
+        self.internal_logger.addHandler(self.internal_console_handler)
+        self.execution_logger.addHandler(self.execution_queue_handler)
+        self.internal_listener = None
+        self.execution_listener = None
+        self.junit_handler = None
 
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):
@@ -30,31 +111,13 @@ class SensitiveDataFormatter(logging.Formatter):
         return super().format(record)
 
     def _sanitize(self, message: str) -> str:
-        return re.sub(r"@:([^\s,)\]]+)", "****", message)
+        # Remove duplicate characters in regex character class
+        return re.sub(r"@:([^\s,\)\]]+)", "****", message)
 
-internal_console_handler = RichHandler(
-    rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
-internal_console_handler.setFormatter(SensitiveDataFormatter(
-    "%(levelname)s | %(asctime)s | %(message)s", datefmt="%H:%M:%S"))
 
-internal_queue_handler = QueueHandler(internal_log_queue)
-internal_logger.addHandler(internal_queue_handler)
-
-# Execution Logger
-execution_logger = logging.getLogger("optics.execution")
-execution_logger.propagate = True
-
-execution_console_handler = RichHandler(
-    rich_tracebacks=False, show_time=True, show_level=True, markup=True)
-execution_console_handler.setFormatter(SensitiveDataFormatter("%(message)s"))
-
-execution_queue_handler = QueueHandler(execution_log_queue)
-execution_logger.addHandler(execution_queue_handler)
-
-execution_listener = QueueListener(
-    execution_log_queue, execution_console_handler, respect_handler_level=True)
-execution_listener.start()
-
+logging_manager = LoggingManager()
+internal_logger = logging_manager.get_internal_logger()
+execution_logger = logging_manager.get_execution_logger()
 
 
 # SessionLoggerAdapter
@@ -108,8 +171,6 @@ class LoggerContext:
 
 
 junit_handler = None
-internal_listener = None
-execution_listener = None
 
 def create_file_handler(path, log_level, formatter=None, use_sensitive=False):
     handler = RotatingFileHandler(
@@ -127,58 +188,11 @@ LOG_FORMATTER = logging.Formatter(
 )
 
 
-def initialize_handlers(config: Config):
-    global junit_handler, internal_listener, execution_listener
-    internal_logger.debug("Initializing logging handlers")
-
-    log_level_str = config.log_level.upper()
-    log_level = getattr(logging, log_level_str, logging.INFO)
-    internal_logger.debug(f"Setting log level to {log_level_str} ({log_level})")
-
-    if execution_logger is None or internal_logger is None:
-        raise RuntimeError(
-            f"Loggers not initialized: execution_logger={execution_logger}, internal_logger={internal_logger}"
-        )
-
-    # Set levels for console loggers
-    internal_logger.setLevel(log_level)
-    internal_console_handler.setLevel(log_level)
-    execution_logger.setLevel(log_level)
-    execution_console_handler.setLevel(log_level)
-
-
-    # Prepare directories
-    execution_output_path = config.execution_output_path or (Path.cwd() / "logs")
-    log_dir = Path(execution_output_path).expanduser()
-    log_dir.mkdir(parents=True, exist_ok=True)
-    internal_logger.debug(f"Output directory: {log_dir}, writable={os.access(log_dir, os.W_OK)}")
-
-    # Stop old listeners if exist
-    stop_listeners()
-
-    # Start listeners with console handlers first
-    internal_listener = QueueListener(internal_log_queue, internal_console_handler, respect_handler_level=True)
-    execution_listener = QueueListener(execution_log_queue, execution_console_handler, respect_handler_level=True)
-
-    # Add file handlers only if enabled
-    if config.file_log or log_level <= logging.DEBUG:
-        internal_log_path = Path(config.log_path or log_dir / "internal_logs.log").expanduser()
-        execution_log_path = Path(config.log_path or log_dir / "execution_logs.log").expanduser()
-
-        internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
-        execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
-
-        internal_listener.handlers += (internal_file_handler,)
-        execution_listener.handlers += (internal_file_handler, execution_file_handler,)
-
-        internal_logger.debug(f"Added internal log file: {internal_log_path}")
-        internal_logger.debug(f"Added execution log file: {execution_log_path}")
-
-
-    internal_listener.start()
-    execution_listener.start()
-
-    internal_logger.debug("Logging handlers initialized")
+def initialize_handlers(config):
+    """
+    Initialize logging handlers. Accepts either a full Config or a LoggingConfig.
+    """
+    logging_manager.initialize_handlers(config)
 
 def shutdown_logging():
     try:
@@ -199,37 +213,15 @@ def disable_logger():
 
 def stop_listeners():
     """Stops user and internal listeners."""
-    global internal_listener, execution_listener
-    def safe_stop(listener, name):
-        if listener:
-            try:
-                # Enqueue sentinel manually if thread is alive
-                if hasattr(listener, '_thread') and listener._thread and listener._thread.is_alive():
-                    try:
-                        listener.enqueue_sentinel()
-                    except Exception as e:
-                        internal_logger.error(
-                            f"Failed to enqueue sentinel for listener: {e}"
-                        )
-                    # Try to join with timeout to avoid infinite hang
-                    listener._thread.join(timeout=2.0)
-                    if listener._thread.is_alive():
-                        internal_logger.warning(f"{name} thread did not terminate after timeout.")
-                listener._thread = None
-            except Exception as e:
-                internal_logger.warning(f"Error stopping {name}: {e}")
-    safe_stop(internal_listener, "internal_listener")
-    internal_listener = None
-    safe_stop(execution_listener, "execution_listener")
-    execution_listener = None
+    logging_manager.stop_listeners()
 
 
 def wait_for_threads():
     """Waits for listener threads to terminate with a timeout."""
     timeout = 2.0
     start_time = time.time()
+    internal_listener, execution_listener = logging_manager.get_listeners()
     while time.time() - start_time < timeout:
-        # Exit if BOTH listeners are not alive
         if not is_thread_alive(internal_listener) and not is_thread_alive(execution_listener):
             return
         time.sleep(0.1)
@@ -242,6 +234,7 @@ def is_thread_alive(listener):
 
 
 def check_thread_status():
+    internal_listener, execution_listener = logging_manager.get_listeners()
     if is_thread_alive(internal_listener):
         internal_logger.warning("internal_listener thread did not terminate")
     if is_thread_alive(execution_listener):
@@ -256,7 +249,7 @@ def flush_handlers():
 
 
 def clear_queues():
-    for log_queue in [internal_log_queue, execution_log_queue]:
+    for log_queue in [logging_manager.internal_log_queue, logging_manager.execution_log_queue]:
         while not log_queue.empty():
             try:
                 log_queue.get_nowait()
@@ -269,7 +262,7 @@ atexit.register(shutdown_logging)
 # Dynamic Reconfiguration
 
 
-def reconfigure_logging(config: Config):
+def reconfigure_logging(config):
     internal_logger.debug("Reconfiguring logging due to config change")
     initialize_handlers(config)
 

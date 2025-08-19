@@ -8,11 +8,11 @@ from optics_framework.common import utils
 
 
 class UIHelper:
-    def __init__(self, driver):
+    def __init__(self, appium_driver):
         """
-        Initialize UIHelper with explicit driver instance.
+        Initialize UIHelper with Appium object (not just WebDriver).
         """
-        self.driver = driver
+        self.driver = appium_driver
         self.tree = None
         self.root = None
         self.prev_hash = None
@@ -22,7 +22,7 @@ class UIHelper:
         Fetch the current UI tree (page source) from the Appium driver.
         """
         time_stamp = utils.get_timestamp()
-        page_source = self.driver.page_source
+        page_source = self.driver.driver.page_source
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
         self.root = self.tree.getroot()
         internal_logger.debug("\n\n========== PAGE SOURCE FETCHED ==========")
@@ -38,7 +38,7 @@ class UIHelper:
         Update instance's root and tree attributes when there's a change in page UI.
         """
         time_stamp = utils.get_timestamp()
-        page_source = self.driver.page_source
+        page_source = self.driver.driver.page_source
         new_hash = utils.compute_hash(page_source)
 
         if self.prev_hash == new_hash:

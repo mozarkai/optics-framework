@@ -166,7 +166,7 @@ class Verifier:
         :return: A list of interactive elements.
         """
         elements = self.strategy_manager.get_interactive_elements()
-        utils.save_interactable_elements(elements, self.execution_dir)
+        utils.save_interactable_elements(elements, output_dir=self.execution_dir)
         return elements
 
     def get_screen_elements(self) -> dict:

@@ -10,7 +10,7 @@ from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.common.events import Event, get_event_manager, EventStatus
+from optics_framework.common.events import Event, EventManager, EventStatus
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
 
@@ -36,13 +36,14 @@ class Executor(ABC):
 class BatchExecutor(Executor):
     """Executes batch test cases."""
 
-    def __init__(self, test_case: Optional[TestCaseNode]):
+    def __init__(self, test_case: Optional[TestCaseNode], event_manager: EventManager):
         self.test_case = test_case
+        self.event_manager = event_manager
         if not self.test_case:
             raise ValueError("Test case is required")
 
     async def execute(self, session: Session, runner: Runner) -> None:
-        event_manager = get_event_manager()
+        event_manager = self.event_manager
         if not session.test_cases:
             await event_manager.publish_event(Event(
                 entity_type="execution",
@@ -55,7 +56,7 @@ class BatchExecutor(Executor):
             raise ValueError("NO_TEST_CASES_LOADED")
 
         try:
-            status = EventStatus.FAIL
+            status = EventStatus.NOT_RUN
             message = "No test case to execute"
             if self.test_case:
                 await runner.run_all()
@@ -86,16 +87,16 @@ class BatchExecutor(Executor):
 class DryRunExecutor(Executor):
     """Performs dry run of test cases."""
 
-    def __init__(self, test_case: Optional[TestCaseNode]):
+    def __init__(self, test_case: Optional[TestCaseNode], event_manager: EventManager):
         self.test_case = test_case
+        self.event_manager = event_manager
         if not self.test_case:
             raise ValueError("Test case is required")
 
     async def execute(self, session: Session, runner: Runner) -> None:
         status = EventStatus.FAIL
         message = "No test case to execute"
-
-        event_manager = get_event_manager()
+        event_manager = self.event_manager
         if not session.test_cases:
             await event_manager.publish_event(Event(
                 entity_type="execution",
@@ -126,12 +127,13 @@ class DryRunExecutor(Executor):
 class KeywordExecutor(Executor):
     """Executes a single keyword."""
 
-    def __init__(self, keyword: str, params: List[str]):
+    def __init__(self, keyword: str, params: List[str], event_manager: EventManager):
         self.keyword = keyword
         self.params = params
+        self.event_manager = event_manager
 
     async def execute(self, session: Session, runner: Runner) -> None:
-        event_manager = get_event_manager()
+        event_manager = self.event_manager
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
         result = None
         if method:
@@ -175,6 +177,7 @@ class RunnerFactory:
         session: Session,
         runner_type: str,
         use_printer: bool,
+        event_manager: EventManager
     ) -> Runner:
 
         registry = KeywordRegistry()
@@ -190,10 +193,12 @@ class RunnerFactory:
             result_printer = TreeResultPrinter.get_instance(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
             runner = TestRunner(
-                session, registry.keyword_map, result_printer
+                session, registry.keyword_map, result_printer, event_manager=event_manager
             )
         elif runner_type == "pytest":
-            runner = PytestRunner(session, registry.keyword_map)
+            runner = PytestRunner(
+                session, registry.keyword_map, event_manager=event_manager
+            )
         elif runner_type == "keyword_runner":
             runner = KeywordRunner(registry.keyword_map)
         else:
@@ -206,7 +211,7 @@ class ExecutionEngine:
 
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
-        self.event_manager = get_event_manager()
+        self.event_manager = EventManager()
 
     async def execute(self, params: ExecutionParams) -> None:
         session = self.session_manager.get_session(params.session_id)
@@ -249,6 +254,7 @@ class ExecutionEngine:
                 session,
                 runner_type,
                 use_printer,
+                event_manager=self.event_manager
             )
             if hasattr(runner, 'result_printer') and runner.result_printer and use_printer:
                 internal_logger.debug("Starting result printer live display")
@@ -264,9 +270,9 @@ class ExecutionEngine:
                     extra={"session_id": params.session_id}
                 ))
                 if params.mode == "batch":
-                    executor = BatchExecutor(test_case=session.test_cases)
+                    executor = BatchExecutor(test_case=session.test_cases, event_manager=self.event_manager)
                 elif params.mode == "dry_run":
-                    executor = DryRunExecutor(test_case=session.test_cases)
+                    executor = DryRunExecutor(test_case=session.test_cases, event_manager=self.event_manager)
                 elif params.mode == "keyword":
                     if not params.keyword:
                         await self.event_manager.publish_event(Event(
@@ -279,7 +285,7 @@ class ExecutionEngine:
                         ))
                         raise ValueError("Keyword mode requires a keyword")
                     try:
-                        executor = KeywordExecutor(params.keyword, params.params)
+                        executor = KeywordExecutor(params.keyword, params.params, event_manager=self.event_manager)
                     except Exception as e:
                         await self.event_manager.publish_event(Event(
                             entity_type="execution",

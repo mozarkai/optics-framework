@@ -102,7 +102,7 @@ class Appium(DriverInterface):
             # CRITICAL: Log the new session ID
             new_session_id = self.driver.session_id
             internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
-            self.ui_helper = UIHelper(self.driver)
+            self.ui_helper = UIHelper(self)
             return self.driver
         except Exception as e:
             internal_logger.error(f"Failed to create new Appium session: {e}")

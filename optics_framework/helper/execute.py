@@ -5,7 +5,7 @@ from typing import Optional, Tuple, List, Dict, Set, Any
 import yaml
 from pydantic import BaseModel, field_validator
 from optics_framework.common.config_handler import Config
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
@@ -435,6 +435,9 @@ class BaseRunner:
             self.config.project_path = self.folder_path
         else:
             self.config = Config()
+
+        # Ensure logging is configured before any test execution
+        initialize_handlers(self.config)
 
         self._filter_and_build_execution_queue()
         self._setup_session()

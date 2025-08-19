@@ -4,9 +4,9 @@ import asyncio
 import tempfile
 import shutil
 import sys
+import logging
 from typing import Callable, Dict, List, Optional, Union, Any
 import pytest
-import logging
 from optics_framework.common.session_manager import Session
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
@@ -33,7 +33,6 @@ from optics_framework.common.models import (
     ApiData,
 )
 from optics_framework.common.events import (
-    get_event_manager,
     EventStatus,
     CommandType,
     Event,
@@ -53,34 +52,32 @@ class Runner:
         Subclasses must provide concrete logic for executing test cases."""
         pass
 
-    def run_all(self) -> None:
+    async def run_all(self) -> None:
         """Empty implementation to satisfy the interface contract.
         Subclasses must implement logic to run all test cases."""
         pass
 
-    def dry_run_test_case(self, test_case: str) -> Optional[TestCaseResult]:
+    async def dry_run_test_case(self, test_case: str) -> Optional[TestCaseResult]:
         """Empty implementation to satisfy the interface contract.
         Subclasses must provide logic for dry-running test cases."""
         pass
 
-    def dry_run_all(self) -> None:
+    async def dry_run_all(self) -> None:
         """Empty implementation to satisfy the interface contract.
         Subclasses must implement logic to dry-run all test cases."""
         pass
 
 
-async def queue_event(event: Event) -> None:
+async def queue_event(event: Event, event_manager) -> None:
     """Queue an event for async processing."""
     internal_logger.debug(f"Queueing event: {event.model_dump()}")
-    event_manager = get_event_manager()
     await event_manager.publish_event(event)
 
 
-def queue_event_sync(event: Event) -> None:
+def queue_event_sync(event: Event, event_manager) -> None:
     """Queue an event synchronously for pytest."""
     internal_logger.debug(f"Queueing event (sync): {event.model_dump()}")
-    event_manager = get_event_manager()
-    for subscriber_name, subscriber in event_manager.subscribers.items():
+    for _, subscriber in event_manager.subscribers.items():
         try:
             asyncio.run(subscriber.on_event(event))
         except RuntimeError as e:
@@ -93,6 +90,7 @@ class TestRunner(Runner):
         session: Session,
         keyword_map: Dict[str, Callable[..., Any]],
         result_printer: IResultPrinter,
+        event_manager,
     ) -> None:
         self.session = session
         self.session_id = session.session_id
@@ -103,9 +101,13 @@ class TestRunner(Runner):
         self.keyword_map = keyword_map
         self.result_printer = result_printer
         self.config = session.config
-        execution_logger.debug(
-            f"Initialized test_state: {list(self.modules.modules.keys())} with {len(self.modules.modules)} modules"
-        )
+        self.event_manager = event_manager
+        if hasattr(self.modules, "modules"):
+            execution_logger.debug(
+                "Initialized test_state: %s with %d modules",
+                list(self.modules.modules.keys()),
+                len(self.modules.modules)
+            )
         self._initialize_test_state()
 
     def _initialize_test_state(self) -> None:
@@ -165,7 +167,9 @@ class TestRunner(Runner):
             current_test = current_test.next
         self.result_printer.test_state = test_state
         execution_logger.debug(
-            f"Initialized test_state: {list(test_state.keys())} with {sum(len(m.modules) for m in test_state.values())} modules"
+            "Initialized test_state: %s with %d modules",
+            list(test_state.keys()),
+            sum(len(m.modules) for m in test_state.values())
         )
 
     def _extra(
@@ -257,7 +261,6 @@ class TestRunner(Runner):
         elapsed: Optional[float] = None,
         logs: Optional[List[logging.LogRecord]] = None,
     ) -> None:
-        # Convert logs (if LogRecord objects) to strings
         log_messages = None
         if logs is not None:
             log_messages = [
@@ -280,14 +283,13 @@ class TestRunner(Runner):
             elapsed=elapsed,
             logs=log_messages,
         )
-        await queue_event(event)
+        await queue_event(event, self.event_manager)
 
     async def _process_commands(
         self, node: KeywordNode, parent: Optional[ModuleNode]
     ) -> bool:
-        event_manager = get_event_manager()
         retry = False
-        command = await event_manager.get_command()
+        command = await self.event_manager.get_command()
         if command:
             if command.command == CommandType.RETRY and command.entity_id == node.id:
                 node.state = State.RETRYING
@@ -321,7 +323,7 @@ class TestRunner(Runner):
             test_case_result.name, module_node.name, keyword_node.id
         )
         execution_logger.debug(
-            f"Executing keyword: {keyword_node.name} (id: {keyword_node.id})"
+            "Executing keyword: %s (id: %s)", keyword_node.name, keyword_node.id
         )
         start_time = time.time()
 
@@ -385,7 +387,7 @@ class TestRunner(Runner):
             positional_str = ", ".join(str(p) for p in resolved_positional_params)
             keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
             combined_params_str = ", ".join(filter(None, [positional_str, keyword_str]))
-            execution_logger.debug(f"PARAMS: {combined_params_str}")
+            execution_logger.debug("PARAMS: %s", combined_params_str)
             method(*resolved_positional_params, **resolved_kw_params)
             await asyncio.sleep(0.1)
             keyword_node.state = State.COMPLETED_PASSED
@@ -717,6 +719,7 @@ class PytestRunner(Runner):
         self,
         session: Session,
         keyword_map: Dict,
+        event_manager,
     ):
         self.session = session
         self.test_cases = self.session.test_cases if self.session and hasattr(self.session, "test_cases") else None
@@ -730,6 +733,7 @@ class PytestRunner(Runner):
         self.result_printer = NullResultPrinter()
         self.config_handler: ConfigHandler = self.session.config_handler
         self.config: Config = self.session.config
+        self.event_manager = event_manager
         PytestRunner.instance = self
 
     def resolve_param(self, param: str) -> str:
@@ -762,7 +766,8 @@ class PytestRunner(Runner):
                         message=f"Keyword not found: {keyword}",
                         parent_id=module_id,
                         extra={"session_id": self.session.session_id},
-                    )
+                    ),
+                    self.event_manager
                 )
                 pytest.fail(f"Keyword not found: {keyword}")
             queue_event_sync(
@@ -774,7 +779,8 @@ class PytestRunner(Runner):
                     message="Keyword validated",
                     parent_id=module_id,
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             return True
 
@@ -786,7 +792,8 @@ class PytestRunner(Runner):
                 status=EventStatus.RUNNING,
                 parent_id=module_id,
                 extra={"session_id": self.session.session_id},
-            )
+            ),
+            self.event_manager
         )
         method = self.keyword_map.get(func_name)
         if not method:
@@ -799,7 +806,8 @@ class PytestRunner(Runner):
                     message=f"Keyword not found: {keyword}",
                     parent_id=module_id,
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             pytest.fail(f"Keyword not found: {keyword}")
         try:
@@ -823,7 +831,8 @@ class PytestRunner(Runner):
                     status=EventStatus.PASS,
                     parent_id=module_id,
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             return True
         except Exception as e:
@@ -836,7 +845,8 @@ class PytestRunner(Runner):
                     message=f"Keyword '{keyword}' failed: {e}",
                     parent_id=module_id,
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             pytest.fail(f"Keyword '{keyword}' failed: {e}")
             return False
@@ -856,7 +866,8 @@ class PytestRunner(Runner):
                 status=EventStatus.RUNNING,
                 parent_id=testcase_id,
                 extra={"session_id": self.session.session_id},
-            )
+            ),
+            self.event_manager
         )
 
         module_steps = self.modules.modules.get(module_name)
@@ -870,7 +881,8 @@ class PytestRunner(Runner):
                     message=f"Module '{module_name}' not found",
                     parent_id=testcase_id,
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             pytest.fail(f"Module '{module_name}' not found")
 
@@ -894,7 +906,8 @@ class PytestRunner(Runner):
                         status=EventStatus.FAIL,
                         parent_id=testcase_id,
                         extra={"session_id": self.session.session_id},
-                    )
+                    ),
+                    self.event_manager
                 )
                 return False
         queue_event_sync(
@@ -905,7 +918,8 @@ class PytestRunner(Runner):
                 status=EventStatus.PASS,
                 parent_id=testcase_id,
                 extra={"session_id": self.session.session_id},
-            )
+            ),
+            self.event_manager
         )
         return True
 
@@ -924,7 +938,8 @@ class PytestRunner(Runner):
                 name=test_case,
                 status=EventStatus.RUNNING,
                 extra={"session_id": self.session.session_id},
-            )
+            ),
+            self.event_manager
         )
         current = self.test_cases
         while current and current.name != test_case:
@@ -938,7 +953,8 @@ class PytestRunner(Runner):
                     status=EventStatus.FAIL,
                     message=f"Test case '{test_case}' not found",
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             result.status = "FAIL"
             result.elapsed = f"{time.time() - start_time:.2f}s"
@@ -959,7 +975,8 @@ class PytestRunner(Runner):
                         name=test_case,
                         status=EventStatus.FAIL,
                         extra={"session_id": self.session.session_id},
-                    )
+                    ),
+                    self.event_manager
                 )
                 result.status = "FAIL"
                 break
@@ -972,7 +989,8 @@ class PytestRunner(Runner):
                     name=test_case,
                     status=EventStatus.PASS,
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             result.status = "PASS"
         result.elapsed = f"{time.time() - start_time:.2f}s"
@@ -1065,7 +1083,8 @@ def runner():
                     status=EventStatus.PASS,
                     message="Pytest execution completed",
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             return True
         else:
@@ -1078,7 +1097,8 @@ def runner():
                     status=EventStatus.FAIL,
                     message="Pytest execution failed",
                     extra={"session_id": self.session.session_id},
-                )
+                ),
+                self.event_manager
             )
             return False
 

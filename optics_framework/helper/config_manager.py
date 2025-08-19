@@ -106,7 +106,7 @@ class LoggerTUI(App):
 
     def __init__(self):
         super().__init__()
-        self.config_handler = ConfigHandler.get_instance()
+        self.config_handler = ConfigHandler()
         self.options = list(self.config_handler.config.model_fields.keys())
         self.selected_index = 0  # Changed to plain int
 

@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict, Any, Optional
 import yaml
 from pydantic import BaseModel, Field
+from optics_framework.common.logging_config import initialize_handlers
 
 
 class DependencyConfig(BaseModel):
@@ -29,7 +30,7 @@ class Config(BaseModel):
     json_path: Optional[str] = None
     log_level: str = "INFO"
     log_path: Optional[str] = None
-    project_path: str = str(os.getcwd())
+    project_path: Optional[str] = None
     execution_output_path: Optional[str] = None
     include: Optional[List[str]] = None
     exclude: Optional[List[str]] = None
@@ -39,8 +40,6 @@ class Config(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        if self.execution_output_path is None:
-            self.execution_output_path = os.path.join(self.project_path, "execution_output")
         if not self.driver_sources:
             self.driver_sources = [
                 {"appium": DependencyConfig(enabled=False, url=None, capabilities={})},
@@ -117,9 +116,17 @@ class ConfigHandler:
         self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
         if config is None:
             raise ValueError("ConfigHandler requires a Config object on initialization.")
+        if config.execution_output_path is None and config.project_path is not None:
+            config.execution_output_path = os.path.join(
+                config.project_path, "execution_output"
+            )
+            if not os.path.exists(config.execution_output_path):
+                os.makedirs(config.execution_output_path, exist_ok=True)
+
         self.config: Config = config
         self._enabled_configs: Dict[str, List[str]] = {}
         self._precompute_enabled_configs()
+        initialize_handlers(self.config)
 
     def set_project(self, project_name: str) -> None:
         self.project_name = project_name

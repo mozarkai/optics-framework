@@ -81,9 +81,6 @@ class GenericFactory(Generic[T]):
         key = next(iter(config_dict.keys()))
         config = config_dict[key]
         name = key
-        if name in cls._registry.instances:
-            internal_logger.debug(f"Returning cached instance for: {name}")
-            return cls._registry.instances[name]
 
         if name not in cls._registry.module_paths:
             cls._load_module(name, package)
