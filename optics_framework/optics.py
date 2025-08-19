@@ -10,7 +10,6 @@ from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
 from optics_framework.api.flow_control import FlowControl
-from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.models import (
     TestCaseNode,
@@ -63,7 +62,6 @@ class Optics:
         self.config_handler: Optional[ConfigHandler] = None
         self.session_manager = SessionManager()
         self.config = None
-        self.builder = OpticsBuilder()
         self.app_management = None
         self.action_keyword = None
         self.verifier = None

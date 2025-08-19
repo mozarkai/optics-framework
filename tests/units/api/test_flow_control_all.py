@@ -23,6 +23,8 @@ class DummySession:
         self.modules = type('M', (), {'modules': {}, 'get_module_definition': lambda self, x: []})()
         self.apis = ApiData()
         self.apis.collections = {}
+        from unittest.mock import MagicMock
+        self.config_handler = MagicMock() # Add config_handler attribute
 
 # ---- Fixtures ----
 @pytest.fixture
@@ -40,7 +42,7 @@ def test_read_data_csv_relative(tmp_path, flow_control, monkeypatch):
     project_path = tmp_path
     csv_file = tmp_path / 'test.csv'
     csv_file.write_text(csv_content)
-    monkeypatch.setattr('optics_framework.common.config_handler.ConfigHandler.get_instance', lambda: type('C', (), {'config': type('X', (), {'project_path': str(project_path)})()})())
+    flow_control.session.config_handler.config.project_path = str(project_path)
     result = flow_control.read_data('my_elem', 'test.csv', "a == '3';select=b")
     assert result == ['4']
     assert flow_control.session.elements.get_element('my_elem') == '4'
@@ -53,7 +55,7 @@ def test_read_data_json_relative(tmp_path, flow_control, monkeypatch):
     project_path = tmp_path
     json_file = tmp_path / 'test.json'
     json_file.write_text(json_content)
-    monkeypatch.setattr('optics_framework.common.config_handler.ConfigHandler.get_instance', lambda: type('C', (), {'config': type('X', (), {'project_path': str(project_path)})()})())
+    flow_control.session.config_handler.config.project_path = str(project_path)
     result = flow_control.read_data('my_elem', 'test.json', "foo == 'baz';select=num")
     assert result == ['2']
     assert flow_control.session.elements.get_element('my_elem') == '2'
@@ -90,7 +92,7 @@ def test_read_data_json_single_object(flow_control, tmp_path, monkeypatch):
     project_path = tmp_path
     json_file = tmp_path / 'single.json'
     json_file.write_text(json_content)
-    monkeypatch.setattr('optics_framework.common.config_handler.ConfigHandler.get_instance', lambda: type('C', (), {'config': type('X', (), {'project_path': str(project_path)})()})())
+    flow_control.session.config_handler.config.project_path = str(project_path)
     result = flow_control.read_data('my_elem', 'single.json', "select=serialId")
     assert result == ['123']
     assert flow_control.session.elements.get_element('my_elem') == '123'
@@ -100,7 +102,7 @@ def test_read_data_csv_with_variable_in_query(tmp_path, flow_control, monkeypatc
     project_path = tmp_path
     csv_file = tmp_path / 'devices.csv'
     csv_file.write_text(csv_content)
-    monkeypatch.setattr('optics_framework.common.config_handler.ConfigHandler.get_instance', lambda: type('C', (), {'config': type('X', (), {'project_path': str(project_path)})()})())
+    flow_control.session.config_handler.config.project_path = str(project_path)
     # Set element_1 in session elements
     flow_control.session.elements.add_element('element_1', 'RZ8RC1KK88R')
     # Use variable in query

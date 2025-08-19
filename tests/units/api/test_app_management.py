@@ -67,6 +67,8 @@ def test_launch_app():
                     # Stub for testing
                     pass
             return DummyDriver()
-    app_management = AppManagement(MockOpticsBuilder())
+    from unittest.mock import MagicMock
+    mock_event_sdk = MagicMock()
+    app_management = AppManagement(MockOpticsBuilder(mock_event_sdk))
     app_management.launch_app("launch")
     assert True

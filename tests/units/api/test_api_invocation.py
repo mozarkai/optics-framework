@@ -51,9 +51,18 @@ def live_servers():
 
 @pytest.fixture
 def mock_runner(mock_api_data):
+    import tempfile
     session = MagicMock(spec=Runner)
     session.apis = mock_api_data
     session.elements = ElementData() # Use ElementData instance for compatibility
+    session.config_handler = MagicMock()
+    temp_dir = tempfile.mkdtemp()
+    class Config:
+        pass
+    config = Config()
+    config.execution_output_path = temp_dir
+    config.project_path = temp_dir
+    session.config_handler.config = config
     return session
 
 @pytest.fixture

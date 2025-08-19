@@ -1,95 +1,264 @@
-
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Optics API Tester</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; }
-    .container { max-width: 900px; margin: 2em auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #ccc; padding: 2em; }
-    h1 { text-align: center; }
-    .row { display: flex; gap: 2em; }
-    .column { flex: 1; }
-    .form-group { margin-bottom: 1em; }
-    label { display: block; margin-bottom: 0.3em; font-weight: bold; }
-    input, textarea, select { width: 100%; padding: 0.5em; border-radius: 4px; border: 1px solid #ccc; }
-    button { padding: 0.5em 1.5em; border: none; border-radius: 4px; background: #007bff; color: #fff; font-weight: bold; cursor: pointer; margin-top: 0.5em; }
-    button:disabled { background: #aaa; }
-    .response { background: #f0f0f0; border-radius: 4px; padding: 1em; margin-top: 1em; font-size: 0.95em; white-space: pre-wrap; }
-    .img-preview { max-width: 100%; border: 1px solid #ccc; margin-top: 1em; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #f7f7f7 60%, #e3eafc 100%);
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 2em auto;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px #b3c2e0;
+      padding: 2.5em 2em 2em 2em;
+      display: flex;
+      flex-direction: column;
+      gap: 2em;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2.3em;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #2a3a5e;
+      margin-bottom: 0.5em;
+    }
+
+    .row {
+      display: flex;
+      gap: 2em;
+      flex-wrap: wrap;
+    }
+
+    .column {
+      flex: 1;
+      min-width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5em;
+    }
+
+    .card {
+      background: #f8fbff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px #e3eafc;
+      padding: 1.5em 1.2em;
+      margin-bottom: 0.5em;
+    }
+
+    .form-group {
+      margin-bottom: 1em;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.3em;
+      font-weight: 600;
+      color: #2a3a5e;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      padding: 0.6em;
+      border-radius: 6px;
+      border: 1px solid #b3c2e0;
+      font-size: 1em;
+      background: #f7faff;
+      transition: border 0.2s;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border: 1.5px solid #007bff;
+      outline: none;
+    }
+
+    button {
+      padding: 0.6em 1.5em;
+      border: none;
+      border-radius: 6px;
+      background: linear-gradient(90deg, #007bff 60%, #4f8cff 100%);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.5em;
+      box-shadow: 0 2px 8px #e3eafc;
+      transition: background 0.2s;
+    }
+
+    button:disabled {
+      background: #b3c2e0;
+      color: #fff;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 0.7em;
+      flex-wrap: wrap;
+    }
+
+    .response {
+      background: #f0f4fa;
+      border-radius: 8px;
+      padding: 1.2em;
+      margin-top: 1em;
+      font-size: 1em;
+      white-space: pre-wrap;
+      color: #2a3a5e;
+      box-shadow: 0 2px 8px #e3eafc;
+      min-height: 120px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .img-preview {
+      max-width: 100%;
+      max-height: 340px;
+      border-radius: 10px;
+      border: 1.5px solid #b3c2e0;
+      margin-top: 1em;
+      box-shadow: 0 2px 8px #e3eafc;
+      object-fit: contain;
+      background: #fff;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    @media (max-width: 900px) {
+      .container {
+        padding: 1em;
+      }
+
+      .row {
+        flex-direction: column;
+        gap: 1em;
+      }
+
+      .column {
+        min-width: 0;
+      }
+    }
+
+    .section-title {
+      font-size: 1.3em;
+      font-weight: 700;
+      color: #2a3a5e;
+      margin-bottom: 0.7em;
+    }
+
+    .session-id {
+      font-size: 0.95em;
+      color: #007bff;
+      font-weight: 600;
+      background: #e3eafc;
+      border-radius: 6px;
+      padding: 0.3em 0.7em;
+      margin-bottom: 0.5em;
+      display: inline-block;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>Optics API Tester</h1>
     <div class="row">
       <div class="column">
-        <h2>Session Controls</h2>
-        <form id="session-form">
-          <div class="form-group">
-            <label>Driver Sources (comma separated)</label>
-            <input type="text" id="driver_sources" value="appium">
-          </div>
-          <div class="form-group">
-            <label>Elements Sources (comma separated)</label>
-            <input type="text" id="elements_sources" value="appium_find_element,appium_screenshot">
-          </div>
-          <div class="form-group">
-            <label>Appium URL</label>
-            <input type="text" id="appium_url" value="http://localhost:4723">
-          </div>
-          <div class="form-group">
-            <label>Appium Config (JSON)</label>
-            <textarea id="appium_config" rows="5">{
+        <div class="card">
+          <div class="section-title">Session Controls</div>
+          <form id="session-form">
+            <div class="form-group">
+              <label>Driver Sources (comma separated)</label>
+              <input type="text" id="driver_sources" value="appium">
+            </div>
+            <div class="form-group">
+              <label>Elements Sources (comma separated)</label>
+              <input type="text" id="elements_sources" value="appium_find_element,appium_screenshot">
+            </div>
+            <div class="form-group">
+              <label>Appium URL</label>
+              <input type="text" id="appium_url" value="http://localhost:4723">
+            </div>
+            <div class="form-group">
+              <label>Appium Config (JSON)</label>
+              <textarea id="appium_config" rows="5">{
   "appActivity": "com.android.contacts.activities.PeopleActivity",
   "appPackage": "com.google.android.contacts",
   "automationName": "UiAutomator2",
   "deviceName": "emulator-5554",
   "platformName": "Android"
 }</textarea>
+            </div>
+            <div class="button-group">
+              <button type="button" onclick="startSession()">Start Session</button>
+              <button type="button" onclick="stopSession()">Stop Session</button>
+            </div>
+          </form>
+          <div class="form-group">
+            <label>Session ID</label>
+            <span class="session-id"><input type="text" id="session_id" readonly
+                style="border:none;background:transparent;width:80%;color:#007bff;font-weight:600;"></span>
           </div>
-          <button type="button" onclick="startSession()">Start Session</button>
-          <button type="button" onclick="stopSession()">Stop Session</button>
-        </form>
-        <div class="form-group">
-          <label>Session ID</label>
-          <input type="text" id="session_id" readonly>
         </div>
       </div>
       <div class="column">
-        <h2>API Actions</h2>
-        <form id="keyword-form">
-          <div class="form-group">
-            <label>Keyword</label>
-            <input type="text" id="keyword" value="capture_screenshot">
+        <div class="card">
+          <div class="section-title">API Actions</div>
+          <form id="keyword-form">
+            <div class="form-group">
+              <label>Keyword</label>
+              <input type="text" id="keyword" value="capture_screenshot">
+            </div>
+            <div class="form-group">
+              <label>Params (comma separated)</label>
+              <input type="text" id="params" value="">
+            </div>
+            <div class="button-group">
+              <button type="button" onclick="executeKeyword()">Execute Keyword</button>
+            </div>
+          </form>
+          <div class="button-group">
+            <button type="button" onclick="getScreenshot()">Get Screenshot</button>
+            <button type="button" onclick="getElements()">Get Elements</button>
+            <button type="button" onclick="getPageSource()">Get Page Source</button>
+            <button type="button" onclick="getScreenElements()">Get Screen Elements</button>
           </div>
-          <div class="form-group">
-            <label>Params (comma separated)</label>
-            <input type="text" id="params" value="">
-          </div>
-          <button type="button" onclick="executeKeyword()">Execute Keyword</button>
-        </form>
-        <button type="button" onclick="getScreenshot()">Get Screenshot</button>
-        <button type="button" onclick="getElements()">Get Elements</button>
-        <button type="button" onclick="getPageSource()">Get Page Source</button>
-        <button type="button" onclick="getScreenElements()">Get Screen Elements</button>
+        </div>
       </div>
     </div>
     <div class="row">
       <div class="column">
-        <h2>Response</h2>
-        <div id="response" class="response"></div>
+        <div class="card">
+          <div class="section-title">Response</div>
+          <div id="response" class="response"></div>
+        </div>
       </div>
       <div class="column">
-        <h2>Screenshot Preview</h2>
-        <img id="screenshot-img" class="img-preview" src="" alt="Screenshot will appear here">
+        <div class="card">
+          <div class="section-title">Screenshot Preview</div>
+          <img id="screenshot-img" class="img-preview" src="" alt="Screenshot will appear here">
+        </div>
       </div>
     </div>
   </div>
   <script>
-  let sessionId = '';
-  let previousSessionId = '';
+    let sessionId = '';
+    let previousSessionId = '';
     function showResponse(data) {
       document.getElementById('response').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     }
@@ -108,103 +277,125 @@
       const elements_sources = document.getElementById('elements_sources').value.split(',').map(s => s.trim());
       const appium_url = document.getElementById('appium_url').value;
       let appium_config = {};
-      try { appium_config = JSON.parse(document.getElementById('appium_config').value); } catch(e) { showResponse('Invalid Appium Config JSON'); return; }
+      try {appium_config = JSON.parse(document.getElementById('appium_config').value);} catch (e) {showResponse('Invalid Appium Config JSON'); return;}
       const url = `${API_BASE}/v1/sessions/start`;
       const options = {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ driver_sources, elements_sources, appium_url, appium_config })
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({driver_sources, elements_sources, appium_url, appium_config})
       };
       logRequest(url, options);
       fetch(url, options)
-      .then(res => res.json())
-      .then(data => {
-        logResponse(url, data);
-        if (data.session_id) {
-          sessionId = data.session_id;
-          document.getElementById('session_id').value = sessionId;
-        }
-        showResponse(data);
-      })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {
+          logResponse(url, data);
+          if (data.session_id) {
+            sessionId = data.session_id;
+            document.getElementById('session_id').value = sessionId;
+          }
+          showResponse(data);
+        })
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
     function stopSession() {
-      if (!sessionId) { showResponse('No session started'); return; }
+      if (!sessionId) {showResponse('No session started'); return;}
       const url = `${API_BASE}/v1/sessions/${sessionId}/stop`;
-      const options = { method: 'DELETE' };
+      const options = {method: 'DELETE'};
       logRequest(url, options);
       fetch(url, options)
-      .then(res => res.json())
-      .then(data => {
-        logResponse(url, data);
-        showResponse(data);
-        previousSessionId = sessionId;
-        sessionId = '';
-        document.getElementById('session_id').value = '';
-        document.getElementById('screenshot-img').src = '';
-      })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {
+          logResponse(url, data);
+          showResponse(data);
+          previousSessionId = sessionId;
+          sessionId = '';
+          document.getElementById('session_id').value = '';
+          document.getElementById('screenshot-img').src = '';
+        })
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
     function executeKeyword() {
-      if (!sessionId) { showResponse('No session started'); return; }
+      if (!sessionId) {showResponse('No session started'); return;}
       const keyword = document.getElementById('keyword').value;
       const params = document.getElementById('params').value.split(',').map(s => s.trim()).filter(Boolean);
       const url = `${API_BASE}/v1/sessions/${sessionId}/action`;
       const options = {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'keyword', keyword, params })
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: 'keyword', keyword, params})
       };
       logRequest(url, options);
       fetch(url, options)
-      .then(res => res.json())
-      .then(data => { logResponse(url, data); showResponse(data); })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {logResponse(url, data); showResponse(data);})
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
     function getScreenshot() {
-      if (!sessionId) { showResponse('No session started'); return; }
+      if (!sessionId) {showResponse('No session started'); return;}
       const url = `${API_BASE}/session/${sessionId}/screenshot`;
       logRequest(url, {});
       fetch(url)
-      .then(res => res.json())
-      .then(data => {
-        logResponse(url, data);
-        showResponse(data);
-        if (data.data && data.data.result && data.data.result.screenshot) {
-          document.getElementById('screenshot-img').src = 'data:image/png;base64,' + data.data.result.screenshot;
-        } else {
-          document.getElementById('screenshot-img').src = '';
-        }
-      })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {
+          logResponse(url, data);
+          // Prevent base64 from overflowing response area
+          let displayData = JSON.parse(JSON.stringify(data));
+          if (displayData.data && displayData.data.result) {
+            // If result is a long base64 string, truncate for display
+            if (typeof displayData.data.result === 'string' && displayData.data.result.length > 100) {
+              displayData.data.result = displayData.data.result.substring(0, 100) + '... [truncated]';
+            }
+            // If result is an object with screenshot, truncate screenshot
+            if (displayData.data.result.screenshot && displayData.data.result.screenshot.length > 100) {
+              displayData.data.result.screenshot = displayData.data.result.screenshot.substring(0, 100) + '... [truncated]';
+            }
+          }
+          showResponse(displayData);
+          // Handle both legacy and new API formats
+          let base64 = '';
+          if (data.data && typeof data.data.result === 'string') {
+            // New API: result is base64 string
+            base64 = data.data.result;
+          } else if (data.data && data.data.result && data.data.result.screenshot) {
+            // Legacy: result.screenshot is base64 string
+            base64 = data.data.result.screenshot;
+          }
+          if (base64) {
+            document.getElementById('screenshot-img').src = 'data:image/png;base64,' + base64;
+          } else {
+            document.getElementById('screenshot-img').src = '';
+          }
+        })
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
     function getElements() {
-      if (!sessionId) { showResponse('No session started'); return; }
+      if (!sessionId) {showResponse('No session started'); return;}
       const url = `${API_BASE}/session/${sessionId}/elements`;
       logRequest(url, {});
       fetch(url)
-      .then(res => res.json())
-      .then(data => { logResponse(url, data); showResponse(data); })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {logResponse(url, data); showResponse(data);})
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
     function getPageSource() {
-      if (!sessionId) { showResponse('No session started'); return; }
+      if (!sessionId) {showResponse('No session started'); return;}
       const url = `${API_BASE}/session/${sessionId}/source`;
       logRequest(url, {});
       fetch(url)
-      .then(res => res.json())
-      .then(data => { logResponse(url, data); showResponse(data); })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {logResponse(url, data); showResponse(data);})
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
     function getScreenElements() {
-      if (!sessionId) { showResponse('No session started'); return; }
+      if (!sessionId) {showResponse('No session started'); return;}
       const url = `${API_BASE}/session/${sessionId}/screen_elements`;
       logRequest(url, {});
       fetch(url)
-      .then(res => res.json())
-      .then(data => { logResponse(url, data); showResponse(data); })
-      .catch(err => { logResponse(url, err); showResponse(err); });
+        .then(res => res.json())
+        .then(data => {logResponse(url, data); showResponse(data);})
+        .catch(err => {logResponse(url, err); showResponse(err);});
     }
   </script>
 </body>
+
 </html>
