@@ -262,26 +262,73 @@ class FlowControl:
     def _evaluate_conditions(
         self, pairs: List[Tuple[str, str]], else_target: Optional[str]
     ) -> Optional[List[Any]]:
-        """Evaluates conditions and executes the first true target's module."""
+        """
+        Evaluates conditions and executes corresponding targets.
+        For module-based conditions, returns the result of executing the module if non-empty.
+        For expression-based conditions, executes the target if condition is true.
+        If none are true, executes else_target if provided.
+        """
         internal_logger.debug(f"[_EVALUATE_CONDITIONS] pairs={pairs}, else_target={else_target}")
-        for cond, target in pairs:
+        for idx, (cond, target) in enumerate(pairs):
             cond_str = cond.strip()
             internal_logger.debug(f"[_EVALUATE_CONDITIONS] Evaluating condition: '{cond_str}' for target '{target}'")
             if not cond_str:
                 continue
-            if self._is_condition_true(cond_str):
-                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Condition '{cond_str}' is True. Executing target '{target}'.")
-                return self.execute_module(target)
-            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Condition '{cond_str}' is False.")
+            if self._is_module_condition(cond_str):
+                result = self._handle_module_condition(cond_str, target, len(pairs))
+                if result is not None:
+                    return result
+            else:
+                result = self._handle_expression_condition(cond_str, target)
+                if result is not None:
+                    return result
         if else_target is not None:
             internal_logger.debug(f"[_EVALUATE_CONDITIONS] No condition met. Executing ELSE target '{else_target}'.")
             return self.execute_module(else_target)
         internal_logger.debug("[_EVALUATE_CONDITIONS] No condition met and no ELSE target provided.")
         return None
 
-    def _is_condition_true(self, cond: str) -> bool:
-        """Evaluates if a condition is true."""
+    def _is_module_condition(self, cond_str: str) -> Optional[bool]:
+        """Checks if the condition string is a module name."""
+        return self.modules and hasattr(self.modules, "modules") and cond_str in self.modules.modules
+
+    def _handle_module_condition(self, cond_str: str, target: str, num_pairs: int) -> Optional[List[Any]]:
+        """Handles evaluation and execution for module-based conditions."""
         try:
+            result = self.execute_module(cond_str)
+        except Exception as e:
+            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{cond_str}' raised error: {e}. Treating as false condition.")
+            result = []
+        if result:
+            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module condition '{cond_str}' is True. Returning result.")
+            return result
+        internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module condition '{cond_str}' is False.")
+        if num_pairs == 1:
+            internal_logger.debug("[_EVALUATE_CONDITIONS] Only one pair, module condition is False. Executing target as fallback.")
+            target_result = self.execute_module(target)
+            if target_result:
+                return target_result
+        return None
+
+    def _handle_expression_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
+        """Handles evaluation and execution for expression-based conditions."""
+        if self._is_condition_true(cond_str):
+            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Expression condition '{cond_str}' is True. Executing target '{target}'.")
+            return self.execute_module(target)
+        internal_logger.debug(f"[_EVALUATE_CONDITIONS] Expression condition '{cond_str}' is False.")
+        return None
+
+    def _is_condition_true(self, cond: str) -> bool:
+        """
+        Evaluates if a condition is true.
+        Supports both expression-based and module-based conditions.
+        If cond matches a module name, executes the module and returns True if it succeeds and result is non-empty.
+        Otherwise, evaluates cond as an expression.
+        """
+        try:
+            if self.modules and hasattr(self.modules, "modules") and cond in self.modules.modules:
+                    result = self.execute_module(cond)
+                    return bool(result)
             resolved_cond = self._resolve_condition(cond)
             return bool(self._safe_eval(resolved_cond))
         except Exception as e:

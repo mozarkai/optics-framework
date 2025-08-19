@@ -224,6 +224,70 @@ def test_invoke_api_non_json_response(monkeypatch, flow_control):
     # Should not raise, just logs warning
 
 # ---- run_loop and condition Tests ----
+def test_condition_module_true(flow_control, monkeypatch):
+    # Setup dummy module that returns non-empty result
+    def fake_execute_module(target):
+        if target == 'modTrue':
+            return ['success']
+        if target == 'modA':
+            return ['success']
+        return []
+    flow_control.execute_module = fake_execute_module
+    # Add dummy module to session.modules.modules
+    flow_control.session.modules.modules['modTrue'] = True
+    result = flow_control.condition('modTrue', 'modA', 'modElse')
+    assert result == ['success']
+
+def test_condition_module_false(flow_control, monkeypatch):
+    # Setup dummy module that returns empty result
+    def fake_execute_module(target):
+        if target == 'modFalse':
+            return []
+        if target == 'modA':
+            return ['ran:modA']
+        if target == 'modElse':
+            return ['ran:modA']
+        return []
+    flow_control.execute_module = fake_execute_module
+    flow_control.session.modules.modules['modFalse'] = True
+    flow_control.session.modules.modules['modA'] = True
+    result = flow_control.condition('modFalse', 'modA', 'modElse')
+    assert result == ['ran:modA']
+
+def test_condition_module_true_else(flow_control, monkeypatch):
+    # Only else should be executed if module condition is false
+    def fake_execute_module(target):
+        if target == 'modFalse':
+            return []
+        if target == 'modElse':
+            return ['ran:modElse']
+        return []
+    flow_control.execute_module = fake_execute_module
+    flow_control.session.modules.modules['modFalse'] = True
+    result = flow_control.condition('modFalse', 'modElse')
+    assert result == ['ran:modElse']
+
+def test_condition_module_true_no_else(flow_control, monkeypatch):
+    # Should return result if module condition is true and no else
+    def fake_execute_module(target):
+        if target == 'modTrue':
+            return ['success']
+        return []
+    flow_control.execute_module = fake_execute_module
+    flow_control.session.modules.modules['modTrue'] = True
+    result = flow_control.condition('modTrue', 'modA')
+    assert result == ['success']
+
+def test_condition_module_false_no_else(flow_control, monkeypatch):
+    # Should return None if module condition is false and no else
+    def fake_execute_module(target):
+        if target == 'modFalse':
+            return []
+        return []
+    flow_control.execute_module = fake_execute_module
+    flow_control.session.modules.modules['modFalse'] = True
+    result = flow_control.condition('modFalse', 'modA')
+    assert result is None
 def test_run_loop_by_count(flow_control, monkeypatch):
     calls = []
     def fake_execute_module(target):
