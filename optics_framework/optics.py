@@ -78,16 +78,10 @@ class Optics:
         try:
             if config_string.startswith("{") or config_string.startswith("["):
                 return json.loads(config_string)
-            return yaml.safe_load(config_string)
-        except json.JSONDecodeError as e:
-            try:
+            else:
                 return yaml.safe_load(config_string)
-            except yaml.YAMLError as yaml_e:
-                raise ValueError(
-                    f"Invalid configuration format. JSON error: {e}, YAML error: {yaml_e}"
-                ) from e
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML configuration: {e}") from e
+        except (json.JSONDecodeError, yaml.YAMLError) as e:
+            raise ValueError(f"Invalid configuration format: {e}") from e
 
     def _create_dependency_config(
         self, config_dict: Dict[str, Any]

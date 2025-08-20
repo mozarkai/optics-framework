@@ -7,6 +7,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 
+APPIUM_NOT_INITIALISED_MSG = "Appium driver is not initialized for AppiumPageSource."
 
 class AppiumPageSource(ElementSourceInterface):
     REQUIRED_DRIVER_TYPE = "appium"
@@ -75,8 +76,8 @@ class AppiumPageSource(ElementSourceInterface):
     def get_interactive_elements(self):
         if self.driver is not None and hasattr(self.driver, "ui_helper"):
             return self.driver.ui_helper.get_interactive_elements()
-        internal_logger.error("Appium driver or its ui_helper is not initialized.")
-        raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+        internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
+        raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
@@ -120,8 +121,8 @@ class AppiumPageSource(ElementSourceInterface):
                     internal_logger.exception("Error finding element by xpath: %s", xpath)
                     raise RuntimeError("Error finding element by xpath.")
             else:
-                internal_logger.error("Appium driver or its ui_helper is not initialized.")
-                raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+                internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
+                raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
         raise RuntimeError("Unknown element type.")
 
 
@@ -140,8 +141,8 @@ class AppiumPageSource(ElementSourceInterface):
                 return element_obj
             return None
         else:
-            internal_logger.error("Appium driver or its ui_helper is not initialized.")
-            raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+            internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
+            raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
 
     def assert_elements(self, elements, timeout=30, rule='any'):
@@ -160,9 +161,7 @@ class AppiumPageSource(ElementSourceInterface):
         Raises:
             Exception: If elements are not found based on the rule within the timeout.
         """
-        if rule not in ["any", "all"]:
-            raise ValueError("Invalid rule. Use 'any' or 'all'.")
-
+        self._validate_rule(rule)
         start_time = time.time()
 
         while time.time() - start_time < timeout:
@@ -193,6 +192,9 @@ class AppiumPageSource(ElementSourceInterface):
             f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
         )
 
+    def _validate_rule(self, rule):
+        if rule not in ["any", "all"]:
+            raise ValueError("Invalid rule. Use 'any' or 'all'.")
 
     def find_xpath_from_text(self, text):
         """
@@ -213,8 +215,8 @@ class AppiumPageSource(ElementSourceInterface):
                 xpath = self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
                 return xpath
         else:
-            internal_logger.error("Appium driver or its ui_helper is not initialized.")
-            raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+            internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
+            raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
         raise RuntimeError("Failed to find XPath from text.")
 
     def find_xpath_from_text_index(self, text, index, strategy=None):
@@ -229,8 +231,33 @@ class AppiumPageSource(ElementSourceInterface):
         else:
             internal_logger.error("Appium driver or its ui_helper is not initialized.")
             raise RuntimeError("Appium driver or its ui_helper is not initialized.")
-        raise RuntimeError("Failed to find XPath from text.")
 
+    def _validate_tree(self):
+        """Validates that the element tree is initialized."""
+        if self.tree is None:
+            internal_logger.error("Element tree is not initialized. Cannot perform xpath search.")
+            raise RuntimeError("Element tree is not initialized.")
+
+    def _search_text_in_attribute(self, text, attrib):
+        """Searches for text in a specific attribute across all elements."""
+        matching_elements = self.tree.xpath(f"//*[@{attrib}]")
+
+        for elem in matching_elements:
+            attrib_value = elem.attrib.get(attrib, '').strip()
+            if attrib_value and utils.compare_text(attrib_value, text):
+                internal_logger.debug(f"Match found using {attrib} for '{text}'")
+                return True
+        return False
+
+    def _search_single_text(self, text):
+        """Searches for a single text across all strategies."""
+        strategies = ["text", "resource-id", "content-desc", "name", "value", "label"]
+        internal_logger.debug(f'Searching for text: {text}')
+
+        for attrib in strategies:
+            if self._search_text_in_attribute(text, attrib):
+                return True
+        return False
 
     def ui_text_search(self, texts, rule='any'):
         """
@@ -243,32 +270,13 @@ class AppiumPageSource(ElementSourceInterface):
         Returns:
             bool: True if the condition is met, otherwise False.
         """
-        strategies = ["text", "resource-id", "content-desc", "name", "value", "label"]
-
+        self._validate_tree()
         found_texts = set()
 
         for text in texts:
-            internal_logger.debug(f'Searching for text: {text}')
-
-            for attrib in strategies:
-                if self.tree is not None:
-                    matching_elements = self.tree.xpath(f"//*[@{attrib}]")
-                else:
-                    internal_logger.error("Element tree is not initialized. Cannot perform xpath search.")
-                    raise RuntimeError("Element tree is not initialized.")
-
-                for elem in matching_elements:
-                    attrib_value = elem.attrib.get(attrib, '').strip()
-
-                    if attrib_value and utils.compare_text(attrib_value, text):
-                        internal_logger.debug(f"Match found using {attrib} for '{text}'")
-                        found_texts.add(text)  # Mark this text as found
-                        break  # Stop searching other elements for this text
-
-                if text in found_texts:  # Stop checking other strategies if already found
-                    break
-
-            if rule == 'any' and text in found_texts:
-                return True  # Early exit if at least one match is found
+            if self._search_single_text(text):
+                found_texts.add(text)
+                if rule == 'any':
+                    return True
 
         return len(found_texts) == len(texts) if rule == 'all' else False

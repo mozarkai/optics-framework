@@ -138,7 +138,7 @@ class SeleniumPageSource(ElementSourceInterface):
         return None
 
 
-    def locate_using_index(self, element: Any, index: int) -> None:
+    def locate_using_index(self) -> None:
         msg = 'Selenium Page Source does not support locating elements using index.'
         internal_logger.error(msg)
         raise NotImplementedError(msg)

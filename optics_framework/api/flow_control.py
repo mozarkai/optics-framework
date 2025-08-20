@@ -369,7 +369,7 @@ class FlowControl:
         elem_name = self._extract_element_name(input_element)
         internal_logger.debug(f"[READ_DATA] Extracted element name: {elem_name}")
 
-        df, direct_env_value = self._load_data_frame(file_path, elem_name)
+        df, direct_env_value = self._load_data_frame(file_path)
         if direct_env_value is not None:
             return [direct_env_value]
 
@@ -381,7 +381,7 @@ class FlowControl:
         store_value = self._store_result(elem_name, result)
         return store_value
 
-    def _load_data_frame(self, file_path, elem_name):
+    def _load_data_frame(self, file_path):
         """Loads data into a DataFrame from list, file, or environment variable."""
         if isinstance(file_path, list):
             data = file_path
@@ -406,28 +406,39 @@ class FlowControl:
         try:
             json_data = json.loads(env_data)
             internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
-            if isinstance(json_data, dict):
-                for v in json_data.values():
-                    if isinstance(v, list):
-                        json_data = v
-                        break
-                if isinstance(json_data, dict):
-                    json_data = [json_data]
-            return pd.json_normalize(json_data), None
-        except (json.JSONDecodeError, ValueError):
-            internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
-            try:
-                df = pd.read_csv(StringIO(env_data))
-                internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
-                if df.empty:
-                    return pd.DataFrame(), env_data
-                return df, None
-            except ValueError:
-                internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
-                return pd.DataFrame(), env_data
+            normalized_data = self._normalize_json_data(json_data)
+            return pd.json_normalize(normalized_data), None
+        except ValueError:
+            return self._try_csv_parsing(env_data)
         except Exception as e:
             internal_logger.error(f"[READ_DATA] Unexpected error occurred: {e}")
             raise ValueError(f"Unexpected error while loading environment variable '{env_var}': {e}") from e
+
+    def _normalize_json_data(self, json_data):
+        """Normalizes JSON data to ensure it's in list format for DataFrame creation."""
+        if not isinstance(json_data, dict):
+            return json_data
+
+        # Look for the first list value in the dictionary
+        for v in json_data.values():
+            if isinstance(v, list):
+                return v
+
+        # If no list found, convert dict to single-item list
+        return [json_data]
+
+    def _try_csv_parsing(self, env_data):
+        """Attempts to parse environment data as CSV, falling back to direct value."""
+        internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
+        try:
+            df = pd.read_csv(StringIO(env_data))
+            internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
+            if df.empty:
+                return pd.DataFrame(), env_data
+            return df, None
+        except ValueError:
+            internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+            return pd.DataFrame(), env_data
 
     def _load_file_data(self, file_path):
         file_path = self._resolve_file_path(file_path)
@@ -1089,46 +1100,70 @@ class FlowControl:
             internal_logger.debug("No expected_result defined in API definition.")
             return
 
-        if not api_def.expected_result.extract:
-            internal_logger.debug("No extraction paths defined in API definition.")
-        else:
-            internal_logger.debug(
-                f"Attempting to extract values using paths: {api_def.expected_result.extract}"
-            )
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
-
-        try:
-            response_data = response.json()
-        except json.JSONDecodeError:
-            internal_logger.warning(
-                "API response is not valid JSON; cannot extract values."
-            )
+        response_data = self._parse_response_json(response)
+        if response_data is None:
             return
 
+        self._log_extraction_attempt(api_def.expected_result.extract)
+
         if api_def.expected_result.extract:
-            for element_name, path in api_def.expected_result.extract.items():
-                value = self._extract_from_json(response_data, path)
-                if value is not None:
-                    runner_elements = getattr(self.session, "elements", None)
-                    if not isinstance(runner_elements, ElementData):
-                        raise ValueError("Session elements are not properly initialized.")
-                    runner_elements.add_element(element_name, value)
-                    internal_logger.debug(
-                        f"Extracted '{element_name}' = '{value}' from response."
-                    )
-                else:
-                    internal_logger.warning(
-                        f"Could not extract '{element_name}' using path '{path}'."
-                    )
-            internal_logger.debug(
-                f"Current session elements after extraction: {self.session.elements}"
-            )
+            self._extract_values_from_response(response_data, api_def.expected_result.extract)
 
         if api_def.expected_result.jsonpath_assertions:
             self._evaluate_jsonpath_assertions(
                 response_data, api_def.expected_result.jsonpath_assertions
             )
+
+    def _parse_response_json(self, response: requests.Response):
+        """Parses response as JSON, returns None if parsing fails."""
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            internal_logger.warning(
+                "API response is not valid JSON; cannot extract values."
+            )
+            return None
+
+    def _log_extraction_attempt(self, extract_paths):
+        """Logs the extraction attempt based on available paths."""
+        if not extract_paths:
+            internal_logger.debug("No extraction paths defined in API definition.")
+        else:
+            internal_logger.debug(
+                f"Attempting to extract values using paths: {extract_paths}"
+            )
+
+    def _extract_values_from_response(self, response_data, extract_paths):
+        """Extracts values from response data using specified paths."""
+        for element_name, path in extract_paths.items():
+            self._extract_and_store_single_value(response_data, element_name, path)
+
+        internal_logger.debug(
+            f"Current session elements after extraction: {self.session.elements}"
+        )
+
+    def _extract_and_store_single_value(self, response_data, element_name: str, path: str):
+        """Extracts a single value and stores it in session elements."""
+        value = self._extract_from_json(response_data, path)
+        if value is not None:
+            runner_elements = self._get_or_create_session_elements()
+            runner_elements.add_element(element_name, value)
+            internal_logger.debug(
+                f"Extracted '{element_name}' = '{value}' from response."
+            )
+        else:
+            internal_logger.warning(
+                f"Could not extract '{element_name}' using path '{path}'."
+            )
+
+    def _get_or_create_session_elements(self):
+        """Gets session elements or creates if not properly initialized."""
+        runner_elements = getattr(self.session, "elements", None)
+        if not isinstance(runner_elements, ElementData):
+            raise ValueError("Session elements are not properly initialized.")
+        return runner_elements
 
     def _evaluate_jsonpath_assertions(
     self, data: Any, assertions: list[dict[str, Any]]

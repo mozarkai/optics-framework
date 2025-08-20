@@ -39,30 +39,43 @@ class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
         driver_instances = driver.instances if hasattr(driver, "instances") else [driver]
         instances = []
         for config_dict in name:
-            # Extract element source name
             es_name = next(iter(config_dict.keys()))
-            # Load module and implementation
-            if es_name not in cls._registry.module_paths:
-                cls._load_module(es_name, cls.DEFAULT_PACKAGE)
-            module_path = cls._registry.module_paths[es_name]
-            module = __import__(module_path, fromlist=[''])
-            implementation = cls._locate_implementation(module, ElementSourceInterface)
-            # Determine required driver type
-            required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
-            matched_driver = None
-            if required_type:
-                for drv in driver_instances:
-                    drv_type = getattr(drv, "NAME", None)
-                    if drv_type == required_type:
-                        matched_driver = drv
-                        break
-            # Build extra_kwargs only if driver is matched and required
-            extra_kwargs = {}
-            if required_type and matched_driver:
-                extra_kwargs['driver'] = matched_driver
+            implementation = cls._load_element_source_implementation(es_name)
+            matched_driver = cls._find_matching_driver(implementation, driver_instances)
+            extra_kwargs = cls._build_driver_kwargs(implementation, matched_driver)
             instance = cls.create_instance_dynamic(config_dict, ElementSourceInterface, cls.DEFAULT_PACKAGE, extra_kwargs=extra_kwargs)
             instances.append(instance)
         return InstanceFallback(instances)
+
+    @classmethod
+    def _load_element_source_implementation(cls, es_name: str):
+        """Load and return the implementation class for the given element source name."""
+        if es_name not in cls._registry.module_paths:
+            cls._load_module(es_name, cls.DEFAULT_PACKAGE)
+        module_path = cls._registry.module_paths[es_name]
+        module = __import__(module_path, fromlist=[''])
+        return cls._locate_implementation(module, ElementSourceInterface)
+
+    @classmethod
+    def _find_matching_driver(cls, implementation, driver_instances):
+        """Find a driver instance that matches the required driver type."""
+        required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
+        if not required_type:
+            return None
+
+        for drv in driver_instances:
+            drv_type = getattr(drv, "NAME", None)
+            if drv_type == required_type:
+                return drv
+        return None
+
+    @classmethod
+    def _build_driver_kwargs(cls, implementation, matched_driver):
+        """Build extra_kwargs dictionary for driver if required and matched."""
+        required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
+        if required_type and matched_driver:
+            return {'driver': matched_driver}
+        return {}
 
 
 class ImageFactory(GenericFactory[ImageInterface]):

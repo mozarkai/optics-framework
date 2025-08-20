@@ -33,55 +33,86 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
     :param folder_path: Path to the project folder.
     :return: Tuple of lists of paths to test case files, module files, element files, API files, and Config object.
     """
-    test_case_files = []
-    module_files = []
-    element_files = []
-    api_files = []
+    file_collections = _initialize_file_collections()
     config_obj = None
 
     for file in os.listdir(folder_path):
         file_path = os.path.join(folder_path, file)
-        if file.endswith((".yml", ".yaml")):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    yaml_data = yaml.safe_load(f) or {}
-                # If both driver_sources and element_sources are present, treat as config
-                if (
-                    isinstance(yaml_data, dict)
-                    and "driver_sources" in yaml_data
-                    and (
-                        "element_sources" in yaml_data
-                        or "elements_sources" in yaml_data
-                    )
-                ):
-                    if "element_sources" in yaml_data and "elements_sources" not in yaml_data:
-                        yaml_data["elements_sources"] = yaml_data.pop("element_sources")
-                    config_obj = Config(**yaml_data)
-            except Exception as e:
-                internal_logger.error(f"Failed to load config from {file_path}: {e}")
-                continue
-            content_type = identify_file_content(file_path)
-            if "test_cases" in content_type:
-                test_case_files.append(file_path)
-            if "modules" in content_type:
-                module_files.append(file_path)
-            if "elements" in content_type:
-                element_files.append(file_path)
-            if "api" in content_type:
-                api_files.append(file_path)
-        elif file.endswith(".csv"):
-            content_type = identify_file_content(file_path)
-            if "test_cases" in content_type:
-                test_case_files.append(file_path)
-            if "modules" in content_type:
-                module_files.append(file_path)
-            if "elements" in content_type:
-                element_files.append(file_path)
-            if "api" in content_type:
-                api_files.append(file_path)
 
-    validate_required_files(test_case_files, module_files, folder_path)
-    return test_case_files, module_files, element_files, api_files, config_obj
+        if file.endswith((".yml", ".yaml")):
+            config_obj = _process_yaml_file(file_path, file_collections, config_obj)
+        elif file.endswith(".csv"):
+            _process_csv_file(file_path, file_collections)
+
+    validate_required_files(file_collections['test_case'], file_collections['module'], folder_path)
+    return (file_collections['test_case'], file_collections['module'],
+            file_collections['element'], file_collections['api'], config_obj)
+
+
+def _initialize_file_collections():
+    """Initialize collections for different file types."""
+    return {
+        'test_case': [],
+        'module': [],
+        'element': [],
+        'api': []
+    }
+
+
+def _process_yaml_file(file_path: str, file_collections: dict, current_config: Config | None) -> Config | None:
+    """Process a YAML file for config detection and content categorization."""
+    config_obj = _try_load_config_from_yaml(file_path, current_config)
+    _categorize_file_by_content(file_path, file_collections)
+    return config_obj
+
+
+def _try_load_config_from_yaml(file_path: str, current_config: Config | None) -> Config | None:
+    """Attempt to load configuration from YAML file."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            yaml_data = yaml.safe_load(f) or {}
+
+        if _is_config_file(yaml_data):
+            yaml_data = _normalize_element_sources_key(yaml_data)
+            return Config(**yaml_data)
+
+        return current_config
+    except Exception as e:
+        internal_logger.error(f"Failed to load config from {file_path}: {e}")
+        return current_config
+
+
+def _is_config_file(yaml_data: dict) -> bool:
+    """Check if YAML data represents a configuration file."""
+    return (isinstance(yaml_data, dict) and
+            "driver_sources" in yaml_data and
+            ("element_sources" in yaml_data or "elements_sources" in yaml_data))
+
+
+def _normalize_element_sources_key(yaml_data: dict) -> dict:
+    """Normalize element_sources key to elements_sources."""
+    if "element_sources" in yaml_data and "elements_sources" not in yaml_data:
+        yaml_data["elements_sources"] = yaml_data.pop("element_sources")
+    return yaml_data
+
+
+def _process_csv_file(file_path: str, file_collections: dict):
+    """Process a CSV file and categorize by content."""
+    _categorize_file_by_content(file_path, file_collections)
+
+
+def _categorize_file_by_content(file_path: str, file_collections: dict):
+    """Categorize a file based on its content type."""
+    content_type = identify_file_content(file_path)
+
+    if "test_cases" in content_type:
+        file_collections['test_case'].append(file_path)
+    if "modules" in content_type:
+        file_collections['module'].append(file_path)
+    if "elements" in content_type:
+        file_collections['element'].append(file_path)
+    if "api" in content_type:
+        file_collections['api'].append(file_path)
 
 
 def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:

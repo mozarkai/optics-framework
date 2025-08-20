@@ -3,11 +3,12 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
 from pathlib import Path
-from optics_framework.common.Junit_eventhandler import setup_junit
+from optics_framework.common.Junit_eventhandler import setup_junit, cleanup_junit
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData
 from optics_framework.common.eventSDK import EventSDK
+from optics_framework.common.events import get_event_manager_registry
 
 class SessionHandler(ABC):
     """Abstract interface for session management."""
@@ -115,10 +116,5 @@ class SessionManager(SessionHandler):
         session: Session | None = self.sessions.pop(session_id, None)
         if session and session.driver:
             session.driver.terminate()
-
-        # Cleanup session-scoped resources
-        from optics_framework.common.Junit_eventhandler import cleanup_junit
-        from optics_framework.common.events import get_event_manager_registry
-
         cleanup_junit(session_id)
         get_event_manager_registry().remove_session(session_id)

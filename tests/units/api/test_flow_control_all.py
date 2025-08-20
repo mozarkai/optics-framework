@@ -2,6 +2,7 @@ import json
 import pytest
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.models import ElementData, ApiData
+from unittest.mock import MagicMock
 
 # ---- Dummy Classes for All Test Types ----
 class DummyApiDef:
@@ -23,7 +24,7 @@ class DummySession:
         self.modules = type('M', (), {'modules': {}, 'get_module_definition': lambda self, x: []})()
         self.apis = ApiData()
         self.apis.collections = {}
-        from unittest.mock import MagicMock
+
         self.config_handler = MagicMock() # Add config_handler attribute
 
 # ---- Fixtures ----

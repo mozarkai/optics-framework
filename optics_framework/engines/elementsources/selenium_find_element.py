@@ -6,6 +6,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 
+NOT_INITIALISED_MSG = "Selenium driver is not initialized for SeleniumFindElement."
 
 class SeleniumFindElement(ElementSourceInterface):
     """
@@ -37,8 +38,8 @@ class SeleniumFindElement(ElementSourceInterface):
             str: The page source.
         """
         if self.driver is None:
-            internal_logger.error("Selenium driver is not initialized for SeleniumFindElement.")
-            raise RuntimeError("Selenium driver is not initialized for SeleniumFindElement.")
+            internal_logger.error(NOT_INITIALISED_MSG)
+            raise RuntimeError(NOT_INITIALISED_MSG)
         page_source = self.driver.page_source
         # Optionally parse tree/root for future extensibility
         return page_source
@@ -174,7 +175,7 @@ class SeleniumFindElement(ElementSourceInterface):
         raise TimeoutError(msg)
 
 
-    def locate_using_index(self, element: Any, index: int) -> None:
+    def locate_using_index(self) -> None:
         msg = 'Selenium Find Element does not support locating elements using index.'
         internal_logger.error(msg)
         raise NotImplementedError(msg)

@@ -183,19 +183,19 @@
           <div class="section-title">Session Controls</div>
           <form id="session-form">
             <div class="form-group">
-              <label>Driver Sources (comma separated)</label>
+              <label for="driver_sources">Driver Sources (comma separated)</label>
               <input type="text" id="driver_sources" value="appium">
             </div>
             <div class="form-group">
-              <label>Elements Sources (comma separated)</label>
+              <label for="elements_sources">Elements Sources (comma separated)</label>
               <input type="text" id="elements_sources" value="appium_find_element,appium_screenshot">
             </div>
             <div class="form-group">
-              <label>Appium URL</label>
+              <label for="appium_url">Appium URL</label>
               <input type="text" id="appium_url" value="http://localhost:4723">
             </div>
             <div class="form-group">
-              <label>Appium Config (JSON)</label>
+              <label for="appium_config">Appium Config (JSON)</label>
               <textarea id="appium_config" rows="5">{
   "appActivity": "com.android.contacts.activities.PeopleActivity",
   "appPackage": "com.google.android.contacts",
@@ -210,7 +210,7 @@
             </div>
           </form>
           <div class="form-group">
-            <label>Session ID</label>
+            <label for="session_id">Session ID</label>
             <span class="session-id"><input type="text" id="session_id" readonly
                 style="border:none;background:transparent;width:80%;color:#007bff;font-weight:600;"></span>
           </div>
@@ -221,11 +221,11 @@
           <div class="section-title">API Actions</div>
           <form id="keyword-form">
             <div class="form-group">
-              <label>Keyword</label>
+              <label for="keyword">Keyword</label>
               <input type="text" id="keyword" value="capture_screenshot">
             </div>
             <div class="form-group">
-              <label>Params (comma separated)</label>
+              <label for="params">Params (comma separated)</label>
               <input type="text" id="params" value="">
             </div>
             <div class="button-group">

@@ -114,10 +114,6 @@ async def create_session(config: SessionConfig):
             internal_logger.warning(
                 "Session creation attempted while another session is active."
             )
-            # raise HTTPException(
-            #     status_code=409,
-            #     detail="A session is already running. Please terminate the current session before creating a new one.",
-            # )
         driver_sources = []
         for name in config.driver_sources:
             if name == "appium":

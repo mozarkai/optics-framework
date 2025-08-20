@@ -368,30 +368,53 @@ class StrategyManager:
         raise ValueError(f"Element '{element}' not found using any strategy.")
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
+        self._validate_rule(rule)
+        execution_logger.info(
+            f"Asserting presence of elements: {elements} with rule: {rule} and timeout: {timeout}s")
+
+        for strategy in self.locator_strategies:
+            internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
+            if self._can_strategy_assert_elements(strategy, element_type):
+                result = self._try_assert_with_strategy(strategy, elements, timeout, rule)
+                if result:
+                    return result
+        raise ValueError("No elements found.")
+
+    def _validate_rule(self, rule: str):
+        """Validate the rule parameter."""
         rule = rule.lower()
         if rule not in ("any", "all"):
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
-        execution_logger.info(
-            f"Asserting presence of elements: {elements} with rule: {rule} and timeout: {timeout}s")
-        for strategy in self.locator_strategies:
-            internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
-            if hasattr(strategy, 'assert_elements') and strategy.supports(element_type, strategy.element_source):
-                try:
-                    result_tuple = strategy.assert_elements(elements, timeout, rule)
-                    if isinstance(result_tuple, tuple):
-                        result, timestamp = result_tuple
-                    else:
-                        result, timestamp = result_tuple, None
-                    if result:
-                        execution_tracer.log_attempt(strategy, str(elements), "success")
-                        return result, timestamp
-                    else:
-                        execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
-                        internal_logger.debug(
-                            f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
-                except Exception as e:
-                    execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-        raise ValueError("No elements found.")
+
+    def _can_strategy_assert_elements(self, strategy, element_type: str) -> bool:
+        """Check if strategy can assert elements for the given element type."""
+        return (hasattr(strategy, 'assert_elements') and
+                strategy.supports(element_type, strategy.element_source))
+
+    def _try_assert_with_strategy(self, strategy, elements: list, timeout: int, rule: str):
+        """Try to assert elements using a specific strategy."""
+        try:
+            result_tuple = strategy.assert_elements(elements, timeout, rule)
+            result, timestamp = self._parse_result_tuple(result_tuple)
+
+            if result:
+                execution_tracer.log_attempt(strategy, str(elements), "success")
+                return result, timestamp
+            else:
+                execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
+                internal_logger.debug(
+                    f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
+                return None
+        except Exception as e:
+            execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
+            return None
+
+    def _parse_result_tuple(self, result_tuple):
+        """Parse the result tuple from strategy.assert_elements."""
+        if isinstance(result_tuple, tuple):
+            return result_tuple
+        else:
+            return result_tuple, None
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""

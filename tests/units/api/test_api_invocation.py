@@ -1,13 +1,10 @@
-from unittest.mock import MagicMock
 import pytest
 from optics_framework.api.flow_control import FlowControl
-from optics_framework.common.runner.test_runnner import Runner
-from optics_framework.common.models import ApiData, ApiCollection, ApiDefinition, RequestDefinition, ElementData, ExpectedResultDefinition
+from optics_framework.common.models import ApiData, ApiCollection, ApiDefinition, RequestDefinition, ExpectedResultDefinition
 from tests.mock_servers.single_server import run_single_server
 
-# Mock ApiData structure for testing
 @pytest.fixture(scope="module")
-def mock_api_data():
+def api_test_data():
     return ApiData(
         collections={
             "authentication_apis": ApiCollection(
@@ -29,7 +26,7 @@ def mock_api_data():
                     "send_otp": ApiDefinition(
                         name="Send OTP",
                         description="Send OTP to user",
-                        endpoint="/sendotp", # Now points to the single server
+                        endpoint="/sendotp",
                         request=RequestDefinition(
                             method="POST",
                             headers={"Authorization": "${auth_token}", "Content-Type": "application/json"},
@@ -50,23 +47,8 @@ def live_servers():
     thread.join()
 
 @pytest.fixture
-def mock_runner(mock_api_data):
-    import tempfile
-    session = MagicMock(spec=Runner)
-    session.apis = mock_api_data
-    session.elements = ElementData() # Use ElementData instance for compatibility
-    session.config_handler = MagicMock()
-    temp_dir = tempfile.mkdtemp()
-    class Config:
-        pass
-    config = Config()
-    config.execution_output_path = temp_dir
-    config.project_path = temp_dir
-    session.config_handler.config = config
-    return session
-
-@pytest.fixture
-def flow_control(mock_runner):
+def flow_control(mock_runner, api_test_data):
+    mock_runner.apis = api_test_data
     mock_runner.modules = {}
     keyword_map = {}
     flow_control = FlowControl(mock_runner, keyword_map)
