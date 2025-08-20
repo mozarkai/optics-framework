@@ -41,21 +41,23 @@ class LoggingManager:
 
     def stop_listeners(self):
         def safe_stop(listener, name):
-            if listener:
-                try:
-                    if hasattr(listener, '_thread') and listener._thread and listener._thread.is_alive():
-                        try:
-                            listener.enqueue_sentinel()
-                        except Exception as e:
-                            self.internal_logger.error(
-                                f"Failed to enqueue sentinel for listener: {e}"
-                            )
-                        listener._thread.join(timeout=2.0)
-                        if listener._thread.is_alive():
-                            self.internal_logger.warning(f"{name} thread did not terminate after timeout.")
-                    listener._thread = None
-                except Exception as e:
-                    self.internal_logger.warning(f"Error stopping {name}: {e}")
+            if not listener:
+                return
+            try:
+                thread = getattr(listener, '_thread', None)
+                if thread and thread.is_alive():
+                    try:
+                        listener.enqueue_sentinel()
+                    except Exception as e:
+                        self.internal_logger.error(
+                            f"Failed to enqueue sentinel for listener: {e}"
+                        )
+                    thread.join(timeout=2.0)
+                    if thread.is_alive():
+                        self.internal_logger.warning(f"{name} thread did not terminate after timeout.")
+                listener._thread = None
+            except Exception as e:
+                self.internal_logger.warning(f"Error stopping {name}: {e}")
         safe_stop(self.internal_listener, "internal_listener")
         self.internal_listener = None
         safe_stop(self.execution_listener, "execution_listener")
@@ -169,9 +171,6 @@ class LoggerContext:
         """
         pass
 
-
-junit_handler = None
-
 def create_file_handler(path, log_level, formatter=None, use_sensitive=False):
     handler = RotatingFileHandler(
         path, maxBytes=10 * 1024 * 1024, backupCount=10)
@@ -241,11 +240,20 @@ def check_thread_status():
         internal_logger.warning("execution_listener thread did not terminate")
 
 def flush_handlers():
-    if junit_handler:
-        try:
-            junit_handler.close()
-        except Exception as e:
-            internal_logger.error(f"Error closing junit_handler: {e}")
+    try:
+        from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
+        registry = get_junit_handler_registry()
+        active_sessions = registry.get_active_sessions()
+
+        for session_id in active_sessions:
+            handler = registry.get_handler(session_id)
+            if handler:
+                handler.close()
+                internal_logger.debug(f"Flushed JUnit handler for session {session_id}")
+    except ImportError as e:
+        internal_logger.debug(f"Could not import JUnit handler registry: {e}")
+    except Exception as e:
+        internal_logger.error(f"Error flushing JUnit handlers: {e}")
 
 
 def clear_queues():

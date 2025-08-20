@@ -1,32 +1,94 @@
 from optics_framework.common.events import EventSubscriber, Event, EventStatus, get_event_manager
 import xml.etree.ElementTree as ET #nosec B405
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 import xml.dom.minidom  #nosec B408
 import time
 import logging
+import threading
 from optics_framework.common.logging_config import internal_logger, execution_logger, SensitiveDataFormatter
 from optics_framework.common.config_handler import Config
 
 
-def setup_junit(config: Config):
-    junit_handler = None
-    log_dir = config.execution_output_path or (Path.cwd() / "logs")
 
-    junit_path = getattr(config, 'json_log_path', None)
-    if junit_path:
-        junit_path = Path(junit_path).expanduser()
-    else:
-        junit_path = Path(log_dir) / "junit_output.xml"
+class JUnitHandlerRegistry:
+    """Registry for managing session-scoped JUnit handlers."""
 
-    # Setup JUnit handler if enabled
-    if getattr(config, 'json_log', False):
-        if junit_handler:
-            junit_handler.close()
-            get_event_manager().unsubscribe("junit")
-        junit_handler = JUnitEventHandler(junit_path)
-        get_event_manager().subscribe("junit", junit_handler)
-        internal_logger.debug(f"Subscribed JUnitEventHandler to EventManager: {junit_path}")
+    def __init__(self):
+        self._handlers: Dict[str, "JUnitEventHandler"] = {}
+        self._lock = threading.Lock()
+
+    def setup_junit_for_session(self, session_id: str, config: Config) -> None:
+        """Setup JUnit logging for a specific session."""
+        with self._lock:
+            # Cleanup existing handler for this session if it exists
+            if session_id in self._handlers:
+                self._handlers[session_id].close()
+                del self._handlers[session_id]
+
+            # Only setup if JUnit logging is enabled
+            if not getattr(config, 'json_log', False):
+                return
+
+            # Create session-specific output path
+            junit_path = self._get_session_junit_path(session_id, config)
+            handler = JUnitEventHandler(junit_path)
+
+            # Subscribe to session-specific EventManager
+            event_manager = get_event_manager(session_id)
+            event_manager.subscribe("junit", handler)
+
+            self._handlers[session_id] = handler
+            internal_logger.info(f"Setup JUnit handler for session {session_id}: {junit_path}")
+            internal_logger.info(f"Session {session_id} EventManager has {len(event_manager.subscribers)} subscribers: {list(event_manager.subscribers.keys())}")
+
+    def _get_session_junit_path(self, session_id: str, config: Config) -> Path:
+        """Generate session-specific JUnit output path."""
+        log_dir = config.execution_output_path or (Path.cwd() / "logs")
+
+        # Use custom path if specified, otherwise create session-specific path
+        junit_path = getattr(config, 'json_log_path', None)
+        if junit_path:
+            junit_path = Path(junit_path).expanduser()
+            # Add session suffix to custom path
+            return junit_path.parent / f"{junit_path.stem}_{session_id}{junit_path.suffix}"
+        else:
+            return Path(log_dir) / f"junit_output_{session_id}.xml"
+
+    def cleanup_session(self, session_id: str) -> None:
+        """Cleanup JUnit handler for a specific session."""
+        with self._lock:
+            if session_id in self._handlers:
+                self._handlers[session_id].close()
+                del self._handlers[session_id]
+                internal_logger.info(f"Cleaned up JUnit handler for session {session_id}")
+
+    def get_handler(self, session_id: str) -> Optional["JUnitEventHandler"]:
+        """Get the JUnit handler for a specific session."""
+        with self._lock:
+            return self._handlers.get(session_id)
+
+    def get_active_sessions(self) -> List[str]:
+        """Get list of sessions with active JUnit handlers."""
+        with self._lock:
+            return list(self._handlers.keys())
+
+_junit_handler_registry = JUnitHandlerRegistry()
+
+def setup_junit(session_id: str, config: Config) -> None:
+    """Setup JUnit logging for a specific session."""
+    _junit_handler_registry.setup_junit_for_session(session_id, config)
+
+def cleanup_junit(session_id: str) -> None:
+    """Cleanup JUnit handler for a specific session."""
+    _junit_handler_registry.cleanup_session(session_id)
+
+def get_junit_handler_registry() -> JUnitHandlerRegistry:
+    """Get the global JUnitHandlerRegistry instance."""
+    return _junit_handler_registry
+
+# Legacy support - will be deprecated
+junit_handler = None
 
 class LogCaptureBuffer(logging.Handler):
     """
@@ -62,6 +124,7 @@ class JUnitEventHandler(EventSubscriber):
 
 
     async def on_event(self, event: Event) -> None:
+        internal_logger.info(f"JUnitEventHandler received event: {event.entity_type} - {event.name} - {event.status}")
         internal_logger.debug(
             f"JUnitEventHandler received event: {event.model_dump()}")
         session_id = event.extra.get("session_id") if event.extra else None
@@ -82,13 +145,13 @@ class JUnitEventHandler(EventSubscriber):
                     tests="0", failures="0", errors="0", skipped="0", time="0"
                 )
                 self.session_suites[session_id] = session_suite
-            await self._handle_test_case_event(event, self.session_suites[session_id], session_id)
+            self._handle_test_case_event(event, self.session_suites[session_id], session_id)
         elif event.entity_type == "module":
-            await self._handle_module_event(event)
+            self._handle_module_event(event)
         elif event.entity_type == "keyword":
-            await self._handle_keyword_event(event)
+            self._handle_keyword_event(event)
 
-    async def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
+    def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
         event_time = getattr(event, 'timestamp', time.time())
         internal_logger.debug(
             f"Handling test_case event: id={event.entity_id}, status={event.status}, timestamp={event_time}")
@@ -122,7 +185,7 @@ class JUnitEventHandler(EventSubscriber):
             if event.entity_id in self.module_names:
                 del self.module_names[event.entity_id]
 
-    async def _handle_module_event(self, event: Event) -> None:
+    def _handle_module_event(self, event: Event) -> None:
         testcase_id = event.parent_id
         if not testcase_id or testcase_id not in self.testcase_cases:
             return
@@ -137,7 +200,7 @@ class JUnitEventHandler(EventSubscriber):
             if module_kw:
                 module_kw.set("status", event.status.value)
 
-    async def _handle_keyword_event(self, event: Event) -> None:
+    def _handle_keyword_event(self, event: Event) -> None:
         module_id = event.parent_id
         module_kw = self.module_elements.get(module_id)
         if module_kw is None:

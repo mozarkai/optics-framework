@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 from enum import Enum
 from typing import Union, Optional, Dict, List, Any
@@ -170,5 +171,42 @@ class EventManager:
         self.stop()
 
 
-def get_event_manager() -> EventManager:
-    return EventManager()
+class EventManagerRegistry:
+    """Registry for managing session-scoped EventManager instances."""
+
+    def __init__(self):
+        self._managers: Dict[str, EventManager] = {}
+        self._lock = threading.Lock()
+
+    def get_event_manager(self, session_id: str) -> EventManager:
+        """Get or create an EventManager for the given session."""
+        with self._lock:
+            if session_id not in self._managers:
+                manager = EventManager()
+                internal_logger.debug(f"Created new EventManager for session {session_id}: {id(manager)}")
+                self._managers[session_id] = manager
+            return self._managers[session_id]
+
+    def remove_session(self, session_id: str) -> None:
+        """Remove and cleanup the EventManager for the given session."""
+        with self._lock:
+            if session_id in self._managers:
+                manager = self._managers[session_id]
+                manager.stop()
+                internal_logger.debug(f"Removed EventManager for session {session_id}: {id(manager)}")
+                del self._managers[session_id]
+
+    def get_active_sessions(self) -> list[str]:
+        """Get list of active session IDs."""
+        with self._lock:
+            return list(self._managers.keys())
+
+_event_manager_registry = EventManagerRegistry()
+
+def get_event_manager(session_id: str) -> EventManager:
+    """Get the EventManager for a specific session."""
+    return _event_manager_registry.get_event_manager(session_id)
+
+def get_event_manager_registry() -> EventManagerRegistry:
+    """Get the global EventManagerRegistry instance."""
+    return _event_manager_registry

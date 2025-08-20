@@ -10,7 +10,7 @@ from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.common.events import Event, EventManager, EventStatus
+from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
 
@@ -211,12 +211,14 @@ class ExecutionEngine:
 
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
-        self.event_manager = EventManager()
 
     async def execute(self, params: ExecutionParams) -> None:
+        # Get session-specific event manager
+        event_manager = get_event_manager(params.session_id)
+
         session = self.session_manager.get_session(params.session_id)
         if not session:
-            await self.event_manager.publish_event(Event(
+            await event_manager.publish_event(Event(
                 entity_type="session",
                 entity_id=params.session_id,
                 name="Session",
@@ -227,7 +229,7 @@ class ExecutionEngine:
             raise ValueError("Session not found")
 
         if params.mode in ("batch", "dry_run") and not session.test_cases:
-            await self.event_manager.publish_event(Event(
+            await event_manager.publish_event(Event(
                 entity_type="execution",
                 entity_id=params.session_id,
                 name="Execution",
@@ -237,7 +239,7 @@ class ExecutionEngine:
             ))
             raise ValueError("Test cases are required")
 
-        self.event_manager.start()
+        event_manager.start()
 
         use_printer = params.use_printer
         internal_logger.debug(
@@ -254,14 +256,14 @@ class ExecutionEngine:
                 session,
                 runner_type,
                 use_printer,
-                event_manager=self.event_manager
+                event_manager=event_manager
             )
             if hasattr(runner, 'result_printer') and runner.result_printer and use_printer:
                 internal_logger.debug("Starting result printer live display")
                 runner.result_printer.start_live()
 
             try:
-                await self.event_manager.publish_event(Event(
+                await event_manager.publish_event(Event(
                     entity_type="execution",
                     entity_id=params.session_id,
                     name="Execution",
@@ -270,12 +272,12 @@ class ExecutionEngine:
                     extra={"session_id": params.session_id}
                 ))
                 if params.mode == "batch":
-                    executor = BatchExecutor(test_case=session.test_cases, event_manager=self.event_manager)
+                    executor = BatchExecutor(test_case=session.test_cases, event_manager=event_manager)
                 elif params.mode == "dry_run":
-                    executor = DryRunExecutor(test_case=session.test_cases, event_manager=self.event_manager)
+                    executor = DryRunExecutor(test_case=session.test_cases, event_manager=event_manager)
                 elif params.mode == "keyword":
                     if not params.keyword:
-                        await self.event_manager.publish_event(Event(
+                        await event_manager.publish_event(Event(
                             entity_type="execution",
                             entity_id=params.session_id,
                             name="Execution",
@@ -285,9 +287,9 @@ class ExecutionEngine:
                         ))
                         raise ValueError("Keyword mode requires a keyword")
                     try:
-                        executor = KeywordExecutor(params.keyword, params.params, event_manager=self.event_manager)
+                        executor = KeywordExecutor(params.keyword, params.params, event_manager=event_manager)
                     except Exception as e:
-                        await self.event_manager.publish_event(Event(
+                        await event_manager.publish_event(Event(
                             entity_type="execution",
                             entity_id=params.session_id,
                             name="Execution",
@@ -297,7 +299,7 @@ class ExecutionEngine:
                         ))
                         raise ValueError(f"Failed to create keyword executor: {str(e)}") from e
                 else:
-                    await self.event_manager.publish_event(Event(
+                    await event_manager.publish_event(Event(
                         entity_type="execution",
                         entity_id=params.session_id,
                         name="Execution",
@@ -310,7 +312,7 @@ class ExecutionEngine:
                     result =  await executor.execute(session, runner)
                     return result
                 except Exception as e:
-                    await self.event_manager.publish_event(Event(
+                    await event_manager.publish_event(Event(
                         entity_type="execution",
                         entity_id=params.session_id,
                         name="Execution",
@@ -320,7 +322,7 @@ class ExecutionEngine:
                     ))
                     raise ValueError(f"Execution failed: {str(e)}") from e
             except Exception as e:
-                await self.event_manager.publish_event(Event(
+                await event_manager.publish_event(Event(
                     entity_type="execution",
                     entity_id=params.session_id,
                     name="Execution",
@@ -336,9 +338,9 @@ class ExecutionEngine:
                         "Stopping result printer live display")
                 # Wait for event queue to drain
                 internal_logger.debug(
-                    "Event queue size before drain: %d", self.event_manager.event_queue.qsize())
-                while self.event_manager.event_queue.qsize() > 0:
+                    "Event queue size before drain: %d", event_manager.event_queue.qsize())
+                while event_manager.event_queue.qsize() > 0:
                     internal_logger.debug(
-                        "Waiting for %d events to process", self.event_manager.event_queue.qsize())
+                        "Waiting for %d events to process", event_manager.event_queue.qsize())
                     await asyncio.sleep(0.1)
-                self.event_manager.shutdown()
+                event_manager.shutdown()

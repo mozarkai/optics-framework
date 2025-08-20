@@ -84,7 +84,7 @@ class Session:
         self.optics.add_image_detection(enabled_image_configs, self.config.project_path)
         if config.json_log is True and self.config.execution_output_path is not None:
             config.json_path = str(Path(config.json_path).expanduser()) if config.json_path else str((Path(self.config.execution_output_path) / "logs.json").expanduser())
-            setup_junit(config)
+            setup_junit(self.session_id, config)
 
         self.driver = self.optics.get_driver()
         self.event_queue = asyncio.Queue()
@@ -115,3 +115,10 @@ class SessionManager(SessionHandler):
         session: Session | None = self.sessions.pop(session_id, None)
         if session and session.driver:
             session.driver.terminate()
+
+        # Cleanup session-scoped resources
+        from optics_framework.common.Junit_eventhandler import cleanup_junit
+        from optics_framework.common.events import get_event_manager_registry
+
+        cleanup_junit(session_id)
+        get_event_manager_registry().remove_session(session_id)
