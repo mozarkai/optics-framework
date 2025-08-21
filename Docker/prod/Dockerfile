@@ -13,14 +13,15 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     curl \
     libgl1 \
     libglib2.0-0 \
- && pip install --no-cache-dir \
+&& pip install --no-cache-dir \
     appium-python-client \
     easyocr \
     fastapi \
     optics-framework \
     uvicorn \
- && rm -rf /var/lib/apt/lists/* \
- && chown -R appuser:appuser /app
+&& python -c "import easyocr; easyocr.Reader(['en'])" \
+&& rm -rf /var/lib/apt/lists/* \
+&& chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser

@@ -1,0 +1,43 @@
+api:
+  collections:
+    mock:
+      name: "Mock Auth + OTP API Collection"
+      base_url: "http://127.0.0.1:8001"
+      global_headers:
+        content-type: "application/json"
+      apis:
+        token:
+          name: "Login - Get Access Token"
+          endpoint: "/token"
+          request:
+            method: POST
+            timeout: 10
+            body:
+              username: "test"
+              password: "password"
+          expected_result:
+            expected_status: 200
+            jsonpath_assertions:
+              - path: $.access_token
+                condition: "len($) > 0"
+            extract:
+              access_token: access_token
+              userId: user.userId
+        sendotp:
+          name: "Send OTP"
+          endpoint: "/sendotp"
+          request:
+            method: POST
+            timeout: 10
+            headers:
+              Authorization: "${access_token}"
+            body:
+              userId: "${userId}"
+              txnType: "GEN"
+          expected_result:
+            expected_status: 200
+            jsonpath_assertions:
+              - path: $.txnType
+                condition: "$ == 'GEN'"
+            extract:
+              txnType: txnType
