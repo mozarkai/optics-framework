@@ -60,7 +60,24 @@ class LocatorStrategy(ABC):
             return False
         try:
             source = inspect.getsource(method)
-            return "raise NotImplementedError" not in source
+            # Check if the method is just a stub (entire method body is just raise NotImplementedError)
+            lines = [line.strip() for line in source.split('\n') if line.strip() and not line.strip().startswith('#')]
+            # Filter out docstrings and function definition
+            body_lines = []
+            in_docstring = False
+            for line in lines:
+                if line.startswith('def '):
+                    continue
+                if '"""' in line or "'''" in line:
+                    in_docstring = not in_docstring
+                    continue
+                if not in_docstring and not line.startswith('"""') and not line.startswith("'''"):
+                    body_lines.append(line)
+
+            # If the only meaningful body line is raise NotImplementedError, it's not implemented
+            if len(body_lines) == 1 and "raise NotImplementedError" in body_lines[0]:
+                return False
+            return True
         except (OSError, TypeError):
             return True
 
@@ -231,6 +248,9 @@ class PagesourceStrategy:
         if pagesource is not None:
             if isinstance(pagesource, str):
                 return pagesource
+            elif isinstance(pagesource, tuple) and len(pagesource) >= 1:
+                # Handle tuple case - return the first element (page source)
+                return str(pagesource[0])
             # If it's an ndarray, convert to string (or handle as needed)
             try:
                 return str(pagesource)
