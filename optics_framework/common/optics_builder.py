@@ -73,15 +73,17 @@ class OpticsBuilder:
         return self
 
     def add_image_detection(
-        self, config: Union[str, List[Union[str, Dict]]], project_path: str
+        self, config: Union[str, List[Union[str, Dict]]], project_path: str, templates = None
     ) -> "OpticsBuilder":
         normalized = self.normalise_config(config)
-        # Inject project_path into each config dict
+        # Inject project_path and templates into each config dict
         for item in normalized:
             # item is a dict like {"templatematch": {...}}
             for key in item:
                 if isinstance(item[key], dict):
                     item[key]["project_path"] = project_path
+                    if templates is not None:
+                        item[key]["templates"] = templates
         self.config.image_config = normalized
         return self
 

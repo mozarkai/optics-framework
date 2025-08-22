@@ -8,6 +8,7 @@ import cv2
 import json
 import base64
 import numpy as np
+from optics_framework.common.session_manager import get_current_execution_output_path
 from enum import Enum
 from datetime import timezone, timedelta
 from skimage.metrics import structural_similarity as ssim
@@ -116,8 +117,6 @@ def compare_text(given_text, target_text):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
-
-
 def save_screenshot(img, name, time_stamp = None, output_dir = None):
     """
     Save the screenshot with a timestamp and keyword in the filename.
@@ -129,8 +128,10 @@ def save_screenshot(img, name, time_stamp = None, output_dir = None):
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
     if output_dir is None:
-        internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
-        return
+        output_dir = get_current_execution_output_path()
+        if output_dir is None:
+            internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
+            return
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
         cv2.imwrite(screenshot_file_path, img)
@@ -141,8 +142,7 @@ def save_screenshot(img, name, time_stamp = None, output_dir = None):
         internal_logger.debug(f"Error writing screenshot to file : {e}")
 
 
-def annotate(annotation_detail):
-    screenshot,bboxes,screenshot_name = annotation_detail
+def annotate(screenshot, bboxes):
     # Iterate over each bounding box and annotate it on the image
     for bbox in bboxes:
         if bbox is None or len(bbox) != 2:
@@ -158,10 +158,7 @@ def annotate(annotation_detail):
         cv2.rectangle(screenshot, tuple(top_left), tuple(
             bottom_right), color=(0, 255, 0), thickness=3)
         internal_logger.debug(f"Bounding box {top_left} to {bottom_right} annotated.")
-    # Save the annotated screenshot
-    internal_logger.debug(f'annnotated image: {len(screenshot)}')
-    save_screenshot(screenshot,screenshot_name)
-
+    return screenshot
 
 def is_black_screen(image):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

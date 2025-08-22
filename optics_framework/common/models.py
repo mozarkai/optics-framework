@@ -216,3 +216,18 @@ class ApiData(BaseModel):
 
     def get_collection(self, collection_name: str) -> Optional[ApiCollection]:
         return self.collections.get(collection_name)
+
+
+class TemplateData(BaseModel):
+    """Structure for template image mappings."""
+    templates: Dict[str, str] = Field(default_factory=dict)
+
+    def add_template(self, name: str, path: str):
+        self.templates[name] = path
+
+    def remove_template(self, name: str):
+        if name in self.templates:
+            del self.templates[name]
+
+    def get_template_path(self, name: str) -> Optional[str]:
+        return self.templates.get(name)

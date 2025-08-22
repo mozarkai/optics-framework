@@ -232,7 +232,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         finally:
             ss_stream.stop_capture()
         if annotated_frame is not None:
-            utils.save_screenshot(annotated_frame, "assert_elements_image_detection_result")
+            utils.save_screenshot(annotated_frame, "assert_elements_image_detection_result", timestamp)
         return result, timestamp
 
     @staticmethod

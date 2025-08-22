@@ -1,25 +1,36 @@
 import numpy as np
 import cv2
-import os
+from typing import Optional
+from optics_framework.common.models import TemplateData
+from optics_framework.common.session_manager import get_current_template_data
 
-def load_template(project_path: str, element: str) -> np.ndarray:
+def load_template(element: str, template_data: Optional[TemplateData] = None) -> np.ndarray:
     """
-    Load a template image from the input_templates folder.
+    Load a template image using dynamic template mapping.
 
-    :param project_path: The path to the project directory.
-    :type project_path: str
     :param element: The name of the template image file.
     :type element: str
+    :param template_data: Optional TemplateData containing image mappings. If None, uses global template data.
+    :type template_data: Optional[TemplateData]
 
     :return: The template image as a NumPy array.
     :rtype: np.ndarray
 
-    :raises ValueError: If the project path is not set.
+    :raises ValueError: If the template is not found.
     """
+    if template_data is None:
+        template_data = get_current_template_data()
 
-    templates_folder = os.path.join(project_path, "input_templates")
-    template_path = os.path.join(templates_folder, element)
+    if template_data is None:
+        raise ValueError("No template data available. Ensure templates are discovered during session creation.")
+
+    template_path = template_data.get_template_path(element)
+    if not template_path:
+        raise ValueError(f"Template '{element}' not found in template data")
+
     template = cv2.imread(template_path)
+    if template is None:
+        raise ValueError(f"Failed to load template from path: {template_path}")
 
     return template
 

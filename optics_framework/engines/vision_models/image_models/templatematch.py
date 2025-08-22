@@ -4,7 +4,7 @@ import numpy as np
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.vision_models.base_methods import load_template
-
+from optics_framework.common import utils
 
 class TemplateMatchingHelper(ImageInterface):
     """
@@ -32,7 +32,7 @@ class TemplateMatchingHelper(ImageInterface):
         Match a template image within a single frame image using SIFT and FLANN-based matching.
         Returns the location of a specific match by index.
         """
-        image = load_template(self.project_path, image)
+        image = load_template(image)
         sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -133,10 +133,10 @@ class TemplateMatchingHelper(ImageInterface):
                 image=template_path,
             )
             if result is not None:
-                success, _, annotated = result
+                success, _, bbox = result
                 if success:
                     found_status[template_path] = True
-                    annotated_frame = annotated  # use the latest annotated version
+                    annotated_frame = utils.annotate(annotated_frame, [bbox])
 
         match_rule = (
             any(found_status.values()) if rule == "any" else all(found_status.values())

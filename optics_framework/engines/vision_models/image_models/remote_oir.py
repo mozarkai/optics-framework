@@ -105,7 +105,7 @@ class RemoteImageDetection(ImageInterface):
             if image is None:
                 internal_logger.error("Template image path or identifier is None.")
                 return None
-            template_image = load_template(self.project_path, image)
+            template_image = load_template(image)
             template_base64 = utils.encode_numpy_to_base64(template_image)
         except Exception as e:
             internal_logger.error(f"Failed to load or encode template image: {str(e)}")
@@ -219,7 +219,7 @@ class RemoteImageDetection(ImageInterface):
                     internal_logger.error("Template path or identifier is empty.")
                     encoded[template] = None
                     continue
-                img = load_template(self.project_path, template)
+                img = load_template(template)
                 encoded[template] = utils.encode_numpy_to_base64(img)
             except Exception as e:
                 internal_logger.error(f"Failed to load or encode template '{template}': {e}")
