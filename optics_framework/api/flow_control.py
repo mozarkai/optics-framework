@@ -371,6 +371,12 @@ class FlowControl:
 
         df, direct_env_value = self._load_data_frame(file_path)
         if direct_env_value is not None:
+            # Always store the value in session.elements, even if not in ${name} format
+            runner_elements = getattr(self.session, "elements", None)
+            if isinstance(runner_elements, ElementData):
+                runner_elements.add_element(elem_name, direct_env_value)
+            else:
+                internal_logger.warning("[READ_DATA] Cannot store value: session.elements is not an ElementData instance.")
             return [direct_env_value]
 
         df = self._ensure_df_string(df)
@@ -406,10 +412,23 @@ class FlowControl:
         try:
             json_data = json.loads(env_data)
             internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
+            # If the parsed JSON is a scalar (not list/dict), return as string
+            if not isinstance(json_data, (list, dict)):
+                return pd.DataFrame(), str(json_data)
             normalized_data = self._normalize_json_data(json_data)
             return pd.json_normalize(normalized_data), None
-        except ValueError:
-            return self._try_csv_parsing(env_data)
+        except (json.JSONDecodeError, ValueError):
+            # Try CSV parsing
+            internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
+            try:
+                df = pd.read_csv(StringIO(env_data))
+                internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
+                if df.empty:
+                    return pd.DataFrame(), str(env_data)
+                return df, None
+            except ValueError:
+                internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+                return pd.DataFrame(), str(env_data)
         except Exception as e:
             internal_logger.error(f"[READ_DATA] Unexpected error occurred: {e}")
             raise ValueError(f"Unexpected error while loading environment variable '{env_var}': {e}") from e

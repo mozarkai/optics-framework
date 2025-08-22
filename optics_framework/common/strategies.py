@@ -272,9 +272,14 @@ class ScreenshotStrategy:
         self.element_source: ElementSourceInterface = element_source
 
     def capture(self) -> Optional[np.ndarray]:
-        screenshot = self.element_source.capture()
+        try:
+            screenshot = self.element_source.capture()
+        except Exception as e:
+            internal_logger.error(f"Error capturing screenshot: {e}")
+            raise RuntimeError(f"Error capturing screenshot: {e}")
         if screenshot is not None and not utils.is_black_screen(screenshot):
             return screenshot
+        internal_logger.warning("Invalid screenshot captured: black screen detected.")
         raise ValueError("Invalid screenshot captured")
 
     def capture_stream(self, timeout: int = 30):
