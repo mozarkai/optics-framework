@@ -98,6 +98,24 @@ def test_read_data_json_single_object(flow_control, tmp_path, monkeypatch):
     assert result == ['123']
     assert flow_control.session.elements.get_element('my_elem') == '123'
 
+def test_read_data_env_scalar_string(flow_control, monkeypatch):
+    monkeypatch.setenv('SCALAR_STR', 'simplevalue')
+    result = flow_control.read_data('elem_scalar', 'ENV:SCALAR_STR')
+    assert result == ['simplevalue']
+    assert flow_control.session.elements.get_element('elem_scalar') == 'simplevalue'
+
+def test_read_data_env_scalar_int(flow_control, monkeypatch):
+    monkeypatch.setenv('SCALAR_INT', '12345')
+    result = flow_control.read_data('elem_scalar_int', 'ENV:SCALAR_INT')
+    assert result == ['12345']
+    assert flow_control.session.elements.get_element('elem_scalar_int') == '12345'
+
+def test_read_data_env_scalar_float(flow_control, monkeypatch):
+    monkeypatch.setenv('SCALAR_FLOAT', '3.14159')
+    result = flow_control.read_data('elem_scalar_float', 'ENV:SCALAR_FLOAT')
+    assert result == ['3.14159']
+    assert flow_control.session.elements.get_element('elem_scalar_float') == '3.14159'
+
 def test_read_data_csv_with_variable_in_query(tmp_path, flow_control, monkeypatch):
     csv_content = 'device_serial,app_package,app_activity\nRZ8RC1KK88R,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE\nRZ8T10TADVR,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE'
     project_path = tmp_path
