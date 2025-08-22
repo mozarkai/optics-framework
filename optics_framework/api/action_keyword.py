@@ -207,8 +207,6 @@ class ActionKeyword:
         :param timeout: Timeout for the detection operation.
         :param event_name: The event triggering the press.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "detect_and_press")
         result = self.verifier.assert_presence(
             element, timeout_str=timeout, rule="any")
         if result:
@@ -360,8 +358,6 @@ class ActionKeyword:
         :param scroll_length: The length of the scroll.
         :param event_name: The event triggering the scroll.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "scroll_from_element")
         if isinstance(located, tuple):
             x, y = located
             execution_logger.debug(f"Swiping from coordinates ({x}, {y})")
@@ -432,8 +428,6 @@ class ActionKeyword:
         :param number: The number to be entered.
         :param event_name: The event triggering the input.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "enter_number")
         if isinstance(located, tuple):
             x, y = located
             internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")

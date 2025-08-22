@@ -33,15 +33,15 @@ class AppiumPageSource(ElementSourceInterface):
         # If self.driver is None, raise error first
         if self.driver is None:
             internal_logger.error(
-                "Appium driver is not initialized for AppiumPageSource."
+                APPIUM_NOT_INITIALISED_MSG
             )
             raise RuntimeError(
-                "Appium driver is not initialized for AppiumPageSource."
+                APPIUM_NOT_INITIALISED_MSG
             )
         # If self.driver is a wrapper, extract the raw driver
         if hasattr(self.driver, "driver"):
             return self.driver.driver
-        raise RuntimeError("Appium driver is not initialized for AppiumPageSource.")
+        raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
     def capture(self):
         """

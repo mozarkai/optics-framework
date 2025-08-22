@@ -74,8 +74,8 @@ class LocatorStrategy(ABC):
                 if not in_docstring and not line.startswith('"""') and not line.startswith("'''"):
                     body_lines.append(line)
 
-            # If the only meaningful body line is raise NotImplementedError, it's not implemented
-            if len(body_lines) == 1 and "raise NotImplementedError" in body_lines[0]:
+            # If any body line raises NotImplementedError, it's not implemented
+            if any("raise NotImplementedError" in line for line in body_lines):
                 return False
             return True
         except (OSError, TypeError):
