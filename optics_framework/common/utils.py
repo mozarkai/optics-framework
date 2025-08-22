@@ -127,11 +127,10 @@ def save_screenshot(img, name, time_stamp = None, output_dir = None):
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
+    output_dir = output_dir or get_current_execution_output_path()
     if output_dir is None:
-        output_dir = get_current_execution_output_path()
-        if output_dir is None:
-            internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
-            return
+        internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
+        return
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
         cv2.imwrite(screenshot_file_path, img)

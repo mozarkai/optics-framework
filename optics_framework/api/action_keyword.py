@@ -198,8 +198,7 @@ class ActionKeyword:
                 'XPath is not supported for index based location. Provide the attribute as text.')
             raise NotImplementedError("XPath is not supported for index based location.")
 
-    @with_self_healing
-    def detect_and_press(self, element: str, timeout: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def detect_and_press(self, element: str, timeout: str = "30", event_name: Optional[str] = None) -> None:
         """
         Detect and press a specified element.
 
@@ -207,19 +206,12 @@ class ActionKeyword:
         :param timeout: Timeout for the detection operation.
         :param event_name: The event triggering the press.
         """
-        result = self.verifier.assert_presence(
-            element, timeout_str=timeout, rule="any")
+        result = self.verifier.validate_screen(
+            element, timeout, rule="any")
         if result:
-            if isinstance(located, tuple):
-                x, y = located
-                internal_logger.debug(
-                    f"Pressing detected element at coordinates ({x}, {y})")
-                self.driver.press_coordinates(
-                    x, y, event_name=event_name)
-            else:
-                internal_logger.debug(f"Pressing detected element '{element}'")
-                self.driver.press_element(
-                    located, repeat=1, event_name=event_name)
+            self.press_element(element, event_name=event_name)
+        else:
+            execution_logger.info(f'Element {element} not found. Press is not performed.')
 
     @DeprecationWarning
     @with_self_healing

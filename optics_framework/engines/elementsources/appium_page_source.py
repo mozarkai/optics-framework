@@ -229,8 +229,8 @@ class AppiumPageSource(ElementSourceInterface):
                 return xpath
             return None
         else:
-            internal_logger.error("Appium driver or its ui_helper is not initialized.")
-            raise RuntimeError("Appium driver or its ui_helper is not initialized.")
+            internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
+            raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
     def _validate_tree(self):
         """Validates that the element tree is initialized."""

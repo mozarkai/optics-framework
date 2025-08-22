@@ -108,10 +108,8 @@ class Verifier:
             earliest_timestamp = min(timestamps) if timestamps else None
             if event_name and earliest_timestamp:
                 self.event_sdk.capture_event_with_time_input(event_name, earliest_timestamp)
-
         elif fail:
             raise AssertionError("Presence assertion failed based on rule: " + rule)
-
         return result
 
 
@@ -124,7 +122,7 @@ class Verifier:
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the verification, if any.
         """
-        self.assert_presence(elements, timeout, rule, event_name, fail=False)
+        return self.assert_presence(elements, timeout, rule, event_name, fail=False)
 
     def capture_screenshot(self, event_name: Optional[str] = None) -> str:
         """

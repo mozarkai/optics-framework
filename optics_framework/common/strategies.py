@@ -232,7 +232,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         finally:
             ss_stream.stop_capture()
         if annotated_frame is not None:
-            utils.save_screenshot(annotated_frame, "assert_elements_image_detection_result", timestamp)
+            utils.save_screenshot(annotated_frame, "assert_elements_image_detection_result", time_stamp=timestamp)
         return result, timestamp
 
     @staticmethod
@@ -395,9 +395,8 @@ class StrategyManager:
         for strategy in self.locator_strategies:
             internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
             if self._can_strategy_assert_elements(strategy, element_type):
-                result = self._try_assert_with_strategy(strategy, elements, timeout, rule)
-                if result:
-                    return result
+                result, timestamp = self._try_assert_with_strategy(strategy, elements, timeout, rule)
+                return result, timestamp
         raise ValueError("No elements found.")
 
     def _validate_rule(self, rule: str):
@@ -424,10 +423,10 @@ class StrategyManager:
                 execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
                 internal_logger.debug(
                     f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
-                return None
+                return False, None
         except Exception as e:
             execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-            return None
+            return False, None
 
     def _parse_result_tuple(self, result_tuple):
         """Parse the result tuple from strategy.assert_elements."""
