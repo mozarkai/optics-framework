@@ -66,6 +66,7 @@ class AppiumScreenshot(ElementSourceInterface):
             internal_logger.info('driver session_id: %s', driver.session_id)
             screenshot_base64 = driver.get_screenshot_as_base64()
             screenshot_bytes = base64.b64decode(screenshot_base64)
+            internal_logger.debug("Screenshot bytes length: %d", len(screenshot_bytes))
             numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
             numpy_image = cv2.imdecode(numpy_image, cv2.IMREAD_COLOR) # type: ignore
             return numpy_image
@@ -77,7 +78,7 @@ class AppiumScreenshot(ElementSourceInterface):
         except Exception as e:
             # Log the error and fallback to external camera
             internal_logger.warning(f"Error capturing Appium screenshot: {e}. Using external camera.")
-            raise RuntimeError("Error capturing Appium screenshot.")
+            raise RuntimeError(f"Error capturing Appium screenshot: {e}") from e
 
     def assert_elements(self, elements, timeout=30, rule='any') -> None:
         internal_logger.exception("AppiumScreenshot does not support asserting elements.")
