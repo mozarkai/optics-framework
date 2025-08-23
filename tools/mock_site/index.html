@@ -183,24 +183,24 @@
           <div class="section-title">Session Controls</div>
           <form id="session-form">
             <div class="form-group">
-              <label>Driver Sources</label>
+              <label for="driver_list">Driver Sources</label>
               <div id="driver_list"></div>
               <div style="margin-top:0.6em;"><button type="button" onclick="addDriverEntry()">Add driver</button></div>
             </div>
             <div class="form-group">
-              <label>Elements Sources</label>
+              <label for="elements_list">Elements Sources</label>
               <div id="elements_list"></div>
               <div style="margin-top:0.6em;"><button type="button" onclick="addElementEntry()">Add element
                   source</button></div>
             </div>
             <div class="form-group">
-              <label>Text Detection Sources</label>
+              <label for="text_list">Text Detection Sources</label>
               <div id="text_list"></div>
               <div style="margin-top:0.6em;"><button type="button" onclick="addTextEntry()">Add text detection</button>
               </div>
             </div>
             <div class="form-group">
-              <label>Image Detection Sources</label>
+              <label for="image_list">Image Detection Sources</label>
               <div id="image_list"></div>
               <div style="margin-top:0.6em;"><button type="button" onclick="addImageEntry()">Add image
                   detection</button></div>
@@ -310,7 +310,12 @@
         const cfgText = el.querySelector('.entry-config').value.trim();
         let cfg = null;
         if (cfgText) {
-          try {cfg = JSON.parse(cfgText);} catch (e) {cfg = cfgText;}
+          try {
+            cfg = JSON.parse(cfgText);
+          } catch (e) {
+            alert('Invalid JSON in config: ' + e.message);
+            cfg = null;
+          }
         }
         if (cfg === null || cfg === '') {
           // send legacy string form
