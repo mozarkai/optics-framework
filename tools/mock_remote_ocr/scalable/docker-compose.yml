@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  mock-ocr:
+    build:
+      context: ../../
+      dockerfile: tools/mock_remote_ocr/scalable/Dockerfile
+    image: optics/mock-ocr:latest
+    environment:
+      - MOCK_OCR_PORT=8090
+      - MOCK_OCR_FORCE_GPU=0
+      - UVICORN_WORKERS=4
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8090/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '4.00'
+          memory: 4G

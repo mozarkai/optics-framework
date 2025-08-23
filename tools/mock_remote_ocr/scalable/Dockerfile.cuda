@@ -1,0 +1,85 @@
+FROM nvidia/cuda:12.2.1-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MOCK_OCR_FORCE_GPU=1 \
+    UVICORN_WORKERS=2 \
+    GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker \
+    GUNICORN_TIMEOUT=120
+
+WORKDIR /app
+
+# Install system packages and Python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  ca-certificates \
+  ffmpeg \
+  git \
+  libgl1-mesa-dri \
+  libglib2.0-0 \
+  libsm6 \
+  libxext6 \
+  libxrender1 \
+  python3 \
+  python3-pip \
+  python3-venv \
+ && rm -rf /var/lib/apt/lists/*
+
+# Ensure pip is modern
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Copy dependency files and build wheels if present
+COPY pyproject.toml poetry.lock* /app/
+RUN python3 -m pip wheel --wheel-dir=/wheels . || true
+
+# Copy application
+COPY . /app
+
+# Install runtime deps
+COPY --from=0 /wheels /wheels
+RUN if [ -d /wheels ] && [ "$(ls -A /wheels)" ]; then \
+      python3 -m pip install --no-cache-dir /wheels/*; \
+    else \
+      python3 -m pip install --no-cache-dir .; \
+    fi
+
+# Ensure runtime server packages are installed in the final image
+RUN python3 -m pip install --no-cache-dir "easyocr" "gunicorn>=20.0" "uvicorn[standard]"
+
+# Pre-download EasyOCR models at build time into the optics home so the
+# runtime doesn't need to fetch models (avoids runtime downloads and OOMs).
+RUN mkdir -p /home/optics && \
+  python3 - <<'PY'
+import os
+os.environ['HOME'] = '/home/optics'
+try:
+  from easyocr import Reader
+  # instantiate reader to force model download for English
+  Reader(['en'], gpu=False)
+  print('EasyOCR models downloaded')
+except Exception as e:
+  print('EasyOCR model bootstrap failed:', e)
+  raise
+PY
+
+# Expose port
+EXPOSE 8090
+
+# Entrypoint (added before creating non-root user so we can chmod as root)
+COPY tools/mock_remote_ocr/scalable/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Create non-root user with home dir and ensure ownership
+RUN groupadd -r optics \
+ && useradd -r -g optics -m -d /home/optics optics \
+ && mkdir -p /home/optics/.EasyOCR/model \
+ && chown -R optics:optics /app /entrypoint.sh /home/optics
+USER optics
+
+ENV APP_MODULE=tools.mock_remote_ocr.mock_remote_ocr:app \
+    HOST=0.0.0.0 \
+    PORT=8090
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "${UVICORN_WORKERS}", "--timeout", "${GUNICORN_TIMEOUT}", "--bind", "0.0.0.0:${PORT}", "${APP_MODULE}"]
