@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Docker/prod/Dockerfile
+    image: optics/app:prod
+    container_name: optics_app_prod
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 45s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+  dev:
+    build:
+      context: ..
+      dockerfile: Docker/dev/Dockerfile
+      args:
+        # pass WHL_FILE if you want to install from a pre-built wheel in dist/
+        WHL_FILE: ""
+    image: optics/app:dev
+    container_name: optics_app_dev
+    ports:
+      - "8001:8000" # maps host 8001 -> container 8000 so prod/dev don't conflict
+    volumes:
+      - ..:/app:cached
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["optics", "serve", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 45s
+      timeout: 10s
+      retries: 5
+
+# Usage examples:
+#  docker compose -f Docker/docker-compose.yml up --build app
+#  docker compose -f Docker/docker-compose.yml up --build dev
+#  docker compose -f Docker/docker-compose.yml up --build
