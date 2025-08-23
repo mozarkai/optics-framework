@@ -1,7 +1,8 @@
 import json
 import uuid
 import asyncio
-from typing import Optional, Dict, Any, List
+import warnings
+from typing import Optional, Dict, Any, List, Union, cast
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
@@ -30,17 +31,89 @@ app.add_middleware(
 
 SESSION_NOT_FOUND = "Session not found"
 
+
+def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
+    """Create a dependency mapping {name: DependencyConfig} from cfg which may be None, bool, or dict.
+
+    This helper centralizes the conversion logic so callers (including SessionConfig._normalize_item)
+    can remain small and simpler to analyze.
+    """
+    # Default values
+    enabled = True
+    url: Optional[str] = top_level_url if name == "appium" else None
+    capabilities: Dict[str, Any] = top_level_capabilities or {}
+
+    if cfg is None:
+        # keep defaults: enabled=True
+        pass
+    elif isinstance(cfg, bool):
+        enabled = cfg
+    elif isinstance(cfg, dict):
+        enabled = cfg.get("enabled", True)
+        url = cfg.get("url") or (top_level_url if name == "appium" else None)
+        capabilities = cast(Dict[str, Any], cfg.get("capabilities")) if isinstance(cfg.get("capabilities"), dict) else (top_level_capabilities or {})
+    else:
+        # Unknown scalar -> keep enabled True and defaults
+        pass
+
+    return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
+
 class SessionConfig(BaseModel):
     """
     Configuration for starting a new Optics session.
+
+    This model accepts two formats for source lists:
+    - Deprecated simple format: list of strings, e.g. ["appium", "selenium"]
+    - New detailed format: list of dicts, e.g. [{"appium": {"enabled": True, "url": "...", "capabilities": {...}}}]
+
+    Use `normalize_sources()` to convert entries into a consistent list of
+    {name: DependencyConfig} mappings used by the server internals.
     """
-    driver_sources: List[str]
-    elements_sources: List[str] = []
-    text_detection: List[str] = []
-    image_detection: List[str] = []
+    driver_sources: List[Union[str, Dict[str, Any]]] = []
+    elements_sources: List[Union[str, Dict[str, Any]]] = []
+    text_detection: List[Union[str, Dict[str, Any]]] = []
+    image_detection: List[Union[str, Dict[str, Any]]] = []
     project_path: Optional[str] = None
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
+
+    def _normalize_item(self, item: Union[str, Dict[str, Any]], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
+        """Normalize a single source item into {name: DependencyConfig}.
+
+        - If item is a string, return {item: DependencyConfig(enabled=True)}.
+        - If item is a dict like {name: {...}}, map inner dict to DependencyConfig.
+        - For 'appium' string entries, prefer top-level appium_url/appium_config when present.
+        """
+        if isinstance(item, str):
+            if item == "appium":
+                # prefer top-level appium settings when provided
+                return {"appium": DependencyConfig(enabled=True, url=top_level_url, capabilities=top_level_capabilities or {})}
+            return _make_dependency_entry(item, None, top_level_url=top_level_url, top_level_capabilities=top_level_capabilities)
+
+        if isinstance(item, dict):
+            # Expect single key mapping name -> config
+            name = next(iter(item.keys()))
+            cfg = item[name]
+            return _make_dependency_entry(name, cfg, top_level_url=top_level_url, top_level_capabilities=top_level_capabilities)
+
+        # Fallback
+        raise ValueError(f"Unsupported source item type: {type(item)}")
+
+    def normalize_sources(self) -> Dict[str, List[Dict[str, DependencyConfig]]]:
+        """Return normalized driver/elements/text/image source lists as expected by internal setup.
+
+        Each list item will be a dict mapping source name to a DependencyConfig instance.
+        """
+        driver = [self._normalize_item(i, top_level_url=self.appium_url, top_level_capabilities=self.appium_config) for i in (self.driver_sources or [])]
+        elements = [self._normalize_item(i) for i in (self.elements_sources or [])]
+        text = [self._normalize_item(i) for i in (self.text_detection or [])]
+        image = [self._normalize_item(i) for i in (self.image_detection or [])]
+        return {
+            "driver_sources": driver,
+            "elements_sources": elements,
+            "text_detection": text,
+            "image_detection": image,
+        }
 
 class AppiumUpdateRequest(BaseModel):
     """
@@ -115,25 +188,23 @@ async def create_session(config: SessionConfig):
             internal_logger.warning(
                 "Session creation attempted while another session is active."
             )
-        driver_sources = []
-        for name in config.driver_sources:
-            if name == "appium":
-                driver_sources.append({
-                    "appium": DependencyConfig(
-                        enabled=True,
-                        url=config.appium_url,
-                        capabilities=config.appium_config or {}
-                    )
-                })
-            else:
-                driver_sources.append({name: DependencyConfig(enabled=True)})
 
-        def build_source(source_list):
-            return [{name: DependencyConfig(enabled=True)} for name in source_list]
+        # Deprecation warning: appium_url and appium_config are legacy top-level fields
+        if config.appium_url is not None or config.appium_config is not None:
+            msg = (
+                "SessionConfig.appium_url and SessionConfig.appium_config are deprecated and will be removed in a future "
+                "release. Please provide Appium configuration via a driver_sources entry (e.g. {'appium': {'url': '...', 'capabilities': {...}}})."
+            )
+            internal_logger.warning(msg)
+            # Also emit a Python DeprecationWarning so callers and test suites can detect it
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
 
-        elements_sources = build_source(config.elements_sources)
-        text_detection = build_source(config.text_detection)
-        image_detection = build_source(config.image_detection)
+        # Normalize incoming session config (supports deprecated string lists and new dict format)
+        normalized = config.normalize_sources()
+        driver_sources = normalized.get("driver_sources", [])
+        elements_sources = normalized.get("elements_sources", [])
+        text_detection = normalized.get("text_detection", [])
+        image_detection = normalized.get("image_detection", [])
 
         session_config = Config(
             driver_sources=driver_sources,
@@ -191,7 +262,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         mode="keyword",
         keyword=request.keyword,
         params=request.params,
-        runner_type="test_runner",
+        runner_type="keyword",
         use_printer=False
     )
 
@@ -235,7 +306,7 @@ def run_keyword_endpoint(session_id: str, keyword: str, params: List[str] = []) 
     return execute_keyword(session_id, request)
 
 
-@app.get("/session/{session_id}/screenshot")
+@app.get("/v1/session/{session_id}/screenshot")
 async def capture_screenshot(session_id: str):
     """
     Capture a screenshot in the specified session.
@@ -259,7 +330,7 @@ async def get_elements(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "get_interactive_elements")
 
-@app.get("/session/{session_id}/source")
+@app.get("/v1/session/{session_id}/source")
 async def get_pagesource(session_id: str):
     """
     Capture the page source from the current session.
@@ -267,7 +338,7 @@ async def get_pagesource(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_pagesource")
 
-@app.get("/session/{session_id}/screen_elements")
+@app.get("/v1/session/{session_id}/screen_elements")
 async def screen_elements(session_id: str):
     """
     Capture and get screen elements from the current session.
@@ -346,18 +417,18 @@ async def delete_session(session_id: str):
     Terminate the specified session and clean up resources.
     Returns termination status.
     """
+    kill_request = ExecuteRequest(
+        mode="keyword",
+        keyword="close_and_terminate_app",
+        params=[]
+    )
     try:
-        kill_request = ExecuteRequest(
-            mode="keyword",
-            keyword="close_and_terminate_app",
-            params=[]
-        )
         await execute_keyword(session_id, kill_request)
-        session_manager.terminate_session(session_id)
-        internal_logger.info(f"Terminated session: {session_id}")
-        return TerminationResponse()
     except Exception as e:
         internal_logger.error(f"Failed to terminate session {session_id}: {e}")
         if isinstance(e, OpticsError):
             raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"Session termination failed: {e}") from e
+    session_manager.terminate_session(session_id)
+    internal_logger.info(f"Terminated session: {session_id}")
+    return TerminationResponse()

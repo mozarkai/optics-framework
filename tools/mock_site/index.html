@@ -183,27 +183,29 @@
           <div class="section-title">Session Controls</div>
           <form id="session-form">
             <div class="form-group">
-              <label for="driver_sources">Driver Sources (comma separated)</label>
-              <input type="text" id="driver_sources" value="appium">
+              <label>Driver Sources</label>
+              <div id="driver_list"></div>
+              <div style="margin-top:0.6em;"><button type="button" onclick="addDriverEntry()">Add driver</button></div>
             </div>
             <div class="form-group">
-              <label for="elements_sources">Elements Sources (comma separated)</label>
-              <input type="text" id="elements_sources" value="appium_find_element,appium_screenshot">
+              <label>Elements Sources</label>
+              <div id="elements_list"></div>
+              <div style="margin-top:0.6em;"><button type="button" onclick="addElementEntry()">Add element
+                  source</button></div>
             </div>
             <div class="form-group">
-              <label for="appium_url">Appium URL</label>
-              <input type="text" id="appium_url" value="http://localhost:4723">
+              <label>Text Detection Sources</label>
+              <div id="text_list"></div>
+              <div style="margin-top:0.6em;"><button type="button" onclick="addTextEntry()">Add text detection</button>
+              </div>
             </div>
             <div class="form-group">
-              <label for="appium_config">Appium Config (JSON)</label>
-              <textarea id="appium_config" rows="5">{
-  "appActivity": "com.android.contacts.activities.PeopleActivity",
-  "appPackage": "com.google.android.contacts",
-  "automationName": "UiAutomator2",
-  "deviceName": "emulator-5554",
-  "platformName": "Android"
-}</textarea>
+              <label>Image Detection Sources</label>
+              <div id="image_list"></div>
+              <div style="margin-top:0.6em;"><button type="button" onclick="addImageEntry()">Add image
+                  detection</button></div>
             </div>
+            <!-- Per-source configs are now managed below -->
             <div class="button-group">
               <button type="button" onclick="startSession()">Start Session</button>
               <button type="button" onclick="stopSession()">Stop Session</button>
@@ -239,6 +241,10 @@
             <button type="button" onclick="getScreenElements()">Get Screen Elements</button>
           </div>
         </div>
+        <div class="card">
+          <div class="section-title">Screenshot Preview</div>
+          <img id="screenshot-img" class="img-preview" src="" alt="Screenshot will appear here">
+        </div>
       </div>
     </div>
     <div class="row">
@@ -248,12 +254,7 @@
           <div id="response" class="response"></div>
         </div>
       </div>
-      <div class="column">
-        <div class="card">
-          <div class="section-title">Screenshot Preview</div>
-          <img id="screenshot-img" class="img-preview" src="" alt="Screenshot will appear here">
-        </div>
-      </div>
+
     </div>
   </div>
   <script>
@@ -273,17 +274,18 @@
 
     function startSession() {
       previousSessionId = sessionId;
-      const driver_sources = document.getElementById('driver_sources').value.split(',').map(s => s.trim());
-      const elements_sources = document.getElementById('elements_sources').value.split(',').map(s => s.trim());
-      const appium_url = document.getElementById('appium_url').value;
-      let appium_config = {};
-      try {appium_config = JSON.parse(document.getElementById('appium_config').value);} catch (e) {showResponse('Invalid Appium Config JSON'); return;}
+      // Collect per-source lists from the dynamic editors
+      const driver_sources = collectListEntries('driver_list');
+      const elements_sources = collectListEntries('elements_list');
+      const text_detection = collectListEntries('text_list');
+      const image_detection = collectListEntries('image_list');
+      // If user provided top-level Appium fields, convert them to the new driver_sources entry
+      // to follow the server's preferred configuration format. This keeps backwards compatibility
+      // while warning users about the deprecation.
       const url = `${API_BASE}/v1/sessions/start`;
-      const options = {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({driver_sources, elements_sources, appium_url, appium_config})
-      };
+      const payload = {driver_sources, elements_sources, text_detection, image_detection};
+
+      const options = {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)};
       logRequest(url, options);
       fetch(url, options)
         .then(res => res.json())
@@ -297,6 +299,75 @@
         })
         .catch(err => {logResponse(url, err); showResponse(err);});
     }
+
+    // --- Dynamic list helpers and renderers ---
+    function collectListEntries(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return [];
+      const entries = [];
+      Array.from(container.querySelectorAll('.list-entry')).forEach((el) => {
+        const name = el.querySelector('.entry-name').value.trim();
+        const cfgText = el.querySelector('.entry-config').value.trim();
+        let cfg = null;
+        if (cfgText) {
+          try {cfg = JSON.parse(cfgText);} catch (e) {cfg = cfgText;}
+        }
+        if (cfg === null || cfg === '') {
+          // send legacy string form
+          entries.push(name);
+        } else {
+          const obj = {};
+          obj[name] = cfg === null ? null : cfg;
+          entries.push(obj);
+        }
+      });
+      return entries;
+    }
+
+    function addDriverEntry(name = 'appium', config = {enabled: true, url: 'http://localhost:4723', capabilities: {appActivity: 'com.android.contacts.activities.PeopleActivity', appPackage: 'com.google.android.contacts', automationName: 'UiAutomator2', deviceName: 'emulator-5554', platformName: 'Android'}}) {
+      addListEntry('driver_list', name, JSON.stringify(config, null, 2));
+    }
+
+    function addElementEntry(name = 'appium_find_element', config = {enabled: true}) {
+      addListEntry('elements_list', name, JSON.stringify(config, null, 2));
+    }
+
+    function addTextEntry(name = 'easyocr', config = {enabled: false}) {
+      addListEntry('text_list', name, JSON.stringify(config, null, 2));
+    }
+
+    function addImageEntry(name = 'templatematch', config = {enabled: false}) {
+      addListEntry('image_list', name, JSON.stringify(config, null, 2));
+    }
+
+    function addListEntry(containerId, name, configText) {
+      const container = document.getElementById(containerId);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'list-entry';
+      wrapper.style.border = '1px solid #e3eafc';
+      wrapper.style.padding = '0.6em';
+      wrapper.style.marginBottom = '0.6em';
+      wrapper.innerHTML = `
+        <div style="display:flex;gap:0.6em;align-items:center;margin-bottom:0.4em;">
+          <input class="entry-name" style="flex:0 0 180px;" value="${name}">
+          <button type="button" onclick="this.parentNode.parentNode.remove()">Remove</button>
+        </div>
+        <textarea class="entry-config" rows="4" style="width:100%;font-family:monospace;">${configText || ''}</textarea>
+      `;
+      container.appendChild(wrapper);
+    }
+
+    // Initialize with sample entries similar to samples/contact/config.yaml
+    document.addEventListener('DOMContentLoaded', () => {
+      // drivers
+      addDriverEntry();
+      // elements
+      addElementEntry('appium_find_element', {enabled: true});
+      addElementEntry('appium_screenshot', {enabled: true});
+      // text & image
+      addTextEntry();
+      addImageEntry();
+    });
     function stopSession() {
       if (!sessionId) {showResponse('No session started'); return;}
       const url = `${API_BASE}/v1/sessions/${sessionId}/stop`;
@@ -325,18 +396,39 @@
         body: JSON.stringify({mode: 'keyword', keyword, params})
       };
       logRequest(url, options);
+      // Execute keyword first, then after a short delay fetch screenshot and elements concurrently
       fetch(url, options)
         .then(res => res.json())
-        .then(data => {logResponse(url, data); showResponse(data);})
-        .catch(err => {logResponse(url, err); showResponse(err);});
+        .then(data => {
+          logResponse(url, data);
+          showResponse(data);
+        })
+        .catch(err => {logResponse(url, err); showResponse(err);})
+        .finally(() => {
+          // wait briefly for the action to take effect on device
+          setTimeout(() => {
+            Promise.all([
+              // both functions now return the fetch promise
+              getScreenshot(),
+              getElements(),
+            ])
+              .then(() => {
+                // both updated UI independently; append info to response
+                showResponse({info: 'Screenshot and Elements refreshed'});
+              })
+              .catch((e) => {
+                console.warn('Error fetching screenshot/elements', e);
+              });
+          }, 2000);
+        });
     }
     function getScreenshot() {
       if (!sessionId) {showResponse('No session started'); return;}
-      const url = `${API_BASE}/session/${sessionId}/screenshot`;
+      const url = `${API_BASE}/v1/session/${sessionId}/screenshot`;
       logRequest(url, {});
-      fetch(url)
-        .then(res => res.json())
-        .then(data => {
+      return fetch(url)
+        .then((res) => res.json())
+        .then((data) => {
           logResponse(url, data);
           // Prevent base64 from overflowing response area
           let displayData = JSON.parse(JSON.stringify(data));
@@ -365,21 +457,34 @@
           } else {
             document.getElementById('screenshot-img').src = '';
           }
+          return data;
         })
-        .catch(err => {logResponse(url, err); showResponse(err);});
+        .catch((err) => {
+          logResponse(url, err);
+          showResponse(err);
+          throw err;
+        });
     }
     function getElements() {
       if (!sessionId) {showResponse('No session started'); return;}
-      const url = `${API_BASE}/session/${sessionId}/elements`;
+      const url = `${API_BASE}/v1/session/${sessionId}/elements`;
       logRequest(url, {});
-      fetch(url)
-        .then(res => res.json())
-        .then(data => {logResponse(url, data); showResponse(data);})
-        .catch(err => {logResponse(url, err); showResponse(err);});
+      return fetch(url)
+        .then((res) => res.json())
+        .then((data) => {
+          logResponse(url, data);
+          showResponse(data);
+          return data;
+        })
+        .catch((err) => {
+          logResponse(url, err);
+          showResponse(err);
+          throw err;
+        });
     }
     function getPageSource() {
       if (!sessionId) {showResponse('No session started'); return;}
-      const url = `${API_BASE}/session/${sessionId}/source`;
+      const url = `${API_BASE}/v1/session/${sessionId}/source`;
       logRequest(url, {});
       fetch(url)
         .then(res => res.json())
@@ -388,7 +493,7 @@
     }
     function getScreenElements() {
       if (!sessionId) {showResponse('No session started'); return;}
-      const url = `${API_BASE}/session/${sessionId}/screen_elements`;
+      const url = `${API_BASE}/v1/session/${sessionId}/screen_elements`;
       logRequest(url, {});
       fetch(url)
         .then(res => res.json())

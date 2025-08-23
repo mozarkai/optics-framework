@@ -56,9 +56,11 @@ class TextInterface(ABC):
     @abstractmethod
     def detect_text(
         self, input_data
-    ) -> Optional[List[Tuple[List[Tuple[int, int]], str, float]]]:
+    ) -> Optional[Tuple[str, List[Tuple[List[Tuple[int, int]], str, float]]]]:
         """
-        Assert that elements are present in the input data based on the specified rule.
+        Detect text in the input data and return a tuple of (detected_text_str, results).
+
+        Each result is a tuple: (bbox, text, confidence) where bbox is a list of (x,y) tuples.
 
         :param input_data: The input source (e.g., image, video frame) for detection.
         :type input_data: Any

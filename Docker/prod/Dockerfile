@@ -19,9 +19,9 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     fastapi \
     optics-framework \
     uvicorn \
-&& python -c "import easyocr; easyocr.Reader(['en'])" \
-&& rm -rf /var/lib/apt/lists/* \
-&& chown -R appuser:appuser /app
+ && python3 -c "import easyocr; easyocr.Reader(['en'], download_enabled=True)" \
+ && rm -rf /var/lib/apt/lists/* \
+ && chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
