@@ -1,6 +1,5 @@
 from typing import Union, List, Dict, Optional, Type, TypeVar, Any
 from pydantic import BaseModel
-from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface
@@ -30,11 +29,13 @@ class OpticsBuilder:
     A builder that sets configurations and instantiates drivers for Optics Framework API classes.
     """
 
-    def __init__(self, event_sdk: EventSDK) -> None:
+    def __init__(self, session) -> None:
         self.config: OpticsConfig = OpticsConfig()
         self._instances: Dict[str, Any] = {}
-        self.event_sdk = event_sdk
-        self.project_path = event_sdk.config_handler.get("project_path")
+        self.session = session
+        self.event_sdk = session.event_sdk
+        self.session_config = session.config
+        self.project_path = session.config.project_path
 
     def normalise_config(self, config: Union[str, List[Union[str, Dict[Any, Any]]], List[Dict[Any, Any]]]) -> List[Dict[Any, Any]]:
         """
@@ -82,6 +83,7 @@ class OpticsBuilder:
             for key in item:
                 if isinstance(item[key], dict):
                     item[key]["project_path"] = project_path
+                    item[key]["execution_output_path"] = self.session_config.execution_output_path
                     if templates is not None:
                         item[key]["templates"] = templates
         self.config.image_config = normalized
@@ -90,7 +92,13 @@ class OpticsBuilder:
     def add_text_detection(
         self, config: Union[str, List[Union[str, Dict]]]
     ) -> "OpticsBuilder":
-        self.config.text_config = config
+        normalized = self.normalise_config(config)
+        # Inject execution_output_path into each config dict
+        for item in normalized:
+            for key in item:
+                if isinstance(item[key], dict):
+                    item[key]["execution_output_path"] = self.session_config.execution_output_path
+        self.config.text_config = normalized
         return self
 
     # Instantiation methods

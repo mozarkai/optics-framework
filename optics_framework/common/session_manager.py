@@ -10,9 +10,6 @@ from optics_framework.common.models import TestCaseNode, ElementData, ApiData, M
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.events import get_event_manager_registry
 
-# Global session context
-_current_template_data: Optional[TemplateData] = None
-_current_execution_output_path: Optional[str] = None
 
 def discover_templates(project_path: str) -> TemplateData:
     """
@@ -36,29 +33,6 @@ def discover_templates(project_path: str) -> TemplateData:
             template_data.add_template(image_file.name, str(image_file))
     return template_data
 
-def set_current_template_data(template_data: TemplateData) -> None:
-    """Set the current template data for the session."""
-    global _current_template_data
-    _current_template_data = template_data
-
-def get_current_template_data() -> Optional[TemplateData]:
-    """Get the current template data for the session."""
-    return _current_template_data
-
-def set_current_execution_output_path(output_path: str) -> None:
-    """Set the current execution output path for the session."""
-    global _current_execution_output_path
-    _current_execution_output_path = output_path
-
-def get_current_execution_output_path() -> Optional[str]:
-    """Get the current execution output path for the session."""
-    return _current_execution_output_path
-
-def clear_session_context() -> None:
-    """Clear all session context data."""
-    global _current_template_data, _current_execution_output_path
-    _current_template_data = None
-    _current_execution_output_path = None
 
 class SessionHandler(ABC):
     """Abstract interface for session management."""
@@ -131,7 +105,7 @@ class Session:
             raise ValueError("No enabled drivers found in configuration")
 
         self.event_sdk = EventSDK(self.config_handler)
-        self.optics = OpticsBuilder(self.event_sdk)
+        self.optics = OpticsBuilder(self)
         self.optics.add_driver(enabled_driver_configs)
         self.optics.add_element_source(enabled_element_configs)
         self.optics.add_text_detection(enabled_text_configs)
@@ -167,13 +141,6 @@ class SessionManager(SessionHandler):
         if templates is None and hasattr(processed_config, 'project_path') and processed_config.project_path:
             templates = discover_templates(processed_config.project_path)
 
-        # Set global template data for the session
-        if templates is not None:
-            set_current_template_data(templates)
-
-        # Set global execution output path for the session
-        if hasattr(processed_config, 'execution_output_path') and processed_config.execution_output_path:
-            set_current_execution_output_path(processed_config.execution_output_path)
 
         self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates)
         return session_id
@@ -189,4 +156,3 @@ class SessionManager(SessionHandler):
             session.driver.terminate()
         cleanup_junit(session_id)
         get_event_manager_registry().remove_session(session_id)
-        clear_session_context()

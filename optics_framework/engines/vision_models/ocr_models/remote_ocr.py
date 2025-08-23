@@ -26,6 +26,7 @@ class RemoteOCR(TextInterface):
         self.timeout: int = self.capabilities.get("timeout", 30)
         self.method: str = self.capabilities.get("method", "easyocr")
         self.language: str = self.capabilities.get("language", "en")
+        self.execution_output_dir: str = config.get("execution_output_path", "")
 
     def detect_text(self, input_data: str) -> List[Tuple[List[Tuple[int, int]], str, float]]:
         """
@@ -137,7 +138,7 @@ class RemoteOCR(TextInterface):
             cv2.circle(img, center, 5, (0, 0, 255), -1)  # pylint: disable=no-member
 
             # Save the annotated screenshot
-            utils.save_screenshot(img, "detected_text")
+            utils.save_screenshot(img, "detected_text", output_dir=self.execution_output_dir)
 
         return result
 

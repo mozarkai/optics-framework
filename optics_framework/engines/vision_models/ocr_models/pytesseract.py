@@ -12,15 +12,18 @@ class PytesseractHelper(TextInterface):
     specific reference text.
     """
 
-    def __init__(self, language: str = "en"):
+    def __init__(self, config=None):
         """
-        Initializes the EasyOCR reader.
+        Initializes the Pytesseract OCR reader.
 
-        :param language: Language code for OCR (default: "en").
-        :type language: str
+        :param config: Configuration dict containing language and execution_output_path.
+        :type config: dict
 
-        :raises RuntimeError: If EasyOCR fails to initialize.
+        :raises RuntimeError: If Pytesseract fails to initialize.
         """
+        # Extract parameters from config or use defaults
+        self.execution_output_dir = config.get("execution_output_path", "") if config else ""
+
         self.pytesseract_config = "--oem 3 --psm 6"
         # internal_logger.debug(f"Pytesseract initialized with config: {self.pytesseract_config}")
 
@@ -66,7 +69,7 @@ class PytesseractHelper(TextInterface):
         # Save the annotated frame
         cv2.rectangle(frame, selected_bbox[0], selected_bbox[1], (0, 255, 0), 2)
         cv2.circle(frame, selected_center, 5, (0, 0, 255), -1)
-        utils.save_screenshot(frame, name='annotated_frame')
+        utils.save_screenshot(frame, name='annotated_frame', output_dir=self.execution_output_dir)
 
         return True, selected_center, selected_bbox
 

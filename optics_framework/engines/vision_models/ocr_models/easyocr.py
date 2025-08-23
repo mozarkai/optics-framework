@@ -6,8 +6,6 @@ from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
 
 
-
-
 class EasyOCRHelper(TextInterface):
     """
     Helper class for Optical Character Recognition (OCR) using EasyOCR.
@@ -16,15 +14,19 @@ class EasyOCRHelper(TextInterface):
     specific reference text.
     """
 
-    def __init__(self, language: str = "en"):
+    def __init__(self, config=None):
         """
         Initializes the EasyOCR reader.
 
-        :param language: Language code for OCR (default: "en").
-        :type language: str
+        :param config: Configuration dict containing language and execution_output_path.
+        :type config: dict
 
         :raises RuntimeError: If EasyOCR fails to initialize.
         """
+        # Extract parameters from config or use defaults
+        language = config.get("language", "en") if config else "en"
+        self.execution_output_dir = config.get("execution_output_path", "") if config else ""
+
         try:
             self.reader = easyocr.Reader([language])
             # internal_logger.debug(f"EasyOCR initialized with language: {language}")
@@ -97,7 +99,7 @@ class EasyOCRHelper(TextInterface):
             return None
 
         utils.save_screenshot(
-            input_data, "text_location_annotation")
+            input_data, "text_location_annotation", output_dir=self.execution_output_dir)
         return detected_texts[0]
 
     def detect_text(self, input_data) -> Optional[Tuple[str, List[Tuple[List[List[int]], str, float]]]]:

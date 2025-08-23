@@ -60,7 +60,7 @@ class ActionKeyword:
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection
         )
-        self.execution_dir = builder.event_sdk.config_handler.config.execution_output_path
+        self.execution_dir = builder.session_config.execution_output_path
 
     # Click actions
     @with_self_healing
@@ -96,7 +96,7 @@ class ActionKeyword:
         :param event_name: The event triggering the press.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_by_percentage")
+        utils.save_screenshot(screenshot_np, "press_by_percentage", output_dir=self.execution_dir)
         element_source_type = type(getattr(self.element_source, 'current_instance', self.element_source)).__name__
         if 'appium' in element_source_type.lower():
             self.driver.press_percentage_coordinates(
@@ -120,7 +120,7 @@ class ActionKeyword:
         :param event_name: The event triggering the press.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_by_coordinates")
+        utils.save_screenshot(screenshot_np, "press_by_coordinates", output_dir=self.execution_dir)
         self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
 
     def press_element_with_index(self, element: str, index_str: str = "0", event_name: Optional[str] = None) -> None:
@@ -133,7 +133,7 @@ class ActionKeyword:
         """
         index = int(index_str)
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_element_with_index")
+        utils.save_screenshot(screenshot_np, "press_element_with_index", output_dir=self.execution_dir)
         element_source_type = type(self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)
         if element_type == 'Text':
@@ -179,7 +179,10 @@ class ActionKeyword:
                     result = self.image_detection.find_element(
                         screenshot_image, element, index)
                     if result is not None and isinstance(result, (tuple, list)) and len(result) == 3:
-                        _, centre, _ = result
+                        _, centre, bbox = result
+                        if centre is not None:
+                            annotated_frame = utils.annotate(screenshot_image.copy(), [bbox])
+                            utils.save_screenshot(annotated_frame, "press_element_with_index", output_dir=self.execution_dir)
                     else:
                         centre = None
                 except Exception:
@@ -257,7 +260,7 @@ class ActionKeyword:
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe")
+        utils.save_screenshot(screenshot_np, "swipe", output_dir=self.execution_dir)
         self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name)
 
     @DeprecationWarning
@@ -268,7 +271,7 @@ class ActionKeyword:
         :param element: The seekbar element (Image template, OCR template, or XPath).
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe_seekbar_to_right_android")
+        utils.save_screenshot(screenshot_np, "swipe_seekbar_to_right_android", output_dir=self.execution_dir)
         self.driver.swipe_element(element, 'right', 50, event_name)
 
     def swipe_until_element_appears(self, element: str, direction: str, timeout: str, event_name: Optional[str] = None) -> None:
@@ -281,7 +284,7 @@ class ActionKeyword:
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe_until_element_appears")
+        utils.save_screenshot(screenshot_np, "swipe_until_element_appears", output_dir=self.execution_dir)
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
@@ -317,7 +320,7 @@ class ActionKeyword:
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "scroll")
+        utils.save_screenshot(screenshot_np, "scroll", output_dir=self.execution_dir)
         self.driver.scroll(direction, 1000, event_name)
 
     def scroll_until_element_appears(self, element: str, direction: str, timeout: str, event_name: Optional[str] = None) -> None:
@@ -330,7 +333,7 @@ class ActionKeyword:
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "scroll_until_element_appears")
+        utils.save_screenshot(screenshot_np, "scroll_until_element_appears", output_dir=self.execution_dir)
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
@@ -385,7 +388,7 @@ class ActionKeyword:
         :param event_name: The event triggering the input.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "enter_text_keyboard")
+        utils.save_screenshot(screenshot_np, "enter_text_keyboard", output_dir=self.execution_dir)
         self.driver.enter_text(text, event_name)
 
     def enter_text_using_keyboard(self, text_input: str, event_name: Optional[str] = None) -> None:
@@ -408,7 +411,7 @@ class ActionKeyword:
                 pass
 
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "enter_text_using_keyboard")
+        utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
         self.driver.enter_text_using_keyboard(text_input, event_name)
 
     @with_self_healing
@@ -442,7 +445,7 @@ class ActionKeyword:
         :param event_name: The event triggering the press.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_keycode")
+        utils.save_screenshot(screenshot_np, "press_keycode", output_dir=self.execution_dir)
         self.driver.press_keycode(keycode, event_name)
 
     @with_self_healing
@@ -471,7 +474,7 @@ class ActionKeyword:
         :return: The text from the element or None if not supported.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "get_text")
+        utils.save_screenshot(screenshot_np, "get_text", output_dir=self.execution_dir)
         element_source_type = type(
             self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)

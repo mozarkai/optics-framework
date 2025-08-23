@@ -51,7 +51,6 @@ class ScreenshotStream:
                     self.screenshot_queue.get()
                 self.screenshot_queue.put((frame, timestamp))
                 internal_logger.debug(f"Screenshot added to queue at {timestamp}")
-                # utils.save_screenshot(frame, f"debug_{timestamp}") # uncomment to save debug images
             except queue.Full:
                 internal_logger.debug("Screenshot queue is full. Dropping oldest frame.")
 

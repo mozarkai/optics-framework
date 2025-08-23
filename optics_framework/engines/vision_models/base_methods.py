@@ -2,7 +2,6 @@ import numpy as np
 import cv2
 from typing import Optional
 from optics_framework.common.models import TemplateData
-from optics_framework.common.session_manager import get_current_template_data
 
 def load_template(element: str, template_data: Optional[TemplateData] = None) -> np.ndarray:
     """
@@ -10,7 +9,7 @@ def load_template(element: str, template_data: Optional[TemplateData] = None) ->
 
     :param element: The name of the template image file.
     :type element: str
-    :param template_data: Optional TemplateData containing image mappings. If None, uses global template data.
+    :param template_data: TemplateData containing image mappings. Must be provided.
     :type template_data: Optional[TemplateData]
 
     :return: The template image as a NumPy array.
@@ -19,10 +18,7 @@ def load_template(element: str, template_data: Optional[TemplateData] = None) ->
     :raises ValueError: If the template is not found.
     """
     if template_data is None:
-        template_data = get_current_template_data()
-
-    if template_data is None:
-        raise ValueError("No template data available. Ensure templates are discovered during session creation.")
+        raise ValueError("Template data is required. Pass it from the session.templates.")
 
     template_path = template_data.get_template_path(element)
     if not template_path:

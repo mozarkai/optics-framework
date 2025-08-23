@@ -20,7 +20,7 @@ class Verifier:
             self.element_source, self.text_detection, self.image_detection
         )
         self.event_sdk: EventSDK = builder.event_sdk
-        self.execution_dir = builder.event_sdk.config_handler.config.execution_output_path
+        self.execution_dir = builder.session_config.execution_output_path
 
     def validate_element(
         self,
@@ -79,41 +79,75 @@ class Verifier:
         :param event_name: The name of the event associated with the assertion, if any.
         :return: True if the rule is satisfied, False otherwise.
         """
-
         rule = rule.lower()
         timeout = int(timeout_str)
         elements_list = elements.split('|')
-        # Group elements by type
-        grouped_elements = {
-            'Text': [el for el in elements_list if utils.determine_element_type(el) == 'Text'],
-            'XPath': [el for el in elements_list if utils.determine_element_type(el) == 'XPath'],
-            'Image': [el for el in elements_list if utils.determine_element_type(el) == 'Image']
-        }
-        result_parts = []
-        timestamps = []
 
-        for elem_type, elem_group in grouped_elements.items():
-            if elem_group:
-                status, timestamp = self.strategy_manager.assert_presence(elem_group, elem_type, timeout, rule)
-                result_parts.append(status)
-                if timestamp:
-                    timestamps.append(timestamp)
+        grouped_elements = self._group_elements_by_type(elements_list)
+        result_parts, timestamps = self._process_element_groups(grouped_elements, timeout, rule)
 
         if not result_parts:
             internal_logger.warning("No valid elements provided for assertion.")
             return False
 
-        result = any(result_parts) if rule == 'any' else all(result_parts)
-        if result:
-            earliest_timestamp = min(timestamps) if timestamps else None
-            if event_name and earliest_timestamp:
-                self.event_sdk.capture_event_with_time_input(event_name, earliest_timestamp)
-        elif fail:
-            raise AssertionError("Presence assertion failed based on rule: " + rule)
+        result = self._evaluate_rule(result_parts, rule)
+        self._handle_result(result, timestamps, event_name, fail, rule)
         return result
 
+    def _group_elements_by_type(self, elements_list: list) -> dict:
+        """Group elements by their type (Text, XPath, Image)."""
+        return {
+            'Text': [el for el in elements_list if utils.determine_element_type(el) == 'Text'],
+            'XPath': [el for el in elements_list if utils.determine_element_type(el) == 'XPath'],
+            'Image': [el for el in elements_list if utils.determine_element_type(el) == 'Image']
+        }
 
-    def validate_screen(self, elements: str, timeout: str = "30", rule: str = 'any', event_name: Optional[str] = None) -> None:
+    def _process_element_groups(self, grouped_elements: dict, timeout: int, rule: str) -> tuple:
+        """Process each group of elements and collect results."""
+        result_parts = []
+        timestamps = []
+
+        for elem_type, elem_group in grouped_elements.items():
+            if elem_group:
+                status, timestamp, annotated_frame = self.strategy_manager.assert_presence(elem_group, elem_type, timeout, rule)
+                result_parts.append(status)
+
+                if timestamp:
+                    timestamps.append(timestamp)
+
+                if annotated_frame is not None:
+                    self._save_annotated_screenshot(annotated_frame, timestamp)
+
+        return result_parts, timestamps
+
+    def _save_annotated_screenshot(self, annotated_frame, timestamp):
+        """Save annotated screenshot with timestamp."""
+        utils.save_screenshot(
+            annotated_frame,
+            "assert_elements_image_detection_result",
+            time_stamp=timestamp,
+            output_dir=self.execution_dir
+        )
+
+    def _evaluate_rule(self, result_parts: list, rule: str) -> bool:
+        """Evaluate the rule against the result parts."""
+        return any(result_parts) if rule == 'any' else all(result_parts)
+
+    def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str):
+        """Handle the final result, including event capture and error raising."""
+        if result:
+            self._capture_success_event(timestamps, event_name)
+        elif fail:
+            raise AssertionError(f"Presence assertion failed based on rule: {rule}")
+
+    def _capture_success_event(self, timestamps: list, event_name: Optional[str]):
+        """Capture success event with the earliest timestamp."""
+        if event_name and timestamps:
+            earliest_timestamp = min(timestamps)
+            self.event_sdk.capture_event_with_time_input(event_name, earliest_timestamp)
+
+
+    def validate_screen(self, elements: str, timeout: str = "30", rule: str = 'any', event_name: Optional[str] = None) -> bool:
         """
         Verifies the specified screen by checking element presence.
 

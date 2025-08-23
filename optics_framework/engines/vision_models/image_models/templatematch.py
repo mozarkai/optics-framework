@@ -18,12 +18,14 @@ class TemplateMatchingHelper(ImageInterface):
         """
         Initialize TemplateMatchingHelper with config dict.
         Args:
-            config: dict containing configuration, including project_path.
+            config: dict containing configuration, including project_path and templates.
         """
         self.config = config
         if config is None:
             raise ValueError("Configuration must be provided.")
         self.project_path = self.config.get("project_path", "")
+        self.templates = self.config.get("templates", None)
+        self.execution_output_dir = self.config.get("execution_output_path", "")
 
     def find_element(
         self, input_data, image, index=None, confidence_level=0.85, min_inliers=10
@@ -32,7 +34,7 @@ class TemplateMatchingHelper(ImageInterface):
         Match a template image within a single frame image using SIFT and FLANN-based matching.
         Returns the location of a specific match by index.
         """
-        image = load_template(image)
+        image = load_template(image, self.templates)
         sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)

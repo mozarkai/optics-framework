@@ -179,9 +179,7 @@ class TextDetectionStrategy(LocatorStrategy):
                     break
         finally:
             ss_stream.stop_capture()
-        if annotated_frame is not None:
-            utils.save_screenshot(annotated_frame, "assert_elements_text_detection_result")
-        return result, timestamp
+        return result, timestamp, annotated_frame
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -231,9 +229,7 @@ class ImageDetectionStrategy(LocatorStrategy):
                     break
         finally:
             ss_stream.stop_capture()
-        if annotated_frame is not None:
-            utils.save_screenshot(annotated_frame, "assert_elements_image_detection_result", time_stamp=timestamp)
-        return result, timestamp
+        return result, timestamp, annotated_frame
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -395,8 +391,8 @@ class StrategyManager:
         for strategy in self.locator_strategies:
             internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
             if self._can_strategy_assert_elements(strategy, element_type):
-                result, timestamp = self._try_assert_with_strategy(strategy, elements, timeout, rule)
-                return result, timestamp
+                result, timestamp, annotated_frame = self._try_assert_with_strategy(strategy, elements, timeout, rule)
+                return result, timestamp, annotated_frame
         raise ValueError("No elements found.")
 
     def _validate_rule(self, rule: str):
@@ -414,26 +410,20 @@ class StrategyManager:
         """Try to assert elements using a specific strategy."""
         try:
             result_tuple = strategy.assert_elements(elements, timeout, rule)
-            result, timestamp = self._parse_result_tuple(result_tuple)
+            result, timestamp, annotated_frame = result_tuple
 
             if result:
                 execution_tracer.log_attempt(strategy, str(elements), "success")
-                return result, timestamp
+                return result, timestamp, annotated_frame
             else:
                 execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
                 internal_logger.debug(
                     f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
-                return False, None
+                return False, None, None
         except Exception as e:
             execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-            return False, None
+            return False, None, None
 
-    def _parse_result_tuple(self, result_tuple):
-        """Parse the result tuple from strategy.assert_elements."""
-        if isinstance(result_tuple, tuple):
-            return result_tuple
-        else:
-            return result_tuple, None
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""

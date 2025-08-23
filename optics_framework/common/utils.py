@@ -8,12 +8,12 @@ import cv2
 import json
 import base64
 import numpy as np
-from optics_framework.common.session_manager import get_current_execution_output_path
 from enum import Enum
 from datetime import timezone, timedelta
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
 
+OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 
 class SpecialKey(Enum):
     ENTER = 'enter'
@@ -117,20 +117,25 @@ def compare_text(given_text, target_text):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
-def save_screenshot(img, name, time_stamp = None, output_dir = None):
+def save_screenshot(img, name, output_dir, time_stamp=None):
     """
     Save the screenshot with a timestamp and keyword in the filename.
+
+    Args:
+        img: The image to save
+        name: Name for the screenshot file
+        output_dir: Directory where to save the screenshot (required)
+        time_stamp: Optional timestamp, will be generated if not provided
     """
     if img is None:
         internal_logger.error("Image is empty. Cannot save screenshot.")
         raise ValueError("Image is empty. Cannot save screenshot.")
+    if output_dir is None:
+        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
+        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    output_dir = output_dir or get_current_execution_output_path()
-    if output_dir is None:
-        internal_logger.error("Failed to get execution output directory. Cannot save screenshot.")
-        return
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
         cv2.imwrite(screenshot_file_path, img)
@@ -175,34 +180,18 @@ def annotate_element(frame, centre_coor, bbox):
     cv2.circle(frame, centre_coor, 5, (0, 0, 255), -1)
     return frame
 
-def annotate_and_save(frame, element_status):
+def save_page_source(tree, time_stamp, output_dir):
     """
-    Draw bounding boxes on the frame for found elements and save the annotated image.
+    Save page source to XML log file.
 
     Args:
-        frame (numpy.ndarray): Image to annotate.
-        element_status (dict): Dictionary containing found elements and their bounding boxes.
+        tree: The page source tree/content
+        time_stamp: Timestamp for the entry
+        output_dir: Directory where to save the page source (required)
     """
-    if frame is None:
-        return
-
-    # Annotate detected texts and images with GREEN color (no labels)
-    for category, items in element_status.items():
-        for item_name, status in items.items():
-            if status["found"] and status["bbox"]:
-                (x1, y1), (x2, y2) = status["bbox"]
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green for both text and images
-
-    # Save annotated frame
-    save_screenshot(frame, name="annotated_frame")
-
-
-
-
-def save_page_source(tree, time_stamp, output_dir = None):
     if output_dir is None:
-        internal_logger.error("Failed to get execution output directory. Cannot save page source.")
-        return
+        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
+        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
     page_source_file_path = os.path.join(output_dir, "page_sources_log.xml")
 
     # Remove any XML declaration
@@ -230,10 +219,18 @@ def save_page_source(tree, time_stamp, output_dir = None):
     internal_logger.debug(f"Page source saved to: {page_source_file_path}")
 
 
-def save_page_source_html(html: str, time_stamp, output_dir=None):
+def save_page_source_html(html: str, time_stamp, output_dir):
+    """
+    Save HTML page source to log file.
+
+    Args:
+        html: The HTML content to save
+        time_stamp: Timestamp for the entry
+        output_dir: Directory where to save the HTML (required)
+    """
     if output_dir is None:
-        internal_logger.error("Failed to get execution output directory. Cannot save HTML page source.")
-        return
+        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
+        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
     page_source_file_path = os.path.join(output_dir, "page_sources_log.html")
     # Prepare entry block with timestamp comment
     entry_block = f'\n<!-- timestamp: {time_stamp} -->\n{html}\n'
@@ -255,10 +252,17 @@ def strip_sensitive_prefix(value: str) -> str:
     return value
 
 
-def save_interactable_elements(elements, output_dir=None):
+def save_interactable_elements(elements, output_dir):
+    """
+    Save interactable elements to JSON file.
+
+    Args:
+        elements: The elements data to save
+        output_dir: Directory where to save the elements (required)
+    """
     if output_dir is None:
-        internal_logger.error("Failed to get execution output directory. Cannot save interactable elements.")
-        return
+        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
+        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
     output_path = os.path.join(output_dir, "interactable_elements.json")
 
     with open(output_path, "w", encoding="utf-8") as f:

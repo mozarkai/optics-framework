@@ -21,6 +21,8 @@ class RemoteImageDetection(ImageInterface):
             raise ValueError("Remote Image Detection is not enabled in config")
 
         self.project_path: str = config.get("project_path", "")
+        self.templates = config.get("templates", None)
+        self.execution_output_dir = config.get("execution_output_path", "")
         self.detection_url: str = config.get("url", "http://127.0.0.1:8080")
         self.capabilities: Dict[str, Any] = config.get("capabilities", {})
         self.timeout: int = self.capabilities.get("timeout", 30)
@@ -144,7 +146,7 @@ class RemoteImageDetection(ImageInterface):
             _, center, (top_left, bottom_right) = result
             cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)
             cv2.circle(img, center, 5, (0, 0, 255), -1)
-            utils.save_screenshot(img, "detected_template")
+            utils.save_screenshot(img, "detected_template", output_dir=self.execution_output_dir)
 
         return result
 
