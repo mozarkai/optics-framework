@@ -81,18 +81,14 @@ class AppiumScreenshot(ElementSourceInterface):
 
     def assert_elements(self, elements, timeout=30, rule='any') -> None:
         internal_logger.exception("AppiumScreenshot does not support asserting elements.")
-        raise NotImplementedError(
-            "AppiumScreenshot does not support asserting elements.")
+        raise NotImplementedError("AppiumScreenshot does not support asserting elements.")
 
 
     def locate(self, element, index=None) -> tuple:
         internal_logger.exception("AppiumScreenshot does not support locating elements.")
-        raise NotImplementedError(
-            "AppiumScreenshot does not support locating elements.")
+        raise NotImplementedError("AppiumScreenshot does not support locating elements.")
 
 
     def locate_using_index(self):
-        internal_logger.exception(
-            "AppiumScreenshot does not support locating elements using index.")
-        raise NotImplementedError(
-            "AppiumScreenshot does not support locating elements using index.")
+        internal_logger.exception("AppiumScreenshot does not support locating elements using index.")
+        raise NotImplementedError("AppiumScreenshot does not support locating elements using index.")

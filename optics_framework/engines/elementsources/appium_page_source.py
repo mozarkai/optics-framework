@@ -48,9 +48,9 @@ class AppiumPageSource(ElementSourceInterface):
         Capture the current screen state.
 
         return """
-        internal_logger.exception('Appium Find Element does not support capturing the screen state.')
+        internal_logger.exception('Appium Page Source does not support capturing the screen state.')
         raise NotImplementedError(
-            'Appium Find Element does not support capturing the screen state.')
+            'Appium Page Source does not support capturing the screen state.')
 
     def get_page_source(self) -> Tuple[str, str]:
         """
@@ -98,8 +98,8 @@ class AppiumPageSource(ElementSourceInterface):
         element_type = utils.determine_element_type(element)
 
         if element_type == 'Image':
-            internal_logger.debug('Appium Find Element does not support finding images.')
-            raise NotImplementedError("Image-based element finding is not supported in Appium Page source.")
+            internal_logger.debug('Appium Page Source does not support finding images.')
+            return None
         elif element_type == 'Text':
             if index is not None:
                 xpath = self.find_xpath_from_text_index(element, index)
@@ -182,15 +182,13 @@ class AppiumPageSource(ElementSourceInterface):
 
             # Rule evaluation
             if (rule == "any" and (text_found or xpath_found)) or (rule == "all" and text_found and xpath_found):
-                return
+                return True, utils.get_timestamp()
 
             # Optional: time.sleep(0.3)  # Delay to reduce busy looping
 
         # Timeout reached
         internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
-        raise TimeoutError(
-            f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
-        )
+        return False, utils.get_timestamp()
 
     def _validate_rule(self, rule):
         if rule not in ["any", "all"]:

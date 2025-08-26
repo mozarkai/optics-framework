@@ -33,7 +33,7 @@ class DataReader(ABC):
         """
         args = {}
         for param in param_strings:
-            if "=" in param:
+            if DataReader.is_keyword_param(param):
                 arg_name, value = param.split("=", 1)
                 args[arg_name.strip()] = value.strip()
         return args
@@ -45,9 +45,21 @@ class DataReader(ABC):
         """
         args = []
         for param in param_strings:
-            if "=" not in param:
+            if not DataReader.is_keyword_param(param):
                 args.append(param.strip())
         return args
+
+    @staticmethod
+    def is_keyword_param(param: str) -> bool:
+        """
+        Checks if a parameter string is in key=value format.
+
+        :param param: The parameter string to check.
+        :type param: str
+        :return: True if the parameter is in key=value format, False otherwise.
+        :rtype: bool
+        """
+        return "=" in param and not (param.startswith("/") or param.startswith("//") or param.startswith("("))
 
     @abstractmethod
     def read_test_cases(self, file_path: str) -> dict:

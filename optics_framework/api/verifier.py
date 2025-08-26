@@ -207,10 +207,10 @@ class Verifier:
 
         :return: Dict with base64-encoded screenshot and list of elements.
         """
-        screenshot_path = self.capture_screenshot()
+        base64_screenshot = self.capture_screenshot()
         elements = self.get_interactive_elements()
 
         return {
-            "screenshot": utils.encode_numpy_to_base64(screenshot_path),
+            "screenshot": base64_screenshot,
             "elements": elements
         }

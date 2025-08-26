@@ -3,7 +3,6 @@ import hashlib
 from fuzzywuzzy import fuzz
 import re
 import os
-import ast
 import cv2
 import json
 import base64
@@ -131,8 +130,8 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
         internal_logger.error("Image is empty. Cannot save screenshot.")
         raise ValueError("Image is empty. Cannot save screenshot.")
     if output_dir is None:
-        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
-        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
+        internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
+        return
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
@@ -170,8 +169,6 @@ def is_black_screen(image):
     black_threshold = 10
     return average_colour < black_threshold
 
-
-
 def annotate_element(frame, centre_coor, bbox):
     # Annotation: Draw the bounding box around the text
     cv2.rectangle(frame, bbox[0], bbox[1], (0, 255, 0), 2)
@@ -190,8 +187,8 @@ def save_page_source(tree, time_stamp, output_dir):
         output_dir: Directory where to save the page source (required)
     """
     if output_dir is None:
-        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
-        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
+        internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
+        return
     page_source_file_path = os.path.join(output_dir, "page_sources_log.xml")
 
     # Remove any XML declaration
@@ -229,8 +226,8 @@ def save_page_source_html(html: str, time_stamp, output_dir):
         output_dir: Directory where to save the HTML (required)
     """
     if output_dir is None:
-        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
-        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
+        internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
+        return
     page_source_file_path = os.path.join(output_dir, "page_sources_log.html")
     # Prepare entry block with timestamp comment
     entry_block = f'\n<!-- timestamp: {time_stamp} -->\n{html}\n'
@@ -261,8 +258,8 @@ def save_interactable_elements(elements, output_dir):
         output_dir: Directory where to save the elements (required)
     """
     if output_dir is None:
-        internal_logger.error(OUTPUT_PATH_NOT_SET_MSG)
-        raise ValueError(OUTPUT_PATH_NOT_SET_MSG)
+        internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
+        return
     output_path = os.path.join(output_dir, "interactable_elements.json")
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -271,25 +268,17 @@ def save_interactable_elements(elements, output_dir):
 def load_config(default_config: dict) -> dict:
     """Load config from environment variable and override the default config."""
     env_config = os.environ.get("TEST_SESSION_ENV_VARIABLES")
-
     if not env_config:
-        return default_config  # No override
+        return default_config
 
     try:
-        config = json.loads(env_config)
-        for key, value in config.items():
-            if isinstance(value, str):
-                try:
-                    value = re.sub(r"'(\w+?)'\s*:", r'"\1":', value)
-                    value = json.loads(value)
-                except json.JSONDecodeError:
-                    value = ast.literal_eval(
-                        value.replace("true", "True")
-                             .replace("false", "False")
-                             .replace("null", "None")
-                    )
-            default_config[key] = value  # Overwrite
-        return default_config
+        # Expect proper JSON in the env var
+        incoming = json.loads(env_config)
+        if not isinstance(incoming, dict):
+            internal_logger.info("Failed to load config from env: top-level JSON must be an object")
+            return default_config
+        merged = {**default_config, **incoming}
+        return merged
     except Exception as e:
-        print(f"Failed to load config from env: {e}")
+        internal_logger.info(f"Failed to load config from env: {e}")
         return default_config

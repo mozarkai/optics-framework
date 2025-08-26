@@ -118,7 +118,7 @@ class AppiumFindElement(ElementSourceInterface):
             return found_element
         return None
 
-    def assert_elements(self, elements: List[str], timeout: int = 10, rule: str = "any") -> None:
+    def assert_elements(self, elements: List[str], timeout: int = 10, rule: str = "any"):
         """
         Assert that elements are present based on the specified rule.
 
@@ -141,18 +141,15 @@ class AppiumFindElement(ElementSourceInterface):
         found = dict.fromkeys(elements, False)
 
         while time.time() - start_time < timeout:
-            for el in elements:
-                if not found[el] and self.locate(el):
-                    found[el] = True
-                    if rule == "any":
-                        return
-            if rule == "all" and all(found.values()):
-                return
-
-        missing_elements = [el for el, ok in found.items() if not ok]
-        internal_logger.error(
-            "Elements not found based on rule '%s': %s", rule, missing_elements
-        )
-        raise TimeoutError(
-            f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
-        )
+            try:
+                for el in elements:
+                    if not found[el] and self.locate(el):
+                        found[el] = True
+                        if rule == "any":
+                            return True, utils.get_timestamp()
+                if rule == "all" and all(found.values()):
+                    return True, utils.get_timestamp()
+            except Exception as e:
+                internal_logger.error("Error during element assertion: %s", e, exc_info=True)
+                continue
+        return False, utils.get_timestamp()

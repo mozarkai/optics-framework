@@ -260,7 +260,7 @@ async def screen_elements(session_id: str):
     Capture and get screen elements from the current session.
     Returns the screen elements result.
     """
-    return await run_keyword_endpoint(session_id, "capture_and_get_screen_elements")
+    return await run_keyword_endpoint(session_id, "get_screen_elements")
 
 @app.get("/v1/sessions/{session_id}/events")
 async def stream_events(session_id: str):

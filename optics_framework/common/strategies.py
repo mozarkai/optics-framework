@@ -96,10 +96,10 @@ class XPathStrategy(LocatorStrategy):
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         try:
-            self.element_source.assert_elements(elements, timeout, rule)
-            return True, None
+            result, timestamp = self.element_source.assert_elements(elements, timeout, rule)
+            return result, timestamp, None
         except Exception:
-            return False, None
+            return False, None, None
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -121,10 +121,10 @@ class TextElementStrategy(LocatorStrategy):
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         try:
-            self.element_source.assert_elements(elements, timeout, rule)
-            return True, None
+            found, timestamp = self.element_source.assert_elements(elements, timeout, rule)
+            return found, timestamp, None # returning None since there's no annotation available
         except Exception:
-            return False, None
+            return False, None, None
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
