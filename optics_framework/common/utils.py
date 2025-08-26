@@ -277,8 +277,7 @@ def load_config(default_config: dict) -> dict:
         if not isinstance(incoming, dict):
             internal_logger.info("Failed to load config from env: top-level JSON must be an object")
             return default_config
-        merged = {**default_config, **incoming}
-        return merged
+        return incoming
     except Exception as e:
         internal_logger.info(f"Failed to load config from env: {e}")
         return default_config
