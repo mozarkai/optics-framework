@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field, ValidationError
 from serial import Serial
 from optics_framework.common.driver_interface import DriverInterface
@@ -470,20 +470,42 @@ class BLEDriver(DriverInterface):
         )
 
     def enter_text_using_keyboard(
-        self, text: str, event_name: Optional[str] = None
+        self, text: Union[str, utils.SpecialKey], event_name: Optional[str] = None
     ) -> None:
         """
         Enter text using the keyboard via BLE.
 
-        :param text: The text to be entered.
-        :type text: str
+        Supports SpecialKey instances and regular text strings.
+
+        :param text: The text to be entered or a SpecialKey instance.
+        :type text: Union[str, SpecialKey]
         :param event_name: The event triggering the text entry.
         :type event_name: str
         """
         internal_logger.debug(f"Entering text '{text}' using keyboard via BLE.")
         if event_name:
             self.event_sdk.capture_event(event_name)
-        self.keyboard(utils.strip_sensitive_prefix(text))
+
+        if isinstance(text, utils.SpecialKey):
+            # Handle special keys
+            special_key_mapping = {
+                utils.SpecialKey.ENTER: 'Enter',
+                utils.SpecialKey.TAB: 'Tab',
+                utils.SpecialKey.BACKSPACE: 'Backspace',
+                utils.SpecialKey.SPACE: ' ',
+                utils.SpecialKey.ESCAPE: 'Escape'
+            }
+
+            mapped_key = special_key_mapping.get(text)
+            if mapped_key:
+                internal_logger.debug(f"Typing special key: {mapped_key}")
+                self.keyboard(mapped_key)
+            else:
+                internal_logger.warning(f"Unknown special key: {text}")
+        else:
+            # Regular text
+            text_value = utils.strip_sensitive_prefix(str(text))
+            self.keyboard(text_value)
 
     def clear_text(self, event_name: Optional[str] = None) -> None:
         """

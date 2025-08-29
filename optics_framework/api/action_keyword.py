@@ -382,6 +382,11 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
+
+        special_key = utils.parse_special_key(text)
+        if special_key:
+            text = special_key
+
         if isinstance(located, tuple):
             x, y = located
             execution_logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
@@ -398,6 +403,7 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
+
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "enter_text_keyboard", output_dir=self.execution_dir)
         execution_logger.info(f'Entering text directly: {text}')
@@ -407,20 +413,16 @@ class ActionKeyword:
         """
         Enter text or press a special key using the keyboard.
 
-        If the input is a string that includes an underscore (e.g., 'enter_key'),
-        it will be interpreted as a special key name and mapped accordingly.
+        If the input is a string that includes angle brackets (e.g., '<enter>'),
+        the text between the brackets will be interpreted as a special key name and mapped accordingly.
 
         :param input: The text or special key identifier to send.
         :param event_name: Optional event label for logging.
         """
 
-
-        if isinstance(text_input, str) and "_" in text_input:
-            key_input = text_input.split("_")[0].lower()
-            try:
-                text_input = str(utils.SpecialKey(key_input))
-            except ValueError:
-                pass
+        special_key = utils.parse_special_key(text_input)
+        if special_key:
+            text_input = special_key
 
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)

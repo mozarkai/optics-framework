@@ -404,12 +404,27 @@ class Appium(DriverInterface):
         except Exception as e:
             execution_logger.debug(f"Failed to scroll {direction}: {e}")
 
-    def enter_text_element(self, element: Any, text: str, event_name: Optional[str] = None) -> None:
+    def enter_text_element(self, element: Any, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
 
-        execution_logger.debug(f"Entering text '{text}' into element: {element}")
-        element.send_keys(utils.strip_sensitive_prefix(text))
+        if isinstance(text, SpecialKey):
+            keycode_map = {
+                SpecialKey.ENTER: 66,
+                SpecialKey.TAB: 61,
+                SpecialKey.BACKSPACE: 67,
+                SpecialKey.SPACE: 62,
+                SpecialKey.ESCAPE: 111,
+            }
+            internal_logger.debug(
+                f"Pressing Detected SpecialKey in element: {text}. Keycode: {keycode_map[text]}"
+            )
+            execution_logger.debug(f"Pressing SpecialKey in element: {text}")
+            driver = self._require_driver()
+            driver.press_keycode(keycode_map[text])
+        else:
+            execution_logger.debug(f"Entering text '{text}' into element: {element}")
+            element.send_keys(utils.strip_sensitive_prefix(str(text)))
 
     def clear_text_element(self, element: Any, event_name: Optional[str] = None) -> None:
         if event_name:
@@ -417,13 +432,28 @@ class Appium(DriverInterface):
         execution_logger.debug(f"Clearing text in element: {element}")
         element.clear()
 
-    def enter_text(self, text: str, event_name: Optional[str] = None) -> None:
+    def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
             self.event_sdk.capture_event(event_name)
-        execution_logger.debug(f"Entering text: {text}")
-        text_to_send = utils.strip_sensitive_prefix(text)
-        driver.execute_script("mobile: type", {"text": text_to_send})
+
+        if isinstance(text, SpecialKey):
+            keycode_map = {
+                SpecialKey.ENTER: 66,
+                SpecialKey.TAB: 61,
+                SpecialKey.BACKSPACE: 67,
+                SpecialKey.SPACE: 62,
+                SpecialKey.ESCAPE: 111,
+            }
+            internal_logger.debug(
+                f"Pressing Detected SpecialKey: {text}. Keycode: {keycode_map[text]}"
+            )
+            execution_logger.debug(f"Pressing SpecialKey: {text}")
+            driver.press_keycode(keycode_map[text])
+        else:
+            execution_logger.debug(f"Entering text: {text}")
+            text_to_send = utils.strip_sensitive_prefix(str(text))
+            driver.execute_script("mobile: type", {"text": text_to_send})
 
     def clear_text(self, event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
@@ -453,20 +483,21 @@ class Appium(DriverInterface):
             SpecialKey.ESCAPE: 111,
         }
         try:
+            timestamp = self.event_sdk.get_current_time_for_events()
+
             if isinstance(text, SpecialKey):
                 internal_logger.debug(
                     f"Pressing Detected SpecialKey: {text}. Keycode: {keycode_map[text]}"
                 )
-                timestamp = self.event_sdk.get_current_time_for_events()
                 execution_logger.debug(f"Pressing SpecialKey: {text}")
                 driver.press_keycode(keycode_map[text])
             else:
-                timestamp = self.event_sdk.get_current_time_for_events()
                 text_value = str(text)
                 execution_logger.debug(f"Entering text using keyboard: {text_value}")
                 driver.execute_script(
                     "mobile: type", {"text": utils.strip_sensitive_prefix(text_value)}
                 )
+
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:

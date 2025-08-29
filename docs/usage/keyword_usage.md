@@ -186,9 +186,9 @@ These keywords handle interactions with the application, such as clicking, swipi
 - **Enter Text Using Keyboard**
   Enters text or special keys such as Enter, Tab, Space, Backspace using the keyboard, supported for appium and selenium.
   - **Parameters**:
-    - `text or special key`: The text to enter (string, e.g., "Test Input") or special key (followed by "_key", e.g, enter_key).
+    - `text or special key`: The text to enter (string, e.g., "Test Input") or special key in angle brackets (e.g., "<enter>", "<tab>").
     - `event_name` (optional): A string identifier for the input event (e.g., "keyboard_input").
-  - **Example**: `Enter Text Using Keyboard,Test Input,keyboard_input`
+  - **Example**: `Enter Text Using Keyboard,Test Input<enter>,keyboard_input`
 
 - **Enter Number**
   Enters a number into a specified element.

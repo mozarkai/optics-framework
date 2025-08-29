@@ -282,3 +282,22 @@ def load_config(default_config: dict) -> dict:
     except Exception as e:
         internal_logger.info(f"Failed to load config from env: {e}")
         return default_config
+
+def parse_special_key(text: str) -> SpecialKey | None:
+    """
+    Check if the input text represents a single special key in <key> format.
+
+    :param text: Input text to check
+    :return: SpecialKey instance if text is a single special key, None otherwise
+    """
+    if isinstance(text, str) and "<" in text and ">" in text:
+        # Check if the entire text is just a single special key
+        text = text.strip()
+        if text.startswith("<") and text.endswith(">") and text.count("<") == 1 and text.count(">") == 1:
+            key_input = text[1:-1].lower()  # Extract content between < and >
+            try:
+                return SpecialKey(key_input)
+            except ValueError:
+                # If the key is not recognized, return None
+                return None
+    return None
