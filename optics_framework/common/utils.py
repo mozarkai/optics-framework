@@ -9,17 +9,83 @@ import base64
 import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
+from typing import Optional
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
 
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 
 class SpecialKey(Enum):
+    # Basic keys (supported by both BLE and Appium)
     ENTER = 'enter'
     TAB = 'tab'
     BACKSPACE = 'backspace'
     SPACE = 'space'
     ESCAPE = 'escape'
+
+    # Arrow keys (BLE only)
+    LEFT = 'left'
+    RIGHT = 'right'
+    UP = 'up'
+    DOWN = 'down'
+
+    # Navigation keys (BLE only)
+    INSERT = 'insert'
+    DELETE = 'delete'
+    HOME = 'home'  # Supported by both BLE and Appium
+    END = 'end'
+    PAGE_UP = 'pageup'
+    PAGE_DOWN = 'pagedown'
+
+    # Function keys (BLE only)
+    F1 = 'f1'
+    F2 = 'f2'
+    F3 = 'f3'
+    F4 = 'f4'
+    F5 = 'f5'
+    F6 = 'f6'
+    F7 = 'f7'
+    F8 = 'f8'
+    F9 = 'f9'
+    F10 = 'f10'
+    F11 = 'f11'
+    F12 = 'f12'
+
+    # System keys (BLE only)
+    PRINT_SCREEN = 'printscreen'
+    SCROLL_LOCK = 'scrolllock'
+    PAUSE = 'pause'
+
+    # Numpad keys (BLE only)
+    NUM_LOCK = 'numlock'
+    NUM_PAD_0 = 'numpad0'
+    NUM_PAD_1 = 'numpad1'
+    NUM_PAD_2 = 'numpad2'
+    NUM_PAD_3 = 'numpad3'
+    NUM_PAD_4 = 'numpad4'
+    NUM_PAD_5 = 'numpad5'
+    NUM_PAD_6 = 'numpad6'
+    NUM_PAD_7 = 'numpad7'
+    NUM_PAD_8 = 'numpad8'
+    NUM_PAD_9 = 'numpad9'
+    NUM_PAD_PLUS = 'numpadplus'
+    NUM_PAD_MINUS = 'numpadminus'
+    NUM_PAD_MULTIPLY = 'numpadmultiply'
+    NUM_PAD_DIVIDE = 'numpaddivide'
+    NUM_PAD_ENTER = 'numpadenter'
+    NUM_PAD_DECIMAL = 'numpaddecimal'
+    NUM_PAD_COMMA = 'numpadcomma'
+    NUM_PAD_PERIOD = 'numpadperiod'
+    NUM_PAD_EQUAL = 'numpadequal'
+
+    # Mobile/System specific keys (Appium only)
+    BACK = 'back'
+    MENU = 'menu'
+    VOLUME_UP = 'volumeup'
+    VOLUME_DOWN = 'volumedown'
+    POWER = 'power'
+    CAMERA = 'camera'
+    SEARCH = 'search'
 
 def determine_element_type(element):
     # Check if the input is an Image path
@@ -283,7 +349,7 @@ def load_config(default_config: dict) -> dict:
         internal_logger.info(f"Failed to load config from env: {e}")
         return default_config
 
-def parse_special_key(text: str) -> SpecialKey | None:
+def parse_special_key(text: str) -> Optional[SpecialKey]:
     """
     Check if the input text represents a single special key in <key> format.
 

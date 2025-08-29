@@ -18,6 +18,25 @@ class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
     NOT_INITIALIZED = "Appium driver is not initialized. Please start the session first."
+    KEYCODE_MAP = {
+        # Basic keys
+        SpecialKey.ENTER: 66,
+        SpecialKey.TAB: 61,
+        SpecialKey.BACKSPACE: 67,
+        SpecialKey.SPACE: 62,
+        SpecialKey.ESCAPE: 111,
+
+        # Mobile/System specific keys
+        SpecialKey.BACK: 4,
+        SpecialKey.HOME: 3,
+        SpecialKey.MENU: 82,
+        SpecialKey.VOLUME_UP: 24,
+        SpecialKey.VOLUME_DOWN: 25,
+        SpecialKey.POWER: 26,
+        SpecialKey.CAMERA: 27,
+        SpecialKey.SEARCH: 84,
+    }
+
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None) -> None:
         self.driver: Optional[WebDriver] = None
@@ -409,19 +428,18 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event(event_name)
 
         if isinstance(text, SpecialKey):
-            keycode_map = {
-                SpecialKey.ENTER: 66,
-                SpecialKey.TAB: 61,
-                SpecialKey.BACKSPACE: 67,
-                SpecialKey.SPACE: 62,
-                SpecialKey.ESCAPE: 111,
-            }
-            internal_logger.debug(
-                f"Pressing Detected SpecialKey in element: {text}. Keycode: {keycode_map[text]}"
-            )
-            execution_logger.debug(f"Pressing SpecialKey in element: {text}")
-            driver = self._require_driver()
-            driver.press_keycode(keycode_map[text])
+            keycode = self.KEYCODE_MAP.get(text)
+            if keycode:
+                internal_logger.debug(
+                    f"Pressing Detected SpecialKey in element: {text}. Keycode: {keycode}"
+                )
+                execution_logger.debug(f"Pressing SpecialKey in element: {text}")
+                driver = self._require_driver()
+                driver.press_keycode(keycode)
+            else:
+                internal_logger.warning(f"Unknown special key in element: {text}")
+                execution_logger.debug(f"Unknown special key in element, treating as text: {text}")
+                element.send_keys(utils.strip_sensitive_prefix(str(text)))
         else:
             execution_logger.debug(f"Entering text '{text}' into element: {element}")
             element.send_keys(utils.strip_sensitive_prefix(str(text)))
@@ -438,18 +456,18 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event(event_name)
 
         if isinstance(text, SpecialKey):
-            keycode_map = {
-                SpecialKey.ENTER: 66,
-                SpecialKey.TAB: 61,
-                SpecialKey.BACKSPACE: 67,
-                SpecialKey.SPACE: 62,
-                SpecialKey.ESCAPE: 111,
-            }
-            internal_logger.debug(
-                f"Pressing Detected SpecialKey: {text}. Keycode: {keycode_map[text]}"
-            )
-            execution_logger.debug(f"Pressing SpecialKey: {text}")
-            driver.press_keycode(keycode_map[text])
+            keycode = self.KEYCODE_MAP.get(text)
+            if keycode:
+                internal_logger.debug(
+                    f"Pressing Detected SpecialKey: {text}. Keycode: {keycode}"
+                )
+                execution_logger.debug(f"Pressing SpecialKey: {text}")
+                driver.press_keycode(keycode)
+            else:
+                internal_logger.warning(f"Unknown special key: {text}")
+                execution_logger.debug(f"Unknown special key, treating as text: {text}")
+                text_to_send = utils.strip_sensitive_prefix(str(text))
+                driver.execute_script("mobile: type", {"text": text_to_send})
         else:
             execution_logger.debug(f"Entering text: {text}")
             text_to_send = utils.strip_sensitive_prefix(str(text))
@@ -475,22 +493,22 @@ class Appium(DriverInterface):
         event_name: Optional[str] = None
     ) -> None:
         driver = self._require_driver()
-        keycode_map = {
-            SpecialKey.ENTER: 66,
-            SpecialKey.TAB: 61,
-            SpecialKey.BACKSPACE: 67,
-            SpecialKey.SPACE: 62,
-            SpecialKey.ESCAPE: 111,
-        }
         try:
             timestamp = self.event_sdk.get_current_time_for_events()
 
             if isinstance(text, SpecialKey):
-                internal_logger.debug(
-                    f"Pressing Detected SpecialKey: {text}. Keycode: {keycode_map[text]}"
-                )
-                execution_logger.debug(f"Pressing SpecialKey: {text}")
-                driver.press_keycode(keycode_map[text])
+                keycode = self.KEYCODE_MAP.get(text)
+                if keycode:
+                    internal_logger.debug(
+                        f"Pressing Detected SpecialKey: {text}. Keycode: {keycode}"
+                    )
+                    execution_logger.debug(f"Pressing SpecialKey: {text}")
+                    driver.press_keycode(keycode)
+                else:
+                    internal_logger.warning(f"Unknown special key: {text}")
+                    execution_logger.debug(f"Unknown special key, treating as text: {text}")
+                    text_value = utils.strip_sensitive_prefix(str(text))
+                    driver.execute_script("mobile: type", {"text": text_value})
             else:
                 text_value = str(text)
                 execution_logger.debug(f"Entering text using keyboard: {text_value}")

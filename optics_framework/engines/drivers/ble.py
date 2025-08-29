@@ -57,6 +57,74 @@ class BLEDriver(DriverInterface):
     KEYBOARD_SELECT_ALL = "1 0 4 0 0 0 0 0"
     KEYBOARD_BACKSPACE = "0 0 42 0 0 0 0 0"
 
+    # Special key mapping from SpecialKey enum to HID key names
+    SPECIAL_KEY_MAPPING = {
+        # Basic keys
+        utils.SpecialKey.ENTER: 'Enter',
+        utils.SpecialKey.TAB: 'Tab',
+        utils.SpecialKey.BACKSPACE: 'Backspace',
+        utils.SpecialKey.SPACE: ' ',
+        utils.SpecialKey.ESCAPE: 'Escape',
+
+        # Arrow keys
+        utils.SpecialKey.LEFT: 'Left',
+        utils.SpecialKey.RIGHT: 'Right',
+        utils.SpecialKey.UP: 'Up',
+        utils.SpecialKey.DOWN: 'Down',
+
+        # Navigation keys
+        utils.SpecialKey.INSERT: 'Insert',
+        utils.SpecialKey.DELETE: 'Delete',
+        utils.SpecialKey.HOME: 'Home',
+        utils.SpecialKey.END: 'End',
+        utils.SpecialKey.PAGE_UP: 'PageUp',
+        utils.SpecialKey.PAGE_DOWN: 'PageDown',
+
+        # Function keys
+        utils.SpecialKey.F1: 'F1',
+        utils.SpecialKey.F2: 'F2',
+        utils.SpecialKey.F3: 'F3',
+        utils.SpecialKey.F4: 'F4',
+        utils.SpecialKey.F5: 'F5',
+        utils.SpecialKey.F6: 'F6',
+        utils.SpecialKey.F7: 'F7',
+        utils.SpecialKey.F8: 'F8',
+        utils.SpecialKey.F9: 'F9',
+        utils.SpecialKey.F10: 'F10',
+        utils.SpecialKey.F11: 'F11',
+        utils.SpecialKey.F12: 'F12',
+
+        # System keys
+        utils.SpecialKey.PRINT_SCREEN: 'PrintScreen',
+        utils.SpecialKey.SCROLL_LOCK: 'ScrollLock',
+        utils.SpecialKey.PAUSE: 'Pause',
+
+        # Numpad keys
+        utils.SpecialKey.NUM_LOCK: 'NumLock',
+        utils.SpecialKey.NUM_PAD_0: 'NumPad0',
+        utils.SpecialKey.NUM_PAD_1: 'NumPad1',
+        utils.SpecialKey.NUM_PAD_2: 'NumPad2',
+        utils.SpecialKey.NUM_PAD_3: 'NumPad3',
+        utils.SpecialKey.NUM_PAD_4: 'NumPad4',
+        utils.SpecialKey.NUM_PAD_5: 'NumPad5',
+        utils.SpecialKey.NUM_PAD_6: 'NumPad6',
+        utils.SpecialKey.NUM_PAD_7: 'NumPad7',
+        utils.SpecialKey.NUM_PAD_8: 'NumPad8',
+        utils.SpecialKey.NUM_PAD_9: 'NumPad9',
+        utils.SpecialKey.NUM_PAD_PLUS: 'NumPadPlus',
+        utils.SpecialKey.NUM_PAD_MINUS: 'NumPadMinus',
+        utils.SpecialKey.NUM_PAD_MULTIPLY: 'NumPadMultiply',
+        utils.SpecialKey.NUM_PAD_DIVIDE: 'NumPadDivide',
+        utils.SpecialKey.NUM_PAD_ENTER: 'NumPadEnter',
+        utils.SpecialKey.NUM_PAD_DECIMAL: 'NumPadDecimal',
+        utils.SpecialKey.NUM_PAD_COMMA: 'NumPadComma',
+        utils.SpecialKey.NUM_PAD_PERIOD: 'NumPadPeriod',
+        utils.SpecialKey.NUM_PAD_EQUAL: 'NumPadEqual'
+
+        # Note: Mobile-specific keys (BACK, MENU, VOLUME_UP, VOLUME_DOWN, POWER, CAMERA, SEARCH)
+        # are not supported by BLE keyboards and are excluded from this mapping
+    }
+
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
         if event_sdk is None:
             internal_logger.error("No EventSDK instance provided to BLE driver.")
@@ -328,6 +396,7 @@ class BLEDriver(DriverInterface):
         'NumPadEqual': 83,
     }
 
+
     def send_keyboard_command(self, keyboard_command):
         """
         Send a keyboard command via serial to type a key.
@@ -487,16 +556,8 @@ class BLEDriver(DriverInterface):
             self.event_sdk.capture_event(event_name)
 
         if isinstance(text, utils.SpecialKey):
-            # Handle special keys
-            special_key_mapping = {
-                utils.SpecialKey.ENTER: 'Enter',
-                utils.SpecialKey.TAB: 'Tab',
-                utils.SpecialKey.BACKSPACE: 'Backspace',
-                utils.SpecialKey.SPACE: ' ',
-                utils.SpecialKey.ESCAPE: 'Escape'
-            }
-
-            mapped_key = special_key_mapping.get(text)
+            # Handle special keys using class-level mapping
+            mapped_key = self.SPECIAL_KEY_MAPPING.get(text)
             if mapped_key:
                 internal_logger.debug(f"Typing special key: {mapped_key}")
                 self.keyboard(mapped_key)
