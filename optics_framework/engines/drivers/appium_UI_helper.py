@@ -1,5 +1,5 @@
 import re
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional
 from fuzzywuzzy import fuzz
 from lxml import etree
 from optics_framework.common.logging_config import internal_logger
@@ -755,11 +755,12 @@ class UIHelper:
 
     # element extraction
     def get_interactive_elements(self) -> List[Dict]:
+        """Cross-platform element extraction supporting both Android and iOS."""
         page_source, _ = self.get_page_source()
         root = etree.ElementTree(
             etree.fromstring(page_source.encode("utf-8"))
         ).getroot()
-        elements = root.xpath(".//*[@bounds]")
+        elements = root.xpath(".//*")
         results = []
 
         for node in elements:
@@ -769,6 +770,11 @@ class UIHelper:
 
             text, used_key = self._extract_display_text(node.attrib)
             if not text:
+                # If no text-like attribute, still consider elements that are commonly interactive
+                # Uncomment to get non-text elements
+                # if self._is_probably_interactive(node):
+                #     text, used_key = node.tag, None
+                # else:
                 continue
 
             xpath = self.get_xpath(node)
@@ -780,26 +786,70 @@ class UIHelper:
 
         return results
 
-    def _extract_bounds(self, node: etree.Element) -> dict | None:
-        bounds_str = node.attrib.get("bounds", "")
-        match = re.findall(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_str)
-        if not match:
-            return None
-        x1, y1, x2, y2 = map(int, match[0])
-        return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+    def _extract_bounds(self, node: etree.Element) -> Optional[Dict[str, int]]:
+        """
+        Supports:
+        - Android: bounds="[x1,y1][x2,y2]"
+        - iOS (XCUI): x=".." y=".." width=".." height=".."
+        Returns dict with x1,y1,x2,y2 or None if cannot parse.
+        """
+        attrs = node.attrib or {}
 
-    def _extract_display_text(self, attrs: dict) -> tuple[str | None, str | None]:
+        # Android style
+        bounds_str = attrs.get("bounds", "")
+        if bounds_str:
+            match = re.findall(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_str)
+            if match:
+                x1, y1, x2, y2 = map(int, match[0])
+                return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+        # iOS style (XCUIElementType*)
+        # Attributes are strings; make sure they are digits/valid ints.
+        x = attrs.get("x")
+        y = attrs.get("y")
+        w = attrs.get("width")
+        h = attrs.get("height")
+
+        def _to_int(v: Optional[str]) -> Optional[int]:
+            if v is None:
+                return None
+            try:
+                # iOS sometimes shows floats; cast safely
+                return int(float(v))
+            except ValueError:
+                return None
+
+        xi, yi, wi, hi = map(_to_int, (x, y, w, h))
+        if None not in (xi, yi, wi, hi):
+            # Guard against zero/negative sizes
+            if wi > 0 and hi > 0:
+                return {"x1": xi, "y1": yi, "x2": xi + wi, "y2": yi + hi}
+
+        return None
+
+    def _extract_display_text(self, attrs: dict) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Cross-platform text picking order:
+          - Android: text, content-desc, resource-id tail
+          - iOS: name, label, value
+        We'll unify and return the first non-empty.
+        """
+        # Normalize occasional empty strings like "" or " "
+        def norm(v: Optional[str]) -> Optional[str]:
+            if v is None:
+                return None
+            s = v.strip()
+            return s if s else None
+
         text_candidates = [
-            ("text", attrs.get("text")),
-            ("content-desc", attrs.get("content-desc")),
-            ("name", attrs.get("name")),
-            ("value", attrs.get("value")),
-            ("label", attrs.get("label")),
+            ("text", norm(attrs.get("text"))),                 # Android
+            ("content-desc", norm(attrs.get("content-desc"))), # Android
+            ("name", norm(attrs.get("name"))),                 # iOS
+            ("label", norm(attrs.get("label"))),               # iOS
+            ("value", norm(attrs.get("value"))),               # iOS
             (
                 "resource-id",
-                attrs.get("resource-id").split("/")[-1]
-                if attrs.get("resource-id")
-                else None,
+                norm(attrs.get("resource-id", "").split("/")[-1]) if attrs.get("resource-id") else None,  # Android
             ),
         ]
         for key, val in text_candidates:
@@ -808,61 +858,137 @@ class UIHelper:
         return None, None
 
     def _build_extra_metadata(
-        self, attrs: dict, used_key: str | None, tag: str
+        self, attrs: dict, used_key: Optional[str], tag: str
     ) -> dict:
         extra = {
             k: v
             for k, v in attrs.items()
-            if k != used_key and v and v.lower() != "false"
+            if k != used_key and v and (isinstance(v, str) and v.lower() != "false" or not isinstance(v, str))
         }
-        extra["class"] = attrs.get("class")
-        extra["resource-id"] = attrs.get("resource-id")
-        extra["tag"] = tag
+        # Keep a few common fields explicitly
+        extra["class"] = attrs.get("class")  # Android
+        extra["resource-id"] = attrs.get("resource-id")  # Android
+        extra["visible"] = attrs.get("visible")  # iOS
+        extra["enabled"] = attrs.get("enabled")  # both
+        extra["tag"] = tag  # e.g., XCUIElementTypeButton or android.widget.Button
         return extra
 
     def get_xpath(self, node: etree.Element) -> str:
         """
         Generate a concise XPath using unique attributes if possible,
         falling back to structural path if necessary.
+
+        Notes:
+          - Includes element tag to avoid ambiguous matches
+          - Prefers iOS attributes (name > label > value) then Android
+          - Combines multiple attributes when available for better specificity
         """
-        attr_priority = [
-            "resource-id",
-            "content-desc",
-            "text",
-            "name",
-            "label",
-            "value",
+        attrs = node.attrib or {}
+        tag = node.tag or "*"
+
+        # Prefer iOS text-ish attributes first (name > label > value), then Android
+        # (this helps iOS where resource-id doesn't exist)
+        ordered = [
+            ("name", attrs.get("name")),
+            ("label", attrs.get("label")),
+            ("value", attrs.get("value")),
+            ("resource-id", attrs.get("resource-id")),
+            ("content-desc", attrs.get("content-desc")),
+            ("text", attrs.get("text")),
         ]
 
-        for attr in attr_priority:
-            val = node.attrib.get(attr)
+        # Try single-attribute unique-ish locator
+        for attr, val in ordered:
             if val:
-                # Escape quotes inside the value for XPath safety
-                val = val.replace('"', '\\"')
-                return f"//*[{self._build_attribute_condition(attr, val)}]"
+                cond = self._build_attribute_condition(attr, val)
+                return f"//{tag}[{cond}]"
 
-        # Fallback to structural path
+        # Try multi-attribute combo (useful on iOS when name+label both exist)
+        combos = [("name", "label"), ("label", "value")]
+        for a1, a2 in combos:
+            v1, v2 = attrs.get(a1), attrs.get(a2)
+            if v1 and v2:
+                c1 = self._build_attribute_condition(a1, v1)
+                c2 = self._build_attribute_condition(a2, v2)
+                return f"//{tag}[{c1} and {c2}]"
+
         return self._build_structural_xpath(node)
+
+    def _escape_for_xpath_literal(self, s: str) -> str:
+        """
+        Safely escape a string for inclusion in an XPath string literal.
+        Uses the concat() trick if both single and double quotes are present.
+        """
+        if '"' not in s:
+            return f'"{s}"'
+        if "'" not in s:
+            return f"'{s}'"
+        # If it contains both, break on double quotes and concat with '\"'
+        parts = s.split('"')
+        escaped_parts = []
+        for i, p in enumerate(parts):
+            if i == len(parts)-1:
+                escaped_parts.append(f'"{p}"')
+            else:
+                escaped_parts.extend([f'"{p}"', "'\"'"])
+        return 'concat(' + ', '.join(escaped_parts) + ')'
 
     def _build_attribute_condition(self, attr: str, val: str) -> str:
         """
         Return the appropriate condition expression for the attribute match.
+        - Exact match for iOS name/label (typically normalized and unique)
+        - Exact match for Android resource-id when namespaced
+        - Contains match for content-like attributes (Android text/desc, iOS value)
         """
+        val = val.strip()
+        lit = self._escape_for_xpath_literal(val)
+
+        # Android id exact match when namespaced
         if attr == "resource-id" and "/" in val:
-            return f'@{attr}="{val}"'
-        return f'contains(@{attr}, "{val}")'
+            return f"@{attr}={lit}"
+
+        # iOS: be strict for 'name'/'label'
+        if attr in ("name", "label"):
+            return f"@{attr}={lit}"
+
+        # Keep contains() for content-ish attributes (Android text/desc, iOS value)
+        return f"contains(@{attr}, {lit})"
 
     def _build_structural_xpath(self, node: etree.Element) -> str:
         """
         Fallback method to build full XPath based on element structure.
+        Works for both Android and iOS trees.
+        - Android: stops at hierarchy root
+        - iOS: walks to XCUIElementTypeApplication root
         """
         path = []
-        while node is not None and node.tag != "hierarchy":
-            parent = node.getparent()
+        cur = node
+        while cur is not None:
+            parent = cur.getparent()
             if parent is None:
+                # reached document root
+                path.append(cur.tag)
                 break
-            siblings = [sib for sib in parent if sib.tag == node.tag]
-            index = siblings.index(node) + 1 if len(siblings) > 1 else 1
-            path.append(f"{node.tag}[{index}]")
-            node = parent
+            siblings = [sib for sib in parent if sib.tag == cur.tag]
+            index = siblings.index(cur) + 1 if len(siblings) > 1 else 1
+            path.append(f"{cur.tag}[{index}]")
+            cur = parent
         return "/" + "/".join(reversed(path))
+
+    def _is_probably_interactive(self, node: etree.Element) -> bool:
+        """
+        (Optional) If you want to also return icon-only controls on iOS/Android.
+        """
+        attrs = node.attrib or {}
+        tag = node.tag or ""
+
+        # Quick heuristics
+        if attrs.get("clickable") == "true":
+            return True
+        if attrs.get("enabled") == "true" and attrs.get("visible", "true") != "false":
+            if tag.startswith("XCUIElementTypeButton") or tag.startswith("android.widget.Button"):
+                return True
+            if "ImageView" in tag or "XCUIElementTypeImage" in tag:
+                # Often icon buttons; your call whether to include
+                return True
+        return False
