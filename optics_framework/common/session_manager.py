@@ -11,28 +11,6 @@ from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.events import get_event_manager_registry
 
 
-def discover_templates(project_path: str) -> TemplateData:
-    """
-    Discover all image templates in the project directory.
-
-    :param project_path: The path to the project directory.
-    :type project_path: str
-
-    :return: TemplateData containing image name to path mappings.
-    :rtype: TemplateData
-    """
-    template_data = TemplateData()
-    project_dir = Path(project_path)
-
-    # Common image extensions
-    image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif'}
-
-    # Recursively find all image files
-    for image_file in project_dir.rglob('*'):
-        if image_file.is_file() and image_file.suffix.lower() in image_extensions:
-            template_data.add_template(image_file.name, str(image_file))
-    return template_data
-
 
 class SessionHandler(ABC):
     """Abstract interface for session management."""
@@ -132,16 +110,6 @@ class SessionManager(SessionHandler):
                        templates: Optional[TemplateData] = None) -> str:
         """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
-
-        # Create a temporary config handler to get processed config values
-        temp_config_handler = ConfigHandler(config)
-        processed_config = temp_config_handler.config
-
-        # Auto-discover templates if not provided and project_path is available
-        if templates is None and hasattr(processed_config, 'project_path') and processed_config.project_path:
-            templates = discover_templates(processed_config.project_path)
-
-
         self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates)
         return session_id
 

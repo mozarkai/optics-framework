@@ -4,6 +4,7 @@ import asyncio
 from typing import Optional, Tuple, List, Dict, Set, Any
 import yaml
 from pydantic import BaseModel, field_validator
+from pathlib import Path
 from optics_framework.common.config_handler import Config
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
@@ -21,7 +22,31 @@ from optics_framework.common.models import (
     ApiData,
     TestSuite,
     ModuleData,
+    TemplateData,
 )
+
+
+def discover_templates(project_path: str) -> TemplateData:
+    """
+    Discover all image templates in the project directory.
+
+    :param project_path: The path to the project directory.
+    :type project_path: str
+
+    :return: TemplateData containing image name to path mappings.
+    :rtype: TemplateData
+    """
+    template_data = TemplateData()
+    project_dir = Path(project_path)
+
+    # Common image extensions
+    image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif'}
+
+    # Recursively find all image files
+    for image_file in project_dir.rglob('*'):
+        if image_file.is_file() and image_file.suffix.lower() in image_extensions:
+            template_data.add_template(image_file.name, str(image_file))
+    return template_data
 
 
 def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[Any], Config | None]:
@@ -467,6 +492,9 @@ class BaseRunner:
         else:
             self.config = Config()
 
+        # Load templates after config is set
+        self._load_templates()
+
         # Ensure logging is configured before any test execution
         initialize_handlers(self.config)
 
@@ -516,6 +544,12 @@ class BaseRunner:
             reader = self.yaml_reader  # API files are expected to be YAML
             self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
 
+    def _load_templates(self):
+        """Load template data by discovering image files in the project directory."""
+        self.templates_data: TemplateData = TemplateData()
+        if hasattr(self.config, 'project_path') and self.config.project_path:
+            self.templates_data = discover_templates(self.config.project_path)
+
 
 
     def _filter_and_build_execution_queue(self):
@@ -536,6 +570,7 @@ class BaseRunner:
             self.modules_data,
             self.elements_data,
             self.api_data,
+            self.templates_data,
         )
         self.engine: ExecutionEngine = ExecutionEngine(self.manager)
     async def run(self, mode: str):
