@@ -13,6 +13,7 @@ from optics_framework.common.runner.data_reader import (
     merge_dicts,
 )
 from optics_framework.common.session_manager import SessionManager
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams
 from optics_framework.common.models import (
     TestCaseNode,
@@ -268,7 +269,7 @@ def filter_test_cases(
     :return: Filtered dictionary with test case names as keys.
     """
     if include and exclude:
-        raise ValueError("Provide either include or exclude list, not both.")
+        raise OpticsError(Code.E0403, message="Provide either include or exclude list, not both.")
 
     include_set = {tc.strip().lower() for tc in include} if include else set()
     exclude_set = {tc.strip().lower() for tc in exclude} if exclude else set()
@@ -396,15 +397,15 @@ def populate_module_nodes(
 def load_api_data(file_path: str) -> ApiData:
     """Loads API data from a YAML file and validates it."""
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"API specification file not found: {file_path}")
+        raise OpticsError(Code.E0501, message=f"API specification file not found: {file_path}")
     with open(file_path, "r", encoding="utf-8") as f:
         try:
             data = yaml.safe_load(f)
             return ApiData(**data)
         except yaml.YAMLError as e:
-            raise ValueError(f"Error parsing YAML file: {e}") from e
+            raise OpticsError(Code.E0503, message=f"Error parsing YAML file: {e}", details={"exception": str(e)})
         except Exception as e:
-            raise ValueError(f"Invalid API data structure: {e}") from e
+            raise OpticsError(Code.E0503, message=f"Invalid API data structure: {e}", details={"exception": str(e)})
 
 
 def build_linked_list(
@@ -424,7 +425,7 @@ def build_linked_list(
         # Create TestCaseNode linked list
         head = create_test_case_nodes(execution_dict)
         if head is None:
-            raise ValueError("No test cases found to build execution linked list.")
+            raise OpticsError(Code.E0702, message="No test cases found to build execution linked list.")
 
         # Populate modules and keywords for each test case
         current = head
@@ -434,7 +435,7 @@ def build_linked_list(
         return head
     except Exception as e:
         internal_logger.error(f"Error building linked list: {e}")
-        raise ValueError(f"Failed to build linked list: {e}")
+        raise OpticsError(Code.E0701, message=f"Failed to build linked list: {e}", details={"exception": str(e)})
 
 class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
@@ -449,7 +450,7 @@ class RunnerArgs(BaseModel):
         """Ensure folder_path is an existing directory."""
         abs_path = os.path.abspath(v)
         if not os.path.isdir(abs_path):
-            raise ValueError(f"Invalid project folder: {abs_path}")
+            raise OpticsError(Code.E0501, message=f"Invalid project folder: {abs_path}")
         return abs_path
 
     @field_validator("runner")

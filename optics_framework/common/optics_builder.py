@@ -5,6 +5,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.text_interface import TextInterface
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.factories import (
     DeviceFactory,
     ElementSourceFactory,
@@ -21,7 +22,7 @@ class OpticsConfig(BaseModel):
     driver_config: Optional[Union[str, List[Union[str, Dict]]]] = None
     element_source_config: Optional[Union[str, List[Union[str, Dict]]]] = None
     image_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
-    text_config: Optional[Union[str, List[Union[str, Dict]]]] = None
+    text_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
 
 
 class OpticsBuilder:
@@ -57,10 +58,10 @@ class OpticsBuilder:
                 elif isinstance(item, dict):
                     normalized.append(item)
                 else:
-                    raise ValueError(f"Invalid item type in config list: {type(item)}")
+                    raise OpticsError(Code.E0503, message=f"Invalid item type in config list: {type(item)}")
             return normalized
         else:
-            raise ValueError("Invalid configuration type")
+            raise OpticsError(Code.E0503, message="Invalid configuration type")
 
     # Fluent methods to set configurations
     def add_driver(self, config: Union[str, List[Union[str, Dict]]]) -> "OpticsBuilder":
@@ -104,7 +105,7 @@ class OpticsBuilder:
     # Instantiation methods
     def instantiate_driver(self) -> InstanceFallback[DriverInterface]:
         if not self.config.driver_config:
-            raise ValueError("Driver configuration must be set")
+            raise OpticsError(Code.E0501, message="Driver configuration must be set")
         normalized_config = self.normalise_config(self.config.driver_config)
         driver: InstanceFallback[DriverInterface] = DeviceFactory.get_driver(
             normalized_config,
@@ -115,7 +116,7 @@ class OpticsBuilder:
 
     def instantiate_element_source(self) -> InstanceFallback[ElementSourceInterface]:
         if not self.config.element_source_config:
-            raise ValueError("Element source configuration must be set")
+            raise OpticsError(Code.E0501, message="Element source configuration must be set")
         driver: InstanceFallback[DriverInterface] = self.get_driver()
         # Normalize config before passing to factory
         normalized_config = self.normalise_config(self.config.element_source_config)
@@ -172,7 +173,7 @@ class OpticsBuilder:
 
         :param cls: The class to instantiate (e.g., ActionKeyword, AppManagement, Verifier).
         :return: An instance of the specified class.
-        :raises ValueError: If required configurations are missing for the specified class.
+        :raises OpticsError: If required configurations are missing for the specified class.
         """
         instance: T = cls(self)  # type: ignore
         return instance

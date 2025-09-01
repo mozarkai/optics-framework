@@ -11,6 +11,7 @@ from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
+from optics_framework.common.error import OpticsError, Code
 
 
 
@@ -42,20 +43,20 @@ class Appium(DriverInterface):
         self.driver: Optional[WebDriver] = None
         if event_sdk is None:
             internal_logger.error("No EventSDK instance provided to Appium driver.")
-            raise ValueError("Appium driver requires an EventSDK instance.")
+            raise OpticsError(Code.E0101, message="Appium driver requires an EventSDK instance.")
         self.event_sdk: EventSDK = event_sdk
         if config is None:
             internal_logger.error(
                 f"No configuration provided for {self.DEPENDENCY_TYPE}: {self.NAME}"
             )
-            raise ValueError("Appium driver not enabled in config")
+            raise OpticsError(Code.E0104, message="Appium driver not enabled in config")
 
         self.appium_server_url: str = str(config.get("url", "http://127.0.0.1:4723"))
 
         self.capabilities: Dict[str, Any] = config.get("capabilities", {})
         if not self.capabilities:
             internal_logger.error("No capabilities found in config")
-            raise ValueError("Appium capabilities not found in config")
+            raise OpticsError(Code.E0104, message="Appium capabilities not found in config")
 
         # UI Tree handling
         self.ui_helper: Optional[UIHelper] = None
@@ -65,7 +66,7 @@ class Appium(DriverInterface):
         """Helper to ensure self.driver is initialized, else raise error."""
         if self.driver is None:
             internal_logger.error(self.NOT_INITIALIZED)
-            raise RuntimeError(self.NOT_INITIALIZED)
+            raise OpticsError(Code.E0101, message=self.NOT_INITIALIZED)
         return self.driver
 
     def start_session(
@@ -117,7 +118,7 @@ class Appium(DriverInterface):
         try:
             self.driver = webdriver.Remote(self.appium_server_url, options=options)  # type: ignore
             if self.driver is None:
-                raise RuntimeError("Failed to create Appium WebDriver instance")
+                raise OpticsError(Code.E0102, message="Failed to create Appium WebDriver instance")
             # CRITICAL: Log the new session ID
             new_session_id = self.driver.session_id
             internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
@@ -126,7 +127,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to create new Appium session: {e}")
             self.driver = None
-            raise RuntimeError("Failed to create new Appium session due to: " + str(e)) from e
+            raise OpticsError(Code.E0102, message="Failed to create new Appium session due to: ", cause=e) from e
 
 
     def _get_platform_and_options(self, all_caps: Dict[str, Any]) -> tuple[Any, Dict[str, Any]]:
@@ -140,7 +141,7 @@ class Appium(DriverInterface):
                     platform = all_caps[key]
                     break
             if not platform:
-                raise ValueError("'platformName' capability is required.")
+                raise OpticsError(Code.E0104, message="'platformName' capability is required.")
 
         internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
         internal_logger.debug(f"All capabilities from config: {all_caps}")
@@ -163,9 +164,7 @@ class Appium(DriverInterface):
         elif platform.lower() == "ios":
             options = XCUITestOptions()
         else:
-            raise ValueError(
-                f"Unsupported platform: {platform}. Use 'Android' or 'iOS'."
-            )
+            raise OpticsError(Code.E0104, message=f"Unsupported platform: {platform}. Use 'Android' or 'iOS'.")
         return options, default_options
 
     def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
@@ -209,9 +208,7 @@ class Appium(DriverInterface):
             "appium:appPackage"
         )
         if not app_package:
-            raise ValueError(
-                "Missing required capability: appPackage or appium:appPackage"
-            )
+            raise OpticsError(Code.E0104, message="Missing required capability: appPackage or appium:appPackage")
 
         command = f"adb shell dumpsys package {app_package} | grep versionName"
         try:
@@ -224,7 +221,8 @@ class Appium(DriverInterface):
                     return line.split("versionName=")[-1].strip()
         except subprocess.CalledProcessError as e:
             internal_logger.error(f"Error executing adb command: {e.output}")
-        return ""
+            raise OpticsError(Code.E0401, message="Error executing adb command", details=e.output, cause=e) from e
+        raise OpticsError(Code.E0401, message=f"Could not find versionName for package: {app_package}")
 
     def initialise_setup(self) -> None:
         """Initialize the Appium setup by starting the session."""
@@ -519,7 +517,7 @@ class Appium(DriverInterface):
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
-            raise RuntimeError(f"Appium failed to enter input: {e}")
+            raise OpticsError(Code.E0401, message=f"Error during text input: {e}", cause=e) from e
 
     def get_char_as_keycode(self, char: str) -> Optional[int]:
         # Basic lowercase mapping; extend as needed
@@ -570,7 +568,7 @@ class Appium(DriverInterface):
         text = element.get_attribute("text") or element.get_attribute("value")
         internal_logger.info(f"Text of element: {text}")
         if text is None:
-            raise ValueError("Element text is None")
+            raise OpticsError(Code.E0401, message="Element text is None")
         return text
 
     # helper functions
@@ -598,7 +596,7 @@ class Appium(DriverInterface):
                 timestamp = self.event_sdk.get_current_time_for_events()
                 element.click()
             except Exception as e:
-                raise Exception(f"Error occurred while clicking on element: {e}")
+                raise OpticsError(Code.E0401, message=f"Error occurred while clicking on element: {e}", cause=e) from e
         if event_name and timestamp is not None:
             self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             execution_logger.debug("Clicked on element: %s at %s", element, timestamp)
@@ -644,7 +642,7 @@ class Appium(DriverInterface):
             event_name (str | None): The name of the event to trigger, if any.
         """
         if self.ui_helper is None:
-            raise Exception("UIHelper is not initialized.")
+            raise OpticsError(Code.E0101, message="UIHelper is not initialized.")
         bbox = self.ui_helper.get_bounding_box_for_xpath(xpath)
         if bbox:
             # Unpack bbox as ((x1, y1), (x2, y2))

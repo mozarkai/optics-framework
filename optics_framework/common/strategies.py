@@ -10,6 +10,7 @@ from optics_framework.common.screenshot_stream import ScreenshotStream
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
+from optics_framework.common.error import OpticsError, Code
 
 
 class LocatorStrategy(ABC):
@@ -251,8 +252,8 @@ class PagesourceStrategy:
             try:
                 return str(pagesource)
             except Exception:
-                raise ValueError("Invalid pagesource captured: not a string or convertible")
-        raise ValueError("Invalid pagesource captured")
+                raise OpticsError(Code.E0403, message="Invalid pagesource captured: not a string or convertible")
+        raise OpticsError(Code.E0403, message="Invalid pagesource captured")
 
     def get_interactive_elements(self) -> List[dict]:
         """Retrieve interactive elements from the element source."""
@@ -276,11 +277,13 @@ class ScreenshotStrategy:
             screenshot = self.element_source.capture()
         except Exception as e:
             internal_logger.error(f"Error capturing screenshot: {e}")
-            raise RuntimeError(f"Error capturing screenshot: {e}")
+            raise OpticsError(Code.E0303, message=f"Error capturing screenshot: {e}")
         if screenshot is not None and not utils.is_black_screen(screenshot):
             return screenshot
         internal_logger.warning("Invalid screenshot captured: black screen detected.")
-        raise ValueError("Invalid screenshot captured")
+        raise OpticsError(
+            Code.E0303, message="Invalid screenshot captured, black screen detected."
+        )
 
     def capture_stream(self, timeout: int = 30):
         """Capture a screenshot stream from the element source."""
@@ -386,7 +389,7 @@ class StrategyManager:
                     execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
-        raise ValueError(f"Element '{element}' not found using any strategy.")
+                raise OpticsError(Code.E0201, message=f"Element '{element}' not found using any strategy.")
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         self._validate_rule(rule)
@@ -398,13 +401,13 @@ class StrategyManager:
             if self._can_strategy_assert_elements(strategy, element_type):
                 result, timestamp, annotated_frame = self._try_assert_with_strategy(strategy, elements, timeout, rule)
                 return result, timestamp, annotated_frame
-        raise ValueError("No elements found.")
+        raise OpticsError(Code.E0201, message="No elements found.")
 
     def _validate_rule(self, rule: str):
         """Validate the rule parameter."""
         rule = rule.lower()
         if rule not in ("any", "all"):
-            raise ValueError("Invalid rule. Use 'any' or 'all'.")
+            raise OpticsError(Code.E0205, message="Invalid rule. Use 'any' or 'all'.")
 
     def _can_strategy_assert_elements(self, strategy, element_type: str) -> bool:
         """Check if strategy can assert elements for the given element type."""
@@ -441,7 +444,7 @@ class StrategyManager:
             except Exception as e:
                 execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
         internal_logger.error("No screenshot captured.")
-        raise ValueError("No screenshot captured using available strategies.")
+        raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.")
 
     def capture_screenshot_stream(self, timeout: int = 30):
         """Capture a screenshot stream using the available strategies."""
@@ -465,7 +468,7 @@ class StrategyManager:
             self.screenshot_stream = None
         else:
             execution_logger.warning("No active screenshot stream to stop.")
-            raise ValueError("No active screenshot stream to stop.")
+            raise OpticsError(Code.E0301, message="No active screenshot stream to stop.")
 
     def capture_pagesource(self) -> Optional[str]:
         for strategy in self.pagesource_strategies:
@@ -475,7 +478,7 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No pagesource captured.")
-        raise ValueError("No pagesource captured using available strategies.")
+        raise OpticsError(Code.E0403, message="No pagesource captured using available strategies.")
 
     def get_interactive_elements(self) -> List[dict]:
         """Retrieve interactive elements from the element source."""
@@ -486,4 +489,4 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
         internal_logger.error("No interactive elements retrieved.")
-        raise ValueError("No interactive elements retrieved using available strategies.")
+        raise OpticsError(Code.E0202, message="No interactive elements retrieved using available strategies.")

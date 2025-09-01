@@ -8,6 +8,7 @@ from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData, TemplateData
 from optics_framework.common.eventSDK import EventSDK
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.events import get_event_manager_registry
 
 
@@ -80,7 +81,7 @@ class Session:
         enabled_image_configs = to_dict_list(enabled_image_configs)
 
         if not enabled_driver_configs:
-            raise ValueError("No enabled drivers found in configuration")
+            raise OpticsError(Code.E0501, message="No enabled drivers found in configuration")
 
         self.event_sdk = EventSDK(self.config_handler)
         self.optics = OpticsBuilder(self)

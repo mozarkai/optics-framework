@@ -93,7 +93,7 @@ class LoggingManager:
         self.internal_console_handler = RichHandler(
             rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
         self.internal_console_handler.setFormatter(SensitiveDataFormatter(
-            "%(asctime)s | %(message)s", datefmt="%H:%M:%S"))
+            "%(message)s", datefmt="%H:%M:%S"))
         self.execution_console_handler = RichHandler(
             rich_tracebacks=False, show_time=True, show_level=True, markup=True)
         self.execution_console_handler.setFormatter(SensitiveDataFormatter("%(message)s"))

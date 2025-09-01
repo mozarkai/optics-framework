@@ -6,6 +6,7 @@ from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
+from optics_framework.common.error import OpticsError, Code
 from .verifier import Verifier
 
 # Action Executor Decorator
@@ -29,13 +30,10 @@ def with_self_healing(func: Callable) -> Callable:
 
         if result_count == 0:
             # No strategies yielded a result
-            raise ValueError(
-                f"No valid strategies found for '{element}' in '{func.__name__}'")
+            raise OpticsError(Code.E0201, message=f"No valid strategies found for '{element}' in '{func.__name__}'")
         if last_exception:
-            raise ValueError(
-                f"All strategies failed for '{element}' in '{func.__name__}': {last_exception}")
-        raise ValueError(
-            f"Unexpected failure: No results or exceptions for '{element}' in '{func.__name__}'")
+            raise OpticsError(Code.X0201, message=f"All strategies failed for '{element}' in '{func.__name__}': {last_exception}", cause=last_exception)
+        raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func.__name__}'")
     return wrapper
 
 

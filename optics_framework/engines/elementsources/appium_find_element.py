@@ -4,6 +4,7 @@ from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.common.appiumby import AppiumBy
 from lxml import etree # type: ignore
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 
@@ -32,7 +33,7 @@ class AppiumFindElement(ElementSourceInterface):
     def _require_driver(self) -> WebDriver:
         if self.driver is None:
             internal_logger.error("Appium driver is not initialized for AppiumFindElement.")
-            raise RuntimeError("Appium driver is not initialized for AppiumFindElement.")
+            raise OpticsError(Code.E0101, message="Appium driver is not initialized for AppiumFindElement.")
         if hasattr(self.driver, "driver"):
             return self.driver.driver
         return self.driver
@@ -89,14 +90,11 @@ class AppiumFindElement(ElementSourceInterface):
         Returns:
             The found element object if found, None otherwise.
         """
-        """
-        Find the specified element on the current page using the Appium driver.
-        """
         driver = self._require_driver()
         element_type = utils.determine_element_type(element)
 
         if index is not None:
-            raise ValueError('Appium Find Element does not support locating elements using index.')
+            raise OpticsError(Code.E0202, message='Appium Find Element does not support locating elements using index.')
 
         if element_type == 'Image':
             return None
@@ -106,15 +104,15 @@ class AppiumFindElement(ElementSourceInterface):
                 if not found_element:
                     return None
                 return found_element
-            except (AttributeError, TypeError):
+            except (AttributeError, TypeError) as e:
                 internal_logger.error('Error finding element: %s', element, exc_info=True)
-                return None
+                raise OpticsError(Code.E0201, message=f'Error finding element: {element}', cause=e) from e
         elif element_type == 'Text':
             try:
                 found_element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, element)
-            except (AttributeError, TypeError):
+            except (AttributeError, TypeError) as e:
                 internal_logger.exception('Element: %s', element, exc_info=True)
-                return None
+                raise OpticsError(Code.E0201, message=f'Error finding element: {element}', cause=e) from e
             return found_element
         return None
 
@@ -135,7 +133,7 @@ class AppiumFindElement(ElementSourceInterface):
             Exception: If elements are not found based on the rule within the timeout.
         """
         if rule not in ["any", "all"]:
-            raise ValueError("Invalid rule. Use 'any' or 'all'.")
+            raise OpticsError(Code.E0403, message="Invalid rule. Use 'any' or 'all'.")
 
         start_time = time.time()
         found = dict.fromkeys(elements, False)
@@ -150,6 +148,6 @@ class AppiumFindElement(ElementSourceInterface):
                 if rule == "all" and all(found.values()):
                     return True, utils.get_timestamp()
             except Exception as e:
-                internal_logger.error("Error during element assertion: %s", e, exc_info=True)
-                continue
+                # internal_logger.error("Error during element assertion: %s", e, exc_info=True)
+                raise OpticsError(Code.E0401, message=f"Error during element assertion: {e}" ) from e
         return False, utils.get_timestamp()

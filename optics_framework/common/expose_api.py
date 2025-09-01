@@ -13,6 +13,7 @@ from optics_framework.common.execution import (
     ExecutionParams,
 )
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
+from optics_framework.common.error import OpticsError
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.helper.version import VERSION
 
@@ -165,6 +166,8 @@ async def create_session(config: SessionConfig):
         return SessionResponse(session_id=session_id)
     except Exception as e:
         internal_logger.error(f"Failed to create session: {e}")
+        if isinstance(e, OpticsError):
+            raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"Session creation failed: {e}") from e
 
 @app.post("/v1/sessions/{session_id}/action")
@@ -219,6 +222,8 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
             status="FAIL",
             message=f"Keyword {request.keyword} failed: {str(e)}"
         ).model_dump())
+        if isinstance(e, OpticsError):
+            raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}") from e
 
 # Helper for DRY keyword execution endpoints
@@ -345,4 +350,6 @@ async def delete_session(session_id: str):
         return TerminationResponse()
     except Exception as e:
         internal_logger.error(f"Failed to terminate session {session_id}: {e}")
+        if isinstance(e, OpticsError):
+            raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"Session termination failed: {e}") from e

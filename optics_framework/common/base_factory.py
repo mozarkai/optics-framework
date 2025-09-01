@@ -5,6 +5,7 @@ import pkgutil
 import inspect
 from pydantic import BaseModel, Field
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.error import OpticsError, Code
 
 T = TypeVar("T")
 S = TypeVar("S")
@@ -77,7 +78,7 @@ class GenericFactory(Generic[T]):
     ) -> T:
         """Unified instance creation supporting config and extra dependencies (e.g., driver)."""
         if not isinstance(config_dict, dict):
-            raise ValueError("Each item must be a dict of {name: config}")
+            raise OpticsError(Code.E0503, message="Each item must be a dict of {name: config}")
         key = next(iter(config_dict.keys()))
         config = config_dict[key]
         name = key
@@ -88,16 +89,12 @@ class GenericFactory(Generic[T]):
         try:
             module_path = cls._registry.module_paths[name]
         except KeyError as exc:
-            raise ValueError(
-                f"Unknown module requested: '{name}' in package '{package}'"
-            ) from exc
+            raise OpticsError(Code.E0601, message=f"Unknown module requested: '{name}' in package '{package}'") from exc
 
         module = importlib.import_module(module_path)
         implementation = cls._locate_implementation(module, interface)
         if not implementation:
-            raise RuntimeError(
-                f"No implementation found in '{module_path}' for {interface.__name__}"
-            )
+            raise OpticsError(Code.E0603, message=f"No implementation found in '{module_path}' for {interface.__name__}")
 
         sig = inspect.signature(implementation.__init__)
         kwargs = {}
@@ -118,14 +115,14 @@ class GenericFactory(Generic[T]):
     def create_instance(cls, name: List[dict], interface: Type[T], package: str) -> T:
         """Creates or retrieves instances from a list of config dicts."""
         if not isinstance(name, list):
-            raise ValueError("Name must be a list of config dicts")
+            raise OpticsError(Code.E0503, message="Name must be a list of config dicts")
         return cls._create_fallback(name, interface, package)
 
     @classmethod
     def _create_or_retrieve(cls, config_dict: dict, interface: Type[T], package: str) -> T:
         """Creates a new instance or retrieves a cached one for the given config dict."""
         if not isinstance(config_dict, dict):
-            raise ValueError("Each item must be a dict of {name: config}")
+            raise OpticsError(Code.E0503, message="Each item must be a dict of {name: config}")
         key = next(iter(config_dict.keys()))
         config = config_dict[key]
         name = key
@@ -139,14 +136,12 @@ class GenericFactory(Generic[T]):
         try:
             module_path = cls._registry.module_paths[name]
         except KeyError as exc:
-            raise ValueError(
-                f"Unknown module requested: '{name}' in package '{package}'") from exc
+            raise OpticsError(Code.E0601, message=f"Unknown module requested: '{name}' in package '{package}'") from exc
 
         module = importlib.import_module(module_path)
         implementation = cls._locate_implementation(module, interface)
         if not implementation:
-            raise RuntimeError(
-                f"No implementation found in '{module_path}' for {interface.__name__}")
+            raise OpticsError(Code.E0603, message=f"No implementation found in '{module_path}' for {interface.__name__}")
 
         sig = inspect.signature(implementation.__init__)
         try:
@@ -173,8 +168,7 @@ class GenericFactory(Generic[T]):
         except ModuleNotFoundError as e:
             internal_logger.error(
                 f"Failed to load module '{full_module_name}': {e}")
-            raise ValueError(
-                f"Module '{name}' not found in package '{package}'") from e
+            raise OpticsError(Code.E0601, message=f"Module '{name}' not found in package '{package}'") from e
 
     @classmethod
     def _extract_names(cls, name: Union[List[Union[str, dict]], dict]) -> List[str]:

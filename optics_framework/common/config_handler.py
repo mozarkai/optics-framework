@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import yaml
 from pydantic import BaseModel, Field
 from optics_framework.common.logging_config import initialize_handlers
+from optics_framework.common.error import OpticsError, Code
 
 
 class DependencyConfig(BaseModel):
@@ -115,7 +116,7 @@ class ConfigHandler:
         self.project_name: Optional[str] = None
         self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
         if config is None:
-            raise ValueError("ConfigHandler requires a Config object on initialization.")
+            raise OpticsError(Code.E0501, message="ConfigHandler requires a Config object on initialization.")
         if config.execution_output_path is None and config.project_path is not None:
             config.execution_output_path = os.path.join(
                 config.project_path, "execution_output"
@@ -163,7 +164,7 @@ class ConfigHandler:
         elif isinstance(new_config, Config):
             new_config_obj = new_config
         else:
-            raise ValueError("new_config must be a dict or Config object")
+            raise OpticsError(Code.E0503, message="new_config must be a dict or Config object")
         merged_config = deep_merge(current_config, new_config_obj)
         self.config = merged_config
         self._precompute_enabled_configs()

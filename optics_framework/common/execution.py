@@ -9,6 +9,7 @@ from optics_framework.common.runner.printers import TreeResultPrinter, TerminalW
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
 
@@ -40,7 +41,7 @@ class BatchExecutor(Executor):
         self.test_case = test_case
         self.event_manager = event_manager
         if not self.test_case:
-            raise ValueError("Test case is required")
+            raise OpticsError(Code.E0702, message="Test case is required")
 
     async def execute(self, session: Session, runner: Runner) -> None:
         event_manager = self.event_manager
@@ -53,7 +54,7 @@ class BatchExecutor(Executor):
                 message="NO_TEST_CASES_LOADED",
                 extra={"session_id": session.session_id}
             ))
-            raise ValueError("NO_TEST_CASES_LOADED")
+            raise OpticsError(Code.E0702, message="NO_TEST_CASES_LOADED")
 
         try:
             status = EventStatus.NOT_RUN
@@ -91,7 +92,7 @@ class DryRunExecutor(Executor):
         self.test_case = test_case
         self.event_manager = event_manager
         if not self.test_case:
-            raise ValueError("Test case is required")
+            raise OpticsError(Code.E0702, message="Test case is required")
 
     async def execute(self, session: Session, runner: Runner) -> None:
         status = EventStatus.FAIL
@@ -106,7 +107,7 @@ class DryRunExecutor(Executor):
                 message="NO_TEST_CASES_LOADED",
                 extra={"session_id": session.session_id}
             ))
-            raise ValueError("NO_TEST_CASES_LOADED")
+            raise OpticsError(Code.E0702, message=NO_TEST_CASES_LOADED)
 
         if self.test_case:
             await runner.dry_run_all()
@@ -148,7 +149,7 @@ class KeywordExecutor(Executor):
                     message="Keyword execution failed: %s" % str(e),
                     extra={"session_id": session.session_id}
                 ))
-                raise ValueError(f"Keyword execution failed: {str(e)}") from e
+                raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,
@@ -167,7 +168,7 @@ class KeywordExecutor(Executor):
                 message="Keyword not found",
                 extra={"session_id": session.session_id}
             ))
-            raise ValueError(f"Keyword {self.keyword} not found")
+            raise OpticsError(Code.E0402, message=f"Keyword {self.keyword} not found")
 
 
 class RunnerFactory:
@@ -202,7 +203,7 @@ class RunnerFactory:
         elif runner_type == "keyword_runner":
             runner = KeywordRunner(registry.keyword_map)
         else:
-            raise ValueError(f"Unknown runner type: {runner_type}")
+            raise OpticsError(Code.E0601, message=f"Unknown runner type: {runner_type}")
         return runner
 
 
@@ -226,7 +227,7 @@ class ExecutionEngine:
                 message="Session not found",
                 extra={"session_id": params.session_id}
             ))
-            raise ValueError("Session not found")
+            raise OpticsError(Code.E0702, message="Session not found")
 
         if params.mode in ("batch", "dry_run") and not session.test_cases:
             await event_manager.publish_event(Event(
@@ -237,7 +238,7 @@ class ExecutionEngine:
                 message="Test cases are required",
                 extra={"session_id": params.session_id}
             ))
-            raise ValueError("Test cases are required")
+            raise OpticsError(Code.E0702, message="Test cases are required")
 
         event_manager.start()
 
@@ -285,7 +286,7 @@ class ExecutionEngine:
                             message="Keyword mode requires a keyword",
                             extra={"session_id": params.session_id}
                         ))
-                        raise ValueError("Keyword mode requires a keyword")
+                        raise OpticsError(Code.E0403, message="Keyword mode requires a keyword")
                     try:
                         executor = KeywordExecutor(params.keyword, params.params, event_manager=event_manager)
                     except Exception as e:
@@ -297,7 +298,7 @@ class ExecutionEngine:
                             message=f"Failed to create keyword executor: {str(e)}",
                             extra={"session_id": params.session_id}
                         ))
-                        raise ValueError(f"Failed to create keyword executor: {str(e)}") from e
+                        raise OpticsError(Code.E0401, message=f"Failed to create keyword executor: {str(e)}") from e
                 else:
                     await event_manager.publish_event(Event(
                         entity_type="execution",
@@ -307,7 +308,7 @@ class ExecutionEngine:
                         message=f"Unknown mode: {params.mode}",
                         extra={"session_id": params.session_id}
                     ))
-                    raise ValueError(f"Unknown mode: {params.mode}")
+                    raise OpticsError(Code.E0702, message=f"Unknown mode: {params.mode}")
                 try:
                     result =  await executor.execute(session, runner)
                     return result
@@ -320,7 +321,7 @@ class ExecutionEngine:
                         message=f"Execution failed: {str(e)}",
                         extra={"session_id": params.session_id}
                     ))
-                    raise ValueError(f"Execution failed: {str(e)}") from e
+                    raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
             except Exception as e:
                 await event_manager.publish_event(Event(
                     entity_type="execution",
@@ -331,7 +332,7 @@ class ExecutionEngine:
                     extra={"session_id": params.session_id}
                 ))
                 internal_logger.error(f"Execution error in session {params.session_id}: {e}")
-                raise ValueError(f"Execution failed: {str(e)}") from e
+                raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
             finally:
                 if hasattr(runner, 'result_printer') and runner.result_printer:
                     internal_logger.debug(

@@ -15,6 +15,7 @@ from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
+from optics_framework.common.error import OpticsError, Code
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -53,9 +54,7 @@ class FlowControl:
     def _ensure_session(self) -> None:
         """Ensures a Session instance is set."""
         if self.session is None:
-            raise ValueError(
-                "FlowControl.session is not set. Please assign a valid session instance before using FlowControl."
-            )
+            raise OpticsError(Code.E0501, message="FlowControl.session is not set. Please assign a valid session instance before using FlowControl.")
 
     def _resolve_param(self, param: str) -> str:
         """Resolve ${variable} references from session.elements."""
@@ -66,33 +65,33 @@ class FlowControl:
         ):
             return str(param)
         if self.session is None:
-            raise ValueError("Session is None in resolve_param.")
+            raise OpticsError(Code.E0702, message="Session is None in resolve_param.")
         var_name = param[2:-1].strip()
         # Access the shared elements dictionary from the session
         elements = getattr(self.session, "elements", None)
         if not isinstance(elements, ElementData):
-            raise ValueError(NO_SESSION_ELEMENT_PRESENT)
+            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
         value = elements.get_element(var_name)
         if value is None:
-            raise ValueError(f"Variable '{param}' not found in elements dictionary")
+            raise OpticsError(Code.E0702, message=f"Variable '{param}' not found in elements dictionary")
         return str(value)
 
     def execute_module(self, module_name: str) -> List[Any]:
         """Executes a module's keywords using the session's keyword_map."""
         self._ensure_session()
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0702, message=NO_SESSION_PRESENT)
         if self.modules is None or not hasattr(self.modules, "modules") or module_name not in self.modules.modules:
-            raise ValueError(f"Module '{module_name}' not found in modules.")
+            raise OpticsError(Code.E0601, message=f"Module '{module_name}' not found in modules.")
         results = []
         module_def = self.modules.get_module_definition(module_name)
         if not module_def:
-            raise ValueError(f"No definition found for module '{module_name}'.")
+            raise OpticsError(Code.E0601, message=f"No definition found for module '{module_name}'.")
         for keyword, params in module_def:
             func_name = "_".join(keyword.split()).lower()
             method = self.keyword_map.get(func_name)
             if method is None:
-                raise ValueError(f"Keyword '{keyword}' not found in keyword_map.")
+                raise OpticsError(Code.E0402, message=f"Keyword '{keyword}' not found in keyword_map.")
             try:
                 raw_indices = getattr(method, "_raw_param_indices", [])
                 resolved_params = [
@@ -106,7 +105,7 @@ class FlowControl:
                 results.append(result)
             except Exception as e:
                 internal_logger.error(f"Error executing keyword '{keyword}': {e}")
-                raise  # Propagate exception to fail the test
+                raise OpticsError(Code.E0401, message=f"Error executing keyword '{keyword}': {e}", cause=e)
         return results
 
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
@@ -115,7 +114,7 @@ class FlowControl:
         internal_logger.debug(f"[RUN_LOOP] Called with target={target}, args={args}")
         self._ensure_session()
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0702, message=NO_SESSION_PRESENT)
         if len(args) == 1:
             internal_logger.debug(f"[RUN_LOOP] Looping by count: {args[0]}")
             return self._loop_by_count(target, args[0])
@@ -128,12 +127,12 @@ class FlowControl:
         try:
             iterations = int(count_str)
             if iterations < 1:
-                raise ValueError("Iteration count must be at least 1.")
+                raise OpticsError(Code.E0403, message="Iteration count must be at least 1.")
         except ValueError as e:
             if str(e) == "Iteration count must be at least 1.":
                 raise
             internal_logger.error(f"[_LOOP_BY_COUNT] Invalid count_str: {count_str}")
-            raise ValueError(f"Expected an integer for loop count, got '{count_str}'.")
+            raise OpticsError(Code.E0403, message=f"Expected an integer for loop count, got '{count_str}'.")
 
         results = []
         for i in range(iterations):
@@ -148,7 +147,7 @@ class FlowControl:
         internal_logger.debug(f"[_LOOP_WITH_VARIABLES] target={target}, args={args}")
         if len(args) % 2 != 0:
             internal_logger.error(f"[_LOOP_WITH_VARIABLES] Uneven number of arguments for variable-iterable pairs: {args}")
-            raise ValueError("Expected an even number of arguments for variable-iterable pairs.")
+            raise OpticsError(Code.E0403, message="Expected an even number of arguments for variable-iterable pairs.")
 
         variables = args[0::2]
         iterables = args[1::2]
@@ -157,7 +156,7 @@ class FlowControl:
         min_length = min(len(lst) for lst in parsed_iterables)
         internal_logger.debug(f"[_LOOP_WITH_VARIABLES] min_length={min_length}, var_names={var_names}")
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             runner_elements = ElementData()
@@ -188,6 +187,8 @@ class FlowControl:
         """Extracts and cleans variable names from the input tuple."""
         var_names = []
         for variable in variables:
+            if not isinstance(variable, str) or not variable.strip():
+                raise OpticsError(Code.E0403, message=f"Invalid variable name: {variable}")
             var_name = variable.strip()
             if var_name.startswith("${") and var_name.endswith("}"):
                 var_name = var_name[2:-1].strip()
@@ -206,7 +207,7 @@ class FlowControl:
         for i, iterable in enumerate(iterables):
             parsed = self._parse_single_iterable(iterable, variables[i])
             if not parsed:
-                raise ValueError(f"Iterable for variable '{variables[i]}' is empty.")
+                raise OpticsError(Code.E0403, message=f"Iterable for variable '{variables[i]}' is empty.")
             parsed_iterables.append(parsed)
         return parsed_iterables
 
@@ -216,30 +217,24 @@ class FlowControl:
             try:
                 values = json.loads(iterable)
                 if not isinstance(values, list):
-                    raise ValueError(
-                        f"Iterable '{iterable}' for variable '{variable}' must resolve to a list."
-                    )
+                    raise OpticsError(Code.E0403, message=f"Iterable '{iterable}' for variable '{variable}' must resolve to a list.")
                 return values
             except json.JSONDecodeError:
-                raise ValueError(
-                    f"Invalid iterable format for variable '{variable}': '{iterable}'."
-                )
+                raise OpticsError(Code.E0403, message=f"Invalid iterable format for variable '{variable}': '{iterable}'.")
         elif isinstance(iterable, list):
             return iterable
         else:
-            raise ValueError(
-                f"Expected a list or JSON string for iterable of variable '{variable}', got {type(iterable).__name__}."
-            )
+            raise OpticsError(Code.E0403, message=f"Expected a list or JSON string for iterable of variable '{variable}', got {type(iterable).__name__}.")
 
     def condition(self, *args: str) -> Optional[List[Any]]:
         """Evaluates conditions and executes corresponding targets."""
         internal_logger.debug(f"[CONDITION] Called with args={args}")
         self._ensure_session()
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         if not args:
             internal_logger.error("[CONDITION] No condition-target pairs provided.")
-            raise ValueError("No condition-target pairs provided.")
+            raise OpticsError(Code.E0403, message="No condition-target pairs provided.")
         pairs, else_target = self._split_condition_args(args)
         internal_logger.debug(f"[CONDITION] Parsed pairs={pairs}, else_target={else_target}")
         return self._evaluate_conditions(pairs, else_target)
@@ -327,29 +322,27 @@ class FlowControl:
         """
         try:
             if self.modules and hasattr(self.modules, "modules") and cond in self.modules.modules:
-                    result = self.execute_module(cond)
-                    return bool(result)
+                result = self.execute_module(cond)
+                return bool(result)
             resolved_cond = self._resolve_condition(cond)
             return bool(self._safe_eval(resolved_cond))
         except Exception as e:
-            raise ValueError(f"Error evaluating condition '{cond}': {e}")
+            raise OpticsError(Code.E0403, message=f"Error evaluating condition '{cond}': {e}")
 
     def _resolve_condition(self, cond: str) -> str:
         """Resolves variables in a condition string."""
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise ValueError(NO_SESSION_ELEMENT_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_ELEMENT_PRESENT)
         pattern = re.compile(VAR_PATTERN)
 
         def replacer(match):
             var_name = match.group(1).strip()
             value = runner_elements.get_element(var_name)
             if value is None:
-                raise ValueError(
-                    f"Variable '{var_name}' not found for condition resolution."
-                )
+                raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found for condition resolution.")
             return f"'{value}'" if isinstance(value, str) else str(value)
 
         return pattern.sub(replacer, cond)
@@ -402,13 +395,13 @@ class FlowControl:
                 return self._load_file_data(file_path), None
         else:
             internal_logger.error("[READ_DATA] file_path must be a list or a file path string.")
-            raise ValueError("file_path must be a list or a file path string.")
+            raise OpticsError(Code.E0501, message="file_path must be a list or a file path string.")
 
     def _load_env_data(self, env_var):
         env_data = os.environ.get(env_var)
         internal_logger.debug(f"[READ_DATA] Loading data from environment variable: {env_var}")
         if env_data is None:
-            raise ValueError(f"Environment variable '{env_var}' not found.")
+            raise OpticsError(Code.E0501, message=f"Environment variable '{env_var}' not found.")
         try:
             json_data = json.loads(env_data)
             internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
@@ -417,7 +410,7 @@ class FlowControl:
                 return pd.DataFrame(), str(json_data)
             normalized_data = self._normalize_json_data(json_data)
             return pd.json_normalize(normalized_data), None
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError:
             # Try CSV parsing
             internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
             try:
@@ -431,7 +424,7 @@ class FlowControl:
                 return pd.DataFrame(), str(env_data)
         except Exception as e:
             internal_logger.error(f"[READ_DATA] Unexpected error occurred: {e}")
-            raise ValueError(f"Unexpected error while loading environment variable '{env_var}': {e}") from e
+            raise OpticsError(Code.E0501, message=f"Unexpected error while loading environment variable '{env_var}': {e}", cause=e)
 
     def _normalize_json_data(self, json_data):
         """Normalizes JSON data to ensure it's in list format for DataFrame creation."""
@@ -455,9 +448,9 @@ class FlowControl:
             if df.empty:
                 return pd.DataFrame(), env_data
             return df, None
-        except ValueError:
+        except ValueError as e:
             internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
-            return pd.DataFrame(), env_data
+            raise OpticsError(Code.E0501, message=f"CSV parsing failed: {e}", cause=e)
 
     def _load_file_data(self, file_path):
         file_path = self._resolve_file_path(file_path)
@@ -469,7 +462,7 @@ class FlowControl:
             return self._load_json_file(file_path)
         else:
             internal_logger.error(f"[READ_DATA] Unsupported file extension: {ext}")
-            raise ValueError(f"Unsupported file extension: {ext}")
+            raise OpticsError(Code.E0501, message=f"Unsupported file extension: {ext}")
 
     def _resolve_file_path(self, file_path):
         if not os.path.isabs(file_path):
@@ -489,7 +482,7 @@ class FlowControl:
     def _check_file_exists(self, file_path, ext):
         if ext in ['.csv', '.json'] and not os.path.exists(file_path):
             internal_logger.error(f"[READ_DATA] File not found: {file_path}")
-            raise FileNotFoundError(f"File '{file_path}' not found.")
+            raise OpticsError(Code.E0501, message=f"File '{file_path}' with extension '{ext}' does not exist.")
 
     def _load_csv_file(self, file_path):
         return pd.read_csv(file_path)
@@ -540,7 +533,7 @@ class FlowControl:
             value = runner_elements.get_element(var_name)
             internal_logger.debug(f"[READ_DATA] Resolving variable in query: {var_name} -> {value}")
             if value is None:
-                raise ValueError(f"Variable '{var_name}' not found in elements for query resolution.")
+                raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements for query resolution.")
             start, end = match.span()
             before = q[start-1] if start > 0 else ''
             after = q[end] if end < len(q) else ''
@@ -556,10 +549,10 @@ class FlowControl:
                 internal_logger.debug(f"[READ_DATA] Applied filter expression: {filter_expr}")
             except Exception as e:
                 internal_logger.error(f"[READ_DATA] Invalid query expression: {filter_expr}. Error: {e}")
-                raise ValueError(f"Invalid query expression: {filter_expr}. Error: {e}")
+                raise OpticsError(Code.E0403, message=f"Invalid query expression: {filter_expr}. Error: {e}", cause=e)
         if df is not None and df.empty and query:
             internal_logger.error(f"[READ_DATA] No data found matching the query/filter: '{query}'")
-            raise ValueError(f"No data found matching the query/filter: '{query}'")
+            raise OpticsError(Code.E0403, message=f"No data found matching the query/filter: '{query}'")
         return df
 
     def _apply_column_selection(self, df, select_cols):
@@ -567,7 +560,7 @@ class FlowControl:
             missing = [c for c in select_cols if c not in df.columns]
             if missing:
                 internal_logger.error(f"[READ_DATA] Columns not found in data: {missing}")
-                raise ValueError(f"Columns not found in data: {missing}")
+                raise OpticsError(Code.E0403, message=f"Columns not found in data: {missing}")
             df = df.loc[:, select_cols]
             internal_logger.debug(f"[READ_DATA] Selected columns from DataFrame: {select_cols}")
         return df
@@ -676,15 +669,15 @@ class FlowControl:
     def _load_from_csv(file_path: str, query: str) -> List[Any]:
         """Loads and extracts data from a CSV file using a column name or index as query."""
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File '{file_path}' not found.")
+            raise OpticsError(Code.E0501, message=f"File '{file_path}' not found.")
         if os.path.splitext(file_path)[-1].lower() != ".csv":
-            raise ValueError("Unsupported file format. Use CSV or provide a list.")
+            raise OpticsError(Code.E0501, message="Unsupported file format. Use CSV or provide a list.")
 
         with open(file_path, newline="") as csvfile:
             reader = csv.reader(csvfile)
             data = list(reader)
             if not data:
-                raise ValueError(f"CSV file '{file_path}' is empty.")
+                raise OpticsError(Code.E0501, message=f"CSV file '{file_path}' is empty.")
             return FlowControl._extract_csv_data(data, query)
 
     @staticmethod
@@ -700,18 +693,18 @@ class FlowControl:
         try:
             idx = int(query)
             if idx >= len(headers):
-                raise IndexError("Index out of range.")
+                raise OpticsError(Code.E0403, message="Index out of range.")
             return [row[idx] for row in rows if len(row) > idx and row[idx]]
         except ValueError:
             pass
-        raise ValueError(f"Query '{query}' must be a column name or integer index present in the CSV.")
+        raise OpticsError(Code.E0403, message=f"Query '{query}' must be a column name or integer index present in the CSV.")
 
     @raw_params(0)
     def evaluate(self, param1: str, param2: str) -> Any:
         """Evaluates an expression and stores the result in session.elements."""
         self._ensure_session()
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         var_name = self._extract_variable_name(param1)
         result = self._compute_expression(param2)
         runner_elements = getattr(self.session, "elements", None)
@@ -734,16 +727,16 @@ class FlowControl:
     def _compute_expression(self, param2: str) -> Any:
         """Computes an expression by resolving variables and evaluating it."""
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise ValueError(NO_SESSION_ELEMENT_PRESENT)
+            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
 
         def replace_var(match):
             var_name = match.group(1)
             value = runner_elements.get_element(var_name)
             if value is None:
-                raise ValueError(f"Variable '{var_name}' not found in elements.")
+                raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements.")
             return str(value)
 
         param2_resolved = re.sub(VAR_PATTERN, replace_var, param2)
@@ -786,12 +779,12 @@ class FlowControl:
             for n in ast.walk(node):
                 if not isinstance(n, allowed_nodes) and not isinstance(n, allowed_operators):
                     internal_logger.warning(f"[EVALUATE] Unsafe expression detected: {expression}")
-                    raise ValueError(f"Unsafe expression detected: {expression}")
+                    raise OpticsError(Code.E0403, message=f"Unsafe expression detected: {expression}")
             if self.session is None:
-                raise ValueError(NO_SESSION_PRESENT)
+                raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
             runner_elements = getattr(self.session, "elements", None)
             if not isinstance(runner_elements, ElementData):
-                raise ValueError("Session elements is not an ElementData instance or is None.")
+                raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
             return eval(
                 expression,
                 {"__builtins__": None},
@@ -801,7 +794,7 @@ class FlowControl:
             # In some time, i will replace it with a safer alternative.
             # For now, we are using it with a restricted environment.
         except Exception as e:
-            raise ValueError(f"Error evaluating expression '{expression}': {e}")
+            raise OpticsError(Code.E0403, message=f"Error evaluating expression '{expression}': {e}", cause=e)
 
     def _detect_date_format(self, date_str: str) -> str:
         """Detect the format of the input date string."""
@@ -818,7 +811,7 @@ class FlowControl:
                 return fmt
             except ValueError:
                 continue
-        raise ValueError(f"Unable to detect date format for input: {date_str}")
+        raise OpticsError(Code.E0403, message=f"Unable to detect date format for input: {date_str}")
 
     @raw_params(0)
     def date_evaluate(
@@ -846,7 +839,7 @@ class FlowControl:
         """
         self._ensure_session()
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
 
         var_name = self._extract_variable_name(param1)
         input_date = param2.strip()
@@ -867,18 +860,18 @@ class FlowControl:
             if unit.startswith("day"):
                 base_date += timedelta(days=number)
             else:
-                raise ValueError(f"Unsupported unit in expression: {unit}")
+                raise OpticsError(Code.E0403, message=f"Unsupported unit in expression: {unit}")
         elif expr.startswith("-"):
             number, unit = expr[1:].split()
             number = int(number)
             if unit.startswith("day"):
                 base_date -= timedelta(days=number)
             else:
-                raise ValueError(f"Unsupported unit in expression: {unit}")
+                raise OpticsError(Code.E0403, message=f"Unsupported unit in expression: {unit}")
         elif expr in ("today", "now"):
             pass  # No change
         else:
-            raise ValueError(f"Unsupported expression format: {expression}")
+            raise OpticsError(Code.E0403, message=f"Unsupported expression format: {expression}")
 
         # Format result
         result = base_date.strftime(output_format)
@@ -896,7 +889,7 @@ class FlowControl:
         internal_logger.debug(f"[INVOKE_API] Called with api_identifier={api_identifier}")
         self._ensure_session()
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0702, message=NO_SESSION_PRESENT)
         collection_name, api_name = self._parse_api_identifier(api_identifier)
         internal_logger.debug(f"[INVOKE_API] Parsed collection_name={collection_name}, api_name={api_name}")
         collection = self._get_api_collection(collection_name)
@@ -915,29 +908,25 @@ class FlowControl:
         """Parses 'collection.api' into a tuple."""
         parts = identifier.split(".", 1)
         if len(parts) != 2:
-            raise ValueError(
-                f"Invalid API identifier format: '{identifier}'. Expected 'collection.api_name'."
-            )
+            raise OpticsError(Code.E0403, message=f"Invalid API identifier format: '{identifier}'. Expected 'collection.api_name'.")
         return parts[0], parts[1]
 
     def _get_api_collection(self, name: str):
         """Retrieves an API collection from the session."""
         if self.session is None:
-            raise ValueError(NO_SESSION_PRESENT)
+            raise OpticsError(Code.E0702, message=NO_SESSION_PRESENT)
         if not isinstance(self.session.apis, ApiData):
-            raise ValueError("session instance does not have a valid 'apis' attribute.")
+            raise OpticsError(Code.E0702, message="session instance does not have a valid 'apis' attribute.")
         collection = self.session.apis.collections.get(name)
         if not collection:
-            raise ValueError(f"API collection '{name}' not found.")
+            raise OpticsError(Code.E0601, message=f"API collection '{name}' not found.")
         return collection
 
     def _get_api_definition(self, collection, name: str):
         """Retrieves a specific API definition from a collection."""
         api_def = collection.apis.get(name)
         if not api_def:
-            raise ValueError(
-                f"API '{name}' not found in collection '{collection.name}'."
-            )
+            raise OpticsError(Code.E0601, message=f"API '{name}' not found in collection '{collection.name}'.")
         return api_def
 
     def _prepare_request_details(
@@ -1008,7 +997,8 @@ class FlowControl:
 
             return response
         except requests.RequestException as e:
-            raise RuntimeError(f"API request to {url} failed: {e}") from e
+            internal_logger.error(f"API request to {url} failed: {e}")
+            raise OpticsError(Code.E0401, message=f"API request to {url} failed: {e}", cause=e)
 
     def _write_api_log(self, log_file_path, method, url, headers, body, response):
         """Writes API request/response details to a log file."""
@@ -1139,11 +1129,11 @@ class FlowControl:
         """Parses response as JSON, returns None if parsing fails."""
         try:
             return response.json()
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             internal_logger.warning(
-                "API response is not valid JSON; cannot extract values."
+                f"API response is not valid JSON; cannot extract values. Error: {e}"
             )
-            return None
+            raise OpticsError(Code.E0403, message=f"API response is not valid JSON: {e}", cause=e)
 
     def _log_extraction_attempt(self, extract_paths):
         """Logs the extraction attempt based on available paths."""
@@ -1181,7 +1171,7 @@ class FlowControl:
         """Gets session elements or creates if not properly initialized."""
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise ValueError("Session elements are not properly initialized.")
+            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
         return runner_elements
 
     def _evaluate_jsonpath_assertions(

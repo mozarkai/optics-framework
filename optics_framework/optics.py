@@ -4,6 +4,7 @@ import json
 import yaml
 import os
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import ConfigHandler, DependencyConfig, Config
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.api.app_management import AppManagement
@@ -81,7 +82,7 @@ class Optics:
             else:
                 return yaml.safe_load(config_string)
         except (json.JSONDecodeError, yaml.YAMLError) as e:
-            raise ValueError(f"Invalid configuration format: {e}") from e
+            raise OpticsError(Code.E0503, message=f"Invalid configuration format: {e}", details={"exception": str(e)})
 
     def _create_dependency_config(
         self, config_dict: Dict[str, Any]
@@ -171,7 +172,7 @@ class Optics:
             elif isinstance(config, dict):
                 parsed_config = config
             else:
-                raise ValueError("Config must be a string (JSON/YAML) or dictionary")
+                raise OpticsError(Code.E0503, message="Config must be a string (JSON/YAML) or dictionary")
 
             self._validate_required_keys(parsed_config)
 
@@ -357,7 +358,7 @@ class Optics:
     def add_module(self, module_name: str, module_def: Any) -> None:
         """Add or update a module in the current session."""
         if not self.session_id or self.session_id not in self.session_manager.sessions:
-            raise ValueError(INVALID_SETUP)
+            raise OpticsError(Code.E0101, message=INVALID_SETUP)
         session = self.session_manager.sessions[self.session_id]
         if hasattr(session, "modules") and session.modules:
             session.modules.modules[module_name] = module_def
