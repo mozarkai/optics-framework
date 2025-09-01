@@ -401,9 +401,11 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
-
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "enter_text_keyboard", output_dir=self.execution_dir)
+        try:
+            screenshot_np = self.strategy_manager.capture_screenshot()
+            utils.save_screenshot(screenshot_np, "enter_text_keyboard", output_dir=self.execution_dir)
+        except Exception as e:
+            execution_logger.error(f"Error capturing screenshot: {e}")
         execution_logger.info(f'Entering text directly: {text}')
         self.driver.enter_text(text, event_name)
 
@@ -421,9 +423,11 @@ class ActionKeyword:
         special_key = utils.parse_special_key(text_input)
         if special_key:
             text_input = special_key
-
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
+        try:
+            screenshot_np = self.strategy_manager.capture_screenshot()
+            utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
+        except Exception as e:
+            execution_logger.error(f"Error capturing screenshot: {e}")
         execution_logger.info(f'Entering text using keyboard: {text_input}')
         self.driver.enter_text_using_keyboard(text_input, event_name)
 
@@ -457,10 +461,15 @@ class ActionKeyword:
         :param keycode: The keycode to be pressed.
         :param event_name: The event triggering the press.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_keycode", output_dir=self.execution_dir)
-        execution_logger.info(f'Pressing keycode: {keycode}')
+        try:
+            screenshot_np = self.strategy_manager.capture_screenshot()
+            utils.save_screenshot(screenshot_np, "press_keycode", output_dir=self.execution_dir)
+        except Exception as e:
+            execution_logger.error(f"Error capturing screenshot: {e}")
+
+        execution_logger.info(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(keycode, event_name)
+
 
     @with_self_healing
     def clear_element_text(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
