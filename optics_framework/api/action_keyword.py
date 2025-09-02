@@ -14,9 +14,31 @@ def with_self_healing(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(self, element, *args, **kwargs):
         screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, func.__name__, output_dir=self.execution_dir)
 
-        results = self.strategy_manager.locate(element)
+        # Extract AOI parameters from kwargs if present and convert to float
+        def parse_aoi_param(param):
+            if param is None or str(param).strip() in ('', 'None', 'none'):
+                return None
+            return float(param)
+
+        aoi_x = parse_aoi_param(kwargs.pop('aoi_x', None))
+        aoi_y = parse_aoi_param(kwargs.pop('aoi_y', None))
+        aoi_width = parse_aoi_param(kwargs.pop('aoi_width', None))
+        aoi_height = parse_aoi_param(kwargs.pop('aoi_height', None))
+
+        # Save screenshot with AOI annotation if AOI is used
+        if any(param is not None for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
+            annotated_screenshot = utils.annotate_aoi_region(screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height)
+            utils.save_screenshot(annotated_screenshot, f"{func.__name__}_with_aoi", output_dir=self.execution_dir)
+        else:
+            utils.save_screenshot(screenshot_np, func.__name__, output_dir=self.execution_dir)
+
+        # Pass AOI parameters to locate if provided
+        if any(param is not None for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
+            results = self.strategy_manager.locate(element, aoi_x, aoi_y, aoi_width, aoi_height)
+        else:
+            results = self.strategy_manager.locate(element)
+
         last_exception = None
         result_count = 0
         for result in results:
@@ -63,7 +85,9 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", event_name: Optional[str] = None, *, located: Any = None
+        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", event_name: Optional[str] = None,
+        aoi_x: Optional[float] = None, aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None,
+        *, located: Any = None
         ) -> None:
         """
         Press a specified element.
@@ -73,7 +97,23 @@ class ActionKeyword:
         :param offset_x: X offset of the press.
         :param offset_y: Y offset of the press.
         :param event_name: The event triggering the press.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Optional.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Optional.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Optional.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Optional.
         """
+        # Validate AOI parameters if provided - let utils.calculate_aoi_bounds handle the validation
+        aoi_params = [aoi_x, aoi_y, aoi_width, aoi_height]
+        if any(param is not None for param in aoi_params):
+            if not all(param is not None for param in aoi_params):
+                raise ValueError("All AOI parameters must be provided together")
+            # Validate early using a dummy shape - actual validation happens in strategies
+            try:
+                utils.calculate_aoi_bounds((100, 100), aoi_x, aoi_y, aoi_width, aoi_height)
+            except ValueError as e:
+                raise ValueError(f"Invalid AOI parameters: {e}")
+            execution_logger.info(f"Using AOI: x={aoi_x}%, y={aoi_y}%, width={aoi_width}%, height={aoi_height}%")
+
         if isinstance(located, tuple):
             x, y = located
             execution_logger.info(
@@ -100,12 +140,9 @@ class ActionKeyword:
             self.driver.press_percentage_coordinates(
                 int(percent_x), int(percent_y), int(repeat), event_name)
         else:
-            # TODO: read device's screen specs from config
-            # DUMMY IMPLEMENTATION
-            screen_width = 1920
-            screen_height = 1080
-            x_coor = int(screen_width * percent_x)
-            y_coor = int(screen_height * percent_y)
+            screenshot_height, screenshot_width = screenshot_np.shape[:2]
+            x_coor = int(screenshot_width * (float(percent_x) / 100))
+            y_coor = int(screenshot_height * (float(percent_y) / 100))
             self.driver.press_coordinates(x_coor, y_coor, event_name)
 
     def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:

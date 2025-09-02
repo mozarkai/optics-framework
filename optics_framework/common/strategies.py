@@ -149,6 +149,44 @@ class TextDetectionStrategy(LocatorStrategy):
         _, coor, _ = self.text_detection.find_element(screenshot, element)
         return coor
 
+    def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float) -> Union[object, Tuple[int, int]]:
+        """
+        Locate text element within a specified Area of Interest (AOI).
+
+        :param element: The text element to locate
+        :param aoi_x: X percentage of AOI top-left corner (0-100)
+        :param aoi_y: Y percentage of AOI top-left corner (0-100)
+        :param aoi_width: Width percentage of AOI (0-100)
+        :param aoi_height: Height percentage of AOI (0-100)
+        :return: Coordinates relative to the full screenshot
+        """
+        # Capture full screenshot
+        full_screenshot = self.element_source.capture()
+
+        # Crop screenshot to AOI
+        try:
+            cropped_screenshot, aoi_bounds = utils.crop_screenshot_to_aoi(
+                full_screenshot, aoi_x, aoi_y, aoi_width, aoi_height
+            )
+        except ValueError as e:
+            internal_logger.error(f"AOI cropping failed for TextDetectionStrategy: {e}")
+            raise OpticsError(Code.E0205, message=f"Invalid AOI parameters: {e}")
+
+        # Find element in cropped screenshot
+        _, coor, _ = self.text_detection.find_element(cropped_screenshot, element)
+
+        if coor is None:
+            return None
+
+        # Adjust coordinates back to full screenshot
+        try:
+            adjusted_coor = utils.adjust_coordinates_for_aoi(coor, aoi_bounds)
+            internal_logger.debug(f"Text element '{element}' found at AOI coordinates {coor}, adjusted to full screenshot coordinates {adjusted_coor}")
+            return adjusted_coor
+        except ValueError as e:
+            internal_logger.error(f"Coordinate adjustment failed for TextDetectionStrategy: {e}")
+            raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
+
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         end_time = time.time() + timeout
         found_status = dict.fromkeys(elements, False)
@@ -204,6 +242,44 @@ class ImageDetectionStrategy(LocatorStrategy):
         screenshot = self.element_source.capture()
         _, centre, _ = self.image_detection.find_element(screenshot, element)
         return centre
+
+    def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float) -> Union[object, Tuple[int, int]]:
+        """
+        Locate image element within a specified Area of Interest (AOI).
+
+        :param element: The image element to locate
+        :param aoi_x: X percentage of AOI top-left corner (0-100)
+        :param aoi_y: Y percentage of AOI top-left corner (0-100)
+        :param aoi_width: Width percentage of AOI (0-100)
+        :param aoi_height: Height percentage of AOI (0-100)
+        :return: Coordinates relative to the full screenshot
+        """
+        # Capture full screenshot
+        full_screenshot = self.element_source.capture()
+
+        # Crop screenshot to AOI
+        try:
+            cropped_screenshot, aoi_bounds = utils.crop_screenshot_to_aoi(
+                full_screenshot, aoi_x, aoi_y, aoi_width, aoi_height
+            )
+        except ValueError as e:
+            internal_logger.error(f"AOI cropping failed for ImageDetectionStrategy: {e}")
+            raise OpticsError(Code.E0205, message=f"Invalid AOI parameters: {e}")
+
+        # Find element in cropped screenshot
+        _, centre, _ = self.image_detection.find_element(cropped_screenshot, element)
+
+        if centre is None:
+            return None
+
+        # Adjust coordinates back to full screenshot
+        try:
+            adjusted_centre = utils.adjust_coordinates_for_aoi(centre, aoi_bounds)
+            internal_logger.debug(f"Image element '{element}' found at AOI coordinates {centre}, adjusted to full screenshot coordinates {adjusted_centre}")
+            return adjusted_centre
+        except ValueError as e:
+            internal_logger.error(f"Coordinate adjustment failed for ImageDetectionStrategy: {e}")
+            raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         end_time = time.time() + timeout
@@ -374,14 +450,31 @@ class StrategyManager:
             strategies.update(self.pagesource_factory.create_strategies(instance))
         return strategies
 
-    def locate(self, element: str) -> Generator[LocateResult, None, None]:
+    def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None) -> Generator[LocateResult, None, None]:
         element_type = utils.determine_element_type(element)
         execution_logger.info(f"Locating element: {element} of type: {element_type}...")
+
+        # Check if AOI is specified
+        aoi_params = [aoi_x, aoi_y, aoi_width, aoi_height]
+        use_aoi = any(param is not None for param in aoi_params)
+
+        if use_aoi:
+            # Validate that all AOI params are provided when any is provided
+            if not all(param is not None for param in aoi_params):
+                raise OpticsError(Code.E0205, message="All AOI parameters (aoi_x, aoi_y, aoi_width, aoi_height) must be provided together")
+
+            execution_logger.info(f"Using AOI: x={aoi_x}%, y={aoi_y}%, width={aoi_width}%, height={aoi_height}%")
+
         for strategy in self.locator_strategies:
             internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for element: {element}")
             if strategy.supports(element_type, strategy.element_source):
                 try:
-                    result = strategy.locate(element)
+                    # Check if strategy supports AOI by looking for aoi-aware locate method
+                    if use_aoi and hasattr(strategy, 'locate_with_aoi'):
+                        result = strategy.locate_with_aoi(element, aoi_x, aoi_y, aoi_width, aoi_height)
+                    else:
+                        result = strategy.locate(element)
+
                     if result:
                         execution_tracer.log_attempt(strategy, element, "success")
                         yield LocateResult(result, strategy)
@@ -389,7 +482,7 @@ class StrategyManager:
                     execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
                     internal_logger.error(
                         f"Strategy {strategy.__class__.__name__} failed: {e}")
-                raise OpticsError(Code.E0201, message=f"Element '{element}' not found using any strategy.")
+        raise OpticsError(Code.E0201, message=f"Element '{element}' not found using any strategy.")
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         self._validate_rule(rule)

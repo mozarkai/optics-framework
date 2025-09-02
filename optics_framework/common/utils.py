@@ -367,3 +367,141 @@ def parse_special_key(text: str) -> Optional[SpecialKey]:
                 # If the key is not recognized, return None
                 return None
     return None
+
+
+def calculate_aoi_bounds(screenshot_shape, aoi_x, aoi_y, aoi_width, aoi_height):
+    """
+    Calculate pixel bounds for Area of Interest (AOI) from percentage coordinates.
+
+    :param screenshot_shape: Shape of the screenshot (height, width, channels)
+    :param aoi_x: X percentage of AOI top-left corner (0-100)
+    :param aoi_y: Y percentage of AOI top-left corner (0-100)
+    :param aoi_width: Width percentage of AOI (0-100)
+    :param aoi_height: Height percentage of AOI (0-100)
+    :return: Tuple of (x1, y1, x2, y2) pixel coordinates
+    :raises ValueError: If AOI parameters are invalid or exceed bounds
+    """
+    if not all(isinstance(param, (int, float)) for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
+        raise ValueError("All AOI parameters must be numeric")
+
+    if not all(0 <= param <= 100 for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
+        raise ValueError("All AOI parameters must be between 0 and 100")
+
+    if aoi_x + aoi_width > 100:
+        raise ValueError(f"AOI exceeds screen width: {aoi_x}% + {aoi_width}% = {aoi_x + aoi_width}% > 100%")
+
+    if aoi_y + aoi_height > 100:
+        raise ValueError(f"AOI exceeds screen height: {aoi_y}% + {aoi_height}% = {aoi_y + aoi_height}% > 100%")
+
+    if aoi_width <= 0 or aoi_height <= 0:
+        raise ValueError("AOI width and height must be greater than 0")
+
+    height, width = screenshot_shape[:2]
+
+    x1 = int(width * (aoi_x / 100))
+    y1 = int(height * (aoi_y / 100))
+    x2 = int(width * ((aoi_x + aoi_width) / 100))
+    y2 = int(height * ((aoi_y + aoi_height) / 100))
+
+    # Ensure bounds are within image dimensions
+    x1 = max(0, min(x1, width - 1))
+    y1 = max(0, min(y1, height - 1))
+    x2 = max(x1 + 1, min(x2, width))
+    y2 = max(y1 + 1, min(y2, height))
+
+    internal_logger.debug(f"AOI bounds calculated: ({x1}, {y1}, {x2}, {y2}) for {aoi_x}%,{aoi_y}% + {aoi_width}%x{aoi_height}%")
+    return x1, y1, x2, y2
+
+
+def crop_screenshot_to_aoi(screenshot, aoi_x, aoi_y, aoi_width, aoi_height):
+    """
+    Crop screenshot to the specified Area of Interest (AOI).
+
+    :param screenshot: NumPy array of the screenshot
+    :param aoi_x: X percentage of AOI top-left corner (0-100)
+    :param aoi_y: Y percentage of AOI top-left corner (0-100)
+    :param aoi_width: Width percentage of AOI (0-100)
+    :param aoi_height: Height percentage of AOI (0-100)
+    :return: Tuple of (cropped_screenshot, (x1, y1, x2, y2)) where bounds are pixel coordinates
+    :raises ValueError: If screenshot is invalid or AOI parameters are invalid
+    """
+    if screenshot is None or not isinstance(screenshot, np.ndarray):
+        raise ValueError("Screenshot must be a valid NumPy array")
+
+    if screenshot.size == 0 or len(screenshot.shape) < 2:
+        raise ValueError("Screenshot must be a 2D or 3D array with valid dimensions")
+
+    x1, y1, x2, y2 = calculate_aoi_bounds(screenshot.shape, aoi_x, aoi_y, aoi_width, aoi_height)
+
+    cropped = screenshot[y1:y2, x1:x2]
+
+    if cropped.size == 0:
+        raise ValueError(f"Cropped AOI is empty - bounds ({x1}, {y1}, {x2}, {y2}) invalid for image shape {screenshot.shape}")
+
+    internal_logger.debug(f"Screenshot cropped from {screenshot.shape} to {cropped.shape} using AOI bounds ({x1}, {y1}, {x2}, {y2})")
+    return cropped, (x1, y1, x2, y2)
+
+
+def adjust_coordinates_for_aoi(coordinates, aoi_bounds):
+    """
+    Adjust coordinates found in cropped AOI back to full screenshot coordinates.
+
+    :param coordinates: Coordinates found in the cropped region (x, y) tuple
+    :param aoi_bounds: AOI pixel bounds (x1, y1, x2, y2) returned from crop_screenshot_to_aoi
+    :return: Adjusted coordinates (x, y) relative to full screenshot
+    :raises ValueError: If coordinates or bounds are invalid
+    """
+    if coordinates is None or not isinstance(coordinates, (tuple, list)) or len(coordinates) != 2:
+        raise ValueError("Coordinates must be a tuple or list of (x, y)")
+
+    if aoi_bounds is None or not isinstance(aoi_bounds, (tuple, list)) or len(aoi_bounds) != 4:
+        raise ValueError("AOI bounds must be a tuple or list of (x1, y1, x2, y2)")
+
+    x, y = coordinates
+    x1, y1, x2, y2 = aoi_bounds
+
+    if not all(isinstance(coord, (int, float)) for coord in [x, y, x1, y1, x2, y2]):
+        raise ValueError("All coordinates must be numeric")
+
+    adjusted_x = x + x1
+    adjusted_y = y + y1
+
+    internal_logger.debug(f"Coordinates adjusted from AOI ({x}, {y}) to full screenshot ({adjusted_x}, {adjusted_y}) using bounds {aoi_bounds}")
+    return adjusted_x, adjusted_y
+
+
+def annotate_aoi_region(screenshot, aoi_x, aoi_y, aoi_width, aoi_height):
+    """
+    Annotate screenshot with AOI region rectangle for visual debugging.
+
+    :param screenshot: NumPy array of the screenshot
+    :param aoi_x: X percentage of AOI top-left corner (0-100)
+    :param aoi_y: Y percentage of AOI top-left corner (0-100)
+    :param aoi_width: Width percentage of AOI (0-100)
+    :param aoi_height: Height percentage of AOI (0-100)
+    :return: Annotated screenshot
+    """
+    if screenshot is None or not isinstance(screenshot, np.ndarray):
+        return screenshot
+
+    try:
+        x1, y1, x2, y2 = calculate_aoi_bounds(screenshot.shape, aoi_x, aoi_y, aoi_width, aoi_height)
+
+        # Create a copy for annotation
+        annotated = screenshot.copy()
+
+        # Draw AOI rectangle in blue (BGR format)
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color=(255, 0, 0), thickness=3)
+
+        # Add label
+        label = f"AOI: {aoi_x}%,{aoi_y}% ({aoi_width}%x{aoi_height}%)"
+        label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+        label_y = y1 - 10 if y1 - 10 > label_size[1] else y1 + label_size[1] + 10
+        cv2.putText(annotated, label, (x1, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+
+        internal_logger.debug(f"AOI region annotated on screenshot at bounds ({x1}, {y1}, {x2}, {y2})")
+        return annotated
+
+    except ValueError as e:
+        internal_logger.debug(f"Failed to annotate AOI region: {e}")
+        return screenshot

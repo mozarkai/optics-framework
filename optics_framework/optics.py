@@ -433,12 +433,24 @@ class Optics:
         offset_x: str = "0",
         offset_y: str = "0",
         event_name: Optional[str] = None,
+        aoi_x: Optional[str] = None,
+        aoi_y: Optional[str] = None,
+        aoi_width: Optional[str] = None,
+        aoi_height: Optional[str] = None,
     ) -> None:
-        """Press an element with specified parameters."""
+        """Press an element with specified parameters and optional Area of Interest."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
+
+        # Convert AOI string parameters to float if provided
+        aoi_x_float = float(aoi_x) if aoi_x is not None and str(aoi_x).strip() not in ('', 'None', 'none') else None
+        aoi_y_float = float(aoi_y) if aoi_y is not None and str(aoi_y).strip() not in ('', 'None', 'none') else None
+        aoi_width_float = float(aoi_width) if aoi_width is not None and str(aoi_width).strip() not in ('', 'None', 'none') else None
+        aoi_height_float = float(aoi_height) if aoi_height is not None and str(aoi_height).strip() not in ('', 'None', 'none') else None
+
         self.action_keyword.press_element(
-            element, repeat, offset_x, offset_y, event_name
+            element, repeat, offset_x, offset_y, event_name,
+            aoi_x=aoi_x_float, aoi_y=aoi_y_float, aoi_width=aoi_width_float, aoi_height=aoi_height_float
         )
 
     @keyword("Press By Percentage")
