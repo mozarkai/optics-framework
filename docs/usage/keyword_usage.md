@@ -245,34 +245,34 @@ These keywords manage application lifecycle operations.
 - **Launch App**
   Launches the configured application (as defined in `config.yaml`).
   - **Parameters**:
-    - `event_name` (optional): A string identifier for the launch event (e.g., "app_start").
-  - **Example**: `Launch App,app_start`
+    - `app_identifier` (optional): App package/bundle name (string, e.g., "com.example.app")
+    - `app_activity` (optional): App activity name (string, e.g., "MainActivity")
+    - `event_name` (optional): A string identifier for the launch event (e.g., "app_start")
+  - **Example**: `Launch App,com.example.app,MainActivity,app_start`
 
-- **Start Appium Session**
+- **Start Appium Session** *(Deprecated)*
   Starts an Appium session (same as `Launch App` for Appium).
   - **Parameters**:
     - `event_name` (optional): A string identifier for the session event (e.g., "session_start").
   - **Example**: `Start Appium Session,session_start`
 
 - **Start Other App**
-  Starts another application by package name (unimplemented).
+  Starts another application by bundle ID.
   - **Parameters**:
-    - `package_name`: The package name of the app (string, e.g., "com.example.app").
-    - `event_name` (optional): A string identifier for the app start event (e.g., "app_switch").
-  - **Example**: `Start Other App,com.example.app,app_switch`
+    - `bundleid`: The bundle/package ID of the app (string, e.g., "com.example.app")
+  - **Example**: `Start Other App,com.example.app`
 
 - **Close And Terminate App**
-  Closes and terminates a specified application (unimplemented).
-  - **Parameters**:
-    - `package_name`: The package name of the app (string, e.g., "com.google.android.youtube").
-    - `event_name` (optional): A string identifier for the termination event (e.g., "app_close").
-  - **Example**: `Close And Terminate App,com.google.android.youtube,app_close`
+  Closes and terminates the current application.
+  - **Parameters**: None
+  - **Example**: `Close And Terminate App`
 
 - **Force Terminate App**
-  Forcefully terminates the configured application (unimplemented).
+  Forcefully terminates the specified application.
   - **Parameters**:
-    - `event_name` (optional): A string identifier for the termination event (e.g., "force_stop").
-  - **Example**: `Force Terminate App,force_stop`
+    - `app_name`: The name or package of the app to terminate (string, e.g., "com.example.app")
+    - `event_name` (optional): A string identifier for the termination event (e.g., "force_stop")
+  - **Example**: `Force Terminate App,com.example.app,force_stop`
 
 - **Get App Version**
   Retrieves the version of the application (returns None if not available).
@@ -311,15 +311,21 @@ These keywords manage test flow, such as loops and conditions.
   - **Example**: `Condition,${METHOD} == 'text',Interact using text,${METHOD} == 'xpath',Interact using xpath,Interact using images`
 
 - **Read Data**
-  Reads data from a file, API, or list and stores it in a variable.
+  Reads data from a file, environment variable, list, or API, with optional query string for filtering/selection.
+
   - **Parameters**:
-    - `input_element`: The variable to store the data (string, e.g., `${List}`; typically in `${name}` format).
-    - `file_path`: The data source:
-      - *List*: A JSON-formatted list (e.g., `["xpath","text","images"]`).
-      - *File*: Path to a CSV file (e.g., "data.csv").
-      - *URL*: An HTTP URL returning a JSON list (e.g., "<http://example.com/data>").
-    - `index` (optional): For CSV/URL, the column name or index to extract (string or integer, e.g., "0" or "name").
-  - **Example**: `Read Data,${List},["xpath","text","images"]`
+    - `input_element`: Variable to store the data (e.g., `${List}`)
+    - `file_path`: Data source (CSV file, JSON file, ENV:VAR, list, or URL)
+    - `query` (optional): Query string for filtering/selection (e.g., `status=active;columns=name`)
+  - **Example**: `Read Data,${List},optics_framework/samples/contact/elements.csv,status=active;columns=name`
+  - **Example**: `Read Data,${List},ENV:CONTACT_NAME`
+
+- **Invoke API**
+  Invokes an API call defined in the session's API config, with variable substitution and response extraction.
+  - **Parameters**:
+    - `api_name`: API to invoke (format: `collection.api_name`, e.g., `login.auth_token`)
+  - **Example**: `Invoke API,login.auth_token`
+  - **Example**: `Invoke API,login.send_otp`
 
 - **Evaluate**
   Evaluates an expression and stores the result in a variable.
