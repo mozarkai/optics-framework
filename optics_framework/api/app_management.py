@@ -51,6 +51,10 @@ class AppManagement:
         """
         self.driver.launch_app(event_name)
 
+    def get_driver_session_id(self) -> Optional[str]:
+        """Return the current driver session id, if available."""
+        return self.driver.get_driver_session_id()
+
     def launch_other_app(self, app_name: str, event_name: Optional[str] = None) -> None:
         """
         Starts another application.

@@ -15,15 +15,15 @@ class DriverInterface(ABC):
         app_identifier: str | None = None,
         app_activity: str | None = None,
         event_name: str | None = None,
-    ) -> None:
+    ) -> Optional[str]:
         """
         Launch an application.
 
         :param event_name: The event triggering the app launch.
         :type event_name: str
         :raises NotImplementedError: If the method is not implemented in a subclass.
-        :return: None
-        :rtype: None
+        :return: The session ID of the launched application, if available.
+        :rtype: Optional[str]
         """
         pass
 
@@ -249,5 +249,16 @@ class DriverInterface(ABC):
         Terminate the application.
         :return: None
         :rtype: None
+        """
+        pass
+
+    @abstractmethod
+    def get_driver_session_id(self) -> Optional[str]:
+        """
+        Return the underlying Appium session ID if supported by the driver.
+
+        For non-Appium drivers, raise NotImplementedError.
+        :return: The Appium session ID if available, otherwise None.
+        :rtype: Optional[str]
         """
         pass

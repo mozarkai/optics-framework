@@ -188,6 +188,10 @@ class BLEDriver(DriverInterface):
         self.ser.write((mouse_command + "\n").encode("utf-8"))
         time.sleep(0.1)
 
+    def get_driver_session_id(self) -> Optional[str]:
+        """Not applicable for BLE driver; raise NotImplementedError."""
+        raise NotImplementedError("Driver session id is not available for BLE driver")
+
     def translate_coordinates_relative(
         self, button_state: int, x_coor_mic: int, y_coor_mic: int
     ):

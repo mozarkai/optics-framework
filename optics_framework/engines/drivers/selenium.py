@@ -373,3 +373,7 @@ class SeleniumDriver(DriverInterface):
     def _raise_action_not_supported(self) -> None:
         internal_logger.warning(self.ACTION_NOT_SUPPORTED)
         raise NotImplementedError(self.ACTION_NOT_SUPPORTED)
+
+    def get_driver_session_id(self) -> Optional[str]:
+        """Not applicable for Selenium; raise NotImplementedError."""
+        raise NotImplementedError("Driver session id is not yet implemented for Selenium driver")

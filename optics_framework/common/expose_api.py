@@ -243,6 +243,14 @@ async def capture_screenshot(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_screenshot")
 
+@app.get("/session/{session_id}/driver-id")
+async def get_driver_session_id(session_id: str):
+    """
+    Get the underlying Driver session ID for this Optics session.
+    Returns ExecutionResponse with the session id in data.result.
+    """
+    return await run_keyword_endpoint(session_id, "get_driver_session_id")
+
 @app.get("/session/{session_id}/elements")
 async def get_elements(session_id: str):
     """

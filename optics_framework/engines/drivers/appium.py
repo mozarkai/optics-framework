@@ -2,6 +2,7 @@ import subprocess  # nosec
 from typing import Any, Dict, Optional, Union
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
+from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
 from appium.webdriver.common.appiumby import AppiumBy
@@ -19,6 +20,7 @@ class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
     NOT_INITIALIZED = "Appium driver is not initialized. Please start the session first."
+    MOBILE_TYPE_COMMAND = "mobile: type"
     KEYCODE_MAP = {
         # Basic keys
         SpecialKey.ENTER: 66,
@@ -74,10 +76,13 @@ class Appium(DriverInterface):
         app_package: Optional[str] = None,
         app_activity: Optional[str] = None,
         event_name: Optional[str] = None,
-    ) -> WebDriver:
+    ) -> str:
         """
         Start the Appium session if not already started, incorporating custom capabilities.
         Optionally override appPackage and appActivity capabilities for Android.
+
+        Returns:
+            str: The session ID of the running Appium session.
         """
         if self.driver is not None:
             old_session_id = self.driver.session_id
@@ -99,6 +104,28 @@ class Appium(DriverInterface):
         if app_activity:
             all_caps["appActivity"] = app_activity
             all_caps["appium:appActivity"] = app_activity
+
+        # If a session id is provided in capabilities, attach instead of creating a new one
+        session_id_keys = [
+            "existingSessionId",
+            "sessionId",
+            "appium:existingSessionId",
+            "appium:sessionId",
+        ]
+        existing_sid = next((str(all_caps[k]) for k in session_id_keys if k in all_caps and all_caps[k] and isinstance(all_caps[k], (str, int, float))), None)
+        if existing_sid:
+            internal_logger.info(
+                f"Existing Appium session id detected in capabilities: {existing_sid}. Attempting to attach to existing session."
+            )
+            try:
+                attached = self.attach_to_session(existing_sid, executor_url=self.appium_server_url, event_name=event_name)
+                return attached.session_id
+            except Exception as attach_error:
+                internal_logger.warning(f"Failed to attach to existing session {existing_sid}: {attach_error}")
+                internal_logger.info("Falling back to creating a new Appium session.")
+                # Remove session ID capabilities so we create a new session instead
+                for key in session_id_keys:
+                    all_caps.pop(key, None)
 
         options, default_options = self._get_platform_and_options(all_caps)
 
@@ -123,11 +150,116 @@ class Appium(DriverInterface):
             new_session_id = self.driver.session_id
             internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
             self.ui_helper = UIHelper(self)
-            return self.driver
+            return new_session_id
         except Exception as e:
             internal_logger.error(f"Failed to create new Appium session: {e}")
             self.driver = None
             raise OpticsError(Code.E0102, message="Failed to create new Appium session due to: ", cause=e) from e
+
+    def get_session_id(self) -> Optional[str]:
+        """Return the current Appium session id, if a session is active."""
+        try:
+            return self.driver.session_id if self.driver else None
+        except Exception:
+            return None
+
+    def get_driver_session_id(self) -> Optional[str]:
+        """DriverInterface-compliant getter for Appium session id."""
+        return self.get_session_id()
+
+    def attach_to_session(self, session_id: str, executor_url: Optional[str] = None, event_name: Optional[str] = None) -> WebDriver:
+        """
+        Attach this driver instance to an existing Appium session.
+
+        This allows connecting Optics to an already running Appium session so that
+        keywords can be executed without creating a new session.
+
+        Args:
+            session_id: The target Appium session id to attach to.
+            executor_url: Appium server URL. Defaults to configured `self.appium_server_url`.
+            event_name: Optional event name to record when attaching.
+
+        Returns:
+            A WebDriver instance bound to the existing session.
+
+        Raises:
+            OpticsError: If attach fails.
+        """
+        if not session_id:
+            raise OpticsError(Code.E0104, message="A non-empty session_id is required to attach.")
+
+        # Clean up any existing driver before attaching
+        if self.driver is not None:
+            try:
+                internal_logger.info(
+                    f"Cleaning up existing driver before attaching to session_id: {session_id}"
+                )
+                self.driver.quit()
+            except Exception as cleanup_error:
+                internal_logger.warning(f"Failed to clean up existing driver: {cleanup_error}")
+            finally:
+                self.driver = None
+
+        executor = executor_url or self.appium_server_url
+        if not executor:
+            raise OpticsError(Code.E0104, message="Appium server URL is not configured.")
+
+        # Create a subclass that overrides execute for session attachment
+        class SessionAttachmentWebDriver(webdriver.Remote):
+            def __init__(self, command_executor: str, options: Any, target_session_id: str) -> None:
+                self._target_session_id = target_session_id
+                super().__init__(command_executor=command_executor, options=options)
+
+            def execute(self, command: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                if command == "newSession":
+                    # Return existing session info instead of creating new session
+                    return {"value": {"sessionId": self._target_session_id, "capabilities": {}}}
+                return super().execute(command, params)
+
+        try:
+            # Create a driver that will reuse the provided session id
+            try:
+                options, _ = self._get_platform_and_options(self.capabilities or {})
+            except Exception:
+                # Fallback to a generic Android options if platform cannot be derived
+                options = UiAutomator2Options()
+
+            attached_driver = SessionAttachmentWebDriver(
+                command_executor=executor,
+                options=options,
+                target_session_id=session_id
+            )
+            # Set session_id directly on the driver instance
+            attached_driver.session_id = session_id
+
+            # Try to populate capabilities from the existing session
+            try:
+                resp = attached_driver.execute(Command.GET_SESSION, None)
+                value = resp.get("value", {}) if isinstance(resp, dict) else {}
+                capabilities = value.get("capabilities", value)
+                if isinstance(capabilities, dict):
+                    # Use hasattr check before setting attributes
+                    if hasattr(attached_driver, 'caps'):
+                        attached_driver.caps = capabilities
+                    if hasattr(attached_driver, 'capabilities'):
+                        attached_driver.capabilities = capabilities
+            except Exception as e:
+                # Log but continue - driver will still be attached without capabilities
+                internal_logger.debug(f"Could not retrieve capabilities from existing session: {e}")
+
+            # Cast to WebDriver type for assignment
+            self.driver = attached_driver
+            self.ui_helper = UIHelper(self)
+            if event_name:
+                self.event_sdk.capture_event(event_name)
+            internal_logger.info(
+                f"Attached to existing Appium session with session_id: {session_id}"
+            )
+            return attached_driver
+        except Exception as e:
+            internal_logger.error(f"Failed to attach to existing Appium session {session_id}: {e}")
+            self.driver = None
+            raise OpticsError(Code.E0102, message=f"Failed to attach to existing Appium session: {session_id}", cause=e) from e
 
 
     def _get_platform_and_options(self, all_caps: Dict[str, Any]) -> tuple[Any, Dict[str, Any]]:
@@ -237,12 +369,13 @@ class Appium(DriverInterface):
     ) -> None:
         """Launch the app using the Appium driver."""
         if self.driver is None:
-            self.start_session(
+            session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,
                 event_name=event_name,
             )
         execution_logger.debug(f"Launched application with event: {event_name}")
+        return session_id if session_id else None
 
 
     def launch_other_app(self, app_name: str, event_name: Optional[str] = None) -> None:
@@ -465,11 +598,11 @@ class Appium(DriverInterface):
                 internal_logger.warning(f"Unknown special key: {text}")
                 execution_logger.debug(f"Unknown special key, treating as text: {text}")
                 text_to_send = utils.strip_sensitive_prefix(str(text))
-                driver.execute_script("mobile: type", {"text": text_to_send})
+                driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
         else:
             execution_logger.debug(f"Entering text: {text}")
             text_to_send = utils.strip_sensitive_prefix(str(text))
-            driver.execute_script("mobile: type", {"text": text_to_send})
+            driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
 
     def clear_text(self, event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
@@ -506,12 +639,12 @@ class Appium(DriverInterface):
                     internal_logger.warning(f"Unknown special key: {text}")
                     execution_logger.debug(f"Unknown special key, treating as text: {text}")
                     text_value = utils.strip_sensitive_prefix(str(text))
-                    driver.execute_script("mobile: type", {"text": text_value})
+                    driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_value})
             else:
                 text_value = str(text)
                 execution_logger.debug(f"Entering text using keyboard: {text_value}")
                 driver.execute_script(
-                    "mobile: type", {"text": utils.strip_sensitive_prefix(text_value)}
+                    self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(text_value)}
                 )
 
             if event_name:

@@ -372,11 +372,11 @@ class Optics:
         app_identifier: Optional[str] = None,
         app_activity: Optional[str] = None,
         event_name: Optional[str] = None,
-    ) -> None:
+    ) -> Optional[str]:
         """Launch the application."""
         if not self.app_management:
             raise ValueError(INVALID_SETUP)
-        self.app_management.launch_app(
+        return self.app_management.launch_app(
             app_identifier=app_identifier,
             app_activity=app_activity,
             event_name=event_name,
@@ -395,6 +395,13 @@ class Optics:
         if not self.app_management:
             raise ValueError(INVALID_SETUP)
         self.app_management.start_appium_session(event_name)
+
+    @keyword("Get Driver Session Id")
+    def get_driver_session_id(self) -> Optional[str]:
+        """Get the current Appium session ID for the active driver."""
+        if not self.app_management:
+            raise ValueError(INVALID_SETUP)
+        return self.app_management.get_driver_session_id()
 
     @keyword("Close and Terminate App")
     def close_and_terminate_app(self) -> None:
