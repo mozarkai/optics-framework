@@ -85,8 +85,8 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", event_name: Optional[str] = None,
-        aoi_x: Optional[float] = None, aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None,
+        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", aoi_x: Optional[float] = None,
+        aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None,event_name: Optional[str] = None,
         *, located: Any = None
         ) -> None:
         """
@@ -140,9 +140,11 @@ class ActionKeyword:
             self.driver.press_percentage_coordinates(
                 int(percent_x), int(percent_y), int(repeat), event_name)
         else:
-            screenshot_height, screenshot_width = screenshot_np.shape[:2]
-            x_coor = int(screenshot_width * (float(percent_x) / 100))
-            y_coor = int(screenshot_height * (float(percent_y) / 100))
+            screenshot_width, screenshot_height = screenshot_np.shape[:2]
+            percent_x_clamped = max(0, min(float(percent_x), 99))
+            percent_y_clamped = max(0, min(float(percent_y), 99))
+            x_coor = int(screenshot_width * (percent_x_clamped / 100))
+            y_coor = int(screenshot_height * (percent_y_clamped / 100))
             self.driver.press_coordinates(x_coor, y_coor, event_name)
 
     def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:

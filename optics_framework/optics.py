@@ -442,11 +442,15 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
 
-        # Convert AOI string parameters to float if provided
-        aoi_x_float = float(aoi_x) if aoi_x is not None and str(aoi_x).strip() not in ('', 'None', 'none') else None
-        aoi_y_float = float(aoi_y) if aoi_y is not None and str(aoi_y).strip() not in ('', 'None', 'none') else None
-        aoi_width_float = float(aoi_width) if aoi_width is not None and str(aoi_width).strip() not in ('', 'None', 'none') else None
-        aoi_height_float = float(aoi_height) if aoi_height is not None and str(aoi_height).strip() not in ('', 'None', 'none') else None
+        def _parse_aoi_value(val: Optional[str]) -> Optional[float]:
+            if val is not None and str(val).strip() not in ('', 'None', 'none'):
+                return float(val)
+            return None
+
+        aoi_x_float = _parse_aoi_value(aoi_x)
+        aoi_y_float = _parse_aoi_value(aoi_y)
+        aoi_width_float = _parse_aoi_value(aoi_width)
+        aoi_height_float = _parse_aoi_value(aoi_height)
 
         self.action_keyword.press_element(
             element, repeat, offset_x, offset_y, event_name,

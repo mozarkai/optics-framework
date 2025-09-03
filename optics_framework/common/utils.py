@@ -490,14 +490,24 @@ def annotate_aoi_region(screenshot, aoi_x, aoi_y, aoi_width, aoi_height):
         # Create a copy for annotation
         annotated = screenshot.copy()
 
-        # Draw AOI rectangle in blue (BGR format)
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), color=(255, 0, 0), thickness=3)
+        # AOI rectangle color and thickness
+        aoi_color = (255, 0, 0)  # Blue in BGR
+        aoi_thickness = 3
 
-        # Add label
+        # Draw AOI rectangle
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color=aoi_color, thickness=aoi_thickness)
+
+        # AOI label properties
         label = f"AOI: {aoi_x}%,{aoi_y}% ({aoi_width}%x{aoi_height}%)"
-        label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
-        label_y = y1 - 10 if y1 - 10 > label_size[1] else y1 + label_size[1] + 10
-        cv2.putText(annotated, label, (x1, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.6
+        font_thickness = 2
+
+        label_size = cv2.getTextSize(label, font, font_scale, font_thickness)[0]
+        label_y_offset = 10
+        label_y = y1 - label_y_offset if y1 - label_y_offset > label_size[1] else y1 + label_size[1] + label_y_offset
+
+        cv2.putText(annotated, label, (x1, label_y), font, font_scale, aoi_color, font_thickness)
 
         internal_logger.debug(f"AOI region annotated on screenshot at bounds ({x1}, {y1}, {x2}, {y2})")
         return annotated
