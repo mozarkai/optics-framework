@@ -497,8 +497,8 @@ class BLEDriver(DriverInterface):
         internal_logger.debug(
             f"Pressing percentage coordinates ({percentage_x}, {percentage_y}) via BLE."
         )
-        x_coor = int(percentage_x * self.pixel_width)
-        y_coor = int(percentage_y * self.pixel_height)
+        x_coor = int(int((percentage_x/100.0)) * self.pixel_width)
+        y_coor = int(int((percentage_y/100.0)) * self.pixel_height)
         self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
         timestamp: str | None = self.event_sdk.get_current_time_for_events()
         for _ in range(repeat):

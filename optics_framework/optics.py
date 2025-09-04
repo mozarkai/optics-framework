@@ -1,8 +1,9 @@
 from typing import Optional, Dict, List, Any, Callable, TypeVar, cast, Union
 from functools import wraps
 import json
-import yaml
 import os
+from pathlib import Path
+import yaml
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import ConfigHandler, DependencyConfig, Config
@@ -13,6 +14,7 @@ from optics_framework.api.verifier import Verifier
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.models import (
+    TemplateData,
     TestCaseNode,
     ModuleData,
     ElementData,
@@ -204,6 +206,27 @@ class Optics:
             "event_attributes_json": event_attributes_json,
         }
 
+    def discover_templates(self, project_path: str) -> TemplateData:
+        """
+        Discover all image templates in the project directory.
+
+        :param project_path: The path to the project directory.
+        :type project_path: str
+
+        :return: TemplateData containing image name to path mappings.
+        :rtype: TemplateData
+        """
+        project_dir = Path(project_path)
+        template_data = TemplateData()
+
+        # Common image extensions
+        image_extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+
+        # Recursively find all image files
+        for image_file in project_dir.rglob("*"):
+            if image_file.is_file() and image_file.suffix.lower() in image_extensions:
+                template_data.add_template(image_file.name, str(image_file))
+        return template_data
 
     def _initialize_session_and_keywords(self) -> None:
         """
@@ -218,6 +241,7 @@ class Optics:
                 modules=ModuleData(),
                 elements=ElementData(),
                 apis=ApiData(),
+                templates=self.discover_templates(self.config.project_path) if self.config.project_path else None,
             )
         except Exception as e:
             internal_logger.error(f"Failed to create session: {e}")
