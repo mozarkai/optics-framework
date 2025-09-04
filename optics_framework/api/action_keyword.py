@@ -140,12 +140,8 @@ class ActionKeyword:
             self.driver.press_percentage_coordinates(
                 int(percent_x), int(percent_y), int(repeat), event_name)
         else:
-            screenshot_width, screenshot_height = screenshot_np.shape[:2]
-            percent_x_clamped = max(0, min(float(percent_x), 99))
-            percent_y_clamped = max(0, min(float(percent_y), 99))
-            x_coor = int(screenshot_width * (percent_x_clamped / 100))
-            y_coor = int(screenshot_height * (percent_y_clamped / 100))
-            self.driver.press_coordinates(x_coor, y_coor, event_name)
+            self.driver.press_percentage_coordinates(
+                float(int(percent_x)/100), float(float(percent_y)/100), int(repeat), event_name)
 
     def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
         """
