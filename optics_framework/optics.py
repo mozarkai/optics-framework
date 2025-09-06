@@ -463,11 +463,11 @@ class Optics:
         repeat: str = "1",
         offset_x: str = "0",
         offset_y: str = "0",
-        event_name: Optional[str] = None,
         aoi_x: Optional[str] = None,
         aoi_y: Optional[str] = None,
         aoi_width: Optional[str] = None,
         aoi_height: Optional[str] = None,
+        event_name: Optional[str] = None
     ) -> None:
         """Press an element with specified parameters and optional Area of Interest."""
         if not self.action_keyword:
@@ -484,8 +484,15 @@ class Optics:
         aoi_height_float = _parse_aoi_value(aoi_height)
 
         self.action_keyword.press_element(
-            element, repeat, offset_x, offset_y, event_name,
-            aoi_x=aoi_x_float, aoi_y=aoi_y_float, aoi_width=aoi_width_float, aoi_height=aoi_height_float
+            element,
+            repeat,
+            offset_x,
+            offset_y,
+            aoi_x=aoi_x_float,
+            aoi_y=aoi_y_float,
+            aoi_width=aoi_width_float,
+            aoi_height=aoi_height_float,
+            event_name=event_name,
         )
 
     @keyword("Press By Percentage")
