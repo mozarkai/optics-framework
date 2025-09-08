@@ -1,5 +1,7 @@
 import abc
-from typing import Dict, List
+from typing import Dict, List, Optional
+import shutil
+import json
 from pydantic import BaseModel, Field
 from rich.live import Live
 from rich.tree import Tree
@@ -7,8 +9,6 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.progress import Progress, TaskID
 from rich.console import Console, Group
-import shutil
-import json
 
 
 class TestCaseResult(BaseModel):
@@ -127,7 +127,7 @@ class TerminalWidthProvider:
 
 
 class TreeResultPrinter(IResultPrinter):
-    _instance: "TreeResultPrinter" = None
+    _instance: Optional["TreeResultPrinter"] = None
     STATUS_COLORS: Dict[str, str] = {
         "NOT RUN": "grey50",
         "RUNNING": "yellow",
@@ -150,7 +150,7 @@ class TreeResultPrinter(IResultPrinter):
         self.initialized = True
 
     @classmethod
-    def get_instance(cls, terminal_width_provider: TerminalWidthProvider = None):
+    def get_instance(cls, terminal_width_provider: Optional[TerminalWidthProvider] = None):
         if cls._instance is None:
             if terminal_width_provider is None:
                 raise ValueError("First call to get_instance() must include terminal_width_provider.")
@@ -208,9 +208,12 @@ class TreeResultPrinter(IResultPrinter):
         if self.task_id is not None:
             self.progress.update(self.task_id, completed=completed)
 
-        total, passed, failed = len(self.test_state), sum(1 for tc in self.test_state.values(
-        ) if tc.status == "PASS"), sum(1 for tc in self.test_state.values() if tc.status == "FAIL")
-        summary_text = f"Total Test Cases: {total} | Passed: {passed} | Failed: 0"
+        total, passed, failed = (
+            len(self.test_state),
+            sum(1 for tc in self.test_state.values() if tc.status == "PASS"),
+            sum(1 for tc in self.test_state.values() if tc.status == "FAIL"),
+        )
+        summary_text = f"Total Test Cases: {total} | Passed: {passed} | Failed: {failed}"
         summary_panel = Panel(
             summary_text, style="green" if failed == 0 else "red")
         return Group(self.progress, tree, summary_panel)
