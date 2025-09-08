@@ -1,5 +1,6 @@
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
+from optics_framework.common.logging_config import execution_logger
 import pytesseract
 import cv2
 
@@ -96,6 +97,7 @@ class PytesseractHelper(TextInterface):
 
                 detected_texts.append((bbox, text, conf))
 
+        execution_logger.info(f"Pytesseract detected texts: {detected_texts}")
         return binary_image, detected_texts
 
     def element_exist(self, input_data, reference_data):

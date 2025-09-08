@@ -65,7 +65,3 @@ class SeleniumScreenshot(ElementSourceInterface):
     def locate(self, element, index=None) -> tuple:
         internal_logger.exception("SeleniumScreenshot does not support locating elements.")
         raise NotImplementedError("SeleniumScreenshot does not support locating elements.")
-
-    def locate_using_index(self):
-        internal_logger.exception("SeleniumScreenshot does not support locating elements using index.")
-        raise NotImplementedError("SeleniumScreenshot does not support locating elements using index.")

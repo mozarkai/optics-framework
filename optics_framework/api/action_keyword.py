@@ -26,6 +26,9 @@ def with_self_healing(func: Callable) -> Callable:
         aoi_width = parse_aoi_param(kwargs.pop('aoi_width', None))
         aoi_height = parse_aoi_param(kwargs.pop('aoi_height', None))
 
+        # Extract index parameter from kwargs if present
+        index = int(kwargs.pop('index', 0))
+
         # Save screenshot with AOI annotation if AOI is used
         if any(param is not None for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
             annotated_screenshot = utils.annotate_aoi_region(screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height)
@@ -35,9 +38,9 @@ def with_self_healing(func: Callable) -> Callable:
 
         # Pass AOI parameters to locate if provided
         if any(param is not None for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
-            results = self.strategy_manager.locate(element, aoi_x, aoi_y, aoi_width, aoi_height)
+            results = self.strategy_manager.locate(element, aoi_x, aoi_y, aoi_width, aoi_height, index=index)
         else:
-            results = self.strategy_manager.locate(element)
+            results = self.strategy_manager.locate(element, index=index)
 
         last_exception = None
         result_count = 0
@@ -85,7 +88,7 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", aoi_x: Optional[float] = None,
+        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", index: int = 0, aoi_x: Optional[float] = None,
         aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None,event_name: Optional[str] = None,
         *, located: Any = None
         ) -> None:
@@ -96,6 +99,7 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param offset_x: X offset of the press.
         :param offset_y: Y offset of the press.
+        :param index: Index of the element if multiple matches are found.
         :param event_name: The event triggering the press.
         :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Optional.
         :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Optional.
@@ -153,83 +157,6 @@ class ActionKeyword:
         execution_logger.info(f'Pressing by coordinates: ({coor_x}, {coor_y})')
         self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
 
-    def press_element_with_index(self, element: str, index_str: str = "0", event_name: Optional[str] = None) -> None:
-        """
-        Press a specified text at a given index.
-
-        :param element: The text or image to be pressed.
-        :param index: The index of the element.
-        :param event_name: The event triggering the press.
-        """
-        index = int(index_str)
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_element_with_index", output_dir=self.execution_dir)
-        element_source_type = type(self.element_source.current_instance).__name__
-        element_type = utils.determine_element_type(element)
-        if element_type == 'Text':
-            if element_source_type == 'AppiumFindElement':
-                internal_logger.exception(
-                    'Appium Find Element does not support finding text by index.')
-            elif element_source_type == 'AppiumPageSource':
-                appium_element = self.element_source.locate(
-                    element, index)
-                self.driver.press_element(
-                    appium_element, repeat=1, event_name=event_name)
-            else:
-                if 'screenshot' not in element_source_type.lower():
-                    internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
-                screenshot_image = self.element_source.capture()
-                coor = None
-                if self.text_detection and hasattr(self.text_detection, 'find_element'):
-                    try:
-                        result = self.text_detection.find_element(
-                            screenshot_image, element, index)
-                        if result is not None and isinstance(result, (tuple, list)) and len(result) == 3:
-                            _, coor, _ = result
-                        else:
-                            coor = None
-                    except Exception:
-                        coor = None
-                else:
-                    coor = None
-                if coor is not None and isinstance(coor, (tuple, list)) and len(coor) == 2:
-                    x_coor, y_coor = coor
-                    self.driver.press_coordinates(
-                        x_coor, y_coor, event_name=event_name)
-                else:
-                    internal_logger.error("Text detection failed or returned invalid coordinates.")
-                    raise ValueError("Text detection failed or returned invalid coordinates.")
-        elif element_type == 'Image':
-            if 'screenshot' not in element_source_type.lower():
-                internal_logger.error(self.SCREENSHOT_DISABLED_MSG)
-            screenshot_image = self.element_source.capture()
-            centre = None
-            if self.image_detection and hasattr(self.image_detection, 'find_element'):
-                try:
-                    result = self.image_detection.find_element(
-                        screenshot_image, element, index)
-                    if result is not None and isinstance(result, (tuple, list)) and len(result) == 3:
-                        _, centre, bbox = result
-                        if centre is not None:
-                            annotated_frame = utils.annotate(screenshot_image.copy(), [bbox])
-                            utils.save_screenshot(annotated_frame, "press_element_with_index", output_dir=self.execution_dir)
-                    else:
-                        centre = None
-                except Exception:
-                    centre = None
-            else:
-                centre = None
-            if centre is not None and isinstance(centre, (tuple, list)) and len(centre) == 2:
-                x_coor, y_coor = centre
-                self.driver.press_coordinates(
-                    x_coor, y_coor, event_name=event_name)
-            else:
-                internal_logger.error("Image detection failed or returned invalid coordinates.")
-                raise ValueError("Image detection failed or returned invalid coordinates.")
-        elif element_type == 'XPath':
-            internal_logger.debug(
-                'XPath is not supported for index based location. Provide the attribute as text.')
-            raise NotImplementedError("XPath is not supported for index based location.")
 
     def detect_and_press(self, element: str, timeout: str = "30", event_name: Optional[str] = None) -> None:
         """

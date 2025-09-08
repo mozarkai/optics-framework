@@ -463,6 +463,7 @@ class Optics:
         repeat: str = "1",
         offset_x: str = "0",
         offset_y: str = "0",
+        index: Optional[str] = "0",
         aoi_x: Optional[str] = None,
         aoi_y: Optional[str] = None,
         aoi_width: Optional[str] = None,
@@ -488,6 +489,7 @@ class Optics:
             repeat,
             offset_x,
             offset_y,
+            index=int(index),
             aoi_x=aoi_x_float,
             aoi_y=aoi_y_float,
             aoi_width=aoi_width_float,
@@ -530,7 +532,7 @@ class Optics:
         """Press an element at a specific index."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.press_element_with_index(element, index, event_name)
+        self.action_keyword.press_element(element, index=int(index), event_name=event_name)
 
     @keyword("Detect and Press")
     def detect_and_press(

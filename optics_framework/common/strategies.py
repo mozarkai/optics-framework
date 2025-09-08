@@ -22,10 +22,11 @@ class LocatorStrategy(ABC):
         pass
 
     @abstractmethod
-    def locate(self, element: str) -> Union[object, Tuple[int, int]]:
+    def locate(self, element: str, index: int = 0) -> Union[object, Tuple[int, int]]:
         """Locates an element and returns either an element object or coordinates (x, y).
 
         :param element: The element identifier (e.g., XPath, text, image path).
+        :param index: The index of the element if multiple matches are found.
         :return: Either an element object or a tuple of (x, y) coordinates.
         """
         pass
@@ -92,8 +93,8 @@ class XPathStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
-    def locate(self, element: str) -> Union[object, Tuple[int, int]]:
-        return self.element_source.locate(element)
+    def locate(self, element: str, index: int = 0) -> Union[object, Tuple[int, int]]:
+        return self.element_source.locate(element, index)
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         try:
@@ -117,8 +118,8 @@ class TextElementStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
-    def locate(self, element: str) -> Union[object, Tuple[int, int]]:
-        return self.element_source.locate(element)
+    def locate(self, element: str, index: int = 0) -> Union[object, Tuple[int, int]]:
+        return self.element_source.locate(element, index)
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> Tuple[bool, Optional[str]]:
         try:
@@ -144,12 +145,12 @@ class TextDetectionStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
-    def locate(self, element: str) -> Union[object, Tuple[int, int]]:
+    def locate(self, element: str, index: int = 0) -> Union[object, Tuple[int, int]]:
         screenshot = self.element_source.capture()
-        _, coor, _ = self.text_detection.find_element(screenshot, element)
+        _, coor, _ = self.text_detection.find_element(screenshot, element, index=index)
         return coor
 
-    def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float) -> Union[object, Tuple[int, int]]:
+    def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float, index: float=0) -> Union[object, Tuple[int, int]]:
         """
         Locate text element within a specified Area of Interest (AOI).
 
@@ -173,7 +174,7 @@ class TextDetectionStrategy(LocatorStrategy):
             raise OpticsError(Code.E0205, message=f"Invalid AOI parameters: {e}")
 
         # Find element in cropped screenshot
-        _, coor, _ = self.text_detection.find_element(cropped_screenshot, element)
+        _, coor, _ = self.text_detection.find_element(cropped_screenshot, element, index=index)
 
         if coor is None:
             return None
@@ -203,8 +204,7 @@ class TextDetectionStrategy(LocatorStrategy):
                     continue
                 for frame, ts in frames:
                     current_frame = frame.copy()
-                    detected_texts, ocr_results = self.text_detection.detect_text(current_frame)
-                    execution_logger.info(f"Detected texts: {detected_texts}")
+                    _ , ocr_results = self.text_detection.detect_text(current_frame)
                     match_and_annotate(ocr_results, elements, found_status, current_frame)
 
                     if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
@@ -238,9 +238,9 @@ class ImageDetectionStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
-    def locate(self, element: str) -> Union[object, Tuple[int, int]]:
+    def locate(self, element: str, index: int = 0) -> Union[object, Tuple[int, int]]:
         screenshot = self.element_source.capture()
-        _, centre, _ = self.image_detection.find_element(screenshot, element)
+        _, centre, _ = self.image_detection.find_element(screenshot, element, index)
         return centre
 
     def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float) -> Union[object, Tuple[int, int]]:
@@ -450,7 +450,7 @@ class StrategyManager:
             strategies.update(self.pagesource_factory.create_strategies(instance))
         return strategies
 
-    def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None) -> Generator[LocateResult, None, None]:
+    def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None, index: int = 0) -> Generator[LocateResult, None, None]:
         element_type = utils.determine_element_type(element)
         execution_logger.info(f"Locating element: {element} of type: {element_type}...")
 
@@ -471,9 +471,9 @@ class StrategyManager:
                 try:
                     # Check if strategy supports AOI by looking for aoi-aware locate method
                     if use_aoi and hasattr(strategy, 'locate_with_aoi'):
-                        result = strategy.locate_with_aoi(element, aoi_x, aoi_y, aoi_width, aoi_height)
+                        result = strategy.locate_with_aoi(element, aoi_x, aoi_y, aoi_width, aoi_height, index=index)
                     else:
-                        result = strategy.locate(element)
+                        result = strategy.locate(element, index=index)
 
                     if result:
                         execution_tracer.log_attempt(strategy, element, "success")

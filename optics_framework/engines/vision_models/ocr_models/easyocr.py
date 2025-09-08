@@ -3,7 +3,7 @@ import easyocr
 import cv2
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 
 
 class EasyOCRHelper(TextInterface):
@@ -100,6 +100,7 @@ class EasyOCRHelper(TextInterface):
 
         utils.save_screenshot(
             input_data, "text_location_annotation", output_dir=self.execution_output_dir)
+
         return detected_texts[0]
 
     def detect_text(self, input_data) -> Optional[Tuple[str, List[Tuple[List[List[int]], str, float]]]]:
@@ -125,6 +126,7 @@ class EasyOCRHelper(TextInterface):
             ):
                 results.append((item[0], item[1], item[2]))
         detected_text = ' '.join(result[1] for result in results)
+        execution_logger.info(f"Detected texts using easyocr: {detected_text}")
         return detected_text, results
 
     def element_exist(self, input_data, reference_data):

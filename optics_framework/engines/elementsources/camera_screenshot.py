@@ -149,14 +149,6 @@ class CameraScreenshot(ElementSourceInterface):
             "CameraScreenshot does not support locating elements."
         )
 
-    def locate_using_index(self, element, index):
-        internal_logger.exception(
-            "CameraScreenshot does not support locating elements using index."
-        )
-        raise NotImplementedError(
-            "CameraScreenshot does not support locating elements using index."
-        )
-
     def assert_elements(self, elements, timeout=None, rule=None):
         internal_logger.exception(
             "CameraScreenshot does not support asserting elements."
