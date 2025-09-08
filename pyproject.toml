@@ -55,7 +55,7 @@ pylint = "^3.3.7"
 [tool.poetry.group.test.dependencies]
 pytest = ">=8.3.4,<8.5.0"
 pytest-cov = ">=6.0,<6.4"
-pytest-mock = "~3.14.0"
+pytest-mock = ">=3.14,<3.16"
 
 [tool.poetry.group.docs.dependencies]
 mkdocs-material = "^9.6.11"
