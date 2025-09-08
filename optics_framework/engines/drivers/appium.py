@@ -366,7 +366,7 @@ class Appium(DriverInterface):
         app_identifier: Optional[str] = None,
         app_activity: Optional[str] = None,
         event_name: Optional[str] = None,
-    ) -> None:
+    ) -> str:
         """Launch the app using the Appium driver."""
         if self.driver is None:
             session_id = self.start_session(

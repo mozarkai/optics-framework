@@ -88,8 +88,8 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", index: int = 0, aoi_x: Optional[float] = None,
-        aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None,event_name: Optional[str] = None,
+        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", index: str = "0", aoi_x: Optional[float] = None,
+        aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None, event_name: Optional[str] = None,
         *, located: Any = None
         ) -> None:
         """

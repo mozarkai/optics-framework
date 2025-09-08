@@ -489,7 +489,7 @@ class Optics:
             repeat,
             offset_x,
             offset_y,
-            index=int(index),
+            index=index,
             aoi_x=aoi_x_float,
             aoi_y=aoi_y_float,
             aoi_width=aoi_width_float,

@@ -137,6 +137,7 @@ class SessionResponse(BaseModel):
     Response model for session creation.
     """
     session_id: str
+    driver_id: Optional[str] = None
     status: str = "created"
 
 class ExecutionResponse(BaseModel):
@@ -233,8 +234,11 @@ async def create_session(config: SessionConfig):
             keyword="launch_app",
             params=[]
         )
-        await execute_keyword(session_id, launch_request)
-        return SessionResponse(session_id=session_id)
+        driver_session = await execute_keyword(session_id, launch_request)
+        return SessionResponse(
+            session_id=session_id,
+            driver_id=(driver_session.data or {}).get("result")
+        )
     except Exception as e:
         internal_logger.error(f"Failed to create session: {e}")
         if isinstance(e, OpticsError):
