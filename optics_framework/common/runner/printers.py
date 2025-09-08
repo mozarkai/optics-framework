@@ -233,7 +233,6 @@ class TreeResultPrinter(IResultPrinter):
             self._live = Live(self._render_tree(
             ), refresh_per_second=10, console=Console(force_terminal=True) )
             self._live.start()
-            self._live.console.log("Testing started")
 
     def stop_live(self) -> None:
         if self._live:

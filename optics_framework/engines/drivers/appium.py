@@ -325,7 +325,7 @@ class Appium(DriverInterface):
         if self.driver:
 
             current_session_id = self.driver.session_id
-            internal_logger.info(
+            internal_logger.debug(
                 f"Terminating Appium session with session_id: {current_session_id}"
             )
             if event_name:

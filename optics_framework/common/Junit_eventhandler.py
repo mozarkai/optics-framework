@@ -39,8 +39,8 @@ class JUnitHandlerRegistry:
             event_manager.subscribe("junit", handler)
 
             self._handlers[session_id] = handler
-            internal_logger.info(f"Setup JUnit handler for session {session_id}: {junit_path}")
-            internal_logger.info(f"Session {session_id} EventManager has {len(event_manager.subscribers)} subscribers: {list(event_manager.subscribers.keys())}")
+            internal_logger.debug(f"Setup JUnit handler for session {session_id}: {junit_path}")
+            internal_logger.debug(f"Session {session_id} EventManager has {len(event_manager.subscribers)} subscribers: {list(event_manager.subscribers.keys())}")
 
     def _get_session_junit_path(self, session_id: str, config: Config) -> Path:
         """Generate session-specific JUnit output path."""
@@ -61,7 +61,7 @@ class JUnitHandlerRegistry:
             if session_id in self._handlers:
                 self._handlers[session_id].close()
                 del self._handlers[session_id]
-                internal_logger.info(f"Cleaned up JUnit handler for session {session_id}")
+                internal_logger.debug(f"Cleaned up JUnit handler for session {session_id}")
 
     def get_handler(self, session_id: str) -> Optional["JUnitEventHandler"]:
         """Get the JUnit handler for a specific session."""
@@ -124,7 +124,6 @@ class JUnitEventHandler(EventSubscriber):
 
 
     async def on_event(self, event: Event) -> None:
-        internal_logger.info(f"JUnitEventHandler received event: {event.entity_type} - {event.name} - {event.status}")
         internal_logger.debug(
             f"JUnitEventHandler received event: {event.model_dump()}")
         session_id = event.extra.get("session_id") if event.extra else None

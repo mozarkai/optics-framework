@@ -174,19 +174,30 @@ def _identify_yaml_content(data: Dict) -> Set[str]:
     :return: Set of content types ('test_cases', 'modules', 'elements', 'api').
     """
     content_types = set()
-    # Use case-insensitive matching for keys to be more tolerant of YAML formats
-    keys = {str(k).strip().lower() for k in data.keys()} if isinstance(data, dict) else set()
+    keys = _normalize_yaml_keys(data)
 
     if any(k in keys for k in ("test cases", "test_cases", "test-cases", "testcases")):
         content_types.add("test_cases")
-    if any(k in keys for k in ("modules",)):
+    if "modules" in keys:
         content_types.add("modules")
-    if any(k in keys for k in ("elements",)):
+    if "elements" in keys:
         content_types.add("elements")
     if any(k in keys for k in ("api", "apis")):
         content_types.add("api")
 
     return content_types
+
+
+def _normalize_yaml_keys(data: Dict) -> Set[str]:
+    """
+    Return a set of normalized (lowercased and stripped) keys from a YAML mapping.
+
+    This centralizes the normalization logic so other functions can reuse it and
+    improves readability.
+    """
+    if not isinstance(data, dict):
+        return set()
+    return {str(k).strip().lower() for k in data.keys()}
 
 
 def identify_file_content(file_path: str) -> Set[str]:
