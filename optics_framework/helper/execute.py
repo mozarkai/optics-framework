@@ -52,27 +52,34 @@ def discover_templates(project_path: str) -> TemplateData:
 
 def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[Any], Config | None]:
     """
-    Search for CSV and YAML files in a folder and categorize them by content.
-    Also loads config.yaml if present.
-    Exits the program if required files (test cases and modules) are missing.
+    Recursively search for CSV and YAML files under `folder_path` and categorize them by content.
 
-    :param folder_path: Path to the project folder.
-    :return: Tuple of lists of paths to test case files, module files, element files, API files, and Config object.
+    Returns lists of discovered test case, module, element and api files and an optional
+    Config object (if a suitable YAML config is found).
     """
     file_collections = _initialize_file_collections()
-    config_obj = None
+    config_obj: Config | None = None
 
-    for file in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, file)
+    # Walk the directory tree so files in subfolders are discovered
+    for root, _dirs, files in os.walk(folder_path):
+        for fname in files:
+            file_path = os.path.join(root, fname)
+            lname = fname.lower()
 
-        if file.endswith((".yml", ".yaml")):
-            config_obj = _process_yaml_file(file_path, file_collections, config_obj)
-        elif file.endswith(".csv"):
-            _process_csv_file(file_path, file_collections)
+            # Only consider common file extensions
+            if lname.endswith((".yml", ".yaml")):
+                config_obj = _process_yaml_file(file_path, file_collections, config_obj)
+            elif lname.endswith(".csv"):
+                _process_csv_file(file_path, file_collections)
 
-    validate_required_files(file_collections['test_case'], file_collections['module'], folder_path)
-    return (file_collections['test_case'], file_collections['module'],
-            file_collections['element'], file_collections['api'], config_obj)
+    validate_required_files(file_collections["test_case"], file_collections["module"], folder_path)
+    return (
+        file_collections["test_case"],
+        file_collections["module"],
+        file_collections["element"],
+        file_collections["api"],
+        config_obj,
+    )
 
 
 def _initialize_file_collections():
@@ -167,14 +174,18 @@ def _identify_yaml_content(data: Dict) -> Set[str]:
     :return: Set of content types ('test_cases', 'modules', 'elements', 'api').
     """
     content_types = set()
-    if "Test Cases" in data:
+    # Use case-insensitive matching for keys to be more tolerant of YAML formats
+    keys = {str(k).strip().lower() for k in data.keys()} if isinstance(data, dict) else set()
+
+    if any(k in keys for k in ("test cases", "test_cases", "test-cases", "testcases")):
         content_types.add("test_cases")
-    if "Modules" in data:
+    if any(k in keys for k in ("modules",)):
         content_types.add("modules")
-    if "Elements" in data:
+    if any(k in keys for k in ("elements",)):
         content_types.add("elements")
-    if "api" in data:
+    if any(k in keys for k in ("api", "apis")):
         content_types.add("api")
+
     return content_types
 
 
