@@ -45,7 +45,7 @@ jsonpath-ng = "^1.7.0"
 [tool.poetry.group.dev.dependencies]
 tox = ">=4.24.1,<4.29.0"
 pytest = ">=8.3.4,<8.5.0"
-pytest-cov = ">=6.0,<6.3"
+pytest-cov = ">=6.0,<6.4"
 commitizen = "^4.4.1"
 pre-commit = "^4.2.0"
 ruff = ">=0.11.2,<0.13.0"
@@ -54,7 +54,7 @@ pylint = "^3.3.7"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=8.3.4,<8.5.0"
-pytest-cov = ">=6.0,<6.3"
+pytest-cov = ">=6.0,<6.4"
 pytest-mock = "~3.14.0"
 
 [tool.poetry.group.docs.dependencies]
