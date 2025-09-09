@@ -256,11 +256,11 @@ These keywords manage application lifecycle operations.
     - `event_name` (optional): A string identifier for the session event (e.g., "session_start").
   - **Example**: `Start Appium Session,session_start`
 
-- **Start Other App**
+- **Launch Other App**
   Starts another application by bundle ID.
   - **Parameters**:
     - `bundleid`: The bundle/package ID of the app (string, e.g., "com.example.app")
-  - **Example**: `Start Other App,com.example.app`
+  - **Example**: `Launch Other App,com.example.app`
 
 - **Close And Terminate App**
   Closes and terminates the current application.
