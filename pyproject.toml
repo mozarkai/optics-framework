@@ -43,7 +43,7 @@ uvicorn = "^0.35.0"
 jsonpath-ng = "^1.7.0"
 
 [tool.poetry.group.dev.dependencies]
-tox = ">=4.24.1,<4.29.0"
+tox = ">=4.24.1,<4.31.0"
 pytest = ">=8.3.4,<8.5.0"
 pytest-cov = ">=6.0,<6.4"
 commitizen = "^4.4.1"
