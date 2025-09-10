@@ -550,16 +550,33 @@ class BaseRunner:
                 self.modules_data.add_module_definition(name, definition)
 
     def _load_elements(self, element_files):
+        """
+        Load element data from the provided element files (CSV or YAML).
+
+        :param element_files: List of element file paths.
+        :type element_files: list
+        :return: Populates self.elements_data with Dict[str, List[str]] for fallback support.
+        """
         self.elements_data: ElementData = ElementData()
         for file_path in element_files:
             reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
             elements = reader.read_elements(file_path)
-            for name, value in elements.items():
-                if self.elements_data.get_element(name):
-                    internal_logger.warning(
-                        f"Duplicate elements key '{name}' found. Overwriting."
-                    )
-                self.elements_data.add_element(name, value)
+            for name, values in elements.items():
+                self._add_or_merge_element(name, values)
+
+    def _add_or_merge_element(self, name, values):
+        """Helper to add or merge element values into self.elements_data."""
+        # values is a list of element IDs (for fallback)
+        if not isinstance(values, list):
+            values = [values]
+        if self.elements_data.get_element(name):
+            # Merge lists, avoid duplicates
+            existing = self.elements_data.get_element(name) or []
+            for v in values:
+                if v not in existing:
+                    self.elements_data.elements[name].append(v)
+        else:
+            self.elements_data.elements[name] = list(values)
 
     def _load_api_data(self, api_files):
         self.api_data: ApiData = ApiData()

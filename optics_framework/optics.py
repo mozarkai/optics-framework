@@ -3,6 +3,7 @@ from functools import wraps
 import json
 import os
 from pathlib import Path
+from itertools import product
 import yaml
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
@@ -121,6 +122,29 @@ class Optics:
             for item in config_list
             for key, value in item.items()
         ]
+
+    def _resolve_param(self, param: Any) -> Any:
+        """
+        If param is a string of the form ${...}, resolve it using session elements (with fallback).
+        If the resolved value is a list, return the list (for fallback attempts). Otherwise, return as is.
+        """
+        if not (
+            isinstance(param, str) and param.startswith("${") and param.endswith("}")
+        ):
+            return [param]  # Always return as list for uniformity
+        var_name = param[2:-1].strip()
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise ValueError(INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        if hasattr(session, "elements") and session.elements:
+            values = session.elements.get_element(var_name)
+            if values is None:
+                raise ValueError(f"Element not found for variable: {param}")
+            # If single value, wrap in list for fallback logic
+            if isinstance(values, list):
+                return values
+            return [values]
+        raise ValueError("Session does not have an elements store.")
 
     @keyword("Setup")
     def setup(
@@ -470,32 +494,55 @@ class Optics:
         aoi_height: Optional[str] = None,
         event_name: Optional[str] = None
     ) -> None:
-        """Press an element with specified parameters and optional Area of Interest."""
+        """Press an element with specified parameters and optional Area of Interest. Supports element fallback for any param of the form ${...}."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
 
-        def _parse_aoi_value(val: Optional[str]) -> Optional[float]:
+
+        param_lists = [
+            self._resolve_param(element),
+            self._resolve_param(repeat),
+            self._resolve_param(offset_x),
+            self._resolve_param(offset_y),
+            self._resolve_param(index) if index is not None else ["0"],
+            self._resolve_param(aoi_x) if aoi_x is not None else [None],
+            self._resolve_param(aoi_y) if aoi_y is not None else [None],
+            self._resolve_param(aoi_width) if aoi_width is not None else [None],
+            self._resolve_param(aoi_height) if aoi_height is not None else [None],
+        ]
+
+        def _parse_aoi_value(val: Optional[Any]) -> Optional[float]:
             if val is not None and str(val).strip() not in ('', 'None', 'none'):
                 return float(val)
             return None
 
-        aoi_x_float = _parse_aoi_value(aoi_x)
-        aoi_y_float = _parse_aoi_value(aoi_y)
-        aoi_width_float = _parse_aoi_value(aoi_width)
-        aoi_height_float = _parse_aoi_value(aoi_height)
-
-        self.action_keyword.press_element(
-            element,
-            repeat,
-            offset_x,
-            offset_y,
-            index=index,
-            aoi_x=aoi_x_float,
-            aoi_y=aoi_y_float,
-            aoi_width=aoi_width_float,
-            aoi_height=aoi_height_float,
-            event_name=event_name,
-        )
+        # Try all fallback combinations (like test_runnner.py)
+        last_exc = None
+        for (el, rep, ox, oy, ind, ax, ay, aw, ah) in product(*param_lists):
+            aoi_x_float = _parse_aoi_value(ax)
+            aoi_y_float = _parse_aoi_value(ay)
+            aoi_width_float = _parse_aoi_value(aw)
+            aoi_height_float = _parse_aoi_value(ah)
+            try:
+                self.action_keyword.press_element(
+                    element=el,
+                    repeat=rep,
+                    offset_x=ox,
+                    offset_y=oy,
+                    index=ind,
+                    aoi_x=aoi_x_float,
+                    aoi_y=aoi_y_float,
+                    aoi_width=aoi_width_float,
+                    aoi_height=aoi_height_float,
+                    event_name=event_name,
+                )
+                return  # On first success, exit
+            except Exception as e:
+                last_exc = e
+        # If all fallback attempts fail, raise last exception or generic error
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in press_element.")
 
     @keyword("Press By Percentage")
     def press_by_percentage(
@@ -541,7 +588,16 @@ class Optics:
         """Detect and press an element."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.detect_and_press(element, timeout, event_name)
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.action_keyword.detect_and_press(el, timeout, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in detect_and_press.")
 
     @keyword("Swipe")
     def swipe(
@@ -568,9 +624,16 @@ class Optics:
         """Swipe until an element appears."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.swipe_until_element_appears(
-            element, direction, timeout, event_name
-        )
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.action_keyword.swipe_until_element_appears(el, direction, timeout, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in swipe_until_element_appears.")
 
     @keyword("Swipe From Element")
     def swipe_from_element(
@@ -583,9 +646,16 @@ class Optics:
         """Swipe starting from an element."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.swipe_from_element(
-            element, direction, swipe_length, event_name
-        )
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.action_keyword.swipe_from_element(el, direction, swipe_length, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in swipe_from_element.")
 
     @keyword("Scroll")
     def scroll(self, direction: str = "down", event_name: Optional[str] = None) -> None:
@@ -605,9 +675,16 @@ class Optics:
         """Scroll until an element appears."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.scroll_until_element_appears(
-            element, direction, timeout, event_name
-        )
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.action_keyword.scroll_until_element_appears(el, direction, timeout, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in scroll_until_element_appears.")
 
     @keyword("Scroll From Element")
     def scroll_from_element(
@@ -620,18 +697,35 @@ class Optics:
         """Scroll starting from an element."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.scroll_from_element(
-            element, direction, scroll_length, event_name
-        )
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.action_keyword.scroll_from_element(el, direction, scroll_length, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in scroll_from_element.")
 
     @keyword("Enter Text")
     def enter_text(
         self, element: str, text: str, event_name: Optional[str] = None
     ) -> None:
-        """Enter text into an element."""
+        """Enter text into an element. Supports element fallback for any param of the form ${...}."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.enter_text(element, text, event_name)
+        param_lists = [self._resolve_param(element), self._resolve_param(text)]
+        last_exc = None
+        for el, txt in product(*param_lists):
+            try:
+                self.action_keyword.enter_text(el, txt, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in enter_text.")
 
     @keyword("Enter Text Direct")
     def enter_text_direct(self, text: str, event_name: Optional[str] = None) -> None:
@@ -656,7 +750,17 @@ class Optics:
         """Enter a number into an element."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.enter_number(element, number, event_name)
+        param_lists = [self._resolve_param(element), self._resolve_param(number)]
+        last_exc = None
+        for el, num in product(*param_lists):
+            try:
+                self.action_keyword.enter_number(el, num, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in enter_number.")
 
     @keyword("Press Keycode")
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
@@ -674,14 +778,31 @@ class Optics:
         """Clear text from an element."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        self.action_keyword.clear_element_text(element, event_name)
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.action_keyword.clear_element_text(el, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in clear_element_text.")
 
     @keyword("Get Text")
     def get_text(self, element: str) -> Optional[str]:
         """Get text from an element."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
-        return self.action_keyword.get_text(element)
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                return self.action_keyword.get_text(el)
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in get_text.")
 
     @keyword("Sleep")
     def sleep(self, duration: str) -> None:
@@ -702,7 +823,16 @@ class Optics:
         """Validate an element's presence."""
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        self.verifier.validate_element(element, timeout, rule, event_name)
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                self.verifier.validate_element(el, timeout, rule, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in validate_element.")
 
     @keyword("Assert Presence")
     def assert_presence(
@@ -715,7 +845,15 @@ class Optics:
         """Assert the presence of elements."""
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        return self.verifier.assert_presence(elements, timeout, rule, event_name)
+        last_exc = None
+        for el in self._resolve_param(elements):
+            try:
+                return self.verifier.assert_presence(el, timeout, rule, event_name)
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in assert_presence.")
 
     @keyword("Validate Screen")
     def validate_screen(
@@ -728,7 +866,16 @@ class Optics:
         """Validate a screen by checking element presence."""
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        self.verifier.validate_screen(elements, timeout, rule, event_name)
+        last_exc = None
+        for el in self._resolve_param(elements):
+            try:
+                self.verifier.validate_screen(el, timeout, rule, event_name)
+                return
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in validate_screen.")
 
     @keyword("Get Interactive Elements")
     def get_interactive_elements(self) -> List:
@@ -763,7 +910,15 @@ class Optics:
         """Read data from a specified source."""
         if not self.flow_control:
             raise ValueError(INVALID_SETUP)
-        return self.flow_control.read_data(element, source, query)
+        last_exc = None
+        for el in self._resolve_param(element):
+            try:
+                return self.flow_control.read_data(el, source, query)
+            except Exception as e:
+                last_exc = e
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("All fallback attempts failed in read_data.")
 
     @keyword("Run Loop")
     def run_loop(self, target: str, *args: str) -> Any:

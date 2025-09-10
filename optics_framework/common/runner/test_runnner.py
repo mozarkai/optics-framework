@@ -5,9 +5,11 @@ import tempfile
 import shutil
 import sys
 import logging
+from itertools import product
 from typing import Callable, Dict, List, Optional, Union, Any
 import pytest
 from optics_framework.common.session_manager import Session
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
     internal_logger,
@@ -184,14 +186,11 @@ class TestRunner(Runner):
 
     def resolve_param(self, param: str) -> str:
         if not param.startswith("${") or not param.endswith("}"):
-            return param
+            return param  # If param is not a variable reference, return it as is.
         var_name = param[2:-1].strip()
-        resolved_value = self.elements.get_element(var_name)
+        resolved_value = self.elements.get_first(var_name)
         if resolved_value is None:
-            internal_logger.warning(
-                f"Variable '{var_name}' not found in elements. Current elements: {self.elements}"
-            )
-            raise ValueError(f"Variable '{param}' not found in elements dictionary")
+            raise OpticsError(Code.E0201, f"Element not found: {var_name}")
         internal_logger.debug(f"Resolved '{param}' to '{resolved_value}'")
         return resolved_value
 
@@ -315,7 +314,6 @@ class TestRunner(Runner):
         test_case_result: TestCaseResult,
         extra: Dict[str, str],
     ) -> bool:
-        # starting log capture for lower level logging
         capture_handler = LogCaptureBuffer()
         execution_logger.addHandler(capture_handler)
 
@@ -342,106 +340,139 @@ class TestRunner(Runner):
         func_name = "_".join(keyword_node.name.split()).lower()
         method = self.keyword_map.get(func_name)
         if not method:
-            keyword_node.state = State.ERROR
-            keyword_node.last_failure_reason = "Keyword not found"
-            await self._send_event(
-                "keyword",
-                keyword_node,
-                EventStatus.FAIL,
-                reason="Keyword not found",
-                parent_id=module_node.id,
-                start_time=start_time,
-                end_time=time.time(),
-                elapsed=time.time() - start_time,
-            )
-            self._update_status(
-                keyword_result, "FAIL", time.time() - start_time, test_case_result.name
-            )
+            await self._handle_keyword_not_found(keyword_node, module_node, keyword_result, start_time, test_case_result)
             return False
 
-        resolved_kw_params = {}
-        try:
-            raw_indices = getattr(method, "_raw_param_indices", [])
-            kw_params = DataReader.get_keyword_params(keyword_node.params)
-            positional_params = DataReader.get_positional_params(keyword_node.params)
-            resolved_positional_params = [
-                param if i in raw_indices else self.resolve_param(param)
-                for i, param in enumerate(positional_params)
-            ]
-            resolved_kw_params = {}
-            for key, value in kw_params.items():
-                if value.startswith("${") and value.endswith("}"):
-                    value = self.resolve_param(value)
-                resolved_kw_params[key] = value
-            if isinstance(keyword_result, KeywordResult):
-                positional_str = ", ".join(str(p) for p in resolved_positional_params)
-                keyword_str = ", ".join(
-                    f"{k}={v}" for k, v in resolved_kw_params.items()
-                )
-                combined_params = ", ".join(filter(None, [positional_str, keyword_str]))
-                keyword_result.resolved_name = (
-                    f"{keyword_node.name} ({combined_params})"
-                    if combined_params
-                    else keyword_node.name
-                )
-            positional_str = ", ".join(str(p) for p in resolved_positional_params)
-            keyword_str = ", ".join(f"{k}={v}" for k, v in resolved_kw_params.items())
-            combined_params_str = ", ".join(filter(None, [positional_str, keyword_str]))
-            execution_logger.debug("PARAMS: %s", combined_params_str)
-            method(*resolved_positional_params, **resolved_kw_params)
-            await asyncio.sleep(0.1)
-            keyword_node.state = State.COMPLETED_PASSED
-            end_time = time.time()
-            log_messages = [
-                record.getMessage() for record in capture_handler.get_records()
-            ]
+        param_candidates = await self._build_param_candidates(keyword_node, keyword_node.params, module_node, keyword_result, start_time, test_case_result, capture_handler)
+        if param_candidates is None:
+            return False
 
-            await self._send_event(
-                "keyword",
-                keyword_node,
-                EventStatus.PASS,
-                parent_id=module_node.id,
-                args=list(resolved_kw_params.items()),
-                start_time=start_time,
-                end_time=end_time,
-                elapsed=end_time - start_time,
-                logs=log_messages,
-            )
-            self._update_status(
-                keyword_result, "PASS", time.time() - start_time, test_case_result.name
-            )
-            return True
+        result = await self._try_execute_with_fallback(
+            method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler
+        )
+        if result is not None:
+            return result
 
-        except Exception as e:
-            keyword_node.state = State.COMPLETED_FAILED
-            keyword_node.last_failure_reason = str(e)
-            end_time = time.time()
-            log_messages = [
-                record.getMessage() for record in capture_handler.get_records()
-            ]
-            await self._send_event(
-                "keyword",
-                keyword_node,
-                EventStatus.FAIL,
-                reason=str(e),
-                parent_id=module_node.id,
-                args=list(resolved_kw_params.items()),
-                start_time=start_time,
-                end_time=end_time,
-                elapsed=end_time - start_time,
-                logs=log_messages,
+        await self._handle_fallback_exhausted(keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler)
+        await asyncio.sleep(self.config.halt_duration)
+        if await self._process_commands(keyword_node, module_node):
+            return await self._execute_keyword(
+                keyword_node, module_node, test_case_result, extra
             )
-            self._update_status(
-                keyword_result, "FAIL", time.time() - start_time, test_case_result.name
-            )
+        return False
 
-            if keyword_node.attempt_count < self.config.max_attempts:
-                await asyncio.sleep(self.config.halt_duration)
-                if await self._process_commands(keyword_node, module_node):
-                    return await self._execute_keyword(
-                        keyword_node, module_node, test_case_result, extra
+    async def _handle_keyword_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result):
+        keyword_node.state = State.COMPLETED_FAILED
+        await self._send_event(
+            "keyword",
+            keyword_node,
+            EventStatus.FAIL,
+            reason=f"Keyword not found: {keyword_node.name}",
+            parent_id=module_node.id,
+            start_time=start_time,
+            end_time=time.time(),
+            elapsed=time.time() - start_time,
+        )
+        self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
+
+    async def _build_param_candidates(self, keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler):
+        param_candidates = []
+        for param in params:
+            if isinstance(param, str) and param.startswith("${") and param.endswith("}"):
+                var_name = param[2:-1].strip()
+                values = self.elements.get_element(var_name)
+                if not values:
+                    # Await error handler to ensure error is processed before returning
+                    await self._handle_element_not_found(
+                        keyword_node, module_node, keyword_result, start_time, test_case_result, var_name, capture_handler
                     )
-            return False
+                    return None
+                param_candidates.append(values)
+            else:
+                param_candidates.append([param])
+        return param_candidates
+
+    async def _handle_element_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result, var_name, capture_handler):
+        keyword_node.state = State.COMPLETED_FAILED
+        await self._send_event(
+            "keyword",
+            keyword_node,
+            EventStatus.FAIL,
+            f"Element not found: {var_name}",
+            parent_id=module_node.id,
+            start_time=start_time,
+            end_time=time.time(),
+            elapsed=time.time() - start_time,
+            logs=capture_handler.records,
+        )
+        self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
+
+    async def _try_execute_with_fallback(
+        self, method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler
+    ):
+        # Try all combinations of param candidates (for fallback)
+        MAX_ATTEMPTS = 20
+        attempts = 0
+        for candidate_args in product(*param_candidates):
+            attempts += 1
+            if attempts > MAX_ATTEMPTS:
+                break
+            try:
+                method(*candidate_args)
+                keyword_node.state = State.COMPLETED_PASSED
+                await self._send_event(
+                    "keyword",
+                    keyword_node,
+                    EventStatus.PASS,
+                    parent_id=module_node.id,
+                    start_time=start_time,
+                    end_time=time.time(),
+                    elapsed=time.time() - start_time,
+                    logs=capture_handler.records,
+                )
+                self._update_status(keyword_result, "PASS", time.time() - start_time, test_case_result.name)
+                return True
+            except OpticsError as oe:
+                if str(oe.code).startswith("E02") or oe.code == Code.X0201:
+                    internal_logger.debug(f"Keyword fallback: tried {candidate_args}, error: {oe}")
+                    continue
+                else:
+                    await self._handle_keyword_exception(keyword_node, module_node, keyword_result, start_time, test_case_result, oe, capture_handler)
+                    return False
+            except Exception as e:
+                await self._handle_keyword_exception(keyword_node, module_node, keyword_result, start_time, test_case_result, e, capture_handler)
+                return False
+        return None
+
+    async def _handle_keyword_exception(self, keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler):
+        keyword_node.state = State.COMPLETED_FAILED
+        await self._send_event(
+            "keyword",
+            keyword_node,
+            EventStatus.FAIL,
+            f"Keyword '{keyword_node.name}' failed: {exc}",
+            parent_id=module_node.id,
+            start_time=start_time,
+            end_time=time.time(),
+            elapsed=time.time() - start_time,
+            logs=capture_handler.records,
+        )
+        self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
+
+    async def _handle_fallback_exhausted(self, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler):
+        keyword_node.state = State.COMPLETED_FAILED
+        await self._send_event(
+            "keyword",
+            keyword_node,
+            EventStatus.FAIL,
+            f"Keyword '{keyword_node.name}' failed after fallback attempts",
+            parent_id=module_node.id,
+            start_time=start_time,
+            end_time=time.time(),
+            elapsed=time.time() - start_time,
+            logs=capture_handler.records,
+        )
+        self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
 
     async def _process_module(
         self,
@@ -740,7 +771,7 @@ class PytestRunner(Runner):
         if not param.startswith("${") or not param.endswith("}"):
             return param
         var_name = param[2:-1].strip()
-        value = self.elements.get_element(var_name)
+        value = self.elements.get_first(var_name)
         if value is None:
             pytest.fail(f"Variable '{var_name}' not found")
         return value
@@ -755,48 +786,26 @@ class PytestRunner(Runner):
     ) -> bool:
         keyword_id = str(uuid.uuid4())
         func_name = "_".join(keyword.split()).lower()
-        if dry_run:
-            if not self.keyword_map.get(func_name):
-                queue_event_sync(
-                    Event(
-                        entity_type="keyword",
-                        entity_id=keyword_id,
-                        name=keyword,
-                        status=EventStatus.FAIL,
-                        message=f"Keyword not found: {keyword}",
-                        parent_id=module_id,
-                        extra={"session_id": self.session.session_id},
-                    ),
-                    self.event_manager
-                )
-                pytest.fail(f"Keyword not found: {keyword}")
-            queue_event_sync(
-                Event(
-                    entity_type="keyword",
-                    entity_id=keyword_id,
-                    name=keyword,
-                    status=EventStatus.PASS,
-                    message="Keyword validated",
-                    parent_id=module_id,
-                    extra={"session_id": self.session.session_id},
-                ),
-                self.event_manager
-            )
-            return True
 
-        queue_event_sync(
-            Event(
-                entity_type="keyword",
-                entity_id=keyword_id,
-                name=keyword,
-                status=EventStatus.RUNNING,
-                parent_id=module_id,
-                extra={"session_id": self.session.session_id},
-            ),
-            self.event_manager
-        )
+        if dry_run:
+            return self._execute_keyword_dry_run(keyword, func_name, keyword_id, module_id)
+
+        self._queue_event_running(keyword, keyword_id, module_id)
         method = self.keyword_map.get(func_name)
         if not method:
+            self._queue_event_fail(keyword, keyword_id, module_id, f"Keyword not found: {keyword}")
+            pytest.fail(f"Keyword not found: {keyword}")
+
+        param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id)
+        if param_candidates is None:
+            return False
+
+        return self._try_execute_with_fallback_pytest(
+            method, param_candidates, keyword, keyword_id, module_id
+        )
+
+    def _execute_keyword_dry_run(self, keyword, func_name, keyword_id, module_id):
+        if not self.keyword_map.get(func_name):
             queue_event_sync(
                 Event(
                     entity_type="keyword",
@@ -810,46 +819,133 @@ class PytestRunner(Runner):
                 self.event_manager
             )
             pytest.fail(f"Keyword not found: {keyword}")
-        try:
-            kw_params = DataReader.get_keyword_params(params)
-            positional_params = DataReader.get_positional_params(params)
-            resolved_positional_params = [
-                self.resolve_param(param) for param in positional_params
-            ]
-            resolved_kw_params = {}
-            for key, value in kw_params.items():
-                if value.startswith("${") and value.endswith("}"):
-                    value = self.resolve_param(value)
-                resolved_kw_params[key] = value
-            method(*resolved_positional_params, **resolved_kw_params)
-            time.sleep(0.1)
-            queue_event_sync(
-                Event(
-                    entity_type="keyword",
-                    entity_id=keyword_id,
-                    name=keyword,
-                    status=EventStatus.PASS,
-                    parent_id=module_id,
-                    extra={"session_id": self.session.session_id},
-                ),
-                self.event_manager
-            )
-            return True
-        except Exception as e:
-            queue_event_sync(
-                Event(
-                    entity_type="keyword",
-                    entity_id=keyword_id,
-                    name=keyword,
-                    status=EventStatus.FAIL,
-                    message=f"Keyword '{keyword}' failed: {e}",
-                    parent_id=module_id,
-                    extra={"session_id": self.session.session_id},
-                ),
-                self.event_manager
-            )
-            pytest.fail(f"Keyword '{keyword}' failed: {e}")
-            return False
+        queue_event_sync(
+            Event(
+                entity_type="keyword",
+                entity_id=keyword_id,
+                name=keyword,
+                status=EventStatus.PASS,
+                message="Keyword validated",
+                parent_id=module_id,
+                extra={"session_id": self.session.session_id},
+            ),
+            self.event_manager
+        )
+        return True
+
+    def _queue_event_running(self, keyword, keyword_id, module_id):
+        queue_event_sync(
+            Event(
+                entity_type="keyword",
+                entity_id=keyword_id,
+                name=keyword,
+                status=EventStatus.RUNNING,
+                parent_id=module_id,
+                extra={"session_id": self.session.session_id},
+            ),
+            self.event_manager
+        )
+
+    def _queue_event_fail(self, keyword, keyword_id, module_id, message):
+        queue_event_sync(
+            Event(
+                entity_type="keyword",
+                entity_id=keyword_id,
+                name=keyword,
+                status=EventStatus.FAIL,
+                message=message,
+                parent_id=module_id,
+                extra={"session_id": self.session.session_id},
+            ),
+            self.event_manager
+        )
+
+    def _build_param_candidates_pytest(self, params, keyword_id, keyword, module_id):
+        param_candidates = []
+        for param in params:
+            if isinstance(param, str) and param.startswith("${") and param.endswith("}"):
+                var_name = param[2:-1].strip()
+                values = self.elements.get_element(var_name)
+                if not values:
+                    queue_event_sync(
+                        Event(
+                            entity_type="keyword",
+                            entity_id=keyword_id,
+                            name=keyword,
+                            status=EventStatus.FAIL,
+                            message=f"Element not found: {var_name}",
+                            parent_id=module_id,
+                            extra={"session_id": self.session.session_id},
+                        ),
+                        self.event_manager
+                    )
+                    pytest.fail(f"Element not found: {var_name}")
+                    return None
+                param_candidates.append(values)
+            else:
+                param_candidates.append([param])
+        return param_candidates
+
+    def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id):
+        MAX_ATTEMPTS = 20
+        attempts = 0
+        last_exc = None
+
+        for candidate_args in product(*param_candidates):
+            attempts += 1
+            if attempts > MAX_ATTEMPTS:
+                break
+            try:
+                resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(candidate_args)
+                method(*resolved_positional_params, **resolved_kw_params)
+                self._queue_keyword_pass_event(keyword, keyword_id, module_id)
+                return True
+            except OpticsError as oe:
+                if str(oe.code).startswith("E02") or oe.code == Code.X0201:
+                    last_exc = oe
+                    continue
+                else:
+                    self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {oe}")
+                    return False
+            except Exception as e:
+                self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {e}")
+                return False
+
+        self._handle_keyword_fail(
+            keyword,
+            keyword_id,
+            module_id,
+            f"Keyword '{keyword}' failed after {attempts} attempts; last error: {last_exc}"
+        )
+        return False
+
+    def _queue_keyword_pass_event(self, keyword, keyword_id, module_id):
+        queue_event_sync(
+            Event(
+                entity_type="keyword",
+                entity_id=keyword_id,
+                name=keyword,
+                status=EventStatus.PASS,
+                parent_id=module_id,
+                extra={"session_id": self.session.session_id},
+            ),
+            self.event_manager
+        )
+
+    def _handle_keyword_fail(self, keyword, keyword_id, module_id, msg):
+        self._queue_event_fail(keyword, keyword_id, module_id, msg)
+        pytest.fail(msg)
+
+    def _resolve_candidate_params(self, candidate_args):
+        kw_params = DataReader.get_keyword_params(list(candidate_args))
+        positional_params = DataReader.get_positional_params(list(candidate_args))
+        resolved_positional_params = [self.resolve_param(param) for param in positional_params]
+        resolved_kw_params = {}
+        for key, value in kw_params.items():
+            if value.startswith("${") and value.endswith("}"):
+                value = self.resolve_param(value)
+            resolved_kw_params[key] = value
+        return resolved_positional_params, resolved_kw_params
 
     def _process_module(
         self, module_name: str, dry_run: bool = False, testcase_id: str = "unknown"

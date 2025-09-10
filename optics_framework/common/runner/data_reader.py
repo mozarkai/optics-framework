@@ -164,9 +164,7 @@ class CSVDataReader(DataReader):
                 row[key].strip()
                 for key in row
                 if key is not None
-                and key.startswith("param_")
-                and row[key]
-                and row[key].strip()
+                if key.startswith("param_") and row[key] and row[key].strip()
             ]
             if module_name not in modules:
                 modules[module_name] = []
@@ -176,12 +174,12 @@ class CSVDataReader(DataReader):
     def read_elements(self, file_path: Optional[str]) -> dict:
         """
         Read a CSV file containing element information and return a dictionary mapping
-        element names to their corresponding element IDs.
+        element names to a list of their corresponding element IDs (for fallback support).
 
         :param file_path: Path to the elements CSV file, or None if not provided.
         :type file_path: Optional[str]
-        :return: A dictionary where keys are element names and values are element IDs.
-        :rtype: dict
+        :return: A dictionary where keys are element names and values are lists of element IDs.
+        :rtype: Dict[str, List[str]]
         """
         if not file_path:
             return {}
@@ -189,9 +187,19 @@ class CSVDataReader(DataReader):
         elements = {}
         for row in rows:
             element_name = row.get("Element_Name", "").strip()
-            element_id = row.get("Element_ID", "").strip()
-            if element_name and element_id:
-                elements[element_name] = element_id
+            # Support multiple element IDs for fallback: look for all keys starting with "Element_ID"
+            element_ids = [
+                row[key].strip()
+                for key in row
+                if key is not None
+                and key.startswith("Element_ID")
+                and row[key]
+                and row[key].strip()
+            ]
+            if element_name and element_ids:
+                if element_name not in elements:
+                    elements[element_name] = []
+                elements[element_name].extend(element_ids)
         return elements
 
 
@@ -301,12 +309,12 @@ class YAMLDataReader(DataReader):
     def read_elements(self, file_path: Optional[str]) -> dict:
         """
         Read a YAML file containing element information and return a dictionary mapping
-        element names to their corresponding element IDs.
+        element names to a list of their corresponding element IDs (for fallback support).
 
         :param file_path: Path to the YAML file, or None if not provided.
         :type file_path: Optional[str]
-        :return: A dictionary where keys are element names and values are element IDs.
-        :rtype: dict
+        :return: A dictionary where keys are element names and values are lists of element IDs.
+        :rtype: Dict[str, List[str]]
         """
         if not file_path:
             return {}
@@ -315,9 +323,15 @@ class YAMLDataReader(DataReader):
         elements_data = data.get("Elements", {})
         for name, value in elements_data.items():
             name = name.strip()
-            value = str(value).strip() if value is not None else ""
-            if name and value:
-                elements[name] = value
+            # Support both single value and list of values for fallback
+            if isinstance(value, list):
+                values = [str(v).strip() for v in value if str(v).strip()]
+            elif value is not None:
+                values = [str(value).strip()] if str(value).strip() else []
+            else:
+                values = []
+            if name and values:
+                elements[name] = values
         return elements
 
     def read_api_data(self, file_path: str, existing_api_data: Optional[ApiData] = None) -> ApiData:

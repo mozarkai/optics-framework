@@ -2,6 +2,8 @@ from uuid import uuid4
 from enum import Enum
 from typing import Optional, Dict, List, Callable, Any
 from pydantic import BaseModel, Field
+from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.error import OpticsError, Code
 
 # State Enum
 class State(str, Enum):
@@ -150,18 +152,88 @@ class ModuleData(BaseModel):
 
 
 class ElementData(BaseModel):
-    """Structure for elements."""
-    elements: Dict[str, str] = Field(default_factory=dict)
+    """Structure for elements.
+
+    Elements may hold multiple locator/representation values per key. The
+    runner/consumers should try values in order as fallbacks until one
+    succeeds.
+    """
+    elements: Dict[str, List[str]] = Field(default_factory=dict)
 
     def add_element(self, name: str, value: str):
-        self.elements[name] = value
+        """Append a value for an element key.
+
+        Args:
+            name: element key/name
+            value: locator or representation string (xpath, image path, text, etc.)
+        """
+        if name not in self.elements:
+            self.elements[name] = []
+        self.elements[name].append(value)
 
     def remove_element(self, name: str):
+        """Remove all values for a key."""
         if name in self.elements:
             del self.elements[name]
 
-    def get_element(self, name: str) -> Optional[str]:
+    def get_element(self, name: str) -> Optional[List[str]]:
+        """Return the list of values for a key (alias for get_values).
+
+        Note: callers that previously expected a single string should call
+        `get_first(name)` to obtain the highest-priority value.
+        """
         return self.elements.get(name)
+
+    def get_first(self, name: str) -> Optional[str]:
+        """Return the first (highest-priority) value for a key, or None."""
+        vals = self.elements.get(name)
+        return vals[0] if vals else None
+
+    def resolve_with_fallback(
+        self,
+        name: str,
+        resolver: Callable[[str], Any],
+        on_error: Optional[Callable[[Exception, str], None]] = None,
+        max_attempts: Optional[int] = None,
+    ) -> Any:
+        """Try resolving each stored value for `name` using `resolver` until one succeeds.
+
+        Args:
+            name: element key
+            resolver: function that takes a single value string and returns a result or raises on failure
+            on_error: optional callback called as on_error(exception, tried_value) for each failure
+            max_attempts: optional cap on attempts (overrides len(values))
+
+        Returns:
+            The first successful result returned by resolver.
+
+        Raises:
+            OpticsError(Code.X0201) if no values succeed or OpticsError(Code.E0201) if key missing.
+        """
+        values = self.get_element(name)
+        if not values:
+            raise OpticsError(Code.E0201, f"Element not found: {name}")
+
+        attempts = 0
+        cap = max_attempts if (max_attempts is not None) else len(values)
+        last_exc: Optional[Exception] = None
+        for v in values:
+            if attempts >= cap:
+                break
+            attempts += 1
+            try:
+                return resolver(v)
+            except Exception as e:
+                last_exc = e
+                if on_error:
+                    try:
+                        on_error(e, v)
+                    except Exception:
+                        internal_logger.debug("on_error callback raised an exception", exc_info=True)
+                # continue to next value
+
+        # exhausted
+        raise OpticsError(Code.X0201, f"Element '{name}' not found after attempting {attempts} value(s); last error: {getattr(last_exc, 'args', last_exc)}")
 
 
 class RequestDefinition(BaseModel):
