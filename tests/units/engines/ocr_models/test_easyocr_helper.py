@@ -7,7 +7,7 @@ from optics_framework.engines.vision_models.ocr_models.easyocr import EasyOCRHel
 @pytest.fixture
 def easyocr_instance():
     """Fixture to initialize EasyOCRHelper."""
-    return EasyOCRHelper(language="en")
+    return EasyOCRHelper(config={"language": "en"})
 
 
 @pytest.fixture

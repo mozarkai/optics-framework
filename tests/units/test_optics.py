@@ -38,7 +38,8 @@ def test_setup_and_elements():
     for name, value in elements.items():
         optics.add_element(name, value)
     for name in elements.keys():
-        assert optics.get_element_value(name) == elements[name]
+        # get_element_value returns a list, so use get_first for scalar assertion
+        assert optics.get_element_value(name)[0] == elements[name]
     optics.quit()
 
 def test_setup_from_file():
@@ -54,12 +55,12 @@ def test_add_api_and_invoke(live_servers):
         api_yaml_dict = yaml.safe_load(f)
     optics.add_api(api_yaml_dict)
     optics.invoke_api("mock.token")
-    access_token = optics.get_element_value("access_token")
-    user_id = optics.get_element_value("userId")
+    access_token = optics.get_element_value("access_token")[0]
+    user_id = optics.get_element_value("userId")[0]
     optics.add_element("access_token", access_token)
     optics.add_element("userId", user_id)
     optics.invoke_api("mock.sendotp")
-    txn_type = optics.get_element_value("txnType")
+    txn_type = optics.get_element_value("txnType")[0]
     assert txn_type == "GEN", f"Expected txnType 'GEN', got {txn_type}"
     optics.quit()
 
@@ -97,7 +98,7 @@ def test_context_manager():
     with Optics() as optics:
         optics.setup(config=config)
         optics.add_element('foo', 'bar')
-        assert optics.get_element_value('foo') == 'bar'
+        assert optics.get_element_value('foo')[0] == 'bar'
 
 def test_mock_api(live_servers):
     MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
@@ -107,13 +108,13 @@ def test_mock_api(live_servers):
         api_yaml_dict = yaml.safe_load(f)
     optics.add_api(api_yaml_dict)
     optics.invoke_api("mock.token")
-    access_token = optics.get_element_value("access_token")
-    user_id = optics.get_element_value("userId")
+    access_token = optics.get_element_value("access_token")[0]
+    user_id = optics.get_element_value("userId")[0]
     print("Access token from mock API:", access_token)
     print("User ID from mock API:", user_id)
     optics.add_element("access_token", access_token)
     optics.add_element("userId", user_id)
     optics.invoke_api("mock.sendotp")
-    txn_type = optics.get_element_value("txnType")
+    txn_type = optics.get_element_value("txnType")[0]
     print("OTP txnType from mock API:", txn_type)
     optics.quit()

@@ -1,7 +1,9 @@
 import pytest
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.models import ApiData, ApiCollection, ApiDefinition, RequestDefinition, ExpectedResultDefinition
+from optics_framework.common.error import OpticsError
 from tests.mock_servers.single_server import run_single_server
+
 
 @pytest.fixture(scope="module")
 def api_test_data():
@@ -60,8 +62,8 @@ def test_invoke_api_success(flow_control, live_servers):
     flow_control.invoke_api("authentication_apis.post_token")
 
     # Assertions for the first API call
-    assert flow_control.session.elements.get_element("auth_token") == "real_auth_token_123"
-    assert flow_control.session.elements.get_element("user_id") == "98765"
+    assert flow_control.session.elements.get_first("auth_token") == "real_auth_token_123"
+    assert flow_control.session.elements.get_first("user_id") == "98765"
 
     # 2. Invoke the second API (send_otp)
     flow_control.invoke_api("authentication_apis.send_otp")
@@ -70,15 +72,15 @@ def test_invoke_api_success(flow_control, live_servers):
     # and we're primarily testing the invocation and data flow.
 
 def test_invoke_api_collection_not_found(flow_control):
-    with pytest.raises(ValueError, match="API collection 'non_existent_apis' not found."):
+    with pytest.raises(OpticsError, match="API collection 'non_existent_apis' not found."):
         flow_control.invoke_api("non_existent_apis.some_api")
 
 def test_invoke_api_definition_not_found(flow_control):
-    with pytest.raises(ValueError, match="API 'non_existent_api' not found in collection 'Authentication and OTP APIs'."):
+    with pytest.raises(OpticsError, match="API 'non_existent_api' not found in collection 'Authentication and OTP APIs'."):
         flow_control.invoke_api("authentication_apis.non_existent_api")
 
 def test_invoke_api_invalid_identifier(flow_control):
-    with pytest.raises(ValueError, match="Invalid API identifier format: 'invalid_identifier'. Expected 'collection.api_name'."):
+    with pytest.raises(OpticsError, match="Invalid API identifier format: 'invalid_identifier'. Expected 'collection.api_name'."):
         flow_control.invoke_api("invalid_identifier")
 
 def test_invoke_api_request_failure(flow_control, live_servers):
@@ -86,7 +88,7 @@ def test_invoke_api_request_failure(flow_control, live_servers):
     original_base_url = flow_control.session.apis.collections["authentication_apis"].base_url
     flow_control.session.apis.collections["authentication_apis"].base_url = "http://localhost:9999"
 
-    with pytest.raises(RuntimeError, match="API request to http://localhost:9999/token failed:"):
+    with pytest.raises(OpticsError, match="API request to http://localhost:9999/token failed:"):
         flow_control.invoke_api("authentication_apis.post_token")
 
     # Restore the original_base_url

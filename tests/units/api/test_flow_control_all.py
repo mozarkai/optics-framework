@@ -1,8 +1,10 @@
 import json
 import pytest
+from unittest.mock import MagicMock
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.models import ElementData, ApiData
-from unittest.mock import MagicMock
+from optics_framework.common.error import OpticsError
+
 
 # ---- Dummy Classes for All Test Types ----
 class DummyApiDef:
@@ -46,7 +48,7 @@ def test_read_data_csv_relative(tmp_path, flow_control, monkeypatch):
     flow_control.session.config_handler.config.project_path = str(project_path)
     result = flow_control.read_data('my_elem', 'test.csv', "a == '3';select=b")
     assert result == ['4']
-    assert flow_control.session.elements.get_element('my_elem') == '4'
+    assert flow_control.session.elements.get_first('my_elem') == '4'
 
 def test_read_data_json_relative(tmp_path, flow_control, monkeypatch):
     json_content = json.dumps([
@@ -59,14 +61,14 @@ def test_read_data_json_relative(tmp_path, flow_control, monkeypatch):
     flow_control.session.config_handler.config.project_path = str(project_path)
     result = flow_control.read_data('my_elem', 'test.json', "foo == 'baz';select=num")
     assert result == ['2']
-    assert flow_control.session.elements.get_element('my_elem') == '2'
+    assert flow_control.session.elements.get_first('my_elem') == '2'
 
 def test_read_data_env_csv(flow_control, monkeypatch):
     csv_content = 'x,y\n7,8\n9,10'
     monkeypatch.setenv('MYCSV', csv_content)
     result = flow_control.read_data('my_elem', 'ENV:MYCSV', "x == '9';select=y")
     assert result == ['10']
-    assert flow_control.session.elements.get_element('my_elem') == '10'
+    assert flow_control.session.elements.get_first('my_elem') == '10'
 
 def test_read_data_env_json(flow_control, monkeypatch):
     json_content = json.dumps([
@@ -76,7 +78,7 @@ def test_read_data_env_json(flow_control, monkeypatch):
     monkeypatch.setenv('MYJSON', json_content)
     result = flow_control.read_data('my_elem', 'ENV:MYJSON', "alpha == 'gamma';select=val")
     assert result == ['99']
-    assert flow_control.session.elements.get_element('my_elem') == '99'
+    assert flow_control.session.elements.get_first('my_elem') == '99'
 
 def test_read_data_2d_list(flow_control):
     data = [
@@ -86,7 +88,7 @@ def test_read_data_2d_list(flow_control):
     ]
     result = flow_control.read_data('my_elem', data, "col1 == 'c';select=col2")
     assert result == ['d']
-    assert flow_control.session.elements.get_element('my_elem') == 'd'
+    assert flow_control.session.elements.get_first('my_elem') == 'd'
 
 def test_read_data_json_single_object(flow_control, tmp_path, monkeypatch):
     json_content = json.dumps({"serialId": "123", "foo": "bar"})
@@ -96,25 +98,25 @@ def test_read_data_json_single_object(flow_control, tmp_path, monkeypatch):
     flow_control.session.config_handler.config.project_path = str(project_path)
     result = flow_control.read_data('my_elem', 'single.json', "select=serialId")
     assert result == ['123']
-    assert flow_control.session.elements.get_element('my_elem') == '123'
+    assert flow_control.session.elements.get_first('my_elem') == '123'
 
 def test_read_data_env_scalar_string(flow_control, monkeypatch):
     monkeypatch.setenv('SCALAR_STR', 'simplevalue')
     result = flow_control.read_data('elem_scalar', 'ENV:SCALAR_STR')
     assert result == ['simplevalue']
-    assert flow_control.session.elements.get_element('elem_scalar') == 'simplevalue'
+    assert flow_control.session.elements.get_first('elem_scalar') == 'simplevalue'
 
 def test_read_data_env_scalar_int(flow_control, monkeypatch):
     monkeypatch.setenv('SCALAR_INT', '12345')
     result = flow_control.read_data('elem_scalar_int', 'ENV:SCALAR_INT')
     assert result == ['12345']
-    assert flow_control.session.elements.get_element('elem_scalar_int') == '12345'
+    assert flow_control.session.elements.get_first('elem_scalar_int') == '12345'
 
 def test_read_data_env_scalar_float(flow_control, monkeypatch):
     monkeypatch.setenv('SCALAR_FLOAT', '3.14159')
     result = flow_control.read_data('elem_scalar_float', 'ENV:SCALAR_FLOAT')
     assert result == ['3.14159']
-    assert flow_control.session.elements.get_element('elem_scalar_float') == '3.14159'
+    assert flow_control.session.elements.get_first('elem_scalar_float') == '3.14159'
 
 def test_read_data_csv_with_variable_in_query(tmp_path, flow_control, monkeypatch):
     csv_content = 'device_serial,app_package,app_activity\nRZ8RC1KK88R,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE\nRZ8T10TADVR,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE'
@@ -127,7 +129,7 @@ def test_read_data_csv_with_variable_in_query(tmp_path, flow_control, monkeypatc
     # Use variable in query
     result = flow_control.read_data('result_elem', 'devices.csv', "device_serial == '${element_1}';select=app_package")
     assert result == ['com.csam.icici.bank.imobileuat']
-    assert flow_control.session.elements.get_element('result_elem') == 'com.csam.icici.bank.imobileuat'
+    assert flow_control.session.elements.get_first('result_elem') == 'com.csam.icici.bank.imobileuat'
 
 # ---- invoke_api Tests ----
 def test_invoke_api_extract(monkeypatch, flow_control):
@@ -150,7 +152,7 @@ def test_invoke_api_extract(monkeypatch, flow_control):
             return E()
     monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
     flow_control.invoke_api('testcol.bar')
-    assert flow_control.session.elements.get_element('result') == '42'
+    assert flow_control.session.elements.get_first('result') == '42'
 
 def test_invoke_api_jsonpath_assertion_pass(monkeypatch, flow_control):
     api_def = DummyApiDef(endpoint='/foo', extract={'result': 'data.value'},
@@ -173,7 +175,7 @@ def test_invoke_api_jsonpath_assertion_pass(monkeypatch, flow_control):
             return E()
     monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
     flow_control.invoke_api('testcol.bar')
-    assert flow_control.session.elements.get_element('result') == '42'
+    assert flow_control.session.elements.get_first('result') == '42'
 
 def test_invoke_api_jsonpath_assertion_fail(monkeypatch, flow_control):
     api_def = DummyApiDef(endpoint='/foo', extract={'result': 'data.value'},
@@ -239,8 +241,9 @@ def test_invoke_api_non_json_response(monkeypatch, flow_control):
                     return 0.01
             return E()
     monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
-    flow_control.invoke_api('testcol.bar')
-    # Should not raise, just logs warning
+    with pytest.raises(OpticsError) as excinfo:
+        flow_control.invoke_api('testcol.bar')
+    assert "API response is not valid JSON" in str(excinfo.value)
 
 # ---- run_loop and condition Tests ----
 def test_condition_module_true(flow_control, monkeypatch):
@@ -320,13 +323,13 @@ def test_run_loop_by_count(flow_control, monkeypatch):
 def test_run_loop_with_variables(flow_control, monkeypatch):
     results = []
     def fake_execute_module(target):
-        val1 = flow_control.session.elements.get_element('foo')
-        val2 = flow_control.session.elements.get_element('bar')
+        val1 = flow_control.session.elements.get_first('foo')
+        val2 = flow_control.session.elements.get_first('bar')
         results.append((val1, val2))
         return [f"{val1}-{val2}"]
     flow_control.execute_module = fake_execute_module
-    out = flow_control.run_loop('mod2', '${foo}', '[1,2]', '${bar}', '[3,4]')
-    assert results == [(1, 3), (2, 4)]
+    out = flow_control.run_loop('mod2', '${foo}', '["1","2"]', '${bar}', '["3","4"]')
+    assert results == [("1", "3"), ("2", "4")]
     assert out == [["1-3"], ["2-4"]]
 
 def test_condition_first_true(flow_control, monkeypatch):
@@ -366,13 +369,13 @@ def test_condition_no_else(flow_control, monkeypatch):
     assert called == []
 
 def test_condition_invalid(flow_control):
-    with pytest.raises(ValueError):
+    with pytest.raises(OpticsError):
         flow_control.condition()
-    with pytest.raises(ValueError):
+    with pytest.raises(OpticsError):
         flow_control.condition('only_one')
 
 def test_run_loop_invalid_args(flow_control):
-    with pytest.raises(ValueError):
+    with pytest.raises(OpticsError):
         flow_control.run_loop('mod', '${foo}', '[1,2]', '${bar}')
-    with pytest.raises(ValueError):
+    with pytest.raises(OpticsError):
         flow_control.run_loop('mod', '${foo}', 'notalist')

@@ -57,7 +57,7 @@ class FlowControl:
             raise OpticsError(Code.E0501, message="FlowControl.session is not set. Please assign a valid session instance before using FlowControl.")
 
     def _resolve_param(self, param: str) -> str:
-        """Resolve ${variable} references from session.elements."""
+        """Resolve ${variable} references from session.elements, always returning a scalar (first value if list)."""
         if (
             not isinstance(param, str)
             or not param.startswith("${")
@@ -67,13 +67,17 @@ class FlowControl:
         if self.session is None:
             raise OpticsError(Code.E0702, message="Session is None in resolve_param.")
         var_name = param[2:-1].strip()
-        # Access the shared elements dictionary from the session
         elements = getattr(self.session, "elements", None)
         if not isinstance(elements, ElementData):
             raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
         value = elements.get_element(var_name)
         if value is None:
             raise OpticsError(Code.E0702, message=f"Variable '{param}' not found in elements dictionary")
+        # If value is a list, return the first item
+        if isinstance(value, list):
+            if not value:
+                raise OpticsError(Code.E0702, message=f"Variable '{param}' is an empty list in elements dictionary")
+            return str(value[0])
         return str(value)
 
     def execute_module(self, module_name: str) -> List[Any]:
@@ -168,6 +172,7 @@ class FlowControl:
             for var_name, iterable_values in zip(var_names, parsed_iterables):
                 value = iterable_values[i]
                 internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Setting {var_name} = {value}")
+                runner_elements.remove_element(var_name)
                 runner_elements.add_element(var_name, value)
             internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Executing target '{target}'")
             result = self.execute_module(target)
@@ -325,6 +330,7 @@ class FlowControl:
                 result = self.execute_module(cond)
                 return bool(result)
             resolved_cond = self._resolve_condition(cond)
+            internal_logger.debug(f"[_is_condition_true] Evaluating resolved condition: {resolved_cond}")
             return bool(self._safe_eval(resolved_cond))
         except Exception as e:
             raise OpticsError(Code.E0403, message=f"Error evaluating condition '{cond}': {e}")
@@ -340,10 +346,11 @@ class FlowControl:
 
         def replacer(match):
             var_name = match.group(1).strip()
-            value = runner_elements.get_element(var_name)
+            value = runner_elements.get_first(var_name)
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found for condition resolution.")
-            return f"'{value}'" if isinstance(value, str) else str(value)
+            # Always wrap in double quotes for safe Python evaluation
+            return f'"{value}"'
 
         return pattern.sub(replacer, cond)
 
@@ -530,7 +537,7 @@ class FlowControl:
             setattr(self.session, "elements", runner_elements)
         def replacer(match):
             var_name = match.group(1).strip()
-            value = runner_elements.get_element(var_name)
+            value = runner_elements.get_first(var_name)
             internal_logger.debug(f"[READ_DATA] Resolving variable in query: {var_name} -> {value}")
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements for query resolution.")
