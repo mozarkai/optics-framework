@@ -1,6 +1,10 @@
 import time
+import os
+import platform
+import re
 from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field, ValidationError
+import serial.tools.list_ports
 from serial import Serial
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
@@ -125,6 +129,20 @@ class BLEDriver(DriverInterface):
         # are not supported by BLE keyboards and are excluded from this mapping
     }
 
+
+    @staticmethod
+    def get_port_by_name(name: str) -> Optional[str]:
+        """
+        Find a serial port by its product description (e.g., 'MZ-BLE-VMK-002-v1.2.1').
+
+        :param name: Product name string from lsusb / pyserial (e.g., "MZ-BLE-VMK-001-v1.2.1")
+        :return: Device path (e.g., "/dev/cu.usbmodem1101") or None if not found
+        """
+        for port in serial.tools.list_ports.comports():
+            if port.description == name:
+                return port.device
+        return None
+
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
         if event_sdk is None:
             internal_logger.error("No EventSDK instance provided to BLE driver.")
@@ -146,7 +164,24 @@ class BLEDriver(DriverInterface):
         cap: CapabilitiesConfig = self.capabilities_model
 
         self.device_id = cap.device_id
-        self.port = cap.port
+        port_candidate = cap.port
+        resolved_port = None
+        # Cross-platform port detection
+        is_windows = platform.system().lower() == "windows"
+        is_unix = os.name == "posix"
+        com_pattern = re.compile(r"^com\d+$", re.IGNORECASE)
+        if port_candidate:
+            if (is_unix and port_candidate.startswith("/dev/")) or (is_windows and com_pattern.match(port_candidate)):
+                self.port = port_candidate
+            else:
+                resolved_port = self.get_port_by_name(port_candidate)
+                if not resolved_port:
+                    internal_logger.error(f"Could not resolve serial port for product description: {port_candidate}")
+                    raise ValueError(f"Could not resolve serial port for product description: {port_candidate}")
+                self.port = resolved_port
+        else:
+            self.port = port_candidate
+
         self.device_ratio = cap.pixel_height / cap.pixel_width
         self.x_invert = cap.x_invert
         self.y_invert = cap.y_invert
