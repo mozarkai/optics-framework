@@ -1,5 +1,8 @@
 import json
 import uuid
+import inspect
+import importlib
+import pkgutil
 import asyncio
 import warnings
 from typing import Optional, Dict, Any, List, Union, cast
@@ -30,6 +33,82 @@ app.add_middleware(
 )
 
 SESSION_NOT_FOUND = "Session not found"
+
+
+class AppiumUpdateRequest(BaseModel):
+    """
+    Request model for updating Appium session configuration.
+    """
+
+    session_id: str
+    url: str
+    capabilities: Dict[str, Any]
+
+
+class ExecuteRequest(BaseModel):
+    """
+    Request model for executing a keyword or test case.
+    """
+
+    mode: str
+    test_case: Optional[str] = None
+    keyword: Optional[str] = None
+    params: List[str] = []
+
+
+class SessionResponse(BaseModel):
+    """
+    Response model for session creation.
+    """
+
+    session_id: str
+    driver_id: Optional[str] = None
+    status: str = "created"
+
+
+class ExecutionResponse(BaseModel):
+    """
+    Response model for execution results.
+    """
+
+    execution_id: str
+    status: str = "started"
+    data: Optional[Dict[str, Any]] = None
+
+
+class TerminationResponse(BaseModel):
+    """
+    Response model for session termination.
+    """
+
+    status: str = "terminated"
+
+
+class ExecutionEvent(BaseModel):
+    """
+    Event model for execution status updates.
+    """
+
+    execution_id: str
+    status: str
+    message: Optional[str] = None
+
+
+class HealthCheckResponse(BaseModel):
+    status: str
+    version: str
+
+
+class KeywordParameter(BaseModel):
+    name: str
+    type: str
+    default: Any = None
+
+
+class KeywordInfo(BaseModel):
+    keyword: str
+    description: str
+    parameters: List[KeywordParameter]
 
 
 def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
@@ -115,56 +194,67 @@ class SessionConfig(BaseModel):
             "image_detection": image,
         }
 
-class AppiumUpdateRequest(BaseModel):
-    """
-    Request model for updating Appium session configuration.
-    """
-    session_id: str
-    url: str
-    capabilities: Dict[str, Any]
+def _get_keyword_parameters(sig: inspect.Signature) -> List[KeywordParameter]:
+    """Extract parameter info from a method signature."""
+    params = []
+    for pname, param in sig.parameters.items():
+        if pname == "self":
+            continue
+        param_type = (
+            str(param.annotation)
+            if param.annotation != inspect.Parameter.empty
+            else "Any"
+        )
+        default = (
+            param.default
+            if param.default != inspect.Parameter.empty
+            else None
+        )
+        params.append(
+            KeywordParameter(
+                name=pname, type=param_type, default=default
+            )
+        )
+    return params
 
-class ExecuteRequest(BaseModel):
-    """
-    Request model for executing a keyword or test case.
-    """
-    mode: str
-    test_case: Optional[str] = None
-    keyword: Optional[str] = None
-    params: List[str] = []
+def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
+    """Extract keyword info from a class."""
+    keywords = []
+    for meth_name, meth in inspect.getmembers(cls, predicate=inspect.isfunction):
+        if meth_name.startswith("_") or meth_name.startswith("test"):
+            continue
+        sig = inspect.signature(meth)
+        params = _get_keyword_parameters(sig)
+        doc = inspect.getdoc(meth) or ""
+        keywords.append(
+            KeywordInfo(
+                keyword=meth_name, description=doc, parameters=params
+            )
+        )
+    return keywords
 
-class SessionResponse(BaseModel):
-    """
-    Response model for session creation.
-    """
-    session_id: str
-    driver_id: Optional[str] = None
-    status: str = "created"
+def _extract_keywords_from_module(module) -> List[KeywordInfo]:
+    """Extract all keyword infos from a module."""
+    keywords = []
+    for name, obj in inspect.getmembers(module):
+        if inspect.isclass(obj) and obj.__module__ == module.__name__:
+            keywords.extend(_extract_keywords_from_class(obj))
+    return keywords
 
-class ExecutionResponse(BaseModel):
+def discover_keywords() -> List[KeywordInfo]:
     """
-    Response model for execution results.
+    Discover all public methods in optics_framework.api.* classes that are likely to be used as keywords.
+    Returns a list of KeywordInfo objects.
     """
-    execution_id: str
-    status: str = "started"
-    data: Optional[Dict[str, Any]] = None
-
-class TerminationResponse(BaseModel):
-    """
-    Response model for session termination.
-    """
-    status: str = "terminated"
-
-class ExecutionEvent(BaseModel):
-    """
-    Event model for execution status updates.
-    """
-    execution_id: str
-    status: str
-    message: Optional[str] = None
-
-class HealthCheckResponse(BaseModel):
-    status: str
-    version: str
+    api_pkg = "optics_framework.api"
+    keywords = []
+    api_path = __import__(api_pkg, fromlist=[""]).__path__[0]
+    for _, modname, ispkg in pkgutil.iter_modules([api_path]):
+        if ispkg or modname.startswith("__"):
+            continue
+        module = importlib.import_module(f"{api_pkg}.{modname}")
+        keywords.extend(_extract_keywords_from_module(module))
+    return keywords
 
 @app.get("/", response_model=HealthCheckResponse, status_code=status.HTTP_200_OK)
 async def health_check():
@@ -318,7 +408,7 @@ async def capture_screenshot(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_screenshot")
 
-@app.get("/session/{session_id}/driver-id")
+@app.get("/v1/session/{session_id}/driver-id")
 async def get_driver_session_id(session_id: str):
     """
     Get the underlying Driver session ID for this Optics session.
@@ -326,7 +416,7 @@ async def get_driver_session_id(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "get_driver_session_id")
 
-@app.get("/session/{session_id}/elements")
+@app.get("/v1/session/{session_id}/elements")
 async def get_elements(session_id: str):
     """
     Get interactive elements from the current session screen.
@@ -361,6 +451,14 @@ async def stream_events(session_id: str):
         raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
     internal_logger.info(f"Starting event stream for session {session_id}")
     return EventSourceResponse(event_generator(session))
+
+@app.get("/v1/keywords", response_model=List[KeywordInfo])
+async def list_keywords():
+    """
+    List all available keywords and their parameters.
+    """
+    return discover_keywords()
+
 
 async def event_generator(session: Session):
     """
