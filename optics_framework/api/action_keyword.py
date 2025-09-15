@@ -16,28 +16,31 @@ def with_self_healing(func: Callable) -> Callable:
         screenshot_np = self.strategy_manager.capture_screenshot()
 
         # Extract AOI parameters from kwargs if present and convert to float
-        def parse_aoi_param(param):
+        def parse_aoi_param(param, default_value):
             if param is None or str(param).strip() in ('', 'None', 'none'):
-                return None
+                return default_value
             return float(param)
 
-        aoi_x = parse_aoi_param(kwargs.pop('aoi_x', None))
-        aoi_y = parse_aoi_param(kwargs.pop('aoi_y', None))
-        aoi_width = parse_aoi_param(kwargs.pop('aoi_width', None))
-        aoi_height = parse_aoi_param(kwargs.pop('aoi_height', None))
+        aoi_x = parse_aoi_param(kwargs.pop('aoi_x', '0'), 0)
+        aoi_y = parse_aoi_param(kwargs.pop('aoi_y', '0'), 0)
+        aoi_width = parse_aoi_param(kwargs.pop('aoi_width', '100'), 100)
+        aoi_height = parse_aoi_param(kwargs.pop('aoi_height', '100'), 100)
 
         # Extract index parameter from kwargs if present
         index = int(kwargs.pop('index', 0))
 
+        # Check if AOI is being used (i.e., AOI parameters after parsing are not the default float values: 0, 0, 100, 100)
+        is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
+
         # Save screenshot with AOI annotation if AOI is used
-        if any(param is not None for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
+        if is_aoi_used:
             annotated_screenshot = utils.annotate_aoi_region(screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height)
             utils.save_screenshot(annotated_screenshot, f"{func.__name__}_with_aoi", output_dir=self.execution_dir)
         else:
             utils.save_screenshot(screenshot_np, func.__name__, output_dir=self.execution_dir)
 
         # Pass AOI parameters to locate if provided
-        if any(param is not None for param in [aoi_x, aoi_y, aoi_width, aoi_height]):
+        if is_aoi_used:
             results = self.strategy_manager.locate(element, aoi_x, aoi_y, aoi_width, aoi_height, index=index)
         else:
             results = self.strategy_manager.locate(element, index=index)
@@ -88,8 +91,8 @@ class ActionKeyword:
     # Click actions
     @with_self_healing
     def press_element(
-        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", index: str = "0", aoi_x: Optional[float] = None,
-        aoi_y: Optional[float] = None, aoi_width: Optional[float] = None, aoi_height: Optional[float] = None, event_name: Optional[str] = None,
+        self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", index: str = "0", aoi_x: str = "0",
+        aoi_y: str = "0", aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None,
         *, located: Any = None
         ) -> None:
         """
@@ -101,19 +104,19 @@ class ActionKeyword:
         :param offset_y: Y offset of the press.
         :param index: Index of the element if multiple matches are found.
         :param event_name: The event triggering the press.
-        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Optional.
-        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Optional.
-        :param aoi_width: Width percentage of Area of Interest (0-100). Optional.
-        :param aoi_height: Height percentage of Area of Interest (0-100). Optional.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         """
-        # Validate AOI parameters if provided - let utils.calculate_aoi_bounds handle the validation
-        aoi_params = [aoi_x, aoi_y, aoi_width, aoi_height]
-        if any(param is not None for param in aoi_params):
-            if not all(param is not None for param in aoi_params):
-                raise ValueError("All AOI parameters must be provided together")
-            # Validate early using a dummy shape - actual validation happens in strategies
+        # Check if AOI is being used (not default values of 0, 0, 100, 100)
+        # Note: AOI parameters come as strings, need to check string values
+        is_aoi_used = not (aoi_x == "0" and aoi_y == "0" and aoi_width == "100" and aoi_height == "100")
+
+        if is_aoi_used:
+            # Validate AOI parameters using a dummy shape - actual validation happens in strategies
             try:
-                utils.calculate_aoi_bounds((100, 100), aoi_x, aoi_y, aoi_width, aoi_height)
+                utils.calculate_aoi_bounds((100, 100), float(aoi_x), float(aoi_y), float(aoi_width), float(aoi_height))
             except ValueError as e:
                 raise ValueError(f"Invalid AOI parameters: {e}")
             execution_logger.info(f"Using AOI: x={aoi_x}%, y={aoi_y}%, width={aoi_width}%, height={aoi_height}%")
@@ -180,25 +183,37 @@ class ActionKeyword:
 
     @DeprecationWarning
     @with_self_healing
-    def press_checkbox(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def press_checkbox(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
+                       aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Press a specified checkbox element.
 
         :param element: The checkbox element (Image template, OCR template, or XPath).
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the press.
         """
-        self.press_element(element, event_name=event_name, located=located)
+        self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
+                          aoi_height=aoi_height, event_name=event_name, located=located)
 
     @DeprecationWarning
     @with_self_healing
-    def press_radio_button(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def press_radio_button(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
+                           aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Press a specified radio button.
 
         :param element: The radio button element (Image template, OCR template, or XPath).
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the press.
         """
-        self.press_element(element, event_name=event_name, located=located)
+        self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
+                          aoi_height=aoi_height, event_name=event_name, located=located)
 
     def select_dropdown_option(self, element: str, option: str, event_name: Optional[str] = None) -> None:
         """
@@ -259,13 +274,18 @@ class ActionKeyword:
             time.sleep(3)
 
     @with_self_healing
-    def swipe_from_element(self, element: str, direction: str, swipe_length: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def swipe_from_element(self, element: str, direction: str, swipe_length: str, aoi_x: str = "0", aoi_y: str = "0",
+                          aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Perform a swipe action starting from a specified element.
 
         :param element: The element to swipe from (Image template, OCR template, or XPath).
         :param direction: The swipe direction (up, down, left, right).
         :param swipe_length: The length of the swipe.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the swipe.
         """
         if isinstance(located, tuple):
@@ -310,13 +330,18 @@ class ActionKeyword:
             time.sleep(3)
 
     @with_self_healing
-    def scroll_from_element(self, element: str, direction: str, scroll_length: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def scroll_from_element(self, element: str, direction: str, scroll_length: str, aoi_x: str = "0", aoi_y: str = "0",
+                           aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Perform a scroll action starting from a specified element.
 
         :param element: The element to scroll from (Image template, OCR template, or XPath).
         :param direction: The scroll direction (up, down, left, right).
         :param scroll_length: The length of the scroll.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the scroll.
         """
         if isinstance(located, tuple):
@@ -330,12 +355,17 @@ class ActionKeyword:
 
     # Text input actions
     @with_self_healing
-    def enter_text(self, element: str, text: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def enter_text(self, element: str, text: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
+                   aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Enter text into a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
         :param text: The text to be entered.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the input.
         """
 
@@ -390,12 +420,17 @@ class ActionKeyword:
         self.driver.enter_text_using_keyboard(text_input, event_name)
 
     @with_self_healing
-    def enter_number(self, element: str, number: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def enter_number(self, element: str, number: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
+                     aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Enter a specified number into an element.
 
         :param element: The target element (Image template, OCR template, or XPath).
         :param number: The number to be entered.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the input.
         """
         if isinstance(located, tuple):
@@ -430,11 +465,16 @@ class ActionKeyword:
 
 
     @with_self_healing
-    def clear_element_text(self, element: str, event_name: Optional[str] = None, *, located: Any=None) -> None:
+    def clear_element_text(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
+                          aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Clear text from a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the action.
         """
         if isinstance(located, tuple):
