@@ -418,7 +418,8 @@ class TestRunner(Runner):
             if attempts > MAX_ATTEMPTS:
                 break
             try:
-                method(*candidate_args)
+                resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(candidate_args)
+                method(*resolved_positional_params, **resolved_kw_params)
                 keyword_node.state = State.COMPLETED_PASSED
                 await self._send_event(
                     "keyword",
@@ -741,6 +742,17 @@ class TestRunner(Runner):
             await self.dry_run_test_case(current.name)
             current = current.next
         self.result_printer.stop_live()
+
+    def _resolve_candidate_params(self, candidate_args):
+        kw_params = DataReader.get_keyword_params(list(candidate_args))
+        positional_params = DataReader.get_positional_params(list(candidate_args))
+        resolved_positional_params = [self.resolve_param(param) for param in positional_params]
+        resolved_kw_params = {}
+        for key, value in kw_params.items():
+            if value.startswith("${") and value.endswith("}"):
+                value = self.resolve_param(value)
+            resolved_kw_params[key] = value
+        return resolved_positional_params, resolved_kw_params
 
 
 class PytestRunner(Runner):

@@ -109,18 +109,6 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         """
-        # Check if AOI is being used (not default values of 0, 0, 100, 100)
-        # Note: AOI parameters come as strings, need to check string values
-        is_aoi_used = not (aoi_x == "0" and aoi_y == "0" and aoi_width == "100" and aoi_height == "100")
-
-        if is_aoi_used:
-            # Validate AOI parameters using a dummy shape - actual validation happens in strategies
-            try:
-                utils.calculate_aoi_bounds((100, 100), float(aoi_x), float(aoi_y), float(aoi_width), float(aoi_height))
-            except ValueError as e:
-                raise ValueError(f"Invalid AOI parameters: {e}")
-            execution_logger.info(f"Using AOI: x={aoi_x}%, y={aoi_y}%, width={aoi_width}%, height={aoi_height}%")
-
         if isinstance(located, tuple):
             x, y = located
             execution_logger.info(
