@@ -110,6 +110,7 @@ class ServerArgs(BaseModel):
     """Arguments for the server command."""
     host: str = "127.0.0.1"
     port: int = 8000
+    workers: int = 1
 
 class ServerCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
@@ -122,16 +123,21 @@ class ServerCommand(Command):
         parser.add_argument(
             "--port", type=int, default=8000, help="Port to bind the server (default: 8000)"
         )
+        parser.add_argument(
+            "--workers", type=int, default=1, help="Number of worker processes (default: 1)"
+        )
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
         server_args = ServerArgs(
             host=args.host,
-            port=args.port
+            port=args.port,
+            workers=args.workers
         )
         run_uvicorn_server(
             host=server_args.host,
-            port=server_args.port
+            port=server_args.port,
+            workers=server_args.workers
         )
 
 class ConfigCommand(Command):
