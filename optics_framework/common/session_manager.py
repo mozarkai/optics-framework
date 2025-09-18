@@ -108,11 +108,21 @@ class SessionManager(SessionHandler):
                        modules: Optional[ModuleData],
                        elements: Optional[ElementData],
                        apis: Optional[ApiData],
-                       templates: Optional[TemplateData] = None) -> str:
-        """Creates a new session with a unique ID."""
-        session_id = str(uuid.uuid4())
-        self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates)
-        return session_id
+                       templates: Optional[TemplateData] = None,
+                       session_id: Optional[str] = None) -> str:
+        """
+        Creates a new session with a unique ID, or reuses an existing session if session_id is provided and exists.
+        """
+        if session_id is not None:
+            if session_id in self.sessions:
+                # Session already exists, reuse it
+                return session_id
+            # fail if session_id is provided but does not exist
+            raise OpticsError(Code.E0501, message=f"Session ID {session_id} does not exist")
+        # No session_id provided, create new
+        new_session_id = str(uuid.uuid4())
+        self.sessions[new_session_id] = Session(new_session_id, config, test_cases, modules, elements, apis, templates)
+        return new_session_id
 
     def get_session(self, session_id: str) -> Optional[Session]:
         """Retrieves a session by ID, or None if not found."""
