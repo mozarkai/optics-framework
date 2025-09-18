@@ -1,19 +1,19 @@
 {
   "samples": [
     {
-      "label": "Calendar",
-      "value": "calendar",
-      "icon": "CalendarIcon"
+      "displayName": "Calendar",
+      "folderName": "calendar",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#1976d2'><path d='M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z'/></svg>"
     },
     {
-      "label": "Gmail Web",
-      "value": "gmail_web",
-      "icon": "GmailIcon"
+      "displayName": "Gmail Web",
+      "folderName": "gmail_web",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#D44638'><path d='M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z'/></svg>"
     },
     {
-      "label": "Contacts",
-      "value": "contact",
-      "icon": "ContactsIcon"
+      "displayName": "Contacts",
+      "folderName": "contact",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#4caf50'><path d='M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8V22h19.2v-2.8c0-3.2-6.4-4.8-9.6-4.8z'/></svg>"
     }
   ]
 }
