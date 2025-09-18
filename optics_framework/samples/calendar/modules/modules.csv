@@ -1,4 +1,4 @@
-module_name,module_step,param_1,param_2,param_3,param_4,param_5
+module_name,module_step,param_1,param_2,param_3
 Launch Calendar App, Launch App
 Close Calendar App, Close And Terminate App
 Get today's date using WorldTimeAPI,Read Data,${today},${world_time_api_url},date

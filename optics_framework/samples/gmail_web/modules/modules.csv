@@ -1,4 +1,4 @@
-module_name,module_step,param_1,param_2,param_3,param_4
+module_name,module_step,param_1,param_2,param_3
 Launch Webpage,Launch App
 Close Browser,Close And Terminate App
 Gmail Sign In,Press Element,Gmail
