@@ -250,10 +250,14 @@ class Optics:
         image_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         text_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         execution_output_path_param: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> None:
         """
         Configure the Optics Framework with required driver and element source settings.
         """
+        if session_id in self.session_manager.sessions:
+            self._initialize_session_and_keywords(session_id=session_id)
+            return
         config_data = self._extract_config_data(
             config,
             driver_sources,
@@ -265,7 +269,7 @@ class Optics:
         config_obj = Config(**{k: v for k, v in config_data.items() if v is not None})
         self.config_handler = ConfigHandler(config_obj)
         self.config = config_obj
-        self._initialize_session_and_keywords()
+        self._initialize_session_and_keywords(session_id=session_id)
 
     def _extract_config_data(
         self,
@@ -350,28 +354,31 @@ class Optics:
                 template_data.add_template(image_file.name, str(image_file))
         return template_data
 
-    def _initialize_session_and_keywords(self) -> None:
+    def _initialize_session_and_keywords(self, session_id: Optional[str] = None) -> None:
         """
-        Initialize session and register keywords.
+        Initialize session and register keywords. If session_id is provided and exists, reuse it.
         """
         if self.config is None:
             raise ValueError(
                 "Optics config is not set. Call setup() with a valid config before creating a session."
             )
-        try:
-            self.session_id = self.session_manager.create_session(
-                self.config,
-                test_cases=TestCaseNode(name="default"),
-                modules=ModuleData(),
-                elements=ElementData(),
-                apis=ApiData(),
-                templates=self.discover_templates(self.config.project_path)
-                if self.config.project_path
-                else None,
-            )
-        except Exception as e:
-            internal_logger.error(f"Failed to create session: {e}")
-            raise ValueError(f"Failed to create session: {e}") from e
+        if session_id is not None and session_id in self.session_manager.sessions:
+            self.session_id = session_id
+        else:
+            try:
+                self.session_id = self.session_manager.create_session(
+                    self.config,
+                    test_cases=TestCaseNode(name="default"),
+                    modules=ModuleData(),
+                    elements=ElementData(),
+                    apis=ApiData(),
+                    templates=self.discover_templates(self.config.project_path)
+                    if self.config.project_path
+                    else None,
+                )
+            except Exception as e:
+                internal_logger.error(f"Failed to create session: {e}")
+                raise ValueError(f"Failed to create session: {e}") from e
 
         session = self.session_manager.sessions[self.session_id]
         registry = KeywordRegistry()
