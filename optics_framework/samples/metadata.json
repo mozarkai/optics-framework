@@ -1,0 +1,19 @@
+{
+  "samples": [
+    {
+      "label": "Calendar",
+      "value": "calendar",
+      "icon": "CalendarIcon"
+    },
+    {
+      "label": "Gmail Web",
+      "value": "gmail_web",
+      "icon": "GmailIcon"
+    },
+    {
+      "label": "Contacts",
+      "value": "contact",
+      "icon": "ContactsIcon"
+    }
+  ]
+}
