@@ -1,0 +1,1327 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../CLI_usage/">
+      
+      
+        <link rel="next" href="../usage/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Keyword Usage - Optics Framework</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#keyword-usage" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Optics Framework" class="md-header__button md-logo" aria-label="Optics Framework" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Optics Framework
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Keyword Usage
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Optics Framework" class="md-nav__button md-logo" aria-label="Optics Framework" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Optics Framework
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Optics Framework
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Introduction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user_workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    User Workflow
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contribution
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Contribution
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contribution/code_of_conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Code of Conduct
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contribution/contributing_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contribution/developer_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Developer Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Usage
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Usage
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CLI_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Keyword Usage
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Keyword Usage
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#action-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      Action Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-management-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      App Management Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flow-control-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      Flow Control Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      Verification Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#additional-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      Additional Information
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Usage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#action-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      Action Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-management-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      App Management Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flow-control-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      Flow Control Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-keywords" class="md-nav__link">
+    <span class="md-ellipsis">
+      Verification Keywords
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#additional-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      Additional Information
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="keyword-usage">Keyword Usage</h1>
+<p>This document outlines the available keywords for the Optics Framework, which can be used in the <code>test_modules.csv</code> file to define test steps. Keywords are derived from the framework's Python API, with method names converted to a space-separated format (e.g., <code>press_element</code> becomes <code>Press Element</code>). Each keyword corresponds to a specific action, verification, or control flow operation. Below, each keyword includes detailed parameter explanations to guide their usage.</p>
+<h2 id="action-keywords">Action Keywords</h2>
+<p>These keywords handle interactions with the application, such as clicking, swiping, and text input.</p>
+<ul>
+<li><strong>Press Element</strong>
+  Presses a specified element on the screen.</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The target to press. Can be:</li>
+<li><em>Text</em>: A string to locate via text detection (e.g., "Home", <code>${Home_text}</code>).</li>
+<li><em>XPath</em>: An XPath expression for Appium/Selenium (e.g., <code>//android.widget.Button[@resource-id="id"]</code>).</li>
+<li><em>Image</em>: A filename of an image in <code>input_templates/</code> (e.g., "home.png", <code>${Home_image}</code>).</li>
+<li><code>repeat</code> (optional, default=1): Number of times to press the element (integer).</li>
+<li><code>offset_x</code> (optional, default=0): Horizontal offset in pixels from the element’s center (integer).</li>
+<li><code>offset_y</code> (optional, default=0): Vertical offset in pixels from the element’s center (integer).</li>
+<li><code>event_name</code> (optional): A string identifier for logging or triggering events (e.g., "click_home").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press Element,${Subscriptions_text},2,10,20,click_event</code></p>
+</li>
+<li>
+<p><strong>Press By Percentage</strong>
+  Presses at percentage-based coordinates on the screen.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>percent_x</code>: X-coordinate as a percentage of screen width (float, 0.0 to 1.0, e.g., 0.5 for 50%).</li>
+<li><code>percent_y</code>: Y-coordinate as a percentage of screen height (float, 0.0 to 1.0).</li>
+<li><code>repeat</code> (optional, default=1): Number of times to press (integer).</li>
+<li><code>event_name</code> (optional): A string identifier for the press event (e.g., "center_press").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press By Percentage,0.5,0.5,,press_center</code></p>
+</li>
+<li>
+<p><strong>Press By Coordinates</strong>
+  Presses at absolute coordinates on the screen.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>coor_x</code>: X-coordinate in pixels (integer, e.g., 500).</li>
+<li><code>coor_y</code>: Y-coordinate in pixels (integer, e.g., 800).</li>
+<li><code>repeat</code> (optional, default=1): Number of times to press (integer).</li>
+<li><code>event_name</code> (optional): A string identifier for the press event (e.g., "tap_event").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press By Coordinates,500,800,,tap_event</code></p>
+</li>
+<li>
+<p><strong>Press Element With Index</strong>
+  Presses an element (text or image) at a specified index if multiple matches exist.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The target to press:</li>
+<li><em>Text</em>: A string to locate via text detection (e.g., "Home").</li>
+<li><em>Image</em>: An image filename (e.g., "home.png").</li>
+<li><em>Note</em>: XPath is not supported for index-based pressing.</li>
+<li><code>index</code> (optional, default=0): The index of the element to press if multiple are found (integer, 0-based).</li>
+<li><code>event_name</code> (optional): A string identifier for the press event (e.g., "home_click").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press Element With Index,${Home_text},1,home_click</code></p>
+</li>
+<li>
+<p><strong>Detect And Press</strong>
+  Detects an element and presses it if found within a timeout.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The target to detect and press:</li>
+<li><em>Text</em>: A string (e.g., "Subscriptions").</li>
+<li><em>XPath</em>: An XPath expression (e.g., <code>//android.widget.TextView[@text="Home"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "sub.jpeg").</li>
+<li><code>timeout</code>: Maximum time in seconds to wait for detection (integer, e.g., 10).</li>
+<li><code>event_name</code> (optional): A string identifier for the press event (e.g., "detect_click").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Detect And Press,${Subscriptions_image},10,detect_click</code></p>
+</li>
+<li>
+<p><strong>Press Checkbox</strong> <em>(Deprecated)</em>
+  Presses a checkbox element (use <code>Press Element</code> instead).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The checkbox to press:</li>
+<li><em>Text</em>: A string (e.g., " Agree").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.CheckBox</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "checkbox.png").</li>
+<li><code>event_name</code> (optional): A string identifier for the press event (e.g., "toggle").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press Checkbox,${checkbox_xpath},toggle</code></p>
+</li>
+<li>
+<p><strong>Press Radio Button</strong> <em>(Deprecated)</em>
+  Presses a radio button element (use <code>Press Element</code> instead).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The radio button to press:</li>
+<li><em>Text</em>: A string (e.g., "Option 1").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.RadioButton</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "radio.png").</li>
+<li><code>event_name</code> (optional): A string identifier for the press event (e.g., "select").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press Radio Button,${radio_xpath},select</code></p>
+</li>
+<li>
+<p><strong>Select Dropdown Option</strong>
+  Selects an option from a dropdown (currently unimplemented).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The dropdown element:</li>
+<li><em>Text</em>: A string (e.g., "Dropdown").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.Spinner</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "dropdown.png").</li>
+<li><code>option</code>: The option to select (string, e.g., "Option 1").</li>
+<li><code>event_name</code> (optional): A string identifier for the selection event (e.g., "select_option").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Select Dropdown Option,${dropdown_xpath},Option 1,select_option</code></p>
+</li>
+<li>
+<p><strong>Swipe</strong>
+  Performs a swipe action from specified coordinates in a direction.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>coor_x</code>: Starting X-coordinate in pixels (integer, e.g., 300).</li>
+<li><code>coor_y</code>: Starting Y-coordinate in pixels (integer, e.g., 400).</li>
+<li><code>direction</code> (optional, default="right"): Swipe direction ("up", "down", "left", "right").</li>
+<li><code>swipe_length</code> (optional, default=50): Distance of the swipe in pixels (integer).</li>
+<li><code>event_name</code> (optional): A string identifier for the swipe event (e.g., "swipe_up").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Swipe,300,400,up,100,swipe_up</code></p>
+</li>
+<li>
+<p><strong>Swipe Seekbar To Right Android</strong> <em>(Deprecated)</em>
+  Swipes a seekbar to the right (Android-specific).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The seekbar element:</li>
+<li><em>Text</em>: A string (e.g., "Volume").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.SeekBar</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "seekbar.png").</li>
+<li><code>event_name</code> (optional): A string identifier for the swipe event (e.g., "adjust").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Swipe Seekbar To Right Android,${seekbar_xpath},adjust</code></p>
+</li>
+<li>
+<p><strong>Swipe Until Element Appears</strong>
+  Swipes in a direction until an element appears or timeout is reached.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The target element:</li>
+<li><em>Text</em>: A string (e.g., "Home").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Home"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "home.png").</li>
+<li><code>direction</code>: Swipe direction ("up", "down", "left", "right").</li>
+<li><code>timeout</code>: Maximum time in seconds to swipe (integer, e.g., 15).</li>
+<li><code>event_name</code> (optional): A string identifier for the swipe event (e.g., "scroll_to_home").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Swipe Until Element Appears,${Home_image},down,15,scroll_to_home</code></p>
+</li>
+<li>
+<p><strong>Swipe From Element</strong>
+  Swipes starting from a specified element.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The starting element:</li>
+<li><em>Text</em>: A string (e.g., "Subscriptions").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Subscriptions"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "sub.jpeg").</li>
+<li><code>direction</code>: Swipe direction ("up", "down", "left", "right").</li>
+<li><code>swipe_length</code>: Distance of the swipe in pixels (integer, e.g., 50).</li>
+<li><code>event_name</code> (optional): A string identifier for the swipe event (e.g., "swipe_left").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Swipe From Element,${Subscriptions_text},left,50,swipe_left</code></p>
+</li>
+<li>
+<p><strong>Scroll</strong>
+  Performs a scroll action in a specified direction.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>direction</code>: Scroll direction ("up", "down", "left", "right").</li>
+<li><code>event_name</code> (optional): A string identifier for the scroll event (e.g., "scroll_down").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Scroll,down,scroll_down</code></p>
+</li>
+<li>
+<p><strong>Scroll Until Element Appears</strong>
+  Scrolls in a direction until an element appears or timeout is reached.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The target element:</li>
+<li><em>Text</em>: A string (e.g., "Home").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Home"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "home.png").</li>
+<li><code>direction</code>: Scroll direction ("up", "down", "left", "right").</li>
+<li><code>timeout</code>: Maximum time in seconds to scroll (integer, e.g., 20).</li>
+<li><code>event_name</code> (optional): A string identifier for the scroll event (e.g., "scroll_to_top").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Scroll Until Element Appears,${Home_xpath},up,20,scroll_to_top</code></p>
+</li>
+<li>
+<p><strong>Scroll From Element</strong>
+  Scrolls starting from a specified element.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The starting element:</li>
+<li><em>Text</em>: A string (e.g., "Subscriptions").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Subscriptions"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "sub.jpeg").</li>
+<li><code>direction</code>: Scroll direction ("up", "down", "left", "right").</li>
+<li><code>scroll_length</code>: Distance of the scroll in pixels (integer, e.g., 100).</li>
+<li><code>event_name</code> (optional): A string identifier for the scroll event (e.g., "scroll_right").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Scroll From Element,${Subscriptions_image},right,100,scroll_right</code></p>
+</li>
+<li>
+<p><strong>Enter Text</strong>
+  Enters text into a specified element.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The input field:</li>
+<li><em>Text</em>: A string (e.g., "Search").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.EditText</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "search_field.png").</li>
+<li><code>text</code>: The text to enter (string, e.g., "Hello World").</li>
+<li><code>event_name</code> (optional): A string identifier for the input event (e.g., "search_input").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Enter Text,${search_field_xpath},Hello World,search_input</code></p>
+</li>
+<li>
+<p><strong>Enter Text Direct</strong>
+  Enters text without the need of a specified element or input field. Does not support special keys.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>text</code>: The text to enter (string, e.g., "Hello World").</li>
+<li><code>event_name</code> (optional): A string identifier for the input event (e.g., "search_input").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Enter Text Direct,Hello World,search_input</code></p>
+</li>
+<li>
+<p><strong>Enter Text Using Keyboard</strong>
+  Enters text or special keys such as Enter, Tab, Space, Backspace using the keyboard, supported for appium and selenium.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>text or special key</code>: The text to enter (string, e.g., "Test Input") or special key in angle brackets (e.g., "<enter>", "<tab>").</li>
+<li><code>event_name</code> (optional): A string identifier for the input event (e.g., "keyboard_input").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Enter Text Using Keyboard,Test Input&lt;enter&gt;,keyboard_input</code></p>
+</li>
+<li>
+<p><strong>Enter Number</strong>
+  Enters a number into a specified element.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The input field:</li>
+<li><em>Text</em>: A string (e.g., "Quantity").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.EditText</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "quantity_field.png").</li>
+<li><code>number</code>: The number to enter (float or integer, e.g., 42).</li>
+<li><code>event_name</code> (optional): A string identifier for the input event (e.g., "number_input").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Enter Number,${quantity_field_xpath},42,number_input</code></p>
+</li>
+<li>
+<p><strong>Press Keycode</strong>
+  Presses a specified keycode (e.g., Android keycodes).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>keycode</code>: The keycode to press (integer, e.g., 66 for Enter on Android).</li>
+<li><code>event_name</code>: A string identifier for the key press event (e.g., "enter_key").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Press Keycode,66,enter_key</code></p>
+</li>
+<li>
+<p><strong>Clear Element Text</strong>
+  Clears text from a specified element.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The input field to clear:</li>
+<li><em>Text</em>: A string (e.g., "Search").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.EditText</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "search_field.png").</li>
+<li><code>event_name</code> (optional): A string identifier for the clear event (e.g., "clear_input").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Clear Element Text,${input_field_xpath},clear_input</code></p>
+</li>
+<li>
+<p><strong>Get Text</strong>
+  Retrieves text from a specified element (returns None if not supported).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The target element:</li>
+<li><em>Text</em>: A string (e.g., "Title").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Title"]</code>).</li>
+<li><em>Image</em>: Not supported (use text/XPath only).</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Get Text,${title_xpath}</code></p>
+</li>
+<li>
+<p><strong>Sleep</strong>
+  Pauses execution for a specified duration.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>duration</code>: Time to sleep in seconds (integer, e.g., 5).</li>
+</ul>
+</li>
+<li><strong>Example</strong>: <code>Sleep,5</code></li>
+</ul>
+<h2 id="app-management-keywords">App Management Keywords</h2>
+<p>These keywords manage application lifecycle operations.</p>
+<ul>
+<li><strong>Initialise Setup</strong>
+  Sets up the environment for the driver module.</li>
+<li><strong>Parameters</strong>: None</li>
+<li>
+<p><strong>Example</strong>: <code>Initialise Setup</code></p>
+</li>
+<li>
+<p><strong>Launch App</strong>
+  Launches the configured application (as defined in <code>config.yaml</code>).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>app_identifier</code> (optional): App package/bundle name (string, e.g., "com.example.app")</li>
+<li><code>app_activity</code> (optional): App activity name (string, e.g., "MainActivity")</li>
+<li><code>event_name</code> (optional): A string identifier for the launch event (e.g., "app_start")</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Launch App,com.example.app,MainActivity,app_start</code></p>
+</li>
+<li>
+<p><strong>Start Appium Session</strong> <em>(Deprecated)</em>
+  Starts an Appium session (same as <code>Launch App</code> for Appium).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>event_name</code> (optional): A string identifier for the session event (e.g., "session_start").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Start Appium Session,session_start</code></p>
+</li>
+<li>
+<p><strong>Launch Other App</strong>
+  Starts another application by bundle ID.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>bundleid</code>: The bundle/package ID of the app (string, e.g., "com.example.app")</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Launch Other App,com.example.app</code></p>
+</li>
+<li>
+<p><strong>Close And Terminate App</strong>
+  Closes and terminates the current application.</p>
+</li>
+<li><strong>Parameters</strong>: None</li>
+<li>
+<p><strong>Example</strong>: <code>Close And Terminate App</code></p>
+</li>
+<li>
+<p><strong>Force Terminate App</strong>
+  Forcefully terminates the specified application.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>app_name</code>: The name or package of the app to terminate (string, e.g., "com.example.app")</li>
+<li><code>event_name</code> (optional): A string identifier for the termination event (e.g., "force_stop")</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Force Terminate App,com.example.app,force_stop</code></p>
+</li>
+<li>
+<p><strong>Get App Version</strong>
+  Retrieves the version of the application (returns None if not available).</p>
+</li>
+<li><strong>Parameters</strong>: None</li>
+<li><strong>Example</strong>: <code>Get App Version</code></li>
+</ul>
+<h2 id="flow-control-keywords">Flow Control Keywords</h2>
+<p>These keywords manage test flow, such as loops and conditions.</p>
+<ul>
+<li><strong>Execute Module</strong>
+  Executes a named module from <code>test_modules.csv</code>.</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>module_name</code>: The name of the module to execute (string, e.g., "Interact using text").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Execute Module,Interact using text</code></p>
+</li>
+<li>
+<p><strong>Run Loop</strong>
+  Runs a loop over a target module, either by count or with variables.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>target</code>: The module to loop over (string, e.g., "Dynamic Launch").</li>
+<li>For count-based:</li>
+<li><code>count</code>: Number of iterations (integer, e.g., 3).</li>
+<li>For variable-based:</li>
+<li><code>var1</code>, <code>iterable1</code>, <code>var2</code>, <code>iterable2</code>, ...: Pairs of variable names (e.g., <code>${METHOD}</code>) and iterables (e.g., <code>["xpath","text"]</code> or a JSON string like <code>"['text','xpath']"</code>).</li>
+</ul>
+</li>
+<li>
+<p><strong>Examples</strong>:</p>
+<ul>
+<li>Count-based: <code>Run Loop,Dynamic Launch,3</code></li>
+<li>Variable-based: <code>Run Loop,Dynamic Launch,${METHOD},${List}</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Condition</strong>
+  Evaluates conditions and executes the corresponding target module.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>condition1</code>: A condition expression (string, e.g., <code>${METHOD} == 'text'</code>) using variables from <code>elements.csv</code>.</li>
+<li><code>target1</code>: The module to execute if <code>condition1</code> is true (string, e.g., "Interact using text").</li>
+<li><code>condition2</code>, <code>target2</code>, ...: Additional condition-target pairs (optional).</li>
+<li><code>else_target</code> (optional): The module to execute if no conditions are true (string, e.g., "Interact using images").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Condition,${METHOD} == 'text',Interact using text,${METHOD} == 'xpath',Interact using xpath,Interact using images</code></p>
+</li>
+<li>
+<p><strong>Read Data</strong>
+  Reads data from a file, environment variable, list, or API, with optional query string for filtering/selection.</p>
+</li>
+<li>
+<p><strong>Parameters</strong>:</p>
+<ul>
+<li><code>input_element</code>: Variable to store the data (e.g., <code>${List}</code>)</li>
+<li><code>file_path</code>: Data source (CSV file, JSON file, ENV:VAR, list, or URL)</li>
+<li><code>query</code> (optional): Query string for filtering/selection (e.g., <code>status=active;columns=name</code>)</li>
+</ul>
+</li>
+<li><strong>Example</strong>: <code>Read Data,${List},optics_framework/samples/contact/elements.csv,status=active;columns=name</code></li>
+<li>
+<p><strong>Example</strong>: <code>Read Data,${List},ENV:CONTACT_NAME</code></p>
+</li>
+<li>
+<p><strong>Invoke API</strong>
+  Invokes an API call defined in the session's API config, with variable substitution and response extraction.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>api_name</code>: API to invoke (format: <code>collection.api_name</code>, e.g., <code>login.auth_token</code>)</li>
+</ul>
+</li>
+<li><strong>Example</strong>: <code>Invoke API,login.auth_token</code></li>
+<li>
+<p><strong>Example</strong>: <code>Invoke API,login.send_otp</code></p>
+</li>
+<li>
+<p><strong>Evaluate</strong>
+  Evaluates an expression and stores the result in a variable.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>param1</code>: The variable to store the result (string, e.g., <code>${result}</code>; typically in <code>${name}</code> format).</li>
+<li><code>param2</code>: The expression to evaluate (string, e.g., <code>${count} + 1</code>), using variables from <code>elements.csv</code>.</li>
+</ul>
+</li>
+<li><strong>Example</strong>: <code>Evaluate,${result},${count} + 1</code></li>
+</ul>
+<h2 id="verification-keywords">Verification Keywords</h2>
+<p>These keywords verify elements, screens, and data.</p>
+<ul>
+<li><strong>Validate Element</strong>
+  Verifies the presence of an element.</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The element to verify:</li>
+<li><em>Text</em>: A string (e.g., "Home").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Home"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "home.png").</li>
+<li><code>timeout</code> (optional, default=10): Maximum time in seconds to wait (integer).</li>
+<li><code>rule</code> (optional, default="all"): Verification rule ("all" or "any"; "all" requires all elements if multiple, "any" requires at least one).</li>
+<li><code>event_name</code> (optional): A string identifier for the verification event (e.g., "check_home").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Validate Element,${Home_xpath},5,any,check_home</code></p>
+</li>
+<li>
+<p><strong>Is Element</strong>
+  Checks if an element is in a specified state (unimplemented).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>element</code>: The element to check:</li>
+<li><em>Text</em>: A string (e.g., "Button").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.Button</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "button.png").</li>
+<li><code>element_state</code>: The state to verify (string: "visible", "invisible", "enabled", "disabled").</li>
+<li><code>timeout</code>: Maximum time in seconds to wait (integer, e.g., 10).</li>
+<li><code>event_name</code> (optional): A string identifier for the check event (e.g., "check_button").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Is Element,${button_xpath},visible,10,check_button</code></p>
+</li>
+<li>
+<p><strong>Assert Equality</strong>
+  Compares two values for equality (unimplemented).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>output</code>: The first value to compare (string or variable, e.g., <code>${result}</code>).</li>
+<li><code>expression</code>: The second value to compare (string or expression, e.g., "42").</li>
+<li><code>event_name</code> (optional): A string identifier for the comparison event (e.g., "verify_result").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Assert Equality,${result},42,verify_result</code></p>
+</li>
+<li>
+<p><strong>Assert Presence</strong>
+  Asserts the presence of one or more elements.</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>elements</code>: Comma-separated elements to check:</li>
+<li><em>Text</em>: A string (e.g., "Home").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Home"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "home.png").</li>
+<li>Example: <code>${Subscriptions_text},${Home_xpath}</code>.</li>
+<li><code>timeout</code> (optional, default=30): Maximum time in seconds to wait (integer).</li>
+<li><code>rule</code> (optional, default="any"): Verification rule ("any" or "all").</li>
+<li><code>event_name</code> (optional): A string identifier for the assertion event (e.g., "verify_screen").</li>
+</ul>
+</li>
+<li>
+<p><strong>Example</strong>: <code>Assert Presence,${Subscriptions_text},${Home_xpath},10,all,verify_screen</code></p>
+</li>
+<li>
+<p><strong>Validate Screen</strong>
+  Verifies the screen by checking element presence (alias for <code>Assert Presence</code>).</p>
+</li>
+<li><strong>Parameters</strong>:<ul>
+<li><code>elements</code>: Comma-separated elements to verify:</li>
+<li><em>Text</em>: A string (e.g., "Home").</li>
+<li><em>XPath</em>: An XPath (e.g., <code>//android.widget.TextView[@text="Home"]</code>).</li>
+<li><em>Image</em>: An image filename (e.g., "home.png").</li>
+<li>Example: <code>${Home_image},${Subscriptions_image}</code>.</li>
+<li><code>timeout</code> (optional, default=30): Maximum time in seconds to wait (integer).</li>
+<li><code>rule</code> (optional, default="any"): Verification rule ("any" or "all").</li>
+<li><code>event_name</code> (optional): A string identifier for the verification event (e.g., "check_screen").</li>
+</ul>
+</li>
+<li><strong>Example</strong>: <code>Validate Screen,${Home_image},${Subscriptions_image},15,any,check_screen</code></li>
+</ul>
+<h2 id="additional-information">Additional Information</h2>
+<div class="admonition info">
+<p class="admonition-title">Element Types</p>
+<p>Many keywords accept <code>element</code> parameters that can be:
+- <em>Text</em>: A literal string or variable (e.g., "Home", <code>${Home_text}</code>) for OCR-based detection.
+- <em>XPath</em>: An XPath expression (e.g., <code>//android.widget.Button[@resource-id="id"]</code>) for Appium/Selenium.
+- <em>Image</em>: A filename from <code>input_templates/</code> (e.g., "home.png", <code>${Home_image}</code>) for image matching.
+Check each keyword’s description for supported types.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Parameters</p>
+<p>Optional parameters can be left blank in the CSV (e.g., <code>Press Element,${Home_text},,,click_event</code> skips <code>repeat</code>, <code>offset_x</code>, and <code>offset_y</code>).</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Deprecated Keywords</p>
+<p>Keywords marked with <em>(Deprecated)</em> (e.g., <code>Press Checkbox</code>) should be avoided in new tests as they may be removed in future versions. Use alternatives like <code>Press Element</code> instead.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Unimplemented Keywords</p>
+<p>Some keywords (e.g., <code>Select Dropdown Option</code>) are placeholders and not yet functional. They are included for future compatibility.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Usage in CSV</p>
+<p>Keywords are used in the <code>module_step</code> column of <code>test_modules.csv</code>, with parameters in subsequent columns (e.g., <code>param_1</code>, <code>param_2</code>, ...).</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Variables</p>
+<p>Parameters like <code>${Home_text}</code> reference values from <code>elements.csv</code>, allowing reusable element definitions.</p>
+</div>
+<p>Refer to the <a href="../../user_workflow/">User Workflow</a> for examples of how to integrate these keywords into your test modules.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
