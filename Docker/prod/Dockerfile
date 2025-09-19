@@ -23,7 +23,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 RUN pip install --no-cache-dir uv
 RUN uv pip install --system appium-python-client
 
-# Install optics-framework and vision backend (late layer for cache efficiency)
+# Copy service account json (if using google-vision)
+COPY Docker/mozark-icici.json /app/service-account.json
 
 RUN uv pip install --system optics-framework \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
