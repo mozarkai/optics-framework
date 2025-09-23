@@ -123,15 +123,15 @@ class ActionKeyword:
         """
         Press an element by percentage coordinates.
 
-        :param percent_x: X percentage of the press.
-        :param percent_y: Y percentage of the press.
+        :param percent_x: X percentage of the press (as string, will be converted to float).
+        :param percent_y: Y percentage of the press (as string, will be converted to float).
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
         screenshot_np = self.strategy_manager.capture_screenshot()
         utils.save_screenshot(screenshot_np, "press_by_percentage", output_dir=self.execution_dir)
         self.driver.press_percentage_coordinates(
-            int(percent_x), int(percent_y), int(repeat), event_name
+            float(percent_x), float(percent_y), int(repeat), event_name
         )
 
     def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
