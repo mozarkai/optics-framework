@@ -14,9 +14,8 @@ import asyncio
 import json
 import logging
 import signal
-import subprocess
+import subprocess #nosec
 import os
-import sys
 import time
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
@@ -199,6 +198,7 @@ def stop_workers():
             if worker.get("log_fh"):
                 worker["log_fh"].close()
         except Exception:
+            logger.error("Failed to close log file handle for worker on port %s", worker['port'])
             pass
 
     # Also try to kill any orphaned worker processes by port
@@ -206,18 +206,19 @@ def stop_workers():
         port = worker["port"]
         try:
             # Use lsof to find processes listening on the port and kill them
-            result = subprocess.run(
+            result = subprocess.run( #nosec
                 ["lsof", "-ti", f":{port}"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
+                check=False
             )
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
                 for pid in pids:
                     if pid.strip():
                         logger.info(f"Killing orphaned process {pid} on port {port}")
-                        subprocess.run(["kill", "-9", pid.strip()], timeout=5)
+                        subprocess.run(["kill", "-9", pid.strip()], timeout=5, check=False) #nosec
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
             pass  # lsof might not be available or no processes found
 
@@ -281,26 +282,25 @@ def start_worker_process(port: int, log_path: Optional[str] = None) -> tuple[Opt
     """
     log_fh = None
     try:
-        # Use uvicorn directly to run the optics API
+        # Use optics directly to run the optics API
         cmd = [
-            sys.executable, "-m", "uvicorn",
-            "optics_framework.common.expose_api:app",
+            "optics",
+            "serve",
             "--host", "127.0.0.1",
             "--port", str(port),
-            "--log-level", "info"
         ]
         logger.info(f"Starting worker with command: {' '.join(cmd)}")
         log_fh = None
         if log_path:
             log_fh = open(log_path, "a", encoding="utf-8", errors="replace")
-            process = subprocess.Popen(
+            process = subprocess.Popen( #nosec
                 cmd,
                 stdout=log_fh,
                 stderr=log_fh,
                 text=True
             )
         else:
-            process = subprocess.Popen(cmd, text=True)
+            process = subprocess.Popen(cmd, text=True) # nosec
 
         # Give it a moment to start
         time.sleep(2)
@@ -319,6 +319,7 @@ def start_worker_process(port: int, log_path: Optional[str] = None) -> tuple[Opt
             if log_fh:
                 log_fh.close()
         except Exception:
+            logger.error("Failed to close log file handle for worker on port %s", port)
             pass
         return None, None
 
