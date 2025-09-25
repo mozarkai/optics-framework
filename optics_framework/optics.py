@@ -37,6 +37,7 @@ from optics_framework.common.models import (
     ElementData,
     ApiData,
 )
+from optics_framework.common.test_context import current_test_case
 
 T = TypeVar("T", bound=Callable[..., Any])
 P = ParamSpec("P")
@@ -506,6 +507,7 @@ class Optics:
         if not self.session_id or self.session_id not in self.session_manager.sessions:
             raise ValueError(INVALID_SETUP)
         session = self.session_manager.sessions[self.session_id]
+        current_test_case.set(testcase)
         if hasattr(session, "test_cases"):
             session.test_cases = testcase
         else:
