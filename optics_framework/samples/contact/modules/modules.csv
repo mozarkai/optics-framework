@@ -1,4 +1,4 @@
-module_name,module_step,param_1,param_2
+module_name,module_step,param_1,param_2,param_3
 Launch Contact Application, Launch App
 
 Navigate to Add Contact Page, Assert Presence, ${Add_Contact_Button}

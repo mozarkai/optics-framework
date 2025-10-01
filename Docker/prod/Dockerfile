@@ -20,19 +20,19 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install common Python packages (second layer for cache)
-RUN pip install --no-cache-dir \
-    appium-python-client
+RUN pip install --no-cache-dir uv
+RUN uv pip install --system appium-python-client
 
 # Install optics-framework and vision backend (late layer for cache efficiency)
-RUN pip install --no-cache-dir optics-framework \
+
+RUN uv pip install --system optics-framework \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-        pip install --no-cache-dir easyocr && \
+        uv pip install --system easyocr && \
         python3 -c "import easyocr; easyocr.Reader(['en'], download_enabled=True)"; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \
-        pip install --no-cache-dir google-cloud-vision; \
+        uv pip install --system google-cloud-vision; \
     elif [ "$VISION_BACKEND" = "pytesseract" ]; then \
-        pip install --no-cache-dir pytesseract; \
+        uv pip install --system pytesseract; \
     fi
 
 # If using google-vision, user must mount service account json and set GOOGLE_APPLICATION_CREDENTIALS

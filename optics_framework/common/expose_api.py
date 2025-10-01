@@ -107,8 +107,21 @@ class KeywordParameter(BaseModel):
 
 class KeywordInfo(BaseModel):
     keyword: str
+    keyword_slug: str
     description: str
     parameters: List[KeywordParameter]
+
+
+def _humanize_keyword(name: str) -> str:
+    """Convert a snake_case method name into a human-friendly title.
+
+    Examples:
+      press_element -> Press Element
+      get_driver_session_id -> Get Driver Session Id
+    """
+    # Replace underscores with spaces, split on spaces and capitalize each word
+    parts = [p for p in name.replace("_", " ").split(" ") if p]
+    return " ".join(p.capitalize() for p in parts)
 
 
 def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
@@ -228,7 +241,10 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
         doc = inspect.getdoc(meth) or ""
         keywords.append(
             KeywordInfo(
-                keyword=meth_name, description=doc, parameters=params
+                keyword=_humanize_keyword(meth_name),
+                keyword_slug=meth_name,
+                description=doc,
+                parameters=params,
             )
         )
     return keywords
@@ -236,7 +252,7 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
 def _extract_keywords_from_module(module) -> List[KeywordInfo]:
     """Extract all keyword infos from a module."""
     keywords = []
-    for name, obj in inspect.getmembers(module):
+    for _, obj in inspect.getmembers(module):
         if inspect.isclass(obj) and obj.__module__ == module.__name__:
             keywords.extend(_extract_keywords_from_class(obj))
     return keywords
@@ -392,15 +408,16 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}") from e
 
 # Helper for DRY keyword execution endpoints
-def run_keyword_endpoint(session_id: str, keyword: str, params: List[str] = []) -> Any:
+def run_keyword_endpoint(session_id: str, keyword: str, params: Optional[List[str]] = None) -> Any:
     """
     Helper to execute a keyword for a session using the execute_keyword endpoint.
     """
-    request = ExecuteRequest(mode="keyword", keyword=keyword, params=params)
+    safe_params: List[str] = params or []
+    request = ExecuteRequest(mode="keyword", keyword=keyword, params=safe_params)
     return execute_keyword(session_id, request)
 
 
-@app.get("/v1/session/{session_id}/screenshot")
+@app.get("/v1/sessions/{session_id}/screenshot")
 async def capture_screenshot(session_id: str):
     """
     Capture a screenshot in the specified session.
@@ -408,7 +425,7 @@ async def capture_screenshot(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_screenshot")
 
-@app.get("/v1/session/{session_id}/driver-id")
+@app.get("/v1/sessions/{session_id}/driver-id")
 async def get_driver_session_id(session_id: str):
     """
     Get the underlying Driver session ID for this Optics session.
@@ -416,7 +433,7 @@ async def get_driver_session_id(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "get_driver_session_id")
 
-@app.get("/v1/session/{session_id}/elements")
+@app.get("/v1/sessions/{session_id}/elements")
 async def get_elements(session_id: str):
     """
     Get interactive elements from the current session screen.
@@ -424,7 +441,7 @@ async def get_elements(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "get_interactive_elements")
 
-@app.get("/v1/session/{session_id}/source")
+@app.get("/v1/sessions/{session_id}/source")
 async def get_pagesource(session_id: str):
     """
     Capture the page source from the current session.
@@ -432,7 +449,7 @@ async def get_pagesource(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_pagesource")
 
-@app.get("/v1/session/{session_id}/screen_elements")
+@app.get("/v1/sessions/{session_id}/screen_elements")
 async def screen_elements(session_id: str):
     """
     Capture and get screen elements from the current session.
