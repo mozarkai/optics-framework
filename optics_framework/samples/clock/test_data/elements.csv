@@ -1,0 +1,30 @@
+Element_Name,Element_ID_xpath,Element_ID,Element_Text
+alarm_icon_image,"//android.widget.TextView[@content-desc=""Clock""]",alarm_tab.png,Clock
+alarm_tab,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/title"" and @text=""Alarm""]",alarm.png,Alarm
+add_alarm_image,"//android.widget.Button[@content-desc=""Add alarm""]",add_alarm.png
+hour_display_image,"//android.widget.EditText[@resource-id=""com.sec.android.app.clockpackage:id/numberpicker_input"" and @text=""6, Hour""]",hour_display.png,6,Hour
+minute_display_image,"//android.widget.EditText[@resource-id=""com.sec.android.app.clockpackage:id/numberpicker_input"" and @text=""00, Minute""]",minute_display.png,00,Minute
+am_pm_toggle_image,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/numberpicker_input""]",am_toggle.png,am
+save_button_image,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/navigation_bar_item_small_label_view"" and @text=""Save""]",save_button.png,Save
+minute_list,"[""00"",""01"",""02""]",
+minute,59
+world_clock_image,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/title"" and @text=""World Clock""]",world_clock.png,World Clock
+add_clock_image,"//android.widget.Button[@content-desc=""Add city""]",add_city.png,
+search_city_image,"//android.widget.Button[@content-desc=""Search""]",search_city.png,
+input_city,"//android.widget.AutoCompleteTextView[@resource-id=""com.sec.android.app.clockpackage:id/search_src_text""]",input_city.png,City/country/region
+press_newyork,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/auto_list_city_name""]",press_newyork.png,New York/USA
+add_newyork,"//android.widget.Button[@content-desc=""Add""]",add_newyork.png,Add
+alarm_tab,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/title"" and @text=""Alarm""]",alarm.png,Alarm
+action_button,"//android.widget.ImageView[@content-desc=""More options""]",settings_button.png
+edit_button,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/title"" and @text=""Edit""]",edit_button.png,Edit
+select_checkbox,"//android.widget.CheckBox[@content-desc=""Select all""]",select_checkbox.png
+delete_button,"(//android.widget.ImageView[@resource-id=""com.sec.android.app.clockpackage:id/navigation_bar_item_icon_view""])[2]",delete_button.png
+stopwatch_tab,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/title"" and @text=""Stopwatch""]",stopwatch_tab.png,Stopwatch
+start_stopwatch,"//android.widget.Button[@content-desc=""Start""]",start_stopwatch.png,Start
+lap_stopwatch,"//android.widget.Button[@content-desc=""Lap""]",lap_stopwatch.png,Lap
+stop_stopwatch,"//android.widget.Button[@content-desc=""Stop""]",stop_stopwatch.png,Stop
+reset_stopwatch,"//android.widget.Button[@content-desc=""Reset""]",reset_stopwatch.png,Reset
+timer_tab,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/title"" and @text=""Timer""]",timer_tab.png,Timer
+30minute_timer,"//android.widget.TextView[@resource-id=""com.sec.android.app.clockpackage:id/time"" and @text=""00:30:00""]",30minute_timer.png,00:30:00
+start_timer,"//android.widget.Button[@content-desc=""Start""]",start_timer.png,Start
+delete_timer,"//android.widget.Button[@content-desc=""Delete""]",delete_timer.png,Delete

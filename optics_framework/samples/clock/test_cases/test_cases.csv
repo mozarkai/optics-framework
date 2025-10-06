@@ -1,0 +1,16 @@
+test_case,test_step
+
+Suite Setup,Launch Clock App
+Suite Setup,Navigate To Alarm Tab
+
+Create Three Alarms,Create Multiple Alarms
+
+Create City Clock, Add City Clock
+
+Delete Alarms,Delete All Alarms
+
+Create Stopwatch, Start Stopwatch
+
+New Timer, Create Timer
+
+Suite Teardown,Close Clock App

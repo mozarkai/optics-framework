@@ -1,0 +1,41 @@
+driver_sources:
+    - appium:
+        enabled: true
+        url: "http://127.0.0.1:4723/wd/hub"
+        capabilities:
+            {
+            "appium:platformName": "Android",
+            "appium:automationName": "UiAutomator2",
+            "appium:platformVersion": "14",
+            "appium:deviceName": "Samsung M13",
+            "appium:udid": "RZ8WA0A6MYM"
+            }
+
+elements_sources:
+    - appium_find_element:
+        enabled: true
+        url: null
+        capabilities: {}
+    - appium_page_source:
+        enabled: true
+        url: null
+        capabilities: {}
+    - appium_screenshot:
+        enabled: true
+        url: null
+        capabilities: {}
+
+text_detection:
+    - pytesseract:
+        enabled: true
+        url: null
+        capabilities: {}
+
+image_detection:
+    - templatematch:
+        enabled: true
+        url: null
+        capabilities: {}
+
+log_level: INFO
+file_log: true

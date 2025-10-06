@@ -1,0 +1,45 @@
+module_name,module_step,param_1,param_2,param_3,param_4,param_5
+
+Launch Clock App,Launch App,,,,
+
+Navigate To Alarm Tab,Press Element,${alarm_icon_image},,,
+Navigate To Alarm Tab,Press Element,${alarm_tab},,,
+
+Create Single Alarm,Press Element,${add_alarm_image},,,
+Create Single Alarm,Press Element,${hour_display_image},,,
+Create Single Alarm,Enter Text,${hour_display_image},1,,
+Create Single Alarm,Press Element,${minute_display_image},,,
+Create Single Alarm,Enter Text,${minute_display_image},${minute},,
+Create Single Alarm,Press Element,${am_pm_toggle_image},,,
+Create Single Alarm,Press Element,${save_button_image},,,
+
+Close Clock App,Force Terminate App,,,,
+Close Clock App,Close And Terminate App,,,,
+
+Create Multiple Alarms,Run Loop,Create Single Alarm,minute,${minute_list},,
+
+Add City Clock,Press Element,${world_clock_image},,,
+Add City Clock,Press Element,${add_clock_image},,,
+Add City Clock,Press Element,${search_city_image},,,
+Add City Clock,Enter Text,${input_city},new york,,
+Add City Clock,Press Element,${press_newyork},,,
+Add City Clock,Press Element,${add_newyork},,,
+
+Delete All Alarms,Press Element,${alarm_tab},,,
+Delete All Alarms,Press Element,${action_button},,,
+Delete All Alarms,Press Element,${edit_button},,,
+Delete All Alarms,Press Element,${select_checkbox},,,
+Delete All Alarms,Press Element,${delete_button},,,
+
+Start Stopwatch,Press Element,${stopwatch_tab},,,
+Start Stopwatch,Press Element,${start_stopwatch},,,
+Start Stopwatch,Press Element,${lap_stopwatch},,,
+Start Stopwatch,Press Element,${stop_stopwatch},,,
+Start Stopwatch,Press Element,${reset_stopwatch},,,
+
+Create Timer,Press Element,${timer_tab},,,
+Create Timer, Press Element,${30minute_timer},,,
+Create Timer, Press Element,${start_timer},,,
+Create Timer, Press Element,${delete_timer},,,
+
+Launch Other App,Launch Other App,com.sec.android.app.clockpackage,,,
