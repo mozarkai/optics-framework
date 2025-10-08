@@ -374,6 +374,7 @@ class FlowControl:
             # Always store the value in session.elements, even if not in ${name} format
             runner_elements = getattr(self.session, "elements", None)
             if isinstance(runner_elements, ElementData):
+                runner_elements.remove_element(elem_name)
                 runner_elements.add_element(elem_name, direct_env_value)
             else:
                 internal_logger.warning("[READ_DATA] Cannot store value: session.elements is not an ElementData instance.")
@@ -593,6 +594,7 @@ class FlowControl:
             else:
                 store_value = data_str
             internal_logger.debug(f"[READ_DATA] Storing value under element '{elem_name}': {store_value}")
+            runner_elements.remove_element(elem_name)
             runner_elements.add_element(elem_name, store_value)
         else:
             internal_logger.warning("[READ_DATA] Cannot store value: session.elements is not an ElementData instance.")
@@ -718,6 +720,7 @@ class FlowControl:
         if not isinstance(runner_elements, ElementData):
             runner_elements = ElementData()
             setattr(self.session, "elements", runner_elements)
+        runner_elements.remove_element(var_name)
         runner_elements.add_element(var_name, str(result))
         return result
 
@@ -1165,6 +1168,7 @@ class FlowControl:
         value = self._extract_from_json(response_data, path)
         if value is not None:
             runner_elements = self._get_or_create_session_elements()
+            runner_elements.remove_element(element_name)
             runner_elements.add_element(element_name, value)
             internal_logger.debug(
                 f"Extracted '{element_name}' = '{value}' from response."
