@@ -63,7 +63,7 @@ class AppiumScreenshot(ElementSourceInterface):
         try:
             # Use Base64 encoding for faster processing
             driver = self._require_driver()
-            internal_logger.info('driver session_id: %s', driver.session_id)
+            internal_logger.debug('driver session_id: %s', driver.session_id)
             screenshot_base64 = driver.get_screenshot_as_base64()
             screenshot_bytes = base64.b64decode(screenshot_base64)
             internal_logger.debug("Screenshot bytes length: %d", len(screenshot_bytes))

@@ -154,7 +154,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to create new Appium session: {e}")
             self.driver = None
-            raise OpticsError(Code.E0102, message="Failed to create new Appium session due to: ", cause=e) from e
+            raise OpticsError(Code.E0102, message=f"Failed to create new Appium session due to: {e}", cause=e) from e
 
     def get_session_id(self) -> Optional[str]:
         """Return the current Appium session id, if a session is active."""
@@ -259,7 +259,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to attach to existing Appium session {session_id}: {e}")
             self.driver = None
-            raise OpticsError(Code.E0102, message=f"Failed to attach to existing Appium session: {session_id}", cause=e) from e
+            raise OpticsError(Code.E0102, message=f"Failed to attach to existing Appium session: {session_id} due to: {e}", cause=e) from e
 
 
     def _get_platform_and_options(self, all_caps: Dict[str, Any]) -> tuple[Any, Dict[str, Any]]:

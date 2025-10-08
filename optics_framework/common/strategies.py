@@ -493,7 +493,8 @@ class StrategyManager:
             internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
             if self._can_strategy_assert_elements(strategy, element_type):
                 result, timestamp, annotated_frame = self._try_assert_with_strategy(strategy, elements, timeout, rule)
-                return result, timestamp, annotated_frame
+                if result:
+                    return result, timestamp, annotated_frame
         raise OpticsError(Code.E0201, message="No elements found.")
 
     def _validate_rule(self, rule: str):

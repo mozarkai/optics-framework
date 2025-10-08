@@ -20,6 +20,9 @@ class RemoteOCR(TextInterface):
         Accept either a `Config` Pydantic object or a plain dict-like config for
         convenience in tests and REPL usage.
         """
+        self.execution_output_dir = (
+            config.get("execution_output_path", "") if config else ""
+        )
         if not config:
             internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
@@ -193,7 +196,7 @@ class RemoteOCR(TextInterface):
         try:
             cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)  # pylint: disable=no-member
             cv2.circle(img, center, 5, (0, 0, 255), -1)  # pylint: disable=no-member
-            utils.save_screenshot(img, "detected_text")
+            utils.save_screenshot(img, "detected_text", output_dir=self.execution_output_dir)
         except Exception as ex:
             try:
                 _cv2_error = getattr(cv2, 'error', None)
