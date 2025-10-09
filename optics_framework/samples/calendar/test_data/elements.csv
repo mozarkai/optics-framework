@@ -1,7 +1,8 @@
-Element_Name,Element_ID
-world_time_api_url,https://timeapi.io/api/Time/current/zone?timeZone=Asia/Singapore
-add_event_button,//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc="Create new event or other calendar entries"]
-event_type,Task button
-title_field,//android.widget.EditText[@resource-id="com.google.android.calendar:id/title"]
-title_text,Meeting With John
-save_button,Save
+Element_Name,Element_ID,Element_ID_text,
+calendar_app,//android.widget.TextView[@content-desc="Calendar"],Calendar
+add_event,//android.widget.FrameLayout[@resource-id="com.samsung.android.calendar:id/swipe_touch_layout"]
+enter_event,//android.widget.EditText[@resource-id="com.samsung.android.calendar:id/quick_add_activity_edit_text"],Example title: 12 PM lunch
+save_event,//android.widget.ImageButton[@content-desc="Save"],Save
+ipgeolocation_api,https://api.ipgeolocation.io/v2/timezone?apiKey=bb5c255f300b47c9b58b7dde81a6ebfe&tz=America/Los_Angeles,,
+today,placeholder
+target_date,placeholder

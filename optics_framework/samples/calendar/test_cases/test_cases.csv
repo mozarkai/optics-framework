@@ -1,5 +1,7 @@
 test_case,test_step
-Suite Setup,     Launch Calendar App
-Suite Teardown,   Close Calendar App
-Fetch Today's Date,  Get today's date using WorldTimeAPI
-Schedule An Event,  Schedule an event for tomorrow
+Suite Setup,Launch Calendar App
+Suite Teardown,Close Calendar App
+Create an event,Schedule an event for today
+Schedule Event +2 Days,Get today's date
+Schedule Event +2 Days,Evaluate +2 Date
+Schedule Event +2 Days,Schedule an event for 2 days from now

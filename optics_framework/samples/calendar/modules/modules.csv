@@ -1,11 +1,19 @@
-module_name,module_step,param_1,param_2,param_3
-Launch Calendar App, Launch App
-Close Calendar App, Close And Terminate App
-Get today's date using WorldTimeAPI,Read Data,${today},${world_time_api_url},date
-Schedule an event for tomorrow,Date Evaluate,${desired_date},${today},"+3 day"
-Schedule an event for tomorrow,Press Element,${desired_date}
-Schedule an event for tomorrow,Sleep,5
-Schedule an event for tomorrow,Press Element,${add_event_button}
-Schedule an event for tomorrow,Press Element,${event_type}
-Schedule an event for tomorrow,Enter Text,${title_field},${title_text}
-Schedule an event for tomorrow,Press Element,${save_button}
+module_name,module_step,param_1,param_2,param_3,param_4,param_5
+Launch Calendar App,Launch App,,,,,
+Launch Other App,Launch Other App,com.sec.android.app.launcher.calendarpackage,,,,
+,,,,,,
+Schedule an event for today,Press Element,${calendar_app},,,,
+Schedule an event for today,Press Element,${add_event},,,,
+Schedule an event for today,Enter Text,${enter_event},Make Lunch,,,
+Schedule an event for today,Press Element,${save_event},,,,
+,,,,,,
+Get today's date,Invoke API,ipgeolocation_api.get_current_time,,,,
+Evaluate +2 Date,Date Evaluate,target_date,${today},+2 day,%Y-%m-%d,
+Evaluate +2 Date,Press Element,${target_date},,,,
+Schedule an event for 2 days from now,Press Element,${add_event},,,,
+Schedule an event for 2 days from now,Press By Coordinates,326,2126,1,,
+Schedule an event for 2 days from now,Enter Text,${enter_event},Meeting (2 Days Ahead),,,
+Schedule an event for 2 days from now,Press Element,${save_event},,,,
+,,,,,,
+Close Calendar App,Force Terminate App,com.samsung.android.calendar,,,,
+Close Calendar App,Close And Terminate App,,,,,
