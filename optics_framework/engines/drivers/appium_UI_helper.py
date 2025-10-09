@@ -413,11 +413,15 @@ class UIHelper:
             ("label", "//*[@label]", "label"),
         ]
 
+        # First pass: exact and suffix matches
         for strategy_name, xpath_query, attrib in strategies:
             elements = self.tree.xpath(xpath_query)
             for elem in elements:
                 value = elem.attrib.get(attrib, "").strip()
-                if value and value == element:
+                if not value:
+                    continue
+                # Exact full match
+                if value == element:
                     internal_logger.debug("Exact match found.")
                     internal_logger.debug(
                         f"Match found using '{strategy_name}' strategy: '{value}'"
@@ -429,26 +433,9 @@ class UIHelper:
                         "attributes": attributes,
                         "timestamp": time_stamp,
                     }
-                elif value and "/" in value:
-                    _, suffix = value.rsplit("/", 1)  # Split at the last "/"
-                    if element == suffix:
-                        internal_logger.debug("Exact match found.")
-                        internal_logger.debug(
-                            f"Match found using '{strategy_name}' strategy: '{value}'"
-                        )
-                        attributes = elem.attrib
-                        return {
-                            "strategy": strategy_name,
-                            "locator": value,
-                            "attributes": attributes,
-                            "timestamp": time_stamp,
-                        }
-
-        for strategy_name, xpath_query, attrib in strategies:
-            elements = tree.xpath(xpath_query)
-            for elem in elements:
-                value = elem.attrib.get(attrib, "").strip()
-                if value and utils.compare_text(value, element):
+                # Exact suffix match (resource-id style)
+                if "/" in value and value.rsplit("/", 1)[-1] == element:
+                    internal_logger.debug("Exact suffix match found.")
                     internal_logger.debug(
                         f"Match found using '{strategy_name}' strategy: '{value}'"
                     )
@@ -459,6 +446,38 @@ class UIHelper:
                         "attributes": attributes,
                         "timestamp": time_stamp,
                     }
+
+        # Second pass: collect fuzzy candidates and pick the best-scoring one
+        best_candidate = None
+        best_score = 0
+        for strategy_name, xpath_query, attrib in strategies:
+            elements = tree.xpath(xpath_query)
+            for elem in elements:
+                value = elem.attrib.get(attrib, "").strip()
+                if not value:
+                    continue
+                # Compute fuzzy score using the same metric as utils.compare_text
+                # but keep the best candidate across all strategies
+                try:
+                    score = fuzz.ratio(value.lower().strip(), element.lower().strip())
+                except Exception:
+                    score = 0
+                if score > best_score:
+                    best_score = score
+                    best_candidate = (strategy_name, value, elem.attrib)
+
+        # Accept best fuzzy match if score meets threshold (80)
+        if best_candidate and best_score >= 80:
+            strategy_name, value, attributes = best_candidate
+            internal_logger.debug(
+                f"Fuzzy match selected (score={best_score}) using '{strategy_name}': '{value}'"
+            )
+            return {
+                "strategy": strategy_name,
+                "locator": value,
+                "attributes": attributes,
+                "timestamp": time_stamp,
+            }
 
         internal_logger.debug(
             f"No matching element found in any of the locator strategies for '{element}'."
@@ -596,17 +615,48 @@ class UIHelper:
                 )
 
         # Perform a linear match against all elements
-        matches = []
+        # Prefer exact matches (or suffix after '/') before falling back to fuzzy compare
+        exact_matches = []
+        fuzzy_matches = []
         for idx, elem in enumerate(all_elements):
-            if utils.compare_text(elem["value"], element):
-                matches.append(
+            val = elem.get("value", "")
+            # exact full-string match
+            if val == element:
+                exact_matches.append(
                     {
                         "index": idx,
                         "strategy": elem["strategy"],
-                        "value": elem["value"],
+                        "value": val,
                         "position": elem["position"],
                     }
                 )
+                continue
+
+            # exact suffix match (e.g., resource-id like 'pkg/name' -> 'name')
+            if "/" in val and val.rsplit("/", 1)[-1] == element:
+                exact_matches.append(
+                    {
+                        "index": idx,
+                        "strategy": elem["strategy"],
+                        "value": val,
+                        "position": elem["position"],
+                    }
+                )
+                continue
+
+            # fallback to fuzzy/partial compare
+            if utils.compare_text(val, element):
+                fuzzy_matches.append(
+                    {
+                        "index": idx,
+                        "strategy": elem["strategy"],
+                        "value": val,
+                        "position": elem["position"],
+                    }
+                )
+
+        # If exact matches exist, prefer them; otherwise use fuzzy matches
+        matches = exact_matches if exact_matches else fuzzy_matches
 
         # Log matches
         internal_logger.debug(
