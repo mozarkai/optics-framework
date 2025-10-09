@@ -205,13 +205,13 @@ class TextDetectionStrategy(LocatorStrategy):
                 for frame, ts in frames:
                     current_frame = frame.copy()
                     _ , ocr_results = self.text_detection.detect_text(current_frame)
-                    match_and_annotate(ocr_results, elements, found_status, current_frame)
+                    annotated_frame = match_and_annotate(ocr_results, elements, found_status, current_frame)
 
                     if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
                         result = True
                         timestamp = ts
                         execution_logger.info(f"Elements found: {found_status} on screenshot taken at {timestamp}")
-                        annotated_frame = current_frame
+
                         break
 
                 if result:

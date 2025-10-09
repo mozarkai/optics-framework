@@ -35,7 +35,7 @@ def match_and_annotate(
     target_texts,
     found_status,
     frame: np.ndarray
-) -> None:
+) -> np.ndarray:
     """
     Check OCR results for matching text and annotate matched regions.
 
@@ -43,7 +43,10 @@ def match_and_annotate(
     :param target_texts: List of expected strings.
     :param found_status: Mutable dict to track found targets.
     :param frame: Image to annotate in place.
+    :return: Annotated image frame.
+    :rtype: np.ndarray
     """
+    annotated_frame = frame.copy()
     for (bbox, detected_text, _) in ocr_results:
         clean_text = detected_text.strip().lower()
         for target in target_texts:
@@ -57,5 +60,6 @@ def match_and_annotate(
                 center_y = (top_left[1] + bottom_right[1]) // 2
 
                 found_status[target] = True
-                cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
-                cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+                cv2.rectangle(annotated_frame, top_left, bottom_right, (0, 255, 0), 2)
+                cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 0, 255), -1)
+    return annotated_frame
