@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import inspect
 import time
+import math
 from typing import List, Union, Tuple, Generator, Set, Optional
 import numpy as np
 from optics_framework.common.base_factory import InstanceFallback
@@ -489,12 +490,53 @@ class StrategyManager:
         execution_logger.info(
             f"Asserting presence of elements: {elements} with rule: {rule} and timeout: {timeout}s")
 
-        for strategy in self.locator_strategies:
+        # Treat the provided timeout as a total deadline across all applicable strategies.
+        deadline = time.time() + timeout
+        last_exception = None
+
+        # First collect strategies that can assert these elements so we can fairly split time
+        applicable_strategies = [s for s in self.locator_strategies if self._can_strategy_assert_elements(s, element_type)]
+        if not applicable_strategies:
+            raise OpticsError(Code.E0201, message="No elements found.")
+
+        remaining_total = max(0.0, deadline - time.time())
+
+        for idx, strategy in enumerate(applicable_strategies):
             internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
-            if self._can_strategy_assert_elements(strategy, element_type):
-                result, timestamp, annotated_frame = self._try_assert_with_strategy(strategy, elements, timeout, rule)
+
+            # Recompute remaining total before allocating
+            remaining_total = max(0.0, deadline - time.time())
+            remaining_strategies = len(applicable_strategies) - idx
+
+            if remaining_total <= 0:
+                internal_logger.debug("No remaining time left to try further strategies.")
+                break
+
+            # Fair allocation: ceil(remaining_total / remaining_strategies)
+            alloc = int(math.ceil(remaining_total / remaining_strategies))
+            # Ensure alloc does not exceed remaining_total (cast to int seconds)
+            alloc = min(alloc, int(math.floor(remaining_total))) if remaining_total >= 1 else 0
+
+            internal_logger.debug(f"Allocating {alloc}s to strategy {type(strategy).__name__} (remaining_total={remaining_total}s, remaining_strategies={remaining_strategies})")
+
+            if alloc <= 0:
+                # If we have less than 1s remaining, let the last strategy try with 0 to perform any immediate checks
+                if idx == len(applicable_strategies) - 1:
+                    alloc = 0
+                else:
+                    internal_logger.debug("Insufficient time to allocate to next strategies.")
+                    break
+
+            try:
+                result, timestamp, annotated_frame = self._try_assert_with_strategy(strategy, elements, alloc, rule)
                 if result:
                     return result, timestamp, annotated_frame
+            except Exception as e:
+                last_exception = e
+
+        # If we arrive here nothing was found within the total timeout
+        if last_exception:
+            internal_logger.debug(f"assert_presence ended with last exception: {last_exception}")
         raise OpticsError(Code.E0201, message="No elements found.")
 
     def _validate_rule(self, rule: str):
