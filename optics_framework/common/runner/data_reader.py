@@ -192,7 +192,7 @@ class CSVDataReader(DataReader):
                 row[key].strip()
                 for key in row
                 if key is not None
-                and key.startswith("Element_ID")
+                and re.sub(r"\s+", "", key).lower().startswith("element_id")
                 and row[key]
                 and row[key].strip()
             ]
