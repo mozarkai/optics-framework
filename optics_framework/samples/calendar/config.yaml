@@ -1,28 +1,22 @@
 driver_sources:
-    - appium:
-        enabled: true
-        url: "https://appium-hub-480385031389.asia-south1.run.app:443/wd/hub"
-        capabilities:
-            {
-            "appium:platformName": "Android",
-            "appium:automationName": "UiAutomator2",
-            "appium:platformVersion": "14",
-            "appium:deviceName": "Samsung M13",
-            "appium:app": "",
-            "appium:udid": "RZ8WA0A6MYM",
-            "mozark:options": {
-                "parentSessionId": "2b6170f3-ae02-454c-b17f-a4a5e74798eb",
-                "secret": "eyJraWQiOiJFdTNQSjlTK1BCdGhlZjl2VGQ5ZVZKN3pHcmR1bTV4VWlPWUdhSCtDYXZJPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTQ2ZDQ5OS04Nzk3LTQ1MDItYmEwNy0zOTA0ODc2YWY1ZDIiLCJjb2duaXRvOmdyb3VwcyI6WyJpbnRlZ3JhdGlvbiJdLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiYWRkcmVzcyI6eyJmb3JtYXR0ZWQiOiJOQSJ9LCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuYXAtc291dGgtMS5hbWF6b25hd3MuY29tXC9hcC1zb3V0aC0xX1dMcUhCaWJ5MCIsImNvZ25pdG86dXNlcm5hbWUiOiJzYW55YUBtb3phcmsuYWkiLCJwaWN0dXJlIjoiaHR0cHM6XC9cL2FwcC10ZXN0LWZyb250ZW5kLnMzLmFwLXNvdXRoLTEuYW1hem9uYXdzLmNvbVwvaW1hZ2VzXC9kZWZhdWx0LXBpY3R1cmUucG5nIiwib3JpZ2luX2p0aSI6IjAwNWMzZWVkLTVjMDgtNDE1Mi1hZjZhLThkNWEzMzFiZWNhNiIsImN1c3RvbTp0ZW5hbnRJZCI6ImludGVncmF0aW9uIiwiYXVkIjoiNW9kcXM0NTluODJkZ25iNjNqbXQyNmozMGMiLCJldmVudF9pZCI6IjExNjMwMDQ3LWFiMmMtNDk0MC04ZGZkLWQ0MGE2MTAwMWE3ZCIsImN1c3RvbTp1c2VyUm9sZSI6IlRlbmFudEFkbWluIiwidG9rZW5fdXNlIjoiaWQiLCJhdXRoX3RpbWUiOjE3NjAwMTkwODUsIm5hbWUiOiJzYW55YSIsImV4cCI6MTc2MDEwNTQ4NSwiaWF0IjoxNzYwMDE5MDg1LCJqdGkiOiJiMjMyNTM2YS1lMDA5LTQxOGYtODBmNi00MmE0MTI3ZWQwNDAiLCJlbWFpbCI6InNhbnlhQG1vemFyay5haSJ9.jpPQ555CD2OoNCnhnogqH2YP7PpBSjFlB9f-e1vnsEnlLpimh1a1D7kC6lD6FwWo6yDF6jQeKzJ77tFDUYhU8ubu-LA1gA0KPqztzk-KEQzP9LQjrbEcbGnI9m19a5S9aoRhhAPEVyKsgZbMgkqqqNSdQGwg49HZ-MY7Ka1gJjMGKTAjRtnWJe1Fj0wzpo65jjfmEQ5_vb0JT0e_CeIJ_xypYZWRJ5EX8PzweCe8ncVu3htFLEPkjCwoh79lMfdiY5fBwpHz3Wbw6EcS2Kbl3E3Li10rUv9X-E7fbs6ceIgWUPCU3Ikf63JSCVOy2ehoZU9voDRtjwTJ_OrX1a-g1g"
-            }
-            }
-    - selenium:
-        enabled: false
-        url: "http://localhost:4444/wd/hub"
-        capabilities: {}
-    - ble:
-        enabled: false
-        url: null
-        capabilities: {}
+  - appium:
+      enabled: true
+      url: "http://localhost:4723/wd/hub"
+      capabilities:
+        automationName: "UiAutomator2"
+        deviceName: "emulator-5554"
+        platformName: "Android"
+
+  - selenium:
+      enabled: false
+      url: "http://localhost:4444/wd/hub"
+      capabilities: {}
+
+  - ble:
+      enabled: false
+      url: null
+      capabilities: {}
+
 
 elements_sources:
     - appium_find_element:
