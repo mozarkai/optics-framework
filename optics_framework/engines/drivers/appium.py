@@ -642,10 +642,39 @@ class Appium(DriverInterface):
                     driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_value})
             else:
                 text_value = str(text)
-                execution_logger.debug(f"Entering text using keyboard: {text_value}")
-                driver.execute_script(
-                    self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(text_value)}
-                )
+                execution_logger.debug(f"Entering text using keyboard (per-char): {text_value}")
+
+                # Buffer for consecutive unmapped characters to send via mobile:type
+                buffer = []
+
+                for ch in text_value:
+                    # Attempt to map the character to a keycode
+                    keycode = self.get_char_as_keycode(ch)
+                    if keycode is not None:
+                        # Flush buffer first if present
+                        if buffer:
+                            segment = ''.join(buffer)
+                            execution_logger.debug(f"Flushing unmapped segment via script: '{segment}'")
+                            driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(segment)})
+                            buffer = []
+
+                        # Press the mapped keycode
+                        execution_logger.debug(f"Pressing keycode for char '{ch}': {keycode}")
+                        try:
+                            driver.press_keycode(int(keycode))
+                        except Exception:
+                            # If press_keycode fails for any reason, fall back to typing the character
+                            internal_logger.debug(f"press_keycode failed for '{ch}', falling back to script typing")
+                            driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(ch)})
+                    else:
+                        # Accumulate unmapped characters
+                        buffer.append(ch)
+
+                # Flush any remaining buffered characters
+                if buffer:
+                    segment = ''.join(buffer)
+                    execution_logger.debug(f"Flushing remaining unmapped segment via script: '{segment}'")
+                    driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(segment)})
 
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
