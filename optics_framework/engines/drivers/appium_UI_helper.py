@@ -822,10 +822,10 @@ class UIHelper:
             if not text:
                 # If no text-like attribute, still consider elements that are commonly interactive
                 # Uncomment to get non-text elements
-                # if self._is_probably_interactive(node):
-                #     text, used_key = node.tag, None
-                # else:
-                continue
+                if self._is_probably_interactive(node):
+                    text, used_key = node.tag, None
+                else:
+                    continue
 
             xpath = self.get_xpath(node)
             extra = self._build_extra_metadata(node.attrib, used_key, node.tag)
