@@ -101,6 +101,7 @@ class Appium(DriverInterface):
         if app_package:
             all_caps["appPackage"] = app_package
             all_caps["appium:appPackage"] = app_package
+            all_caps["app"] = app_package
         if app_activity:
             all_caps["appActivity"] = app_activity
             all_caps["appium:appActivity"] = app_activity
