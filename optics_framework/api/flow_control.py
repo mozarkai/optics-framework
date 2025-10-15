@@ -295,20 +295,15 @@ class FlowControl:
     def _handle_module_condition(self, cond_str: str, target: str, num_pairs: int) -> Optional[List[Any]]:
         """Handles evaluation and execution for module-based conditions."""
         try:
-            result = self.execute_module(cond_str)
+            self.execute_module(cond_str)
         except Exception as e:
             internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{cond_str}' raised error: {e}. Treating as false condition.")
-            result = []
-        if result:
-            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module condition '{cond_str}' is True. Returning result.")
-            return result
-        internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module condition '{cond_str}' is False.")
-        if num_pairs == 1:
-            internal_logger.debug("[_EVALUATE_CONDITIONS] Only one pair, module condition is False. Executing target as fallback.")
-            target_result = self.execute_module(target)
-            if target_result:
-                return target_result
-        return None
+            return None
+        try:
+            return self.execute_module(target)
+        except Exception as e:
+            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
+            raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {e}", cause=e)
 
     def _handle_expression_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
         """Handles evaluation and execution for expression-based conditions."""
