@@ -99,10 +99,22 @@ class Appium(DriverInterface):
 
         # If app_package or app_activity are provided, update capabilities
         if app_package:
-            all_caps["appPackage"] = app_package
-            all_caps["appium:appPackage"] = app_package
-            all_caps["appium:bundleId"] = app_package
-            all_caps["bundleId"] = app_package
+            if platform := (all_caps.get("platformName") or all_caps.get("appium:platformName")):
+                platform_lower = platform.lower()
+                if platform_lower == "android":
+                    all_caps["appPackage"] = app_package
+                    all_caps["appium:appPackage"] = app_package
+                elif platform_lower == "ios":
+                    all_caps["bundleId"] = app_package
+                    all_caps["appium:bundleId"] = app_package
+                else:
+                    internal_logger.warning(f"Unknown platform '{platform}', cannot set app identifier.")
+            else:
+                # Fallback: set both for compatibility
+                all_caps["appPackage"] = app_package
+                all_caps["appium:appPackage"] = app_package
+                all_caps["bundleId"] = app_package
+                all_caps["appium:bundleId"] = app_package
         if app_activity:
             all_caps["appActivity"] = app_activity
             all_caps["appium:appActivity"] = app_activity
