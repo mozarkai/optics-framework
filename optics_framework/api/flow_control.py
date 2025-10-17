@@ -290,7 +290,9 @@ class FlowControl:
 
     def _is_module_condition(self, cond_str: str) -> Optional[bool]:
         """Checks if the condition string is a module name."""
-        return self.modules and hasattr(self.modules, "modules") and cond_str in self.modules.modules
+        if not self.modules:
+            return False
+        return self.modules.get_module_definition(cond_str) is not None
 
     def _handle_module_condition(self, cond_str: str, target: str, num_pairs: int) -> Optional[List[Any]]:
         """Handles evaluation and execution for module-based conditions."""
