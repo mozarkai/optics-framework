@@ -507,16 +507,19 @@ class Appium(DriverInterface):
         location = element.location
         swipe_length = int(swipe_length)
         size = element.size
-        start_x = location["x"] + size["width"] // 2
-        start_y = location["y"] + size["height"] // 2
+        start_x: int = location["x"]
+        start_y: int = location["y"]
         end_x: int
         end_y: int
-        if direction in ("up", "down"):
+        dir_lower = direction.lower() if isinstance(direction, str) else direction
+        if dir_lower in ("up", "down"):
+            start_x = location["x"] + size["width"] // 2
             end_x = start_x
-            end_y = start_y + swipe_length if direction == "down" else start_y - swipe_length
-        elif direction in ("left", "right"):
+            end_y = start_y + swipe_length if dir_lower == "down" else start_y - swipe_length
+        elif dir_lower in ("left", "right"):
+            start_y = location["y"] + size["height"] // 2
             end_y = start_y
-            end_x = start_x + swipe_length if direction == "right" else start_x - swipe_length
+            end_x = start_x + swipe_length if dir_lower == "right" else start_x - swipe_length
         else:
             internal_logger.error(f"Unknown swipe direction: {direction}")
             return

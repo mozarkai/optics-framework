@@ -12,7 +12,7 @@ from io import StringIO
 from jsonpath_ng import parse as jsonpath_parse
 import requests
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.error import OpticsError, Code
@@ -58,6 +58,7 @@ class FlowControl:
 
     def _resolve_param(self, param: str) -> str:
         """Resolve ${variable} references from session.elements, always returning a scalar (first value if list)."""
+        param = param.strip()
         if (
             not isinstance(param, str)
             or not param.startswith("${")
@@ -103,6 +104,9 @@ class FlowControl:
                     for i, param in enumerate(params)
                 ]
                 internal_logger.debug(
+                    f"Executing {keyword} with params: {resolved_params}"
+                )
+                execution_logger.info(
                     f"Executing {keyword} with params: {resolved_params}"
                 )
                 result = method(*resolved_params)
