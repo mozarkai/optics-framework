@@ -95,7 +95,28 @@ class FlowControl:
         for keyword, params in module_def:
             func_name = "_".join(keyword.split()).lower()
             method = self.keyword_map.get(func_name)
+            # If there's no direct keyword function, treat the keyword as a module name
             if method is None:
+                # Use the ModuleData API to detect module definitions (preferred over direct dict access)
+                module_def = None
+                if self.modules:
+                    try:
+                        module_def = self.modules.get_module_definition(keyword)
+                    except Exception:
+                        module_def = None
+                if module_def is not None:
+                    internal_logger.debug(f"Keyword '{keyword}' not found in keyword_map; invoking module '{keyword}'.")
+                    # prevent obvious self-recursion
+                    if keyword == module_name:
+                        raise OpticsError(Code.E0401, message=f"Module '{module_name}' contains a self-call to '{keyword}'.")
+                    try:
+                        result = self.execute_module(keyword)
+                        results.append(result)
+                        continue
+                    except Exception as e:
+                        internal_logger.error(f"Error executing nested module '{keyword}': {e}")
+                        raise OpticsError(Code.E0401, message=f"Error executing nested module '{keyword}': {e}", cause=e)
+                # not a module and not a keyword -> error
                 raise OpticsError(Code.E0402, message=f"Keyword '{keyword}' not found in keyword_map.")
             try:
                 raw_indices = getattr(method, "_raw_param_indices", [])
