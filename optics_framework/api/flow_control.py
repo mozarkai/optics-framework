@@ -242,19 +242,28 @@ class FlowControl:
         return parsed_iterables
 
     def _parse_single_iterable(self, iterable: Any, variable: str) -> List[Any]:
-        """Parses a single iterable, converting JSON strings or validating lists."""
+        """Parses a single iterable, converting JSON strings, pipe-separated values, or validating lists."""
         if isinstance(iterable, str):
+            # First try pipe-separated values
+            if '|' in iterable:
+                values = [value.strip() for value in iterable.split('|')]
+                return values
+            # Then try JSON parsing
             try:
-                values = json.loads(iterable)
+                values = json.loads(iterable[0])
                 if not isinstance(values, list):
                     raise OpticsError(Code.E0403, message=f"Iterable '{iterable}' for variable '{variable}' must resolve to a list.")
                 return values
             except json.JSONDecodeError:
-                raise OpticsError(Code.E0403, message=f"Invalid iterable format for variable '{variable}': '{iterable}'.")
+                raise OpticsError(Code.E0403, message=f"Invalid iterable format for variable '{variable}': '{iterable}'. Expected JSON list or pipe-separated values (value1|value2|value3).")
         elif isinstance(iterable, list):
+            # Handle case where we get a list with a single string that contains pipe-separated values
+            if len(iterable) == 1 and isinstance(iterable[0], str) and '|' in iterable[0]:
+                values = [value.strip() for value in iterable[0].split('|')]
+                return values
             return iterable
         else:
-            raise OpticsError(Code.E0403, message=f"Expected a list or JSON string for iterable of variable '{variable}', got {type(iterable).__name__}.")
+            raise OpticsError(Code.E0403, message=f"Expected a list, JSON string, or pipe-separated string for iterable of variable '{variable}', got {type(iterable).__name__}.")
 
     def condition(self, *args: str) -> Optional[List[Any]]:
         """Evaluates conditions and executes corresponding targets."""
