@@ -925,44 +925,173 @@ class UIHelper:
 
     def get_xpath(self, node: etree.Element) -> str:
         """
-        Generate a concise XPath using unique attributes if possible,
-        falling back to structural path if necessary.
-
-        Notes:
-          - Includes element tag to avoid ambiguous matches
-          - Prefers iOS attributes (name > label > value) then Android
-          - Combines multiple attributes when available for better specificity
+        Generate an optimal XPath for a given node using attribute-based
+        uniqueness checks and semi-unique indexing, falling back to a
+        hierarchical path when required. Mirrors the behavior of the
+        provided getOptimalXPath logic.
         """
-        attrs = node.attrib or {}
-        tag = node.tag or "*"
+        # Short-circuit for safety: ensure we have a valid element
+        if node is None or not hasattr(node, "tag"):
+            return ""
 
-        # Prefer iOS text-ish attributes first (name > label > value), then Android
-        # (this helps iOS where resource-id doesn't exist)
-        ordered = [
-            ("name", attrs.get("name")),
-            ("label", attrs.get("label")),
-            ("value", attrs.get("value")),
-            ("resource-id", attrs.get("resource-id")),
-            ("content-desc", attrs.get("content-desc")),
-            ("text", attrs.get("text")),
+        # Attribute sets (mobile-centric with web-friendly aliases)
+        UNIQUE_ATTRIBUTES = [
+            "name",
+            "content-desc",
+            "id",
+            "resource-id",
+            "accessibility-id",
         ]
+        MAYBE_UNIQUE_ATTRIBUTES = ["label", "text", "value"]
 
-        # Try single-attribute unique-ish locator
-        for attr, val in ordered:
-            if val:
-                cond = self._build_attribute_condition(attr, val)
-                return f"//{tag}[{cond}]"
+        # Utility: safely escape values for XPath literals
+        def lit(val: str) -> str:
+            return self._escape_for_xpath_literal(val)
 
-        # Try multi-attribute combo (useful on iOS when name+label both exist)
-        combos = [("name", "label"), ("label", "value")]
-        for a1, a2 in combos:
-            v1, v2 = attrs.get(a1), attrs.get(a2)
-            if v1 and v2:
-                c1 = self._build_attribute_condition(a1, v1)
-                c2 = self._build_attribute_condition(a2, v2)
-                return f"//{tag}[{c1} and {c2}]"
+        # Obtain the document (tree) for this node so index comparisons work
+        doc_tree = node.getroottree()
 
-        return self._build_structural_xpath(node)
+        # Evaluate XPath against this node's document and determine uniqueness
+        def determine_xpath_uniqueness(xpath: str):
+            try:
+                matches = doc_tree.xpath(xpath)
+            except (etree.XPathError, ValueError, TypeError):
+                return False, None
+
+            # If no match, not useful
+            if not matches:
+                return False, None
+            # Multiple matches -> semi-unique, compute index of this node if present
+            if len(matches) > 1:
+                try:
+                    idx = matches.index(node)
+                except ValueError:
+                    idx = 0
+                return False, idx
+            # Exactly one match -> unique
+            return True, None
+
+        # Build XPath from a single attribute
+        def build_xpath_from_single_attribute(attr_name: str, tag_for_xpath: str):
+            val = node.attrib.get(attr_name)
+            if not val:
+                return None
+            return f"//{tag_for_xpath}[@{attr_name}={lit(val)}]"
+
+        # Build XPath from an attribute pair
+        def build_xpath_from_attribute_pair(attr_pair: tuple[str, str], tag_for_xpath: str):
+            a1, a2 = attr_pair
+            v1, v2 = node.attrib.get(a1), node.attrib.get(a2)
+            if not v1 or not v2:
+                return None
+            return f"//{tag_for_xpath}[@{a1}={lit(v1)} and @{a2}={lit(v2)}]"
+
+        # Semi-unique wrapper with explicit index (1-based)
+        def build_semi_unique_xpath(xpath: str, index: int) -> str:
+            return f"({xpath})[{index + 1}]"
+
+        # Try attributes (singles or pairs) for uniqueness, keeping first semi-unique
+        def try_attributes_for_unique_xpath(attrs):
+            tag_for_xpath = node.tag or "*"
+            is_pairs = bool(attrs and isinstance(attrs[0], tuple))
+            unique_xpath = None
+            semi_unique_xpath = None
+
+            for entry in attrs:
+                if is_pairs:
+                    xpath = build_xpath_from_attribute_pair(entry, tag_for_xpath)
+                else:
+                    xpath = build_xpath_from_single_attribute(entry, tag_for_xpath)
+                if not xpath:
+                    continue
+
+                is_unique, idx = determine_xpath_uniqueness(xpath)
+                if is_unique:
+                    unique_xpath = xpath
+                    break
+                if semi_unique_xpath is None and idx is not None:
+                    semi_unique_xpath = build_semi_unique_xpath(xpath, idx)
+
+            if unique_xpath:
+                return unique_xpath, True
+            if semi_unique_xpath:
+                return semi_unique_xpath, False
+            return None, None
+
+        # Try node name alone (//tag or /tag for root)
+        def try_node_name_xpath():
+            tag = node.tag or "*"
+            xpath = f"//{tag}"
+            is_unique, _ = determine_xpath_uniqueness(xpath)
+            if not is_unique:
+                return None, None
+            # If node has no parent, prefer absolute root path
+            if node.getparent() is None:
+                xpath = f"/{tag}"
+            return xpath, True
+
+        # Generate all attribute pair permutations
+        def build_attribute_pairs_permutations(attributes: list[str]) -> list[tuple[str, str]]:
+            pairs = []
+            for i, v1 in enumerate(attributes):
+                for v2 in attributes[i + 1 :]:
+                    pairs.append((v1, v2))
+            return pairs
+
+        # Ordered cases to try
+        def build_xpath_cases():
+            all_attrs = [*UNIQUE_ATTRIBUTES, *MAYBE_UNIQUE_ATTRIBUTES]
+            return [
+                UNIQUE_ATTRIBUTES,
+                build_attribute_pairs_permutations(all_attrs),
+                MAYBE_UNIQUE_ATTRIBUTES,
+                [],  # node name last
+            ]
+
+        # Try all cases; prefer fully unique, otherwise keep first semi-unique
+        def try_cases_for_unique_xpath():
+            semi_unique = None
+            for attrs in build_xpath_cases():
+                if len(attrs) == 0:
+                    xpath, is_unique = try_node_name_xpath()
+                else:
+                    xpath, is_unique = try_attributes_for_unique_xpath(attrs)
+                if is_unique:
+                    return xpath
+                if semi_unique is None and xpath:
+                    semi_unique = xpath
+            return semi_unique
+
+        # Build hierarchical XPath (short, index only when siblings share tag)
+        def build_hierarchical_xpath():
+            tag = node.tag
+            if not tag:
+                return ""
+
+            parent = node.getparent()
+            # Build current node segment with index only if needed
+            segment = f"/{tag}"
+            if parent is not None:
+                siblings_same_tag = [c for c in parent if c.tag == tag]
+                if len(siblings_same_tag) > 1:
+                    idx = siblings_same_tag.index(node) + 1
+                    segment += f"[{idx}]"
+
+            # If there is a parent, recurse to get parent's optimal path (which may be attribute-based)
+            if parent is not None and hasattr(parent, "tag"):
+                parent_xpath = self.get_xpath(parent)
+                return f"{parent_xpath}{segment}"
+
+            # No parent: return root absolute path
+            return segment
+
+        # 1) Try attribute-based uniqueness (singles, pairs, maybe-unique, node name)
+        candidate = try_cases_for_unique_xpath()
+        if candidate:
+            return candidate
+
+        # 2) Fallback to hierarchical path
+        return build_hierarchical_xpath() or self._build_structural_xpath(node)
 
     def _escape_for_xpath_literal(self, s: str) -> str:
         """
