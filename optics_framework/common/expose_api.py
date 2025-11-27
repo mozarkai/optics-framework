@@ -5,7 +5,8 @@ import importlib
 import pkgutil
 import asyncio
 import warnings
-from typing import Optional, Dict, Any, List, Union, cast
+from itertools import product
+from typing import Optional, Dict, Any, List, Union, cast, Callable
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
@@ -17,8 +18,10 @@ from optics_framework.common.execution import (
     ExecutionParams,
 )
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig
+from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.helper.version import VERSION
 
 app = FastAPI(title="Optics Framework API", version="1.0")
@@ -48,12 +51,13 @@ class AppiumUpdateRequest(BaseModel):
 class ExecuteRequest(BaseModel):
     """
     Request model for executing a keyword or test case.
+    Supports both positional and named parameters with fallback support.
     """
 
     mode: str
     test_case: Optional[str] = None
     keyword: Optional[str] = None
-    params: List[str] = []
+    params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]] = []
 
 
 class SessionResponse(BaseModel):
@@ -351,10 +355,215 @@ async def create_session(config: SessionConfig):
             raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"Session creation failed: {e}") from e
 
+
+def _normalize_param_value(name: str, val: Union[str, List[str]]) -> List[str]:
+    """
+    Normalize a parameter value to a list of strings.
+    Similar to _normalize_fallback_values in optics.py.
+
+    Args:
+        name: Parameter name for error messages
+        val: Parameter value (str or List[str])
+
+    Returns:
+        List[str]: Normalized list of strings
+
+    Raises:
+        ValueError: If list is empty
+        TypeError: If value is not str or List[str]
+    """
+    if val is None:
+        return []
+    if isinstance(val, list):
+        if not val:
+            raise ValueError(f"Empty list not allowed for parameter '{name}'")
+        if not all(isinstance(x, str) for x in val):
+            raise TypeError(f"Parameter '{name}' must be List[str], got mixed types")
+        return val
+    if isinstance(val, str):
+        return [val]
+    raise TypeError(f"Parameter '{name}' must be str or List[str], got {type(val)}")
+
+
+def _resolve_named_to_positional(
+    method: Callable[..., Any],
+    named_params: Dict[str, Union[str, List[str]]]
+) -> List[List[str]]:
+    """
+    Convert named parameters to positional parameters based on method signature.
+
+    Args:
+        method: The keyword method to call
+        named_params: Dictionary of named parameters
+
+    Returns:
+        List[List[str]]: List of normalized parameter lists in method signature order
+    """
+    sig = inspect.signature(method)
+    param_names = []
+    for p in sig.parameters.values():
+        if p.name != "self":
+            param_names.append(p.name)
+
+    normalized_params = []
+    for param_name in param_names:
+        if param_name in named_params:
+            normalized_params.append(_normalize_param_value(param_name, named_params[param_name]))
+        else:
+            # Parameter not provided, check if it has a default
+            param = sig.parameters[param_name]
+            if param.default != inspect.Parameter.empty:
+                # Has default, skip this parameter (method will use its default)
+                # We don't include it in the normalized params list
+                continue
+            else:
+                # Required parameter missing
+                raise ValueError(f"Required parameter '{param_name}' not provided in named params")
+
+    return normalized_params
+
+
+async def _execute_keyword_with_fallback(
+    engine: ExecutionEngine,
+    session_id: str,
+    keyword: str,
+    params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]],
+    method: Callable[..., Any],
+    session: Session
+) -> Any:
+    """
+    Execute a keyword via ExecutionEngine with fallback parameter support.
+    Tries all combinations of fallback values until one succeeds.
+
+    Args:
+        engine: The ExecutionEngine instance
+        session_id: The session ID
+        keyword: The keyword name
+        params: Either positional params (List) or named params (Dict)
+        method: The keyword method (for signature inspection)
+        session: The session object (for context)
+
+    Returns:
+        Any: Result from the first successful execution
+
+    Raises:
+        RuntimeError: If all fallback attempts fail
+    """
+    # Detect parameter format and normalize
+    if isinstance(params, dict):
+        # Named parameters: convert to positional based on method signature
+        sig = inspect.signature(method)
+        all_param_names = [p.name for p in sig.parameters.values() if p.name != "self"]
+
+        normalized_param_lists = []
+        provided_param_names = []
+        param_defaults = {}  # Store defaults for later use
+        for param_name in all_param_names:
+            param = sig.parameters[param_name]
+            if param_name in params:
+                normalized_param_lists.append(_normalize_param_value(param_name, params[param_name]))
+                provided_param_names.append(param_name)
+            else:
+                # Parameter not provided, check if it has a default
+                if param.default != inspect.Parameter.empty:
+                    # Has default - store it but don't include in fallback combinations
+                    # We'll use the default value directly when building positional args
+                    param_defaults[param_name] = param.default
+                else:
+                    # Required parameter missing
+                    raise ValueError(f"Required parameter '{param_name}' not provided in named params")
+    else:
+        # Positional parameters: normalize each one
+        normalized_param_lists = [
+            _normalize_param_value(f"param_{i}", param)
+            for i, param in enumerate(params)
+        ]
+
+    # Generate all combinations using itertools.product
+    if not normalized_param_lists:
+        # No parameters, just execute
+        try:
+            execution_params = ExecutionParams(
+                session_id=session_id,
+                mode="keyword",
+                keyword=keyword,
+                params=[],
+                runner_type="keyword",
+                use_printer=False
+            )
+            return await engine.execute(execution_params)
+        except Exception as e:
+            if isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit)):
+                raise
+            raise RuntimeError(f"Keyword execution failed: {e}") from e
+
+    # For named params, we need to convert to positional in method signature order
+    if isinstance(params, dict):
+        # Try each combination
+        errors: List[tuple[tuple, str]] = []
+        for combo in product(*normalized_param_lists):
+            try:
+                # Convert named params combo to positional args for ExecutionEngine
+                # Map combo values to their parameter names, then build positional list in method order
+                combo_dict = dict(zip(provided_param_names, combo))
+                positional_args = []
+                for param_name in all_param_names:
+                    if param_name in combo_dict:
+                        # Parameter was provided in request
+                        positional_args.append(combo_dict[param_name])
+                    elif param_name in param_defaults:
+                        # Parameter has a default - we need to include it
+                        # Convert default to string since ExecutionParams.params is List[str]
+                        default_val = param_defaults[param_name]
+                        positional_args.append(str(default_val) if not isinstance(default_val, str) else default_val)
+                    # If param not in combo_dict and not in param_defaults, it's required and should have been caught earlier
+
+                execution_params = ExecutionParams(
+                    session_id=session_id,
+                    mode="keyword",
+                    keyword=keyword,
+                    params=positional_args,
+                    runner_type="keyword",
+                    use_printer=False
+                )
+                return await engine.execute(execution_params)
+            except Exception as e:
+                if isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit)):
+                    raise
+                errors.append((combo, repr(e)))
+    else:
+        # Positional params: try each combination
+        errors: List[tuple[tuple, str]] = []
+        for combo in product(*normalized_param_lists):
+            try:
+                execution_params = ExecutionParams(
+                    session_id=session_id,
+                    mode="keyword",
+                    keyword=keyword,
+                    params=list(combo),
+                    runner_type="keyword",
+                    use_printer=False
+                )
+                return await engine.execute(execution_params)
+            except Exception as e:
+                if isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit)):
+                    raise
+                errors.append((combo, repr(e)))
+
+    # All combinations failed
+    if errors:
+        msg = "\n".join([f"{c} -> {err}" for c, err in errors])
+        raise RuntimeError(
+            f"All fallback attempts failed for keyword '{keyword}':\n{msg}"
+        )
+    raise RuntimeError(f"No valid fallback values provided for keyword '{keyword}'")
+
+
 @app.post("/v1/sessions/{session_id}/action")
 async def execute_keyword(session_id: str, request: ExecuteRequest):
     """
     Execute a keyword in the specified session.
+    Supports both positional and named parameters with fallback support.
     Returns execution status and result.
     """
     session = session_manager.get_session(session_id)
@@ -367,15 +576,6 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     engine = ExecutionEngine(session_manager)
     execution_id = str(uuid.uuid4())
 
-    execution_params = ExecutionParams(
-        session_id=session_id,
-        mode="keyword",
-        keyword=request.keyword,
-        params=request.params,
-        runner_type="keyword",
-        use_printer=False
-    )
-
     try:
         await session.event_queue.put(ExecutionEvent(
             execution_id=execution_id,
@@ -383,7 +583,30 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
             message=f"Starting keyword: {request.keyword}"
         ).model_dump())
 
-        result = await engine.execute(execution_params)
+        # Build keyword registry to get method signature for fallback handling
+        registry = KeywordRegistry()
+        action_keyword = session.optics.build(ActionKeyword)
+        app_management = session.optics.build(AppManagement)
+        verifier = session.optics.build(Verifier)
+        registry.register(action_keyword)
+        registry.register(app_management)
+        registry.register(verifier)
+        registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
+
+        # Get the method to determine parameter structure
+        keyword_slug = "_".join(request.keyword.split()).lower()
+        method = registry.keyword_map.get(keyword_slug)
+
+        if not method:
+            raise OpticsError(
+                Code.E0402,
+                message=f"Keyword {request.keyword} not found"
+            )
+
+        # Execute with fallback support via ExecutionEngine
+        result = await _execute_keyword_with_fallback(
+            engine, session_id, request.keyword, request.params, method, session
+        )
 
         await session.event_queue.put(ExecutionEvent(
             execution_id=execution_id,
@@ -408,11 +631,16 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}") from e
 
 # Helper for DRY keyword execution endpoints
-def run_keyword_endpoint(session_id: str, keyword: str, params: Optional[List[str]] = None) -> Any:
+def run_keyword_endpoint(
+    session_id: str,
+    keyword: str,
+    params: Optional[Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]]] = None
+) -> Any:
     """
     Helper to execute a keyword for a session using the execute_keyword endpoint.
+    Supports both positional and named parameters with fallback support.
     """
-    safe_params: List[str] = params or []
+    safe_params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]] = params or []
     request = ExecuteRequest(mode="keyword", keyword=keyword, params=safe_params)
     return execute_keyword(session_id, request)
 

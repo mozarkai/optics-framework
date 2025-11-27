@@ -1,7 +1,7 @@
 from uuid import uuid4
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Any
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
@@ -213,7 +213,7 @@ class ExecutionEngine:
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
 
-    async def execute(self, params: ExecutionParams) -> None:
+    async def execute(self, params: ExecutionParams) -> Any:
         # Get session-specific event manager
         event_manager = get_event_manager(params.session_id)
 
