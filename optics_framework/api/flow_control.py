@@ -326,7 +326,9 @@ class FlowControl:
         """Checks if the condition string is a module name."""
         if not self.modules:
             return False
-        return self.modules.get_module_definition(cond_str) is not None
+        # Strip "!" prefix if present before checking
+        actual_cond = cond_str[1:].strip() if cond_str.startswith("!") else cond_str
+        return self.modules.get_module_definition(actual_cond) is not None
 
     def _handle_module_condition(self, cond_str: str, target: str, num_pairs: int) -> Optional[List[Any]]:
         """Handles evaluation and execution for module-based conditions."""
@@ -355,15 +357,31 @@ class FlowControl:
         Supports both expression-based and module-based conditions.
         If cond matches a module name, executes the module and returns True if it succeeds and result is non-empty.
         Otherwise, evaluates cond as an expression.
+        Supports "!" prefix to invert the condition result.
         """
+        # Check for "!" prefix to invert the result
+        invert = cond.startswith("!")
+        actual_cond = cond[1:].strip() if invert else cond
+
         try:
-            if self.modules and hasattr(self.modules, "modules") and cond in self.modules.modules:
-                result = self.execute_module(cond)
-                return bool(result)
-            resolved_cond = self._resolve_condition(cond)
+            if self.modules and hasattr(self.modules, "modules") and actual_cond in self.modules.modules:
+                try:
+                    result = self.execute_module(actual_cond)
+                    result_bool = bool(result)
+                except Exception as e:
+                    # For module conditions, treat exceptions as False
+                    internal_logger.warning(f"[_is_condition_true] Module '{actual_cond}' raised error: {e}. Treating as false condition.")
+                    result_bool = False
+                return not result_bool if invert else result_bool
+            resolved_cond = self._resolve_condition(actual_cond)
             internal_logger.debug(f"[_is_condition_true] Evaluating resolved condition: {resolved_cond}")
-            return bool(self._safe_eval(resolved_cond))
+            result = bool(self._safe_eval(resolved_cond))
+            return not result if invert else result
         except Exception as e:
+            # If condition fails and we're inverting, treat failure as success
+            if invert:
+                internal_logger.debug(f"[_is_condition_true] Condition '{actual_cond}' failed, but inverting result to True.")
+                return True
             raise OpticsError(Code.E0403, message=f"Error evaluating condition '{cond}': {e}")
 
     def _resolve_condition(self, cond: str) -> str:
