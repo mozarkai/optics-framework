@@ -332,16 +332,36 @@ class FlowControl:
 
     def _handle_module_condition(self, cond_str: str, target: str, num_pairs: int) -> Optional[List[Any]]:
         """Handles evaluation and execution for module-based conditions."""
+        # Strip "!" prefix if present and determine if we need to invert the result
+        invert = cond_str.startswith("!")
+        actual_cond = cond_str[1:].strip() if invert else cond_str
+
         try:
-            self.execute_module(cond_str)
+            self.execute_module(actual_cond)
+            # Module executed successfully
+            if invert:
+                # If inverted, success means we should NOT execute target
+                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' succeeded, but condition is inverted. Skipping target '{target}'.")
+                return None
+            # If not inverted, success means we should execute target
+            try:
+                return self.execute_module(target)
+            except Exception as e:
+                internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
+                raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {e}", cause=e)
         except Exception as e:
-            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{cond_str}' raised error: {e}. Treating as false condition.")
+            # Module execution failed
+            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' raised error: {e}.")
+            if invert:
+                # If inverted, failure means we SHOULD execute target
+                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' failed, but condition is inverted. Executing target '{target}'.")
+                try:
+                    return self.execute_module(target)
+                except Exception as target_e:
+                    internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {target_e}.")
+                    raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {target_e}", cause=target_e)
+            # If not inverted, failure means we should NOT execute target
             return None
-        try:
-            return self.execute_module(target)
-        except Exception as e:
-            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
-            raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {e}", cause=e)
 
     def _handle_expression_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
         """Handles evaluation and execution for expression-based conditions."""
