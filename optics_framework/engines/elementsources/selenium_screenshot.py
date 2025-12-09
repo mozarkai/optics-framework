@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, List
 import base64
 import cv2
 import numpy as np
@@ -34,7 +34,7 @@ class SeleniumScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
-    def get_interactive_elements(self):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         internal_logger.exception("SeleniumScreenshot does not support getting interactive elements.")
         raise NotImplementedError("SeleniumScreenshot does not support getting interactive elements.")
 

@@ -1,4 +1,4 @@
-from typing import Optional, Any, Tuple
+from typing import Optional, Any, Tuple, List
 import time
 from lxml import etree # type: ignore
 from appium.webdriver.webdriver import WebDriver
@@ -73,9 +73,9 @@ class AppiumPageSource(ElementSourceInterface):
         internal_logger.debug('\n==========================================')
         return str(page_source), str(time_stamp)
 
-    def get_interactive_elements(self):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         if self.driver is not None and hasattr(self.driver, "ui_helper"):
-            return self.driver.ui_helper.get_interactive_elements()
+            return self.driver.ui_helper.get_interactive_elements(filter_config)
         internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
         raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 

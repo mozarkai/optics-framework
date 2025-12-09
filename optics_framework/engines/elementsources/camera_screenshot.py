@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import struct
 import socket
 import cv2
@@ -157,7 +157,7 @@ class CameraScreenshot(ElementSourceInterface):
             "CameraScreenshot does not support asserting elements."
         )
 
-    def get_interactive_elements(self):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         internal_logger.exception(
             "CameraScreenshot does not support getting interactive elements."
         )

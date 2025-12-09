@@ -971,11 +971,23 @@ class Optics:
         )
 
     @keyword("Get Interactive Elements")
-    def get_interactive_elements(self) -> List:
-        """Get interactive elements on the screen."""
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List:
+        """
+        Get interactive elements on the screen.
+
+        Args:
+            filter_config: Optional list of filter types. Valid values:
+                - "all": Show all elements (default when None or empty)
+                - "interactive": Only interactive elements
+                - "buttons": Only button elements
+                - "inputs": Only input/text field elements
+                - "images": Only image elements
+                - "text": Only text elements
+                Can be combined: ["buttons", "inputs"]
+        """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        return self.verifier.get_interactive_elements()
+        return self.verifier.get_interactive_elements(filter_config)
 
     @keyword("Capture Screenshot")
     def capture_screenshot(self):

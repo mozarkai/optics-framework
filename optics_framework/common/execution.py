@@ -1,7 +1,9 @@
 from uuid import uuid4
 import asyncio
+import json
+import inspect
 from abc import ABC, abstractmethod
-from typing import Optional, List, Any
+from typing import Optional, List, Any, get_origin, get_args, Union, Callable
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
@@ -125,6 +127,77 @@ class DryRunExecutor(Executor):
         ))
 
 
+def _is_list_type(param_type: Any) -> bool:
+    """
+    Check if a parameter type annotation indicates it's a list type.
+
+    Args:
+        param_type: The type annotation from inspect.Parameter
+
+    Returns:
+        bool: True if the type is a list type (List[str], Optional[List[str]], etc.)
+    """
+    if param_type is None or param_type == inspect.Parameter.empty:
+        return False
+
+    # Handle Optional[List[str]] -> Union[List[str], None]
+    origin = get_origin(param_type)
+    if origin is Union:
+        args = get_args(param_type)
+        # Check if any of the union types is a list
+        for arg in args:
+            if get_origin(arg) is list or (hasattr(arg, '__origin__') and arg.__origin__ is list):
+                return True
+
+    # Handle List[str] directly
+    if origin is list:
+        return True
+
+    # Handle typing.List[str] (Python < 3.9 compatibility)
+    if hasattr(param_type, '__origin__') and param_type.__origin__ is list:
+        return True
+
+    return False
+
+
+def _deserialize_params(method: Callable[..., Any], params: List[str]) -> List[Any]:
+    """
+    Deserialize parameters based on method signature.
+    JSON-encoded lists are deserialized back to Python lists.
+
+    Args:
+        method: The keyword method
+        params: List of string parameters
+
+    Returns:
+        List of deserialized parameters
+    """
+    sig = inspect.signature(method)
+    param_types = [p.annotation for p in sig.parameters.values() if p.name != "self"]
+
+    deserialized = []
+    for i, param_value in enumerate(params):
+        if i < len(param_types):
+            param_type = param_types[i]
+            if _is_list_type(param_type):
+                # Try to deserialize JSON string back to list
+                try:
+                    deserialized_value = json.loads(param_value)
+                    if isinstance(deserialized_value, list):
+                        deserialized.append(deserialized_value)
+                    else:
+                        deserialized.append(param_value)
+                except (json.JSONDecodeError, TypeError):
+                    # If it's not valid JSON, pass through as-is
+                    deserialized.append(param_value)
+            else:
+                deserialized.append(param_value)
+        else:
+            deserialized.append(param_value)
+
+    return deserialized
+
+
 class KeywordExecutor(Executor):
     """Executes a single keyword."""
 
@@ -139,7 +212,9 @@ class KeywordExecutor(Executor):
         result = None
         if method:
             try:
-                result = method(*self.params)
+                # Deserialize parameters based on method signature
+                deserialized_params = _deserialize_params(method, self.params)
+                result = method(*deserialized_params)
             except Exception as e:
                 await event_manager.publish_event(Event(
                     entity_type="keyword",

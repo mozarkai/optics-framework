@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional, List
 import numpy
 
 class ElementSourceInterface(ABC):
@@ -54,10 +54,12 @@ class ElementSourceInterface(ABC):
         pass
 
     @abstractmethod
-    def get_interactive_elements(self) -> list:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> list:
         """
         Retrieve a list of interactive elements on the current screen.
 
+        :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
+        :type filter_config: Optional[List[str]]
         :return: A list of interactive elements (e.g., buttons, links).
         :rtype: list
         """

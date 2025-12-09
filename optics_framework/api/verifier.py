@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, List
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -191,13 +191,15 @@ class Verifier:
         else:
             raise ValueError("Page source capture returned None.")
 
-    def get_interactive_elements(self) -> list:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> list:
         """
         Retrieves a list of interactive elements on the current screen.
 
+        :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
+        :type filter_config: Optional[List[str]]
         :return: A list of interactive elements.
         """
-        elements = self.strategy_manager.get_interactive_elements()
+        elements = self.strategy_manager.get_interactive_elements(filter_config)
         utils.save_interactable_elements(elements, output_dir=self.execution_dir)
         return elements
 

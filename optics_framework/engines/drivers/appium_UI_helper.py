@@ -804,8 +804,20 @@ class UIHelper:
             internal_logger.debug(f"Invalid XPath syntax: {xpath} - Error: {str(e)}")
 
     # element extraction
-    def get_interactive_elements(self) -> List[Dict]:
-        """Cross-platform element extraction supporting both Android and iOS."""
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Cross-platform element extraction supporting both Android and iOS.
+
+        Args:
+            filter_config: Optional list of filter types. Valid values:
+                - "all": Show all elements (default when None or empty)
+                - "interactive": Only interactive elements
+                - "buttons": Only button elements
+                - "inputs": Only input/text field elements
+                - "images": Only image elements
+                - "text": Only text elements
+                Can be combined: ["buttons", "inputs"]
+        """
         page_source, _ = self.get_page_source()
         root = etree.ElementTree(
             etree.fromstring(page_source.encode("utf-8"))
@@ -818,14 +830,14 @@ class UIHelper:
             if not bounds:
                 continue
 
+            # Check if element should be included based on filter_config
+            if not self._should_include_element(node, filter_config):
+                continue
+
             text, used_key = self._extract_display_text(node.attrib)
             if not text:
-                # If no text-like attribute, still consider elements that are commonly interactive
-                # Uncomment to get non-text elements
-                if self._is_probably_interactive(node):
-                    text, used_key = node.tag, None
-                else:
-                    continue
+                # If no text-like attribute, use tag name
+                text, used_key = node.tag, None
 
             xpath = self.get_xpath(node)
             extra = self._build_extra_metadata(node.attrib, used_key, node.tag)
@@ -1154,9 +1166,85 @@ class UIHelper:
             cur = parent
         return "/" + "/".join(reversed(path))
 
+    def _should_include_element(self, node: etree.Element, filter_config: Optional[List[str]]) -> bool:
+        """
+        Determine if an element should be included based on filter_config.
+
+        Args:
+            node: The XML element node
+            filter_config: Optional list of filter types
+
+        Returns:
+            True if element should be included, False otherwise
+        """
+        # Default behavior: show all elements when filter_config is None or empty
+        if not filter_config or len(filter_config) == 0:
+            return True
+
+        # If "all" is in filter_config, show all elements
+        if "all" in filter_config:
+            return True
+
+        # Check each filter type
+        matches_any = False
+
+        if "interactive" in filter_config:
+            if self._is_probably_interactive(node):
+                matches_any = True
+
+        if "buttons" in filter_config:
+            if self._is_button(node):
+                matches_any = True
+
+        if "inputs" in filter_config:
+            if self._is_input(node):
+                matches_any = True
+
+        if "images" in filter_config:
+            if self._is_image(node):
+                matches_any = True
+
+        if "text" in filter_config:
+            if self._is_text(node):
+                matches_any = True
+
+        return matches_any
+
+    def _is_button(self, node: etree.Element) -> bool:
+        """Check if element is a button."""
+        tag = node.tag or ""
+        # Android: android.widget.Button
+        # iOS: XCUIElementTypeButton
+        return "Button" in tag
+
+    def _is_input(self, node: etree.Element) -> bool:
+        """Check if element is an input/text field."""
+        tag = node.tag or ""
+        # Android: EditText, TextView (when editable)
+        # iOS: XCUIElementTypeTextField, XCUIElementTypeSecureTextField, XCUIElementTypeTextView
+        input_tags = ["TextField", "EditText", "SecureTextField", "TextView"]
+        return any(input_tag in tag for input_tag in input_tags)
+
+    def _is_image(self, node: etree.Element) -> bool:
+        """Check if element is an image."""
+        tag = node.tag or ""
+        # Android: ImageView
+        # iOS: XCUIElementTypeImage
+        return "Image" in tag
+
+    def _is_text(self, node: etree.Element) -> bool:
+        """Check if element is a text element (non-input)."""
+        tag = node.tag or ""
+        # Android: TextView (non-editable)
+        # iOS: XCUIElementTypeStaticText
+        # Exclude inputs
+        if self._is_input(node):
+            return False
+        return "StaticText" in tag or ("TextView" in tag and "EditText" not in tag)
+
     def _is_probably_interactive(self, node: etree.Element) -> bool:
         """
-        (Optional) If you want to also return icon-only controls on iOS/Android.
+        Check if element is probably interactive (clickable, enabled, etc.).
         """
         attrs = node.attrib or {}
         tag = node.tag or ""

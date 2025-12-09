@@ -1,5 +1,5 @@
 import base64
-from typing import Optional, Any
+from typing import Optional, Any, List
 import numpy as np
 import cv2
 from appium.webdriver.webdriver import WebDriver
@@ -47,7 +47,7 @@ class AppiumScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
-    def get_interactive_elements(self):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         internal_logger.exception("AppiumScreenshot does not support getting interactive elements.")
         raise NotImplementedError(
             "AppiumScreenshot does not support getting interactive elements."

@@ -65,9 +65,12 @@ class AppiumFindElement(ElementSourceInterface):
             self.root = None
         return page_source
 
-    def get_interactive_elements(self) -> List[Any]:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[Any]:
         """
         Get all interactive elements from the current page source.
+
+        Args:
+            filter_config: Optional list of filter types (not used for this implementation).
 
         Returns:
             list: A list of interactive elements (buttons, links, etc.) found in the page source.

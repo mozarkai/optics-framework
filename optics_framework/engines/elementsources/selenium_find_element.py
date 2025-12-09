@@ -1,5 +1,5 @@
 import time
-from typing import Any
+from typing import Any, Optional, List
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from optics_framework.common.elementsource_interface import ElementSourceInterface
@@ -44,7 +44,7 @@ class SeleniumFindElement(ElementSourceInterface):
         # Optionally parse tree/root for future extensibility
         return page_source
 
-    def get_interactive_elements(self):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         msg = "Getting interactive elements is not yet supported using Selenium Find Element."
         internal_logger.exception(msg)
         raise NotImplementedError(msg)

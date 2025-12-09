@@ -171,6 +171,37 @@
       margin-bottom: 0.5em;
       display: inline-block;
     }
+
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1em;
+      padding: 0.8em;
+      background: #f8fbff;
+      border-radius: 8px;
+      border: 1px solid #e3eafc;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      cursor: pointer;
+      font-weight: 500;
+      color: #2a3a5e;
+      user-select: none;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+      accent-color: #007bff;
+    }
+
+    .checkbox-label span {
+      font-size: 0.95em;
+    }
   </style>
 </head>
 
@@ -234,6 +265,35 @@
               <button type="button" onclick="executeKeyword()">Execute Keyword</button>
             </div>
           </form>
+          <div class="form-group">
+            <label>Element Filters</label>
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="filter_all" value="all" onchange="handleAllFilter()">
+                <span>All</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="filter_interactive" value="interactive">
+                <span>Interactive</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="filter_buttons" value="buttons">
+                <span>Buttons</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="filter_inputs" value="inputs">
+                <span>Inputs</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="filter_images" value="images">
+                <span>Images</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="filter_text" value="text">
+                <span>Text</span>
+              </label>
+            </div>
+          </div>
           <div class="button-group">
             <button type="button" onclick="getScreenshot()">Get Screenshot</button>
             <button type="button" onclick="getElements()">Get Elements</button>
@@ -372,6 +432,8 @@
       // text & image
       addTextEntry();
       addImageEntry();
+      // Setup filter checkbox handlers
+      setupFilterCheckboxes();
     });
     function stopSession() {
       if (!sessionId) {showResponse('No session started'); return;}
@@ -470,9 +532,55 @@
           throw err;
         });
     }
+    function getSelectedFilters() {
+      const filters = [];
+      const checkboxes = ['filter_all', 'filter_interactive', 'filter_buttons', 'filter_inputs', 'filter_images', 'filter_text'];
+      checkboxes.forEach(id => {
+        const checkbox = document.getElementById(id);
+        if (checkbox && checkbox.checked && id !== 'filter_all') {
+          filters.push(checkbox.value);
+        }
+      });
+      // If "all" is checked or no filters selected, return empty array (default behavior)
+      const allChecked = document.getElementById('filter_all').checked;
+      return allChecked || filters.length === 0 ? null : filters;
+    }
+
+    function handleAllFilter() {
+      const allCheckbox = document.getElementById('filter_all');
+      if (allCheckbox.checked) {
+        // Uncheck all other filters when "all" is selected
+        ['filter_interactive', 'filter_buttons', 'filter_inputs', 'filter_images', 'filter_text'].forEach(id => {
+          document.getElementById(id).checked = false;
+        });
+      }
+    }
+
+    // Uncheck "all" when any specific filter is selected
+    function setupFilterCheckboxes() {
+      ['filter_interactive', 'filter_buttons', 'filter_inputs', 'filter_images', 'filter_text'].forEach(id => {
+        document.getElementById(id).addEventListener('change', function() {
+          if (this.checked) {
+            document.getElementById('filter_all').checked = false;
+          }
+        });
+      });
+    }
+
     function getElements() {
       if (!sessionId) {showResponse('No session started'); return;}
-      const url = `${API_BASE}/v1/sessions/${sessionId}/elements`;
+      const filterConfig = getSelectedFilters();
+      let url = `${API_BASE}/v1/sessions/${sessionId}/elements`;
+
+      // Build query parameters if filters are selected
+      if (filterConfig && filterConfig.length > 0) {
+        const params = new URLSearchParams();
+        filterConfig.forEach(filter => {
+          params.append('filter_config', filter);
+        });
+        url += '?' + params.toString();
+      }
+
       logRequest(url, {});
       return fetch(url)
         .then((res) => res.json())

@@ -1,5 +1,5 @@
 import time
-from typing import Optional, Any, Tuple
+from typing import Optional, Any, Tuple, List
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
@@ -66,7 +66,7 @@ class SeleniumPageSource(ElementSourceInterface):
         internal_logger.debug('Page source fetched at: %s', time_stamp)
         return str(page_source), str(time_stamp)
 
-    def get_interactive_elements(self):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         msg = "Getting interactive elements is not yet supported using Selenium Page Source."
         internal_logger.exception(msg)
         raise NotImplementedError(msg)

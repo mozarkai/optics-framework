@@ -6,8 +6,8 @@ import pkgutil
 import asyncio
 import warnings
 from itertools import product
-from typing import Optional, Dict, Any, List, Union, cast, Callable
-from fastapi import FastAPI, HTTPException
+from typing import Optional, Dict, Any, List, Union, cast, Callable, get_origin, get_args
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
 from pydantic import BaseModel
@@ -356,7 +356,40 @@ async def create_session(config: SessionConfig):
         raise HTTPException(status_code=500, detail=f"Session creation failed: {e}") from e
 
 
-def _normalize_param_value(name: str, val: Union[str, List[str]]) -> List[str]:
+def _is_list_type(param_type: Any) -> bool:
+    """
+    Check if a parameter type annotation indicates it's a list type.
+
+    Args:
+        param_type: The type annotation from inspect.Parameter
+
+    Returns:
+        bool: True if the type is a list type (List[str], Optional[List[str]], etc.)
+    """
+    if param_type is None or param_type == inspect.Parameter.empty:
+        return False
+
+    # Handle Optional[List[str]] -> Union[List[str], None]
+    origin = get_origin(param_type)
+    if origin is Union:
+        args = get_args(param_type)
+        # Check if any of the union types is a list
+        for arg in args:
+            if get_origin(arg) is list or (hasattr(arg, '__origin__') and arg.__origin__ is list):
+                return True
+
+    # Handle List[str] directly
+    if origin is list:
+        return True
+
+    # Handle typing.List[str] (Python < 3.9 compatibility)
+    if hasattr(param_type, '__origin__') and param_type.__origin__ is list:
+        return True
+
+    return False
+
+
+def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param: bool = False) -> List[str]:
     """
     Normalize a parameter value to a list of strings.
     Similar to _normalize_fallback_values in optics.py.
@@ -364,9 +397,11 @@ def _normalize_param_value(name: str, val: Union[str, List[str]]) -> List[str]:
     Args:
         name: Parameter name for error messages
         val: Parameter value (str or List[str])
+        is_list_param: Whether this parameter is expected to be a list type
 
     Returns:
-        List[str]: Normalized list of strings
+        List[str]: Normalized list of strings. If is_list_param is True and val is a list,
+                   returns a list containing a JSON-serialized version of the list.
 
     Raises:
         ValueError: If list is empty
@@ -379,6 +414,10 @@ def _normalize_param_value(name: str, val: Union[str, List[str]]) -> List[str]:
             raise ValueError(f"Empty list not allowed for parameter '{name}'")
         if not all(isinstance(x, str) for x in val):
             raise TypeError(f"Parameter '{name}' must be List[str], got mixed types")
+
+        # If this is a list parameter, serialize it as JSON so it's treated as a single value
+        if is_list_param:
+            return [json.dumps(val)]
         return val
     if isinstance(val, str):
         return [val]
@@ -458,10 +497,14 @@ async def _execute_keyword_with_fallback(
         normalized_param_lists = []
         provided_param_names = []
         param_defaults = {}  # Store defaults for later use
+        param_is_list = {}  # Track which parameters are list types
         for param_name in all_param_names:
             param = sig.parameters[param_name]
+            is_list_param = _is_list_type(param.annotation)
+            param_is_list[param_name] = is_list_param
+
             if param_name in params:
-                normalized_param_lists.append(_normalize_param_value(param_name, params[param_name]))
+                normalized_param_lists.append(_normalize_param_value(param_name, params[param_name], is_list_param))
                 provided_param_names.append(param_name)
             else:
                 # Parameter not provided, check if it has a default
@@ -510,12 +553,19 @@ async def _execute_keyword_with_fallback(
                 for param_name in all_param_names:
                     if param_name in combo_dict:
                         # Parameter was provided in request
-                        positional_args.append(combo_dict[param_name])
+                        param_value = combo_dict[param_name]
+                        # If this is a list parameter and the value is a JSON string, keep it as-is
+                        # Otherwise, it's already a string from the fallback mechanism
+                        positional_args.append(param_value)
                     elif param_name in param_defaults:
                         # Parameter has a default - we need to include it
-                        # Convert default to string since ExecutionParams.params is List[str]
                         default_val = param_defaults[param_name]
-                        positional_args.append(str(default_val) if not isinstance(default_val, str) else default_val)
+                        # If it's a list parameter, serialize it as JSON
+                        if param_is_list.get(param_name, False) and isinstance(default_val, list):
+                            positional_args.append(json.dumps(default_val))
+                        else:
+                            # Convert default to string since ExecutionParams.params is List[str]
+                            positional_args.append(str(default_val) if not isinstance(default_val, str) else default_val)
                     # If param not in combo_dict and not in param_defaults, it's required and should have been caught earlier
 
                 execution_params = ExecutionParams(
@@ -631,7 +681,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}") from e
 
 # Helper for DRY keyword execution endpoints
-def run_keyword_endpoint(
+async def run_keyword_endpoint(
     session_id: str,
     keyword: str,
     params: Optional[Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]]] = None
@@ -642,7 +692,7 @@ def run_keyword_endpoint(
     """
     safe_params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]] = params or []
     request = ExecuteRequest(mode="keyword", keyword=keyword, params=safe_params)
-    return execute_keyword(session_id, request)
+    return await execute_keyword(session_id, request)
 
 
 @app.get("/v1/sessions/{session_id}/screenshot")
@@ -662,12 +712,31 @@ async def get_driver_session_id(session_id: str):
     return await run_keyword_endpoint(session_id, "get_driver_session_id")
 
 @app.get("/v1/sessions/{session_id}/elements")
-async def get_elements(session_id: str):
+async def get_elements(
+    session_id: str,
+    filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text")
+):
     """
     Get interactive elements from the current session screen.
-    Returns the elements result.
+
+    Args:
+        session_id: The session ID
+        filter_config: Optional list of filter types. Valid values:
+            - "all": Show all elements (default when None or empty)
+            - "interactive": Only interactive elements
+            - "buttons": Only button elements
+            - "inputs": Only input/text field elements
+            - "images": Only image elements
+            - "text": Only text elements
+            Can be combined: ?filter_config=buttons&filter_config=inputs
+
+    Returns:
+        The elements result.
     """
-    return await run_keyword_endpoint(session_id, "get_interactive_elements")
+    params: Optional[Dict[str, Union[str, List[str]]]] = None
+    if filter_config:
+        params = {"filter_config": filter_config}
+    return await run_keyword_endpoint(session_id, "get_interactive_elements", params)
 
 @app.get("/v1/sessions/{session_id}/source")
 async def get_pagesource(session_id: str):
