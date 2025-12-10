@@ -6,6 +6,10 @@ from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.webdriver.common.action_chains import ActionChains  # type: ignore
+from selenium.webdriver.common.actions.action_builder import ActionBuilder  # type: ignore
+from selenium.webdriver.common.actions.pointer_input import PointerInput  # type: ignore
+from selenium.webdriver.common.actions import interaction  # type: ignore
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common import utils
@@ -526,14 +530,29 @@ class Appium(DriverInterface):
         timestamp = self.event_sdk.get_current_time_for_events()
         try:
             execution_logger.debug(
-                f"Swiped from ({start_x}, {start_y}) to ({end_x}, {end_y})"
+                f"Swiping (W3C Action) from ({start_x}, {start_y}) to ({end_x}, {end_y})"
             )
-            driver.swipe(start_x, start_y, end_x, end_y, 1000)
-            if event_name:
-                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+            try:
+                # Use ActionChains + ActionBuilder with a touch pointer for W3C actions
+                actions = ActionChains(driver)
+                actions.w3c_actions = ActionBuilder(driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch"))
+                # Move to start location, press, move to end location, then release
+                actions.w3c_actions.pointer_action.move_to_location(int(start_x), int(start_y))
+                actions.w3c_actions.pointer_action.pointer_down()
+                actions.w3c_actions.pointer_action.move_to_location(int(end_x), int(end_y))
+                actions.w3c_actions.pointer_action.release()
+                actions.perform()
+
+                if event_name:
+                    self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+            except Exception as w3c_e:
+                # Fallback: log and continue (keeps previous behavior of not raising)
+                execution_logger.debug(
+                    f"W3C Action swipe failed from ({start_x}, {start_y}) to ({end_x}, {end_y}): {w3c_e}"
+                )
         except Exception as e:
             execution_logger.debug(
-                f"Failed to swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}"
+                f"Failed to perform TouchAction swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}"
             )
 
     def scroll(
