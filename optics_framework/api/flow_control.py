@@ -479,29 +479,39 @@ class FlowControl:
         internal_logger.debug(f"[READ_DATA] Loading data from environment variable: {env_var}")
         if env_data is None:
             raise OpticsError(Code.E0501, message=f"Environment variable '{env_var}' not found.")
-        try:
-            json_data = json.loads(env_data)
-            internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
-            # If the parsed JSON is a scalar (not list/dict), return as string
-            if not isinstance(json_data, (list, dict)):
-                return pd.DataFrame(), str(json_data)
-            normalized_data = self._normalize_json_data(json_data)
-            return pd.json_normalize(normalized_data), None
-        except json.JSONDecodeError:
-            # Try CSV parsing
-            internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
+
+        # Only try JSON parsing if the value looks like JSON (starts with [, {, or ")
+        # This prevents numeric strings like "76e75538" from being parsed as scientific notation
+        env_data_stripped = env_data.strip()
+        looks_like_json = env_data_stripped.startswith(('{', '[', '"'))
+
+        if looks_like_json:
             try:
-                df = pd.read_csv(StringIO(env_data))
-                internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
-                if df.empty:
-                    return pd.DataFrame(), str(env_data)
-                return df, None
-            except ValueError:
-                internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+                json_data = json.loads(env_data)
+                internal_logger.debug(f"[READ_DATA] Parsed environment variable as JSON: {json_data}")
+                # If the parsed JSON is a scalar (not list/dict), return as string
+                if not isinstance(json_data, (list, dict)):
+                    return pd.DataFrame(), str(json_data)
+                normalized_data = self._normalize_json_data(json_data)
+                return pd.json_normalize(normalized_data), None
+            except json.JSONDecodeError:
+                # Fall through to CSV parsing
+                pass
+            except Exception as e:
+                internal_logger.error(f"[READ_DATA] Unexpected error occurred: {e}")
+                raise OpticsError(Code.E0501, message=f"Unexpected error while loading environment variable '{env_var}': {e}", cause=e)
+
+        # Try CSV parsing
+        internal_logger.debug("[READ_DATA] Failed to parse environment variable as JSON, trying CSV.")
+        try:
+            df = pd.read_csv(StringIO(env_data))
+            internal_logger.debug("[READ_DATA] Parsed environment variable as CSV.")
+            if df.empty:
                 return pd.DataFrame(), str(env_data)
-        except Exception as e:
-            internal_logger.error(f"[READ_DATA] Unexpected error occurred: {e}")
-            raise OpticsError(Code.E0501, message=f"Unexpected error while loading environment variable '{env_var}': {e}", cause=e)
+            return df, None
+        except ValueError:
+            internal_logger.debug("[READ_DATA] Failed to parse environment variable as CSV, treating as direct value.")
+            return pd.DataFrame(), str(env_data)
 
     def _normalize_json_data(self, json_data):
         """Normalizes JSON data to ensure it's in list format for DataFrame creation."""
