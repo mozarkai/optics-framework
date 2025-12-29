@@ -6,7 +6,7 @@ import pkgutil
 import asyncio
 import warnings
 from itertools import product
-from typing import Optional, Dict, Any, List, Union, cast, Callable, get_origin, get_args
+from typing import Optional, Dict, Any, List, Union, cast, Callable
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
@@ -21,6 +21,7 @@ from optics_framework.common.logging_config import internal_logger, reconfigure_
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.common.utils import _is_list_type
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.helper.version import VERSION
 
@@ -354,39 +355,6 @@ async def create_session(config: SessionConfig):
         if isinstance(e, OpticsError):
             raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"Session creation failed: {e}") from e
-
-
-def _is_list_type(param_type: Any) -> bool:
-    """
-    Check if a parameter type annotation indicates it's a list type.
-
-    Args:
-        param_type: The type annotation from inspect.Parameter
-
-    Returns:
-        bool: True if the type is a list type (List[str], Optional[List[str]], etc.)
-    """
-    if param_type is None or param_type == inspect.Parameter.empty:
-        return False
-
-    # Handle Optional[List[str]] -> Union[List[str], None]
-    origin = get_origin(param_type)
-    if origin is Union:
-        args = get_args(param_type)
-        # Check if any of the union types is a list
-        for arg in args:
-            if get_origin(arg) is list or (hasattr(arg, '__origin__') and arg.__origin__ is list):
-                return True
-
-    # Handle List[str] directly
-    if origin is list:
-        return True
-
-    # Handle typing.List[str] (Python < 3.9 compatibility)
-    if hasattr(param_type, '__origin__') and param_type.__origin__ is list:
-        return True
-
-    return False
 
 
 def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param: bool = False) -> List[str]:

@@ -9,7 +9,8 @@ import base64
 import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
-from typing import Optional
+from typing import Optional, Any, Union, get_origin, get_args
+import inspect
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
 
@@ -515,3 +516,33 @@ def annotate_aoi_region(screenshot, aoi_x, aoi_y, aoi_width, aoi_height):
     except ValueError as e:
         internal_logger.debug(f"Failed to annotate AOI region: {e}")
         return screenshot
+
+
+def _is_list_type(param_type: Any) -> bool:
+    """
+    Check if a parameter type annotation indicates it's a list type.
+
+    Args:
+        param_type: The type annotation from inspect.Parameter
+
+    Returns:
+        bool: True if the type is a list type (List[str], Optional[List[str]], etc.)
+    """
+    def _is_list_like(t: Any) -> bool:
+        origin = get_origin(t)
+        return origin is list or (hasattr(t, '__origin__') and t.__origin__ is list)
+
+    if param_type is None or param_type == inspect.Parameter.empty:
+        return False
+
+    # Handle Optional[List[str]] -> Union[List[str], None]
+    origin = get_origin(param_type)
+    if origin is Union:
+        args = get_args(param_type)
+        # Check if any of the union types is a list
+        for arg in args:
+            if _is_list_like(arg):
+                return True
+
+    # Handle List[str] directly
+    return _is_list_like(param_type)
