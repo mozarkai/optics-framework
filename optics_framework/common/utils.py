@@ -92,12 +92,28 @@ def determine_element_type(element):
     # Check if the input is an Image path
     if element.split(".")[-1] in ["jpg", "jpeg", "png", "bmp"]:
         return "Image"
+    # Check for Playwright-specific prefixes first
+    if element.lower().startswith("text="):
+        return "Text"
+    if element.lower().startswith("css="):
+        return "CSS"
+    if element.lower().startswith("xpath="):
+        return "XPath"
     # Check if the input is an XPath
     if element.startswith("/") or element.startswith("//") or element.startswith("("):
         return "XPath"
     # Check if it looks like an ID (heuristic: no slashes, no dots, usually alphanumeric/underscores)
     if element.lower().startswith("id:"):
         return "ID"
+    # Check if it's a CSS selector (has brackets, starts with # or ., or contains CSS selector patterns)
+    # CSS selectors can have: tag[attribute="value"], #id, .class, tag.class, etc.
+    if ("[" in element and "]" in element) or element.startswith("#") or element.startswith("."):
+        return "CSS"
+    # Check if it starts with a tag name followed by CSS selector characters
+    # Common HTML tags that might be CSS selectors
+    common_tags = ["input", "button", "div", "span", "a", "img", "select", "textarea", "form", "label", "p", "h1", "h2", "h3", "h4", "h5", "h6"]
+    if any(element.startswith(tag + "[") or element.startswith(tag + "#") or element.startswith(tag + ".") for tag in common_tags):
+        return "CSS"
     # Default case: consider the input as Text
     return "Text"
 

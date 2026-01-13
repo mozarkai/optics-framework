@@ -937,7 +937,7 @@ class Optics:
     def assert_presence(
         self,
         elements: fallback_str,
-        timeout: fallback_str = "30",
+        timeout: fallback_str = "60",
         rule: fallback_str = "any",
         event_name: Optional[fallback_str] = None,
     ) -> bool:

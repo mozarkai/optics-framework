@@ -1,0 +1,70 @@
+# --------------------------------------------------
+# Logging
+# --------------------------------------------------
+console: true
+file_log: true
+json_log: false
+log_level: DEBUG
+
+# Optional (recommended)
+log_path: /Users/samyadav/Documents/Mozark/optics-framework/execution_output/logs
+json_path: /Users/samyadav/Documents/Mozark/optics-framework/execution_output/logs/json
+
+# --------------------------------------------------
+# Project paths
+# --------------------------------------------------
+project_path: /Users/samyadav/Documents/Mozark/optics-framework
+execution_output_path: /Users/samyadav/Documents/Mozark/optics-framework/execution_output
+
+# --------------------------------------------------
+# Runtime behavior
+# --------------------------------------------------
+halt_duration: 0.2
+max_attempts: 3
+
+# --------------------------------------------------
+# Drivers
+# --------------------------------------------------
+driver_sources:
+  - playwright:
+      enabled: true
+      url: null
+      capabilities:
+        browser: chromium
+        headless: false
+        slow_mo: 300
+
+# --------------------------------------------------
+# Element sources
+# --------------------------------------------------
+elements_sources:
+  - playwright_find_element:
+      enabled: true
+      url: null
+      capabilities: {}
+  - playwright_page_source:
+      enabled: true
+      url: null
+      capabilities: {}
+  - playwright_screenshot:
+      enabled: true
+      url: null
+      capabilities: {}
+
+# --------------------------------------------------
+# OCR
+# --------------------------------------------------
+text_detection:
+  - easyocr:
+      enabled: false
+      url: null
+      capabilities: {}
+
+# --------------------------------------------------
+# Image detection
+# --------------------------------------------------
+image_detection:
+  - templatematch:
+      enabled: false
+      url: null
+      capabilities: {}

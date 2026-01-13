@@ -498,7 +498,8 @@ class ActionKeyword:
             else:
                 internal_logger.error(
                     'Get Text is not supported for vision based search yet.')
-                return None
+                result = self.element_source.locate(element)
+                return self.driver.get_text_element(result)
         else:
             internal_logger.error(
                 'Get Text is not supported for image based search yet.')
