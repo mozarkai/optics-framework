@@ -146,7 +146,7 @@ class FlowControl:
         """Executes a module's keywords using the session's keyword_map."""
         module_def = self._get_validated_module_def(module_name)
         results = []
-        execution_logger.info(f"[EXECUTE_MODULE] Executing module: {module_name}")
+        execution_logger.info(f"Executing module: {module_name}")
         for keyword, params in module_def:
             results.append(self._execute_single_keyword(module_name, keyword, params))
         return results
@@ -320,7 +320,7 @@ class FlowControl:
         internal_logger.debug(f"[_EVALUATE_CONDITIONS] pairs={pairs}, else_target={else_target}")
         for idx, (cond, target) in enumerate(pairs):
             cond_str = cond.strip()
-            execution_logger.info(f"[_EVALUATE_CONDITIONS] Evaluating condition: '{cond_str}'")
+            execution_logger.info(f"Evaluating condition: '{cond_str}'")
             if not cond_str:
                 continue
             if self._is_module_condition(cond_str):
@@ -374,15 +374,15 @@ class FlowControl:
             cond_true = not cond_true
         if cond_true:
             # Return condition module's result (do not run target)
-            execution_logger.info(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' result non-empty. Returning condition result (skipping target '{target}').")
+            execution_logger.info(f"Module '{actual_cond}' result non-empty. Returning condition result (skipping target '{target}').")
             return cond_result
         # Condition false: run target and return its result (or None if target returns empty)
         try:
-            execution_logger.info(f"[_EVALUATE_CONDITIONS] Executing 'then' block module '{target}' (condition '{actual_cond}' was empty/false).")
+            execution_logger.info(f"Executing 'then' block module '{target}' (condition '{actual_cond}' was empty/false).")
             target_result = self.execute_module(target)
             return target_result if target_result else None
         except Exception as e:
-            execution_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
+            execution_logger.warning(f"Target module '{target}' raised error: {e}.")
             raise OpticsError(Code.E0401, message=f"Error executing 'then' block module '{target}': {e}", cause=e)
 
     def _handle_expression_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
