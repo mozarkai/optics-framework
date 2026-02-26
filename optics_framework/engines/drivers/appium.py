@@ -695,8 +695,10 @@ class Appium(DriverInterface):
                 # Move to start location, press, move to end location, then release
                 actions.w3c_actions.pointer_action.move_to_location(int(start_x), int(start_y))
                 actions.w3c_actions.pointer_action.pointer_down()
+                actions.w3c_actions.pointer_action.pause(0.2)
                 actions.w3c_actions.pointer_action.move_to_location(int(end_x), int(end_y))
-                actions.w3c_actions.pointer_action.release()
+                actions.w3c_actions.pointer_action.pause(0.2)
+                actions.w3c_actions.pointer_action.pointer_up()
                 actions.perform()
 
                 if event_name:
