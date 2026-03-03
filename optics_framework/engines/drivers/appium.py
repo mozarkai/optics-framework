@@ -551,16 +551,44 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
 
+    def launch_other_app(
+            self,
+            app_name: str,
+            event_name: Optional[str] = None,
+    ) -> None:
+        """Launch application or deep link."""
 
-    def launch_other_app(self, app_name: str, event_name: Optional[str] = None) -> None:
-        """Launch an app on the Appium-connected device using ADB by fuzzy matching the app name."""
+        # If no driver, start session but avoid double-counting the event
         if self.driver is None:
             self.start_session(event_name=event_name)
-        if self.driver:
-            self.driver.activate_app(app_name)
-            internal_logger.debug(f"Activated app: {app_name} with event: {event_name}")
+            capture_event_here = False
         else:
-            internal_logger.error(self.NOT_INITIALIZED)
+            capture_event_here = True
+
+        driver = self._require_driver()
+
+        # Only capture event here if session was already active
+        if event_name and capture_event_here:
+            self.event_sdk.capture_event(event_name)
+
+        try:
+            if self._is_deeplink(app_name):
+                self._open_deeplink(driver, app_name)
+                return
+
+            driver.activate_app(app_name)
+            internal_logger.debug(f"Activated app: {app_name}")
+
+        except OpticsError:
+            # Preserve original OpticsError without wrapping
+            raise
+        except Exception as exc:
+            raise OpticsError(
+                Code.E0401,
+                message=f"Failed to launch: {app_name}",
+                cause=exc,
+            ) from exc
+
 
     def get_driver(self) -> Optional[WebDriver]:
         """Return the Appium driver instance."""
@@ -1026,3 +1054,79 @@ class Appium(DriverInterface):
         else:
             internal_logger.error(f"Unknown element type: {element_type}")
             return None
+
+    def _is_deeplink(self, value: str) -> bool:
+        return isinstance(value, str) and "://" in value
+
+    def _open_deeplink(
+            self,
+            driver: WebDriver,
+            deeplink: str,
+    ) -> None:
+
+        platform = (
+                self.capabilities.get(self.CAP_PLATFORM_NAME)
+                or self.capabilities.get(self.CAP_APPIUM_PLATFORM_NAME)
+        )
+
+        if not platform:
+            raise OpticsError(
+                Code.E0104,
+                message="platformName capability missing",
+            )
+
+        platform = str(platform).lower()
+
+        if platform == self.PLATFORM_ANDROID:
+            self._open_android_deeplink(driver, deeplink)
+            return
+
+        if platform == self.PLATFORM_IOS:
+            self._open_ios_deeplink(driver, deeplink)
+            return
+
+        raise OpticsError(
+            Code.E0104,
+            message=f"Unsupported platform: {platform}",
+        )
+
+    def _open_android_deeplink(
+            self,
+            driver: WebDriver,
+            deeplink: str,
+    ) -> None:
+
+        try:
+            driver.execute_script(
+                "mobile: deepLink",
+                {"url": deeplink},
+            )
+            internal_logger.debug(
+                f"Android deep link launched: {deeplink}"
+            )
+            return
+
+        except Exception:
+            internal_logger.debug(
+                "mobile:deepLink failed, using adb fallback"
+            )
+
+        # nosec B603 - adb command executed with static trusted arguments for Android deeplink fallback
+        subprocess.run(["adb","shell","am","start","-a","android.intent.action.VIEW","-d",deeplink,],check=True,)
+
+    def _open_ios_deeplink(
+            self,
+            driver: WebDriver,
+            deeplink: str,
+    ) -> None:
+
+        driver.execute_script(
+            "mobile: launchApp",
+            {"bundleId": "com.apple.mobilesafari"},
+        )
+
+        driver.get(deeplink)
+
+        internal_logger.debug(
+            f"iOS deep link launched: {deeplink}"
+        )
