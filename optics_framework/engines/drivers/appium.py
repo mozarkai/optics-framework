@@ -630,11 +630,16 @@ class Appium(DriverInterface):
         swipe_length: int,
         event_name: Optional[str] = None
     ) -> None:
+
         driver = self._require_driver()
+
         x_coor = int(x_coor)
         y_coor = int(y_coor)
+        swipe_length = int(swipe_length)
+
         end_x: int = x_coor
         end_y: int = y_coor
+
         if direction == "up":
             end_y = y_coor - swipe_length
         elif direction == "down":
@@ -646,17 +651,42 @@ class Appium(DriverInterface):
         else:
             internal_logger.error(f"Unknown swipe direction: {direction}")
             return
+
+        platform = (
+            self.capabilities.get(self.CAP_PLATFORM_NAME)
+            or self.capabilities.get(self.CAP_APPIUM_PLATFORM_NAME)
+        )
+
         timestamp = self.event_sdk.get_current_time_for_events()
+
         try:
-            internal_logger.debug(
-                f"Swiping from ({x_coor}, {y_coor}) to ({end_x}, {end_y})"
-            )
-            driver.swipe(x_coor, y_coor, end_x, end_y, 2000)
+            # The standard driver.swipe() is flaky on iOS, so we're using a script for getting consistent results
+            if str(platform).lower() == self.PLATFORM_IOS:
+                internal_logger.debug(
+                    f"iOS swipe from ({x_coor},{y_coor}) to ({end_x},{end_y})"
+                )
+                driver.execute_script(
+                    "mobile: dragFromToForDuration",
+                    {
+                        "duration": 1.0,
+                        "fromX": x_coor,
+                        "fromY": y_coor,
+                        "toX": end_x,
+                        "toY": end_y,
+                    },
+                )
+            else:
+                internal_logger.debug(
+                    f"Android swipe from ({x_coor},{y_coor}) to ({end_x},{end_y})"
+                )
+                driver.swipe(x_coor, y_coor, end_x, end_y, 1000)
+
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+
         except Exception as e:
             internal_logger.debug(
-                f"Failed to swipe from ({x_coor}, {y_coor}) to ({end_x}, {end_y}): {e}"
+                f"Failed swipe from ({x_coor},{y_coor}) to ({end_x},{end_y}): {e}"
             )
 
 
