@@ -1106,8 +1106,6 @@ class Appium(DriverInterface):
                 message="platformName capability missing",
             )
 
-        platform = str(platform).lower()
-
         if platform == self.PLATFORM_ANDROID:
             self._open_android_deeplink(driver, deeplink)
             return
@@ -1132,14 +1130,10 @@ class Appium(DriverInterface):
                     self.capabilities.get(self.CAP_APP_PACKAGE)
                     or self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
             )
-
-            driver.execute_script(
-                "mobile: deepLink",
-                {
-                    "url": deeplink,
-                    "package": package,
-                },
-            )
+            payload = {"url": deeplink}
+            if package:
+                payload["package"] = package
+            driver.execute_script("mobile: deepLink", payload)
             internal_logger.debug(
                 f"Android deep link launched: {deeplink}"
             )
@@ -1163,17 +1157,15 @@ class Appium(DriverInterface):
                 check=True,
                 capture_output=True,
                 text=True,
-            )
+                timeout=15,
+            )  # nosec B603
 
             internal_logger.debug(f"ADB stdout: {result.stdout}")
             internal_logger.debug(f"ADB stderr: {result.stderr}")
 
-        except subprocess.CalledProcessError as exc:
-            raise OpticsError(
-                Code.E0401,
-                message=f"ADB deeplink failed: {deeplink}",
-                cause=exc,
-            ) from exc
+
+        except subprocess.TimeoutExpired as exc:
+            raise OpticsError(Code.E0401,message="ADB deeplink command timed out",cause=exc,) from exc
 
     def _open_ios_deeplink(
             self,
@@ -1182,24 +1174,14 @@ class Appium(DriverInterface):
     ) -> None:
 
         try:
-            driver.execute_script(
-                "mobile: openUrl",
-                {"url": deeplink},
-            )
+            driver.execute_script("mobile: openUrl", {"url": deeplink})
 
         except Exception as exc:
-            internal_logger.debug(
-                f"mobile:openUrl failed, launching Safari fallback: {exc}"
-            )
+            internal_logger.debug(f"mobile:openUrl failed: {exc}")
 
-            driver.execute_script(
-                "mobile: launchApp",
-                {"bundleId": "com.apple.mobilesafari"},
-            )
-
-            driver.execute_script(
-                "mobile: openUrl",
-                {"url": deeplink},
-            )
-
+            try:
+                driver.execute_script( "mobile: launchApp", {"bundleId": "com.apple.mobilesafari"},)
+                driver.execute_script("mobile: openUrl", {"url": deeplink})
+            except Exception:
+                driver.get(deeplink)
         internal_logger.debug(f"iOS deep link launched: {deeplink}")
