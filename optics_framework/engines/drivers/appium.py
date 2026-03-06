@@ -1086,7 +1086,7 @@ class Appium(DriverInterface):
             return None
 
     def _is_deeplink(self, value: str) -> bool:
-        return isinstance(value, str) and "://" in value
+        return isinstance(value, str) and "://" in value.strip()
 
     def _open_deeplink(
             self,
@@ -1098,6 +1098,7 @@ class Appium(DriverInterface):
                 self.capabilities.get(self.CAP_PLATFORM_NAME)
                 or self.capabilities.get(self.CAP_APPIUM_PLATFORM_NAME)
         )
+        platform = str(platform).lower() if platform else None
 
         if not platform:
             raise OpticsError(
@@ -1127,22 +1128,52 @@ class Appium(DriverInterface):
     ) -> None:
 
         try:
+            package = (
+                    self.capabilities.get(self.CAP_APP_PACKAGE)
+                    or self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
+            )
+
             driver.execute_script(
                 "mobile: deepLink",
-                {"url": deeplink},
+                {
+                    "url": deeplink,
+                    "package": package,
+                },
             )
             internal_logger.debug(
                 f"Android deep link launched: {deeplink}"
             )
             return
 
-        except Exception:
-            internal_logger.debug(
-                "mobile:deepLink failed, using adb fallback"
+
+        except Exception as exc:
+            internal_logger.debug(f"mobile:deepLink failed, using adb fallback: {exc}")
+
+        device_id = (driver.capabilities or {}).get("udid")
+
+        cmd = ["adb", "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", deeplink]
+
+        if device_id:
+            cmd.insert(1, "-s")
+            cmd.insert(2, device_id)
+
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
             )
 
-        # nosec B603 - adb command executed with static trusted arguments for Android deeplink fallback
-        subprocess.run(["adb","shell","am","start","-a","android.intent.action.VIEW","-d",deeplink,],check=True,)
+            internal_logger.debug(f"ADB stdout: {result.stdout}")
+            internal_logger.debug(f"ADB stderr: {result.stderr}")
+
+        except subprocess.CalledProcessError as exc:
+            raise OpticsError(
+                Code.E0401,
+                message=f"ADB deeplink failed: {deeplink}",
+                cause=exc,
+            ) from exc
 
     def _open_ios_deeplink(
             self,
@@ -1150,13 +1181,25 @@ class Appium(DriverInterface):
             deeplink: str,
     ) -> None:
 
-        driver.execute_script(
-            "mobile: launchApp",
-            {"bundleId": "com.apple.mobilesafari"},
-        )
+        try:
+            driver.execute_script(
+                "mobile: openUrl",
+                {"url": deeplink},
+            )
 
-        driver.get(deeplink)
+        except Exception as exc:
+            internal_logger.debug(
+                f"mobile:openUrl failed, launching Safari fallback: {exc}"
+            )
 
-        internal_logger.debug(
-            f"iOS deep link launched: {deeplink}"
-        )
+            driver.execute_script(
+                "mobile: launchApp",
+                {"bundleId": "com.apple.mobilesafari"},
+            )
+
+            driver.execute_script(
+                "mobile: openUrl",
+                {"url": deeplink},
+            )
+
+        internal_logger.debug(f"iOS deep link launched: {deeplink}")
