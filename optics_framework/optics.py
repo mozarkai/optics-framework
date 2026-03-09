@@ -1006,11 +1006,11 @@ class Optics:
         timeout: fallback_str = "30",
         rule: fallback_str = "any",
         event_name: Optional[fallback_str] = None,
-    ) -> None:
+    ) -> bool:
         """Validate a screen by checking element presence."""
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        self.verifier.validate_screen(
+        return self.verifier.validate_screen(
             elements=cast(str, elements),
             timeout=cast(str, timeout),
             rule=cast(str, rule),

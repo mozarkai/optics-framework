@@ -1,4 +1,6 @@
 from typing import Optional, Any, List
+
+from optics_framework.common.error import OpticsError
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -156,7 +158,17 @@ class Verifier:
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the verification, if any.
         """
-        return self.assert_presence(elements, timeout, rule, event_name, fail=False)
+        internal_logger.debug(f"Validating screen for elements: {elements}")
+        internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
+        try:
+            self.assert_presence(elements, timeout, rule, event_name, fail=False)
+            return True
+        except OpticsError as e:
+            internal_logger.info(f"Validate Screen: Elements not found. Error: {e}")
+            return False
+        except Exception as e:
+            internal_logger.error(f"Failed to Validate Screen: {e}")
+            return False
 
     def capture_screenshot(self, event_name: Optional[str] = None) -> str:
         """
