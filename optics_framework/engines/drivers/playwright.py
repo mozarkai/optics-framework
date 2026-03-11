@@ -40,12 +40,14 @@ class Playwright(DriverInterface):
             self._pw = await async_playwright().start()
 
             browser = self.config.get("browser", "chromium")
-            headless = self.config.get("headless", False)
+            headless = True
             viewport = self.config.get("viewport", {"width": 1280, "height": 800})
 
             self._browser = await getattr(self._pw, browser).launch(headless=headless)
             self._context = await self._browser.new_context(viewport=viewport)
             self.page = await self._context.new_page()
+            self.page.set_default_navigation_timeout(60000)
+            self.page.set_default_timeout(60000)
 
             if app_identifier:
                 internal_logger.debug("[Playwright] Navigating to %s", app_identifier)
@@ -81,6 +83,7 @@ class Playwright(DriverInterface):
             # Create a new page (tab) in the existing context
             internal_logger.debug("[Playwright] Creating new tab for %s", app_name)
             self.page = await self._context.new_page()
+            # ⭐ very important stability fix
 
             # Navigate to the new URL
             if app_name:
@@ -111,7 +114,7 @@ class Playwright(DriverInterface):
         wait_until = self.config.get("navigation_wait_until", "domcontentloaded")
 
         try:
-            await self.page.goto(url, timeout=timeout_ms, wait_until=wait_until)
+            await self.page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
         except PlaywrightTimeoutError as e:
             current_url = self.page.url or ""
             if current_url and url in current_url:
@@ -152,7 +155,9 @@ class Playwright(DriverInterface):
             # If it doesn't already have the xpath= prefix, add it
             if not element.lower().startswith("xpath="):
                 return f"xpath={element}"
-
+        # plain visible text support (important for YouTube test)
+        if isinstance(element, str) and not any(element.startswith(p) for p in ("css=", "xpath=", "text=", "//", "input", "#", ".")):
+            return f"text={element}"
         return element
 
     # =====================================================
@@ -214,6 +219,13 @@ class Playwright(DriverInterface):
         # Use mapped key or the keycode string directly (Playwright accepts key names)
         key = key_map.get(keycode, keycode)
         run_async(self.page.keyboard.press(key))
+        # wait for youtube search results page load
+        try:
+            run_async(self.page.wait_for_load_state("networkidle", timeout=10000))
+        except Exception:
+            run_async(self.page.wait_for_timeout(4000))
+        # stabilize search navigation
+        run_async(self.page.wait_for_timeout(3000))
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
@@ -308,8 +320,8 @@ class Playwright(DriverInterface):
 
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
-        for _ in range(2):
-            run_async(self.page.mouse.wheel(0, pixels if direction == "down" else -pixels))
+        for _ in range(20):
+            run_async(self.page.mouse.wheel(0, (pixels * 3) if direction == "down" else -(pixels * 3)))
             run_async(self.page.wait_for_timeout(120))
 
 

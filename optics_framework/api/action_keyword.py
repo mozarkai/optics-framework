@@ -345,12 +345,16 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "swipe_until_element_appears", output_dir=self.execution_dir)
         start_time = time.time()
         while time.time() - start_time < int(timeout):
-            result = self.verifier.assert_presence(
-                element, timeout_str="3", rule="any")
-            if result:
-                break
+            try:
+                result = self.verifier.assert_presence(
+                    element, timeout_str="3", rule="any")
+                if result:
+                    return
+            except Exception:
+                pass
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
             time.sleep(3)
+        raise OpticsError(Code.E0201, message=f"['{element}'] not found based on rule 'any'.")
 
     @with_self_healing
     def swipe_from_element(self, element: str, direction: str, swipe_length: str, aoi_x: str = "0", aoi_y: str = "0",
@@ -401,12 +405,16 @@ class ActionKeyword:
         utils.save_screenshot(screenshot_np, "scroll_until_element_appears", output_dir=self.execution_dir)
         start_time = time.time()
         while time.time() - start_time < int(timeout):
-            result = self.verifier.assert_presence(
-                element, timeout_str="3", rule="any")
-            if result:
-                break
+            try:
+                result = self.verifier.assert_presence(
+                    element, timeout_str="3", rule="any")
+                if result:
+                    return
+            except Exception:
+                pass
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
+        raise OpticsError(Code.E0201, message=f"['{element}'] not found based on rule 'any'.")
 
     @with_self_healing
     def scroll_from_element(self, element: str, direction: str, scroll_length: str, aoi_x: str = "0", aoi_y: str = "0",
