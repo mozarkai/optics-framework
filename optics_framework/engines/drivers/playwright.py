@@ -320,9 +320,10 @@ class Playwright(DriverInterface):
 
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
-        for _ in range(20):
-            run_async(self.page.mouse.wheel(0, (pixels * 3) if direction == "down" else -(pixels * 3)))
-            run_async(self.page.wait_for_timeout(120))
+        scroll_multiplier = int(self.config.get("scroll_multiplier", 1))
+        delta = (pixels if direction == "down" else -pixels) * scroll_multiplier
+        run_async(self.page.mouse.wheel(0, delta))
+        run_async(self.page.wait_for_timeout(200))
 
 
     # =====================================================
