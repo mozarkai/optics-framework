@@ -1141,8 +1141,7 @@ class Appium(DriverInterface):
                 "mobile:deepLink failed, using adb fallback"
             )
 
-        # nosec B603 - adb command executed with static trusted arguments for Android deeplink fallback
-        subprocess.run(["adb","shell","am","start","-a","android.intent.action.VIEW","-d",deeplink,],check=True,)
+        subprocess.run(["adb","shell","am","start","-a","android.intent.action.VIEW","-d",deeplink,],check=True,)  # nosec - adb command executed with static trusted arguments for Android deeplink fallback
 
     def _open_ios_deeplink(
             self,
