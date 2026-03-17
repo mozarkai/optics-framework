@@ -124,11 +124,7 @@ def with_self_healing(func: Callable) -> Callable:
         if kwargs.get('located') is not None:
             return func(self, element, *args, **kwargs)
 
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-        except Exception as e:
-            internal_logger.warning(f"Pre-action screenshot failed (secure page?), continuing without it: {e}")
-            screenshot_np = None
+        screenshot_np = self._capture_screenshot_safe()
         aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used = _parse_aoi_from_kwargs(kwargs)
         if is_aoi_used and screenshot_np is not None:
             _maybe_save_aoi_screenshot(
