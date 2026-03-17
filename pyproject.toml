@@ -42,7 +42,7 @@ textual = ">=3,<7"
 pytest = ">=8.3.5,<10.0.0"
 pydantic = "^2.11.2"
 scikit-image = "^0.25.2"
-uvicorn = ">=0.35,<0.38"
+uvicorn = ">=0.35,<0.43"
 jsonpath-ng = "^1.7.0"
 google-genai = { version = ">=2.0.0,<3.0.0", optional = true }
 # >=3.4.2: earlier 3.4.x omit the starlette>=1.0 pin, letting the resolver keep
