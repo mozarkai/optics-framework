@@ -135,8 +135,7 @@ def with_self_healing(func: Callable) -> Callable:
                 screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
                 self.execution_dir, func.__name__,
             )
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, f"pre-{func.__name__}", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, f"pre-{func.__name__}")
         results = _locate_element(
             self.strategy_manager, element,
             aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used,
@@ -179,6 +178,11 @@ class ActionKeyword:
             internal_logger.warning(f"Screenshot capture failed, continuing without it: {e}")
             return None
 
+    def _save_screenshot_if_available(self, screenshot_np: Any, name: str) -> None:
+        """Save a screenshot only if one was successfully captured."""
+        if screenshot_np is not None:
+            utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
+
     # Click actions
     @with_self_healing
     def press_element(
@@ -220,8 +224,7 @@ class ActionKeyword:
         :param event_name: The event triggering the press.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "press_by_percentage", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "press_by_percentage")
         self.driver.press_percentage_coordinates(
             float(percent_x), float(percent_y), int(repeat), event_name
         )
@@ -236,8 +239,7 @@ class ActionKeyword:
         :param event_name: The event triggering the press.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "press_by_coordinates", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "press_by_coordinates")
         internal_logger.info(f'Pressing by coordinates: ({coor_x}, {coor_y})')
         self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
 
@@ -318,8 +320,7 @@ class ActionKeyword:
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "swipe", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "swipe")
         internal_logger.info(f'Swiping from ({coor_x}, {coor_y}) to the {direction} with length {swipe_length}')
         self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name)
 
@@ -334,8 +335,7 @@ class ActionKeyword:
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "swipe_percentage", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "swipe_percentage")
         internal_logger.info(f'Swiping from ({percent_x}, {percent_y}) to the {direction} with length {swipe_length}')
         self.driver.swipe_percentage(int(percent_x), int(percent_y), direction, int(swipe_length), event_name)
 
@@ -347,8 +347,7 @@ class ActionKeyword:
         :param element: The seekbar element (Image template, OCR template, or XPath).
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "swipe_seekbar_to_right_android", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "swipe_seekbar_to_right_android")
         internal_logger.info(f'Swiping seekbar element: {element} to the right')
         self.driver.swipe_element(element, 'right', 50, event_name)
 
@@ -362,8 +361,7 @@ class ActionKeyword:
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "swipe_until_element_appears", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "swipe_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
@@ -405,8 +403,7 @@ class ActionKeyword:
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "scroll", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "scroll")
         internal_logger.info(f"Scrolling {direction} with event {event_name}")
         self.driver.scroll(direction, 1000, event_name)
 
@@ -420,8 +417,7 @@ class ActionKeyword:
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "scroll_until_element_appears", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "scroll_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             result = self.verifier.assert_presence(
@@ -597,8 +593,7 @@ class ActionKeyword:
         :return: The text from the element or None if not supported.
         """
         screenshot_np = self._capture_screenshot_safe()
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, "get_text", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, "get_text")
         element_source_type = type(
             self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)
