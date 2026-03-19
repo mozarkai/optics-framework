@@ -74,10 +74,10 @@ def _save_annotated_for_result(
         return
     bbox = element_source.get_bbox_for_element(result.value)
     if bbox is None:
-        internal_logger.warning(f"Could not get bbox for element {element} in {func_name}")
+        internal_logger.warning(f"Could not get bbox for element {result.value} in {func_name}")
         return
     if screenshot_np is None:
-        internal_logger.warning(f"Could not get screenshot for element {element} in {func_name}")
+        internal_logger.warning(f"Could not get screenshot for element {result.value} in {func_name}")
         return
     framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
