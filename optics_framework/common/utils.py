@@ -8,7 +8,7 @@ import json
 import base64
 import numpy as np
 from enum import Enum
-from datetime import timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
 import inspect
 from skimage.metrics import structural_similarity as ssim
@@ -175,11 +175,10 @@ def parse_text_only_prefix(element: str) -> Tuple[str, bool]:
 
 def get_timestamp():
     try:
-        current_utc_time = datetime.now(timezone.utc)
-        desired_timezone = timezone(timedelta(hours=5, minutes=30))
-        current_time_in_desired_timezone = current_utc_time.astimezone(desired_timezone)
-        formatted_time = current_time_in_desired_timezone.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
-        return formatted_time[:-2] + ":" + formatted_time[-2:]
+        ist = timezone(timedelta(hours=5, minutes=30))
+        now_ist = datetime.now(ist)
+        return now_ist.strftime("%Y-%m-%dT%H-%M-%S-%f")
+
     except Exception as e:
         internal_logger.error('Unable to get current time', exc_info=e)
         return None
@@ -273,19 +272,23 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
         return
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
-        time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
+        time_stamp = datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f%z')
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
     try:
-        cv2.imwrite(screenshot_file_path, img)
-        internal_logger.debug(f'Screenshot saved as : {time_stamp}-{name}.jpg')
-        internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
+        success = cv2.imwrite(screenshot_file_path, img)
 
+        if success:
+            internal_logger.debug(f"Screenshot saved as : {time_stamp}-{name}.jpg")
+            internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
+        else:
+            internal_logger.error(f"cv2 returned FALSE. FAILED to save screenshot to : {screenshot_file_path}")
     except Exception as e:
         internal_logger.debug(f"Error writing screenshot to file : {e}")
 
 
 def annotate(screenshot, bboxes):
     # Iterate over each bounding box and annotate it on the image
+    internal_logger.debug(f"Bounding boxes {bboxes} to be annotated.")
     for bbox in bboxes:
         if bbox is None or len(bbox) != 2:
             internal_logger.debug(f"Invalid bounding box: {bbox}")
