@@ -22,12 +22,11 @@ text_detection:
   - easyocr:
       enabled: true
 
-
 image_detection:
   - templatematch:
       enabled: false
 
-log_level: INFO
+log_level: DEBUG
 
 json_log: true
 file_log: true
