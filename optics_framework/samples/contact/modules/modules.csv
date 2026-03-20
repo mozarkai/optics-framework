@@ -12,9 +12,14 @@ Enter Contact Details in Contact Form, Enter Text, ${Company_element}, ${Company
 
 Click on Save Button, Press Element, ${Save_Button}
 
+Close And Terminate Application, Close And Terminate App
+
 Verify Contact is Added, Assert Presence, ${Contact_Name}
 
 Check the First Contact, Press Element, ${Contact_Name_Class},index=2
 Check the First Contact, Sleep, 5
 Check the First Contact, Press Keycode, 4
 Check the First Contact, Sleep, 5
+
+Scroll Up,Scroll,up,,,,
+Scroll Loop to search,Run Loop,Scroll Up,Verify Contact is Added,100,,

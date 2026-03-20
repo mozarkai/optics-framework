@@ -4,6 +4,12 @@ Add Contact with Contact App  ,Navigate to Add Contact Page
 Add Contact with Contact App  ,Enter Contact Details in Contact Form
 Add Contact with Contact App  ,Click on Save Button
 Add Contact with Contact App  ,Verify Contact is Added
+Add Contact with Contact App  ,Close And Terminate Application
 
 View Added Contact Details ,Launch Contact Application
 View Added Contact Details ,Check the First Contact
+View Added Contact Details ,Close And Terminate Application
+
+Search Added Contact,Launch Contact Application
+Search Added Contact,Scroll Loop to search
+Search Added Contact,Close And Terminate Application
