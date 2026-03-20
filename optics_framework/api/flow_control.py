@@ -151,16 +151,38 @@ class FlowControl:
             results.append(self._execute_single_keyword(module_name, keyword, params))
         return results
 
+    @staticmethod
+    def _is_integer(value: str) -> bool:
+        """Returns True if value is a string representing a valid integer."""
+        try:
+            int(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
     def run_loop(self, target: str, *args: str) -> List[Any]:
-        """Runs a loop over a target module, either by count or with variables."""
+        """Runs a loop over a target module, either by count, variables, or condition."""
         internal_logger.debug(f"[RUN_LOOP] Called with target={target}, args={args}")
         self._ensure_session()
         if self.session is None:
             raise OpticsError(Code.E0702, message=NO_SESSION_PRESENT)
+
         if len(args) == 1:
-            internal_logger.debug(f"[RUN_LOOP] Looping by count: {args[0]}")
-            return self._loop_by_count(target, args[0])
+            # it can be count-based OR condition-based (no max_iters).
+            # resolving ambuguity : if it parses as int -> count loop, else -> condition loop.
+            if self._is_integer(args[0]):
+                internal_logger.debug(f"[RUN_LOOP] Looping by count: {args[0]}")
+                return self._loop_by_count(target, args[0])
+            else:
+                internal_logger.debug(f"[RUN_LOOP] Looping by condition (no max_iters): {args[0]}")
+                return self._loop_until_condition(target, condition=args[0], max_iters=None)
+
+        if len(args) == 2 and self._is_integer(args[1]) and not self._is_integer(args[0]):
+            # Two args where second is an int and first isn't -> condition loop with max_iters.
+            internal_logger.debug(f"[RUN_LOOP] Looping by condition with max_iters: condition={args[0]}, max_iters={args[1]}")
+            return self._loop_until_condition(target, condition=args[0], max_iters=args[1])
+
         internal_logger.debug(f"[RUN_LOOP] Looping with variables: {args}")
         return self._loop_with_variables(target, args)
 
@@ -217,6 +239,63 @@ class FlowControl:
             result = self.execute_module(target)
             results.append(result)
         internal_logger.debug(f"[_LOOP_WITH_VARIABLES] Completed {min_length} iterations for target '{target}'")
+        return results
+
+    def _loop_until_condition(
+        self, target: str, condition: str, max_iters: Optional[str]
+    ) -> List[Any]:
+        """Runs target in a loop until the condition module passes (returns without raising),
+        or until max_iters is reached if provided."""
+        internal_logger.debug(
+            f"[_LOOP_UNTIL_CONDITION] target={target}, condition={condition}, max_iters={max_iters}"
+        )
+
+        max_iterations: Optional[int] = None
+        if max_iters is not None:
+            try:
+                max_iterations = int(max_iters)
+                if max_iterations < 1:
+                    raise OpticsError(Code.E0403, message="max_iters must be at least 1.")
+            except ValueError as e:
+                raise OpticsError(
+                    Code.E0403,
+                    message=f"Expected an integer for max_iters, got '{max_iters}'.",
+                ) from e
+
+        results = []
+        iteration = 0
+        while True:
+            if max_iterations is not None and iteration >= max_iterations:
+                internal_logger.warning(
+                    f"[_LOOP_UNTIL_CONDITION] Reached max_iters={max_iterations} "
+                    f"without condition '{condition}' passing. Stopping loop."
+                )
+                break
+
+            internal_logger.debug(
+                f"[_LOOP_UNTIL_CONDITION] Iteration {iteration + 1}: executing target '{target}'"
+            )
+            result = self.execute_module(target)
+            results.append(result)
+            iteration += 1
+
+            internal_logger.debug(
+                f"[_LOOP_UNTIL_CONDITION] Checking condition '{condition}'"
+            )
+            try:
+                self.execute_module(condition)
+                # Condition passed (no exception raised) → exit loop
+                internal_logger.debug(
+                    f"[_LOOP_UNTIL_CONDITION] Condition '{condition}' passed after "
+                    f"{iteration} iteration(s). Exiting loop."
+                )
+                break
+            except Exception:
+                # Condition not yet met → continue looping
+                internal_logger.debug(
+                    f"[_LOOP_UNTIL_CONDITION] Condition '{condition}' not met yet, continuing."
+                )
+
         return results
 
     def _parse_variable_iterable_pairs(
