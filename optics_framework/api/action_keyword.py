@@ -63,16 +63,21 @@ def _save_annotated_for_result(
             output_dir=execution_dir,
             time_stamp=utils.get_timestamp(),
         )
+        internal_logger.info(f"Saved (already) annotated screenshot for {func_name}")
         return
     if result.is_coordinates:
+        internal_logger.info(f"Saved coordinates for {func_name}")
         return
     element_source = getattr(result.strategy, "element_source", None)
     if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
+        internal_logger.warning(f"Element source {element_source} does not support get_bbox_for_element")
         return
     bbox = element_source.get_bbox_for_element(result.value)
     if bbox is None:
+        internal_logger.warning(f"Could not get bbox for element {result.value} in {func_name}")
         return
     if screenshot_np is None:
+        internal_logger.warning(f"Could not get screenshot for element {result.value} in {func_name}")
         return
     framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
@@ -81,6 +86,7 @@ def _save_annotated_for_result(
         output_dir=execution_dir,
         time_stamp=utils.get_timestamp(),
     )
+    internal_logger.info(f"Saved (framed) annotated screenshot for {func_name}")
 
 
 def _try_results_until_success(
@@ -207,7 +213,7 @@ class ActionKeyword:
             self.driver.press_coordinates(
                 x + int(offset_x), y + int(offset_y), event_name)
         else:
-            internal_logger.info(f"Pressing element '{element}'")
+            internal_logger.info(f"Pressing element '{element}' at {located}")
             self.driver.press_element(located, int(repeat), event_name)
 
     def press_by_percentage(self, percent_x: str, percent_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
@@ -554,7 +560,7 @@ class ActionKeyword:
         except Exception as e:
             internal_logger.error(f"Error capturing screenshot: {e}")
 
-        internal_logger.info(f"Pressing keycode: {keycode}")
+        internal_logger.info(f"Pressing keycode: {keycode}, {event_name}")
         self.driver.press_keycode(keycode, event_name)
 
 
