@@ -273,17 +273,17 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f%z')
+    
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
-    try:
-        success = cv2.imwrite(screenshot_file_path, img)
+    success = cv2.imwrite(screenshot_file_path, img)
 
-        if success:
-            internal_logger.debug(f"Screenshot saved as : {time_stamp}-{name}.jpg")
-            internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
-        else:
-            internal_logger.error(f"cv2 returned FALSE. FAILED to save screenshot to : {screenshot_file_path}")
-    except Exception as e:
-        internal_logger.debug(f"Error writing screenshot to file : {e}")
+    if success:
+        internal_logger.debug(f"Screenshot saved as : {time_stamp}-{name}.jpg")
+        internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
+    else:
+        internal_logger.error(f"cv2 returned FALSE. FAILED to save screenshot to : {screenshot_file_path}")
+        raise Exception(f"cv2 returned FALSE. FAILED to save screenshot to : {screenshot_file_path}")
+
 
 
 def annotate(screenshot, bboxes):
