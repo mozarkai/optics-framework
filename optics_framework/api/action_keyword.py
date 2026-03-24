@@ -63,10 +63,8 @@ def _save_annotated_for_result(
             output_dir=execution_dir,
             time_stamp=utils.get_timestamp(),
         )
-        internal_logger.info(f"Saved (already) annotated screenshot for {func_name}")
         return
     if result.is_coordinates:
-        internal_logger.info(f"Saved coordinates for {func_name}")
         return
     element_source = getattr(result.strategy, "element_source", None)
     if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
@@ -74,10 +72,10 @@ def _save_annotated_for_result(
         return
     bbox = element_source.get_bbox_for_element(result.value)
     if bbox is None:
-        internal_logger.warning(f"Could not get bbox for element {result.value} in {func_name}")
+        internal_logger.debug(f"Could not get bbox for element {result.value} in {func_name}")
         return
     if screenshot_np is None:
-        internal_logger.warning(f"Could not get screenshot for element {result.value} in {func_name}")
+        internal_logger.debug(f"Could not get screenshot for element {result.value} in {func_name}")
         return
     framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
@@ -86,7 +84,6 @@ def _save_annotated_for_result(
         output_dir=execution_dir,
         time_stamp=utils.get_timestamp(),
     )
-    internal_logger.info(f"Saved (framed) annotated screenshot for {func_name}")
 
 
 def _try_results_until_success(
