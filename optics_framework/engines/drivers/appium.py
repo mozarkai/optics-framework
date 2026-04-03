@@ -910,9 +910,13 @@ class Appium(DriverInterface):
 
     def _press_keycode_or_type_char(self, driver: WebDriver, ch: str, keycode: int) -> None:
         """Press keycode for char, or fall back to mobile:type on failure."""
-        internal_logger.debug(f"Pressing keycode for char '{ch}': {keycode}")
+        metastate = 1 if ch.isupper() else None
+        internal_logger.debug(f"Pressing keycode for char '{ch}': {keycode} (metastate={metastate})")
         try:
-            driver.press_keycode(int(keycode))
+            if metastate is not None:
+                driver.press_keycode(int(keycode), metastate=metastate)
+            else:
+                driver.press_keycode(int(keycode))
         except Exception:
             internal_logger.debug(f"press_keycode failed for '{ch}', falling back to script typing")
             driver.execute_script(
@@ -979,7 +983,8 @@ class Appium(DriverInterface):
             "\n": 66,  # Enter key
         }
 
-        return mapping.get(char.lower())  # handle lowercase input
+        # Handle lowercase input so uppercase letters map to correct keycodes
+        return mapping.get(char.lower())
 
     def get_text_element(self, element: Any) -> str:
         text = element.get_attribute("text") or element.get_attribute("value")
