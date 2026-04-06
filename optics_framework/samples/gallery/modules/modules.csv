@@ -1,0 +1,36 @@
+module_name,module_step,param_1,param_2,param_3,param_4,param_5
+
+Launch Gallery App,Launch App,com.sec.android.gallery3d,,,
+Launch Gallery App,Sleep,3,,,,
+
+Open Sidebar,Press Element,${menu_icon_image},,,
+Open Sidebar,Sleep,2,,,,
+Open Sidebar,Press Element,${pictures_option_image},,,
+Open Sidebar,Sleep,2,,,,
+
+Navigate To Pictures,Press Element,${pictures_option_image},,,
+Navigate To Pictures,Sleep,2,,,,
+
+Open Search,Press Element,${search_icon_image},,,
+Open Search,Sleep,4,,,,
+
+Scroll To Search,Scroll,down,,,
+Scroll To Search,Sleep,2,,,,
+
+Enter Search Text,Detect And Press,${search_input_image},10,,
+Enter Search Text,Enter Text Direct,gurugram,,
+Enter Search Text,Sleep,3,,,,
+
+Select Image,Detect And Press,${first_image_image},10,,
+Select Image,Sleep,2,,,,
+
+Delete Image Flow,Detect And Press,${delete_icon_image},10,,
+Delete Image Flow,Sleep,2,,,,
+
+Confirm Delete,Detect And Press,${move_to_recycle_bin_image},10,,
+Confirm Delete,Sleep,2,,,,
+
+Delete Multiple Images,Run Loop,Delete Image Flow,2,,,
+
+Close Gallery App,Force Terminate App,com.sec.android.gallery3d,,,
+Close Gallery App,Close And Terminate App,,,,

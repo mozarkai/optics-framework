@@ -1,0 +1,15 @@
+test_case,test_step
+
+Suite Setup,Launch Gallery App
+Suite Setup,Open Sidebar
+
+Main Flow,Navigate To Pictures
+Main Flow,Open Search
+Main Flow,Scroll To Search
+Main Flow,Enter Search Text
+Main Flow,Select Image
+
+Delete Flow,Delete Image Flow
+Delete Flow,Confirm Delete
+
+Suite Teardown,Close Gallery App
