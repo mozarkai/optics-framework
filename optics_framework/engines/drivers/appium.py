@@ -548,7 +548,7 @@ class Appium(DriverInterface):
                 app_activity=app_activity,
                 event_name=event_name,
             )
-        
+
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
 
@@ -672,7 +672,7 @@ class Appium(DriverInterface):
                 )
                 actions.pointer_action.move_to_location(x_coor, y_coor)
                 actions.pointer_action.pointer_down()
-                actions.pointer_action.pause(0.4)   # Pausing before next action is important due to API latency 
+                actions.pointer_action.pause(0.4)   # Pausing before next action is important due to API latency
                 actions.pointer_action.move_to_location(end_x, end_y)
                 actions.pointer_action.pointer_up()
                 actions.perform()
