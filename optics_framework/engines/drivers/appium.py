@@ -542,12 +542,14 @@ class Appium(DriverInterface):
         event_name: Optional[str] = None,
     ) -> str:
         """Launch the app using the Appium driver."""
+        session_id = self.get_session_id()
         if self.driver is None:
             session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,
                 event_name=event_name,
             )
+        
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
 
@@ -661,20 +663,23 @@ class Appium(DriverInterface):
 
         try:
             # The standard driver.swipe() is flaky on iOS, so we're using a script for getting consistent results
+            from selenium.webdriver.common.actions.pointer_input import PointerInput
+            from selenium.webdriver.common.actions.action_builder import ActionBuilder
+            from selenium.webdriver.common.actions import interaction
             if str(platform).lower() == self.PLATFORM_IOS:
                 internal_logger.debug(
-                    f"iOS swipe from ({x_coor},{y_coor}) to ({end_x},{end_y})"
+                    f"iOS swipe (W3C) from ({x_coor},{y_coor}) to ({end_x},{end_y})"
                 )
-                driver.execute_script(
-                    "mobile: dragFromToForDuration",
-                    {
-                        "duration": 1.0,
-                        "fromX": x_coor,
-                        "fromY": y_coor,
-                        "toX": end_x,
-                        "toY": end_y,
-                    },
+                actions = ActionBuilder(
+                    driver,
+                    mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
                 )
+                actions.pointer_action.move_to_location(x_coor, y_coor)
+                actions.pointer_action.pointer_down()
+                actions.pointer_action.pause(0.4)   # IMPORTANT
+                actions.pointer_action.move_to_location(end_x, end_y)
+                actions.pointer_action.pointer_up()
+                actions.perform()
             else:
                 internal_logger.debug(
                     f"Android swipe from ({x_coor},{y_coor}) to ({end_x},{end_y})"
