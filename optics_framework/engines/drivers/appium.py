@@ -20,7 +20,6 @@ from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from optics_framework.common.error import OpticsError, Code
 
 
-
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
@@ -663,9 +662,6 @@ class Appium(DriverInterface):
 
         try:
             # The standard driver.swipe() is flaky on iOS, so we're using a script for getting consistent results
-            from selenium.webdriver.common.actions.pointer_input import PointerInput
-            from selenium.webdriver.common.actions.action_builder import ActionBuilder
-            from selenium.webdriver.common.actions import interaction
             if str(platform).lower() == self.PLATFORM_IOS:
                 internal_logger.debug(
                     f"iOS swipe (W3C) from ({x_coor},{y_coor}) to ({end_x},{end_y})"
@@ -676,7 +672,7 @@ class Appium(DriverInterface):
                 )
                 actions.pointer_action.move_to_location(x_coor, y_coor)
                 actions.pointer_action.pointer_down()
-                actions.pointer_action.pause(0.4)   # IMPORTANT
+                actions.pointer_action.pause(0.4)   # Pausing before next action is important due to API latency 
                 actions.pointer_action.move_to_location(end_x, end_y)
                 actions.pointer_action.pointer_up()
                 actions.perform()
