@@ -96,18 +96,8 @@ _UNESCAPE_PLACEHOLDER = "\x00"
 
 
 def unescape_csv_value(s: str) -> str:
-    """
-    Interpret backslash escape sequences in CSV-originated strings (e.g. element IDs,
-    locators, XPaths) so newlines and other characters can be represented in one line.
-    Inverse of escape_csv_value: for CSV-escaped str s, escape_csv_value(unescape_csv_value(s)) == s.
-
-    \\\\ must be processed first, not last. Processing \\\\ last would incorrectly
-    turn \\\\n into newline (because \\n would match first); the correct behavior
-    is backslash followed by the letter n. Order of operations:
-    1. Replace \\\\ with a placeholder.
-    2. Replace \\n, \\r, \\t with newline, carriage return, tab.
-    3. Replace the placeholder with a single backslash.
-    """
+    if not isinstance(s, str):
+        raise TypeError(f"unescape_csv_value expects str, got {type(s).__name__}")
     if not s:
         return s
     s = s.replace("\\\\", _UNESCAPE_PLACEHOLDER)
@@ -117,16 +107,15 @@ def unescape_csv_value(s: str) -> str:
 
 
 def escape_csv_value(s: str) -> str:
-    """
-    Convert a string to one-line, CSV-friendly form for output (e.g. XPaths from
-    get_interactive_elements). Inverse of unescape_csv_value: for any str s,
-    unescape_csv_value(escape_csv_value(s)) == s.
+    if not isinstance(s, str):
+        raise TypeError(f"escape_csv_value expects str, got {type(s).__name__}")
 
-    Order of operations (backslash first so sequences are not double-escaped):
-    1. Replace \\ with \\\\. 2. Replace newline with \\n, \\r with \\r, \\t with \\t.
-    """
-    return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-
+    return (
+        s.replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
 def determine_element_type(element):
 

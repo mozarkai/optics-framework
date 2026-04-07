@@ -63,7 +63,7 @@ def test_youtube_search_and_play(optics_instance):
     optics.capture_screenshot()
     version = optics.get_app_version()
     print(version)
-    optics.scroll_until_element_appears("Better than")
+    optics.scroll_until_element_appears("Wild Stone")
 
     optics.sleep("10")
 
