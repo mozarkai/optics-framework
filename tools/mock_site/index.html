@@ -523,7 +523,7 @@
         .then((data) => {
           logResponse(url, data);
           // Prevent base64 from overflowing response area
-          let displayData = JSON.parse(JSON.stringify(data));
+          let displayData = structuredClone(data);
           if (displayData.data && displayData.data.result) {
             // If result is a long base64 string, truncate for display
             if (typeof displayData.data.result === 'string' && displayData.data.result.length > 100) {

@@ -37,8 +37,8 @@ class TemplateMatchingHelper(ImageInterface):
         image = load_template(image, self.templates)
         sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
+        index_params = {"algorithm": FLANN_INDEX_KDTREE, "trees": 5}
+        search_params = {"checks": 50}
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         if image is None or input_data is None:
@@ -181,8 +181,8 @@ class TemplateMatchingHelper(ImageInterface):
 
         # Create FLANN object with parameters
         FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
+        index_params = {"algorithm": FLANN_INDEX_KDTREE, "trees": 5}
+        search_params = {"checks": 50}
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         if reference_data is None or input_data is None:
