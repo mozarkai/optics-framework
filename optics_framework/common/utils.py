@@ -108,6 +108,8 @@ def unescape_csv_value(s: str) -> str:
     2. Replace \\n, \\r, \\t with newline, carriage return, tab.
     3. Replace the placeholder with a single backslash.
     """
+    if not isinstance(s, str):
+        raise TypeError(f"unescape_csv_value expects str, got {type(s).__name__}")
     if not s:
         return s
     s = s.replace("\\\\", _UNESCAPE_PLACEHOLDER)
@@ -125,6 +127,8 @@ def escape_csv_value(s: str) -> str:
     Order of operations (backslash first so sequences are not double-escaped):
     1. Replace \\ with \\\\. 2. Replace newline with \\n, \\r with \\r, \\t with \\t.
     """
+    if not isinstance(s, str):
+        raise TypeError(f"escape_csv_value expects str, got {type(s).__name__}")
     return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
 
 

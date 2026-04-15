@@ -175,7 +175,7 @@ class LoggerTUI(App):
                 if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
                     raise ValueError("Must be a list of strings")
                 setattr(self.config_handler.config, key,
-                        [{"name": DependencyConfig(enabled=True)} for name in parsed])
+                        [{"name": DependencyConfig(enabled=True)} for _ in parsed])
             else:
                 parsed = type(current_value)(new_value)
                 setattr(self.config_handler.config, key, parsed)

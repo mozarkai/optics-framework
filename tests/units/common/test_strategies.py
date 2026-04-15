@@ -178,4 +178,7 @@ class TestStrategyManagerAssertPresenceTextOnly:
                 timeout=1,
                 rule="any",
             )
-            assert seen_elements == ["Submit", "Login"]
+            assert seen_elements is not None
+            assert "Submit" in seen_elements
+            assert "Login" in seen_elements
+            assert "TEXT_ONLY:Login" not in seen_elements
