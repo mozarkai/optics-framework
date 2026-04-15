@@ -164,7 +164,7 @@ class TestStrategyManagerAssertPresenceTextOnly:
 
     def test_assert_presence_text_only_passes_stripped_elements(self, strategy_manager):
         """Elements with TEXT_ONLY: prefix are passed to strategies stripped."""
-        seen_elements = None
+        seen_elements = []
 
         def capture_and_succeed(strategy, elements, *args, **kwargs):
             nonlocal seen_elements
@@ -178,7 +178,7 @@ class TestStrategyManagerAssertPresenceTextOnly:
                 timeout=1,
                 rule="any",
             )
-            assert seen_elements is not None
+            assert seen_elements == ["Submit", "Login"]
             assert "Submit" in seen_elements
             assert "Login" in seen_elements
             assert "TEXT_ONLY:Login" not in seen_elements
