@@ -518,7 +518,7 @@ class Appium(DriverInterface):
         command = f"adb shell dumpsys package {app_package} | grep versionName"
         try:
             # Run the adb command and capture the output.
-            output = subprocess.check_output(command, shell=False, stderr=subprocess.STDOUT, text=True) # nosec B603
+            output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, text=True) # nosec B603
             # Process the output to find the line containing "versionName"
             for line in output.splitlines():
                 if self.VERSION_NAME_PREFIX in line:
