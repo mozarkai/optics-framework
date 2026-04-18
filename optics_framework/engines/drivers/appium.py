@@ -505,9 +505,28 @@ class Appium(DriverInterface):
             self.event_sdk.send_all_events()
 
     def get_app_version(self) -> str:
-        """Get the version of the application."""
-        app_package = self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY) or self.capabilities.get(
-            self.CAP_APP_PACKAGE
+        """Get the version of the currently configured application."""
+        platform = (
+            self.capabilities.get(self.CAP_PLATFORM_NAME)
+            or self.capabilities.get(self.CAP_APPIUM_PLATFORM_NAME)
+            or ""
+        )
+        platform_lower = str(platform).strip().lower()
+
+        if platform_lower == self.PLATFORM_ANDROID:
+            return self._get_android_app_version()
+        if platform_lower == self.PLATFORM_IOS:
+            return self._get_ios_app_version()
+
+        raise OpticsError(
+            Code.E0104,
+            message=f"get_app_version is not supported for platform: '{platform}'",
+        )
+
+    def _get_android_app_version(self) -> str:
+        app_package = (
+            self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
+            or self.capabilities.get(self.CAP_APP_PACKAGE)
         )
         if not app_package:
             raise OpticsError(
@@ -517,17 +536,39 @@ class Appium(DriverInterface):
 
         command = f"adb shell dumpsys package {app_package} | grep versionName"
         try:
-            # Run the adb command and capture the output.
-            output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, text=True) # nosec B603
-            # Process the output to find the line containing "versionName"
+            output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, text=True)  # nosec B603
             for line in output.splitlines():
                 if self.VERSION_NAME_PREFIX in line:
-                    # Extract the version string.
                     return line.split(self.VERSION_NAME_PREFIX)[-1].strip()
         except subprocess.CalledProcessError as e:
             internal_logger.debug(f"Error executing adb command: {e.output}")
             raise OpticsError(Code.E0401, message="Error executing adb command", details=e.output, cause=e) from e
         raise OpticsError(Code.E0401, message=f"Could not find versionName for package: {app_package}")
+
+    def _get_ios_app_version(self) -> str:
+        bundle_id = (
+            self.capabilities.get(self.CAP_BUNDLE_ID)
+            or self.capabilities.get(self.CAP_APPIUM_BUNDLE_ID)
+        )
+        if not bundle_id:
+            raise OpticsError(
+                Code.E0104,
+                message=f"Missing required capability: bundleId or {self.CAP_APPIUM_BUNDLE_ID}. Can't find iOS version.",
+            )
+
+        driver = self._require_driver()
+        try:
+            app_info = driver.execute_script("mobile: appInfo", {"bundleId": bundle_id})
+        except Exception as e:
+            internal_logger.debug(f"Error fetching iOS app info via mobile:appInfo: {e}")
+            raise OpticsError(
+                Code.E0401, message="Error fetching iOS app version via mobile:appInfo", cause=e
+            ) from e
+
+        version = app_info.get("version") if isinstance(app_info, dict) else None
+        if version:
+            return str(version)
+        raise OpticsError(Code.E0401, message=f"Could not determine version for bundle: {bundle_id}")
 
     def initialise_setup(self) -> None:
         """Initialize the Appium setup by starting the session."""
