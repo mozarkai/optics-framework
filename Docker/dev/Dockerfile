@@ -27,12 +27,10 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
    libglib2.0-0 \
    && rm -rf /var/lib/apt/lists/*
 
-# Install common Python packages (second layer for cache)
+# Install common Python packages and optics-framework wheel and vision backend
 RUN pip install --no-cache-dir \
-   appium-python-client
-
-# Install optics-framework wheel and vision backend (late layer for cache efficiency)
-RUN pip install --no-cache-dir "/app/${WHL_FILE}" \
+   appium-python-client \
+   && pip install --no-cache-dir "/app/${WHL_FILE}" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
       pip install --no-cache-dir easyocr && \
       python3 -c "import easyocr; easyocr.Reader(['en'], download_enabled=True)"; \

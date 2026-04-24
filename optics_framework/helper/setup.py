@@ -132,8 +132,8 @@ def install_packages(requirements: List[str]) -> None:
 def list_drivers() -> None:
     print("Available Drivers:")
     print("\nAction Drivers:")
-    for name, _ in ACTION_DRIVERS.drivers.items():
+    for name in ACTION_DRIVERS.drivers:
         print(f"  {name}")
     print("\nText Drivers:")
-    for name, _ in TEXT_DRIVERS.drivers.items():
+    for name in TEXT_DRIVERS.drivers:
         print(f"  {name}")

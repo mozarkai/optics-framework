@@ -22,14 +22,11 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv
-RUN uv pip install --system appium-python-client playwright
-
-# Install Playwright system dependencies for Chromium and Firefox (must be done as root)
-RUN playwright install-deps chromium firefox
+RUN pip install --no-cache-dir uv \
+    && uv pip install --system appium-python-client playwright \
+    && playwright install-deps chromium firefox
 
 # Install optics-framework and vision backend (late layer for cache efficiency)
-
 RUN uv pip install --system optics-framework \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
         uv pip install --system easyocr && \
