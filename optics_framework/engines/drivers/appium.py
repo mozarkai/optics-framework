@@ -50,6 +50,9 @@ class Appium(DriverInterface):
     CONNECTION_TIMEOUT = 300
     VERSION_NAME_PREFIX = "versionName="
     KEY_PLATFORMNAME = "platformname"
+    CAP_UDID = "udid"
+    CAP_APPIUM_UDID = "appium:udid"
+    CAP_SESSION_DEVICE_UDID = "deviceUDID"
     SESSION_ID_CAP_KEYS = (
         "existingSessionId",
         "sessionId",
@@ -523,6 +526,19 @@ class Appium(DriverInterface):
             message=f"get_app_version is not supported for platform: '{platform}'",
         )
 
+    def _get_android_device_serial(self) -> Optional[str]:
+        # Prefer the serial set by UiAutomator2 in session capabilities after connection
+        if self.driver is not None:
+            session_serial = self.driver.capabilities.get(self.CAP_SESSION_DEVICE_UDID)
+            if session_serial:
+                return str(session_serial)
+        # Fall back to user-configured capability values
+        return (
+            self.capabilities.get(self.CAP_APPIUM_UDID)
+            or self.capabilities.get(self.CAP_UDID)
+            or None
+        )
+
     def _get_android_app_version(self) -> str:
         app_package = (
             self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
@@ -534,16 +550,40 @@ class Appium(DriverInterface):
                 message=f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}",
             )
 
-        command = f"adb shell dumpsys package {app_package} | grep versionName"
+        device_serial = self._get_android_device_serial()
+
+        adb_cmd = ["adb"]
+        if device_serial:
+            adb_cmd.extend(["-s", device_serial])
+
+        dumpsys_cmd = adb_cmd + ["shell", "pm", "dump", app_package]
+
         try:
-            output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, text=True)  # nosec B603
+            internal_logger.info(f"Executing adb command: {' '.join(dumpsys_cmd)}")
+            output = subprocess.check_output(
+                dumpsys_cmd,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
             for line in output.splitlines():
                 if self.VERSION_NAME_PREFIX in line:
-                    return line.split(self.VERSION_NAME_PREFIX)[-1].strip()
-        except subprocess.CalledProcessError as e:
-            internal_logger.debug(f"Error executing adb command: {e.output}")
-            raise OpticsError(Code.E0401, message="Error executing adb command", details=e.output, cause=e) from e
-        raise OpticsError(Code.E0401, message=f"Could not find versionName for package: {app_package}")
+                    appver = line.split(self.VERSION_NAME_PREFIX)[-1].strip()
+                    internal_logger.info(f"App version: {appver}")
+                    return appver
+
+        except Exception as e:
+            internal_logger.info(f"Error executing adb command {dumpsys_cmd}: {e}")
+            raise OpticsError(
+                Code.E0401,
+                message=f"Error executing adb command {dumpsys_cmd}: {e}. Received output = {output}.",
+                details=str(e),
+                cause=e
+            ) from e
+
+        raise OpticsError(
+            Code.E0401,
+            message=f"Could not find versionName for package: {app_package}. Received output = {output}"
+        )
 
     def _get_ios_app_version(self) -> str:
         bundle_id = (
