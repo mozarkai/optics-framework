@@ -546,9 +546,9 @@ class Appium(DriverInterface):
 
     def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
         app_package = (
-            app_package_override
-            or self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
+            self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
             or self.capabilities.get(self.CAP_APP_PACKAGE)
+            or app_package_override
         )
         if not app_package:
             raise OpticsError(
