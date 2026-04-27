@@ -507,8 +507,13 @@ class Appium(DriverInterface):
             self.driver = None
             self.event_sdk.send_all_events()
 
-    def get_app_version(self) -> str:
-        """Get the version of the currently configured application."""
+    def get_app_version(self, app_package: Optional[str] = None) -> str:
+        """
+        Get the version of the currently configured application.
+
+        :param app_package: Optional package name / bundle ID override. When provided,
+            this takes precedence over the value in capabilities.
+        """
         platform = (
             self.capabilities.get(self.CAP_PLATFORM_NAME)
             or self.capabilities.get(self.CAP_APPIUM_PLATFORM_NAME)
@@ -517,7 +522,7 @@ class Appium(DriverInterface):
         platform_lower = str(platform).strip().lower()
 
         if platform_lower == self.PLATFORM_ANDROID:
-            return self._get_android_app_version()
+            return self._get_android_app_version(app_package_override=app_package)
         if platform_lower == self.PLATFORM_IOS:
             return self._get_ios_app_version()
 
@@ -539,15 +544,18 @@ class Appium(DriverInterface):
             or None
         )
 
-    def _get_android_app_version(self) -> str:
+    def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
         app_package = (
-            self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
+            app_package_override
+            or self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
             or self.capabilities.get(self.CAP_APP_PACKAGE)
         )
         if not app_package:
             raise OpticsError(
                 Code.E0104,
-                message=f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}",
+                message=(
+                    f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}. "
+                ),
             )
 
         device_serial = self._get_android_device_serial()
@@ -558,6 +566,7 @@ class Appium(DriverInterface):
 
         dumpsys_cmd = adb_cmd + ["shell", "pm", "dump", app_package]
 
+        output = ""
         try:
             internal_logger.info(f"Executing adb command: {' '.join(dumpsys_cmd)}")
             output = subprocess.check_output(

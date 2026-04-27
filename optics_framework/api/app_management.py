@@ -82,10 +82,10 @@ class AppManagement:
         """
         self.driver.force_terminate_app(app_name, event_name)
 
-    def get_app_version(self) -> Optional[str]:
+    def get_app_version(self, app_package: Optional[str] = None) -> Optional[str]:
         """
         Gets the version of the application.
 
         :return: The version of the application, or None if not available.
         """
-        return self.driver.get_app_version()
+        return self.driver.get_app_version(app_package=app_package) if app_package else self.driver.get_app_version()
