@@ -1,0 +1,16 @@
+Element_Name,Element_ID_xpath,Element_ID,Element_Text
+
+menu_icon_image,"//android.widget.ImageButton[@content-desc=""Open navigation drawer""]",menu_icon.png,
+pictures_option_image,"//android.widget.TextView[@text=""Pictures""]",pictures_option.png,Pictures
+
+search_icon_image,"//android.widget.ImageView[@content-desc=""Search""]",search_icon.png,
+search_input_image,"//android.widget.EditText",search_input.png,
+
+first_image_image,"(//android.widget.ImageView)[1]",first_image.png,
+
+delete_icon_image,"//android.widget.ImageView[@content-desc=""Delete""]",delete_icon.png,Delete
+
+move_to_recycle_bin_image,"//android.widget.Button[@text=""Move to Recycle bin""]",move_to_recycle_bin.png,Move to Recycle bin
+cancel_delete_image,"//android.widget.Button[@text=""Cancel""]",cancel_delete.png,Cancel
+
+recycle_bin_toast_image,"//android.widget.Toast",recycle_toast.png,
