@@ -524,7 +524,7 @@ class Appium(DriverInterface):
         if platform_lower == self.PLATFORM_ANDROID:
             return self._get_android_app_version(app_package_override=app_package)
         if platform_lower == self.PLATFORM_IOS:
-            return self._get_ios_app_version()
+            return self._get_ios_app_version(bundle_id_override=app_package)
 
         raise OpticsError(
             Code.E0104,
@@ -542,6 +542,17 @@ class Appium(DriverInterface):
             self.capabilities.get(self.CAP_APPIUM_UDID)
             or self.capabilities.get(self.CAP_UDID)
             or None
+        )
+
+    def _get_ios_device_udid(self) -> Optional[str]:
+        # XCUITest exposes the connected device UDID in session capabilities
+        if self.driver is not None:
+            session_udid = self.driver.capabilities.get(self.CAP_UDID)
+            if session_udid:
+                return str(session_udid)
+        return (
+            self.capabilities.get(self.CAP_APPIUM_UDID)
+            or self.capabilities.get(self.CAP_UDID)
         )
 
     def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
@@ -594,10 +605,11 @@ class Appium(DriverInterface):
             message=f"Could not find versionName for package: {app_package}. Received output = {output}"
         )
 
-    def _get_ios_app_version(self) -> str:
+    def _get_ios_app_version(self, bundle_id_override: Optional[str] = None) -> str:
         bundle_id = (
             self.capabilities.get(self.CAP_BUNDLE_ID)
             or self.capabilities.get(self.CAP_APPIUM_BUNDLE_ID)
+            or bundle_id_override
         )
         if not bundle_id:
             raise OpticsError(
@@ -605,19 +617,46 @@ class Appium(DriverInterface):
                 message=f"Missing required capability: bundleId or {self.CAP_APPIUM_BUNDLE_ID}. Can't find iOS version.",
             )
 
-        driver = self._require_driver()
+        device_udid = self._get_ios_device_udid()
+        cmd = ["ideviceinstaller"]
+        if device_udid:
+            cmd.extend(["-u", device_udid])
+        cmd.append("-l")
+
+        output = ""
         try:
-            app_info = driver.execute_script("mobile: appInfo", {"bundleId": bundle_id})
-        except Exception as e:
-            internal_logger.debug(f"Error fetching iOS app info via mobile:appInfo: {e}")
+            internal_logger.info(f"Executing ideviceinstaller command: {' '.join(cmd)}")
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)  # nosec - static trusted args; udid sourced from session caps
+        except FileNotFoundError as e:
             raise OpticsError(
-                Code.E0401, message="Error fetching iOS app version via mobile:appInfo", cause=e
+                Code.E0401,
+                message="ideviceinstaller not found on PATH. Please install it via 'brew install ideviceinstaller'.",
+                details=str(e),
+                cause=e,
+            ) from e
+        except Exception as e:
+            raise OpticsError(
+                Code.E0401,
+                message=f"ideviceinstaller command failed: {e}. Output: {output}",
+                details=str(e),
+                cause=e,
             ) from e
 
-        version = app_info.get("version") if isinstance(app_info, dict) else None
-        if version:
-            return str(version)
-        raise OpticsError(Code.E0401, message=f"Could not determine version for bundle: {bundle_id}")
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped or ', ' not in stripped:
+                continue
+            # Format: bundleId, "CFBundleVersion", "CFBundleDisplayName"
+            parts = [p.strip() for p in stripped.split(', ', 2)]
+            if len(parts) >= 2 and parts[0].strip() == bundle_id.strip():
+                version = parts[1].strip('"')
+                internal_logger.info(f"iOS app version for {bundle_id}: {version}")
+                return version
+
+        raise OpticsError(
+            Code.E0401,
+            message=f"Could not find bundle '{bundle_id}' in ideviceinstaller output. Output: {output}",
+        )
 
     def initialise_setup(self) -> None:
         """Initialize the Appium setup by starting the session."""
