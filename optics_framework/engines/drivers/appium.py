@@ -553,7 +553,6 @@ class Appium(DriverInterface):
         return (
             self.capabilities.get(self.CAP_APPIUM_UDID)
             or self.capabilities.get(self.CAP_UDID)
-            or None
         )
 
     def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
@@ -627,14 +626,10 @@ class Appium(DriverInterface):
         output = ""
         try:
             internal_logger.info(f"Executing ideviceinstaller command: {' '.join(cmd)}")
-            output = subprocess.check_output(
-                cmd,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)  # nosec - static trusted args; udid sourced from session caps
         except FileNotFoundError as e:
             raise OpticsError(
-                Code.E0104,
+                Code.E0401,
                 message="ideviceinstaller not found on PATH. Please install it via 'brew install ideviceinstaller'.",
                 details=str(e),
                 cause=e,
@@ -653,7 +648,7 @@ class Appium(DriverInterface):
                 continue
             # Format: bundleId, "CFBundleVersion", "CFBundleDisplayName"
             parts = [p.strip() for p in stripped.split(', ', 2)]
-            if len(parts) >= 2 and parts[0] == bundle_id:
+            if len(parts) >= 2 and parts[0].strip() == bundle_id.strip():
                 version = parts[1].strip('"')
                 internal_logger.info(f"iOS app version for {bundle_id}: {version}")
                 return version
