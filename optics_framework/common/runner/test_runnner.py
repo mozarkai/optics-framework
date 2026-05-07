@@ -40,6 +40,8 @@ from optics_framework.common.events import (
     Event,
 )
 from optics_framework.common.runner.data_reader import DataReader
+from optics_framework.common.strategies import StrategyManager
+from optics_framework.common import utils
 
 
 class Runner:
@@ -475,6 +477,35 @@ class TestRunner(Runner):
         )
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
 
+    def _capture_end_of_run_artifacts(self) -> None:
+        try:
+            output_dir = self.session.config.execution_output_path
+            strategy_manager = StrategyManager(
+                self.session.optics.get_element_source(),
+                self.session.optics.get_text_detection(),
+                self.session.optics.get_image_detection(),
+            )
+
+            try:
+                screenshot = strategy_manager.capture_screenshot()
+                utils.save_screenshot(screenshot, "end_of_run", output_dir)
+                internal_logger.debug("End-of-run screenshot saved.")
+            except Exception as e:
+                internal_logger.warning("Failed to capture end-of-run screenshot: %s", e)
+
+            try:
+                page_source, timestamp = strategy_manager.capture_pagesource()
+                if page_source.lstrip().lower().startswith(("<html", "<!doctype")):
+                    utils.save_page_source_html(page_source, timestamp, output_dir)
+                else:
+                    utils.save_page_source(page_source, timestamp, output_dir)
+                internal_logger.debug("End-of-run page source saved.")
+            except Exception as e:
+                internal_logger.warning("Failed to capture end-of-run page source: %s", e)
+
+        except Exception as e:
+            internal_logger.warning("End-of-run artifact capture failed: %s", e)
+
     async def _process_module(
         self,
         module_node: ModuleNode,
@@ -733,6 +764,7 @@ class TestRunner(Runner):
             await self.execute_test_case(current.name)
             current = current.next
         self.result_printer.stop_live()
+        self._capture_end_of_run_artifacts()
 
     async def dry_run_all(self) -> None:
         current = self.test_cases
