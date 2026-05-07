@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import uuid
 import asyncio
@@ -45,6 +46,36 @@ from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
+
+# Attributes in Appium XML that carry user-visible text on screen
+_APPIUM_TEXT_ATTRS = re.compile(
+    r'\b(?:text|content-desc|label|value|hint|name)="([^"]*)"'
+)
+
+
+def _extract_visible_text(page_source: str) -> str:
+    """
+    Extract only user-visible text from a page source string.
+
+    For HTML (Selenium/Playwright): strips all tags via BeautifulSoup,
+    returning only rendered text content.
+
+    For Appium XML: pulls values of the specific attributes that carry
+    on-screen text (text, content-desc, label, value, hint, name),
+    ignoring resource-ids, class names, bounds, and other metadata.
+
+    This prevents false-positive matches where a pattern appears inside
+    an element attribute name or CSS class rather than as visible text.
+    """
+    stripped = page_source.lstrip()
+    if stripped.lower().startswith(("<html", "<!doctype")):
+        try:
+            from bs4 import BeautifulSoup
+            return BeautifulSoup(page_source, "lxml").get_text(separator=" ", strip=True)
+        except Exception:
+            return page_source
+    else:
+        return " ".join(_APPIUM_TEXT_ATTRS.findall(page_source))
 
 
 class Runner:
@@ -512,9 +543,10 @@ class TestRunner(Runner):
             try:
                 error_defs = getattr(self.session, "error_definitions", None)
                 if error_defs and error_defs.get_all() and page_source:
+                    searchable = _extract_visible_text(page_source)
                     matched = []
                     for code, meta in error_defs.get_all().items():
-                        if meta["pattern"] in page_source:
+                        if meta["pattern"] in searchable:
                             matched.append({"error_code": code, **meta})
                     if matched:
                         for m in matched:
@@ -522,7 +554,7 @@ class TestRunner(Runner):
                                 "ON-SCREEN ERROR DETECTED — code: %s | pattern: '%s' | severity: %s | %s",
                                 m["error_code"], m["pattern"], m.get("severity", ""), m.get("description", ""),
                             )
-                        out_path = os.path.join(output_dir, "detected_errors.json")
+                        out_path = os.path.join(output_dir, f"detected_errors_{self.session_id}.json")
                         with open(out_path, "w", encoding="utf-8") as f:
                             json.dump({"timestamp": timestamp, "detected": matched}, f, indent=2)
                         internal_logger.debug("Detected errors written to %s", out_path)
@@ -689,7 +721,7 @@ class TestRunner(Runner):
         await self._send_event(
             "test_case",
             current,
-            EventStatus.FAIL,
+            EventStatus.PASS,
             start_time=start_time,
             end_time=time.time(),
             elapsed=time.time() - start_time,

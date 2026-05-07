@@ -55,11 +55,12 @@ class SessionHandler(ABC):
     """Abstract interface for session management."""
     @abstractmethod
     def create_session(self, config: Config,
-                       test_cases: TestCaseNode,
-                       modules: ModuleData,
-                       elements: ElementData,
-                       apis: ApiData,
-                       templates: Optional[TemplateData] = None) -> str:
+                       test_cases: Optional[TestCaseNode],
+                       modules: Optional[ModuleData],
+                       elements: Optional[ElementData],
+                       apis: Optional[ApiData],
+                       templates: Optional[TemplateData] = None,
+                       error_definitions: Optional[ErrorDefinitions] = None) -> str:
         pass
 
     @abstractmethod
