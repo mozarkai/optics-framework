@@ -250,6 +250,24 @@ class JUnitEventHandler(EventSubscriber):
             testsuite.set("skipped", str(
                 int(testsuite.get("skipped", "0")) + 1))
 
+    def add_detected_errors(self, session_id: str, detected: list) -> None:
+        """Insert a <properties> block with detected on-screen errors into the session testsuite."""
+        session_suite = self.session_suites.get(session_id)
+        if session_suite is None or not detected:
+            return
+        props = ET.Element("properties")
+        for err in detected:
+            value = " | ".join(filter(None, [
+                err.get("pattern", ""),
+                err.get("severity", ""),
+                err.get("description", ""),
+            ]))
+            ET.SubElement(props, "property",
+                name=f"detected_error.{err['error_code']}",
+                value=value,
+            )
+        session_suite.insert(0, props)
+
     def flush(self):
         try:
             internal_logger.debug(f"Flushing Robot-style XML to {self.output_path}")

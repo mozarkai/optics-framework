@@ -203,6 +203,21 @@ class CSVDataReader(DataReader):
                 elements[element_name].extend(element_ids)
         return elements
 
+    def read_error_definitions(self, file_path: str) -> dict:
+        """Read error_code, pattern, description, severity columns from a CSV file."""
+        result = {}
+        rows = self.read_file(file_path)
+        for row in rows:
+            code = row.get("error_code", "").strip()
+            pattern = row.get("pattern", "").strip()
+            if code and pattern:
+                result[code] = {
+                    "pattern": pattern,
+                    "description": row.get("description", "").strip(),
+                    "severity": row.get("severity", "").strip(),
+                }
+        return result
+
 
 class YAMLDataReader(DataReader):
     """Concrete implementation of DataReader for YAML files."""

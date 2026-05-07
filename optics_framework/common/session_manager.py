@@ -8,7 +8,7 @@ from pathlib import Path
 from optics_framework.common.Junit_eventhandler import setup_junit, cleanup_junit
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData, TemplateData
+from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData, TemplateData, ErrorDefinitions
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.events import get_event_manager_registry
@@ -104,7 +104,8 @@ class Session:
                  modules: Optional[ModuleData],
                  elements: Optional[ElementData],
                  apis: Optional[ApiData],
-                 templates: Optional[TemplateData] = None):
+                 templates: Optional[TemplateData] = None,
+                 error_definitions: Optional[ErrorDefinitions] = None):
         self.session_id = session_id
         self.config_handler = ConfigHandler(config)
         self.config = self.config_handler.config
@@ -113,6 +114,7 @@ class Session:
         self.elements = elements
         self.apis = apis
         self.templates = templates
+        self.error_definitions = error_definitions
         self.request_template_overrides: Dict[str, str] = {}
         self.inline_templates: Dict[str, str] = {}
         self._inline_templates_dir: str = tempfile.mkdtemp(prefix="optics_session_")
@@ -151,10 +153,11 @@ class SessionManager(SessionHandler):
                        modules: Optional[ModuleData],
                        elements: Optional[ElementData],
                        apis: Optional[ApiData],
-                       templates: Optional[TemplateData] = None) -> str:
+                       templates: Optional[TemplateData] = None,
+                       error_definitions: Optional[ErrorDefinitions] = None) -> str:
         """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
-        self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates)
+        self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates, error_definitions)
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Session]:

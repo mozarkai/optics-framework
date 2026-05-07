@@ -1,3 +1,5 @@
+import json
+import os
 import time
 import uuid
 import asyncio
@@ -42,6 +44,7 @@ from optics_framework.common.events import (
 from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
+from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
 
 
 class Runner:
@@ -493,6 +496,8 @@ class TestRunner(Runner):
             except Exception as e:
                 internal_logger.warning("Failed to capture end-of-run screenshot: %s", e)
 
+            page_source = None
+            timestamp = None
             try:
                 page_source, timestamp = strategy_manager.capture_pagesource()
                 if page_source.lstrip().lower().startswith(("<html", "<!doctype")):
@@ -502,6 +507,32 @@ class TestRunner(Runner):
                 internal_logger.debug("End-of-run page source saved.")
             except Exception as e:
                 internal_logger.warning("Failed to capture end-of-run page source: %s", e)
+
+            # Error detection against user-defined patterns
+            try:
+                error_defs = getattr(self.session, "error_definitions", None)
+                if error_defs and error_defs.get_all() and page_source:
+                    matched = []
+                    for code, meta in error_defs.get_all().items():
+                        if meta["pattern"] in page_source:
+                            matched.append({"error_code": code, **meta})
+                    if matched:
+                        for m in matched:
+                            execution_logger.warning(
+                                "ON-SCREEN ERROR DETECTED — code: %s | pattern: '%s' | severity: %s | %s",
+                                m["error_code"], m["pattern"], m.get("severity", ""), m.get("description", ""),
+                            )
+                        out_path = os.path.join(output_dir, "detected_errors.json")
+                        with open(out_path, "w", encoding="utf-8") as f:
+                            json.dump({"timestamp": timestamp, "detected": matched}, f, indent=2)
+                        internal_logger.debug("Detected errors written to %s", out_path)
+                        handler = get_junit_handler_registry().get_handler(self.session_id)
+                        if handler:
+                            handler.add_detected_errors(self.session_id, matched)
+                    else:
+                        internal_logger.debug("No user-defined errors detected in end-of-run page source.")
+            except Exception as e:
+                internal_logger.warning("Error detection scan failed: %s", e)
 
         except Exception as e:
             internal_logger.warning("End-of-run artifact capture failed: %s", e)
