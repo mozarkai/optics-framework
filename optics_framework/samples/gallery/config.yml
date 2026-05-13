@@ -1,0 +1,33 @@
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        deviceName: R9ZX30AKE6M
+        platformName: Android
+        platformVersion: "16"
+        automationName: UiAutomator2
+        appPackage: com.sec.android.gallery3d
+        appActivity: .app.GalleryActivity
+        noReset: true
+        newCommandTimeout: 300
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true
+
+text_detection:
+  - easyocr:
+      enabled: true
+
+image_detection:
+  - templatematch:
+      enabled: true
+
+log_level: INFO
+json_log: true
+file_log: true
