@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional
 from pathlib import Path
 from optics_framework.common.Junit_eventhandler import setup_junit, cleanup_junit
+from optics_framework.common.Html_eventhandler import setup_html, get_html_handler_registry
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData, TemplateData
@@ -13,6 +14,7 @@ from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.events import get_event_manager_registry
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.device_config import refresh_appium_device_config
 
 
 def _to_dict_list(configs: list) -> list:
@@ -37,18 +39,20 @@ def _get_enabled_config_list(config: object, attr_name: str) -> list:
     return _to_dict_list(enabled)
 
 
-def _maybe_setup_junit(
+def _maybe_setup_reporters(
     config: Config, session_id: str, execution_output_path: Optional[str]
 ) -> None:
-    """Configure json_path and call setup_junit when json_log and output path are set."""
-    if not (config.json_log is True and execution_output_path is not None):
-        return
-    config.json_path = (
-        str(Path(config.json_path).expanduser())
-        if config.json_path
-        else str((Path(execution_output_path) / "logs.json").expanduser())
-    )
-    setup_junit(session_id, config)
+    """Configure json_path and call setup_junit and setup_html when appropriate."""
+    if config.json_log is True and execution_output_path is not None:
+        config.json_path = (
+            str(Path(config.json_path).expanduser())
+            if config.json_path
+            else str((Path(execution_output_path) / "logs.json").expanduser())
+        )
+        setup_junit(session_id, config)
+    
+    if getattr(config, 'file_log', False) or getattr(config, 'json_log', False):
+        setup_html(session_id, config)
 
 
 class SessionHandler(ABC):
@@ -117,6 +121,7 @@ class Session:
         self.inline_templates: Dict[str, str] = {}
         self._inline_templates_dir: str = tempfile.mkdtemp(prefix="optics_session_")
         self._template_resolver = SessionTemplateResolver(self)
+        refresh_appium_device_config(self.config, persist=True)
 
         enabled_driver_configs = _get_enabled_config_list(self.config, "driver_sources")
         enabled_element_configs = _get_enabled_config_list(self.config, "elements_sources")
@@ -134,7 +139,7 @@ class Session:
         self.optics.add_image_detection(
             enabled_image_configs, self.config.project_path or "", self._template_resolver
         )
-        _maybe_setup_junit(config, self.session_id, self.config.execution_output_path)
+        _maybe_setup_reporters(config, self.session_id, self.config.execution_output_path)
 
         self.driver = self.optics.get_driver()
         self.event_queue = asyncio.Queue()
@@ -175,4 +180,5 @@ class SessionManager(SessionHandler):
                 except OSError as e:
                     internal_logger.warning("Failed to remove inline templates directory %s: %s", base_dir, e)
         cleanup_junit(session_id)
+        get_html_handler_registry().cleanup_session(session_id)
         get_event_manager_registry().remove_session(session_id)

@@ -117,6 +117,7 @@ class JUnitEventHandler(EventSubscriber):
         self.start_times: Dict[str, float] = {}
         self.module_names: Dict[str, str] = {}
         self.module_elements: Dict[str, ET.Element] = {}
+        self.module_to_testcase: Dict[str, str] = {}
         self.active_keyword_elements: Dict[str, ET.Element] = {}  # Per keyword_id for update during execution
         self.keyword_log_buffers: Dict[str, LogCaptureBuffer] = {}
 
@@ -170,19 +171,21 @@ class JUnitEventHandler(EventSubscriber):
             elapsed = event_time - self.start_times.get(event.entity_id, event_time)
             testcase.set("time", f"{elapsed:.2f}")
             self._update_testcase_status(testcase, event, session_suite)
-            # Attach all collected keywords as children
-            for kw_element in self.keyword_elements.get(event.entity_id, []):
-                testcase.append(kw_element)
-
             total_time = float(session_suite.get("time", "0")) + elapsed
             session_suite.set("time", f"{total_time:.2f}")
 
             # cleanup
-            del self.testcase_cases[event.entity_id]
-            del self.start_times[event.entity_id]
-            del self.keyword_elements[event.entity_id]
-            if event.entity_id in self.module_names:
-                del self.module_names[event.entity_id]
+            self.testcase_cases.pop(event.entity_id, None)
+            self.start_times.pop(event.entity_id, None)
+            self.module_names.pop(event.entity_id, None)
+            completed_module_ids = [
+                module_id
+                for module_id, testcase_id in self.module_to_testcase.items()
+                if testcase_id == event.entity_id
+            ]
+            for module_id in completed_module_ids:
+                self.module_to_testcase.pop(module_id, None)
+                self.module_elements.pop(module_id, None)
 
     def _handle_module_event(self, event: Event) -> None:
         testcase_id = event.parent_id
@@ -193,11 +196,17 @@ class JUnitEventHandler(EventSubscriber):
             testcase = self.testcase_cases[testcase_id]
             module_kw = ET.SubElement(testcase, "kw", name=event.name, type="setup", status="RUNNING")
             self.module_elements[event.entity_id] = module_kw
+            self.module_to_testcase[event.entity_id] = testcase_id
+            self.start_times[event.entity_id] = event.timestamp
 
         elif event.status in [EventStatus.PASS, EventStatus.FAIL, EventStatus.ERROR]:
             module_kw = self.module_elements.get(event.entity_id)
-            if module_kw:
+            if module_kw is not None:
                 module_kw.set("status", event.status.value)
+                module_kw.set("elapsed", f"{self._elapsed_for_event(event):.2f}")
+                if event.message:
+                    message = ET.SubElement(module_kw, "msg", level="ERROR")
+                    message.text = event.message
 
     def _handle_keyword_event(self, event: Event) -> None:
         module_id = event.parent_id
@@ -205,17 +214,22 @@ class JUnitEventHandler(EventSubscriber):
         if module_kw is None:
             return  # Module not active yet
 
-        kw_element = ET.SubElement(module_kw, "kw", name=event.name, status=event.status.value)
+        kw_element = self.active_keyword_elements.get(event.entity_id)
+        if kw_element is None:
+            kw_element = ET.SubElement(module_kw, "kw", name=event.name, status=event.status.value)
+            self.active_keyword_elements[event.entity_id] = kw_element
+        else:
+            kw_element.set("status", event.status.value)
 
         if event.start_time:
             kw_element.set("starttime", time.strftime('%Y%m%d %H:%M:%S', time.localtime(event.start_time)))
         if event.end_time:
             kw_element.set("endtime", time.strftime('%Y%m%d %H:%M:%S', time.localtime(event.end_time)))
-        if event.elapsed:
-            kw_element.set("elapsed", f"{event.elapsed:.2f}")
+        kw_element.set("elapsed", f"{self._elapsed_for_event(event):.2f}")
 
         if event.args:
-            args_element = ET.SubElement(kw_element, "arguments")
+            args_element = kw_element.find("arguments") or ET.SubElement(kw_element, "arguments")
+            args_element.clear()
             for arg in event.args:
                 ET.SubElement(args_element, "arg").text = str(arg)
 
@@ -227,9 +241,18 @@ class JUnitEventHandler(EventSubscriber):
                 log_element = ET.SubElement(kw_element, "log")
                 log_element.text = senitised_message
 
-        if event.parent_id not in self.keyword_elements:
-            self.keyword_elements[event.parent_id] = []
-        self.keyword_elements[event.parent_id].append(kw_element)
+        if event.status in [EventStatus.FAIL, EventStatus.ERROR] and event.message:
+            message = ET.SubElement(kw_element, "msg", level="ERROR")
+            message.text = event.message
+        if event.status in [EventStatus.PASS, EventStatus.FAIL, EventStatus.ERROR, EventStatus.SKIPPED]:
+            self.active_keyword_elements.pop(event.entity_id, None)
+
+    def _elapsed_for_event(self, event: Event) -> float:
+        if event.elapsed is not None:
+            return float(event.elapsed)
+        if event.start_time is not None and event.end_time is not None:
+            return max(0.0, float(event.end_time) - float(event.start_time))
+        return 0.0
 
 
     def _update_testcase_status(self, testcase: ET.Element, event: Event, testsuite: ET.Element) -> None:

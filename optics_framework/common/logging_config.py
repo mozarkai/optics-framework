@@ -255,6 +255,21 @@ def flush_handlers():
     except Exception as e:
         internal_logger.error(f"Error flushing JUnit handlers: {e}")
 
+    try:
+        from optics_framework.common.Html_eventhandler import get_html_handler_registry
+        html_registry = get_html_handler_registry()
+        html_active_sessions = html_registry.get_active_sessions()
+
+        for session_id in html_active_sessions:
+            html_handler = html_registry.get_handler(session_id)
+            if html_handler:
+                html_handler.close()
+                internal_logger.debug(f"Flushed HTML handler for session {session_id}")
+    except ImportError as e:
+        internal_logger.debug(f"Could not import HTML handler registry: {e}")
+    except Exception as e:
+        internal_logger.error(f"Error flushing HTML handlers: {e}")
+
 
 def clear_queues():
     for log_queue in [logging_manager.internal_log_queue, logging_manager.execution_log_queue]:

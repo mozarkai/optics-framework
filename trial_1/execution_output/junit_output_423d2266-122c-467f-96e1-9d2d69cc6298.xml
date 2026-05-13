@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="session_423d2266-122c-467f-96e1-9d2d69cc6298" tests="2" failures="1" errors="0" skipped="0" time="36.81">
+    <testcase name="Add Contact with Contact App" id="5fe9e17b-bfc4-4a56-abda-42de088bc02d" classname="session_423d2266-122c-467f-96e1-9d2d69cc6298" time="24.10" status="FAIL">
+      <kw name="Launch Contact Application" type="setup" status="PASS" elapsed="12.86">
+        <kw name="Launch App" status="PASS" starttime="20260513 21:23:22" elapsed="12.85" endtime="20260513 21:23:35"/>
+      </kw>
+      <kw name="Navigate to Add Contact Page" type="setup" status="PASS" elapsed="7.64">
+        <kw name="Assert Presence" status="PASS" starttime="20260513 21:23:35" elapsed="4.29" endtime="20260513 21:23:39">
+          <log>Asserting presence of elements: ['//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc=&quot;Create contact&quot;]'] with rule: any and timeout: 30s</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+          <log>Trying XPathStrategy on '['//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc=&quot;Create contact&quot;]']' ... SUCCESS</log>
+        </kw>
+        <kw name="Press Element" status="PASS" starttime="20260513 21:23:39" elapsed="1.05" endtime="20260513 21:23:40">
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+          <log>Trying XPathStrategy on '//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc=&quot;Create contact&quot;]' ... SUCCESS</log>
+        </kw>
+        <kw name="Assert Presence" status="PASS" starttime="20260513 21:23:40" elapsed="2.29" endtime="20260513 21:23:42">
+          <log>Asserting presence of elements: ['//android.widget.TextView[@text=&quot;Create contact&quot;]'] with rule: any and timeout: 30s</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+          <log>Trying XPathStrategy on '['//android.widget.TextView[@text=&quot;Create contact&quot;]']' ... SUCCESS</log>
+        </kw>
+      </kw>
+      <kw name="Enter Contact Details in Contact Form" type="setup" status="FAIL" elapsed="3.60">
+        <kw name="Enter Text" status="PASS" starttime="20260513 21:23:42" elapsed="1.70" endtime="20260513 21:23:44">
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+          <log>Trying XPathStrategy on '//android.widget.EditText[@text=&quot;First name&quot;]' ... SUCCESS</log>
+        </kw>
+        <kw name="Enter Text" status="FAIL" starttime="20260513 21:23:44" elapsed="1.88" endtime="20260513 21:23:46">
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+          <log>Trying XPathStrategy on '//android.widget.EditText[@text=&quot;Last name&quot;]' ... FAIL (error: Message: An element could not be located on the page using the given search parameters.; For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#nosuchelementexception
+Stacktrace:
+NoSuchElementError: An element could not be located on the page using the given search parameters.
+    at AndroidUiautomator2Driver.findElOrEls (C:\Users\roopa\.appium\node_modules\appium-uiautomator2-driver\node_modules\appium-android-driver\build\lib\commands\find.js:62:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async AndroidUiautomator2Driver.findElOrElsWithProcessing (C:\Users\roopa\AppData\Roaming\npm\node_modules\appium\node_modules\@appium\base-driver\build\lib\basedriver\commands\find.js:12:16)
+    at async AndroidUiautomator2Driver.findElement (C:\Users\roopa\AppData\Roaming\npm\node_modules\appium\node_modules\@appium\base-driver\build\lib\basedriver\commands\find.js:27:16))</log>
+          <log>Trying XPathStrategy on '//android.widget.EditText[@text=&quot;Last name&quot;]' ... FAIL (error: Error finding element by xpath.)</log>
+          <msg level="ERROR">Keyword 'Enter Text' failed: Code.E0201: Element '//android.widget.EditText[@text=&quot;Last name&quot;]' not found.</msg>
+        </kw>
+      </kw>
+      <failure message="" type="Failure"/>
+    </testcase>
+    <testcase name="View Added Contact Details" id="0b7d0bec-7d90-4a08-b006-b6552d005bb3" classname="session_423d2266-122c-467f-96e1-9d2d69cc6298" time="12.71" status="PASS">
+      <kw name="Launch Contact Application" type="setup" status="PASS" elapsed="0.01">
+        <kw name="Launch App" status="PASS" starttime="20260513 21:23:46" elapsed="0.00" endtime="20260513 21:23:46"/>
+      </kw>
+      <kw name="Check the First Contact" type="setup" status="PASS" elapsed="12.69">
+        <kw name="Press Element" status="PASS" starttime="20260513 21:23:46" elapsed="1.75" endtime="20260513 21:23:48">
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+          <log>Trying TextElementStrategy on 'android.widget.TextView' ... SUCCESS</log>
+        </kw>
+        <kw name="Sleep" status="PASS" starttime="20260513 21:23:48" elapsed="5.00" endtime="20260513 21:23:53"/>
+        <kw name="Press Keycode" status="PASS" starttime="20260513 21:23:53" elapsed="0.91" endtime="20260513 21:23:53">
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+        <kw name="Sleep" status="PASS" starttime="20260513 21:23:53" elapsed="5.01" endtime="20260513 21:23:58"/>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>

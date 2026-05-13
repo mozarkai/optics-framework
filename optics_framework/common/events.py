@@ -111,7 +111,9 @@ class EventManager:
                         await subscriber.on_event(event)
                     except Exception as e:
                         internal_logger.error(
-                            f"Error in subscriber {subscriber_id}: {e}")
+                            f"Error in subscriber {subscriber_id}: {e}",
+                            exc_info=True,
+                        )
                 self.event_queue.task_done()
             except asyncio.CancelledError:
                 internal_logger.debug("Event processing loop cancelled")

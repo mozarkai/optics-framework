@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optics Test Report</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --text: #1f2937;
+            --muted: #667085;
+            --line: #d9dee7;
+            --pass: #157347;
+            --pass-bg: #eaf7ef;
+            --fail: #b42318;
+            --fail-bg: #fff0ed;
+            --skip: #7a5b00;
+            --skip-bg: #fff7d6;
+            --run: #175cd3;
+            --run-bg: #eff4ff;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .shell { max-width: 1180px; margin: 0 auto; padding: 24px; }
+
+        header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 8px 0 20px;
+        }
+
+        h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0; }
+        h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+        h3 { margin: 0; font-size: 15px; letter-spacing: 0; }
+        .muted { color: var(--muted); }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .status-pass { color: var(--pass); background: var(--pass-bg); }
+        .status-fail, .status-error { color: var(--fail); background: var(--fail-bg); }
+        .status-skipped { color: var(--skip); background: var(--skip-bg); }
+        .status-running, .status-not_run { color: var(--run); background: var(--run-bg); }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .metric, .panel, .test-case {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        .metric { padding: 14px; }
+        .metric .label { color: var(--muted); font-size: 12px; }
+        .metric .value { margin-top: 4px; font-size: 22px; font-weight: 700; }
+
+        .panel { padding: 16px; margin-bottom: 18px; }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px 18px;
+        }
+
+        .metadata dt { color: var(--muted); font-size: 12px; }
+        .metadata dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+
+        .test-case { margin-bottom: 14px; overflow: hidden; }
+        .test-head, .module-head, .keyword-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .test-head {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .test-case.failed { border-color: #f0a8a0; }
+        .test-case.failed .test-head { background: #fff8f7; }
+
+        .module { padding: 12px 16px; border-bottom: 1px solid #edf0f5; }
+        .module:last-child { border-bottom: 0; }
+        .module-head { margin-bottom: 8px; }
+
+        .keyword-row {
+            padding: 8px 0 8px 18px;
+            border-left: 3px solid #e7ebf2;
+        }
+
+        .keyword-row.failed {
+            border-left-color: var(--fail);
+            background: #fffafa;
+            padding-right: 8px;
+        }
+
+        .duration { color: var(--muted); font-variant-numeric: tabular-nums; }
+        .message, .logs {
+            margin: 8px 0 0 18px;
+            padding: 10px;
+            border-radius: 6px;
+            background: #f8fafc;
+            border: 1px solid #e7ebf2;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .message.failure {
+            color: var(--fail);
+            background: var(--fail-bg);
+            border-color: #ffd1cc;
+        }
+
+        .args { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+        .screenshot {
+            display: block;
+            max-width: min(520px, 100%);
+            margin: 10px 0 4px 18px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        details { margin-top: 8px; }
+        summary { cursor: pointer; color: var(--muted); }
+        .empty { padding: 20px; color: var(--muted); text-align: center; }
+
+        @media (max-width: 760px) {
+            .shell { padding: 16px; }
+            header { display: block; }
+            header .badge { margin-top: 10px; }
+            .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .metadata { grid-template-columns: 1fr; }
+            .test-head, .module-head, .keyword-row { grid-template-columns: 1fr; gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <header>
+            <div>
+                <h1>Optics Test Report</h1>
+                <div class="muted" id="run-window"></div>
+            </div>
+            <span id="overall-status" class="badge"></span>
+        </header>
+
+        <section class="summary" id="summary"></section>
+
+        <section class="panel">
+            <h2>Run Metadata</h2>
+            <dl class="metadata" id="metadata"></dl>
+        </section>
+
+        <section id="results"></section>
+    </main>
+
+    <script type="application/json" id="report-data">{"summary": {"overall_status": "FAIL", "total": 2, "passed": 1, "failed": 1, "skipped": 0, "duration": 37.612741470336914, "message": "Some test cases failed"}, "metadata": {"session_id": "bac2fd80-aa9b-4b5e-9948-525bec5810c8", "project_path": "C:\\Users\\roopa\\optics-framework\\trial_1", "execution_output_path": "C:\\Users\\roopa\\optics-framework\\trial_1\\execution_output", "log_level": "INFO", "drivers": [{"name": "appium", "url": "http://localhost:4723", "capabilities": {"app_param": null, "appActivity": "com.android.contacts.activities.PeopleActivity", "appPackage": "com.google.android.contacts", "automationName": "UiAutomator2", "deviceName": "22111317I", "platformName": "Android", "udid": "de925e580000"}}], "element_sources": [{"name": "appium_find_element", "url": null, "capabilities": {}}, {"name": "appium_page_source", "url": null, "capabilities": {}}, {"name": "appium_screenshot", "url": null, "capabilities": {}}], "text_detection": [{"name": "easyocr", "url": null, "capabilities": {}}], "image_detection": [], "start_time": 1778440954.001913, "end_time": 1778440991.6146545}, "test_cases": [{"id": "2d276a33-d128-4a11-897a-6cbeb7c67865", "name": "Add Contact with Contact App", "status": "FAIL", "message": "", "duration": 17.623485565185547, "start_time": 1778440961.0338087, "end_time": 1778440978.6572943, "modules": [{"id": "cacd7fa2-2d6a-4e04-811f-0c30814b1fa7", "name": "Launch Contact Application", "status": "PASS", "message": "", "duration": 7.793467283248901, "start_time": 1778440961.0383284, "end_time": 1778440968.8317957, "keywords": [{"id": "54170524-17f5-4c77-8e71-de5a7c161e05", "name": "Launch App", "status": "PASS", "message": "", "duration": 7.790733337402344, "start_time": 1778440961.039839, "end_time": 1778440968.8305724, "args": [], "logs": [], "screenshot": null}]}, {"id": "c4856fdd-4fd1-42a9-ba0d-e039b4032c05", "name": "Navigate to Add Contact Page", "status": "PASS", "message": "", "duration": 6.812894582748413, "start_time": 1778440968.8343253, "end_time": 1778440975.64722, "keywords": [{"id": "a8a342c8-a4cd-4162-be9c-945aa47d48e2", "name": "Assert Presence", "status": "PASS", "message": "", "duration": 3.137704849243164, "start_time": 1778440968.838383, "end_time": 1778440971.9760878, "args": [], "logs": ["Asserting presence of elements: ['//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc=\"Create contact\"]'] with rule: any and timeout: 30s", "Trying ScreenshotStrategy on 'screenshot' ... SUCCESS", "Trying XPathStrategy on '['//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc=\"Create contact\"]']' ... SUCCESS"], "screenshot": null}, {"id": "e08ea009-3b2d-407a-8dca-6b209b9c3036", "name": "Press Element", "status": "PASS", "message": "", "duration": 1.1362695693969727, "start_time": 1778440971.979934, "end_time": 1778440973.1162035, "args": [], "logs": ["Trying ScreenshotStrategy on 'screenshot' ... SUCCESS", "Trying XPathStrategy on '//com.google.android.material.floatingactionbutton.FloatingActionButton[@content-desc=\"Create contact\"]' ... SUCCESS"], "screenshot": null}, {"id": "33ae6048-3312-454e-90ad-3b2778dc5b0b", "name": "Assert Presence", "status": "PASS", "message": "", "duration": 2.5212972164154053, "start_time": 1778440973.1239228, "end_time": 1778440975.64522, "args": [], "logs": ["Asserting presence of elements: ['//android.widget.TextView[@text=\"Create contact\"]'] with rule: any and timeout: 30s", "Trying XPathStrategy on '['//android.widget.TextView[@text=\"Create contact\"]']' ... FAIL (error: Elements not found.)", "Trying ScreenshotStrategy on 'screenshot' ... SUCCESS", "Trying XPathStrategy on '['//android.widget.TextView[@text=\"Create contact\"]']' ... SUCCESS"], "screenshot": null}]}, {"id": "3b28389c-b245-4105-aa9e-3460bb05ef42", "name": "Enter Contact Details in Contact Form", "status": "FAIL", "message": "", "duration": 3.0065436363220215, "start_time": 1778440975.6492195, "end_time": 1778440978.6557631, "keywords": [{"id": "21ca5cf8-0e47-49f2-a857-8aa39b41d8c0", "name": "Enter Text", "status": "PASS", "message": "", "duration": 1.4823765754699707, "start_time": 1778440975.651308, "end_time": 1778440977.1336846, "args": [], "logs": ["Trying ScreenshotStrategy on 'screenshot' ... SUCCESS", "Trying XPathStrategy on '//android.widget.EditText[@text=\"First name\"]' ... SUCCESS"], "screenshot": null}, {"id": "e3ffdd7a-05ec-415b-a191-206e5316c9b1", "name": "Enter Text", "status": "FAIL", "message": "Keyword 'Enter Text' failed: Code.E0201: Element '//android.widget.EditText[@text=\"Last name\"]' not found.", "duration": 1.519519567489624, "start_time": 1778440977.135737, "end_time": 1778440978.6552565, "args": [], "logs": ["Trying ScreenshotStrategy on 'screenshot' ... SUCCESS", "Trying XPathStrategy on '//android.widget.EditText[@text=\"Last name\"]' ... FAIL (error: Message: An element could not be located on the page using the given search parameters.; For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#nosuchelementexception\nStacktrace:\nNoSuchElementError: An element could not be located on the page using the given search parameters.\n    at AndroidUiautomator2Driver.findElOrEls (C:\\Users\\roopa\\.appium\\node_modules\\appium-uiautomator2-driver\\node_modules\\appium-android-driver\\build\\lib\\commands\\find.js:62:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async AndroidUiautomator2Driver.findElOrElsWithProcessing (C:\\Users\\roopa\\AppData\\Roaming\\npm\\node_modules\\appium\\node_modules\\@appium\\base-driver\\build\\lib\\basedriver\\commands\\find.js:12:16)\n    at async AndroidUiautomator2Driver.findElement (C:\\Users\\roopa\\AppData\\Roaming\\npm\\node_modules\\appium\\node_modules\\@appium\\base-driver\\build\\lib\\basedriver\\commands\\find.js:27:16))", "Trying XPathStrategy on '//android.widget.EditText[@text=\"Last name\"]' ... FAIL (error: Error finding element by xpath.)"], "screenshot": "2026-05-11T00-52-59-103856-prepress_element.jpg"}]}]}, {"id": "e122f6a6-259b-417a-a36f-9028bb3bd3db", "name": "View Added Contact Details", "status": "PASS", "message": "", "duration": 12.941544532775879, "start_time": 1778440978.6582992, "end_time": 1778440991.5998437, "modules": [{"id": "debca761-5af2-4bc7-aa90-3d198c74196f", "name": "Launch Contact Application", "status": "PASS", "message": "", "duration": 0.003511190414428711, "start_time": 1778440978.6593013, "end_time": 1778440978.6628125, "keywords": [{"id": "1eaa5bd7-f1bd-4a78-bb81-f9f149d9ccad", "name": "Launch App", "status": "PASS", "message": "", "duration": 0.0010077953338623047, "start_time": 1778440978.6608055, "end_time": 1778440978.6618133, "args": [], "logs": [], "screenshot": null}]}, {"id": "8728629b-4d6d-45cf-9292-9f2033f6c54e", "name": "Check the First Contact", "status": "PASS", "message": "", "duration": 12.933031797409058, "start_time": 1778440978.6638107, "end_time": 1778440991.5968425, "keywords": [{"id": "7c757c43-5a94-4268-90d2-a9d92ba45881", "name": "Press Element", "status": "PASS", "message": "", "duration": 2.197704792022705, "start_time": 1778440978.6653173, "end_time": 1778440980.863022, "args": [], "logs": ["Trying ScreenshotStrategy on 'screenshot' ... SUCCESS", "Trying TextElementStrategy on 'android.widget.TextView' ... SUCCESS"], "screenshot": null}, {"id": "c37ad1df-0439-4d32-bb72-656afad18505", "name": "Sleep", "status": "PASS", "message": "", "duration": 5.003137111663818, "start_time": 1778440980.8652585, "end_time": 1778440985.8683956, "args": [], "logs": [], "screenshot": null}, {"id": "ef87cc6f-1895-412b-a6bb-7e2e8fc866f4", "name": "Press Keycode", "status": "PASS", "message": "", "duration": 0.7179632186889648, "start_time": 1778440985.871452, "end_time": 1778440986.5894153, "args": [], "logs": ["Trying ScreenshotStrategy on 'screenshot' ... SUCCESS"], "screenshot": null}, {"id": "2c285c7b-13df-4ca6-8436-0426bc5a0134", "name": "Sleep", "status": "PASS", "message": "", "duration": 5.00390887260437, "start_time": 1778440986.5909235, "end_time": 1778440991.5948324, "args": [], "logs": [], "screenshot": null}]}]}]}</script>
+    <script>
+        const data = JSON.parse(document.getElementById("report-data").textContent);
+
+        const fmtDuration = seconds => `${Number(seconds || 0).toFixed(2)}s`;
+        const fmtDate = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : "N/A";
+        const statusClass = status => `status-${String(status || "not_run").toLowerCase()}`;
+        const isFailed = status => ["FAIL", "ERROR"].includes(String(status || "").toUpperCase());
+
+        function text(value) {
+            return document.createTextNode(value == null || value === "" ? "N/A" : String(value));
+        }
+
+        function el(tag, className, children = []) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            for (const child of children) node.append(child);
+            return node;
+        }
+
+        function badge(status) {
+            return el("span", `badge ${statusClass(status)}`, [text(status || "NOT_RUN")]);
+        }
+
+        function renderSummary() {
+            const summary = data.summary;
+            document.getElementById("overall-status").className = `badge ${statusClass(summary.overall_status)}`;
+            document.getElementById("overall-status").textContent = summary.overall_status;
+            document.getElementById("run-window").textContent = `${fmtDate(data.metadata.start_time)} - ${fmtDate(data.metadata.end_time)}`;
+
+            const metrics = [
+                ["Total Tests", summary.total],
+                ["Passed", summary.passed],
+                ["Failed", summary.failed],
+                ["Skipped", summary.skipped],
+                ["Duration", fmtDuration(summary.duration)],
+            ];
+            const container = document.getElementById("summary");
+            metrics.forEach(([label, value]) => {
+                container.append(el("div", "metric", [
+                    el("div", "label", [text(label)]),
+                    el("div", "value", [text(value)]),
+                ]));
+            });
+        }
+
+        function flattenCapabilities(items) {
+            return items.map(item => {
+                const caps = item.capabilities || {};
+                const important = ["deviceName", "udid", "platformName", "automationName", "browserName"]
+                    .filter(key => caps[key])
+                    .map(key => `${key}: ${caps[key]}`)
+                    .join(", ");
+                return important ? `${item.name} (${important})` : item.name;
+            }).join("; ");
+        }
+
+        function renderMetadata() {
+            const m = data.metadata;
+            const rows = [
+                ["Session ID", m.session_id],
+                ["Start Time", fmtDate(m.start_time)],
+                ["End Time", fmtDate(m.end_time)],
+                ["Execution Output", m.execution_output_path],
+                ["Project Path", m.project_path],
+                ["Log Level", m.log_level],
+                ["Drivers", flattenCapabilities(m.drivers || [])],
+                ["Element Sources", (m.element_sources || []).map(item => item.name).join(", ")],
+                ["Text Detection", (m.text_detection || []).map(item => item.name).join(", ")],
+                ["Image Detection", (m.image_detection || []).map(item => item.name).join(", ")],
+            ];
+
+            const container = document.getElementById("metadata");
+            rows.forEach(([label, value]) => {
+                container.append(el("div", "", [
+                    el("dt", "", [text(label)]),
+                    el("dd", "", [text(value)]),
+                ]));
+            });
+        }
+
+        function renderKeyword(keyword) {
+            const row = el("div", `keyword-row ${isFailed(keyword.status) ? "failed" : ""}`, [
+                el("div", "", [
+                    el("strong", "", [text(keyword.name)]),
+                    keyword.args && keyword.args.length ? el("div", "args", [text(keyword.args.join(", "))]) : text(""),
+                ]),
+                el("span", "duration", [text(fmtDuration(keyword.duration))]),
+                badge(keyword.status),
+            ]);
+
+            const parts = [row];
+            if (keyword.message) {
+                parts.push(el("div", `message ${isFailed(keyword.status) ? "failure" : ""}`, [text(keyword.message)]));
+            }
+            if (keyword.screenshot) {
+                const img = el("img", "screenshot");
+                img.src = keyword.screenshot;
+                img.alt = `${keyword.name} failure screenshot`;
+                parts.push(img);
+            }
+            if (keyword.logs && keyword.logs.length) {
+                const details = el("details", "", [
+                    el("summary", "", [text("Logs")]),
+                    el("div", "logs", [text(keyword.logs.join("\n"))]),
+                ]);
+                parts.push(details);
+            }
+            return parts;
+        }
+
+        function renderResults() {
+            const container = document.getElementById("results");
+            if (!data.test_cases.length) {
+                container.append(el("div", "panel empty", [text("No test cases were reported.")]));
+                return;
+            }
+
+            data.test_cases.forEach(testCase => {
+                const card = el("article", `test-case ${isFailed(testCase.status) ? "failed" : ""}`);
+                card.append(el("div", "test-head", [
+                    el("h2", "", [text(testCase.name)]),
+                    el("span", "duration", [text(fmtDuration(testCase.duration))]),
+                    badge(testCase.status),
+                ]));
+                if (testCase.message) {
+                    card.append(el("div", `message ${isFailed(testCase.status) ? "failure" : ""}`, [text(testCase.message)]));
+                }
+
+                testCase.modules.forEach(module => {
+                    const moduleNode = el("section", "module");
+                    moduleNode.append(el("div", "module-head", [
+                        el("h3", "", [text(module.name)]),
+                        el("span", "duration", [text(fmtDuration(module.duration))]),
+                        badge(module.status),
+                    ]));
+                    if (module.message) {
+                        moduleNode.append(el("div", `message ${isFailed(module.status) ? "failure" : ""}`, [text(module.message)]));
+                    }
+                    module.keywords.forEach(keyword => {
+                        renderKeyword(keyword).forEach(part => moduleNode.append(part));
+                    });
+                    card.append(moduleNode);
+                });
+                container.append(card);
+            });
+        }
+
+        renderSummary();
+        renderMetadata();
+        renderResults();
+    </script>
+</body>
+</html>

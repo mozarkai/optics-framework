@@ -115,11 +115,12 @@ class AppiumPageSource(ElementSourceInterface):
         elif element_type == 'XPath':
             if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
                 xpath, _ = self.driver.ui_helper.find_xpath(element)
+                search_xpath = xpath if xpath is not None else element
                 try:
-                    element_obj = driver.find_element(AppiumBy.XPATH, xpath)
+                    element_obj = driver.find_element(AppiumBy.XPATH, search_xpath)
                     return element_obj
                 except Exception:
-                    internal_logger.exception("Error finding element by xpath: %s", xpath)
+                    internal_logger.exception("Error finding element by xpath: %s", search_xpath)
                     raise RuntimeError("Error finding element by xpath.")
             else:
                 internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
