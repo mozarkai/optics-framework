@@ -110,9 +110,8 @@ class EventManager:
                     try:
                         await subscriber.on_event(event)
                     except Exception as e:
-                        internal_logger.error(
-                            f"Error in subscriber {subscriber_id}: {e}",
-                            exc_info=True,
+                        logging.exception(
+                            f"Error in subscriber {subscriber_id}: {e}"
                         )
                 self.event_queue.task_done()
             except asyncio.CancelledError:

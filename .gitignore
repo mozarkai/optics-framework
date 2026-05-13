@@ -180,3 +180,15 @@ cython_debug/
 *.json
 *.log
 .DS_Store
+
+# Test files
+tests/units/helper/test_initialize.py
+tests/units/common/test_reporters.py
+
+# Outputs and logs
+outputs/
+logs/
+*.log
+
+# Execution output
+trial_1/execution_output
