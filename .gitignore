@@ -180,3 +180,5 @@ cython_debug/
 *.json
 *.log
 .DS_Store
+MagicMock/
+*.har
