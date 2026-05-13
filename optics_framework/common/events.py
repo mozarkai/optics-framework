@@ -109,16 +109,17 @@ class EventManager:
                         f"Dispatching to subscriber {subscriber_id}: {subscriber}")
                     try:
                         await subscriber.on_event(event)
-                    except Exception as e:
+                    except Exception:
                         logging.exception(
-                            f"Error in subscriber {subscriber_id}: {e}"
+                            "Error in subscriber %s",
+                            subscriber_id,
                         )
                 self.event_queue.task_done()
             except asyncio.CancelledError:
                 internal_logger.debug("Event processing loop cancelled")
                 raise
-            except Exception as e:
-                internal_logger.error(f"Error processing event: {e}")
+            except Exception:
+                logging.exception("Error processing event")
         internal_logger.debug("Event processing loop stopped")
 
     async def publish_event(self, event: Event):
@@ -165,8 +166,8 @@ class EventManager:
                 internal_logger.debug(f"Closing subscriber {subscriber_id}")
                 try:
                     subscriber.close()
-                except Exception as e:
-                    internal_logger.error(f"Error while closing subscriber {subscriber_id}: {e}")
+                except Exception:
+                    logging.exception("Error while closing subscriber %s", subscriber_id)
 
         self.dump_state()
         self.stop()

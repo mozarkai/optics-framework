@@ -319,7 +319,9 @@ class HtmlEventHandler(EventSubscriber):
             )
 
         total = len(test_cases)
-        overall_status = EventStatus.FAIL.value if failed else EventStatus.PASS.value if total else self.execution_status
+        overall_status = self.execution_status
+        if total:
+            overall_status = EventStatus.FAIL.value if failed else EventStatus.PASS.value
         return {
             "summary": {
                 "overall_status": overall_status,

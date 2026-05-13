@@ -296,6 +296,38 @@
             return parts;
         }
 
+        function appendMessage(container, message, status) {
+            if (message) {
+                container.append(el("div", `message ${isFailed(status) ? "failure" : ""}`, [text(message)]));
+            }
+        }
+
+        function renderModule(module) {
+            const moduleNode = el("section", "module");
+            moduleNode.append(el("div", "module-head", [
+                el("h3", "", [text(module.name)]),
+                el("span", "duration", [text(fmtDuration(module.duration))]),
+                badge(module.status),
+            ]));
+            appendMessage(moduleNode, module.message, module.status);
+            module.keywords.forEach(keyword => {
+                renderKeyword(keyword).forEach(part => moduleNode.append(part));
+            });
+            return moduleNode;
+        }
+
+        function renderTestCase(testCase) {
+            const card = el("article", `test-case ${isFailed(testCase.status) ? "failed" : ""}`);
+            card.append(el("div", "test-head", [
+                el("h2", "", [text(testCase.name)]),
+                el("span", "duration", [text(fmtDuration(testCase.duration))]),
+                badge(testCase.status),
+            ]));
+            appendMessage(card, testCase.message, testCase.status);
+            testCase.modules.forEach(module => card.append(renderModule(module)));
+            return card;
+        }
+
         function renderResults() {
             const container = document.getElementById("results");
             if (!data.test_cases.length) {
@@ -304,32 +336,7 @@
             }
 
             data.test_cases.forEach(testCase => {
-                const card = el("article", `test-case ${isFailed(testCase.status) ? "failed" : ""}`);
-                card.append(el("div", "test-head", [
-                    el("h2", "", [text(testCase.name)]),
-                    el("span", "duration", [text(fmtDuration(testCase.duration))]),
-                    badge(testCase.status),
-                ]));
-                if (testCase.message) {
-                    card.append(el("div", `message ${isFailed(testCase.status) ? "failure" : ""}`, [text(testCase.message)]));
-                }
-
-                testCase.modules.forEach(module => {
-                    const moduleNode = el("section", "module");
-                    moduleNode.append(el("div", "module-head", [
-                        el("h3", "", [text(module.name)]),
-                        el("span", "duration", [text(fmtDuration(module.duration))]),
-                        badge(module.status),
-                    ]));
-                    if (module.message) {
-                        moduleNode.append(el("div", `message ${isFailed(module.status) ? "failure" : ""}`, [text(module.message)]));
-                    }
-                    module.keywords.forEach(keyword => {
-                        renderKeyword(keyword).forEach(part => moduleNode.append(part));
-                    });
-                    card.append(moduleNode);
-                });
-                container.append(card);
+                container.append(renderTestCase(testCase));
             });
         }
 
