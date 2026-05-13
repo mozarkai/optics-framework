@@ -18,7 +18,8 @@ classifiers = [
 	"Topic :: Software Development :: Testing",
 ]
 include = [
-	"optics_framework/py.typed"
+	"optics_framework/py.typed",
+	"optics_framework/common/report_template.html"
 ]
 
 [tool.poetry.dependencies]

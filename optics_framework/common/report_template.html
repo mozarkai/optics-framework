@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optics Test Report</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --text: #1f2937;
+            --muted: #667085;
+            --line: #d9dee7;
+            --pass: #157347;
+            --pass-bg: #eaf7ef;
+            --fail: #b42318;
+            --fail-bg: #fff0ed;
+            --skip: #7a5b00;
+            --skip-bg: #fff7d6;
+            --run: #175cd3;
+            --run-bg: #eff4ff;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .shell { max-width: 1180px; margin: 0 auto; padding: 24px; }
+
+        header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 8px 0 20px;
+        }
+
+        h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0; }
+        h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+        h3 { margin: 0; font-size: 15px; letter-spacing: 0; }
+        .muted { color: var(--muted); }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .status-pass { color: var(--pass); background: var(--pass-bg); }
+        .status-fail, .status-error { color: var(--fail); background: var(--fail-bg); }
+        .status-skipped { color: var(--skip); background: var(--skip-bg); }
+        .status-running, .status-not_run { color: var(--run); background: var(--run-bg); }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .metric, .panel, .test-case {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        .metric { padding: 14px; }
+        .metric .label { color: var(--muted); font-size: 12px; }
+        .metric .value { margin-top: 4px; font-size: 22px; font-weight: 700; }
+
+        .panel { padding: 16px; margin-bottom: 18px; }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px 18px;
+        }
+
+        .metadata dt { color: var(--muted); font-size: 12px; }
+        .metadata dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+
+        .test-case { margin-bottom: 14px; overflow: hidden; }
+        .test-head, .module-head, .keyword-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .test-head {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .test-case.failed { border-color: #f0a8a0; }
+        .test-case.failed .test-head { background: #fff8f7; }
+
+        .module { padding: 12px 16px; border-bottom: 1px solid #edf0f5; }
+        .module:last-child { border-bottom: 0; }
+        .module-head { margin-bottom: 8px; }
+
+        .keyword-row {
+            padding: 8px 0 8px 18px;
+            border-left: 3px solid #e7ebf2;
+        }
+
+        .keyword-row.failed {
+            border-left-color: var(--fail);
+            background: #fffafa;
+            padding-right: 8px;
+        }
+
+        .duration { color: var(--muted); font-variant-numeric: tabular-nums; }
+        .message, .logs {
+            margin: 8px 0 0 18px;
+            padding: 10px;
+            border-radius: 6px;
+            background: #f8fafc;
+            border: 1px solid #e7ebf2;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .message.failure {
+            color: var(--fail);
+            background: var(--fail-bg);
+            border-color: #ffd1cc;
+        }
+
+        .keyword-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .args { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+        .screenshot {
+            display: block;
+            max-width: min(520px, 100%);
+            margin: 10px 0 4px 18px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        details { margin-top: 8px; }
+        summary { cursor: pointer; color: var(--muted); }
+        .empty { padding: 20px; color: var(--muted); text-align: center; }
+
+        @media (max-width: 760px) {
+            .shell { padding: 16px; }
+            header { display: block; }
+            header .badge { margin-top: 10px; }
+            .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .metadata { grid-template-columns: 1fr; }
+            .test-head, .module-head, .keyword-row { grid-template-columns: 1fr; gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <header>
+            <div>
+                <h1>Optics Test Report</h1>
+                <div class="muted" id="run-window"></div>
+            </div>
+            <span id="overall-status" class="badge"></span>
+        </header>
+
+        <section class="summary" id="summary"></section>
+
+        <section class="panel">
+            <h2>Run Metadata</h2>
+            <dl class="metadata" id="metadata"></dl>
+        </section>
+
+        <section id="results"></section>
+    </main>
+
+    <script type="application/json" id="report-data">{{REPORT_DATA_JSON}}</script>
+    <script>
+        const data = JSON.parse(document.getElementById("report-data").textContent);
+
+        const fmtDuration = seconds => `${Number(seconds || 0).toFixed(2)}s`;
+        const fmtDate = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : "N/A";
+        const statusClass = status => `status-${String(status || "not_run").toLowerCase()}`;
+        const isFailed = status => ["FAIL", "ERROR"].includes(String(status || "").toUpperCase());
+
+        function text(value) {
+            return document.createTextNode(value == null || value === "" ? "N/A" : String(value));
+        }
+
+        function el(tag, className, children = []) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            for (const child of children) node.append(child);
+            return node;
+        }
+
+        function badge(status) {
+            return el("span", `badge ${statusClass(status)}`, [text(status || "NOT_RUN")]);
+        }
+
+        function renderSummary() {
+            const summary = data.summary;
+            document.getElementById("overall-status").className = `badge ${statusClass(summary.overall_status)}`;
+            document.getElementById("overall-status").textContent = summary.overall_status;
+            document.getElementById("run-window").textContent = `${fmtDate(data.metadata.start_time)} - ${fmtDate(data.metadata.end_time)}`;
+
+            const metrics = [
+                ["Total Tests", summary.total],
+                ["Passed", summary.passed],
+                ["Failed", summary.failed],
+                ["Skipped", summary.skipped],
+                ["Duration", fmtDuration(summary.duration)],
+            ];
+            const container = document.getElementById("summary");
+            metrics.forEach(([label, value]) => {
+                container.append(el("div", "metric", [
+                    el("div", "label", [text(label)]),
+                    el("div", "value", [text(value)]),
+                ]));
+            });
+        }
+
+        function flattenCapabilities(items) {
+            return items.map(item => {
+                const caps = item.capabilities || {};
+                const important = ["deviceName", "udid", "platformName", "automationName", "browserName"]
+                    .filter(key => caps[key])
+                    .map(key => `${key}: ${caps[key]}`)
+                    .join(", ");
+                return important ? `${item.name} (${important})` : item.name;
+            }).join("; ");
+        }
+
+        function renderMetadata() {
+            const m = data.metadata;
+            const rows = [
+                ["Session ID", m.session_id],
+                ["Start Time", fmtDate(m.start_time)],
+                ["End Time", fmtDate(m.end_time)],
+                ["Execution Output", m.execution_output_path],
+                ["Project Path", m.project_path],
+                ["Log Level", m.log_level],
+                ["Drivers", flattenCapabilities(m.drivers || [])],
+                ["Element Sources", (m.element_sources || []).map(item => item.name).join(", ")],
+                ["Text Detection", (m.text_detection || []).map(item => item.name).join(", ")],
+                ["Image Detection", (m.image_detection || []).map(item => item.name).join(", ")],
+            ];
+
+            const container = document.getElementById("metadata");
+            rows.forEach(([label, value]) => {
+                container.append(el("div", "", [
+                    el("dt", "", [text(label)]),
+                    el("dd", "", [text(value)]),
+                ]));
+            });
+        }
+
+        function renderKeyword(keyword) {
+            const title = el("div", "keyword-title", [el("strong", "", [text(keyword.name)])]);
+            if (keyword.args && keyword.args.length) {
+                title.append(el("span", "args", [text(`(${keyword.args.join(", ")})`)]));
+            }
+
+            const row = el("div", `keyword-row ${isFailed(keyword.status) ? "failed" : ""}`, [
+                title,
+                el("span", "duration", [text(fmtDuration(keyword.duration))]),
+                badge(keyword.status),
+            ]);
+
+            const parts = [row];
+            if (keyword.message) {
+                parts.push(el("div", `message ${isFailed(keyword.status) ? "failure" : ""}`, [text(keyword.message)]));
+            }
+            if (keyword.screenshot) {
+                const img = el("img", "screenshot");
+                img.src = keyword.screenshot;
+                img.alt = `${keyword.name} failure screenshot`;
+                parts.push(img);
+            }
+            if (keyword.logs && keyword.logs.length) {
+                const details = el("details", "", [
+                    el("summary", "", [text("Logs")]),
+                    el("div", "logs", [text(keyword.logs.join("\n"))]),
+                ]);
+                parts.push(details);
+            }
+            return parts;
+        }
+
+        function appendMessage(container, message, status) {
+            if (message) {
+                container.append(el("div", `message ${isFailed(status) ? "failure" : ""}`, [text(message)]));
+            }
+        }
+
+        function renderModule(module) {
+            const moduleNode = el("section", "module");
+            moduleNode.append(el("div", "module-head", [
+                el("h3", "", [text(module.name)]),
+                el("span", "duration", [text(fmtDuration(module.duration))]),
+                badge(module.status),
+            ]));
+            appendMessage(moduleNode, module.message, module.status);
+            module.keywords.forEach(keyword => {
+                renderKeyword(keyword).forEach(part => moduleNode.append(part));
+            });
+            return moduleNode;
+        }
+
+        function renderTestCase(testCase) {
+            const card = el("article", `test-case ${isFailed(testCase.status) ? "failed" : ""}`);
+            card.append(el("div", "test-head", [
+                el("h2", "", [text(testCase.name)]),
+                el("span", "duration", [text(fmtDuration(testCase.duration))]),
+                badge(testCase.status),
+            ]));
+            appendMessage(card, testCase.message, testCase.status);
+            testCase.modules.forEach(module => card.append(renderModule(module)));
+            return card;
+        }
+
+        function renderResults() {
+            const container = document.getElementById("results");
+            if (!data.test_cases.length) {
+                container.append(el("div", "panel empty", [text("No test cases were reported.")]));
+                return;
+            }
+
+            data.test_cases.forEach(testCase => {
+                container.append(renderTestCase(testCase));
+            });
+        }
+
+        renderSummary();
+        renderMetadata();
+        renderResults();
+    </script>
+</body>
+</html>

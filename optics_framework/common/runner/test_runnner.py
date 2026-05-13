@@ -627,7 +627,7 @@ class TestRunner(Runner):
         await self._send_event(
             "test_case",
             current,
-            EventStatus.FAIL,
+            EventStatus.PASS,
             start_time=start_time,
             end_time=time.time(),
             elapsed=time.time() - start_time,
@@ -701,10 +701,10 @@ class TestRunner(Runner):
 
             keyword_current.state = State.COMPLETED_PASSED
             await self._send_event(
-                "module",
-                module_node,
+                "keyword",
+                keyword_current,
                 EventStatus.PASS,
-                parent_id=testcase_id,
+                parent_id=module_node.id,
                 start_time=start_time,
                 end_time=time.time(),
                 elapsed=time.time() - start_time,

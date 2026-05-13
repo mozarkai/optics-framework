@@ -1,9 +1,13 @@
 import os
 import shutil
-import subprocess # nosec
+import subprocess
 import yaml
 import pathlib
 from optics_framework.common.config_handler import ConfigHandler
+from optics_framework.common.device_config import (
+    AndroidDeviceInfo,
+    get_connected_android_device,
+)
 
 
 def _check_and_prepare_directory(project_path: str, force: bool) -> bool:
@@ -36,14 +40,40 @@ def _create_csv_files(project_path: str) -> None:
     print("CSV files created.")
 
 
+def _get_connected_device() -> str:
+    """Backward-compatible helper returning the best connected device name."""
+    device = get_connected_android_device()
+    return device.name if device else "emulator-5554"
+
+
+def _apply_appium_device_info(global_yaml_data: object, device: AndroidDeviceInfo | None) -> None:
+    """Mutate generated Appium capabilities with connected-device metadata."""
+    if device is None or not isinstance(global_yaml_data, dict):
+        return
+    for driver in global_yaml_data.get("driver_sources", []):
+        appium = driver.get("appium") if isinstance(driver, dict) else None
+        if not isinstance(appium, dict):
+            continue
+        capabilities = appium.setdefault("capabilities", {})
+        if not isinstance(capabilities, dict):
+            continue
+        capabilities["deviceName"] = device.name
+        capabilities["udid"] = device.serial
+        if "appium:deviceName" in capabilities:
+            capabilities["appium:deviceName"] = device.name
+        if "appium:udid" in capabilities:
+            capabilities["appium:udid"] = device.serial
+
+
 def _create_config_file(project_path: str) -> None:
     """Create config.yaml with default values from ConfigHandler."""
     config_path = os.path.join(project_path, "config.yaml")
     try:
-        with open(ConfigHandler.DEFAULT_GLOBAL_CONFIG_PATH,'r') as f:
+        with open(ConfigHandler.DEFAULT_GLOBAL_CONFIG_PATH, "r", encoding="utf-8") as f:
             global_yaml_data = yaml.safe_load(f)
+        _apply_appium_device_info(global_yaml_data, get_connected_android_device())
     except Exception:
-            global_yaml_data = ""
+        global_yaml_data = ""
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(global_yaml_data,
                   f, default_flow_style=False)
