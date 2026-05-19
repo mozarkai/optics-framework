@@ -173,7 +173,7 @@ class Optics:
         """
         config_string = config_string.strip()
         try:
-            if config_string.startswith("{") or config_string.startswith("["):
+            if config_string.startswith(("{", "[")):
                 return json.loads(config_string)
             else:
                 return yaml.safe_load(config_string)

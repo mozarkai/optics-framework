@@ -60,7 +60,7 @@ class DataReader(ABC):
         :return: True if the parameter is in key=value format, False otherwise.
         :rtype: bool
         """
-        return "=" in param and not (param.startswith("/") or param.startswith("//") or param.startswith("("))
+        return "=" in param and not param.startswith(("/", "//", "("))
 
     @abstractmethod
     def read_test_cases(self, file_path: str) -> dict:
