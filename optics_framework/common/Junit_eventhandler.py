@@ -113,7 +113,6 @@ class JUnitEventHandler(EventSubscriber):
         self.testsuites = ET.Element("testsuites")
         self.session_suites: Dict[str, ET.Element] = {}
         self.testcase_cases: Dict[str, ET.Element] = {}
-        self.keyword_elements: Dict[str, List[ET.Element]] = {}  # per testcase
         self.start_times: Dict[str, float] = {}
         self.module_names: Dict[str, str] = {}
         self.module_elements: Dict[str, ET.Element] = {}
@@ -170,9 +169,6 @@ class JUnitEventHandler(EventSubscriber):
             elapsed = event_time - self.start_times.get(event.entity_id, event_time)
             testcase.set("time", f"{elapsed:.2f}")
             self._update_testcase_status(testcase, event, session_suite)
-            # Attach all collected keywords as children
-            for kw_element in self.keyword_elements.get(event.entity_id, []):
-                testcase.append(kw_element)
 
             total_time = float(session_suite.get("time", "0")) + elapsed
             session_suite.set("time", f"{total_time:.2f}")
@@ -180,7 +176,6 @@ class JUnitEventHandler(EventSubscriber):
             # cleanup
             del self.testcase_cases[event.entity_id]
             del self.start_times[event.entity_id]
-            del self.keyword_elements[event.entity_id]
             if event.entity_id in self.module_names:
                 del self.module_names[event.entity_id]
 
@@ -226,11 +221,6 @@ class JUnitEventHandler(EventSubscriber):
                 senitised_message = sensitive_formatter._sanitize(message)
                 log_element = ET.SubElement(kw_element, "log")
                 log_element.text = senitised_message
-
-        if event.parent_id not in self.keyword_elements:
-            self.keyword_elements[event.parent_id] = []
-        self.keyword_elements[event.parent_id].append(kw_element)
-
 
     def _update_testcase_status(self, testcase: ET.Element, event: Event, testsuite: ET.Element) -> None:
         testcase.set("status", event.status.value)

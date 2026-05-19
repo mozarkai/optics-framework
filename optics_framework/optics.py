@@ -37,6 +37,7 @@ from optics_framework.common.models import (
     ModuleData,
     ElementData,
     ApiData,
+    ErrorDefinitions,
 )
 
 T = TypeVar("T", bound=Callable[..., Any])
@@ -515,6 +516,100 @@ class Optics:
             session.modules.modules[module_name] = module_def
         else:
             raise ValueError("Session does not have a modules store.")
+
+    @keyword("Add Error Definitions")
+    def add_error_definitions(
+        self,
+        source: Union[str, Dict[str, Dict[str, str]], ErrorDefinitions],
+    ) -> None:
+        """Load user-defined error patterns onto the active session.
+
+        Accepts a CSV path (with columns ``error_code, pattern, description,
+        severity``), a raw dict ``{code: {pattern, description, severity}}``,
+        or an :class:`ErrorDefinitions` model. Repeated calls merge into the
+        existing set (later additions overwrite same-code earlier entries).
+
+        Required before :meth:`capture_and_detect` can return any matches.
+        """
+        from optics_framework.common.runner.data_reader import CSVDataReader
+
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise OpticsError(Code.E0101, message=INVALID_SETUP)
+        session = self.session_manager.sessions[self.session_id]
+        if session.error_definitions is None:
+            session.error_definitions = ErrorDefinitions()
+
+        if isinstance(source, str):
+            if not os.path.isabs(source):
+                project_path = getattr(self.config, "project_path", None)
+                if project_path:
+                    source = os.path.join(project_path, source)
+            if not os.path.exists(source):
+                raise FileNotFoundError(f"Error definitions CSV not found: {source}")
+            raw = CSVDataReader().read_error_definitions(source)
+        elif isinstance(source, ErrorDefinitions):
+            raw = source.get_all()
+        elif isinstance(source, dict):
+            raw = source
+        else:
+            raise ValueError(
+                "add_error_definitions: source must be a CSV path, dict, or ErrorDefinitions"
+            )
+        for code, meta in raw.items():
+            session.error_definitions.add_error(
+                code,
+                pattern=meta.get("pattern", ""),
+                description=meta.get("description", ""),
+                severity=meta.get("severity", ""),
+            )
+
+    @keyword("Capture And Detect Errors")
+    def capture_and_detect(
+        self,
+        context_label: str = "end_of_run",
+        test_case: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Capture page source and run on-screen error detection.
+
+        Returns a list of matched error dicts (may be empty). Each entry carries
+        ``error_code``, ``matched_on`` (``"pattern"`` or ``"code"``), ``pattern``,
+        ``description``, ``severity``, and ``detected_at=context_label``; the
+        optional ``test_case`` argument adds a ``test_case`` field on each entry.
+
+        No files are written; the caller decides where the data lands.
+        Wraps all driver I/O in try/except so a flaky session returns ``[]``
+        instead of raising — this is a diagnostic primitive and must never
+        break the surrounding workflow.
+        """
+        from optics_framework.common.strategies import StrategyManager
+        from optics_framework.common.error_detection import (
+            extract_visible_text,
+            detect_errors_in_text,
+        )
+
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            return []
+        session = self.session_manager.sessions[self.session_id]
+        error_defs = getattr(session, "error_definitions", None)
+        if not error_defs or not error_defs.get_all():
+            return []
+        try:
+            sm = StrategyManager(
+                session.optics.get_element_source(),
+                session.optics.get_text_detection(),
+                session.optics.get_image_detection(),
+            )
+            page_source, _ts = sm.capture_pagesource()
+            searchable = extract_visible_text(page_source)
+            return detect_errors_in_text(
+                searchable,
+                error_defs.get_all(),
+                context_label=context_label,
+                test_case=test_case,
+            )
+        except Exception as e:
+            internal_logger.warning("capture_and_detect failed: %s", e)
+            return []
 
     ### AppManagement Methods ###
     @keyword("Launch App")
