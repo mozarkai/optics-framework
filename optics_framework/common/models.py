@@ -303,3 +303,14 @@ class TemplateData(BaseModel):
 
     def get_template_path(self, name: str) -> Optional[str]:
         return self.templates.get(name)
+
+
+class ErrorDefinitions(BaseModel):
+    """Stores user-defined error patterns for end-of-run screen detection."""
+    errors: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+
+    def add_error(self, code: str, pattern: str, description: str = "", severity: str = ""):
+        self.errors[code] = {"pattern": pattern, "description": description, "severity": severity}
+
+    def get_all(self) -> Dict[str, Dict[str, str]]:
+        return self.errors
