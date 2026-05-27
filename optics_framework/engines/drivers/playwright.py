@@ -46,8 +46,9 @@ class Playwright(DriverInterface):
             self._browser = await getattr(self._pw, browser).launch(headless=headless)
             self._context = await self._browser.new_context(viewport=viewport)
             self.page = await self._context.new_page()
-            self.page.set_default_navigation_timeout(60000)
-            self.page.set_default_timeout(60000)
+            timeout_ms = int(self.config.get("navigation_timeout_ms", 60000))
+            self.page.set_default_navigation_timeout(timeout_ms)
+            self.page.set_default_timeout(timeout_ms)
 
             if app_identifier:
                 internal_logger.debug("[Playwright] Navigating to %s", app_identifier)
@@ -149,15 +150,20 @@ class Playwright(DriverInterface):
         if not isinstance(element, str):
             return element
 
-        # Check if it's an XPath selector
+        # Detect selector type
         element_type = utils.determine_element_type(element)
+
+        # Normalize XPath selectors
         if element_type == "XPath":
-            # If it doesn't already have the xpath= prefix, add it
             if not element.lower().startswith("xpath="):
                 return f"xpath={element}"
-        # plain visible text support (important for YouTube test)
-        if isinstance(element, str) and not any(element.startswith(p) for p in ("css=", "xpath=", "text=", "//", "input", "#", ".")):
-            return f"text={element}"
+            return element
+
+        # Convert only plain text into Playwright text selectors
+        if element_type == "Text":
+            if not element.lower().startswith("text="):
+                return f"text={element}"
+
         return element
 
     # =====================================================
@@ -225,7 +231,8 @@ class Playwright(DriverInterface):
         except Exception:
             run_async(self.page.wait_for_timeout(4000))
         # stabilize search navigation
-        run_async(self.page.wait_for_timeout(3000))
+        if keycode.lower() == "enter":
+            run_async(self.page.wait_for_timeout(3000))
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
