@@ -23,6 +23,8 @@ class Playwright(DriverInterface):
         self._browser = None
         self._context = None
         self.page: Optional[Page] = None
+        self.navigation_timeout_ms = int(self.config.get("navigation_timeout_ms", 60000))
+        self.scroll_multiplier = int(self.config.get("scroll_multiplier", 1))
 
         internal_logger.info("[Playwright] Driver initialized")
 
@@ -46,7 +48,7 @@ class Playwright(DriverInterface):
             self._browser = await getattr(self._pw, browser).launch(headless=headless)
             self._context = await self._browser.new_context(viewport=viewport)
             self.page = await self._context.new_page()
-            timeout_ms = int(self.config.get("navigation_timeout_ms", 60000))
+            timeout_ms = self.navigation_timeout_ms
             self.page.set_default_navigation_timeout(timeout_ms)
             self.page.set_default_timeout(timeout_ms)
 
@@ -225,7 +227,7 @@ class Playwright(DriverInterface):
         # Use mapped key or the keycode string directly (Playwright accepts key names)
         key = key_map.get(keycode, keycode)
         run_async(self.page.keyboard.press(key))
-        # wait for youtube search results page load
+        # wait for page load after key press
         try:
             run_async(self.page.wait_for_load_state("networkidle", timeout=10000))
         except Exception:
@@ -327,7 +329,7 @@ class Playwright(DriverInterface):
 
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
-        scroll_multiplier = int(self.config.get("scroll_multiplier", 1))
+        scroll_multiplier = self.scroll_multiplier
         delta = (pixels if direction == "down" else -pixels) * scroll_multiplier
         run_async(self.page.mouse.wheel(0, delta))
         run_async(self.page.wait_for_timeout(200))
