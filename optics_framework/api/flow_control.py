@@ -237,7 +237,7 @@ class FlowControl:
             if var_name.startswith("${") and var_name.endswith("}"):
                 var_name = var_name[2:-1].strip()
             else:
-                internal_logger.warning(
+                internal_logger.exception(
                     f"[RUN LOOP] Expected variable in format '${{name}}', got '{variable}'. Using as is."
                 )
             var_names.append(var_name)

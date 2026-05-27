@@ -365,7 +365,7 @@ class ActionKeyword:
                     element, timeout_str="3", rule="any")
                 if result:
                     return
-            except Exception:
+            except AssertionError:
                 pass
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
             time.sleep(3)
@@ -425,7 +425,7 @@ class ActionKeyword:
                     element, timeout_str="3", rule="any")
                 if result:
                     return
-            except Exception:
+            except AssertionError:
                 pass
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)

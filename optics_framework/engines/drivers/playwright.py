@@ -40,7 +40,7 @@ class Playwright(DriverInterface):
             self._pw = await async_playwright().start()
 
             browser = self.config.get("browser", "chromium")
-            headless = True
+            headless = self.config.get("headless", True)
             viewport = self.config.get("viewport", {"width": 1280, "height": 800})
 
             self._browser = await getattr(self._pw, browser).launch(headless=headless)
@@ -83,7 +83,7 @@ class Playwright(DriverInterface):
             # Create a new page (tab) in the existing context
             internal_logger.debug("[Playwright] Creating new tab for %s", app_name)
             self.page = await self._context.new_page()
-            # ⭐ very important stability fix
+
 
             # Navigate to the new URL
             if app_name:
@@ -114,7 +114,7 @@ class Playwright(DriverInterface):
         wait_until = self.config.get("navigation_wait_until", "domcontentloaded")
 
         try:
-            await self.page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+            await self.page.goto(url, timeout=timeout_ms, wait_until=wait_until)
         except PlaywrightTimeoutError as e:
             current_url = self.page.url or ""
             if current_url and url in current_url:
