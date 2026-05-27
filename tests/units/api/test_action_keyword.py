@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 import tempfile
 import numpy as np
+from optics_framework.common.error import OpticsError, Code
 
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -295,3 +296,73 @@ class TestPressElementWithIndex:
             # Verify locate was called with integer index
             mock_locate.assert_called_once_with(element, index=5)
             assert isinstance(mock_locate.call_args[1]['index'], int)
+
+
+class TestScreenshotFailureFallback:
+    """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
+
+    @patch('optics_framework.common.utils.save_screenshot')
+    def test_with_self_healing_proceeds_when_screenshot_raises(
+        self, mock_save_screenshot, action_keyword, mock_dependencies
+    ):
+        """Action still executes when capture_screenshot raises (e.g. INTERNAL_SERVER_ERROR)."""
+        mock_locate_result = LocateResult((100, 150), MagicMock())
+
+        with patch.object(
+            action_keyword.strategy_manager, 'capture_screenshot',
+            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
+        ):
+            with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
+                action_keyword.press_element("button")
+
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, None)
+
+    @patch('optics_framework.common.utils.save_screenshot')
+    def test_with_self_healing_skips_save_when_screenshot_raises(
+        self, mock_save_screenshot, action_keyword, mock_dependencies
+    ):
+        """utils.save_screenshot is not called when capture_screenshot raises."""
+        mock_locate_result = LocateResult((100, 150), MagicMock())
+
+        with patch.object(
+            action_keyword.strategy_manager, 'capture_screenshot',
+            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
+        ):
+            with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
+                action_keyword.press_element("button")
+
+        mock_save_screenshot.assert_not_called()
+
+    @patch('optics_framework.common.utils.annotate_aoi_region')
+    @patch('optics_framework.common.utils.save_screenshot')
+    def test_with_self_healing_skips_aoi_save_when_screenshot_raises(
+        self, mock_save_screenshot, mock_annotate_aoi, action_keyword, mock_dependencies
+    ):
+        """AOI annotation and save are skipped when capture_screenshot raises."""
+        mock_locate_result = LocateResult((100, 150), MagicMock())
+
+        with patch.object(
+            action_keyword.strategy_manager, 'capture_screenshot',
+            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
+        ):
+            with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
+                action_keyword.press_element(
+                    "button", aoi_x="10", aoi_y="10", aoi_width="50", aoi_height="50"
+                )
+
+        mock_annotate_aoi.assert_not_called()
+        mock_save_screenshot.assert_not_called()
+
+    @patch('optics_framework.common.utils.save_screenshot')
+    def test_direct_method_proceeds_when_screenshot_raises(
+        self, mock_save_screenshot, action_keyword, mock_dependencies
+    ):
+        """Direct methods (not via with_self_healing) still execute when capture_screenshot raises."""
+        with patch.object(
+            action_keyword.strategy_manager, 'capture_screenshot',
+            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
+        ):
+            action_keyword.press_by_percentage("50", "50")
+
+        mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, None)
+        mock_save_screenshot.assert_not_called()

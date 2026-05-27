@@ -72,6 +72,8 @@ def _save_annotated_for_result(
     bbox = element_source.get_bbox_for_element(result.value)
     if bbox is None:
         return
+    if screenshot_np is None:
+        return
     framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
         framed,
@@ -122,14 +124,14 @@ def with_self_healing(func: Callable) -> Callable:
         if kwargs.get('located') is not None:
             return func(self, element, *args, **kwargs)
 
-        screenshot_np = self.strategy_manager.capture_screenshot()
+        screenshot_np = self._capture_screenshot_safe()
         aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used = _parse_aoi_from_kwargs(kwargs)
-        if is_aoi_used:
+        if is_aoi_used and screenshot_np is not None:
             _maybe_save_aoi_screenshot(
                 screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
                 self.execution_dir, func.__name__,
             )
-        utils.save_screenshot(screenshot_np, f"pre-{func.__name__}", output_dir=self.execution_dir)
+        self._save_screenshot_if_available(screenshot_np, f"pre-{func.__name__}")
         results = _locate_element(
             self.strategy_manager, element,
             aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used,
@@ -163,6 +165,19 @@ class ActionKeyword:
             self.element_source, self.text_detection, self.image_detection
         )
         self.execution_dir = builder.session_config.execution_output_path
+
+    def _capture_screenshot_safe(self) -> Any:
+        """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""
+        try:
+            return self.strategy_manager.capture_screenshot()
+        except Exception as e:
+            internal_logger.warning(f"Screenshot capture failed, continuing without it: {e}")
+            return None
+
+    def _save_screenshot_if_available(self, screenshot_np: Any, name: str) -> None:
+        """Save a screenshot only if one was successfully captured."""
+        if screenshot_np is not None:
+            utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
 
     # Click actions
     @with_self_healing
@@ -204,8 +219,8 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_by_percentage", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "press_by_percentage")
         self.driver.press_percentage_coordinates(
             float(percent_x), float(percent_y), int(repeat), event_name
         )
@@ -219,8 +234,8 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "press_by_coordinates", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "press_by_coordinates")
         internal_logger.info(f'Pressing by coordinates: ({coor_x}, {coor_y})')
         self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
 
@@ -300,8 +315,8 @@ class ActionKeyword:
         :param swipe_length: The length of the swipe.
         :param event_name: The event triggering the swipe.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "swipe")
         internal_logger.info(f'Swiping from ({coor_x}, {coor_y}) to the {direction} with length {swipe_length}')
         self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name)
 
@@ -315,8 +330,8 @@ class ActionKeyword:
         :param swipe_length: The length of the swipe.
         :param event_name: The event triggering the swipe.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe_percentage", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "swipe_percentage")
         internal_logger.info(f'Swiping from ({percent_x}, {percent_y}) to the {direction} with length {swipe_length}')
         self.driver.swipe_percentage(int(percent_x), int(percent_y), direction, int(swipe_length), event_name)
 
@@ -327,8 +342,8 @@ class ActionKeyword:
 
         :param element: The seekbar element (Image template, OCR template, or XPath).
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe_seekbar_to_right_android", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "swipe_seekbar_to_right_android")
         internal_logger.info(f'Swiping seekbar element: {element} to the right')
         self.driver.swipe_element(element, 'right', 50, event_name)
 
@@ -341,8 +356,8 @@ class ActionKeyword:
         :param timeout: Timeout until element search is performed.
         :param event_name: The event triggering the swipe.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "swipe_until_element_appears", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "swipe_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             try:
@@ -387,8 +402,8 @@ class ActionKeyword:
         :param direction: The scroll direction (up, down, left, right).
         :param event_name: The event triggering the scroll.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "scroll", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "scroll")
         internal_logger.info(f"Scrolling {direction} with event {event_name}")
         self.driver.scroll(direction, 1000, event_name)
 
@@ -401,8 +416,8 @@ class ActionKeyword:
         :param timeout: Timeout for the scroll operation.
         :param event_name: The event triggering the scroll.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "scroll_until_element_appears", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "scroll_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
             try:
@@ -581,8 +596,8 @@ class ActionKeyword:
         :param element: The target element (Image template, OCR template, or XPath).
         :return: The text from the element or None if not supported.
         """
-        screenshot_np = self.strategy_manager.capture_screenshot()
-        utils.save_screenshot(screenshot_np, "get_text", output_dir=self.execution_dir)
+        screenshot_np = self._capture_screenshot_safe()
+        self._save_screenshot_if_available(screenshot_np, "get_text")
         element_source_type = type(
             self.element_source.current_instance).__name__
         element_type = utils.determine_element_type(element)

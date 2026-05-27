@@ -13,7 +13,7 @@ import asyncio
 import warnings
 import hashlib
 from itertools import product
-from typing import Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
+from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
@@ -386,7 +386,14 @@ async def health_check():
     """
     return HealthCheckResponse(status=HEALTH_STATUS_RUNNING, version=VERSION)
 
-@app.post("/v1/sessions/start", response_model=SessionResponse)
+@app.post(
+    "/v1/sessions/start",
+    response_model=SessionResponse,
+    responses={
+        400: {"description": "Invalid API data in session config"},
+        500: {"description": "Session creation or app launch failed"},
+    },
+)
 async def create_session(config: SessionConfig):
     """
     Create a new Optics session with the provided configuration.
@@ -464,10 +471,11 @@ async def create_session(config: SessionConfig):
             session_id=session_id,
             driver_id=(driver_session.data or {}).get(KEY_RESULT)
         )
+    except OpticsError as e:
+        internal_logger.error(f"Failed to create session: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
     except Exception as e:
         internal_logger.error(f"Failed to create session: {e}")
-        if isinstance(e, OpticsError):
-            raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"{MSG_SESSION_CREATION_FAILED} {e}") from e
 
 
@@ -796,7 +804,14 @@ async def _handle_execution_failure(
     raise HTTPException(status_code=500, detail=f"{MSG_EXECUTION_FAILED} {str(e)}") from e
 
 
-@app.post("/v1/sessions/{session_id}/action")
+@app.post(
+    "/v1/sessions/{session_id}/action",
+    responses={
+        400: {"description": "Invalid mode, missing keyword, or invalid template image"},
+        404: {"description": "Session not found"},
+        500: {"description": "Keyword execution failed"},
+    },
+)
 async def execute_keyword(session_id: str, request: ExecuteRequest):
     """
     Execute a keyword in the specified session.
@@ -866,7 +881,13 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
                 )
 
 
-@app.post("/v1/sessions/{session_id}/templates")
+@app.post(
+    "/v1/sessions/{session_id}/templates",
+    responses={
+        400: {"description": "Invalid base64 image data or unsafe template name"},
+        404: {"description": "Session not found"},
+    },
+)
 async def upload_template(session_id: str, body: TemplateUploadRequest):
     """
     Upload a template image for the session. The name can be used in execute
@@ -891,8 +912,15 @@ async def upload_template(session_id: str, body: TemplateUploadRequest):
     return {"name": body.name, "status": STATUS_OK}
 
 
-@app.post("/v1/sessions/{session_id}/api", status_code=status.HTTP_204_NO_CONTENT)
-async def add_session_api(session_id: str, body: Dict[str, Any] = Body(...)):
+@app.post(
+    "/v1/sessions/{session_id}/api",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        400: {"description": "Invalid API data format"},
+        404: {"description": "Session not found"},
+    },
+)
+async def add_session_api(session_id: str, body: Annotated[Dict[str, Any], Body(...)]):
     """
     Add or replace API definitions for the session. Request body must be a JSON
     object: either { "api": { "collections": ... } } or the api content at root.
@@ -985,7 +1013,12 @@ async def screen_elements(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "get_screen_elements")
 
-@app.get("/v1/sessions/{session_id}/events")
+@app.get(
+    "/v1/sessions/{session_id}/events",
+    responses={
+        404: {"description": "Session not found"},
+    },
+)
 async def stream_events(session_id: str):
     """
     Stream execution events for the specified session using Server-Sent Events (SSE).
@@ -1208,7 +1241,13 @@ async def event_generator(session: Session):
             ).model_dump())}
             break
 
-@app.delete("/v1/sessions/{session_id}/stop", response_model=TerminationResponse)
+@app.delete(
+    "/v1/sessions/{session_id}/stop",
+    response_model=TerminationResponse,
+    responses={
+        500: {"description": "Session termination failed"},
+    },
+)
 async def delete_session(session_id: str):
     """
     Terminate the specified session and clean up resources.
@@ -1221,10 +1260,11 @@ async def delete_session(session_id: str):
     )
     try:
         await execute_keyword(session_id, kill_request)
+    except OpticsError as e:
+        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
     except Exception as e:
         internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        if isinstance(e, OpticsError):
-            raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
         raise HTTPException(status_code=500, detail=f"{MSG_SESSION_TERMINATION_FAILED} {e}") from e
     session_manager.terminate_session(session_id)
     # Clean up workspace hash entry to prevent memory leak

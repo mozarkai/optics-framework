@@ -14,7 +14,7 @@ class OTPRequest(BaseModel):
     userId: str
     txnType: str
 
-@app.post("/token")
+@app.post("/token", responses={400: {"description": "Invalid credentials"}})
 async def post_token(request: LoginRequest):
     if request.username == "test" and request.password == "password":
         return {
@@ -25,7 +25,7 @@ async def post_token(request: LoginRequest):
         }
     raise HTTPException(status_code=400, detail="Invalid credentials")
 
-@app.post("/sendotp")
+@app.post("/sendotp", responses={400: {"description": "Invalid OTP request"}})
 async def send_otp(request: OTPRequest, request_obj: Request):
     authorization = request_obj.headers.get("Authorization")
     if authorization == "real_auth_token_123" and request.userId == "98765" and request.txnType == "GEN":

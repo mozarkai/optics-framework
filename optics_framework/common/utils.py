@@ -96,6 +96,18 @@ _UNESCAPE_PLACEHOLDER = "\x00"
 
 
 def unescape_csv_value(s: str) -> str:
+    """
+    Interpret backslash escape sequences in CSV-originated strings (e.g. element IDs,
+    locators, XPaths) so newlines and other characters can be represented in one line.
+    Inverse of escape_csv_value: for CSV-escaped str s, escape_csv_value(unescape_csv_value(s)) == s.
+
+    \\\\ must be processed first, not last. Processing \\\\ last would incorrectly
+    turn \\\\n into newline (because \\n would match first); the correct behavior
+    is backslash followed by the letter n. Order of operations:
+    1. Replace \\\\ with a placeholder.
+    2. Replace \\n, \\r, \\t with newline, carriage return, tab.
+    3. Replace the placeholder with a single backslash.
+    """
     if not isinstance(s, str):
         raise TypeError(f"unescape_csv_value expects str, got {type(s).__name__}")
     if not s:
@@ -107,51 +119,45 @@ def unescape_csv_value(s: str) -> str:
 
 
 def escape_csv_value(s: str) -> str:
+    """
+    Convert a string to one-line, CSV-friendly form for output (e.g. XPaths from
+    get_interactive_elements). Inverse of unescape_csv_value: for any str s,
+    unescape_csv_value(escape_csv_value(s)) == s.
+
+    Order of operations (backslash first so sequences are not double-escaped):
+    1. Replace \\ with \\\\. 2. Replace newline with \\n, \\r with \\r, \\t with \\t.
+    """
     if not isinstance(s, str):
         raise TypeError(f"escape_csv_value expects str, got {type(s).__name__}")
+    return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
 
-    return (
-        s.replace("\\", "\\\\")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
-    )
 
 def determine_element_type(element):
+    element = element.strip()
+    el = element.lower()
 
-    element = element.lstrip().rstrip()
-    # Handle TEXT_ONLY: prefix - determine type from the remainder
-    if element.lower().startswith(TEXT_ONLY_PREFIX):
+    if el.startswith(TEXT_ONLY_PREFIX) or el.startswith("text="):
         return "Text"
-    # Check if the input is an Image path
-    if element.split(".")[-1] in ["jpg", "jpeg", "png", "bmp"]:
+    if el.endswith((".jpg", ".jpeg", ".png", ".bmp")):
         return "Image"
-    # Check for Playwright-specific prefixes first
-    if element.lower().startswith("text="):
-        return "Text"
-    if element.lower().startswith("css="):
+    if el.startswith("css="):
         return "CSS"
-    if element.lower().startswith("xpath="):
+    if el.startswith("xpath=") or element.startswith(("/", "//", "(")):
         return "XPath"
-    # Check if the input is an XPath
-    if element.startswith("/") or element.startswith("//") or element.startswith("("):
-        return "XPath"
-    # Check if it looks like an ID (heuristic: no slashes, no dots, usually alphanumeric/underscores)
-    if element.lower().startswith("id:"):
+    if el.startswith("id:"):
         return "ID"
-    # Check if the input is a class
-    if element.lower().startswith("android.") or element.lower().startswith("xcui"):
+    if el.startswith(("android.", "xcui")):
         return "Class"
-    # Check if it's a CSS selector (has brackets, starts with # or ., or contains CSS selector patterns)
-    # CSS selectors can have: tag[attribute="value"], #id, .class, tag.class, etc.
-    if ("[" in element and "]" in element) or element.startswith("#") or element.startswith("."):
+
+    # Per CSS spec, a valid #id must start with a letter, underscore, or hyphen after #.
+    # Strings that begin with a digit after # are not valid CSS selectors and fall through to Text. E.g. #91
+    _css_tags = {"input", "button", "div", "span", "a", "img", "select", "textarea",
+                 "form", "label", "p", "h1", "h2", "h3", "h4", "h5", "h6"}
+    is_css_id  = element.startswith("#") and len(element) > 1 and (element[1].isalpha() or element[1] in "_-")
+    is_css_tag = any(el.startswith(tag + c) for tag in _css_tags for c in ("[", "#", "."))
+    if ("[" in element and "]" in element) or element.startswith(".") or is_css_id or is_css_tag:
         return "CSS"
-    # Check if it starts with a tag name followed by CSS selector characters
-    # Common HTML tags that might be CSS selectors
-    common_tags = ["input", "button", "div", "span", "a", "img", "select", "textarea", "form", "label", "p", "h1", "h2", "h3", "h4", "h5", "h6"]
-    if any(element.startswith(tag + "[") or element.startswith(tag + "#") or element.startswith(tag + ".") for tag in common_tags):
-        return "CSS"
-    # Default case: consider the input as Text
+
     return "Text"
 
 
