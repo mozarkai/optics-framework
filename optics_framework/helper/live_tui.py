@@ -16,6 +16,7 @@ from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import (
@@ -139,6 +140,7 @@ class LiveTUI:
         self.entries: List[ActionResult] = []
         self._busy = False
         self._quit_armed = False
+        self._known_devices: List[str] = []
 
         # Overlay = navigable selection list (keyword browser / device picker).
         self.overlay_title = ""
@@ -156,6 +158,7 @@ class LiveTUI:
             completer=LiveCompleter(controller),
             complete_while_typing=True,
             multiline=False,
+            history=InMemoryHistory(),
         )
         self.app = self._build_application()
 
@@ -377,6 +380,8 @@ class LiveTUI:
                 buf.apply_completion(buf.complete_state.current_completion)
                 return
             text = buf.text
+            if text.strip():
+                buf.append_to_history()
             buf.reset()
             self._submit(text)
 
@@ -407,6 +412,20 @@ class LiveTUI:
         def _(event):
             if self.overlay_items:
                 self.overlay_index = (self.overlay_index + 1) % len(self.overlay_items)
+
+        not_blocking = ~blocking
+
+        @kb.add("up", filter=not_blocking & ~overlay_on)
+        def _(event):
+            buf = self.input_buffer
+            buf.cancel_completion()
+            buf.history_backward(count=1)
+
+        @kb.add("down", filter=not_blocking & ~overlay_on)
+        def _(event):
+            buf = self.input_buffer
+            buf.cancel_completion()
+            buf.history_forward(count=1)
 
         @kb.add("enter", filter=overlay_on)
         def _(event):
@@ -604,12 +623,56 @@ class LiveTUI:
 
     # -- Run ----------------------------------------------------------------------
 
+    def _start_device_monitor(self) -> None:
+        """Poll adb every 3 s; auto-initialize any newly connected device."""
+        app = get_app()
+
+        async def _monitor() -> None:
+            loop = asyncio.get_running_loop()
+            try:
+                self._known_devices = await loop.run_in_executor(
+                    None, self.controller.list_devices
+                )
+            except Exception:  # noqa: BLE001
+                self._known_devices = []
+            while True:
+                await asyncio.sleep(3)
+                try:
+                    devices = await loop.run_in_executor(
+                        None, self.controller.list_devices
+                    )
+                except Exception:  # noqa: BLE001
+                    continue
+                new_serials = [d for d in devices if d not in self._known_devices]
+                self._known_devices = list(devices)
+                for serial in new_serials:
+                    if self._busy:
+                        self._info(
+                            f"New device detected: {serial} — run /device to switch when ready"
+                        )
+                        app.invalidate()
+                        continue
+                    self._info(f"New device connected: {serial} — initializing…")
+                    app.invalidate()
+                    try:
+                        await loop.run_in_executor(
+                            None, self.controller.switch_device, serial
+                        )
+                        self._info(f"Active device: {serial}")
+                        self._run_keyword_async("launch_app")
+                    except Exception as exc:  # noqa: BLE001
+                        self._info(f"Auto-init for {serial} failed: {exc}")
+                    app.invalidate()
+
+        app.create_background_task(_monitor())
+
     def _on_startup(self) -> None:
         """Show where the session log is going, then open the Appium session."""
         log_path = getattr(self.controller, "live_log_path", None)
         if log_path:
             self._info(f"Session log: {log_path}")
         self._run_keyword_async("launch_app")
+        self._start_device_monitor()
 
     def run(self) -> None:
         self.app.run(pre_run=self._on_startup)
