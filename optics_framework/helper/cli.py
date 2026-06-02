@@ -140,6 +140,56 @@ class ServerCommand(Command):
             workers=server_args.workers
         )
 
+
+class MCPCommand(Command):
+    """Run an MCP server that exposes every Optics keyword as an MCP tool."""
+
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "mcp",
+            help="Run the Optics MCP server for AI clients (stdio or streamable HTTP)",
+        )
+        parser.add_argument(
+            "--transport",
+            choices=["http", "stdio"],
+            default="http",
+            help=(
+                "Transport to use. 'http' (default) starts a streamable HTTP "
+                "server for hosted clients (claude.ai, etc.). 'stdio' speaks "
+                "over stdin/stdout for local clients (Claude Desktop, Claude "
+                "Code, Cursor)."
+            ),
+        )
+        parser.add_argument(
+            "--host", default="127.0.0.1",
+            help="Host to bind the MCP server (http only; default: 127.0.0.1)",
+        )
+        parser.add_argument(
+            "--port", type=int, default=8090,
+            help="Port to bind the MCP server (http only; default: 8090)",
+        )
+        parser.add_argument(
+            "--cors-origin",
+            action="append",
+            default=None,
+            help="Allowed CORS origin (http only; repeat for multiple; default: *).",
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        if args.transport == "stdio":
+            from optics_framework.mcp.transport_stdio import run_stdio
+            run_stdio()
+            return
+
+        import uvicorn
+        from optics_framework.mcp.transport_http import create_app
+
+        origins = tuple(args.cors_origin) if args.cors_origin else ("*",)
+        app = create_app(cors_allowed_origins=origins)
+        uvicorn.run(app, host=args.host, port=args.port, log_config=None)
+
+
 class ConfigCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser("config", help="Manage configuration")
@@ -347,6 +397,7 @@ def main():
         GenerateCommand(),
         DriverInstaller(),
         ServerCommand(),
+        MCPCommand(),
         AutocompletionCommand(),
     ]
     for cmd in commands:
