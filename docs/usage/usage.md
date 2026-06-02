@@ -21,4 +21,7 @@ Explore the available keywords for defining test steps in test modules, includin
 - [REST API Usage](REST_API_usage.md)
 Learn how to use the Optics Framework's REST API for programmatic interaction, including session management, keyword execution, and real-time workspace monitoring.
 
+- [Live Usage](live_usage.md)
+Learn how to use the interactive terminal session (`optics live`) to build tests keyword-by-keyword against a real device.
+
 </div>

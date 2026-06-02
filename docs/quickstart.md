@@ -102,6 +102,7 @@ driver_sources:
 - `deviceName`: Your device name
 - `udid`: Your device's unique identifier (find with `adb devices`)
 - `url`: Your Appium server address (usually localhost)
+- `appPackage` / `bundleId`: (Optional) Your app's package name. The framework can use this to automatically resolve your app's version.
 
 ## :material-camera: Step 2: Capture UI Element Screenshots
 
@@ -192,6 +193,16 @@ Launch External App,Launch Other App,com.example.otherapp,,,,
 
 !!! note "Variable References"
     `${element_name}` references an element from `elements.csv`
+
+### Alternative: Build Modules Interactively
+
+Instead of manually editing CSV files, you can use the **Live Interactive Mode** to build and record test actions in real-time.
+
+```bash
+optics live my_test_project
+```
+
+This opens an interactive terminal where you can type keywords (with autocomplete), see them execute immediately on your device, and then type `/save <module_name>` to automatically generate the module's CSV file for you. See [Live Usage](usage/live_usage.md) for more details.
 
 ## :material-check-circle: Step 5: Build Test Cases
 
