@@ -120,6 +120,33 @@ optics serve [--host <host>] [--port <port>] [--workers <n>]
 
 For endpoint details, request/response formats, and examples, see [REST API Usage](REST_API_usage.md).
 
+## Serving the MCP Server
+
+Run an MCP (Model Context Protocol) server that exposes every Optics keyword as a tool for AI clients (Claude Desktop, Claude Code, Cursor, claude.ai web):
+
+```bash
+optics mcp [--transport {http,stdio}] [--host <host>] [--port <port>] [--cors-origin <origin>]
+```
+
+**Options:**
+
+- `--transport`: `http` (default) for hosted clients, `stdio` for local desktop clients.
+- `--host`: Bind address (HTTP only; default `127.0.0.1`).
+- `--port`: Listen port (HTTP only; default `8090`).
+- `--cors-origin`: Allowed CORS origin (HTTP only; repeatable; default `*`).
+
+Examples:
+
+```bash
+# Hosted clients (claude.ai web) — HTTP at http://127.0.0.1:8090/mcp
+optics mcp
+
+# Local clients (Claude Desktop, Claude Code, Cursor) — stdin/stdout
+optics mcp --transport stdio
+```
+
+For client configuration, the full tool list, and end-to-end examples, see [MCP Server Usage](MCP_usage.md).
+
 ## Shell autocompletion
 
 Enable shell autocompletion for the `optics` command:

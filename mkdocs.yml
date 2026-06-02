@@ -59,6 +59,7 @@ nav:
     - Library Usage: usage/library_usage.md
     - Robot Framework Usage: usage/robot_usage.md
     - REST API Usage: usage/REST_API_usage.md
+    - MCP Server Usage: usage/MCP_usage.md
   - Architecture:
     - Architecture Overview: architecture.md
     - Components: architecture/components.md
@@ -68,6 +69,7 @@ nav:
     - Event System: architecture/event_system.md
     - Error Handling: architecture/error_handling.md
     - REST API Layer: architecture/api_layer.md
+    - MCP Server Layer: architecture/mcp_layer.md
     - CLI Layer: architecture/cli_layer.md
     - Library Layer: architecture/library_layer.md
     - Logging: architecture/logging.md
