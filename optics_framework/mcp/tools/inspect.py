@@ -4,6 +4,8 @@ Wrap the screenshot / page-source / elements endpoints so the LLM can
 observe the device between keyword calls without juggling the generic
 `run_keyword` path. Each tool delegates to the same FastAPI handler the
 REST API uses, so behaviour stays in sync.
+
+Errors raise; see tools/session.py for the rationale.
 """
 
 from __future__ import annotations
@@ -93,15 +95,12 @@ _KEYWORD_FOR_TOOL = {
 }
 
 
+def tool_names() -> set[str]:
+    return set(_KEYWORD_FOR_TOOL.keys())
+
+
 def _ok(payload: Any) -> list[mcp_types.TextContent]:
     return [mcp_types.TextContent(type="text", text=json.dumps(payload, indent=2, default=str))]
-
-
-def _err(message: str, status: int | None = None) -> list[mcp_types.TextContent]:
-    payload: dict[str, Any] = {"error": message}
-    if status is not None:
-        payload["status"] = status
-    return _ok(payload)
 
 
 async def handle(name: str, arguments: dict[str, Any]) -> list[mcp_types.TextContent] | None:
@@ -112,9 +111,9 @@ async def handle(name: str, arguments: dict[str, Any]) -> list[mcp_types.TextCon
 
     session_id = arguments.get("session_id")
     if not session_id:
-        return _err("session_id is required", status=400)
+        raise ValueError("session_id is required")
     if session_manager.get_session(session_id) is None:
-        return _err("session not found", status=404)
+        raise LookupError(f"session not found: {session_id}")
 
     params: dict[str, Any] | None = None
     if optional_arg and arguments.get(optional_arg):
@@ -123,7 +122,5 @@ async def handle(name: str, arguments: dict[str, Any]) -> list[mcp_types.TextCon
     try:
         response = await run_keyword_endpoint(session_id, keyword, params)
     except HTTPException as e:
-        return _err(str(e.detail), status=e.status_code)
-    except Exception as e:
-        return _err(f"{keyword} failed: {e}", status=500)
+        raise RuntimeError(f"{e.status_code}: {e.detail}") from e
     return _ok(response.model_dump() if hasattr(response, "model_dump") else response)

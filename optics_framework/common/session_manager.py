@@ -161,6 +161,14 @@ class SessionManager(SessionHandler):
         """Retrieves a session by ID, or None if not found."""
         return self.sessions.get(session_id)
 
+    def list_session_ids(self) -> list[str]:
+        """Return the IDs of currently active sessions.
+
+        Public accessor for callers (e.g. the MCP server) that just want
+        the live set without reaching into ``self.sessions`` directly.
+        """
+        return list(self.sessions.keys())
+
     def terminate_session(self, session_id: str) -> None:
         """Terminates a session and cleans up resources."""
         session: Session | None = self.sessions.pop(session_id, None)

@@ -48,7 +48,7 @@ optics_framework/mcp/
 
 ## Server core (`server.py`)
 
-A single `mcp.server.Server` instance fans out across capability modules. The pattern mirrors the [mozark-mcp](https://github.com/mozarkai/mozark-mcp) capability layout: each capability module exposes a `TOOL_DEFINITIONS` list and an async `handle(name, arguments)` callable.
+A single `mcp.server.Server` instance dispatches via an **O(1) route map** built once at import time from each capability module's `tool_names()`. There's no per-call fan-out: `call_tool` does a dict lookup and invokes exactly the owning handler.
 
 ```python
 server = Server("optics-framework")
@@ -59,35 +59,53 @@ ALL_TOOLS = (
     + keyword_tools.TOOL_DEFINITIONS
 )
 
-@server.list_tools()
-async def list_tools():
-    return ALL_TOOLS
+def _build_route_map() -> dict[str, _Handler]:
+    routes = {}
+    for module in (session_tools, inspect_tools, keyword_tools):
+        for name in module.tool_names():
+            if name in routes:
+                raise RuntimeError(f"duplicate MCP tool name: {name}")
+            routes[name] = module.handle
+    return routes
+
+_ROUTES = _build_route_map()
 
 @server.call_tool()
 async def call_tool(name, arguments):
-    for handler in (session_tools, inspect_tools, keyword_tools):
-        result = await handler.handle(name, arguments or {})
-        if result is not None:
-            return result
-    return [TextContent(type="text", text=json.dumps({"error": f"unknown tool: {name}"}))]
+    handler = _ROUTES.get(name)
+    if handler is None:
+        raise LookupError(f"unknown tool: {name}")
+    return await handler(name, arguments or {})
 ```
+
+Two things to notice:
+
+1. **Duplicate-name guard.** If two capability modules ever claim the same tool name, `_build_route_map` fails loudly at import — much louder than the previous fan-out, which would have silently routed to whichever handler was first in the tuple.
+2. **`call_tool` raises on unknown / missing.** The MCP SDK's `@server.call_tool()` decorator catches `Exception` and returns a `CallToolResult(isError=True, content=[TextContent(text=str(e))])`. Raising is the documented way to signal a tool failure; returning JSON like `{"error": "..."}` would be marked `isError=False`, fooling the client into treating the failure as success.
 
 The server also registers a single `list_prompts` / `get_prompt` pair that serves an **operator system prompt**. Clients that pick up MCP prompts automatically get instructions on the recommended workflow (start session → inspect → drive → terminate).
 
 ## Capability modules
 
-Every capability module follows the same shape:
+Every capability module exposes three things:
 
 ```python
 TOOL_DEFINITIONS: list[mcp_types.Tool] = [...]
 
+def tool_names() -> set[str]:
+    return {t.name for t in TOOL_DEFINITIONS}
+
 async def handle(name: str, arguments: dict) -> list[mcp_types.TextContent] | None:
-    if name == "...":
-        return _ok(payload)
-    return None  # not my tool — let other handlers try
+    if name == "optics_thing":
+        return _ok(payload)              # success
+    if name == "optics_thing2":
+        raise ValueError("bad input")    # failure -> SDK sets isError=True
+    return None                          # not my tool (defensive; route map should prevent this)
 ```
 
-Returning `None` signals "not my tool" so the fan-out in `server.call_tool` can try the next handler.
+`tool_names()` is what the server's route builder consults. `handle()` is called only for tools the module owns, so the `if/elif` chain inside is just for routing within the module — there is no cross-module fan-out anymore.
+
+**Error contract:** handlers raise on failure rather than returning structured error payloads. `ValueError` for bad input, `LookupError` for missing sessions, `RuntimeError` for downstream failures (re-raised from `HTTPException` with status + detail preserved as `"500: boom"` style messages).
 
 ### `tools/session.py`
 
@@ -117,39 +135,82 @@ Each one calls `expose_api.run_keyword_endpoint(session_id, keyword)`, which in 
 
 ### `tools/keywords.py` — the auto-generator
 
-This is the centerpiece. At import time it walks `discover_keywords()` and translates every `KeywordInfo` into an `mcp.types.Tool`:
+This is the centerpiece. At import time it walks `optics_framework.api.*` itself and collects every public method's `inspect.Signature`:
 
 ```python
-def _discover() -> tuple[list[mcp_types.Tool], dict[str, KeywordInfo]]:
-    tools = []
-    index = {}
-    for info in discover_keywords():
-        if info.keyword_slug in _BLOCKLIST:
-            continue
-        tools.append(_build_tool(info))
-        index[info.keyword_slug] = info
-    return tools, index
+@dataclass(frozen=True)
+class _KeywordSpec:
+    slug: str             # "press_element"
+    human: str            # "Press Element" — what execute_keyword expects
+    signature: inspect.Signature
+    doc: str
 
-TOOL_DEFINITIONS, _KEYWORD_INDEX = _discover()
+def _discover_specs() -> list[_KeywordSpec]:
+    specs = []
+    for _, modname, ispkg in pkgutil.iter_modules(api_pkg.__path__):
+        ...
+        for _, cls in inspect.getmembers(mod, predicate=inspect.isclass):
+            for mname, meth in inspect.getmembers(cls, predicate=inspect.isfunction):
+                if mname.startswith("_") or mname.startswith("test"):
+                    continue
+                specs.append(_KeywordSpec(
+                    slug=mname,
+                    human=_humanize(mname),
+                    signature=inspect.signature(meth),
+                    doc=(inspect.getdoc(meth) or "").strip(),
+                ))
+    return specs
 ```
 
-`_build_tool` constructs a JSON Schema that mirrors the keyword's Python signature, with `session_id` prepended as a required field. `_json_type_for` does best-effort mapping from `inspect`-style annotation strings (`<class 'int'>`, `typing.List[str]`, etc.) to JSON Schema primitives — the default for anything unrecognised is `string`, matching what Optics keywords accept for most element / fallback parameters.
+#### Why not `expose_api.discover_keywords()`?
 
-At call time, `handle` looks the slug back up and dispatches through `execute_keyword`:
+The REST API's `KeywordInfo` model collapses two distinct cases — *"no default"* and *"default is literally `None`"* — into the same `KeywordParameter.default = None`. Code consuming `KeywordInfo` cannot distinguish a required `def f(x: str)` from an `Optional[str] = None`. Driving the MCP schema's `required` array off `default is None` would mark every `Optional[X] = None` parameter as required, lying to the LLM about ~28 real Optics keywords (`event_name`, `template_image`, `app_activity`, …).
+
+Re-introspecting from `inspect.Signature` gives us the real `Parameter.empty` sentinel, and lets us reach the actual type objects (not their string repr) for `typing.get_origin` / `typing.get_args`. Two birds, one source of truth.
+
+#### Schema generation
+
+`_annotation_to_schema(annotation)` walks the type at the object level, not its string form:
+
+```python
+def _annotation_to_schema(annotation):
+    if annotation is inspect.Parameter.empty or annotation is typing.Any:
+        return {"type": "string"}
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    if origin is typing.Union or origin is types.UnionType:    # Optional / PEP 604
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            return _annotation_to_schema(non_none[0])
+        return {"anyOf": [_annotation_to_schema(a) for a in non_none]}
+    if origin in (list, typing.List):
+        return {"type": "array", "items": _annotation_to_schema(args[0] if args else typing.Any)}
+    if origin in (dict, typing.Dict):
+        return {"type": "object"}
+    if isinstance(annotation, type):
+        # bool MUST be checked before int because issubclass(bool, int)
+        if annotation is bool: return {"type": "boolean"}
+        ...
+```
+
+The seven distinct annotations actually used across the Optics API classes (verified by enumeration) all flow through cleanly — `Optional[List[str]]` becomes `{"type": "array", "items": {"type": "string"}}`, `Union[str, List[Any]]` becomes an `anyOf`, etc.
+
+#### Dispatch
 
 ```python
 async def handle(name, arguments):
-    if not name.startswith("optics_"):
-        return None
-    info = _KEYWORD_INDEX.get(_tool_name_to_slug(name))
-    if info is None:
+    spec = _KEYWORD_INDEX.get(_tool_name_to_slug(name))
+    if spec is None:
         return None
     session_id = arguments.get("session_id")
     if not session_id:
-        return _err("session_id is required", status=400)
+        raise ValueError("session_id is required (call optics_start_session first)")
     named = {k: v for k, v in arguments.items() if k != "session_id"}
-    request = ExecuteRequest(mode="keyword", keyword=info.keyword, params=named)
-    response = await execute_keyword(session_id, request)
+    request = ExecuteRequest(mode="keyword", keyword=spec.human, params=named)
+    try:
+        response = await execute_keyword(session_id, request)
+    except HTTPException as e:
+        raise RuntimeError(f"{e.status_code}: {e.detail}") from e
     return _ok(response.model_dump())
 ```
 
@@ -280,12 +341,18 @@ Unit tests live in `tests/units/mcp_server/test_mcp_tools.py`. The test director
 The async handlers are exercised via `asyncio.run` rather than `pytest-asyncio` to avoid adding another test dependency. Coverage:
 
 - Schema generation (every tool requires `session_id`, blocklist holds)
-- Annotation → JSON Schema mapping
-- Handler returns `None` for unknown tools (fan-out semantics)
-- Handler errors cleanly when `session_id` is missing
+- `_annotation_to_schema` against every real Optics annotation shape
+- `Optional[X] = None` is NOT marked required (regression test for the bug that motivated re-introspection)
+- Required-without-default parameters ARE marked required
+- Defaulted parameters keep their default in the schema
+- Handler returns `None` for unknown tools (defensive; route map should prevent this)
+- Handler raises `ValueError` on missing `session_id` (no error JSON returned)
+- Handler raises `RuntimeError` with `"{status}: {detail}"` on `HTTPException`
 - Handler dispatches into `execute_keyword` with the right `ExecuteRequest`
-- Session handlers wrap `session_manager` calls correctly
-- Server fan-out exposes session + inspect + at least one auto-generated keyword tool
+- Session handlers use the public `list_session_ids()` API
+- `optics_start_session` schema describes the nested `{source: {url, capabilities, ...}}` shape
+- Server route map covers every advertised tool
+- `SessionManager.list_session_ids()` public method works on real instances
 
 ## Hard rules
 

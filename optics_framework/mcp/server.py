@@ -1,15 +1,22 @@
 """Optics Framework MCP server instance.
 
-Single `Server("optics-framework")` that fans out across capability
-modules. Each capability exposes `TOOL_DEFINITIONS` and an async
-`handle(name, arguments)` callable; the server concatenates the
-definitions for `list_tools` and walks the handlers in order for
-`call_tool`.
+Single `Server("optics-framework")` that builds a route map at import
+time from each capability module's `tool_names()`. `call_tool` is then
+an O(1) dispatch into the owning handler — no per-call fan-out.
+
+Each capability module exposes:
+  - `TOOL_DEFINITIONS: list[mcp_types.Tool]`
+  - `tool_names() -> set[str]`
+  - `handle(name, arguments) -> list[TextContent] | None`
+
+Handlers raise on failure; the MCP SDK's `call_tool` decorator catches
+the exception and returns a `CallToolResult(isError=True, ...)` to the
+client.
 """
 
 from __future__ import annotations
 
-import json
+from typing import Any, Awaitable, Callable
 
 from mcp.server import Server
 from mcp import types as mcp_types
@@ -35,6 +42,26 @@ ALL_TOOLS: list[mcp_types.Tool] = (
     + inspect_tools.TOOL_DEFINITIONS
     + keyword_tools.TOOL_DEFINITIONS
 )
+
+
+# Build the dispatch table once. `keyword_tools` owns the long tail
+# (one entry per keyword), session and inspect are static.
+_Handler = Callable[[str, dict[str, Any]], Awaitable[list[mcp_types.TextContent] | None]]
+
+
+def _build_route_map() -> dict[str, _Handler]:
+    routes: dict[str, _Handler] = {}
+    for module in (session_tools, inspect_tools, keyword_tools):
+        for name in module.tool_names():
+            if name in routes:
+                raise RuntimeError(
+                    f"duplicate MCP tool name across capability modules: {name}"
+                )
+            routes[name] = module.handle
+    return routes
+
+
+_ROUTES: dict[str, _Handler] = _build_route_map()
 
 
 @server.list_prompts()
@@ -67,13 +94,14 @@ async def list_tools() -> list[mcp_types.Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[mcp_types.TextContent]:
-    for handler in (session_tools, inspect_tools, keyword_tools):
-        result = await handler.handle(name, arguments or {})
-        if result is not None:
-            return result
-    return [
-        mcp_types.TextContent(
-            type="text",
-            text=json.dumps({"error": f"unknown tool: {name}"}, indent=2),
-        )
-    ]
+    handler = _ROUTES.get(name)
+    if handler is None:
+        # Unknown tool — raise so the SDK reports it as isError=True.
+        raise LookupError(f"unknown tool: {name}")
+    result = await handler(name, arguments or {})
+    if result is None:
+        # Belt-and-braces: a route-mapped handler shouldn't return None
+        # for its own tool, but if it does, treat it as a programming
+        # error rather than silently returning an empty body.
+        raise RuntimeError(f"handler for {name} returned no content")
+    return result

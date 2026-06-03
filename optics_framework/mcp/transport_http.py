@@ -37,8 +37,16 @@ async def _handle_mcp(scope: Scope, receive: Receive, send: Send) -> None:
 class _RawASGIRoute(BaseRoute):
     """Mount a raw ASGI app at one exact path.
 
-    Starlette's Mount appends `/{path:path}` and 307-redirects the bare
-    prefix, which drops the POST body MCP clients send to `/mcp`.
+    Starlette's `Mount` appends `/{path:path}` and 307-redirects the
+    bare prefix, which drops the POST body MCP clients send to `/mcp`.
+
+    A `Route("/mcp", endpoint=...)` with a Request → Response endpoint
+    is not a workable alternative either: bridging the MCP SDK's raw
+    ASGI handler back through a Starlette Request requires either
+    reading `request._send` (private attribute) or buffering the
+    streamable response in memory. The custom BaseRoute is the lowest-
+    blast-radius way to give the SDK the `(scope, receive, send)` triple
+    it expects without slash-rewriting or private-API access.
     """
 
     def __init__(self, path: str, app):
