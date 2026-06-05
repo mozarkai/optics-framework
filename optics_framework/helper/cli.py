@@ -7,6 +7,7 @@ from optics_framework.helper.config_manager import main as config_main
 from optics_framework.helper.initialize import create_project
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
+from optics_framework.helper.live import live_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
 from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, install_packages, ALL_DRIVERS
 from optics_framework.helper.serve import run_uvicorn_server
@@ -289,6 +290,34 @@ class ExecuteCommand(Command):
         )
 
 
+class LiveArgs(BaseModel):
+    """Arguments for the live command."""
+    project_folder: Optional[str] = None
+
+
+class LiveCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "live", help="Open an interactive session to run keywords against a live target"
+        )
+        parser.add_argument(
+            "project_folder",
+            type=str,
+            nargs="?",
+            default=None,
+            help=(
+                "Path to a project folder containing a config.yaml (with exactly one enabled "
+                "driver_sources entry — appium/selenium/playwright — and at least one enabled "
+                "elements_sources) plus elements. Defaults to the current directory."
+            ),
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        live_args = LiveArgs(project_folder=args.project_folder)
+        live_main(live_args.project_folder)
+
+
 class DriverInstaller(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -344,6 +373,7 @@ def main():
         DryRunCommand(),
         InitCommand(),
         ExecuteCommand(),
+        LiveCommand(),
         GenerateCommand(),
         DriverInstaller(),
         ServerCommand(),
