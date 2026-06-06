@@ -55,6 +55,7 @@ nav:
   - Usage:
     - Usage Overview: usage/usage.md
     - CLI Usage: usage/CLI_usage.md
+    - Live Usage: usage/live_usage.md
     - Keyword Usage: usage/keyword_usage.md
     - Library Usage: usage/library_usage.md
     - Robot Framework Usage: usage/robot_usage.md
