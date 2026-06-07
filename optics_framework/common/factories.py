@@ -5,6 +5,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.text_interface import TextInterface
+from optics_framework.common.llm_interface import LLMInterface
 
 
 class DeviceFactory(GenericFactory[DriverInterface]):
@@ -93,4 +94,13 @@ class TextFactory(GenericFactory[TextInterface]):
     @classmethod
     def get_driver(cls, name: List[dict]) -> InstanceFallback[TextInterface]:
         instances = [cls.create_instance_dynamic(config_dict, TextInterface, cls.DEFAULT_PACKAGE) for config_dict in name]
+        return InstanceFallback(instances)
+
+
+class LLMFactory(GenericFactory[LLMInterface]):
+    DEFAULT_PACKAGE = "optics_framework.engines.llm_models"
+
+    @classmethod
+    def get_driver(cls, name: List[dict]) -> InstanceFallback[LLMInterface]:
+        instances = [cls.create_instance_dynamic(config_dict, LLMInterface, cls.DEFAULT_PACKAGE) for config_dict in name]
         return InstanceFallback(instances)
