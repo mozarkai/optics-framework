@@ -179,12 +179,13 @@ def get_timestamp():
         internal_logger.error('Unable to get current time', exc_info=e)
         return None
 
-def encode_numpy_to_base64(image: np.ndarray) -> str:
+def encode_numpy_to_png_bytes(image: np.ndarray) -> bytes:
     """
-    Encodes a NumPy image (OpenCV format) to a base64 string.
+    Encodes a NumPy image (OpenCV BGR format) to raw PNG bytes.
 
     :param image: The input image as a NumPy array (BGR format).
-    :return: Base64 encoded string.
+    :return: PNG-encoded bytes.
+    :raises ValueError: If the image is not a valid, non-empty NumPy array.
     """
     if image is None or not isinstance(image, np.ndarray):
         raise ValueError("Input image must be a valid NumPy array")
@@ -193,8 +194,17 @@ def encode_numpy_to_base64(image: np.ndarray) -> str:
         raise ValueError("Input image is empty or has invalid dimensions")
 
     _, buffer = cv2.imencode('.png', image)
-    encoded_string = base64.b64encode(buffer).decode('utf-8')
-    return encoded_string
+    return buffer.tobytes()
+
+
+def encode_numpy_to_base64(image: np.ndarray) -> str:
+    """
+    Encodes a NumPy image (OpenCV format) to a base64 string.
+
+    :param image: The input image as a NumPy array (BGR format).
+    :return: Base64 encoded string.
+    """
+    return base64.b64encode(encode_numpy_to_png_bytes(image)).decode('utf-8')
 
 def compute_hash(xml_string):
     """Computes the SHA-256 hash of the XML string."""
@@ -310,6 +320,125 @@ def annotate_element(frame, centre_coor, bbox):
     # Draw a small circle at the center of the bounding box (optional)
     cv2.circle(frame, centre_coor, 5, (0, 0, 255), -1)
     return frame
+
+_PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable",
+                         "enabled")
+_PS_SHOWN_FLAGS = ("clickable", "scrollable", "long-clickable", "checked", "selected",
+                   "focused", "enabled")
+
+# Text-bearing attribute names across platforms (Android, iOS, web).
+_TEXT_ATTRS = ("text", "content-desc", "name", "label", "value", "title", "alt")
+_ID_ATTRS = ("resource-id", "id", "accessibility-id")
+_BOUNDS_ATTRS = ("bounds",)  # Android-style "[x1,y1][x2,y2]"
+_RECT_ATTRS = ("x", "y", "width", "height")  # iOS-style separate attributes
+
+
+def _short_class(el) -> str:
+    """Short class/tag label — works for any XML-based UI hierarchy."""
+    cls = el.get("class") or str(el.tag) or "node"
+    return cls.rsplit(".", 1)[-1]
+
+
+def _is_interesting(el) -> bool:
+    """Return True for nodes that carry user-visible text or are interactive.
+
+    Platform-agnostic: checks common text and interactivity attributes across
+    Android (Appium), iOS (XCUITest), and web (Selenium/Playwright) hierarchies.
+    """
+    # Has meaningful text?
+    for attr in _TEXT_ATTRS:
+        if (el.get(attr) or "").strip():
+            return True
+    # Is interactive?
+    if any(el.get(flag) == "true" for flag in _PS_INTERACTIVE_FLAGS):
+        return True
+    # Platform-specific class heuristics for editable / password fields.
+    cls = el.get("class") or el.tag or ""
+    if cls.endswith("EditText") or cls.endswith("TextField") or cls.endswith("SecureTextField"):
+        return True
+    if el.get("password") == "true":
+        return True
+    return False
+
+
+def _descriptor(el) -> str:
+    """One-line human-readable description of a UI node (platform-agnostic)."""
+    parts = [_short_class(el)]
+    # Text / content-desc / name / label / value — first non-empty wins for display
+    for attr in _TEXT_ATTRS:
+        val = " ".join((el.get(attr) or "").split())
+        if val:
+            label = "desc" if attr == "content-desc" else attr
+            parts.append(f'{label}="{val}"')
+            break  # one text representation is enough
+    # ID / resource-id
+    for attr in _ID_ATTRS:
+        rid = el.get(attr) or ""
+        if rid:
+            parts.append(f"id={rid.split('/', 1)[-1]}")
+            break
+    # Bounds — Android-style or iOS rect
+    bounds = el.get("bounds")
+    if bounds:
+        parts.append(f"bounds={bounds}")
+    else:
+        # iOS / web rect attributes
+        x, y, w, h = el.get("x"), el.get("y"), el.get("width"), el.get("height")
+        if x is not None and y is not None:
+            parts.append(f"rect=({x},{y},{w or '?'},{h or '?'})")
+    # State flags
+    parts.extend(flag for flag in _PS_SHOWN_FLAGS if el.get(flag) == "true")
+    # Input hint (Android)
+    hint = " ".join((el.get("hint") or "").split())
+    if hint:
+        parts.append(f'hint="{hint}"')
+    return " ".join(parts)
+
+
+def _walk(el, depth: int, lines: List[str]) -> None:
+    kept = _is_interesting(el)
+    if kept:
+        lines.append("  " * min(depth, 12) + _descriptor(el))
+    next_depth = depth + 1 if kept else depth
+    for child in el:
+        _walk(child, next_depth, lines)
+
+
+def strip_page_source(page_source: str, max_chars: int = 12000) -> str:
+    """Condense a UI-hierarchy XML dump into a compact, LLM-friendly outline.
+
+    Keeps only signal-bearing nodes — those with visible text, a description, or
+    that are interactive — and a minimal attribute set per node. Kept nodes are
+    indented to preserve hierarchy. Pure layout wrappers are dropped.
+
+    Works across platforms: Android (Appium UIAutomator2), iOS (XCUITest), and
+    web (Selenium/Playwright) page sources all use XML-like hierarchies with
+    different attribute names; the helper functions check common attributes from
+    each platform.
+
+    Returns ``""`` if empty or unparseable, and truncates to ``max_chars`` to
+    bound prompt size.
+
+    .. note::
+       For structured element extraction with bounding boxes and XPaths, prefer
+       the element-source ``get_interactive_elements()`` API instead. This
+       function is a lightweight text-only summary for LLM prompt injection.
+    """
+    if not page_source:
+        return ""
+    try:
+        from lxml import etree  # type: ignore[import-untyped]
+        root = etree.fromstring(page_source.encode("utf-8"))
+    except Exception:  # noqa: BLE001 - any malformed source degrades to "no page source"
+        return ""
+
+    lines: List[str] = []
+    _walk(root, 0, lines)
+    out = "\n".join(lines)
+    if len(out) > max_chars:
+        out = out[:max_chars] + "\n… (truncated)"
+    return out
+
 
 def save_page_source(tree, time_stamp, output_dir):
     """
