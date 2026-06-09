@@ -98,25 +98,20 @@ class LiveCompleter(Completer):
     def __init__(self, controller: LiveController):
         self.controller = controller
 
-    def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
-        before = document.text_before_cursor
+    def _element_completions(self, prefix: str) -> Iterable[Completion]:
+        """Element names matching ``prefix`` (cursor sits inside an unclosed ``${...}``)."""
+        for name in self.controller.element_names():
+            if name.lower().startswith(prefix.lower()):
+                locator = self.controller.element_first_locator(name) or ""
+                yield Completion(
+                    name + "}",
+                    start_position=-len(prefix),
+                    display=name,
+                    display_meta=(locator[:60] if locator else ""),
+                )
 
-        # Element autocomplete: cursor sits inside an unclosed ${...}
-        marker = before.rfind("${")
-        if marker != -1 and "}" not in before[marker:]:
-            prefix = before[marker + 2:]
-            for name in self.controller.element_names():
-                if name.lower().startswith(prefix.lower()):
-                    locator = self.controller.element_first_locator(name) or ""
-                    yield Completion(
-                        name + "}",
-                        start_position=-len(prefix),
-                        display=name,
-                        display_meta=(locator[:60] if locator else ""),
-                    )
-            return
-
-        # Keyword autocomplete: only while typing the first token.
+    def _keyword_completions(self, before: str) -> Iterable[Completion]:
+        """Keyword names — only while typing the first token, never after a slash command."""
         if before.startswith("/"):
             return
         parts = before.split()
@@ -133,6 +128,14 @@ class LiveCompleter(Completer):
                     display=keyword,
                     display_meta=signature,
                 )
+
+    def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
+        before = document.text_before_cursor
+        marker = before.rfind("${")
+        if marker != -1 and "}" not in before[marker:]:
+            yield from self._element_completions(before[marker + 2:])
+            return
+        yield from self._keyword_completions(before)
 
 
 class LiveTUI:
