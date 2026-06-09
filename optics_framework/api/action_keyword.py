@@ -74,6 +74,9 @@ def _save_annotated_for_result(
         return
     if screenshot_np is None:
         return
+    # Element bbox is in the driver's window coordinate space; scale it to the
+    # screenshot's pixel space before drawing (no-op when the two already match).
+    bbox = utils.scale_bboxes_for_screenshot([bbox], element_source, screenshot_np)[0]
     framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
         framed,
