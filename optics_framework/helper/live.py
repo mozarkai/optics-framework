@@ -9,7 +9,6 @@ records executed actions, and persists them as framework-compatible CSV modules.
 The full-screen terminal UI lives in :mod:`optics_framework.helper.live_tui`.
 """
 
-import io
 import os
 import re
 import csv
@@ -51,6 +50,11 @@ from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Veri
 from optics_framework.helper.execute import discover_templates, identify_file_content
 
 
+# Canonical optics logger names, referenced in several handler-management helpers.
+_INTERNAL_LOGGER_NAME = "optics.internal"
+_EXECUTION_LOGGER_NAME = "optics.execution"
+
+
 # Map locator-strategy class names (logged by ExecutionTracer) to short labels.
 _STRATEGY_LABELS: Dict[str, str] = {
     "XPathStrategy": "XPath",
@@ -90,32 +94,39 @@ _CONFIG_KEYS = frozenset({
 })
 
 
-def _load_partial_config(folder_path: str) -> Optional[Config]:
-    """Load the first YAML in ``folder_path`` that looks like an Optics config.
+def _config_from_yaml(path: str) -> Optional[Config]:
+    """Parse a single YAML file into a ``Config`` if it looks like one, else None.
 
     Lenient on purpose: any file containing at least one recognised top-level key
     counts. Missing sections are filled in later by :func:`_compose_config` rather
     than rejecting the file.
     """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        internal_logger.debug("Skipping unreadable YAML %s: %s", path, exc)
+        return None
+    if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS):
+        return None
+    if "element_sources" in data and "elements_sources" not in data:
+        data["elements_sources"] = data.pop("element_sources")
+    try:
+        return Config(**data)
+    except Exception as exc:
+        internal_logger.error("Invalid config in %s: %s", path, exc)
+        return None
+
+
+def _load_partial_config(folder_path: str) -> Optional[Config]:
+    """Load the first YAML in ``folder_path`` that looks like an Optics config."""
     for root, _dirs, files in os.walk(folder_path):
         for fname in files:
             if not fname.lower().endswith((".yml", ".yaml")):
                 continue
-            path = os.path.join(root, fname)
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    data = yaml.safe_load(fh) or {}
-            except (OSError, yaml.YAMLError) as exc:
-                internal_logger.debug("Skipping unreadable YAML %s: %s", path, exc)
-                continue
-            if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS):
-                continue
-            if "element_sources" in data and "elements_sources" not in data:
-                data["elements_sources"] = data.pop("element_sources")
-            try:
-                return Config(**data)
-            except Exception as exc:
-                internal_logger.error("Invalid config in %s: %s", path, exc)
+            config = _config_from_yaml(os.path.join(root, fname))
+            if config is not None:
+                return config
     return None
 
 
@@ -267,8 +278,8 @@ class LiveController:
             )
         )
         for logger in (
-            logging.getLogger("optics.internal"),
-            logging.getLogger("optics.execution"),
+            logging.getLogger(_INTERNAL_LOGGER_NAME),
+            logging.getLogger(_EXECUTION_LOGGER_NAME),
         ):
             logger.addHandler(handler)
             # Default level (NOTSET) inherits from root, which is WARNING. We want
@@ -283,8 +294,8 @@ class LiveController:
         if self._live_log_handler is None:
             return
         for logger in (
-            logging.getLogger("optics.internal"),
-            logging.getLogger("optics.execution"),
+            logging.getLogger(_INTERNAL_LOGGER_NAME),
+            logging.getLogger(_EXECUTION_LOGGER_NAME),
         ):
             try:
                 logger.removeHandler(self._live_log_handler)
@@ -344,6 +355,23 @@ class LiveController:
 
     # -- Element loading (lazy) ---------------------------------------------------
 
+    def _iter_element_files(self) -> Iterator[Tuple[str, str]]:
+        """Yield ``(path, lowercased_name)`` for every CSV/YAML under the project."""
+        for root, _dirs, files in os.walk(self.folder_path):
+            for fname in files:
+                lname = fname.lower()
+                if lname.endswith((".csv", ".yml", ".yaml")):
+                    yield os.path.join(root, fname), lname
+
+    @staticmethod
+    def _merge_elements(reader: DataReader, path: str, elements: ElementData) -> None:
+        """Merge the elements parsed from ``path`` into ``elements`` (dedup per name)."""
+        for name, values in reader.read_elements(path).items():
+            for value in values:
+                existing = elements.get_element(name) or []
+                if value not in existing:
+                    elements.add_element(name, value)
+
     def ensure_elements_loaded(self) -> None:
         """Load named elements from the project on first use (not eagerly at startup)."""
         if self._elements_loaded:
@@ -351,23 +379,14 @@ class LiveController:
         csv_reader = CSVDataReader()
         yaml_reader = YAMLDataReader()
         elements = self.session.elements if self.session.elements is not None else ElementData()
-        for root, _dirs, files in os.walk(self.folder_path):
-            for fname in files:
-                path = os.path.join(root, fname)
-                lname = fname.lower()
-                if not lname.endswith((".csv", ".yml", ".yaml")):
+        for path, lname in self._iter_element_files():
+            try:
+                if "elements" not in identify_file_content(path):
                     continue
-                try:
-                    if "elements" not in identify_file_content(path):
-                        continue
-                    reader = csv_reader if lname.endswith(".csv") else yaml_reader
-                    for name, values in reader.read_elements(path).items():
-                        for value in values:
-                            existing = elements.get_element(name) or []
-                            if value not in existing:
-                                elements.add_element(name, value)
-                except Exception as exc:  # pragma: no cover - defensive
-                    internal_logger.debug("Failed to load elements from %s: %s", path, exc)
+                reader = csv_reader if lname.endswith(".csv") else yaml_reader
+                self._merge_elements(reader, path, elements)
+            except Exception as exc:  # pragma: no cover - defensive
+                internal_logger.debug("Failed to load elements from %s: %s", path, exc)
         self.session.elements = elements
         self._elements_loaded = True
 
@@ -445,53 +464,78 @@ class LiveController:
         # records per-combo so we can flag a "silent" failure after method() returns.
         internal_capture = LogCaptureBuffer()
         internal_capture.setLevel(logging.DEBUG)
-        internal_logger_obj = logging.getLogger("optics.internal")
+        internal_logger_obj = logging.getLogger(_INTERNAL_LOGGER_NAME)
         internal_logger_obj.addHandler(internal_capture)
 
-        last_exc: Optional[BaseException] = None
         try:
-            for combo in product(*param_candidates):
-                internal_capture.clear()
-                try:
-                    positional, keywords = self._resolve_candidate(combo)
-                    method(*positional, **keywords)
-                except OpticsError as exc:
-                    last_exc = exc
-                    # Element-location codes (E02xx / X0201) mean "not found here" ->
-                    # try the next fallback locator. Use .value because str(Code.X)
-                    # renders as "Code.X" on the str-Enum under Python 3.12.
-                    if exc.code.value.startswith("E02") or exc.code == Code.X0201:
-                        continue
-                    break
-                except Exception as exc:  # noqa: BLE001 - surfaced to the user, never crashes
-                    last_exc = exc
-                    break
-
-                # The method returned normally. Did it log a failure on its way out?
-                silent_error = self._find_error_log(internal_capture)
-                if silent_error is not None:
-                    # Not a locator-fallback case — internal errors (bad direction,
-                    # unsupported element type, ...) won't get better on retry.
-                    last_exc = OpticsError(Code.E0401, message=silent_error)
-                    break
-
-                elapsed = time.time() - start
-                self.recorded.append((func_name, params))
-                self.saved = False
-                return ActionResult(
-                    raw=raw,
-                    keyword=func_name,
-                    params=params,
-                    status="PASS",
-                    elapsed=elapsed,
-                    strategy=self._winning_strategy(strategy_capture),
-                    recorded=True,
-                )
+            return self._attempt_combos(
+                method, param_candidates, internal_capture, strategy_capture,
+                raw, func_name, params, start,
+            )
         finally:
             execution_logger.removeHandler(strategy_capture)
             execution_logger.setLevel(prev_level)
             internal_logger_obj.removeHandler(internal_capture)
 
+    @staticmethod
+    def _is_fallback_error(exc: OpticsError) -> bool:
+        """True for element-location codes (E02xx / X0201) — retry the next locator.
+
+        Uses ``.value`` because ``str(Code.X)`` renders as ``"Code.X"`` on the
+        str-Enum under Python 3.12.
+        """
+        return exc.code.value.startswith("E02") or exc.code == Code.X0201
+
+    def _run_single_combo(
+        self, method: Callable[..., Any], combo: Tuple[str, ...],
+        internal_capture: LogCaptureBuffer,
+    ) -> Optional[BaseException]:
+        """Run one parameter combination. Returns the failing exception, or None on success.
+
+        Many framework methods (appium swipe with a bad direction, force_terminate
+        failures, etc.) report problems via ``internal_logger.error(...)`` and then
+        RETURN — they never raise. We watch the captured records so those "silent"
+        failures surface as an :class:`OpticsError` instead of a false pass.
+        """
+        internal_capture.clear()
+        try:
+            positional, keywords = self._resolve_candidate(combo)
+            method(*positional, **keywords)
+        except OpticsError as exc:
+            return exc
+        # Surfaced to the user, never crashes the controller.
+        except Exception as exc:  # noqa: BLE001
+            return exc
+        silent_error = self._find_error_log(internal_capture)
+        if silent_error is not None:
+            return OpticsError(Code.E0401, message=silent_error)
+        return None
+
+    def _attempt_combos(
+        self, method: Callable[..., Any], param_candidates: List[List[str]],
+        internal_capture: LogCaptureBuffer, strategy_capture: LogCaptureBuffer,
+        raw: str, func_name: str, params: List[str], start: float,
+    ) -> ActionResult:
+        """Try each fallback combination in order; record and return the first success."""
+        last_exc: Optional[BaseException] = None
+        for combo in product(*param_candidates):
+            outcome = self._run_single_combo(method, combo, internal_capture)
+            if outcome is not None:
+                last_exc = outcome
+                if isinstance(outcome, OpticsError) and self._is_fallback_error(outcome):
+                    continue
+                break
+            self.recorded.append((func_name, params))
+            self.saved = False
+            return ActionResult(
+                raw=raw,
+                keyword=func_name,
+                params=params,
+                status="PASS",
+                elapsed=time.time() - start,
+                strategy=self._winning_strategy(strategy_capture),
+                recorded=True,
+            )
         return ActionResult(
             raw=raw,
             keyword=func_name,
@@ -788,20 +832,22 @@ def _silence_console_logging() -> Iterator[None]:
         return isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler)
 
     targets = [
-        logging.getLogger("optics.internal"),
-        logging.getLogger("optics.execution"),
+        logging.getLogger(_INTERNAL_LOGGER_NAME),
+        logging.getLogger(_EXECUTION_LOGGER_NAME),
         logging.getLogger(),
     ]
     saved: List[Tuple[logging.Logger, logging.Handler]] = []
     saved_propagate: List[Tuple[logging.Logger, bool]] = []
     for logger in targets:
         saved_propagate.append((logger, logger.propagate))
-        for handler in list(logger.handlers):
-            if _is_console_handler(handler):
-                saved.append((logger, handler))
-                logger.removeHandler(handler)
-    logging.getLogger("optics.execution").propagate = False
-    logging.getLogger("optics.internal").propagate = False
+        # Collect first, then detach: removeHandler mutates logger.handlers, so
+        # iterating it directly would skip entries.
+        console_handlers = [h for h in logger.handlers if _is_console_handler(h)]
+        for handler in console_handlers:
+            saved.append((logger, handler))
+            logger.removeHandler(handler)
+    logging.getLogger(_EXECUTION_LOGGER_NAME).propagate = False
+    logging.getLogger(_INTERNAL_LOGGER_NAME).propagate = False
 
     saved_last_resort = logging.lastResort
     logging.lastResort = None
@@ -810,7 +856,7 @@ def _silence_console_logging() -> Iterator[None]:
     # at all — Python would then emit a one-time "No handlers could be found"
     # warning to stderr. Attach a NullHandler to absorb records silently.
     null_handlers: List[Tuple[logging.Logger, logging.NullHandler]] = []
-    for logger in (logging.getLogger("optics.internal"), logging.getLogger("optics.execution")):
+    for logger in (logging.getLogger(_INTERNAL_LOGGER_NAME), logging.getLogger(_EXECUTION_LOGGER_NAME)):
         nh = logging.NullHandler()
         logger.addHandler(nh)
         null_handlers.append((logger, nh))
@@ -852,7 +898,7 @@ def _redirect_stderr_fd(target_path: str) -> Iterator[None]:
     """
     try:
         real_stderr_fd = sys.stderr.fileno()
-    except (AttributeError, io.UnsupportedOperation, OSError):
+    except (AttributeError, OSError):
         # sys.stderr is already a non-fd stream (e.g. test harness, embedded host).
         # Best we can do is the Python-level swap; UI corruption from C extensions
         # is no longer possible because there's nothing to dup, but it's also no

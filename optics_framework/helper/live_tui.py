@@ -39,6 +39,9 @@ from optics_framework.helper.live import LiveController, ActionResult
 
 _STATUS_HINT = "Tab complete · Ctrl-K keywords · /help · /quit"
 
+# Style class for secondary / muted text, reused across history and overlays.
+_META = "class:meta"
+
 _HELP_TEXT = """\
 Optics Live — command reference
 
@@ -167,7 +170,7 @@ class LiveTUI:
     def _render_history(self) -> StyleAndTextTuples:
         fragments: StyleAndTextTuples = []
         if not self.entries:
-            fragments.append(("class:meta", "  No actions yet. Type a keyword and press Enter, or /help.\n"))
+            fragments.append((_META, "  No actions yet. Type a keyword and press Enter, or /help.\n"))
         for result in self.entries:
             fragments.extend(self._render_entry(result))
         return fragments
@@ -191,12 +194,12 @@ class LiveTUI:
             return out
         if result.status == "INFO":
             if result.message:
-                out.append(("class:meta", f"     {result.message}\n"))
+                out.append((_META, f"     {result.message}\n"))
             return out
         detail = f"     {result.elapsed:.2f}s"
         if result.status == "PASS" and result.strategy:
             detail += f"  [{result.strategy}]"
-        out.append(("class:meta", detail))
+        out.append((_META, detail))
         if result.status == "FAIL" and result.message:
             out.append(("class:fail", f"  {result.message}"))
         out.append(("", "\n"))
@@ -248,7 +251,7 @@ class LiveTUI:
             else:
                 fragments.append(("", f" {label} \n"))
         if not self.overlay_items:
-            fragments.append(("class:meta", " (none) \n"))
+            fragments.append((_META, " (none) \n"))
         return fragments
 
     def _overlay_cursor(self) -> Point:
@@ -368,36 +371,65 @@ class LiveTUI:
 
     # -- Key bindings -------------------------------------------------------------
 
+    def _on_enter(self) -> None:
+        buf = self.input_buffer
+        if buf.complete_state and buf.complete_state.current_completion:
+            buf.apply_completion(buf.complete_state.current_completion)
+            return
+        text = buf.text
+        if text.strip():
+            buf.append_to_history()
+        buf.reset()
+        self._submit(text)
+
+    def _on_tab(self) -> None:
+        buf = self.input_buffer
+        if buf.complete_state:
+            buf.complete_next()
+        else:
+            buf.start_completion(select_first=False)
+
+    def _on_shift_tab(self) -> None:
+        buf = self.input_buffer
+        if buf.complete_state:
+            buf.complete_previous()
+
+    def _move_overlay(self, delta: int) -> None:
+        if self.overlay_items:
+            self.overlay_index = (self.overlay_index + delta) % len(self.overlay_items)
+
+    def _recall_history(self, backward: bool) -> None:
+        buf = self.input_buffer
+        buf.cancel_completion()
+        if backward:
+            buf.history_backward(count=1)
+        else:
+            buf.history_forward(count=1)
+
+    def _on_overlay_enter(self) -> None:
+        if self.overlay_items and self.overlay_on_select:
+            _label, value = self.overlay_items[self.overlay_index]
+            callback = self.overlay_on_select
+            self.close_overlays()
+            callback(value)
+
     def _build_key_bindings(self) -> KeyBindings:
         kb = KeyBindings()
         blocking = Condition(lambda: self.overlay_active or self.popup_active)
         overlay_on = Condition(lambda: self.overlay_active)
+        not_blocking = ~blocking
 
         @kb.add("enter", filter=~blocking)
         def _(event):
-            buf = self.input_buffer
-            if buf.complete_state and buf.complete_state.current_completion:
-                buf.apply_completion(buf.complete_state.current_completion)
-                return
-            text = buf.text
-            if text.strip():
-                buf.append_to_history()
-            buf.reset()
-            self._submit(text)
+            self._on_enter()
 
         @kb.add("tab", filter=~blocking)
         def _(event):
-            buf = self.input_buffer
-            if buf.complete_state:
-                buf.complete_next()
-            else:
-                buf.start_completion(select_first=False)
+            self._on_tab()
 
         @kb.add("s-tab", filter=~blocking)
         def _(event):
-            buf = self.input_buffer
-            if buf.complete_state:
-                buf.complete_previous()
+            self._on_shift_tab()
 
         @kb.add("c-k", filter=~blocking)
         def _(event):
@@ -405,35 +437,23 @@ class LiveTUI:
 
         @kb.add("up", filter=overlay_on)
         def _(event):
-            if self.overlay_items:
-                self.overlay_index = (self.overlay_index - 1) % len(self.overlay_items)
+            self._move_overlay(-1)
 
         @kb.add("down", filter=overlay_on)
         def _(event):
-            if self.overlay_items:
-                self.overlay_index = (self.overlay_index + 1) % len(self.overlay_items)
-
-        not_blocking = ~blocking
+            self._move_overlay(1)
 
         @kb.add("up", filter=not_blocking & ~overlay_on)
         def _(event):
-            buf = self.input_buffer
-            buf.cancel_completion()
-            buf.history_backward(count=1)
+            self._recall_history(backward=True)
 
         @kb.add("down", filter=not_blocking & ~overlay_on)
         def _(event):
-            buf = self.input_buffer
-            buf.cancel_completion()
-            buf.history_forward(count=1)
+            self._recall_history(backward=False)
 
         @kb.add("enter", filter=overlay_on)
         def _(event):
-            if self.overlay_items and self.overlay_on_select:
-                _label, value = self.overlay_items[self.overlay_index]
-                callback = self.overlay_on_select
-                self.close_overlays()
-                callback(value)
+            self._on_overlay_enter()
 
         @kb.add("escape", filter=blocking)
         def _(event):
@@ -623,46 +643,46 @@ class LiveTUI:
 
     # -- Run ----------------------------------------------------------------------
 
+    async def _auto_init_device(self, serial: str, loop, app) -> None:
+        """Switch to a freshly connected device and launch the app (best effort)."""
+        if self._busy:
+            self._info(
+                f"New device detected: {serial} — run /device to switch when ready"
+            )
+            app.invalidate()
+            return
+        self._info(f"New device connected: {serial} — initializing…")
+        app.invalidate()
+        try:
+            await loop.run_in_executor(None, self.controller.switch_device, serial)
+            self._info(f"Active device: {serial}")
+            self._run_keyword_async("launch_app")
+        except Exception as exc:  # noqa: BLE001 - reported to the user, never crashes
+            self._info(f"Auto-init for {serial} failed: {exc}")
+        app.invalidate()
+
     def _start_device_monitor(self) -> None:
         """Poll adb every 3 s; auto-initialize any newly connected device."""
         app = get_app()
 
+        async def _poll_devices(loop) -> Optional[List[str]]:
+            try:
+                return await loop.run_in_executor(None, self.controller.list_devices)
+            except Exception:  # noqa: BLE001 - transient adb hiccup, retried next tick
+                return None
+
         async def _monitor() -> None:
             loop = asyncio.get_running_loop()
-            try:
-                self._known_devices = await loop.run_in_executor(
-                    None, self.controller.list_devices
-                )
-            except Exception:  # noqa: BLE001
-                self._known_devices = []
+            self._known_devices = await _poll_devices(loop) or []
             while True:
                 await asyncio.sleep(3)
-                try:
-                    devices = await loop.run_in_executor(
-                        None, self.controller.list_devices
-                    )
-                except Exception:  # noqa: BLE001
+                devices = await _poll_devices(loop)
+                if devices is None:
                     continue
                 new_serials = [d for d in devices if d not in self._known_devices]
                 self._known_devices = list(devices)
                 for serial in new_serials:
-                    if self._busy:
-                        self._info(
-                            f"New device detected: {serial} — run /device to switch when ready"
-                        )
-                        app.invalidate()
-                        continue
-                    self._info(f"New device connected: {serial} — initializing…")
-                    app.invalidate()
-                    try:
-                        await loop.run_in_executor(
-                            None, self.controller.switch_device, serial
-                        )
-                        self._info(f"Active device: {serial}")
-                        self._run_keyword_async("launch_app")
-                    except Exception as exc:  # noqa: BLE001
-                        self._info(f"Auto-init for {serial} failed: {exc}")
-                    app.invalidate()
+                    await self._auto_init_device(serial, loop, app)
 
         app.create_background_task(_monitor())
 
