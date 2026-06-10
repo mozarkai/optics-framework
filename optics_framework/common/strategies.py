@@ -122,6 +122,10 @@ class LocatorStrategy(ABC):
                 ]
             if frame is not None:
                 if bboxes:
+                    # Element bboxes are in the driver's window coordinate space;
+                    # scale them to the screenshot's pixel space before drawing
+                    # (no-op when the two resolutions already match).
+                    bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
                     annotated_frame = utils.annotate(frame.copy(), bboxes)
                     return True, timestamp, annotated_frame
                 return True, timestamp, frame.copy()
