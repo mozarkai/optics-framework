@@ -824,6 +824,107 @@ def bbox_from_webelement_like(obj: Any) -> Optional[Tuple[Tuple[int, int], Tuple
     return None
 
 
+def _window_size_from_source(element_source: Any) -> Optional[Tuple[int, int]]:
+    """
+    Best-effort fetch of the driver's reported window size from an element source.
+
+    The window size defines the coordinate space that element bounding boxes are
+    expressed in. On some platforms this differs from the screenshot's resolution
+    (see scale_bboxes_for_screenshot), so callers need it to convert between the two.
+
+    Duck-typed and defensive: returns None when the source has no driver, the driver
+    does not expose ``get_window_size``, or the call fails, so callers can fall back
+    to unscaled annotation rather than raising. The element source exposes its driver
+    via ``.driver``, which may itself wrap the underlying WebDriver one level in.
+
+    :param element_source: An element source instance (may be any object).
+    :return: (width, height), or None if undeterminable.
+    """
+    try:
+        driver = getattr(element_source, "driver", None)
+        for candidate in (driver, getattr(driver, "driver", None)):
+            get_window_size = getattr(candidate, "get_window_size", None)
+            if callable(get_window_size):
+                size = get_window_size()
+                width = int(size["width"])
+                height = int(size["height"])
+                if width > 0 and height > 0:
+                    return width, height
+                return None
+    except Exception:
+        return None
+    return None
+
+
+def _scale_bbox(
+    bbox: Optional[Tuple[Tuple[int, int], Tuple[int, int]]],
+    window_size: Tuple[int, int],
+    screenshot: np.ndarray,
+) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """
+    Scale a single bbox from window-coordinate space into the screenshot's
+    pixel space.
+
+    A bbox is reported in the driver's window coordinate space, while the
+    screenshot may be captured at a different resolution. Multiply each corner by
+    the per-axis scale (screenshot size / window size) to map it onto the image.
+    When the window size equals the screenshot size the scale is 1.0 and this is a
+    no-op (``int(x * 1.0) == x``). Returns the bbox unchanged on any failure.
+    """
+    if bbox is None:
+        return bbox
+    try:
+        (x1, y1), (x2, y2) = bbox
+        win_w, win_h = window_size
+        sh_h, sh_w = screenshot.shape[:2]
+        if win_w <= 0 or win_h <= 0:
+            return bbox
+        scale_x = sh_w / win_w
+        scale_y = sh_h / win_h
+        return (
+            (int(x1 * scale_x), int(y1 * scale_y)),
+            (int(x2 * scale_x), int(y2 * scale_y)),
+        )
+    except (TypeError, ValueError, AttributeError):
+        return bbox
+
+
+def scale_bboxes_for_screenshot(
+    bboxes: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]],
+    element_source: Any,
+    screenshot: Optional[np.ndarray],
+) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+    """
+    Scale element bounding boxes into the screenshot's pixel space before
+    annotation, using the element source's driver window size.
+
+    Bounding boxes obtained from a driver's element handles are expressed in the
+    driver's window coordinate space. When that space differs in resolution from
+    the captured screenshot, drawing the raw coordinates places the boxes at the
+    wrong position and size; scaling each box by (screenshot size / window size)
+    maps them correctly. When the two sizes match, the scale is 1.0 and the boxes
+    are left unchanged.
+
+    Best-effort and non-failing: if the window size can't be determined (e.g. the
+    source has no driver, or the driver errors) or no screenshot is available, the
+    bboxes are returned unchanged so annotation falls back to drawing them as-is.
+    Window size is fetched once for the whole list. Do not use this for OCR /
+    image-detection bboxes — those are already computed in the screenshot's pixel
+    space and need no conversion.
+
+    :param bboxes: List of ((x1,y1),(x2,y2)) bboxes (or None entries) in window space.
+    :param element_source: The element source whose driver defines the window space.
+    :param screenshot: The captured frame the bboxes will be drawn onto.
+    :return: bboxes scaled to the screenshot's pixel space, or unchanged on any failure.
+    """
+    if screenshot is None or not bboxes:
+        return bboxes
+    window_size = _window_size_from_source(element_source)
+    if window_size is None:
+        return bboxes
+    return [_scale_bbox(b, window_size, screenshot) for b in bboxes]
+
+
 def bboxes_from_webelements(
     locate_fn: Callable[[str], Any],
     elements: List[str],
