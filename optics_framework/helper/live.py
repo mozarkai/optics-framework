@@ -46,6 +46,13 @@ from optics_framework.common.runner.data_reader import (
     DataReader,
 )
 from optics_framework.common.utils import escape_csv_value
+from optics_framework.common.nl_agent import (
+    NaturalLanguageAgent,
+    KeywordSpec,
+    ExecResult,
+    AgentStep,
+    AgentResult,
+)
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.helper.execute import discover_templates, identify_file_content
 
@@ -72,11 +79,35 @@ class ActionResult:
     raw: str
     keyword: str = ""
     params: List[str] = field(default_factory=list)
-    status: str = "PASS"  # PASS | FAIL | INFO
+    status: str = "PASS"  # PASS | FAIL | INFO | RUNNING
     elapsed: float = 0.0
     strategy: Optional[str] = None
     message: Optional[str] = None
     recorded: bool = False
+    # Set by the TUI when this entry belongs to a natural-language run, so the
+    # history pane can render it as an indented child / muted thinking line.
+    nl_child: bool = False
+    nl_thinking: bool = False
+
+
+@dataclass
+class NLStep:
+    """A single streamed event from a natural-language run, for the history pane."""
+
+    kind: str  # "thinking" | "keyword" | "note"
+    text: str
+    result: Optional[ActionResult] = None  # set when kind == "keyword"
+
+
+@dataclass
+class NLSummary:
+    """Terminal summary of a natural-language run."""
+
+    instruction: str
+    status: str  # PASS | FAIL | ABORTED | MAX_STEPS
+    steps: int = 0
+    elapsed: float = 0.0
+    message: Optional[str] = None
 
 
 def keyword_to_title(func_name: str) -> str:
@@ -89,7 +120,7 @@ def keyword_to_title(func_name: str) -> str:
 
 _CONFIG_KEYS = frozenset({
     "driver_sources", "element_sources", "elements_sources",
-    "text_detection", "image_detection",
+    "text_detection", "image_detection", "llm_models",
     "log_level", "json_log", "file_log",
 })
 
@@ -253,6 +284,11 @@ class LiveController:
         self.driver_type: str = self._enabled_driver_name()
         self.active_target_label: Optional[str] = self._target_from_config()
 
+        # Natural-language mode (lazy): the agent is built on first use and the
+        # availability flag is computed from config (an enabled llm_models entry).
+        self._nl_agent: Optional[NaturalLanguageAgent] = None
+        self._nl_available: Optional[bool] = None
+
     # -- Logging ------------------------------------------------------------------
 
     def _setup_live_logging(self) -> Optional[str]:
@@ -412,12 +448,22 @@ class LiveController:
     # -- Keyword execution --------------------------------------------------------
 
     def run_keyword(self, raw: str) -> ActionResult:
-        """Execute one keyword call. Blocking: callers run this off the UI thread.
+        """Execute one keyword call and record it. Blocking: callers run this off the UI thread.
 
         Mirrors the batch runner's parameter handling: bare ``${element}`` positional
         arguments expand into fallback candidates tried in order, ``key=value`` tokens
         become keyword arguments, and the winning locator strategy is read back from the
         execution tracer's logs.
+        """
+        return self._execute_line(raw, record=True)
+
+    def _execute_line(self, raw: str, *, record: bool) -> ActionResult:
+        """Execute one keyword call. ``record`` gates the recording side-effect only.
+
+        The manual flow (:meth:`run_keyword`) records every success so the session is
+        ``/save``-able. The natural-language agent runs with ``record=False`` and buffers
+        its own steps, committing only when the whole instruction succeeds — this keeps
+        wandering/exploratory keywords out of the saved module.
         """
         raw = raw.strip()
         start = time.time()
@@ -476,7 +522,7 @@ class LiveController:
         try:
             return self._attempt_combos(
                 method, param_candidates, internal_capture, strategy_capture,
-                raw, func_name, params, start,
+                raw, func_name, params, start, record=record,
             )
         finally:
             execution_logger.removeHandler(strategy_capture)
@@ -520,9 +566,13 @@ class LiveController:
     def _attempt_combos(
         self, method: Callable[..., Any], param_candidates: List[List[str]],
         internal_capture: LogCaptureBuffer, strategy_capture: LogCaptureBuffer,
-        raw: str, func_name: str, params: List[str], start: float,
+        raw: str, func_name: str, params: List[str], start: float, *, record: bool,
     ) -> ActionResult:
-        """Try each fallback combination in order; record and return the first success."""
+        """Try each fallback combination in order; record and return the first success.
+
+        ``record`` gates only the ``self.recorded`` side-effect; the actual keyword
+        execution and ``${element}`` fallback are identical regardless.
+        """
         last_exc: Optional[BaseException] = None
         for combo in product(*param_candidates):
             outcome = self._run_single_combo(method, combo, internal_capture)
@@ -531,8 +581,9 @@ class LiveController:
                 if isinstance(outcome, OpticsError) and self._is_fallback_error(outcome):
                     continue
                 break
-            self.recorded.append((func_name, params))
-            self.saved = False
+            if record:
+                self.recorded.append((func_name, params))
+                self.saved = False
             return ActionResult(
                 raw=raw,
                 keyword=func_name,
@@ -540,7 +591,7 @@ class LiveController:
                 status="PASS",
                 elapsed=time.time() - start,
                 strategy=self._winning_strategy(strategy_capture),
-                recorded=True,
+                recorded=record,
             )
         return ActionResult(
             raw=raw,
@@ -829,6 +880,136 @@ class LiveController:
         utils.save_screenshot(image, name, output_dir=output_dir, time_stamp=timestamp)
         sanitized = re.sub(r"[^a-zA-Z0-9\s_]", "", name)
         return os.path.join(output_dir, f"{timestamp}-{sanitized}.jpg")
+
+    def screenshot_png_bytes(self) -> bytes:
+        """Capture the current screen as raw PNG bytes (for the LLM); no file side-effect."""
+        if self._action_keyword is None:  # pragma: no cover - defensive
+            raise OpticsError(Code.E0303, message="Screenshot capture unavailable")
+        import cv2
+
+        image = self._action_keyword.strategy_manager.capture_screenshot()
+        ok, buffer = cv2.imencode(".png", image)
+        if not ok:  # pragma: no cover - defensive
+            raise OpticsError(Code.E0303, message="Failed to encode screenshot")
+        return buffer.tobytes()
+
+    # -- Natural-language mode ----------------------------------------------------
+
+    def natural_language_available(self) -> bool:
+        """True if an LLM engine is enabled in config (an ``llm_models`` entry).
+
+        Instantiation errors (missing ``[llm]`` extra, bad credentials) are not probed
+        here — they surface with an actionable message in :meth:`run_natural_language`.
+        """
+        if self._nl_available is None:
+            self._nl_available = _has_enabled(self.session.config.llm_models)
+        return self._nl_available
+
+    def _nl_catalog(self) -> List[KeywordSpec]:
+        return [
+            KeywordSpec(name=name, signature=self.keyword_signature(name) or name)
+            for name in self.keyword_names()
+        ]
+
+    def _nl_execute(self, raw: str) -> ExecResult:
+        """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
+        result = self._execute_line(raw, record=False)
+        return ExecResult(
+            ok=(result.status == "PASS"),
+            strategy=result.strategy,
+            message=result.message,
+            elapsed=result.elapsed,
+        )
+
+    def _get_nl_agent(self) -> NaturalLanguageAgent:
+        """Build (and cache) the NL agent. Raises OpticsError if no LLM is usable."""
+        if self._nl_agent is not None:
+            return self._nl_agent
+        llm = self.session.optics.get_llm()  # may raise E0601 if the [llm] extra is missing
+        if llm is None or not getattr(llm, "instances", None):
+            raise OpticsError(
+                Code.E0501,
+                message="No LLM engine enabled. Enable a 'gemini' entry under llm_models in config.yaml.",
+            )
+        self._nl_agent = NaturalLanguageAgent(
+            llm=llm,
+            screenshot_provider=self.screenshot_png_bytes,
+            keyword_executor=self._nl_execute,
+            keyword_catalog=self._nl_catalog,
+            element_names=self.element_names,
+        )
+        return self._nl_agent
+
+    def run_natural_language(
+        self,
+        instruction: str,
+        on_step: Callable[[NLStep], None],
+        should_abort: Optional[Callable[[], bool]] = None,
+    ) -> NLSummary:
+        """Translate a natural-language instruction into keyword calls (ReAct loop).
+
+        Blocking — callers run this off the UI thread. ``on_step`` is invoked per agent
+        step (thinking lines + executed keyword results). Recording is commit-on-done: the
+        buffered successful steps are appended to ``self.recorded`` only when the whole
+        instruction succeeds, so an incomplete run never pollutes ``/save``.
+        """
+        start = time.time()
+        instruction = instruction.strip()
+        if not instruction:
+            return NLSummary(instruction, "FAIL", 0, 0.0, "Empty instruction")
+
+        try:
+            agent = self._get_nl_agent()
+        except OpticsError as exc:
+            return NLSummary(instruction, "FAIL", 0, time.time() - start, self._format_error(exc))
+
+        def _agent_on_step(step: AgentStep) -> None:
+            if step.observation is None:
+                # Decision phase: surface the model's thought before it acts.
+                if step.thought:
+                    on_step(NLStep(kind="thinking", text=step.thought))
+                return
+            if step.action == "keyword":
+                ex = step.exec_result
+                ok = bool(ex and ex.ok)
+                action_result = ActionResult(
+                    raw=NaturalLanguageAgent._build_line(step.keyword, step.params),
+                    keyword=step.keyword,
+                    params=step.params,
+                    status="PASS" if ok else "FAIL",
+                    elapsed=ex.elapsed if ex else 0.0,
+                    strategy=ex.strategy if ex else None,
+                    message=None if ok else (ex.message if ex else step.observation),
+                )
+                on_step(NLStep(kind="keyword", text=action_result.raw, result=action_result))
+
+        try:
+            result: AgentResult = agent.run(
+                instruction, on_step=_agent_on_step, should_abort=should_abort
+            )
+        except Exception as exc:  # noqa: BLE001 - never crash the controller
+            return NLSummary(
+                instruction, "FAIL", 0, time.time() - start, f"{type(exc).__name__}: {exc}"
+            )
+
+        # Commit-on-done: only a fully successful run is added to the recording.
+        if result.status == "done" and result.successful_steps:
+            self.recorded.extend(result.successful_steps)
+            self.saved = False
+
+        status_map = {
+            "done": "PASS",
+            "failed": "FAIL",
+            "aborted": "ABORTED",
+            "exhausted": "MAX_STEPS",
+        }
+        return NLSummary(
+            instruction=instruction,
+            status=status_map.get(result.status, "FAIL"),
+            steps=len(result.successful_steps),
+            elapsed=time.time() - start,
+            message=result.message,
+        )
 
     # -- Teardown -----------------------------------------------------------------
 

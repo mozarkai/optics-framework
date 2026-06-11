@@ -27,6 +27,20 @@ image_detection:
   - templatematch:
       enabled: false
 
+# Natural-language mode for `optics live` (Ctrl-N). Requires the optional extra:
+#   pip install 'optics-framework[llm]'
+# Credentials are read from the environment by the google-genai SDK
+# (GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_API_KEY / GEMINI_API_KEY, GOOGLE_CLOUD_PROJECT,
+# GOOGLE_CLOUD_LOCATION, GOOGLE_APPLICATION_CREDENTIALS). Never commit keys here.
+llm_models:
+  - gemini:
+      enabled: false
+      capabilities:
+        model: gemini-2.5-flash      # optional; overrides the default
+        # use_vertexai: true          # optional; else env GOOGLE_GENAI_USE_VERTEXAI
+        # project: my-gcp-project     # optional (Vertex); else env GOOGLE_CLOUD_PROJECT
+        # location: us-east4          # optional (Vertex); else env GOOGLE_CLOUD_LOCATION
+
 log_level: INFO
 
 json_log: true

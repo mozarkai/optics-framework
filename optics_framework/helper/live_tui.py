@@ -7,6 +7,7 @@ accumulate in a scrollable history pane above that auto-scrolls to the newest en
 """
 
 import asyncio
+import functools
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from prompt_toolkit.application import Application, get_app
@@ -34,10 +35,10 @@ from prompt_toolkit.layout.processors import AfterInput
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame
 
-from optics_framework.helper.live import LiveController, ActionResult
+from optics_framework.helper.live import LiveController, ActionResult, NLStep, NLSummary
 
 
-_STATUS_HINT = "Tab complete · Ctrl-K keywords · /help · /quit"
+_STATUS_HINT = "Tab complete · Ctrl-K keywords · Ctrl-N AI mode · /help · /quit"
 
 # Style class for secondary / muted text, reused across history and overlays.
 _META = "class:meta"
@@ -53,7 +54,15 @@ Optics Live — command reference
   The target (appium/selenium/playwright/…) comes from the project's config.yaml.
   Recording is always on — every successful action is buffered. Use /save to persist.
 
-Slash commands
+Natural-language mode (Ctrl-N)
+  Toggle AI mode and type an instruction in plain English, e.g.
+      type "movies for kids" in the search bar
+      click the home button
+  An LLM reads the screen and drives keywords step-by-step until the goal is reached.
+  Each executed keyword is recorded (so a successful run is /save-able). Ctrl-X aborts.
+  Requires an enabled 'llm_models' entry (e.g. gemini) in config.yaml.
+
+Slash commands (work in both modes)
   /save <name>   Save recorded actions to modules/<name>.csv + a test case
   /device [id]   List/switch Android devices (Android/Appium sessions only)
   /elements      Show named elements and their locators (read-only)
@@ -66,6 +75,8 @@ Keys
   Tab / S-Tab    Cycle completions
   ${             Suggest element names
   Ctrl-K         Toggle the keyword browser (Up/Down to move, Enter to pick)
+  Ctrl-N         Toggle natural-language (AI) mode
+  Ctrl-X         Abort a running AI run (stops at the next step)
   Esc            Close any popup or the keyword browser
   Ctrl-C         Quit
 
@@ -96,8 +107,9 @@ _STYLE = Style.from_dict(
 class LiveCompleter(Completer):
     """Completes keyword names (first token) and element names (inside ``${...}``)."""
 
-    def __init__(self, controller: LiveController):
+    def __init__(self, controller: LiveController, is_nl_mode: Optional[Callable[[], bool]] = None):
         self.controller = controller
+        self.is_nl_mode = is_nl_mode
 
     def _element_completions(self, prefix: str) -> Iterable[Completion]:
         """Element names matching ``prefix`` (cursor sits inside an unclosed ``${...}``)."""
@@ -131,6 +143,10 @@ class LiveCompleter(Completer):
                 )
 
     def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
+        # In natural-language mode the input is English prose; keyword/${} completion
+        # would only get in the way, so suppress it entirely.
+        if self.is_nl_mode is not None and self.is_nl_mode():
+            return
         before = document.text_before_cursor
         marker = before.rfind("${")
         if marker != -1 and "}" not in before[marker:]:
@@ -149,6 +165,12 @@ class LiveTUI:
         self._quit_armed = False
         self._known_devices: List[str] = []
 
+        # Natural-language mode: when on, the whole input box is treated as English and
+        # routed through the LLM agent. Off by default — keyword-first flow is unchanged.
+        self._nl_mode = False
+        self._nl_running = False
+        self._nl_abort = False
+
         # Overlay = navigable selection list (keyword browser / device picker).
         self.overlay_title = ""
         self.overlay_items: List[Tuple[str, str]] = []
@@ -162,7 +184,7 @@ class LiveTUI:
         self.popup_active = False
 
         self.input_buffer = Buffer(
-            completer=LiveCompleter(controller),
+            completer=LiveCompleter(controller, is_nl_mode=lambda: self._nl_mode),
             complete_while_typing=True,
             multiline=False,
             history=InMemoryHistory(),
@@ -181,6 +203,10 @@ class LiveTUI:
 
     @staticmethod
     def _render_entry(result: ActionResult) -> StyleAndTextTuples:
+        # Muted "thinking" line emitted between agent steps.
+        if result.nl_thinking:
+            return [("class:ghost", f"     thinking: {result.raw}\n")]
+
         icon_map = {
             "PASS": ("class:pass", "✓"),
             "FAIL": ("class:fail", "✗"),
@@ -188,24 +214,28 @@ class LiveTUI:
             "INFO": ("class:info", "•"),
         }
         style, icon = icon_map.get(result.status, ("class:info", "•"))
+        # Agent-driven keyword results are indented as children under their instruction.
+        icon_lead = "   " if result.nl_child else " "
+        detail_lead = "       " if result.nl_child else "     "
         out: StyleAndTextTuples = [
-            (style, f" {icon} "),
+            (style, f" {icon_lead}{icon} "),
             ("class:cmd", result.raw),
             ("", "\n"),
         ]
         if result.status == "RUNNING":
-            out.append(("class:running", "     running…\n"))
+            out.append(("class:running", f"{detail_lead}running…\n"))
             return out
         if result.status == "INFO":
             if result.message:
-                out.append((_META, f"     {result.message}\n"))
+                out.append((_META, f"{detail_lead}{result.message}\n"))
             return out
-        detail = f"     {result.elapsed:.2f}s"
+        detail = f"{detail_lead}{result.elapsed:.2f}s"
         if result.status == "PASS" and result.strategy:
             detail += f"  [{result.strategy}]"
         out.append((_META, detail))
-        if result.status == "FAIL" and result.message:
-            out.append(("class:fail", f"  {result.message}"))
+        if result.message:
+            msg_style = "class:fail" if result.status == "FAIL" else _META
+            out.append((msg_style, f"  {result.message}"))
         out.append(("", "\n"))
         return out
 
@@ -217,7 +247,7 @@ class LiveTUI:
 
     def _ghost_text(self) -> str:
         text = self.input_buffer.text
-        if not text or text.startswith("/"):
+        if not text or text.startswith("/") or self._nl_mode:
             return ""
         parts = text.split()
         if not parts:
@@ -237,10 +267,14 @@ class LiveTUI:
 
     def _render_status(self) -> StyleAndTextTuples:
         device = self.controller.active_target()
+        if self._nl_mode:
+            mode = ("class:running", "AI …" if self._nl_running else "AI ●")
+        else:
+            mode = ("class:status.rec", "rec ●")
         return [
             ("class:status.device", device),
             ("class:status.sep", "  ·  "),
-            ("class:status.rec", "rec ●"),
+            mode,
             ("class:status.sep", "  ·  "),
             ("class:status", _STATUS_HINT),
         ]
@@ -300,7 +334,7 @@ class LiveTUI:
         input_window = Window(
             content=input_control,
             height=1,
-            get_line_prefix=lambda lineno, wrap_count: [("class:cmd", "› ")],
+            get_line_prefix=self._input_prefix,
         )
 
         status_window = Window(
@@ -373,6 +407,11 @@ class LiveTUI:
             mouse_support=True,
         )
 
+    def _input_prefix(self, lineno, wrap_count):
+        if self._nl_mode:
+            return [("class:running", "ai › ")]
+        return [("class:cmd", "› ")]
+
     # -- Key bindings -------------------------------------------------------------
 
     def _on_enter(self) -> None:
@@ -439,6 +478,14 @@ class LiveTUI:
         def _(event):
             self._open_keyword_browser()
 
+        @kb.add("c-n", filter=~blocking)
+        def _(event):
+            self._toggle_nl_mode()
+
+        @kb.add("c-x", filter=Condition(lambda: self._nl_running))
+        def _(event):
+            self._abort_nl()
+
         @kb.add("up", filter=overlay_on)
         def _(event):
             self._move_overlay(-1)
@@ -488,6 +535,8 @@ class LiveTUI:
             return
         if text.startswith("/"):
             self._handle_command(text)
+        elif self._nl_mode:
+            self._run_nl_async(text)
         else:
             self._run_keyword_async(text)
 
@@ -512,6 +561,98 @@ class LiveTUI:
                 pending.message = f"{type(exc).__name__}: {exc}"
             finally:
                 self._busy = False
+                app.invalidate()
+
+        app.create_background_task(task())
+        app.invalidate()
+
+    # -- Natural-language mode ----------------------------------------------------
+
+    def _toggle_nl_mode(self) -> None:
+        if self._nl_running:
+            self._info("Can't switch modes while a natural-language run is active (Ctrl-X to abort).")
+            return
+        self._nl_mode = not self._nl_mode
+        self.input_buffer.cancel_completion()
+        if self._nl_mode:
+            self._info("Natural-language mode ON — describe an action in English. Ctrl-N to exit.")
+            if not self.controller.natural_language_available():
+                self._info(
+                    "No LLM engine is enabled. Add an enabled 'llm_models' entry (e.g. gemini) "
+                    "to your config.yaml and restart optics live."
+                )
+        else:
+            self._info("Natural-language mode OFF — back to keyword input.")
+        get_app().invalidate()
+
+    def _abort_nl(self) -> None:
+        if not self._nl_running:
+            return
+        self._nl_abort = True
+        self._info("Aborting natural-language run — stopping at the next step…")
+        get_app().invalidate()
+
+    @staticmethod
+    def _nl_summary_message(summary: NLSummary) -> str:
+        if summary.status == "PASS":
+            label = "done"
+        elif summary.status == "ABORTED":
+            label = "aborted"
+        elif summary.status == "MAX_STEPS":
+            label = "stopped (max steps)"
+        else:
+            label = "failed"
+        parts = [f"{label} · {summary.steps} step(s) · {summary.elapsed:.1f}s"]
+        if summary.status == "PASS" and summary.steps:
+            parts.append(f"recorded {summary.steps} (/save to keep)")
+        if summary.message and summary.status != "PASS":
+            parts.append(summary.message)
+        return " · ".join(parts)
+
+    def _run_nl_async(self, instruction: str) -> None:
+        header = ActionResult(raw=f"[ai] {instruction}", status="RUNNING")
+        self.entries.append(header)
+        self._busy = True
+        self._nl_running = True
+        self._nl_abort = False
+        app = get_app()
+        loop = asyncio.get_event_loop()
+
+        def on_step(step: NLStep) -> None:
+            # Runs on the executor thread — build the entry here, but schedule the list
+            # mutation + redraw on the event-loop thread to avoid a render-race.
+            if step.kind == "keyword" and step.result is not None:
+                entry = step.result
+                entry.nl_child = True
+            else:  # thinking / note
+                entry = ActionResult(raw=step.text, status="INFO", nl_thinking=True)
+
+            def _apply() -> None:
+                self.entries.append(entry)
+                app.invalidate()
+
+            loop.call_soon_threadsafe(_apply)
+
+        async def task() -> None:
+            try:
+                summary = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        self.controller.run_natural_language,
+                        instruction,
+                        on_step,
+                        lambda: self._nl_abort,
+                    ),
+                )
+                header.status = "PASS" if summary.status == "PASS" else "FAIL"
+                header.elapsed = summary.elapsed
+                header.message = self._nl_summary_message(summary)
+            except Exception as exc:  # noqa: BLE001 - never crash the UI
+                header.status = "FAIL"
+                header.message = f"{type(exc).__name__}: {exc}"
+            finally:
+                self._busy = False
+                self._nl_running = False
                 app.invalidate()
 
         app.create_background_task(task())

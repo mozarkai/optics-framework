@@ -26,6 +26,7 @@ class Config(BaseModel):
     elements_sources: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     text_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     image_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
+    llm_models: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     file_log: bool = False
     json_log: bool = False
     json_path: Optional[str] = None
@@ -68,6 +69,10 @@ class Config(BaseModel):
                 {"templatematch": DependencyConfig(enabled=False, url=None, capabilities={})},
                 {"remote_oir": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
+        if not self.llm_models:
+            self.llm_models = [
+                {"gemini": DependencyConfig(enabled=False, url=None, capabilities={})},
+            ]
 
     class Config:
         """Pydantic V2 configuration."""
@@ -109,7 +114,8 @@ class ConfigHandler:
         "driver_sources",
         "elements_sources",
         "text_detection",
-        "image_detection"
+        "image_detection",
+        "llm_models"
     ]
 
     def __init__(self, config: Optional[Config] = None):
