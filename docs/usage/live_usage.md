@@ -1,7 +1,7 @@
 # Live Usage (`optics live`)
 
 `optics live` opens a full-screen, interactive terminal session for building tests
-keyword-by-keyword against a real device. It looks and behaves like Claude Code or
+keyword-by-keyword against a live target (device or browser). It looks and behaves like Claude Code or
 lazygit: the screen is taken over and redrawn in place, with a persistent input box
 and status bar pinned at the bottom. Every successful action is recorded so you can
 save the session as a reusable module.
@@ -9,25 +9,32 @@ save the session as a reusable module.
 ## Launch
 
 ```bash
-optics live                  # zero-config: works against the first connected device
-optics live <project_folder> # use your project's config + elements
+optics live                  # uses the config.yaml in the current directory
+optics live <project_folder> # uses the config.yaml in that project folder
 ```
 
-The folder is optional. With no config (or no folder), Optics auto-detects the
-first Android device reported by `adb` and opens an Appium session using minimal
-capabilities (`platformName: Android`, `automationName: UiAutomator2`, default
-server at `http://127.0.0.1:4723`) — no `appPackage` required. You drop straight
-into whatever screen the device is on (home screen, current app) and can `swipe`,
-`press_keycode`, etc.
+`optics live` is **driver-agnostic and config-driven**: the same flow works for
+Android/iOS (Appium), web (Selenium, Playwright), TV, etc. The driver comes entirely
+from the project's `config.yaml`, so a session "just works" for whatever you configure.
 
-When a config.yaml **is** present, anything you specify wins and only missing
-sections fall back to defaults. Named elements from the project are loaded lazily
-the first time they are needed.
+A `config.yaml` is **required** — there are no built-in defaults. It must declare:
 
-The session is opened automatically on launch (a `launch_app` action appears as
-the first history entry). If your project's config specifies an `appPackage` /
-`appActivity`, that app is launched; otherwise the session attaches without
-starting any app.
+- **exactly one** enabled entry under `driver_sources` (`appium`, `selenium`,
+  `playwright`, …), and
+- at least one enabled entry under `elements_sources`.
+
+If no usable config is found, or the config has no enabled driver / more than one
+enabled driver / no enabled element source, `optics live` exits with a clear message.
+A malformed `config.yaml` reports the actual parse/validation error (not "no config").
+
+See `optics_framework/samples/` for ready-made configs: `contact` (Appium/Android),
+`gmail_web` (Selenium), `playwright` (Playwright). Named elements from the project are
+loaded lazily the first time they are needed.
+
+The session is opened automatically on launch (a `launch_app` action appears as the
+first history entry). Each driver interprets `launch_app` using its own config: Appium
+launches the configured `appPackage`/`appActivity`, while Selenium/Playwright navigate
+to the configured URL.
 
 ## Layout
 
@@ -36,8 +43,9 @@ starting any app.
   winning locator strategy (`[XPath]`, `[Text]`, `[OCR]`, `[Image]`). New entries are
   appended and the view auto-scrolls to the newest.
 - **Input box** (pinned): where you type keyword calls and slash commands.
-- **Status bar** (pinned, bottom): active device, the always-on recording indicator
-  (`rec ●`), and a hint of available commands.
+- **Status bar** (pinned, bottom): the active **target** — labelled by driver, e.g.
+  `appium:emulator-5554`, `selenium:chrome`, `playwright:chromium` — the always-on
+  recording indicator (`rec ●`), and a hint of available commands.
 
 ## Running keywords
 
@@ -73,7 +81,7 @@ sleep 5
 | Command          | Description |
 |------------------|-------------|
 | `/save <name>`   | Save the recorded actions to `modules/<name>.csv` + `test_cases/<name>.csv`, **and** snapshot every screenshot/artifact the framework generated this session to `execution_output/<name>/`. Re-saving updates the snapshot. |
-| `/device [id]`   | List connected devices; with no argument, pick one from a list to switch the active device (single active device only). |
+| `/device [id]`   | **Android/Appium sessions only.** List connected `adb` devices; with no argument, pick one to switch the active device. For Selenium/Playwright/iOS sessions it reports that switching doesn't apply (the target is the configured browser/device). |
 | `/elements`      | Open a read-only popup of named elements and their locators (Esc closes). |
 | `/screenshot`    | Capture the current device screen to a file and note the path in the history. |
 | `/help`          | Show the command reference (Esc closes). |
