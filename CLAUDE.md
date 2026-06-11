@@ -44,6 +44,19 @@ The full chain when a user types `optics execute <folder>`:
 
 `dry_run` follows the same path with `DryRunExecutor` (`execution.py:92`) and `TestRunner._process_test_case(..., dry_run=True)` — it resolves params via `resolve_param` (`test_runnner.py:187`, returns *first* element value, not the list) and checks `keyword_map` membership without calling methods. The first-vs-list resolution divergence is a known dry-run vs execute pitfall.
 
+## Live session journey (`optics live`)
+
+`optics live` opens an interactive session that runs keywords against an already-running target without a test-case folder. It is a **separate driver path from execute** (no `ExecutionEngine`, no `EventManager`, no JUnit), but it deliberately reuses the runner's keyword + element machinery rather than reimplementing it.
+
+1. `cli.py:298` `LiveCommand` → `live_main(folder_path)` (`helper/live.py:1164`). `LiveArgs` (`cli.py:293`) is the Pydantic args model.
+2. `_compose_config` (`live.py:185`) builds a `Config` from the project folder (`_config_from_yaml` / `_load_partial_config`, `:128`/`:159`) — **config-driven and driver-agnostic**: whichever single driver is enabled in `config.yaml` wins (`_enabled_drivers`, `:175`). There is no hard-coded driver choice.
+3. `LiveController.__init__` (`live.py:223`) creates a `Session` via `SessionManager` (same `Session` as execute) and calls `_build_registry` (`:354`), which builds a `KeywordRegistry` from `session.optics.build(ActionKeyword/AppManagement/Verifier)` — identical to `RunnerFactory.create_runner`. So **live executes through the API layer (`ActionKeyword` etc.), not the engines directly**, and inherits self-healing, AOI, and screenshot handling for free.
+4. Keyword input → `run_keyword` (`live.py:450`) → `_execute_line` (`:460`). Live **reimplements the param-fallback ladder (level 1)** in `_attempt_combos` / `_build_candidates` / `_resolve_candidate` (`:566`/`:605`/`:619`) — this mirrors `TestRunner._try_execute_with_fallback` / `_build_param_candidates` (the runner's logic isn't factored out for reuse, so the two must be kept in sync). `${var}` resolution reads the same `ElementData`.
+5. **Natural-language mode** — `NaturalLanguageAgent` (`common/nl_agent.py:134`) is a bounded ReAct loop: screenshot → `LLMInterface.generate_json(prompt, ACTION_SCHEMA, images=[png])` → validated action → execute one keyword from the same `keyword_map` → repeat (`max_steps=15`). Wired in `LiveController._get_nl_agent` (`live.py:924`) and driven by `run_natural_language` (`:943`); recording is commit-on-done so a failed instruction doesn't pollute `/save`. The LLM comes from `session.optics.get_llm()` (the `llm_models` engine, default `gemini`, disabled unless configured — install extra `optics-framework[llm]`).
+6. The TUI lives in `helper/live_tui.py`; `/save` serialises recorded steps to CSV (`save`, `live.py:686`). User docs: `docs/usage/live_usage.md`.
+
+**Device coupling caveat (reviewer note).** Live's *driver* selection is fully config-driven, but its optional **device** features are not driver-agnostic: `list_devices` (`live.py:810`) shells out to `adb devices` and `switch_device` (`:829`) rebuilds the session with new `udid`/`deviceName` caps — Android/Appium only, gated by `supports_device_switching` (`:797`). This is device-management knowledge (adb) leaking into the live helper rather than sitting behind `DriverInterface`; the Appium driver itself already owns the analogous device/install concerns (`adb`/`ideviceinstaller` in `engines/drivers/appium.py`). If device hot-swap should generalise, it belongs behind the driver interface, not in `helper/live.py`.
+
 ## Element location pipeline (deep dive)
 
 The element-location subsystem is spread across four layers; all of them live in `common/strategies.py` and have hooks elsewhere.
@@ -70,7 +83,7 @@ The element-location subsystem is spread across four layers; all of them live in
 
 These chains are independent. `_try_execute_with_fallback` only sees the keyword raising; whether that raise came from the strategy ladder (`E0201`/`X0201`) or from the driver ladder or somewhere else is what `Code` discriminates.
 
-## Keyword entry points (there are six)
+## Keyword entry points (there are seven)
 
 Adding a method to an API class is **not enough** if the keyword should be reachable from every surface.
 
@@ -83,6 +96,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
    - `YAMLDataReader._parse_step` (`:113`) consults a `keyword_registry` set literal inside `read_modules` (`:136`–`:168`) to split YAML step text into `(keyword, params)`. Multi-word names must be added or the longest-match parse will mis-split them.
 5. **`optics list` CLI** — `helper/list_keyword.py:7` `list_api_methods` walks `optics_framework.api` via `pkgutil.iter_modules` and `inspect.getmembers`. API class methods show up automatically; `Optics`-facade-only keywords do not.
 6. **Robot Framework library import** — when consumers do `Library    optics_framework.optics.Optics`, only methods decorated with `@keyword(...)` on the `Optics` class are exposed. Same source as (2).
+7. **Interactive `optics live`** — `LiveController._build_registry` (`helper/live.py:354`) builds its own `KeywordRegistry` via `session.optics.build(ActionKeyword/AppManagement/Verifier)` — the **same auto-registration path as the runner** (entry point 1), so new public API-class methods are reachable in the REPL/TUI automatically and need no live-specific wiring. The natural-language mode reaches the same `keyword_map` through `NaturalLanguageAgent` (see the live-session section below).
 
 ### Checklist when adding a keyword to `ActionKeyword`
 
@@ -98,7 +112,8 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - **A new driver backend:** `optics_framework/engines/drivers/<name>.py` subclassing `DriverInterface` (`common/driver_interface.py`). `DeviceFactory` (`common/factories.py:10`) discovers it via `GenericFactory.create_instance_dynamic` (`common/base_factory.py:14`). Set `NAME = "<name>"` class attr if any element source needs to match against it via `REQUIRED_DRIVER_TYPE` (matching at `factories.py:60`; example `Appium.NAME = "appium"` at `engines/drivers/appium.py:25`).
 - **A new element source:** `optics_framework/engines/elementsources/<name>.py` implementing `ElementSourceInterface`. Set `REQUIRED_DRIVER_TYPE = "appium"` (or similar) so `ElementSourceFactory._find_matching_driver` (`factories.py:60`) injects the matching driver as `driver=` (example: `AppiumFindElement.REQUIRED_DRIVER_TYPE = "appium"` at `engines/elementsources/appium_find_element.py:13`). Implement the methods the strategies you want check via `_is_method_implemented` — `locate` for XPath/Text strategies, `capture` for Text/Image detection and screenshot strategy, `get_page_source` for pagesource.
 - **A new OCR / image detector:** drop into `engines/vision_models/ocr_models/` or `…/image_models/` implementing `TextInterface` / `ImageInterface` (`common/text_interface.py`, `common/image_interface.py`). Picked up by `TextFactory` / `ImageFactory` (`factories.py:81`, `:90`).
-- **A new CLI subcommand:** subclass `Command` in `helper/cli.py:16`, append to `commands` list at `cli.py:341`. Per-command Pydantic args models live alongside (e.g. `ExecuteArgs` at `cli.py:242`).
+- **A new LLM backend (for natural-language `optics live`):** `optics_framework/engines/llm_models/<name>.py` subclassing `LLMInterface` (`common/llm_interface.py:7`, abstract `generate` + concrete `generate_json` JSON-coercion helper). Set `NAME = "<name>"` (example: `GeminiLLM.NAME = "gemini"` at `engines/llm_models/gemini.py:34`). Picked up by `LLMFactory` (`factories.py:100`, `DEFAULT_PACKAGE = "optics_framework.engines.llm_models"`). Add a default-disabled entry in `Config.__init__` (`config_handler.py:72`) and an example block in samples (`samples/contact/config.yaml` `llm_models:`).
+- **A new CLI subcommand:** subclass `Command` in `helper/cli.py:16`, append to `commands` list at `cli.py:341`. Per-command Pydantic args models live alongside (e.g. `ExecuteArgs` at `cli.py:242`, `LiveArgs` at `cli.py:293`).
 - **A new error code:** extend `Code` enum (`common/error.py:34`) and add an `ErrorSpec` entry to `ERROR_REGISTRY` (`error.py:107`). To participate in **fallback level 1**, use the `E02xx` prefix (matched at `test_runnner.py:437`).
 - **A new event subscriber (custom reporter):** subclass `EventSubscriber` (`events.py:64`), subscribe via `EventManager.subscribe(subscriber_id, instance)` (`events.py:137`). Implement `close()` if you hold file handles — `EventManager.shutdown` (`:158`) calls it.
 - **A new config field:** extend `Config` (`common/config_handler.py:22`); defaults backfilled in `Config.__init__` (`:42`); `deep_merge` (`:82`) handles project-over-global layering in `ConfigHandler.load` (`:142`).
@@ -122,7 +137,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 
 ## Engine wiring
 
-`Session.__init__` (`session_manager.py:99`) builds `OpticsBuilder` (`optics_builder.py:28`); `add_driver` / `add_element_source` / `add_text_detection` / `add_image_detection` stash normalised configs. `OpticsBuilder.get_*` (`:150`–`:168`) lazy-instantiate by delegating to the matching factory in `common/factories.py`. `GenericFactory.create_instance_dynamic` (`base_factory.py:14`) imports `optics_framework.engines.<package>.<name>` and calls `__init__` with the config dict (drivers also get `event_sdk`; element sources get matched `driver=`).
+`Session.__init__` (`session_manager.py:99`) builds `OpticsBuilder` (`optics_builder.py:28`); `add_driver` / `add_element_source` / `add_text_detection` / `add_image_detection` / `add_llm` (`optics_builder.py:108`) stash normalised configs (LLM config comes from the `llm_models` block, gathered via `_get_enabled_config_list(self.config, "llm_models")` at `session_manager.py:125`/`:138`). `OpticsBuilder.get_*` lazy-instantiate by delegating to the matching factory in `common/factories.py`; `get_llm` (`optics_builder.py:187`) → `instantiate_llm` (`:158`) → `LLMFactory.get_driver`. `GenericFactory.create_instance_dynamic` (`base_factory.py:14`) imports `optics_framework.engines.<package>.<name>` and calls `__init__` with the config dict (drivers also get `event_sdk`; element sources get matched `driver=`).
 
 Multiple enabled entries per factory become an `InstanceFallback` (`base_factory.py:207`) — **fallback level 3**. API classes (`ActionKeyword` etc.) receive the builder in `__init__` and call `builder.get_*()` lazily, so engines aren't instantiated until needed.
 
@@ -131,7 +146,7 @@ Multiple enabled entries per factory become an `InstanceFallback` (`base_factory
 For an `execute` run, `config.execution_output_path` (default `<project>/execution_output/`, ensured in `config_handler.py:120`) receives:
 - `junit_output.xml` — written incrementally by `JUnitEventHandler` (`Junit_eventhandler.py:110`), flushed in `flush()` (`:253`), finalised in `close()` (`:268`).
 - `logs.json` — when `config.json_log: true`; path set by `_maybe_setup_junit` (`session_manager.py:40`).
-- screenshots — saved by `ActionKeyword._save_screenshot_if_available` (`:177`), AOI overlays by `_maybe_save_aoi_screenshot` (`:30`), strategy-annotated frames by `_save_annotated_for_result` (`:52`).
+- screenshots — saved by `ActionKeyword._save_screenshot_if_available` (`:177`), AOI overlays by `_maybe_save_aoi_screenshot` (`:30`), strategy-annotated frames by `_save_annotated_for_result` (`:52`). Element bboxes come back in the driver's **window coordinate space**, so they are scaled to the screenshot's **pixel space** via `utils.scale_bboxes_for_screenshot` (`common/utils.py`) before drawing (call site in `strategies.py`); skipping this skews annotations on high-DPI / scaled displays.
 
 ## Hard rules
 
@@ -173,4 +188,5 @@ optics execute <folder>                    # smoke a project against the install
 optics list                                # print discoverable API keywords (reflection)
 optics generate <folder>                   # emit pytest/robot code from CSV/YAML
 optics serve                               # FastAPI server exposing keyword endpoints
+optics live [folder]                       # interactive REPL/TUI: run keywords (or NL) against a live target
 ```
