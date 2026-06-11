@@ -315,6 +315,46 @@ _PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable
 _PS_SHOWN_FLAGS = ("clickable", "scrollable", "long-clickable", "checked", "selected")
 
 
+def _short_class(el) -> str:
+    cls = el.get("class") or str(el.tag) or "node"
+    return cls.rsplit(".", 1)[-1]
+
+def _is_interesting(el) -> bool:
+    if (el.get("text") or "").strip() or (el.get("content-desc") or "").strip():
+        return True
+    if any(el.get(flag) == "true" for flag in _PS_INTERACTIVE_FLAGS):
+        return True
+    cls = el.get("class") or ""
+    return cls.endswith("EditText") or el.get("password") == "true"
+
+def _descriptor(el) -> str:
+    parts = [_short_class(el)]
+    text = " ".join((el.get("text") or "").split())
+    if text:
+        parts.append(f'"{text}"')
+    desc = " ".join((el.get("content-desc") or "").split())
+    if desc:
+        parts.append(f'desc="{desc}"')
+    rid = el.get("resource-id") or ""
+    if rid:
+        parts.append(f"id={rid.split('/', 1)[-1]}")  # drop package prefix
+    bounds = el.get("bounds")
+    if bounds:
+        parts.append(f"bounds={bounds}")
+    parts.extend(flag for flag in _PS_SHOWN_FLAGS if el.get(flag) == "true")
+    hint = " ".join((el.get("hint") or "").split())
+    if hint:
+        parts.append(f'hint="{hint}"')
+    return " ".join(parts)
+
+def _walk(el, depth: int, lines: List[str]) -> None:
+    kept = _is_interesting(el)
+    if kept:
+        lines.append("  " * min(depth, 12) + _descriptor(el))
+    next_depth = depth + 1 if kept else depth
+    for child in el:
+        _walk(child, next_depth, lines)
+
 def strip_page_source(page_source: str, max_chars: int = 12000) -> str:
     """Condense a UI-hierarchy XML dump into a compact, LLM-friendly outline.
 
@@ -333,49 +373,8 @@ def strip_page_source(page_source: str, max_chars: int = 12000) -> str:
     except Exception:  # noqa: BLE001 - any malformed source degrades to "no page source"
         return ""
 
-    def _short_class(el) -> str:
-        cls = el.get("class") or str(el.tag) or "node"
-        return cls.rsplit(".", 1)[-1]
-
-    def _is_interesting(el) -> bool:
-        if (el.get("text") or "").strip() or (el.get("content-desc") or "").strip():
-            return True
-        if any(el.get(flag) == "true" for flag in _PS_INTERACTIVE_FLAGS):
-            return True
-        cls = el.get("class") or ""
-        return cls.endswith("EditText") or el.get("password") == "true"
-
-    def _descriptor(el) -> str:
-        parts = [_short_class(el)]
-        text = " ".join((el.get("text") or "").split())
-        if text:
-            parts.append(f'"{text}"')
-        desc = " ".join((el.get("content-desc") or "").split())
-        if desc:
-            parts.append(f'desc="{desc}"')
-        rid = el.get("resource-id") or ""
-        if rid:
-            parts.append(f"id={rid.split('/', 1)[-1]}")  # drop package prefix
-        bounds = el.get("bounds")
-        if bounds:
-            parts.append(f"bounds={bounds}")
-        parts.extend(flag for flag in _PS_SHOWN_FLAGS if el.get(flag) == "true")
-        hint = " ".join((el.get("hint") or "").split())
-        if hint:
-            parts.append(f'hint="{hint}"')
-        return " ".join(parts)
-
     lines: List[str] = []
-
-    def _walk(el, depth: int) -> None:
-        kept = _is_interesting(el)
-        if kept:
-            lines.append("  " * min(depth, 12) + _descriptor(el))
-        next_depth = depth + 1 if kept else depth
-        for child in el:
-            _walk(child, next_depth)
-
-    _walk(root, 0)
+    _walk(root, 0, lines)
     out = "\n".join(lines)
     if len(out) > max_chars:
         out = out[:max_chars] + "\n… (truncated)"
