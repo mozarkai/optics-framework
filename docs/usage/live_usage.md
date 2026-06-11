@@ -81,7 +81,7 @@ sleep 5
 | Command          | Description |
 |------------------|-------------|
 | `/save <name>`   | Save the recorded actions to `modules/<name>.csv` + `test_cases/<name>.csv`, **and** snapshot every screenshot/artifact the framework generated this session to `execution_output/<name>/`. Re-saving updates the snapshot. |
-| `/device [id]`   | **Android/Appium sessions only.** List connected `adb` devices; with no argument, pick one to switch the active device. For Selenium/Playwright/iOS sessions it reports that switching doesn't apply (the target is the configured browser/device). |
+| `/device [id]`   | **Appium sessions only.** List all connected **Android** (`adb`) and **iOS** (`idevice_id`) devices, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). |
 | `/elements`      | Open a read-only popup of named elements and their locators (Esc closes). |
 | `/screenshot`    | Capture the current device screen to a file and note the path in the history. |
 | `/help`          | Show the command reference (Esc closes). |

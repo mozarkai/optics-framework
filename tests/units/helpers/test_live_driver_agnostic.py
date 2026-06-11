@@ -153,25 +153,163 @@ class TestDeviceSwitching:
         c = _shell("appium", {"platformName": "Android", "udid": "x"})
         assert c.supports_device_switching() is True
 
-    def test_ios_appium_does_not_switch(self):
-        c = _shell("appium", {"platformName": "iOS", "udid": "x"})
-        assert c.supports_device_switching() is False
-
-    def test_appium_without_platform_does_not_switch(self):
+    def test_appium_without_platform_can_switch_but_not_hotplug(self):
+        # Any Appium session can target a device by udid; adb hot-plug needs Android.
         c = _shell("appium", {"udid": "x"})
-        assert c.supports_device_switching() is False
-
-    @pytest.mark.parametrize("driver,caps", [("selenium", {"browserName": "chrome"}),
-                                             ("playwright", {"browser": "chromium"})])
-    def test_web_drivers_do_not_switch(self, driver, caps):
-        assert _shell(driver, caps).supports_device_switching() is False
+        assert c.supports_device_switching() is True
+        assert c.supports_adb_hotplug() is False
 
     def test_switch_device_raises_for_non_switchable(self):
         c = _shell("playwright", {"browser": "chromium"})
         with pytest.raises(OpticsError) as exc:
             c.switch_device("anything")
         assert exc.value.code == Code.E0501
-        assert "Android/Appium only" in exc.value.message
+        assert "Appium sessions only" in exc.value.message
+
+    def test_appium_ios_can_switch_but_not_hotplug(self):
+        c = _shell("appium", {"platformName": "iOS", "udid": "x"})
+        assert c.supports_device_switching() is True   # /device works for iOS Appium
+        assert c.supports_adb_hotplug() is False        # but no adb hot-plug monitor
+
+    def test_appium_android_supports_both(self):
+        c = _shell("appium", {"platformName": "Android", "udid": "x"})
+        assert c.supports_device_switching() is True
+        assert c.supports_adb_hotplug() is True
+
+    @pytest.mark.parametrize("driver,caps", [("selenium", {"browserName": "chrome"}),
+                                             ("playwright", {"browser": "chromium"})])
+    def test_web_drivers_support_neither(self, driver, caps):
+        c = _shell(driver, caps)
+        assert c.supports_device_switching() is False
+        assert c.supports_adb_hotplug() is False
+
+
+class _Proc:
+    def __init__(self, stdout: str):
+        self.stdout = stdout
+
+
+_ADB_OUT = (
+    "List of devices attached\n"
+    "emulator-5554\tdevice\n"
+    "ABCD1234\tdevice\n"
+    "offlinedev\toffline\n"   # not ready -> excluded
+    "\n"
+)
+# idevice_id -l prints one UDID per line; tolerate an optional (USB)/(Network) suffix.
+_IDEVICE_OUT = (
+    "00008030-001A2D3E1234567A\n"
+    "00008101-AABBCCDDEEFF0011 (USB)\n"
+    "\n"
+)
+
+
+def _fake_run(adb_out="", ios_out="", missing=()):
+    def _run(cmd, **kwargs):
+        tool = cmd[0]
+        if tool in missing:
+            raise FileNotFoundError(tool)
+        if cmd[:2] == ["adb", "devices"]:
+            return _Proc(adb_out)
+        if tool == "idevice_id":
+            return _Proc(ios_out)
+        return _Proc("")
+    return _run
+
+
+class TestDeviceListing:
+    def test_list_android_devices(self, monkeypatch):
+        monkeypatch.setattr(live_mod.subprocess, "run", _fake_run(adb_out=_ADB_OUT))
+        assert LiveController.list_android_devices() == ["emulator-5554", "ABCD1234"]
+
+    def test_list_ios_devices(self, monkeypatch):
+        monkeypatch.setattr(live_mod.subprocess, "run", _fake_run(ios_out=_IDEVICE_OUT))
+        # First token of each non-empty line; the (USB) suffix is stripped.
+        assert LiveController.list_ios_devices() == [
+            "00008030-001A2D3E1234567A",
+            "00008101-AABBCCDDEEFF0011",
+        ]
+
+    def test_list_devices_combines_with_platform(self, monkeypatch):
+        monkeypatch.setattr(
+            live_mod.subprocess, "run", _fake_run(adb_out=_ADB_OUT, ios_out=_IDEVICE_OUT)
+        )
+        assert LiveController.list_devices() == [
+            ("emulator-5554", "android"),
+            ("ABCD1234", "android"),
+            ("00008030-001A2D3E1234567A", "ios"),
+            ("00008101-AABBCCDDEEFF0011", "ios"),
+        ]
+
+    def test_missing_tools_degrade_gracefully(self, monkeypatch):
+        monkeypatch.setattr(
+            live_mod.subprocess, "run", _fake_run(missing=("adb", "idevice_id"))
+        )
+        assert LiveController.list_android_devices() == []
+        assert LiveController.list_ios_devices() == []
+        assert LiveController.list_devices() == []
+
+    def test_only_ios_present(self, monkeypatch):
+        # adb returns nothing, idevice_id has devices -> /device still shows the iOS ones.
+        monkeypatch.setattr(live_mod.subprocess, "run", _fake_run(ios_out=_IDEVICE_OUT))
+        assert LiveController.list_devices() == [
+            ("00008030-001A2D3E1234567A", "ios"),
+            ("00008101-AABBCCDDEEFF0011", "ios"),
+        ]
+
+
+class _DeviceStubController:
+    """Minimal controller for driving the TUI /device picker in a test."""
+
+    saved = True
+    recorded: list = []
+    live_log_path = None
+    driver_type = "appium"
+
+    def __init__(self, devices):
+        self._devices = devices
+
+    # used by LiveTUI construction / completer (lazy, harmless)
+    def keyword_names(self):
+        return []
+
+    def keyword_signature(self, _name):
+        return ""
+
+    def element_names(self):
+        return []
+
+    def element_first_locator(self, _name):
+        return None
+
+    def natural_language_available(self):
+        return False
+
+    # used by _cmd_device
+    def supports_device_switching(self):
+        return True
+
+    def active_target(self):
+        return "appium:emulator-5554"
+
+    def list_devices(self):
+        return self._devices
+
+
+class TestDevicePicker:
+    def test_cmd_device_lists_android_and_ios(self):
+        from optics_framework.helper.live_tui import LiveTUI
+
+        devices = [("emulator-5554", "android"), ("00008030-ABCD", "ios")]
+        tui = LiveTUI(_DeviceStubController(devices))
+        tui._cmd_device("")
+        labels = [label for label, _value in tui.overlay_items]
+        values = [value for _label, value in tui.overlay_items]
+        assert values == ["emulator-5554", "00008030-ABCD"]
+        assert any("(android)" in lbl for lbl in labels)
+        assert any("(ios)" in lbl for lbl in labels)
+        # active device is marked
+        assert any("(active)" in lbl for lbl in labels)
 
 
 class _FakeManager:

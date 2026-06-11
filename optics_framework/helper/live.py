@@ -841,15 +841,19 @@ class LiveController:
         return self.driver_type or "unknown"
 
     def supports_device_switching(self) -> bool:
-        """True only for Android Appium sessions (adb-based discovery/hot-swap).
+        """True for Appium sessions (Android or iOS) — devices are targeted by ``udid``.
 
-        Appium is also used for iOS, where adb does not apply — so we additionally
-        require ``platformName == android``. Missing/unknown platform -> False, so we
-        never run adb against an iOS or non-mobile session.
+        The ``/device`` picker lists all connected Android (``adb``) and iOS
+        (``idevice_id``) devices, and switching rebuilds the session with the chosen
+        ``udid``. Non-Appium drivers (selenium/playwright) have no device concept.
+        """
+        return self.driver_type == "appium"
 
-        TODO(optics-live): add iOS device discovery/switching (via ``idevice_id`` /
-        ``ideviceinstaller``) and broaden this gate accordingly. Out of scope for the
-        initial driver-agnostic work; tracked as a follow-up.
+    def supports_adb_hotplug(self) -> bool:
+        """True only for Android Appium — gates the ``adb`` hot-plug auto-init monitor.
+
+        Hot-plug auto-init polls ``adb`` and only makes sense for Android; iOS devices
+        are still listed/switchable via :meth:`list_devices` and ``/device``.
         """
         if self.driver_type != "appium":
             return False
@@ -858,14 +862,9 @@ class LiveController:
 
     @staticmethod
     def list_android_devices() -> List[str]:
-        """List connected Android device serials via ``adb`` (best effort).
-
-        Android-only by design — named so it doesn't imply cross-platform discovery.
-        TODO(optics-live): add an iOS counterpart (``idevice_id -l``) and a unified
-        ``list_devices`` once iOS device support lands.
-        """
+        """Connected Android device serials via ``adb devices`` (best effort, never raises)."""
         try:
-            output = subprocess.run(
+            output = subprocess.run(  # nosec B603 B607 - fixed argv, no shell, tool from PATH
                 ["adb", "devices"],
                 capture_output=True,
                 text=True,
@@ -881,24 +880,63 @@ class LiveController:
                 devices.append(parts[0])
         return devices
 
-    def switch_device(self, serial: str) -> None:
-        """Switch the active device by rebuilding the driver/session with new capabilities.
+    @staticmethod
+    def list_ios_devices() -> List[str]:
+        """Connected iOS device UDIDs via ``idevice_id -l`` (libimobiledevice).
 
-        Android/Appium only — device hot-swap via adb serial has no meaning for web
-        (selenium/playwright) or iOS sessions.
+        Best effort: returns ``[]`` when the tool isn't installed or no device is
+        attached. ``idevice_id -l`` prints one UDID per line; we take the first token
+        of each line so an optional ``(USB)``/``(Network)`` suffix is tolerated.
+        """
+        try:
+            output = subprocess.run(  # nosec B603 B607 - fixed argv, no shell, tool from PATH
+                ["idevice_id", "-l"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            ).stdout
+        except (FileNotFoundError, subprocess.SubprocessError):
+            return []
+        devices: List[str] = []
+        for line in output.splitlines():
+            tokens = line.split()
+            if tokens:
+                devices.append(tokens[0])
+        return devices
+
+    @staticmethod
+    def list_devices() -> List[Tuple[str, str]]:
+        """All connected mobile devices as ``(udid, platform)`` pairs.
+
+        Combines Android (``adb``) and iOS (``idevice_id``); ``platform`` is
+        ``"android"`` or ``"ios"``. Best effort — a missing tool contributes nothing.
+        """
+        devices: List[Tuple[str, str]] = [
+            (serial, "android") for serial in LiveController.list_android_devices()
+        ]
+        devices.extend((udid, "ios") for udid in LiveController.list_ios_devices())
+        return devices
+
+    def switch_device(self, udid: str) -> None:
+        """Switch the active device by rebuilding the session with the chosen ``udid``.
+
+        Appium only (Android or iOS); web drivers (selenium/playwright) have no device
+        concept. The picked device must match the session's configured platform — picking
+        a cross-platform device surfaces a clear session-rebuild failure rather than a crash.
         """
         if not self.supports_device_switching():
             raise OpticsError(
                 Code.E0501,
                 message=(
-                    f"Device switching is for Android/Appium only; this session uses "
-                    f"{self.driver_type}."
+                    f"Device switching is available for Appium sessions only; "
+                    f"this session uses {self.driver_type}."
                 ),
             )
         caps = self._enabled_driver_caps()
         if caps is not None:
-            caps["udid"] = serial
-            caps["deviceName"] = serial
+            caps["udid"] = udid
+            caps["deviceName"] = udid
         existing_elements = self.session.elements
         self.manager.terminate_session(self.session_id)
         self.session_id = self.manager.create_session(
@@ -914,7 +952,7 @@ class LiveController:
             raise OpticsError(Code.E0702, message="Failed to rebuild session for device switch")
         self.session = session
         self._build_registry()
-        self.active_target_label = serial
+        self.active_target_label = udid
 
     # -- Screenshot ---------------------------------------------------------------
 

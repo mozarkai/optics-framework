@@ -70,7 +70,7 @@ Natural-language mode (Ctrl-N)
 
 Slash commands (work in both modes)
   /save <name>   Save recorded actions to modules/<name>.csv + a test case
-  /device [id]   List/switch Android devices (Android/Appium sessions only)
+  /device [id]   List/switch connected Android + iOS devices (Appium sessions only)
   /elements      Show named elements and their locators (read-only)
   /screenshot    Capture the device screen to a file
   /help          Show this reference
@@ -703,19 +703,24 @@ class LiveTUI:
     def _cmd_device(self, arg: str) -> None:
         if not self.controller.supports_device_switching():
             self._info(
-                f"Device switching is for Android/Appium only — this session uses "
-                f"{self.controller.driver_type}."
+                f"Device switching is available for Appium sessions only — this session "
+                f"uses {self.controller.driver_type}."
             )
             return
-        devices = self.controller.list_android_devices()
         if arg:
             self._switch_device(arg)
             return
+        devices = self.controller.list_devices()  # list of (udid, platform)
         if not devices:
-            self._info("No connected devices found (adb).")
+            self._info("No connected devices found (adb / idevice_id).")
             return
         active = self.controller.active_target()
-        items = [(f"{d}  (active)" if active.endswith(d) else d, d) for d in devices]
+        items: List[Tuple[str, str]] = []
+        for udid, platform in devices:
+            label = f"{udid}  ({platform})"
+            if active.endswith(udid):
+                label += "  (active)"
+            items.append((label, udid))
         self.open_overlay("Select device", items, self._switch_device)
         get_app().invalidate()
 
@@ -849,8 +854,9 @@ class LiveTUI:
         if log_path:
             self._info(f"Session log: {log_path}")
         self._run_keyword_async("launch_app")
-        # adb hot-plug monitoring only applies to Android/Appium sessions.
-        if self.controller.supports_device_switching():
+        # adb hot-plug auto-init only applies to Android Appium sessions; iOS devices
+        # are still listed/switchable via /device.
+        if self.controller.supports_adb_hotplug():
             self._start_device_monitor()
 
     def run(self) -> None:
