@@ -356,6 +356,16 @@ class FlowControl:
         no result, so the caller can move on to the else block). The optional
         ``!`` prefix inverts the truth value while preserving the original
         skip-/run-target behaviour.
+
+        Semantics changed (bugfix): the previous version treated the condition
+        module as TRUE whenever it ran *without raising* (ignoring an empty
+        result) and returned the *target* module's result rather than the
+        condition module's. That contradicted the documented contract of
+        :meth:`condition` ("returns the result of executing the module if
+        non-empty") and :meth:`_is_condition_true`, so a true condition with no
+        else returned ``[]`` instead of the module's result, and an empty
+        (false) condition returned ``[]`` instead of ``None``. The current
+        non-empty-result semantics above fix that.
         """
         invert = cond_str.startswith("!")
         actual_cond = cond_str[1:].strip() if invert else cond_str

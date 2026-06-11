@@ -125,7 +125,8 @@ def _shell(driver: str, caps: dict) -> LiveController:
         driver_sources=[{driver: DependencyConfig(enabled=True, capabilities=caps)}]
     )
     ctrl.driver_type = ctrl._enabled_driver_name()
-    ctrl.active_target_label = None
+    # Mirror the constructor: the target label is computed once at init.
+    ctrl.active_target_label = ctrl._get_target_id_from_config()
     return ctrl
 
 

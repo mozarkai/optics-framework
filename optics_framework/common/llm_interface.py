@@ -1,3 +1,4 @@
+import json
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 
@@ -54,8 +55,6 @@ class LLMInterface(ABC):
 
         :raises OpticsError: ``Code.E0801`` if the model returns undecodable JSON.
         """
-        import json
-
         text = self.generate(
             prompt,
             images=images,

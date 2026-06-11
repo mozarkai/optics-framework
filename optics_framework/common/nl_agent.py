@@ -195,8 +195,6 @@ class NaturalLanguageAgent:
             "exhausted", state.history, "Reached the maximum number of steps.", state.successful
         )
 
-    # -- helpers ---------------------------------------------------------------
-
     def _run_one_step(
         self,
         instruction: str,

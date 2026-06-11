@@ -21,6 +21,21 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
 _DEFAULT_MODEL = "gemini-2.5-flash"
 
 
+def _image_mime_type(data: bytes) -> str:
+    """Sniff a common image mime type from magic bytes (defaults to PNG).
+
+    The interface passes raw image bytes (callers may send PNG, JPEG, WebP, GIF);
+    we detect rather than assume so the engine isn't tied to one encoding.
+    """
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"
+
+
 class GeminiLLM(LLMInterface):
     """
     Google Gemini engine (``google-genai`` SDK), supporting both the Gemini Developer API
@@ -30,8 +45,6 @@ class GeminiLLM(LLMInterface):
     ``GOOGLE_CLOUD_LOCATION``, ``GOOGLE_APPLICATION_CREDENTIALS``). Capabilities override env
     when present; secrets are never hardcoded.
     """
-
-    NAME = "gemini"
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         if genai is None:
@@ -82,7 +95,7 @@ class GeminiLLM(LLMInterface):
         if images:
             for img in images:
                 contents.append(
-                    genai_types.Part.from_bytes(data=img, mime_type="image/png")
+                    genai_types.Part.from_bytes(data=img, mime_type=_image_mime_type(img))
                 )
 
         config_kwargs: Dict[str, Any] = {

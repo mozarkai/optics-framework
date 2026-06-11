@@ -35,7 +35,10 @@ from prompt_toolkit.layout.processors import AfterInput
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame
 
-from optics_framework.helper.live import LiveController, ActionResult, NLStep, NLSummary
+from optics_framework.helper.live import (
+    LiveController, ActionResult, NLStep, NLSummary,
+    ActionStatus, NLRunStatus, NLStepKind,
+)
 
 
 _STATUS_HINT = "Tab complete · Ctrl-K keywords · Ctrl-N AI mode · /help · /quit"
@@ -225,19 +228,19 @@ class LiveTUI:
             ("class:cmd", result.raw),
             ("", "\n"),
         ]
-        if result.status == "RUNNING":
+        if result.status == ActionStatus.RUNNING:
             out.append((_RUNNING, f"{detail_lead}running…\n"))
             return out
-        if result.status == "INFO":
+        if result.status == ActionStatus.INFO:
             if result.message:
                 out.append((_META, f"{detail_lead}{result.message}\n"))
             return out
         detail = f"{detail_lead}{result.elapsed:.2f}s"
-        if result.status == "PASS" and result.strategy:
+        if result.status == ActionStatus.PASS and result.strategy:
             detail += f"  [{result.strategy}]"
         out.append((_META, detail))
         if result.message:
-            msg_style = "class:fail" if result.status == "FAIL" else _META
+            msg_style = "class:fail" if result.status == ActionStatus.FAIL else _META
             out.append((msg_style, f"  {result.message}"))
         out.append(("", "\n"))
         return out
@@ -527,7 +530,7 @@ class LiveTUI:
         get_app().invalidate()
 
     def _info(self, message: str, raw: str = "") -> None:
-        self._append(ActionResult(raw=raw or message, status="INFO", message=message if raw else None))
+        self._append(ActionResult(raw=raw or message, status=ActionStatus.INFO, message=message if raw else None))
 
     def _submit(self, text: str) -> None:
         text = text.strip()
@@ -544,7 +547,7 @@ class LiveTUI:
             self._run_keyword_async(text)
 
     def _run_keyword_async(self, text: str) -> None:
-        pending = ActionResult(raw=text, status="RUNNING")
+        pending = ActionResult(raw=text, status=ActionStatus.RUNNING)
         self.entries.append(pending)
         self._busy = True
         app = get_app()
@@ -560,7 +563,7 @@ class LiveTUI:
                 pending.strategy = result.strategy
                 pending.message = result.message
             except Exception as exc:  # noqa: BLE001 - never crash the UI
-                pending.status = "FAIL"
+                pending.status = ActionStatus.FAIL
                 pending.message = f"{type(exc).__name__}: {exc}"
             finally:
                 self._busy = False
@@ -597,23 +600,23 @@ class LiveTUI:
 
     @staticmethod
     def _nl_summary_message(summary: NLSummary) -> str:
-        if summary.status == "PASS":
+        if summary.status == NLRunStatus.PASS:
             label = "done"
-        elif summary.status == "ABORTED":
+        elif summary.status == NLRunStatus.ABORTED:
             label = "aborted"
-        elif summary.status == "MAX_STEPS":
+        elif summary.status == NLRunStatus.MAX_STEPS:
             label = "stopped (max steps)"
         else:
             label = "failed"
         parts = [f"{label} · {summary.steps} step(s) · {summary.elapsed:.1f}s"]
-        if summary.status == "PASS" and summary.steps:
+        if summary.status == NLRunStatus.PASS and summary.steps:
             parts.append(f"recorded {summary.steps} (/save to keep)")
         if summary.message and summary.status != "PASS":
             parts.append(summary.message)
         return " · ".join(parts)
 
     def _run_nl_async(self, instruction: str) -> None:
-        header = ActionResult(raw=f"[ai] {instruction}", status="RUNNING")
+        header = ActionResult(raw=f"[ai] {instruction}", status=ActionStatus.RUNNING)
         self.entries.append(header)
         self._busy = True
         self._nl_running = True
@@ -624,11 +627,11 @@ class LiveTUI:
         def on_step(step: NLStep) -> None:
             # Runs on the executor thread — build the entry here, but schedule the list
             # mutation + redraw on the event-loop thread to avoid a render-race.
-            if step.kind == "keyword" and step.result is not None:
+            if step.kind == NLStepKind.KEYWORD and step.result is not None:
                 entry = step.result
                 entry.nl_child = True
             else:  # thinking / note
-                entry = ActionResult(raw=step.text, status="INFO", nl_thinking=True)
+                entry = ActionResult(raw=step.text, status=ActionStatus.INFO, nl_thinking=True)
 
             def _apply() -> None:
                 self.entries.append(entry)
@@ -647,11 +650,11 @@ class LiveTUI:
                         lambda: self._nl_abort,
                     ),
                 )
-                header.status = "PASS" if summary.status == "PASS" else "FAIL"
+                header.status = ActionStatus.PASS if summary.status == NLRunStatus.PASS else ActionStatus.FAIL
                 header.elapsed = summary.elapsed
                 header.message = self._nl_summary_message(summary)
             except Exception as exc:  # noqa: BLE001 - never crash the UI
-                header.status = "FAIL"
+                header.status = ActionStatus.FAIL
                 header.message = f"{type(exc).__name__}: {exc}"
             finally:
                 self._busy = False
@@ -704,7 +707,7 @@ class LiveTUI:
                 f"{self.controller.driver_type}."
             )
             return
-        devices = self.controller.list_devices()
+        devices = self.controller.list_android_devices()
         if arg:
             self._switch_device(arg)
             return
@@ -748,17 +751,17 @@ class LiveTUI:
             return
         self._busy = True
         app = get_app()
-        pending = ActionResult(raw="/screenshot", status="RUNNING")
+        pending = ActionResult(raw="/screenshot", status=ActionStatus.RUNNING)
         self.entries.append(pending)
 
         async def task() -> None:
             loop = asyncio.get_event_loop()
             try:
                 path = await loop.run_in_executor(None, self.controller.capture_screenshot)
-                pending.status = "INFO"
+                pending.status = ActionStatus.INFO
                 pending.message = f"Screenshot saved → {path}"
             except Exception as exc:  # noqa: BLE001
-                pending.status = "FAIL"
+                pending.status = ActionStatus.FAIL
                 pending.message = f"Screenshot failed: {exc}"
             finally:
                 self._busy = False
@@ -821,7 +824,7 @@ class LiveTUI:
 
         async def _poll_devices(loop) -> Optional[List[str]]:
             try:
-                return await loop.run_in_executor(None, self.controller.list_devices)
+                return await loop.run_in_executor(None, self.controller.list_android_devices)
             except Exception:  # noqa: BLE001 - transient adb hiccup retried next tick
                 return None
 

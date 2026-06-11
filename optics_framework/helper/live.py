@@ -22,6 +22,7 @@ import subprocess
 import inspect
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from enum import Enum
 from datetime import datetime
 from itertools import product
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -71,12 +72,38 @@ _STRATEGY_LABELS: Dict[str, str] = {
 }
 _STRATEGY_SUCCESS_RE = re.compile(r"Trying (\w+) on .*? \.\.\. SUCCESS", re.IGNORECASE)
 
-# Map NaturalLanguageAgent terminal statuses to the live-session summary status labels.
-_NL_STATUS_MAP: Dict[str, str] = {
-    "done": "PASS",
-    "failed": "FAIL",
-    "aborted": "ABORTED",
-    "exhausted": "MAX_STEPS",
+class ActionStatus(str, Enum):
+    """Status of a single keyword execution (str-valued, so it compares as a string)."""
+
+    PASS = "PASS"  # nosec B105 - enum member name, not a credential
+    FAIL = "FAIL"
+    INFO = "INFO"
+    RUNNING = "RUNNING"
+
+
+class NLRunStatus(str, Enum):
+    """Terminal status of a natural-language run."""
+
+    PASS = "PASS"  # nosec B105 - enum member name, not a credential
+    FAIL = "FAIL"
+    ABORTED = "ABORTED"
+    MAX_STEPS = "MAX_STEPS"
+
+
+class NLStepKind(str, Enum):
+    """Kind of streamed event from a natural-language run."""
+
+    THINKING = "thinking"
+    KEYWORD = "keyword"
+    NOTE = "note"
+
+
+# Map NaturalLanguageAgent terminal statuses to the live-session summary status.
+_NL_STATUS_MAP: Dict[str, NLRunStatus] = {
+    "done": NLRunStatus.PASS,
+    "failed": NLRunStatus.FAIL,
+    "aborted": NLRunStatus.ABORTED,
+    "exhausted": NLRunStatus.MAX_STEPS,
 }
 
 
@@ -87,7 +114,7 @@ class ActionResult:
     raw: str
     keyword: str = ""
     params: List[str] = field(default_factory=list)
-    status: str = "PASS"  # PASS | FAIL | INFO | RUNNING
+    status: ActionStatus = ActionStatus.PASS
     elapsed: float = 0.0
     strategy: Optional[str] = None
     message: Optional[str] = None
@@ -102,9 +129,9 @@ class ActionResult:
 class NLStep:
     """A single streamed event from a natural-language run, for the history pane."""
 
-    kind: str  # "thinking" | "keyword" | "note"
+    kind: NLStepKind
     text: str
-    result: Optional[ActionResult] = None  # set when kind == "keyword"
+    result: Optional[ActionResult] = None  # set when kind == NLStepKind.KEYWORD
 
 
 @dataclass
@@ -112,7 +139,7 @@ class NLSummary:
     """Terminal summary of a natural-language run."""
 
     instruction: str
-    status: str  # PASS | FAIL | ABORTED | MAX_STEPS
+    status: NLRunStatus
     steps: int = 0
     elapsed: float = 0.0
     message: Optional[str] = None
@@ -296,7 +323,7 @@ class LiveController:
         # The single enabled driver name (e.g. "appium", "selenium", "playwright"),
         # used to drive UI labels and gate device-discovery features.
         self.driver_type: str = self._enabled_driver_name()
-        self.active_target_label: Optional[str] = self._target_from_config()
+        self.active_target_label: Optional[str] = self._get_target_id_from_config()
 
         # Natural-language mode (lazy): the agent is built on first use and the
         # availability flag is computed from config (an enabled llm_models entry).
@@ -483,9 +510,9 @@ class LiveController:
         try:
             tokens = shlex.split(raw, posix=True)
         except ValueError as exc:
-            return ActionResult(raw=raw, status="FAIL", message=f"Parse error: {exc}")
+            return ActionResult(raw=raw, status=ActionStatus.FAIL, message=f"Parse error: {exc}")
         if not tokens:
-            return ActionResult(raw=raw, status="FAIL", message="Empty command")
+            return ActionResult(raw=raw, status=ActionStatus.FAIL, message="Empty command")
 
         keyword_token, params = tokens[0], tokens[1:]
         func_name = "_".join(keyword_token.split()).lower()
@@ -494,7 +521,7 @@ class LiveController:
             return ActionResult(
                 raw=raw,
                 keyword=keyword_token,
-                status="FAIL",
+                status=ActionStatus.FAIL,
                 message=f"Unknown keyword: {keyword_token}",
             )
 
@@ -508,7 +535,7 @@ class LiveController:
                 raw=raw,
                 keyword=func_name,
                 params=params,
-                status="FAIL",
+                status=ActionStatus.FAIL,
                 message=self._format_error(exc),
                 elapsed=time.time() - start,
             )
@@ -601,7 +628,7 @@ class LiveController:
                 raw=raw,
                 keyword=func_name,
                 params=params,
-                status="PASS",
+                status=ActionStatus.PASS,
                 elapsed=time.time() - start,
                 strategy=self._winning_strategy(strategy_capture),
                 recorded=record,
@@ -610,7 +637,7 @@ class LiveController:
             raw=raw,
             keyword=func_name,
             params=params,
-            status="FAIL",
+            status=ActionStatus.FAIL,
             elapsed=time.time() - start,
             message=self._format_error(last_exc),
         )
@@ -623,7 +650,10 @@ class LiveController:
                 var_name = param[2:-1].strip()
                 values = self.session.elements.get_element(var_name) if self.session.elements else None
                 if not values:
-                    raise OpticsError(Code.E0201, message=f"Element not found: {var_name}")
+                    raise OpticsError(
+                        Code.E0901,
+                        message=f"Named element '{var_name}' is not defined in this project's elements.",
+                    )
                 candidates.append(list(values))
             else:
                 candidates.append([param])
@@ -649,19 +679,22 @@ class LiveController:
         var_name = value[2:-1].strip()
         resolved = self.session.elements.get_first(var_name) if self.session.elements else None
         if resolved is None:
-            raise OpticsError(Code.E0201, message=f"Element not found: {var_name}")
+            raise OpticsError(
+                Code.E0901,
+                message=f"Named element '{var_name}' is not defined in this project's elements.",
+            )
         return resolved
 
     @staticmethod
-    def _find_error_log(capture: LogCaptureBuffer) -> Optional[str]:
-        """Return the message of the first ERROR+ record in ``capture``, or None.
+    def _find_error_log(log_capture: LogCaptureBuffer) -> Optional[str]:
+        """Return the message of the first ERROR+ record in ``log_capture``, or None.
 
         Used to detect cases where the framework reports a failure via logging
         instead of raising (the appium driver's "Unknown swipe direction" path
         is the canonical example). A returned value means the keyword "succeeded"
         in the Python sense but didn't actually do what was asked.
         """
-        for record in capture.records:
+        for record in log_capture.records:
             if isinstance(record, logging.LogRecord) and record.levelno >= logging.ERROR:
                 try:
                     return record.getMessage()
@@ -670,9 +703,9 @@ class LiveController:
         return None
 
     @staticmethod
-    def _winning_strategy(capture: LogCaptureBuffer) -> Optional[str]:
+    def _winning_strategy(log_capture: LogCaptureBuffer) -> Optional[str]:
         """Read the last successful locator strategy from captured execution logs."""
-        for record in reversed(capture.records):
+        for record in reversed(log_capture.records):
             try:
                 message = record.getMessage() if isinstance(record, logging.LogRecord) else str(record)
             except Exception:  # pragma: no cover - defensive
@@ -777,7 +810,7 @@ class LiveController:
         drivers = _enabled_drivers(self.config)
         return drivers[0] if drivers else "unknown"
 
-    def _target_from_config(self) -> Optional[str]:
+    def _get_target_id_from_config(self) -> Optional[str]:
         """A driver-appropriate target identifier from the enabled driver's capabilities.
 
         appium -> device udid/name; selenium -> browser name/URL; playwright -> browser
@@ -802,7 +835,7 @@ class LiveController:
 
         e.g. ``appium:emulator-5554``, ``playwright:chromium``, ``selenium:chrome``.
         """
-        label = self.active_target_label or self._target_from_config()
+        label = self.active_target_label
         if label:
             return f"{self.driver_type}:{label}"
         return self.driver_type or "unknown"
@@ -813,6 +846,10 @@ class LiveController:
         Appium is also used for iOS, where adb does not apply — so we additionally
         require ``platformName == android``. Missing/unknown platform -> False, so we
         never run adb against an iOS or non-mobile session.
+
+        TODO(optics-live): add iOS device discovery/switching (via ``idevice_id`` /
+        ``ideviceinstaller``) and broaden this gate accordingly. Out of scope for the
+        initial driver-agnostic work; tracked as a follow-up.
         """
         if self.driver_type != "appium":
             return False
@@ -820,8 +857,13 @@ class LiveController:
         return str(caps.get("platformName", "")).lower() == "android"
 
     @staticmethod
-    def list_devices() -> List[str]:
-        """List connected Android device serials via ``adb`` (best effort)."""
+    def list_android_devices() -> List[str]:
+        """List connected Android device serials via ``adb`` (best effort).
+
+        Android-only by design — named so it doesn't imply cross-platform discovery.
+        TODO(optics-live): add an iOS counterpart (``idevice_id -l``) and a unified
+        ``list_devices`` once iOS device support lands.
+        """
         try:
             output = subprocess.run(
                 ["adb", "devices"],
@@ -947,7 +989,7 @@ class LiveController:
         """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
         result = self._execute_line(raw, record=False)
         return ExecResult(
-            ok=(result.status == "PASS"),
+            ok=(result.status == ActionStatus.PASS),
             strategy=result.strategy,
             message=result.message,
             elapsed=result.elapsed,
@@ -988,7 +1030,7 @@ class LiveController:
             raw=NaturalLanguageAgent._build_line(step.keyword, step.params),
             keyword=step.keyword,
             params=step.params,
-            status="PASS" if ok else "FAIL",
+            status=ActionStatus.PASS if ok else ActionStatus.FAIL,
             elapsed=ex.elapsed if ex else 0.0,
             strategy=ex.strategy if ex else None,
             message=message,
@@ -999,11 +1041,11 @@ class LiveController:
         if step.observation is None:
             # Decision phase: surface the model's thought before it acts.
             if step.thought:
-                on_step(NLStep(kind="thinking", text=step.thought))
+                on_step(NLStep(kind=NLStepKind.THINKING, text=step.thought))
             return
         if step.action == "keyword":
             action_result = self._nl_action_result(step)
-            on_step(NLStep(kind="keyword", text=action_result.raw, result=action_result))
+            on_step(NLStep(kind=NLStepKind.KEYWORD, text=action_result.raw, result=action_result))
 
     def run_natural_language(
         self,
@@ -1021,12 +1063,12 @@ class LiveController:
         start = time.time()
         instruction = instruction.strip()
         if not instruction:
-            return NLSummary(instruction, "FAIL", 0, 0.0, "Empty instruction")
+            return NLSummary(instruction, NLRunStatus.FAIL, 0, 0.0, "Empty instruction")
 
         try:
             agent = self._get_nl_agent()
         except OpticsError as exc:
-            return NLSummary(instruction, "FAIL", 0, time.time() - start, self._format_error(exc))
+            return NLSummary(instruction, NLRunStatus.FAIL, 0, time.time() - start, self._format_error(exc))
 
         try:
             result: AgentResult = agent.run(
@@ -1046,7 +1088,7 @@ class LiveController:
 
         return NLSummary(
             instruction=instruction,
-            status=_NL_STATUS_MAP.get(result.status, "FAIL"),
+            status=_NL_STATUS_MAP.get(result.status, NLRunStatus.FAIL),
             steps=len(result.successful_steps),
             elapsed=time.time() - start,
             message=result.message,
