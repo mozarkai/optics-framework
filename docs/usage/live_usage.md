@@ -103,10 +103,12 @@ sleep 5
 ## Natural-language mode (optional)
 
 Press `Ctrl-N` to toggle AI mode, then type an instruction in plain English
-(e.g. `type "movies for kids" in the search bar`). An LLM reads the screen and drives
-keywords step-by-step until the goal is reached; `Ctrl-X` aborts. A fully successful run
-is recorded and `/save`-able like any manual session. It works with whatever driver your
-config uses (Appium/Selenium/Playwright). Three steps to enable it:
+(e.g. `type "movies for kids" in the search bar`). Each turn the LLM is given a
+screenshot **and** a condensed UI hierarchy of the on-screen elements (their text,
+content-desc, resource ids, bounds, and flags — when the driver exposes a page source),
+and drives keywords step-by-step until the goal is reached; `Ctrl-X` aborts. A fully
+successful run is recorded and `/save`-able like any manual session. It works with whatever
+driver your config uses (Appium/Selenium/Playwright). Three steps to enable it:
 
 **1. Install the optional LLM extra** (the SDK is not in the base install):
 

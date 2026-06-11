@@ -924,6 +924,25 @@ class LiveController:
             for name in self.keyword_names()
         ]
 
+    def page_source(self) -> Optional[str]:
+        """Condensed UI hierarchy of the current screen (stripped page source).
+
+        Best-effort: returns ``None`` when the active element sources don't expose a
+        page source (e.g. a screenshot-only or unsupported driver). Fed to the LLM
+        alongside the screenshot so it can pick exact texts/ids and read element bounds.
+        """
+        if self._action_keyword is None:  # pragma: no cover - defensive
+            return None
+        try:
+            result = self._action_keyword.strategy_manager.capture_pagesource()
+        except OpticsError as exc:
+            internal_logger.debug("Page source unavailable: %s", exc)
+            return None
+        if not result:
+            return None
+        xml_source = result[0]
+        return utils.strip_page_source(xml_source) or None
+
     def _nl_execute(self, raw: str) -> ExecResult:
         """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
         result = self._execute_line(raw, record=False)
@@ -950,6 +969,7 @@ class LiveController:
             keyword_executor=self._nl_execute,
             keyword_catalog=self._nl_catalog,
             element_names=self.element_names,
+            pagesource_provider=self.page_source,
         )
         return self._nl_agent
 

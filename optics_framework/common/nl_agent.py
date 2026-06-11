@@ -75,6 +75,8 @@ KeywordExecutor = Callable[[str], ExecResult]
 KeywordCatalog = Callable[[], List[KeywordSpec]]
 StepCallback = Callable[[AgentStep], None]
 AbortCallback = Callable[[], bool]
+# Returns a condensed UI hierarchy (stripped page source) or None when unavailable.
+PagesourceProvider = Callable[[], Optional[str]]
 
 
 # Structured-output schema. Only thought/action/reason are required so the model is never
@@ -113,8 +115,15 @@ ACTION_SCHEMA: Dict[str, Any] = {
 
 SYSTEM_PROMPT = """\
 You drive a UI test-automation framework ONE keyword at a time to fulfil a natural-language \
-instruction. Each turn you are shown a screenshot of the current device screen and the list \
-of available keywords, and you must reply with exactly ONE next action as JSON.
+instruction. Each turn you are shown a screenshot of the current device screen, a condensed \
+UI hierarchy of the on-screen elements (when available), and the list of available keywords; \
+you must reply with exactly ONE next action as JSON.
+
+USING THE UI HIERARCHY:
+- When the condensed hierarchy is provided, use it together with the screenshot: it gives the \
+exact on-screen text, content-desc, resource ids, element bounds [x1,y1][x2,y2], and flags \
+(clickable/scrollable/selected/editable). Prefer an EXACT text/desc from the hierarchy as the \
+locator, and read an element's bounds to compute a precise center for the coordinate fallback.
 
 TARGETING POLICY (text-first, coordinate fallback):
 - Prefer naming the target by its VISIBLE TEXT label as the `element` parameter \
@@ -151,6 +160,7 @@ class NaturalLanguageAgent:
         keyword_catalog: KeywordCatalog,
         *,
         element_names: Optional[Callable[[], List[str]]] = None,
+        pagesource_provider: Optional[PagesourceProvider] = None,
         max_steps: int = 15,
         max_consecutive_failures: int = 3,
     ) -> None:
@@ -159,6 +169,7 @@ class NaturalLanguageAgent:
         self.keyword_executor = keyword_executor
         self.keyword_catalog = keyword_catalog
         self.element_names = element_names
+        self.pagesource_provider = pagesource_provider
         self.max_steps = max_steps
         self.max_consecutive_failures = max_consecutive_failures
 
@@ -200,7 +211,8 @@ class NaturalLanguageAgent:
         except Exception as exc:  # noqa: BLE001 - screenshot failures end the run cleanly
             return AgentResult("failed", state.history, f"Screenshot failed: {exc}", state.successful)
 
-        prompt = self._build_prompt(instruction, catalog, state.history)
+        page_source = self._capture_page_source()
+        prompt = self._build_prompt(instruction, catalog, state.history, page_source)
         try:
             raw = self.llm.generate_json(
                 prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT, temperature=0.0
@@ -299,8 +311,22 @@ class NaturalLanguageAgent:
             return keyword
         return keyword + " " + " ".join(shlex.quote(p) for p in params)
 
+    def _capture_page_source(self) -> Optional[str]:
+        """Best-effort condensed UI hierarchy; ``None`` when unavailable/unsupported."""
+        if self.pagesource_provider is None:
+            return None
+        try:
+            return self.pagesource_provider() or None
+        except Exception as exc:  # noqa: BLE001 - page source is an optional aid, never fatal
+            internal_logger.debug("NL agent: page source unavailable: %s", exc)
+            return None
+
     def _build_prompt(
-        self, instruction: str, catalog: List[KeywordSpec], history: List[AgentStep]
+        self,
+        instruction: str,
+        catalog: List[KeywordSpec],
+        history: List[AgentStep],
+        page_source: Optional[str] = None,
     ) -> str:
         lines = [f"INSTRUCTION: {instruction}", "", "AVAILABLE KEYWORDS (name and parameters):"]
         lines.extend(f"  {spec.signature}" for spec in catalog)
@@ -311,6 +337,14 @@ class NaturalLanguageAgent:
                 lines.append("")
                 lines.append("NAMED ELEMENTS (reference as ${name}):")
                 lines.append("  " + ", ".join("${" + n + "}" for n in names))
+
+        if page_source:
+            lines.append("")
+            lines.append(
+                "CURRENT SCREEN ELEMENTS (condensed UI hierarchy — class, text, "
+                "desc, resource id, bounds [x1,y1][x2,y2], state flags):"
+            )
+            lines.append(page_source)
 
         lines.append("")
         lines.append("STEPS SO FAR:")

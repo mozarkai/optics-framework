@@ -57,6 +57,49 @@ def _bare_controller():
     return ctrl
 
 
+class _FakeStrategyManager:
+    def __init__(self, result):
+        self._result = result
+
+    def capture_pagesource(self):
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+def _ps_controller(strategy_result):
+    ctrl = LiveController.__new__(LiveController)
+    ctrl._action_keyword = types.SimpleNamespace(
+        strategy_manager=_FakeStrategyManager(strategy_result)
+    )
+    return ctrl
+
+
+_PS_XML = (
+    "<hierarchy class='hierarchy'>"
+    "<android.widget.EditText class='android.widget.EditText' text='gullak' "
+    "resource-id='com.sonyliv:id/search_edit_text' clickable='true' bounds='[26,162][1054,293]'/>"
+    "</hierarchy>"
+)
+
+
+class TestControllerPageSource:
+    def test_returns_stripped_source(self):
+        ctrl = _ps_controller((_PS_XML, "ts"))
+        out = ctrl.page_source()
+        assert out and "search_edit_text" in out and 'EditText "gullak"' in out
+
+    def test_returns_none_when_unavailable(self):
+        from optics_framework.common.error import OpticsError, Code
+        ctrl = _ps_controller(OpticsError(Code.E0403, message="No pagesource"))
+        assert ctrl.page_source() is None
+
+    def test_returns_none_when_no_action_keyword(self):
+        ctrl = LiveController.__new__(LiveController)
+        ctrl._action_keyword = None
+        assert ctrl.page_source() is None
+
+
 class FakeAgent:
     """Drives the on_step adapter then returns a scripted AgentResult."""
 

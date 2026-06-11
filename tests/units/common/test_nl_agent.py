@@ -162,6 +162,52 @@ class TestActionSchema:
         assert "anyOf" not in json.dumps(ACTION_SCHEMA)
 
 
+class _CapturingLLM:
+    """Records the prompt/system it receives, then returns a 'done' action."""
+
+    def __init__(self):
+        self.prompt = None
+        self.system = None
+
+    def generate(self, *a, **k):  # pragma: no cover
+        raise RuntimeError("use generate_json")
+
+    def generate_json(self, prompt, response_schema, images=None, system=None, temperature=None):
+        self.prompt = prompt
+        self.system = system
+        return {"thought": "ok", "action": "done", "reason": "done"}
+
+
+class TestPageSourceInPrompt:
+    def test_page_source_injected_when_provided(self):
+        llm = _CapturingLLM()
+        ps = "EditText \"gullak\" id=search_edit_text bounds=[26,162][1054,293] clickable"
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog, pagesource_provider=lambda: ps
+        )
+        agent.run("click search")
+        assert "CURRENT SCREEN ELEMENTS" in llm.prompt
+        assert "search_edit_text" in llm.prompt
+        assert "condensed UI hierarchy" in llm.system
+
+    def test_no_provider_means_no_section(self):
+        llm = _CapturingLLM()
+        NaturalLanguageAgent(llm, _shots, _ok_executor([]), _catalog).run("go")
+        assert "CURRENT SCREEN ELEMENTS" not in llm.prompt
+
+    def test_provider_failure_is_graceful(self):
+        def boom():
+            raise RuntimeError("no page source source configured")
+
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog, pagesource_provider=boom
+        )
+        result = agent.run("go")
+        assert result.status == "done"  # run still completes
+        assert "CURRENT SCREEN ELEMENTS" not in llm.prompt
+
+
 class TestGeminiMissingDependency:
     def test_instantiation_without_extra_raises_e0601(self, monkeypatch):
         from optics_framework.engines.llm_models import gemini
