@@ -298,7 +298,7 @@ class LiveArgs(BaseModel):
 class LiveCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "live", help="Open an interactive session to run keywords against a live device"
+            "live", help="Open an interactive session to run keywords against a live target"
         )
         parser.add_argument(
             "project_folder",
@@ -306,9 +306,9 @@ class LiveCommand(Command):
             nargs="?",
             default=None,
             help=(
-                "Optional path to a project folder (config + elements). Without one, "
-                "Optics auto-detects the first connected Android device and runs with "
-                "sensible defaults."
+                "Path to a project folder containing a config.yaml (with exactly one enabled "
+                "driver_sources entry — appium/selenium/playwright — and at least one enabled "
+                "elements_sources) plus elements. Defaults to the current directory."
             ),
         )
         parser.set_defaults(func=self.execute)

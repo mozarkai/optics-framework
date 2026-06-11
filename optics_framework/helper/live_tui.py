@@ -45,16 +45,17 @@ _META = "class:meta"
 _HELP_TEXT = """\
 Optics Live — command reference
 
-  Type a keyword call and press Enter to run it against the device, e.g.
+  Type a keyword call and press Enter to run it against the target, e.g.
       launch_app
       press_element ${login_btn} index=0
       enter_text ${username} "hello world"
 
+  The target (appium/selenium/playwright/…) comes from the project's config.yaml.
   Recording is always on — every successful action is buffered. Use /save to persist.
 
 Slash commands
   /save <name>   Save recorded actions to modules/<name>.csv + a test case
-  /device [id]   List connected devices, or switch to one
+  /device [id]   List/switch Android devices (Android/Appium sessions only)
   /elements      Show named elements and their locators (read-only)
   /screenshot    Capture the device screen to a file
   /help          Show this reference
@@ -235,7 +236,7 @@ class LiveTUI:
     # -- Status bar ---------------------------------------------------------------
 
     def _render_status(self) -> StyleAndTextTuples:
-        device = self.controller.active_device()
+        device = self.controller.active_target()
         return [
             ("class:status.device", device),
             ("class:status.sep", "  ·  "),
@@ -553,6 +554,12 @@ class LiveTUI:
             self._info(f"Snapshotted {count} artifact(s) → {artifacts_path}")
 
     def _cmd_device(self, arg: str) -> None:
+        if not self.controller.supports_device_switching():
+            self._info(
+                f"Device switching is for Android/Appium only — this session uses "
+                f"{self.controller.driver_type}."
+            )
+            return
         devices = self.controller.list_devices()
         if arg:
             self._switch_device(arg)
@@ -560,8 +567,8 @@ class LiveTUI:
         if not devices:
             self._info("No connected devices found (adb).")
             return
-        active = self.controller.active_device()
-        items = [(f"{d}  (active)" if d == active else d, d) for d in devices]
+        active = self.controller.active_target()
+        items = [(f"{d}  (active)" if active.endswith(d) else d, d) for d in devices]
         self.open_overlay("Select device", items, self._switch_device)
         get_app().invalidate()
 
@@ -690,12 +697,14 @@ class LiveTUI:
         app.create_background_task(_monitor())
 
     def _on_startup(self) -> None:
-        """Show where the session log is going, then open the Appium session."""
+        """Show where the session log is going, then open the configured session."""
         log_path = getattr(self.controller, "live_log_path", None)
         if log_path:
             self._info(f"Session log: {log_path}")
         self._run_keyword_async("launch_app")
-        self._start_device_monitor()
+        # adb hot-plug monitoring only applies to Android/Appium sessions.
+        if self.controller.supports_device_switching():
+            self._start_device_monitor()
 
     def run(self) -> None:
         self.app.run(pre_run=self._on_startup)

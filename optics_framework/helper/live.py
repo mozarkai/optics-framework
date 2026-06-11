@@ -97,15 +97,23 @@ _CONFIG_KEYS = frozenset({
 def _config_from_yaml(path: str) -> Optional[Config]:
     """Parse a single YAML file into a ``Config`` if it looks like one, else None.
 
-    Lenient on purpose: any file containing at least one recognised top-level key
-    counts. Missing sections are filled in later by :func:`_compose_config` rather
-    than rejecting the file.
+    Surfaces real errors rather than masking them: a malformed conventional
+    ``config.yaml``/``config.yml``, or any config-like file (one carrying a recognised
+    top-level key) that fails ``Config`` validation, raises :class:`OpticsError` so the
+    user sees the actual cause. Files that aren't config-like (e.g. test-data YAML) are
+    skipped silently with ``None``.
     """
+    is_named_config = os.path.basename(path).lower() in ("config.yaml", "config.yml")
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
-    except (OSError, yaml.YAMLError) as exc:
+    except OSError as exc:
         internal_logger.debug("Skipping unreadable YAML %s: %s", path, exc)
+        return None
+    except yaml.YAMLError as exc:
+        if is_named_config:
+            raise OpticsError(Code.E0501, message=f"Failed to parse {path}: {exc}") from exc
+        internal_logger.debug("Skipping malformed YAML %s: %s", path, exc)
         return None
     if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS):
         return None
@@ -113,9 +121,8 @@ def _config_from_yaml(path: str) -> Optional[Config]:
         data["elements_sources"] = data.pop("element_sources")
     try:
         return Config(**data)
-    except Exception as exc:
-        internal_logger.error("Invalid config in %s: %s", path, exc)
-        return None
+    except Exception as exc:  # config-like file but invalid -> surface, don't mask
+        raise OpticsError(Code.E0501, message=f"Invalid config in {path}: {exc}") from exc
 
 
 def _load_partial_config(folder_path: str) -> Optional[Config]:
@@ -130,60 +137,55 @@ def _load_partial_config(folder_path: str) -> Optional[Config]:
     return None
 
 
-def _default_appium_caps() -> Dict[str, Any]:
-    """Minimum-viable Appium capabilities: enough to open a session, no app launch.
-
-    Picks the first ``adb devices`` entry as the target so a session starts even
-    when the user has no config and no fancy setup. Android-only by design — iOS
-    users supply their own config.yaml.
-    """
-    caps: Dict[str, Any] = {
-        "platformName": "Android",
-        "automationName": "UiAutomator2",
-    }
-    devices = LiveController.list_devices()
-    if devices:
-        caps["udid"] = devices[0]
-        caps["deviceName"] = devices[0]
-    return caps
-
-
-def _default_driver_source() -> Dict[str, DependencyConfig]:
-    return {
-        "appium": DependencyConfig(
-            enabled=True,
-            url="http://127.0.0.1:4723",
-            capabilities=_default_appium_caps(),
-        )
-    }
-
-
-def _default_element_sources() -> List[Dict[str, DependencyConfig]]:
-    return [
-        {"appium_find_element": DependencyConfig(enabled=True, url=None, capabilities={})},
-        {"appium_page_source": DependencyConfig(enabled=True, url=None, capabilities={})},
-        {"appium_screenshot": DependencyConfig(enabled=True, url=None, capabilities={})},
-    ]
-
-
 def _has_enabled(sources: List[Dict[str, DependencyConfig]]) -> bool:
     return any(details.enabled for item in sources for _name, details in item.items())
 
 
-def _compose_config(folder_path: Optional[str]) -> Config:
-    """Build a working ``Config``: user-provided pieces win, defaults fill the gaps.
+def _enabled_drivers(config: Config) -> List[str]:
+    """Names of every enabled driver source in ``config``."""
+    return [
+        name
+        for item in config.driver_sources
+        for name, details in item.items()
+        if details.enabled
+    ]
 
-    Goal: ``optics live`` should run without a config.yaml — and a partial config
-    should not be rejected. Anything the user specifies is preserved; anything
-    missing (no enabled driver, no enabled element source) gets a default appended.
+
+def _compose_config(folder_path: Optional[str]) -> Config:
+    """Load and validate the project's ``config.yaml`` for a live session.
+
+    ``optics live`` is driver-agnostic but config-driven: the project must declare
+    exactly one enabled driver (appium/selenium/playwright/…) plus at least one enabled
+    element source. There are no appium auto-defaults — the driver comes entirely from
+    the config, so the same flow works for android/web/iOS/TV.
     """
     config = _load_partial_config(folder_path) if folder_path else None
     if config is None:
-        config = Config()
-    if not _has_enabled(config.driver_sources):
-        config.driver_sources = [_default_driver_source(), *config.driver_sources]
+        raise OpticsError(
+            Code.E0501,
+            message=(
+                "optics live needs a config.yaml with an enabled driver and elements source "
+                "in the project folder. See optics_framework/samples/ "
+                "(contact=appium, gmail_web=selenium, playwright=playwright)."
+            ),
+        )
+    drivers = _enabled_drivers(config)
+    if not drivers:
+        raise OpticsError(
+            Code.E0501, message="No enabled driver in config.yaml's driver_sources."
+        )
+    if len(drivers) > 1:
+        raise OpticsError(
+            Code.E0501,
+            message=(
+                f"optics live supports exactly one enabled driver; found: {', '.join(drivers)}. "
+                "Enable just one driver_source."
+            ),
+        )
     if not _has_enabled(config.elements_sources):
-        config.elements_sources = [*_default_element_sources(), *config.elements_sources]
+        raise OpticsError(
+            Code.E0501, message="No enabled source in config.yaml's elements_sources."
+        )
     return config
 
 
@@ -195,8 +197,9 @@ class LiveController:
     """
 
     def __init__(self, folder_path: Optional[str] = None):
-        # The folder is optional: with no config, optics live still runs against
-        # the first connected device using sensible Android defaults.
+        # The folder is optional (defaults to cwd), but a config.yaml IS required:
+        # the driver (appium/selenium/playwright/…) comes entirely from the config,
+        # which is what makes optics live driver-agnostic.
         if folder_path:
             self.folder_path = os.path.abspath(folder_path)
             if not os.path.isdir(self.folder_path):
@@ -204,7 +207,7 @@ class LiveController:
         else:
             self.folder_path = os.getcwd()
 
-        config = _compose_config(self.folder_path if folder_path else None)
+        config = _compose_config(self.folder_path)
         config.project_path = self.folder_path
         # Route framework-generated artifacts (the auto pre-/post-action screenshots
         # written by @with_self_healing, AOI captures, logs, etc.) to a tempdir so
@@ -245,7 +248,10 @@ class LiveController:
         self._elements_loaded = False
         self.recorded: List[Tuple[str, List[str]]] = []
         self.saved = True  # nothing recorded yet -> considered "saved"
-        self.active_device_serial: Optional[str] = self._device_from_config()
+        # The single enabled driver name (e.g. "appium", "selenium", "playwright"),
+        # used to drive UI labels and gate device-discovery features.
+        self.driver_type: str = self._enabled_driver_name()
+        self.active_target_label: Optional[str] = self._target_from_config()
 
     # -- Logging ------------------------------------------------------------------
 
@@ -691,31 +697,63 @@ class LiveController:
     # -- Devices ------------------------------------------------------------------
 
     def _enabled_driver_caps(self) -> Optional[Dict[str, Any]]:
-        """Capabilities dict of the first enabled driver source, if any."""
+        """Capabilities dict of the (single) enabled driver source, if any."""
         for item in self.config.driver_sources:
             for _name, details in item.items():
                 if details.enabled:
                     return details.capabilities
         return None
 
-    def _device_from_config(self) -> Optional[str]:
-        caps = self._enabled_driver_caps()
-        if not caps:
-            return None
-        for key in ("udid", "deviceName", "deviceUDID"):
-            if caps.get(key):
-                return str(caps[key])
+    def _enabled_driver_name(self) -> str:
+        """Name of the enabled driver source (e.g. ``appium``/``selenium``/``playwright``).
+
+        ``_compose_config`` guarantees exactly one is enabled; ``unknown`` is a defensive
+        fallback that should not occur in practice.
+        """
+        drivers = _enabled_drivers(self.config)
+        return drivers[0] if drivers else "unknown"
+
+    def _target_from_config(self) -> Optional[str]:
+        """A driver-appropriate target identifier from the enabled driver's capabilities.
+
+        appium -> device udid/name; selenium -> browser name/URL; playwright -> browser
+        engine; ble -> serial port / device id. Returns ``None`` when nothing identifying
+        is configured.
+        """
+        caps = self._enabled_driver_caps() or {}
+        if self.driver_type == "appium":
+            for key in ("udid", "deviceName", "deviceUDID"):
+                if caps.get(key):
+                    return str(caps[key])
+        elif self.driver_type == "selenium":
+            return caps.get("browserName") or caps.get("browserURL")
+        elif self.driver_type == "playwright":
+            return caps.get("browser")
+        elif self.driver_type == "ble":
+            return caps.get("port") or caps.get("device_id")
         return None
 
-    def active_device(self) -> str:
-        """Human-readable name of the active device for the status bar."""
-        if self.active_device_serial:
-            return self.active_device_serial
-        for item in self.config.driver_sources:
-            for name, details in item.items():
-                if details.enabled:
-                    return name
-        return "unknown"
+    def active_target(self) -> str:
+        """Human-readable label of the live target for the status bar.
+
+        e.g. ``appium:emulator-5554``, ``playwright:chromium``, ``selenium:chrome``.
+        """
+        label = self.active_target_label or self._target_from_config()
+        if label:
+            return f"{self.driver_type}:{label}"
+        return self.driver_type or "unknown"
+
+    def supports_device_switching(self) -> bool:
+        """True only for Android Appium sessions (adb-based discovery/hot-swap).
+
+        Appium is also used for iOS, where adb does not apply — so we additionally
+        require ``platformName == android``. Missing/unknown platform -> False, so we
+        never run adb against an iOS or non-mobile session.
+        """
+        if self.driver_type != "appium":
+            return False
+        caps = self._enabled_driver_caps() or {}
+        return str(caps.get("platformName", "")).lower() == "android"
 
     @staticmethod
     def list_devices() -> List[str]:
@@ -738,7 +776,19 @@ class LiveController:
         return devices
 
     def switch_device(self, serial: str) -> None:
-        """Switch the active device by rebuilding the driver/session with new capabilities."""
+        """Switch the active device by rebuilding the driver/session with new capabilities.
+
+        Android/Appium only — device hot-swap via adb serial has no meaning for web
+        (selenium/playwright) or iOS sessions.
+        """
+        if not self.supports_device_switching():
+            raise OpticsError(
+                Code.E0501,
+                message=(
+                    f"Device switching is for Android/Appium only; this session uses "
+                    f"{self.driver_type}."
+                ),
+            )
         caps = self._enabled_driver_caps()
         if caps is not None:
             caps["udid"] = serial
@@ -758,7 +808,7 @@ class LiveController:
             raise OpticsError(Code.E0702, message="Failed to rebuild session for device switch")
         self.session = session
         self._build_registry()
-        self.active_device_serial = serial
+        self.active_target_label = serial
 
     # -- Screenshot ---------------------------------------------------------------
 
@@ -933,9 +983,11 @@ def _redirect_stderr_fd(target_path: str) -> Iterator[None]:
 def live_main(folder_path: Optional[str] = None) -> None:
     """Entry point for the ``optics live`` command: open the interactive session.
 
-    The folder is optional. Without one (or with one but no config.yaml), the
-    controller uses sensible Android+Appium defaults pointed at the first device
-    reported by ``adb`` so you can swipe/tap your way around without any setup.
+    The folder defaults to the current directory, but a ``config.yaml`` is required:
+    it must declare exactly one enabled driver (appium/selenium/playwright/…) and at
+    least one enabled element source. The driver comes entirely from the config, so the
+    same live flow works for android, web, iOS, TV, etc. A missing or invalid config
+    fails with a clear message (no auto-defaults).
     """
     from optics_framework.helper.live_tui import LiveTUI  # local import: heavy UI deps
 
