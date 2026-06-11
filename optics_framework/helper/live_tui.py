@@ -43,6 +43,9 @@ _STATUS_HINT = "Tab complete · Ctrl-K keywords · Ctrl-N AI mode · /help · /q
 # Style class for secondary / muted text, reused across history and overlays.
 _META = "class:meta"
 
+# Style class for in-progress / AI-mode indicators, reused across history and overlays.
+_RUNNING = "class:running"
+
 _HELP_TEXT = """\
 Optics Live — command reference
 
@@ -210,7 +213,7 @@ class LiveTUI:
         icon_map = {
             "PASS": ("class:pass", "✓"),
             "FAIL": ("class:fail", "✗"),
-            "RUNNING": ("class:running", "⋯"),
+            "RUNNING": (_RUNNING, "⋯"),
             "INFO": ("class:info", "•"),
         }
         style, icon = icon_map.get(result.status, ("class:info", "•"))
@@ -223,7 +226,7 @@ class LiveTUI:
             ("", "\n"),
         ]
         if result.status == "RUNNING":
-            out.append(("class:running", f"{detail_lead}running…\n"))
+            out.append((_RUNNING, f"{detail_lead}running…\n"))
             return out
         if result.status == "INFO":
             if result.message:
@@ -268,7 +271,7 @@ class LiveTUI:
     def _render_status(self) -> StyleAndTextTuples:
         device = self.controller.active_target()
         if self._nl_mode:
-            mode = ("class:running", "AI …" if self._nl_running else "AI ●")
+            mode = (_RUNNING, "AI …" if self._nl_running else "AI ●")
         else:
             mode = ("class:status.rec", "rec ●")
         return [
@@ -409,7 +412,7 @@ class LiveTUI:
 
     def _input_prefix(self, lineno, wrap_count):
         if self._nl_mode:
-            return [("class:running", "ai › ")]
+            return [(_RUNNING, "ai › ")]
         return [("class:cmd", "› ")]
 
     # -- Key bindings -------------------------------------------------------------
@@ -808,7 +811,7 @@ class LiveTUI:
             await loop.run_in_executor(None, self.controller.switch_device, serial)
             self._info(f"Active device: {serial}")
             self._run_keyword_async("launch_app")
-        except Exception as exc:  # noqa: BLE001 - reported to the user, never crashes
+        except Exception as exc:  # noqa: BLE001 - reported to the user and never crashes
             self._info(f"Auto-init for {serial} failed: {exc}")
         app.invalidate()
 
@@ -819,7 +822,7 @@ class LiveTUI:
         async def _poll_devices(loop) -> Optional[List[str]]:
             try:
                 return await loop.run_in_executor(None, self.controller.list_devices)
-            except Exception:  # noqa: BLE001 - transient adb hiccup, retried next tick
+            except Exception:  # noqa: BLE001 - transient adb hiccup retried next tick
                 return None
 
         async def _monitor() -> None:

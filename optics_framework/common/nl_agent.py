@@ -60,6 +60,15 @@ class AgentResult:
     successful_steps: List[Tuple[str, List[str]]] = field(default_factory=list)
 
 
+@dataclass
+class _RunState:
+    """Mutable bookkeeping threaded through one :meth:`NaturalLanguageAgent.run`."""
+
+    history: List[AgentStep] = field(default_factory=list)
+    successful: List[Tuple[str, List[str]]] = field(default_factory=list)
+    consecutive_failures: int = 0
+
+
 # Callable contracts (kept as plain Callables to avoid Protocol import churn).
 ScreenshotProvider = Callable[[], bytes]
 KeywordExecutor = Callable[[str], ExecResult]
@@ -159,73 +168,99 @@ class NaturalLanguageAgent:
         on_step: Optional[StepCallback] = None,
         should_abort: Optional[AbortCallback] = None,
     ) -> AgentResult:
-        history: List[AgentStep] = []
-        successful: List[Tuple[str, List[str]]] = []
-        consecutive_failures = 0
+        state = _RunState()
         catalog = self.keyword_catalog()
         catalog_names = {spec.name for spec in catalog}
 
         for _ in range(self.max_steps):
             if should_abort is not None and should_abort():
-                return AgentResult("aborted", history, "Aborted by user.", successful)
+                return AgentResult("aborted", state.history, "Aborted by user.", state.successful)
 
-            try:
-                png = self.screenshot_provider()
-            except Exception as exc:  # noqa: BLE001 - screenshot failures end the run cleanly
-                return AgentResult("failed", history, f"Screenshot failed: {exc}", successful)
+            terminal = self._run_one_step(instruction, catalog, catalog_names, state, on_step)
+            if terminal is not None:
+                return terminal
 
-            prompt = self._build_prompt(instruction, catalog, history)
-            try:
-                raw = self.llm.generate_json(
-                    prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT, temperature=0.0
-                )
-            except OpticsError as exc:
-                return AgentResult("failed", history, f"LLM error: {exc.message}", successful)
-
-            step = self._validate(raw)
-            if on_step is not None:
-                on_step(step)  # decision/thinking emission (observation is still None)
-
-            if step.action == "done":
-                history.append(step)
-                return AgentResult("done", history, step.reason or "Goal reached.", successful)
-            if step.action == "fail":
-                history.append(step)
-                return AgentResult("failed", history, step.reason or "Model gave up.", successful)
-
-            # action == "keyword"
-            if not step.keyword or step.keyword not in catalog_names:
-                consecutive_failures = self._record_failure(
-                    step, f"FAIL: unknown keyword '{step.keyword}'", history, on_step,
-                    consecutive_failures,
-                )
-                if consecutive_failures >= self.max_consecutive_failures:
-                    return AgentResult("failed", history, "Too many consecutive failures.", successful)
-                continue
-
-            line = self._build_line(step.keyword, step.params)
-            result = self.keyword_executor(line)
-            step.exec_result = result
-            step.observation = (
-                f"PASS (strategy={result.strategy})" if result.ok else f"FAIL: {result.message}"
-            )
-            history.append(step)
-            if on_step is not None:
-                on_step(step)
-
-            if result.ok:
-                consecutive_failures = 0
-                successful.append((step.keyword, step.params))
-            else:
-                consecutive_failures += 1
-                if consecutive_failures >= self.max_consecutive_failures:
-                    return AgentResult(
-                        "failed", history, "Too many consecutive keyword failures.", successful
-                    )
-
-        return AgentResult("exhausted", history, "Reached the maximum number of steps.", successful)
+        return AgentResult(
+            "exhausted", state.history, "Reached the maximum number of steps.", state.successful
+        )
 
     # -- helpers ---------------------------------------------------------------
+
+    def _run_one_step(
+        self,
+        instruction: str,
+        catalog: List[KeywordSpec],
+        catalog_names: set[str],
+        state: "_RunState",
+        on_step: Optional[StepCallback],
+    ) -> Optional[AgentResult]:
+        """Run one decision turn. Returns a terminal ``AgentResult`` or ``None`` to continue."""
+        try:
+            png = self.screenshot_provider()
+        except Exception as exc:  # noqa: BLE001 - screenshot failures end the run cleanly
+            return AgentResult("failed", state.history, f"Screenshot failed: {exc}", state.successful)
+
+        prompt = self._build_prompt(instruction, catalog, state.history)
+        try:
+            raw = self.llm.generate_json(
+                prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT, temperature=0.0
+            )
+        except OpticsError as exc:
+            return AgentResult("failed", state.history, f"LLM error: {exc.message}", state.successful)
+
+        step = self._validate(raw)
+        if on_step is not None:
+            on_step(step)  # decision/thinking emission (observation is still None)
+
+        if step.action == "done":
+            state.history.append(step)
+            return AgentResult("done", state.history, step.reason or "Goal reached.", state.successful)
+        if step.action == "fail":
+            state.history.append(step)
+            return AgentResult("failed", state.history, step.reason or "Model gave up.", state.successful)
+
+        return self._execute_keyword_step(step, catalog_names, state, on_step)
+
+    def _execute_keyword_step(
+        self,
+        step: AgentStep,
+        catalog_names: set[str],
+        state: "_RunState",
+        on_step: Optional[StepCallback],
+    ) -> Optional[AgentResult]:
+        """Execute a ``keyword`` action. Returns a terminal ``AgentResult`` or ``None``."""
+        if not step.keyword or step.keyword not in catalog_names:
+            state.consecutive_failures = self._record_failure(
+                step, f"FAIL: unknown keyword '{step.keyword}'", state.history, on_step,
+                state.consecutive_failures,
+            )
+            if state.consecutive_failures >= self.max_consecutive_failures:
+                return AgentResult(
+                    "failed", state.history, "Too many consecutive failures.", state.successful
+                )
+            return None
+
+        line = self._build_line(step.keyword, step.params)
+        result = self.keyword_executor(line)
+        step.exec_result = result
+        step.observation = (
+            f"PASS (strategy={result.strategy})" if result.ok else f"FAIL: {result.message}"
+        )
+        state.history.append(step)
+        if on_step is not None:
+            on_step(step)
+
+        if result.ok:
+            state.consecutive_failures = 0
+            state.successful.append((step.keyword, step.params))
+            return None
+
+        state.consecutive_failures += 1
+        if state.consecutive_failures >= self.max_consecutive_failures:
+            return AgentResult(
+                "failed", state.history, "Too many consecutive keyword failures.", state.successful
+            )
+        return None
 
     @staticmethod
     def _record_failure(

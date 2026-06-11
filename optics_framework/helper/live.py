@@ -71,6 +71,14 @@ _STRATEGY_LABELS: Dict[str, str] = {
 }
 _STRATEGY_SUCCESS_RE = re.compile(r"Trying (\w+) on .*? \.\.\. SUCCESS", re.IGNORECASE)
 
+# Map NaturalLanguageAgent terminal statuses to the live-session summary status labels.
+_NL_STATUS_MAP: Dict[str, str] = {
+    "done": "PASS",
+    "failed": "FAIL",
+    "aborted": "ABORTED",
+    "exhausted": "MAX_STEPS",
+}
+
 
 @dataclass
 class ActionResult:
@@ -940,6 +948,38 @@ class LiveController:
         )
         return self._nl_agent
 
+    @staticmethod
+    def _nl_action_result(step: AgentStep) -> ActionResult:
+        """Build the history ``ActionResult`` for an executed-keyword agent step."""
+        ex = step.exec_result
+        ok = bool(ex and ex.ok)
+        if ok:
+            message = None
+        elif ex:
+            message = ex.message
+        else:
+            message = step.observation
+        return ActionResult(
+            raw=NaturalLanguageAgent._build_line(step.keyword, step.params),
+            keyword=step.keyword,
+            params=step.params,
+            status="PASS" if ok else "FAIL",
+            elapsed=ex.elapsed if ex else 0.0,
+            strategy=ex.strategy if ex else None,
+            message=message,
+        )
+
+    def _emit_nl_step(self, step: AgentStep, on_step: Callable[[NLStep], None]) -> None:
+        """Translate one agent step into a UI ``NLStep`` via the ``on_step`` callback."""
+        if step.observation is None:
+            # Decision phase: surface the model's thought before it acts.
+            if step.thought:
+                on_step(NLStep(kind="thinking", text=step.thought))
+            return
+        if step.action == "keyword":
+            action_result = self._nl_action_result(step)
+            on_step(NLStep(kind="keyword", text=action_result.raw, result=action_result))
+
     def run_natural_language(
         self,
         instruction: str,
@@ -963,29 +1003,11 @@ class LiveController:
         except OpticsError as exc:
             return NLSummary(instruction, "FAIL", 0, time.time() - start, self._format_error(exc))
 
-        def _agent_on_step(step: AgentStep) -> None:
-            if step.observation is None:
-                # Decision phase: surface the model's thought before it acts.
-                if step.thought:
-                    on_step(NLStep(kind="thinking", text=step.thought))
-                return
-            if step.action == "keyword":
-                ex = step.exec_result
-                ok = bool(ex and ex.ok)
-                action_result = ActionResult(
-                    raw=NaturalLanguageAgent._build_line(step.keyword, step.params),
-                    keyword=step.keyword,
-                    params=step.params,
-                    status="PASS" if ok else "FAIL",
-                    elapsed=ex.elapsed if ex else 0.0,
-                    strategy=ex.strategy if ex else None,
-                    message=None if ok else (ex.message if ex else step.observation),
-                )
-                on_step(NLStep(kind="keyword", text=action_result.raw, result=action_result))
-
         try:
             result: AgentResult = agent.run(
-                instruction, on_step=_agent_on_step, should_abort=should_abort
+                instruction,
+                on_step=lambda step: self._emit_nl_step(step, on_step),
+                should_abort=should_abort,
             )
         except Exception as exc:  # noqa: BLE001 - never crash the controller
             return NLSummary(
@@ -997,15 +1019,9 @@ class LiveController:
             self.recorded.extend(result.successful_steps)
             self.saved = False
 
-        status_map = {
-            "done": "PASS",
-            "failed": "FAIL",
-            "aborted": "ABORTED",
-            "exhausted": "MAX_STEPS",
-        }
         return NLSummary(
             instruction=instruction,
-            status=status_map.get(result.status, "FAIL"),
+            status=_NL_STATUS_MAP.get(result.status, "FAIL"),
             steps=len(result.successful_steps),
             elapsed=time.time() - start,
             message=result.message,
