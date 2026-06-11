@@ -95,8 +95,58 @@ sleep 5
 | `Tab` / `S-Tab`| Cycle completions |
 | `${`           | Suggest element names |
 | `Ctrl-K`       | Toggle the keyword browser |
+| `Ctrl-N`       | Toggle natural-language (AI) mode |
+| `Ctrl-X`       | Abort a running AI run (stops at the next step) |
 | `Esc`          | Close any popup or the keyword browser |
 | `Ctrl-C`       | Quit |
+
+## Natural-language mode (optional)
+
+Press `Ctrl-N` to toggle AI mode, then type an instruction in plain English
+(e.g. `type "movies for kids" in the search bar`). An LLM reads the screen and drives
+keywords step-by-step until the goal is reached; `Ctrl-X` aborts. A fully successful run
+is recorded and `/save`-able like any manual session. It works with whatever driver your
+config uses (Appium/Selenium/Playwright). Three steps to enable it:
+
+**1. Install the optional LLM extra** (the SDK is not in the base install):
+
+```bash
+pip install 'optics-framework[llm]'
+# or, from a clone with poetry:
+poetry install --extras llm
+```
+
+**2. Provide Gemini credentials** (read from the environment — don't hardcode them).
+Pick one backend:
+
+```bash
+# A. Gemini Developer API (key from Google AI Studio)
+export GEMINI_API_KEY=your_key            # GOOGLE_API_KEY also works
+
+# B. Vertex AI
+export GOOGLE_GENAI_USE_VERTEXAI=true
+export GOOGLE_CLOUD_PROJECT=your-project
+export GOOGLE_CLOUD_LOCATION=us-east4
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service_account.json
+```
+
+**3. Enable `gemini` in your project's `config.yaml`** (alongside your driver/element sources):
+
+```yaml
+llm_models:
+  - gemini:
+      enabled: true
+      capabilities:
+        model: gemini-2.5-flash    # optional; this is the default
+        # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI
+        # project / location       # optional Vertex overrides; else env vars
+```
+
+All `capabilities` are optional — with none set, the SDK auto-detects everything from the
+environment variables above. The `google-genai` SDK is **only imported when `gemini` is
+enabled**, so non-AI users are unaffected. If you toggle `Ctrl-N` without an enabled
+`llm_models` entry, the session simply tells you to add one; if the extra isn't installed,
+you get a clear install hint.
 
 ## Recording & saving
 
