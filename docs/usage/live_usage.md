@@ -155,19 +155,23 @@ in the order it ran. The buffer is only written to disk when you run `/save`. If
 `/quit` with unsaved actions, you are warned once — run `/save <name>` to keep them,
 or `/quit` again to discard and exit.
 
-### What `/save` persists vs. what `/quit` discards
+### Screenshots are saved automatically
 
-The framework auto-generates screenshots and other diagnostic artifacts for every
-keyword call (a pre-action screenshot, the post-action result image, AOI captures,
-etc.). During a live session those land in a temp directory so they don't litter
-your project.
+The framework auto-generates screenshots for every keyword call (a pre-action
+screenshot, the post-action result image, and annotated/AOI captures). In a live
+session these are written to a **persistent per-session folder**,
+`screenshots/session_<timestamp>/`, and **survive `/quit`** — so every keyword you run
+(typed or AI-driven) leaves a visual record with no extra step. The `<timestamp>`
+matches the session log (`logs/optics_live_<timestamp>.log`) so the two correlate. An
+empty session folder (no screenshots captured) is removed on exit; otherwise it's kept.
 
-* `/save <name>` snapshots that temp directory to `execution_output/<name>/` —
-  so the screenshots that accompanied your recorded steps stay alongside the saved
-  module. Re-running `/save` with the same name refreshes the snapshot.
-* `/quit` (without a prior `/save`, or after discarding the unsaved-prompt) deletes
-  the temp directory. Anything you explicitly chose to persist — `/save` outputs,
-  `/screenshot` captures in `screenshots/` — is untouched.
+`/save <name>` additionally bundles a **copy** of that session's screenshots into
+`execution_output/<name>/`, alongside the saved module, so a saved test is
+self-contained. Re-running `/save` with the same name refreshes the copy.
+
+> The screenshots that the AI mode sends to the model are captured separately and are
+> not written to disk; what you see in `screenshots/session_<timestamp>/` are the
+> keyword pre/post/annotated frames.
 
 ## Logs
 

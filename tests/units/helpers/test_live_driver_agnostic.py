@@ -171,3 +171,34 @@ class TestDeviceSwitching:
             c.switch_device("anything")
         assert exc.value.code == Code.E0501
         assert "Android/Appium only" in exc.value.message
+
+
+class _FakeManager:
+    def terminate_session(self, _session_id):
+        return None
+
+
+def _teardown_shell(artifacts_dir: str) -> LiveController:
+    """A LiveController shell wired just enough to exercise teardown()."""
+    ctrl = LiveController.__new__(LiveController)
+    ctrl._artifacts_dir = artifacts_dir
+    ctrl.session_id = "sid"
+    ctrl.manager = _FakeManager()
+    ctrl._live_log_handler = None  # makes _teardown_live_logging a no-op
+    return ctrl
+
+
+class TestArtifactsPersistence:
+    def test_teardown_keeps_dir_with_screenshots(self):
+        d = tempfile.mkdtemp(prefix="optics_live_shots_")
+        with open(os.path.join(d, "pre-press_element.jpg"), "w") as fh:
+            fh.write("x")
+        _teardown_shell(d).teardown()
+        # A session that captured screenshots keeps them after /quit.
+        assert os.path.isdir(d) and os.listdir(d)
+
+    def test_teardown_removes_empty_dir(self):
+        d = tempfile.mkdtemp(prefix="optics_live_shots_")
+        _teardown_shell(d).teardown()
+        # An empty session dir is cleaned up so it doesn't litter.
+        assert not os.path.isdir(d)

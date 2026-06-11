@@ -248,12 +248,18 @@ class LiveController:
 
         config = _compose_config(self.folder_path)
         config.project_path = self.folder_path
+        # One timestamp per session, shared by the log file and the screenshots dir so
+        # they correlate (logs/optics_live_<stamp>.log ↔ screenshots/session_<stamp>/).
+        self._session_stamp: str = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S")
         # Route framework-generated artifacts (the auto pre-/post-action screenshots
-        # written by @with_self_healing, AOI captures, logs, etc.) to a tempdir so
-        # they don't litter the project. Cleaned on teardown — only things the user
-        # explicitly persists (/save CSVs, /screenshot captures) survive the session.
-        self._artifacts_tempdir: str = tempfile.mkdtemp(prefix="optics_live_")
-        config.execution_output_path = self._artifacts_tempdir
+        # written by @with_self_healing, AOI captures, etc.) to a persistent per-session
+        # folder under the project's screenshots/ so they survive /quit — every keyword
+        # (typed or NL-driven) leaves a visual record without needing /save.
+        self._artifacts_dir: str = os.path.join(
+            self.folder_path, "screenshots", f"session_{self._session_stamp}"
+        )
+        os.makedirs(self._artifacts_dir, exist_ok=True)
+        config.execution_output_path = self._artifacts_dir
         self.config: Config = config
         initialize_handlers(self.config)
 
@@ -317,8 +323,7 @@ class LiveController:
         except OSError as exc:
             internal_logger.error("Could not create log dir %s: %s", log_dir, exc)
             return None
-        timestamp = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S")
-        log_path = os.path.join(log_dir, f"optics_live_{timestamp}.log")
+        log_path = os.path.join(log_dir, f"optics_live_{self._session_stamp}.log")
         handler = logging.FileHandler(log_path, encoding="utf-8")
         handler.setLevel(logging.DEBUG)  # let the loggers' own levels gate volume
         handler.setFormatter(
@@ -743,11 +748,11 @@ class LiveController:
             writer.writerow([safe, safe])
 
         artifacts_path: Optional[str] = None
-        if os.path.isdir(self._artifacts_tempdir) and os.listdir(self._artifacts_tempdir):
+        if os.path.isdir(self._artifacts_dir) and os.listdir(self._artifacts_dir):
             destination = os.path.join(self.folder_path, "execution_output", safe)
             if os.path.isdir(destination):
                 shutil.rmtree(destination)
-            shutil.copytree(self._artifacts_tempdir, destination)
+            shutil.copytree(self._artifacts_dir, destination)
             artifacts_path = destination
 
         self.saved = True
@@ -1030,17 +1035,21 @@ class LiveController:
     # -- Teardown -----------------------------------------------------------------
 
     def teardown(self) -> None:
-        """Run the framework's normal session teardown and remove live artifacts.
+        """Run the framework's normal session teardown.
 
-        Removes the per-session tempdir holding framework auto-screenshots.
-        Anything the user explicitly persisted (``/save`` CSVs and snapshots,
-        ``/screenshot`` captures, the session log file) lives elsewhere and is kept.
+        The per-session screenshots dir (``screenshots/session_<stamp>/``) is **kept** so
+        the visual record of every keyword survives ``/quit``; it is only removed when
+        empty (no screenshots were captured this session) to avoid leaving stray folders.
         """
         try:
             self.manager.terminate_session(self.session_id)
         except Exception as exc:  # pragma: no cover - defensive
             internal_logger.error("Failed to terminate live session: %s", exc)
-        shutil.rmtree(self._artifacts_tempdir, ignore_errors=True)
+        try:
+            if os.path.isdir(self._artifacts_dir) and not os.listdir(self._artifacts_dir):
+                os.rmdir(self._artifacts_dir)
+        except OSError:  # pragma: no cover - defensive
+            pass
         # Detach the file handler last so any log emitted by terminate_session
         # itself still lands in the session log.
         self._teardown_live_logging()
