@@ -1,4 +1,5 @@
 from functools import wraps
+import collections
 import time
 import json
 from typing import Callable, Optional, Any, Tuple
@@ -7,6 +8,7 @@ from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
+from optics_framework.common.ai_self_heal import AISelfHealHandler, HealContext
 from optics_framework.common.error import OpticsError, Code
 from .verifier import Verifier
 
@@ -103,14 +105,23 @@ def _try_results_until_success(
         result_count += 1
         _save_annotated_for_result(result, screenshot_np, execution_dir, func_name)
         try:
-            return func(self, element, located=result.value, *args, **kwargs)
+            ret = func(self, element, located=result.value, *args, **kwargs)
         except Exception as e:
             internal_logger.error(
                 f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
             last_exception = e
+            continue
+        # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
+        # appending after a bare `return` would be unreachable).
+        self._record_successful_step(func_name, element, args)
+        return ret
     if result_count == 0:
+        if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
+            return None
         raise OpticsError(Code.E0201, message=f"No valid strategies found for '{element}' in '{func_name}'")
     if last_exception:
+        if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
+            return None
         raise OpticsError(
             Code.X0201,
             message=f"All strategies failed for '{element}' in '{func_name}': {last_exception}",
@@ -168,6 +179,82 @@ class ActionKeyword:
             self.element_source, self.text_detection, self.image_detection
         )
         self.execution_dir = builder.session_config.execution_output_path
+        # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
+        # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
+        # (e.g. the optics-framework[llm] extra missing) must disable the feature, not
+        # crash the run.
+        self.ai_self_heal_enabled = bool(getattr(builder.session_config, "ai_self_heal", False))
+        self._llm = None
+        if self.ai_self_heal_enabled:
+            try:
+                self._llm = builder.get_llm()
+            except Exception as e:  # noqa: BLE001 - degrade to inert, never fatal
+                internal_logger.warning(
+                    "AI self-heal enabled but no usable LLM (%s); self-heal disabled.", e
+                )
+        self._ai_healer: Optional[AISelfHealHandler] = None
+        # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
+        self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
+
+    def _record_successful_step(self, func_name: str, element: Any, args: tuple) -> None:
+        self._recent_steps.append((func_name, [str(element), *map(str, args)]))
+
+    def _ai_self_heal(
+        self, element: Any, func_name: str, args: tuple, kwargs: dict, screenshot_np: Any
+    ) -> bool:
+        """Last-resort AI recovery after every locate strategy failed. Returns True if healed.
+
+        Fully inert (returns False, no LLM call) when the toggle is off, no LLM is enabled, or
+        no screenshot is available. Never raises — on any problem it returns False so the caller
+        re-raises the original element-not-found error and the param-fallback ladder continues.
+        """
+        if not self.ai_self_heal_enabled or self._llm is None or screenshot_np is None:
+            return False
+        if not getattr(self._llm, "instances", None):
+            return False
+        try:
+            seed_png = utils.encode_numpy_to_png_bytes(screenshot_np)
+        except ValueError:
+            return False
+
+        seed = {"used": False}
+
+        def screenshot_provider() -> Optional[bytes]:
+            if not seed["used"]:
+                seed["used"] = True
+                return seed_png
+            try:
+                return utils.encode_numpy_to_png_bytes(self.strategy_manager.capture_screenshot())
+            except Exception:  # noqa: BLE001 - best-effort re-capture
+                return None
+
+        def pagesource_provider() -> Optional[str]:
+            try:
+                ps = self.strategy_manager.capture_pagesource()
+                return utils.strip_page_source(ps[0]) if ps else None
+            except OpticsError:
+                return None
+
+        ctx = HealContext(
+            intent_keyword=func_name,
+            intent_params=[str(a) for a in args],
+            element=str(element),
+            recent_steps=list(self._recent_steps),
+            failed_strategies=sorted(
+                {type(s).__name__ for s in self.strategy_manager.locator_strategies}
+            ),
+        )
+        if self._ai_healer is None:
+            self._ai_healer = AISelfHealHandler(self._llm, self.driver)
+        internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
+        result = self._ai_healer.heal(ctx, screenshot_provider, pagesource_provider)
+        if result.ok:
+            action = result.action.action if result.action else "?"
+            internal_logger.info("AI self-heal: recovered '%s' via '%s'", func_name, action)
+            self._record_successful_step(func_name, element, args)
+        else:
+            internal_logger.info("AI self-heal: could not recover '%s': %s", func_name, result.message)
+        return result.ok
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""

@@ -179,12 +179,13 @@ def get_timestamp():
         internal_logger.error('Unable to get current time', exc_info=e)
         return None
 
-def encode_numpy_to_base64(image: np.ndarray) -> str:
+def encode_numpy_to_png_bytes(image: np.ndarray) -> bytes:
     """
-    Encodes a NumPy image (OpenCV format) to a base64 string.
+    Encodes a NumPy image (OpenCV BGR format) to raw PNG bytes.
 
     :param image: The input image as a NumPy array (BGR format).
-    :return: Base64 encoded string.
+    :return: PNG-encoded bytes.
+    :raises ValueError: If the image is not a valid, non-empty NumPy array.
     """
     if image is None or not isinstance(image, np.ndarray):
         raise ValueError("Input image must be a valid NumPy array")
@@ -193,8 +194,17 @@ def encode_numpy_to_base64(image: np.ndarray) -> str:
         raise ValueError("Input image is empty or has invalid dimensions")
 
     _, buffer = cv2.imencode('.png', image)
-    encoded_string = base64.b64encode(buffer).decode('utf-8')
-    return encoded_string
+    return buffer.tobytes()
+
+
+def encode_numpy_to_base64(image: np.ndarray) -> str:
+    """
+    Encodes a NumPy image (OpenCV format) to a base64 string.
+
+    :param image: The input image as a NumPy array (BGR format).
+    :return: Base64 encoded string.
+    """
+    return base64.b64encode(encode_numpy_to_png_bytes(image)).decode('utf-8')
 
 def compute_hash(xml_string):
     """Computes the SHA-256 hash of the XML string."""
