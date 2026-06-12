@@ -321,8 +321,11 @@ def annotate_element(frame, centre_coor, bbox):
     cv2.circle(frame, centre_coor, 5, (0, 0, 255), -1)
     return frame
 
-_PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable",
-                         "enabled")
+# Genuine interactivity signals. NOTE: "enabled" is deliberately excluded —
+# virtually every Android node carries enabled="true" (including pure layout
+# wrappers), so treating it as "interesting" would defeat condensation. It
+# remains a *shown* flag below when a node is kept for another reason.
+_PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable")
 _PS_SHOWN_FLAGS = ("clickable", "scrollable", "long-clickable", "checked", "selected",
                    "focused", "enabled")
 
@@ -396,6 +399,11 @@ def _descriptor(el) -> str:
 
 
 def _walk(el, depth: int, lines: List[str]) -> None:
+    # lxml represents comments / processing instructions with a callable .tag
+    # (not a str). Skip them — otherwise the attribute checks below raise
+    # AttributeError, which would break the documented graceful-degradation.
+    if not isinstance(el.tag, str):
+        return
     kept = _is_interesting(el)
     if kept:
         lines.append("  " * min(depth, 12) + _descriptor(el))

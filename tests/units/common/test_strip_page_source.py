@@ -49,3 +49,46 @@ class TestStripPageSource:
         out = utils.strip_page_source(_SAMPLE, max_chars=40)
         assert len(out) <= 40 + len("\n… (truncated)")
         assert out.endswith("(truncated)")
+
+    def test_comments_and_pis_do_not_crash(self):
+        # lxml gives comment/PI nodes a callable .tag; they must be skipped, not
+        # crash the attribute checks. Regression for the _walk AttributeError.
+        xml = (
+            "<hierarchy><!-- a comment --><?pi data?>"
+            "<android.widget.TextView class='android.widget.TextView' text='hi'/>"
+            "</hierarchy>"
+        )
+        out = utils.strip_page_source(xml)
+        assert 'TextView text="hi"' in out
+
+    def test_enabled_alone_does_not_keep_layout_wrappers(self):
+        # Real Android dumps mark almost every node enabled="true". A pure layout
+        # wrapper with only enabled="true" (no text/desc/interactivity) must be
+        # dropped; only the text-bearing leaf survives.
+        xml = (
+            "<hierarchy>"
+            "<android.widget.FrameLayout class='android.widget.FrameLayout' enabled='true'>"
+            "<android.widget.LinearLayout class='android.widget.LinearLayout' enabled='true'>"
+            "<android.widget.TextView class='android.widget.TextView' text='Hi' enabled='true'/>"
+            "</android.widget.LinearLayout></android.widget.FrameLayout></hierarchy>"
+        )
+        out = utils.strip_page_source(xml)
+        assert "FrameLayout" not in out
+        assert "LinearLayout" not in out
+        assert 'TextView text="Hi"' in out
+
+    def test_ios_rect_bounds_and_textfield_heuristic(self):
+        # iOS/XCUITest uses x/y/width/height instead of Android bounds, and a
+        # TextField is interactive even without a clickable flag.
+        xml = (
+            "<XCUIElementTypeApplication>"
+            "<XCUIElementTypeTextField class='XCUIElementTypeTextField' "
+            "name='username' x='10' y='20' width='200' height='44'/>"
+            "<XCUIElementTypeStaticText class='XCUIElementTypeStaticText' "
+            "value='Welcome' x='10' y='80' width='300' height='30'/>"
+            "</XCUIElementTypeApplication>"
+        )
+        out = utils.strip_page_source(xml)
+        assert "XCUIElementTypeTextField" in out
+        assert "rect=(10,20,200,44)" in out
+        assert 'value="Welcome"' in out

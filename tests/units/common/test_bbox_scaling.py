@@ -85,3 +85,13 @@ class TestScaleBboxesForScreenshot:
     def test_empty_list_returns_empty(self):
         src = _DirectSource(_FakeWebDriver(375, 812))
         assert utils.scale_bboxes_for_screenshot([], src, _pixel_screenshot()) == []
+
+    def test_non_uniform_scale_uses_correct_axis(self):
+        # window 100x200, screenshot 300x200 -> scale_x=3.0, scale_y=1.0.
+        # Distinct per-axis factors catch an x/y axis swap that aspect-matched
+        # fixtures cannot (a swap would yield ((10,30),(20,60)) instead).
+        src = _DirectSource(_FakeWebDriver(100, 200))
+        result = utils.scale_bboxes_for_screenshot(
+            [((10, 10), (20, 20))], src, _pixel_screenshot(width=300, height=200)
+        )
+        assert result == [((30, 10), (60, 20))]
