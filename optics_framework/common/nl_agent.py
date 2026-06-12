@@ -67,15 +67,38 @@ class _RunState:
     history: List[AgentStep] = field(default_factory=list)
     successful: List[Tuple[str, List[str]]] = field(default_factory=list)
     consecutive_failures: int = 0
-    # Consecutive blind coordinate taps (press_by_percentage / press_coordinates). A
-    # coordinate tap always "passes" mechanically, so consecutive_failures can't catch
-    # the model nudging coordinates forever — this counter bounds that flailing.
-    coordinate_attempts: int = 0
+    # Anti-flail: the last non-verifying keyword used and how many times in a row.
+    # These keywords report PASS even when they achieve nothing (see
+    # DEFAULT_NON_VERIFYING_KEYWORDS), so consecutive_failures can't catch the model
+    # repeating one forever (e.g. nudging coordinates 50,97 -> 50,95 -> 50,98 ...).
+    last_blind_keyword: Optional[str] = None
+    blind_repeats: int = 0
 
 
-# Keywords that tap a guessed screen position. They report PASS even when they hit
-# nothing, so the agent must not be allowed to retry them indefinitely.
-DEFAULT_COORDINATE_KEYWORDS: Tuple[str, ...] = ("press_by_percentage", "press_coordinates")
+# Keywords that perform an action WITHOUT locating or asserting a target element, so a
+# PASS does NOT mean the goal was reached:
+#   - coordinate / percentage taps and swipes report PASS even when they hit nothing;
+#   - scroll / press_keycode / sleep always succeed mechanically;
+#   - detect_and_press swallows "not found" and does nothing (still PASS);
+#   - *_until_element_appears return PASS on timeout even if the element never appeared;
+#   - select_dropdown_option is currently a no-op stub (always PASS).
+# Repeating the SAME one many times in a row is the model flailing, not progressing, so
+# the agent bounds consecutive repeats of any keyword in this set.
+DEFAULT_NON_VERIFYING_KEYWORDS: Tuple[str, ...] = (
+    "press_by_percentage",
+    "press_by_coordinates",
+    "swipe",
+    "swipe_by_percentage",
+    "scroll",
+    "press_keycode",
+    "sleep",
+    "detect_and_press",
+    "scroll_until_element_appears",
+    "swipe_until_element_appears",
+    "select_dropdown_option",
+    "enter_text_direct",
+    "enter_text_using_keyboard",
+)
 
 
 # Callable contracts (kept as plain Callables to avoid Protocol import churn).
@@ -193,8 +216,8 @@ class NaturalLanguageAgent:
         pagesource_provider: Optional[PagesourceProvider] = None,
         max_steps: int = 15,
         max_consecutive_failures: int = 3,
-        max_coordinate_attempts: int = 3,
-        coordinate_keywords: Tuple[str, ...] = DEFAULT_COORDINATE_KEYWORDS,
+        max_blind_repeats: int = 3,
+        non_verifying_keywords: Tuple[str, ...] = DEFAULT_NON_VERIFYING_KEYWORDS,
     ) -> None:
         self.llm = llm
         self.screenshot_provider = screenshot_provider
@@ -204,8 +227,8 @@ class NaturalLanguageAgent:
         self.pagesource_provider = pagesource_provider
         self.max_steps = max_steps
         self.max_consecutive_failures = max_consecutive_failures
-        self.max_coordinate_attempts = max_coordinate_attempts
-        self.coordinate_keywords = coordinate_keywords
+        self.max_blind_repeats = max_blind_repeats
+        self.non_verifying_keywords = non_verifying_keywords
 
     def run(
         self,
@@ -284,21 +307,26 @@ class NaturalLanguageAgent:
                 )
             return None
 
-        # Anti-flail: a coordinate tap always reports PASS, so the model can nudge
-        # coordinates forever without ever tripping the failure cutoff. Bound the
-        # number of consecutive blind coordinate guesses and stop with a clear reason.
-        is_coordinate = step.keyword in self.coordinate_keywords
-        if is_coordinate and state.coordinate_attempts >= self.max_coordinate_attempts:
+        # Anti-flail: non-verifying keywords (coordinate taps, scroll, keycode,
+        # detect_and_press, ...) report PASS even when they achieve nothing, so the
+        # consecutive-failure cutoff can never catch the model repeating one forever.
+        # Bound consecutive repeats of the SAME such keyword and stop with a clear reason.
+        is_blind = step.keyword in self.non_verifying_keywords
+        prospective_repeats = (
+            state.blind_repeats + 1 if is_blind and step.keyword == state.last_blind_keyword else 1
+        )
+        if is_blind and prospective_repeats > self.max_blind_repeats:
             observation = (
-                f"BLOCKED: '{step.keyword}' was attempted {state.coordinate_attempts} times "
-                "without reaching the goal. Coordinate guessing is not working."
+                f"BLOCKED: '{step.keyword}' was repeated {state.blind_repeats} times "
+                "without reaching the goal — it does not verify a target, so repeating it "
+                "is not making progress."
             )
             self._record_failure(step, observation, state.history, on_step, 0)
             return AgentResult(
                 "failed",
                 state.history,
-                "Repeated coordinate guessing did not reach the goal. Name the target by its "
-                "on-screen text, or use a keycode for system buttons (home/back/recents).",
+                f"Repeated '{step.keyword}' without reaching the goal. Name the target by its "
+                "on-screen text, or use a keycode for system buttons (home=3/back=4/recents=187).",
                 state.successful,
             )
 
@@ -312,8 +340,13 @@ class NaturalLanguageAgent:
         if on_step is not None:
             on_step(step)
 
-        # Track consecutive coordinate guesses; any other keyword resets the streak.
-        state.coordinate_attempts = state.coordinate_attempts + 1 if is_coordinate else 0
+        # Track the consecutive-same-blind-keyword streak; any other keyword resets it.
+        if is_blind:
+            state.last_blind_keyword = step.keyword
+            state.blind_repeats = prospective_repeats
+        else:
+            state.last_blind_keyword = None
+            state.blind_repeats = 0
 
         if result.ok:
             state.consecutive_failures = 0

@@ -151,8 +151,8 @@ class TestAgentControlFlow:
 
     def test_repeated_coordinate_guessing_is_blocked(self):
         # press_by_percentage always "passes" mechanically, so without the guardrail
-        # the model could nudge coordinates forever. After max_coordinate_attempts the
-        # run must stop instead of flailing.
+        # the model could nudge coordinates forever. After max_blind_repeats the run
+        # must stop instead of flailing.
         executed = []
         coord = lambda px, py: {  # noqa: E731
             "thought": "tap home", "action": "keyword",
@@ -163,17 +163,38 @@ class TestAgentControlFlow:
         agent = NaturalLanguageAgent(
             llm, _shots, _ok_executor(executed),
             lambda: [KeywordSpec("press_by_percentage", "press_by_percentage <x> <y>")],
-            max_coordinate_attempts=3,
+            max_blind_repeats=3,
         )
         result = agent.run("click home button")
         assert result.status == "failed"
-        assert "coordinate" in (result.message or "").lower()
+        assert "press_by_percentage" in (result.message or "")
         # Only the allowed number of taps actually executed; the rest were blocked.
         assert len(executed) == 3
 
-    def test_non_coordinate_keyword_resets_coordinate_streak(self):
-        # A real action between coordinate taps resets the streak, so legitimate
-        # occasional coordinate use is not penalised.
+    @pytest.mark.parametrize("keyword", [
+        "press_by_coordinates", "scroll", "detect_and_press", "select_dropdown_option",
+        "press_keycode",
+    ])
+    def test_any_non_verifying_keyword_is_bounded(self, keyword):
+        # Every keyword that acts without verifying a target (coordinate taps, scroll,
+        # detect_and_press's swallow-on-not-found, the select_dropdown_option no-op,
+        # keycodes) must be bounded the same way — not just press_by_percentage.
+        executed = []
+        step = {"thought": "t", "action": "keyword", "keyword": keyword,
+                "params": ["x"], "reason": "r"}
+        llm = FakeLLM([dict(step) for _ in range(6)])
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor(executed),
+            lambda: [KeywordSpec(keyword, f"{keyword} <p>")],
+            max_blind_repeats=3,
+        )
+        result = agent.run("do it")
+        assert result.status == "failed"
+        assert len(executed) == 3
+
+    def test_verifying_keyword_resets_blind_streak(self):
+        # A locating/verifying action between blind keywords resets the streak, so
+        # legitimate occasional coordinate use is not penalised.
         executed = []
         coord = {"thought": "t", "action": "keyword", "keyword": "press_by_percentage",
                  "params": ["50", "50"], "reason": "r"}
@@ -185,11 +206,30 @@ class TestAgentControlFlow:
             llm, _shots, _ok_executor(executed),
             lambda: [KeywordSpec("press_by_percentage", "press_by_percentage <x> <y>"),
                      KeywordSpec("press_element", "press_element <element>")],
-            max_coordinate_attempts=3,
+            max_blind_repeats=3,
         )
         result = agent.run("do it")
         assert result.status == "done"
         assert len(executed) == 5  # nothing blocked
+
+    def test_alternating_blind_keywords_not_blocked(self):
+        # Alternating different blind keywords (scroll then swipe) is the model trying
+        # different things, not flailing on one — the streak only counts the SAME keyword.
+        executed = []
+        scroll = {"thought": "t", "action": "keyword", "keyword": "scroll",
+                  "params": ["down"], "reason": "r"}
+        swipe = {"thought": "t", "action": "keyword", "keyword": "swipe",
+                 "params": ["1", "2"], "reason": "r"}
+        done = {"thought": "ok", "action": "done", "reason": "done"}
+        llm = FakeLLM([scroll, swipe, scroll, swipe, scroll, done])
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor(executed),
+            lambda: [KeywordSpec("scroll", "scroll <dir>"), KeywordSpec("swipe", "swipe <x> <y>")],
+            max_blind_repeats=3,
+        )
+        result = agent.run("do it")
+        assert result.status == "done"
+        assert len(executed) == 5
 
     def test_system_prompt_documents_keycodes(self):
         # System buttons must steer the model to press_keycode rather than coordinates.
