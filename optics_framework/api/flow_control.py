@@ -346,68 +346,37 @@ class FlowControl:
         return self.modules.get_module_definition(actual_cond) is not None
 
     def _handle_module_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
-        """Handles evaluation and execution for module-based conditions.
-
-        A module condition is TRUE when executing the condition module yields a
-        non-empty result; an exception (or an empty result) is treated as FALSE.
-        This mirrors :meth:`_is_condition_true`. When the condition is TRUE, the
-        condition module's own result is returned. When it is FALSE, we fall
-        through to the target module (returning ``None`` if the target produces
-        no result, so the caller can move on to the else block). The optional
-        ``!`` prefix inverts the truth value while preserving the original
-        skip-/run-target behaviour.
-
-        Semantics changed (bugfix): the previous version treated the condition
-        module as TRUE whenever it ran *without raising* (ignoring an empty
-        result) and returned the *target* module's result rather than the
-        condition module's. That contradicted the documented contract of
-        :meth:`condition` ("returns the result of executing the module if
-        non-empty") and :meth:`_is_condition_true`, so a true condition with no
-        else returned ``[]`` instead of the module's result, and an empty
-        (false) condition returned ``[]`` instead of ``None``. The current
-        non-empty-result semantics above fix that.
-        """
+        """Handles evaluation and execution for module-based conditions."""
+        # Strip "!" prefix if present and determine if we need to invert the result
         invert = cond_str.startswith("!")
         actual_cond = cond_str[1:].strip() if invert else cond_str
 
         try:
-            cond_result = self.execute_module(actual_cond)
-            module_truthy = bool(cond_result)
-        except Exception as e:
-            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' raised error: {e}. Treating as false condition.")
-            cond_result = None
-            module_truthy = False
-
-        if invert:
-            # Inverted: a truthy condition skips the target (fall through to else);
-            # a falsy/failed condition runs the target.
-            if module_truthy:
-                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' is truthy, but condition is inverted. Skipping target '{target}'.")
+            self.execute_module(actual_cond)
+            # Module executed successfully
+            if invert:
+                # If inverted, success means we should NOT execute target
+                execution_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' succeeded, but condition is inverted. Skipping target '{target}'.")
                 return None
-            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' is falsy and condition is inverted. Executing target '{target}'.")
-            return self._execute_target_module(target)
-
-        if module_truthy:
-            # Non-empty condition module result: return it directly.
-            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module condition '{actual_cond}' is True. Returning its result.")
-            return cond_result
-
-        # Falsy condition: fall through to the target module.
-        internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module condition '{actual_cond}' is False. Falling through to target '{target}'.")
-        return self._execute_target_module(target)
-
-    def _execute_target_module(self, target: str) -> Optional[List[Any]]:
-        """Executes a target module, returning its result when non-empty.
-
-        An empty result becomes ``None`` so the caller can fall through to the
-        else block; an exception is surfaced as an ``E0401`` error.
-        """
-        try:
-            result = self.execute_module(target)
+            # If not inverted, success means we should execute target
+            try:
+                return self.execute_module(target)
+            except Exception as e:
+                execution_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
+                raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {e}", cause=e)
         except Exception as e:
-            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
-            raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {e}", cause=e)
-        return result if result else None
+            # Module execution failed
+            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' raised error: {e}.")
+            if invert:
+                # If inverted, failure means we SHOULD execute target
+                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' failed, but condition is inverted. Executing target '{target}'.")
+                try:
+                    return self.execute_module(target)
+                except Exception as target_e:
+                    internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {target_e}.")
+                    raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {target_e}", cause=target_e)
+            # If not inverted, failure means we should NOT execute target
+            return None
 
     def _handle_expression_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
         """Handles evaluation and execution for expression-based conditions."""
