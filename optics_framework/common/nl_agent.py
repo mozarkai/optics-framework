@@ -67,6 +67,15 @@ class _RunState:
     history: List[AgentStep] = field(default_factory=list)
     successful: List[Tuple[str, List[str]]] = field(default_factory=list)
     consecutive_failures: int = 0
+    # Consecutive blind coordinate taps (press_by_percentage / press_coordinates). A
+    # coordinate tap always "passes" mechanically, so consecutive_failures can't catch
+    # the model nudging coordinates forever — this counter bounds that flailing.
+    coordinate_attempts: int = 0
+
+
+# Keywords that tap a guessed screen position. They report PASS even when they hit
+# nothing, so the agent must not be allowed to retry them indefinitely.
+DEFAULT_COORDINATE_KEYWORDS: Tuple[str, ...] = ("press_by_percentage", "press_coordinates")
 
 
 # Callable contracts (kept as plain Callables to avoid Protocol import churn).
@@ -119,29 +128,50 @@ instruction. Each turn you are shown a screenshot of the current device screen, 
 UI hierarchy of the on-screen elements (when available), and the list of available keywords; \
 you must reply with exactly ONE next action as JSON.
 
+CRITICAL — VERIFY, DON'T FLAIL:
+- A `PASS` observation means the keyword EXECUTED, NOT that your goal was achieved. ALWAYS \
+re-read the new screenshot to confirm the action had the intended effect.
+- If the screen did not change as you expected, that action did NOT work. Do NOT repeat it, \
+and do NOT nudge coordinates by a few percent and try again — switch to a fundamentally \
+different approach.
+- Tapping a coordinate ALWAYS "succeeds" mechanically even if it hits nothing, so never trust \
+a coordinate tap's PASS — judge only by the resulting screen.
+
+SYSTEM NAVIGATION — USE KEYCODES (Android), NOT COORDINATES:
+For hardware / system buttons (home, back, recents, etc.) call `press_keycode` with the \
+keycode. NEVER guess coordinates for these — they are off-screen system keys.
+  HOME=3, BACK=4, RECENT APPS / APP SWITCH=187, ENTER=66, BACKSPACE/DEL=67, MENU=82, \
+SEARCH=84, VOLUME UP=24, VOLUME DOWN=25, POWER=26, ESCAPE=111, TAB=61, CAMERA=27.
+  Examples: "go home" -> press_keycode ["3"]; "press back" -> press_keycode ["4"]; \
+"open recent apps" -> press_keycode ["187"]; "submit/enter" -> press_keycode ["66"].
+
+TARGETING POLICY (in strict order of preference):
+1. SYSTEM button (home/back/recents/enter/menu/volume/...) -> `press_keycode` with the code above.
+2. On-screen control -> name it by its VISIBLE TEXT as the `element` parameter \
+(e.g. press_element with params ["Search"]). The framework self-heals element location across \
+XPath -> on-screen text -> OCR -> image, so a plain text label usually resolves. Use the \
+condensed hierarchy for the EXACT text / content-desc / resource id.
+3. Ambiguous text -> prefix the label with `text_only:` to force OCR matching \
+(e.g. "text_only:Search").
+4. Target not visible -> scroll/swipe to reveal it, THEN target it by text.
+5. LAST RESORT only — an icon with no readable text AND no keycode -> read its bounds \
+[x1,y1][x2,y2] from the hierarchy to compute a precise center and use `press_by_percentage` \
+with params [percent_x, percent_y] (each 0-100). You may attempt coordinates at most TWICE \
+for a given target; if that does not work, STOP and use `action: "fail"`.
+
 USING THE UI HIERARCHY:
 - When the condensed hierarchy is provided, use it together with the screenshot: it gives the \
 exact on-screen text, content-desc, resource ids, element bounds [x1,y1][x2,y2], and flags \
-(clickable/scrollable/selected/editable). Prefer an EXACT text/desc from the hierarchy as the \
-locator, and read an element's bounds to compute a precise center for the coordinate fallback.
-
-TARGETING POLICY (text-first, coordinate fallback):
-- Prefer naming the target by its VISIBLE TEXT label as the `element` parameter \
-(e.g. press_element with params ["Search"]). The framework self-heals element location across \
-XPath -> on-screen text -> OCR -> image, so a plain text label usually resolves.
-- For ambiguous text, prefix the label with `text_only:` to force OCR matching \
-(e.g. "text_only:Search").
-- ONLY when the target is an icon with no readable text (e.g. a home/back icon) and cannot be \
-named, estimate its position from the screenshot and use `press_by_percentage` with \
-params [percent_x, percent_y] where each is 0-100 of the screen. Prefer percentages over \
-absolute pixel coordinates.
+(clickable/scrollable/selected/editable). A target present in the hierarchy should be named by \
+its text — not tapped by coordinate.
 
 RULES:
 - Emit exactly one action per turn.
 - Use `action: "done"` ONLY when the instruction is fully satisfied as visible on screen.
-- Use `action: "fail"` when you are blocked with no recoverable next action.
-- If the previous step FAILED, do NOT repeat it identically: change the locator (try a \
-different label, `text_only:`, scroll/swipe to reveal the element, or the coordinate fallback).
+- Use `action: "fail"` when you are blocked with no recoverable next action (including when \
+coordinate guessing has already failed).
+- If the previous step did not achieve its goal, do NOT repeat it identically: change strategy \
+(keycode, a different text label, `text_only:`, or scroll/swipe to reveal the element).
 - Keep `thought` short. Put the keyword name in `keyword` and its positional arguments in \
 `params` (strings), matching the keyword's signature.
 """
@@ -163,6 +193,8 @@ class NaturalLanguageAgent:
         pagesource_provider: Optional[PagesourceProvider] = None,
         max_steps: int = 15,
         max_consecutive_failures: int = 3,
+        max_coordinate_attempts: int = 3,
+        coordinate_keywords: Tuple[str, ...] = DEFAULT_COORDINATE_KEYWORDS,
     ) -> None:
         self.llm = llm
         self.screenshot_provider = screenshot_provider
@@ -172,6 +204,8 @@ class NaturalLanguageAgent:
         self.pagesource_provider = pagesource_provider
         self.max_steps = max_steps
         self.max_consecutive_failures = max_consecutive_failures
+        self.max_coordinate_attempts = max_coordinate_attempts
+        self.coordinate_keywords = coordinate_keywords
 
     def run(
         self,
@@ -250,6 +284,24 @@ class NaturalLanguageAgent:
                 )
             return None
 
+        # Anti-flail: a coordinate tap always reports PASS, so the model can nudge
+        # coordinates forever without ever tripping the failure cutoff. Bound the
+        # number of consecutive blind coordinate guesses and stop with a clear reason.
+        is_coordinate = step.keyword in self.coordinate_keywords
+        if is_coordinate and state.coordinate_attempts >= self.max_coordinate_attempts:
+            observation = (
+                f"BLOCKED: '{step.keyword}' was attempted {state.coordinate_attempts} times "
+                "without reaching the goal. Coordinate guessing is not working."
+            )
+            self._record_failure(step, observation, state.history, on_step, 0)
+            return AgentResult(
+                "failed",
+                state.history,
+                "Repeated coordinate guessing did not reach the goal. Name the target by its "
+                "on-screen text, or use a keycode for system buttons (home/back/recents).",
+                state.successful,
+            )
+
         line = self._build_line(step.keyword, step.params)
         result = self.keyword_executor(line)
         step.exec_result = result
@@ -259,6 +311,9 @@ class NaturalLanguageAgent:
         state.history.append(step)
         if on_step is not None:
             on_step(step)
+
+        # Track consecutive coordinate guesses; any other keyword resets the streak.
+        state.coordinate_attempts = state.coordinate_attempts + 1 if is_coordinate else 0
 
         if result.ok:
             state.consecutive_failures = 0

@@ -12,6 +12,7 @@ from optics_framework.common.nl_agent import (
     KeywordSpec,
     ExecResult,
     ACTION_SCHEMA,
+    SYSTEM_PROMPT,
 )
 from optics_framework.common.error import OpticsError, Code
 
@@ -147,6 +148,54 @@ class TestAgentControlFlow:
         result = agent.run("go")
         assert result.status == "failed"
         assert "Screenshot failed" in (result.message or "")
+
+    def test_repeated_coordinate_guessing_is_blocked(self):
+        # press_by_percentage always "passes" mechanically, so without the guardrail
+        # the model could nudge coordinates forever. After max_coordinate_attempts the
+        # run must stop instead of flailing.
+        executed = []
+        coord = lambda px, py: {  # noqa: E731
+            "thought": "tap home", "action": "keyword",
+            "keyword": "press_by_percentage", "params": [px, py], "reason": "guess",
+        }
+        llm = FakeLLM([coord("50", "97"), coord("50", "95"), coord("50", "98"),
+                       coord("50", "99"), coord("50", "96")])
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor(executed),
+            lambda: [KeywordSpec("press_by_percentage", "press_by_percentage <x> <y>")],
+            max_coordinate_attempts=3,
+        )
+        result = agent.run("click home button")
+        assert result.status == "failed"
+        assert "coordinate" in (result.message or "").lower()
+        # Only the allowed number of taps actually executed; the rest were blocked.
+        assert len(executed) == 3
+
+    def test_non_coordinate_keyword_resets_coordinate_streak(self):
+        # A real action between coordinate taps resets the streak, so legitimate
+        # occasional coordinate use is not penalised.
+        executed = []
+        coord = {"thought": "t", "action": "keyword", "keyword": "press_by_percentage",
+                 "params": ["50", "50"], "reason": "r"}
+        press = {"thought": "t", "action": "keyword", "keyword": "press_element",
+                 "params": ["Search"], "reason": "r"}
+        done = {"thought": "ok", "action": "done", "reason": "done"}
+        llm = FakeLLM([coord, coord, press, coord, coord, done])
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor(executed),
+            lambda: [KeywordSpec("press_by_percentage", "press_by_percentage <x> <y>"),
+                     KeywordSpec("press_element", "press_element <element>")],
+            max_coordinate_attempts=3,
+        )
+        result = agent.run("do it")
+        assert result.status == "done"
+        assert len(executed) == 5  # nothing blocked
+
+    def test_system_prompt_documents_keycodes(self):
+        # System buttons must steer the model to press_keycode rather than coordinates.
+        assert "press_keycode" in SYSTEM_PROMPT
+        for token in ("HOME=3", "BACK=4", "187"):
+            assert token in SYSTEM_PROMPT
 
     def test_validate_non_dict_degrades_to_fail(self):
         # generate_json guarantees decodable JSON, not a JSON object. A valid
