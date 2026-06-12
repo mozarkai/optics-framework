@@ -22,10 +22,10 @@ _SAMPLE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 class TestStripPageSource:
     def test_keeps_text_desc_and_interactive_nodes(self):
         out = utils.strip_page_source(_SAMPLE)
-        assert 'EditText "gullak"' in out
+        assert 'EditText text="gullak"' in out
         assert "id=search_edit_text" in out
         assert 'hint="Search for movies"' in out
-        assert 'TextView "Gullak - Sony LIV Originals"' in out
+        assert 'TextView text="Gullak - Sony LIV Originals"' in out
         assert 'desc="Home"' in out
         assert "bounds=[26,162][1054,293]" in out
         assert "clickable" in out

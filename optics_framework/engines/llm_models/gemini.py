@@ -22,18 +22,24 @@ _DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def _image_mime_type(data: bytes) -> str:
-    """Sniff a common image mime type from magic bytes (defaults to PNG).
+    """Sniff a common image mime type from magic bytes.
 
     The interface passes raw image bytes (callers may send PNG, JPEG, WebP, GIF);
     we detect rather than assume so the engine isn't tied to one encoding.
+    Raises ``ValueError`` when the format cannot be identified.
     """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
     if data[:3] == b"\xff\xd8\xff":
         return "image/jpeg"
     if data[:6] in (b"GIF87a", b"GIF89a"):
         return "image/gif"
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
-    return "image/png"
+    raise ValueError(
+        f"Unrecognised image format (first 8 bytes: {data[:8]!r}). "
+        "Supported formats: PNG, JPEG, GIF, WebP."
+    )
 
 
 class GeminiLLM(LLMInterface):

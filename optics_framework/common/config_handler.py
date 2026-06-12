@@ -39,9 +39,6 @@ class Config(BaseModel):
     event_attributes_json: Optional[str] = None
     halt_duration: float = 0.1
     max_attempts: int = 3
-    # AI self-heal: when every normal locate strategy fails for a keyword, an LLM
-    # inspects the screen and takes a corrective device action. OFF by default;
-    # also inert unless an llm_models entry is enabled.
     ai_self_heal: bool = False
 
     def __init__(self, **data):
