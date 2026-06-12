@@ -18,7 +18,7 @@ import shlex
 import shutil
 import logging
 import tempfile
-import subprocess
+import subprocess  # nosec B404 - used only for local adb/idevice_id device discovery
 import inspect
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -385,7 +385,7 @@ class LiveController:
                 pass
         try:
             self._live_log_handler.close()
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # nosec B110 # pragma: no cover - defensive cleanup
             pass
         self._live_log_handler = None
 
@@ -708,7 +708,7 @@ class LiveController:
         for record in reversed(log_capture.records):
             try:
                 message = record.getMessage() if isinstance(record, logging.LogRecord) else str(record)
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # nosec B112 # pragma: no cover - defensive
                 continue
             match = _STRATEGY_SUCCESS_RE.search(message)
             if match:
@@ -978,13 +978,11 @@ class LiveController:
         """Capture the current screen as raw PNG bytes (for the LLM); no file side-effect."""
         if self._action_keyword is None:  # pragma: no cover - defensive
             raise OpticsError(Code.E0303, message="Screenshot capture unavailable")
-        import cv2
-
         image = self._action_keyword.strategy_manager.capture_screenshot()
-        ok, buffer = cv2.imencode(".png", image)
-        if not ok:  # pragma: no cover - defensive
-            raise OpticsError(Code.E0303, message="Failed to encode screenshot")
-        return buffer.tobytes()
+        try:
+            return utils.encode_numpy_to_png_bytes(image)
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise OpticsError(Code.E0303, message="Failed to encode screenshot") from exc
 
     # -- Natural-language mode ----------------------------------------------------
 
@@ -1278,7 +1276,7 @@ def _redirect_stderr_fd(target_path: str) -> Iterator[None]:
     finally:
         try:
             sys.stderr.flush()
-        except Exception:
+        except Exception:  # nosec B110 - best-effort flush during stderr restore
             pass
         os.dup2(saved_fd, real_stderr_fd)
         os.close(saved_fd)
