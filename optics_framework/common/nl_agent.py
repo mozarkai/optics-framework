@@ -84,10 +84,11 @@ class _RunState:
 #   - swipe_from_element / scroll_from_element locate only the gesture ANCHOR, not the
 #     outcome, so the swipe/scroll result is still unverified;
 #   - detect_and_press swallows "not found" and does nothing (still PASS);
-#   - *_until_element_appears return PASS on timeout even if the element never appeared;
-#   - select_dropdown_option is currently a no-op stub (always PASS).
+#   - *_until_element_appears return PASS on timeout even if the element never appeared.
 # Running several of these in a row (in any combination) is the model flailing, not
-# progressing, so the agent bounds the length of such a streak.
+# progressing, so the agent bounds the length of such a streak. Keywords that locate and
+# act on a named target (press_element, enter_text, select_dropdown_option, ...) are NOT
+# here — they raise when the target is missing, so they give real feedback.
 DEFAULT_NON_VERIFYING_KEYWORDS: Tuple[str, ...] = (
     "press_by_percentage",
     "press_by_coordinates",
@@ -101,7 +102,6 @@ DEFAULT_NON_VERIFYING_KEYWORDS: Tuple[str, ...] = (
     "detect_and_press",
     "scroll_until_element_appears",
     "swipe_until_element_appears",
-    "select_dropdown_option",
     "enter_text_direct",
     "enter_text_using_keyboard",
 )

@@ -407,13 +407,21 @@ class ActionKeyword:
 
     def select_dropdown_option(self, element: str, option: str, event_name: Optional[str] = None) -> None:
         """
-        Select a specified dropdown option.
+        Open a dropdown and select one of its options.
+
+        Opens the dropdown by pressing ``element``, then selects ``option`` by pressing it.
+        Both presses go through :meth:`press_element`'s self-healing location
+        (XPath -> text -> OCR -> image), so either step raises ``OpticsError`` (``E0201`` /
+        ``X0201``) when its target can't be found — an honest failure rather than a
+        silent no-op.
 
         :param element: The dropdown element (Image template, OCR template, or XPath).
-        :param option: The option to be selected.
+        :param option: The option to select (visible label, OCR/Image template, or XPath).
         :param event_name: The event triggering the selection.
         """
-        pass
+        internal_logger.info(f"Selecting '{option}' from dropdown '{element}'")
+        self.press_element(element, event_name=event_name)
+        self.press_element(option, event_name=event_name)
 
     # Swipe and Scroll actions
     def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:

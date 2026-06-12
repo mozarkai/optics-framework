@@ -172,13 +172,13 @@ class TestAgentControlFlow:
         assert len(executed) == 3
 
     @pytest.mark.parametrize("keyword", [
-        "press_by_coordinates", "scroll", "detect_and_press", "select_dropdown_option",
+        "press_by_coordinates", "scroll", "detect_and_press", "swipe_from_element",
         "press_keycode",
     ])
     def test_any_non_verifying_keyword_is_bounded(self, keyword):
         # Every keyword that acts without verifying a target (coordinate taps, scroll,
-        # detect_and_press's swallow-on-not-found, the select_dropdown_option no-op,
-        # keycodes) must be bounded the same way — not just press_by_percentage.
+        # detect_and_press's swallow-on-not-found, element-anchored gestures, keycodes)
+        # must be bounded the same way — not just press_by_percentage.
         executed = []
         step = {"thought": "t", "action": "keyword", "keyword": keyword,
                 "params": ["x"], "reason": "r"}

@@ -366,3 +366,27 @@ class TestScreenshotFailureFallback:
 
         mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, None)
         mock_save_screenshot.assert_not_called()
+
+
+class TestSelectDropdownOption:
+    """select_dropdown_option must open the dropdown then select the option (not a no-op)."""
+
+    def test_opens_dropdown_then_selects_option(self, action_keyword):
+        with patch.object(action_keyword, "press_element") as mock_press:
+            action_keyword.select_dropdown_option("Country", "India", event_name="evt")
+
+        assert mock_press.call_count == 2
+        # First press opens the dropdown, second selects the option — order matters.
+        assert mock_press.call_args_list[0].args[0] == "Country"
+        assert mock_press.call_args_list[1].args[0] == "India"
+        # event_name is threaded through to both presses.
+        assert all(c.kwargs.get("event_name") == "evt" for c in mock_press.call_args_list)
+
+    def test_missing_target_raises_instead_of_silent_pass(self, action_keyword):
+        # The old stub returned None (silent PASS); now a not-found target must surface.
+        with patch.object(
+            action_keyword, "press_element",
+            side_effect=OpticsError(Code.X0201, message="element not found"),
+        ):
+            with pytest.raises(OpticsError):
+                action_keyword.select_dropdown_option("Country", "India")
