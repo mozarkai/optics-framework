@@ -167,7 +167,7 @@ class TestAgentControlFlow:
         )
         result = agent.run("click home button")
         assert result.status == "failed"
-        assert "press_by_percentage" in (result.message or "")
+        assert "coordinate" in (result.message or "").lower()
         # Only the allowed number of taps actually executed; the rest were blocked.
         assert len(executed) == 3
 
@@ -212,24 +212,32 @@ class TestAgentControlFlow:
         assert result.status == "done"
         assert len(executed) == 5  # nothing blocked
 
-    def test_alternating_blind_keywords_not_blocked(self):
-        # Alternating different blind keywords (scroll then swipe) is the model trying
-        # different things, not flailing on one — the streak only counts the SAME keyword.
+    def test_cycling_gesture_variants_is_blocked(self):
+        # Real failure mode for "swipe up": the model cycled scroll -> swipe_by_percentage
+        # -> swipe -> swipe_from_element -> ... None repeats the SAME keyword, but they are
+        # all non-verifying gestures, so the CLASS streak must bound them together.
         executed = []
-        scroll = {"thought": "t", "action": "keyword", "keyword": "scroll",
-                  "params": ["down"], "reason": "r"}
-        swipe = {"thought": "t", "action": "keyword", "keyword": "swipe",
-                 "params": ["1", "2"], "reason": "r"}
-        done = {"thought": "ok", "action": "done", "reason": "done"}
-        llm = FakeLLM([scroll, swipe, scroll, swipe, scroll, done])
+        def g(keyword, *params):
+            return {"thought": "t", "action": "keyword", "keyword": keyword,
+                    "params": list(params), "reason": "r"}
+        llm = FakeLLM([
+            g("scroll", "up"),
+            g("swipe_by_percentage", "50", "80", "up", "50"),
+            g("swipe", "540", "2000", "up", "1000"),
+            g("swipe_from_element", "Apps", "up", "500"),
+            g("swipe_by_percentage", "50", "90", "up", "80"),
+        ])
         agent = NaturalLanguageAgent(
             llm, _shots, _ok_executor(executed),
-            lambda: [KeywordSpec("scroll", "scroll <dir>"), KeywordSpec("swipe", "swipe <x> <y>")],
+            lambda: [KeywordSpec("scroll", "scroll <dir>"),
+                     KeywordSpec("swipe", "swipe <x> <y> <dir> <len>"),
+                     KeywordSpec("swipe_by_percentage", "swipe_by_percentage <x> <y> <dir> <len>"),
+                     KeywordSpec("swipe_from_element", "swipe_from_element <el> <dir> <len>")],
             max_blind_repeats=3,
         )
-        result = agent.run("do it")
-        assert result.status == "done"
-        assert len(executed) == 5
+        result = agent.run("swipe up")
+        assert result.status == "failed"
+        assert len(executed) == 3  # blocked at the 4th gesture regardless of variant
 
     def test_system_prompt_documents_keycodes(self):
         # System buttons must steer the model to press_keycode rather than coordinates.

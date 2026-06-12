@@ -67,29 +67,35 @@ class _RunState:
     history: List[AgentStep] = field(default_factory=list)
     successful: List[Tuple[str, List[str]]] = field(default_factory=list)
     consecutive_failures: int = 0
-    # Anti-flail: the last non-verifying keyword used and how many times in a row.
+    # Anti-flail: how many non-verifying keywords have run in a row (any mix of them).
     # These keywords report PASS even when they achieve nothing (see
     # DEFAULT_NON_VERIFYING_KEYWORDS), so consecutive_failures can't catch the model
-    # repeating one forever (e.g. nudging coordinates 50,97 -> 50,95 -> 50,98 ...).
-    last_blind_keyword: Optional[str] = None
-    blind_repeats: int = 0
+    # flailing — whether by nudging coordinates (50,97 -> 50,95 -> ...) OR by cycling
+    # through gesture variants (scroll -> swipe -> swipe_by_percentage -> ...). The
+    # streak counts the CLASS, not a single keyword name, and resets on a real
+    # targeted interaction (press_element, enter_text, ...).
+    blind_streak: int = 0
 
 
-# Keywords that perform an action WITHOUT locating or asserting a target element, so a
-# PASS does NOT mean the goal was reached:
+# Keywords that perform an action WITHOUT locating-and-acting-on a named target, so a PASS
+# does NOT mean the goal was reached:
 #   - coordinate / percentage taps and swipes report PASS even when they hit nothing;
-#   - scroll / press_keycode / sleep always succeed mechanically;
+#   - scroll / swipe / press_keycode / sleep always succeed mechanically;
+#   - swipe_from_element / scroll_from_element locate only the gesture ANCHOR, not the
+#     outcome, so the swipe/scroll result is still unverified;
 #   - detect_and_press swallows "not found" and does nothing (still PASS);
 #   - *_until_element_appears return PASS on timeout even if the element never appeared;
 #   - select_dropdown_option is currently a no-op stub (always PASS).
-# Repeating the SAME one many times in a row is the model flailing, not progressing, so
-# the agent bounds consecutive repeats of any keyword in this set.
+# Running several of these in a row (in any combination) is the model flailing, not
+# progressing, so the agent bounds the length of such a streak.
 DEFAULT_NON_VERIFYING_KEYWORDS: Tuple[str, ...] = (
     "press_by_percentage",
     "press_by_coordinates",
     "swipe",
     "swipe_by_percentage",
+    "swipe_from_element",
     "scroll",
+    "scroll_from_element",
     "press_keycode",
     "sleep",
     "detect_and_press",
@@ -159,6 +165,14 @@ and do NOT nudge coordinates by a few percent and try again — switch to a fund
 different approach.
 - Tapping a coordinate ALWAYS "succeeds" mechanically even if it hits nothing, so never trust \
 a coordinate tap's PASS — judge only by the resulting screen.
+- Some instructions ARE just a gesture (e.g. "swipe up", "scroll down", "press back", \
+"go home"). Performing that gesture ONCE fulfils the instruction — reply `action: "done"` \
+after a single successful gesture. Do NOT require the screen to change, and do NOT retry the \
+gesture hoping for a different result.
+- Do NOT cycle through gesture variants (scroll -> swipe -> swipe_by_percentage -> swipe with \
+raw coordinates -> ...) chasing the same effect. If one correct gesture did not achieve the \
+goal, the approach is wrong — switch to naming a target by text, or `fail` — don't try another \
+flavour of swipe.
 
 SYSTEM NAVIGATION — USE KEYCODES (Android), NOT COORDINATES:
 For hardware / system buttons (home, back, recents, etc.) call `press_keycode` with the \
@@ -307,26 +321,25 @@ class NaturalLanguageAgent:
                 )
             return None
 
-        # Anti-flail: non-verifying keywords (coordinate taps, scroll, keycode,
+        # Anti-flail: non-verifying keywords (coordinate taps, scroll, swipe, keycode,
         # detect_and_press, ...) report PASS even when they achieve nothing, so the
-        # consecutive-failure cutoff can never catch the model repeating one forever.
-        # Bound consecutive repeats of the SAME such keyword and stop with a clear reason.
+        # consecutive-failure cutoff can never catch the model flailing. Bound the number
+        # of these run in a row — counting the CLASS, so cycling through gesture variants
+        # (scroll -> swipe -> swipe_by_percentage -> ...) is caught just like repeating one.
         is_blind = step.keyword in self.non_verifying_keywords
-        prospective_repeats = (
-            state.blind_repeats + 1 if is_blind and step.keyword == state.last_blind_keyword else 1
-        )
-        if is_blind and prospective_repeats > self.max_blind_repeats:
+        if is_blind and state.blind_streak >= self.max_blind_repeats:
             observation = (
-                f"BLOCKED: '{step.keyword}' was repeated {state.blind_repeats} times "
-                "without reaching the goal — it does not verify a target, so repeating it "
-                "is not making progress."
+                f"BLOCKED: {state.blind_streak} blind actions (scroll/swipe/tap/keycode/...) "
+                "ran in a row without reaching the goal — these do not verify a target, so "
+                "repeating them is not making progress."
             )
             self._record_failure(step, observation, state.history, on_step, 0)
             return AgentResult(
                 "failed",
                 state.history,
-                f"Repeated '{step.keyword}' without reaching the goal. Name the target by its "
-                "on-screen text, or use a keycode for system buttons (home=3/back=4/recents=187).",
+                "Repeated gesture/coordinate actions did not reach the goal. Name the target by "
+                "its on-screen text, or use a keycode for system buttons "
+                "(home=3/back=4/recents=187). If the instruction was just a gesture, one is enough.",
                 state.successful,
             )
 
@@ -340,13 +353,8 @@ class NaturalLanguageAgent:
         if on_step is not None:
             on_step(step)
 
-        # Track the consecutive-same-blind-keyword streak; any other keyword resets it.
-        if is_blind:
-            state.last_blind_keyword = step.keyword
-            state.blind_repeats = prospective_repeats
-        else:
-            state.last_blind_keyword = None
-            state.blind_repeats = 0
+        # Extend the blind-action streak; any targeted interaction resets it.
+        state.blind_streak = state.blind_streak + 1 if is_blind else 0
 
         if result.ok:
             state.consecutive_failures = 0
