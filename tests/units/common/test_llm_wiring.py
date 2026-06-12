@@ -87,7 +87,8 @@ class TestControllerPageSource:
     def test_returns_stripped_source(self):
         ctrl = _ps_controller((_PS_XML, "ts"))
         out = ctrl.page_source()
-        assert out and "search_edit_text" in out and 'EditText "gullak"' in out
+        assert out and "search_edit_text" in out
+        assert "EditText" in out and 'text="gullak"' in out
 
     def test_returns_none_when_unavailable(self):
         from optics_framework.common.error import OpticsError, Code
@@ -171,6 +172,23 @@ class TestRunNaturalLanguage:
         summary = ctrl.run_natural_language("   ", on_step=lambda s: None)
         assert summary.status == "FAIL"
         assert "Empty" in (summary.message or "")
+
+    def test_agent_crash_returns_enum_status(self, monkeypatch):
+        # An unexpected (non-Optics) exception from agent.run must not crash the
+        # controller and must return a genuine NLRunStatus enum, not a raw "FAIL"
+        # string (regression: the field is typed NLRunStatus).
+        from optics_framework.helper.live import NLRunStatus
+
+        class _BoomAgent:
+            def run(self, *a, **k):
+                raise RuntimeError("kaboom")
+
+        ctrl = _bare_controller()
+        monkeypatch.setattr(ctrl, "_get_nl_agent", lambda: _BoomAgent())
+        summary = ctrl.run_natural_language("do it", on_step=lambda s: None)
+        assert isinstance(summary.status, NLRunStatus)
+        assert summary.status is NLRunStatus.FAIL
+        assert "RuntimeError" in (summary.message or "")
 
     def test_no_llm_engine_surfaces_actionable_message(self, monkeypatch):
         ctrl = _bare_controller()

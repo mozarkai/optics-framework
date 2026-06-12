@@ -290,6 +290,11 @@ class NaturalLanguageAgent:
 
     @staticmethod
     def _validate(raw: Dict[str, Any]) -> AgentStep:
+        # generate_json only guarantees decodable JSON, not a JSON object. A
+        # valid-but-non-object reply (list/scalar) must degrade to a recoverable
+        # "fail" step rather than raise AttributeError and abort the whole run.
+        if not isinstance(raw, dict):
+            raw = {}
         action = raw.get("action")
         if action not in ("keyword", "done", "fail"):
             action = "fail"

@@ -148,6 +148,14 @@ class TestAgentControlFlow:
         assert result.status == "failed"
         assert "Screenshot failed" in (result.message or "")
 
+    def test_validate_non_dict_degrades_to_fail(self):
+        # generate_json guarantees decodable JSON, not a JSON object. A valid
+        # list/scalar reply must become a recoverable 'fail' step, not raise
+        # AttributeError and abort the run.
+        for bad in ([1, 2, 3], "hello", 42, None):
+            step = NaturalLanguageAgent._validate(bad)
+            assert step.action == "fail"
+
 
 class TestActionSchema:
     def test_keyword_and_params_optional(self):

@@ -1114,7 +1114,7 @@ class LiveController:
             )
         except Exception as exc:  # noqa: BLE001 - never crash the controller
             return NLSummary(
-                instruction, "FAIL", 0, time.time() - start, f"{type(exc).__name__}: {exc}"
+                instruction, NLRunStatus.FAIL, 0, time.time() - start, f"{type(exc).__name__}: {exc}"
             )
 
         # Commit-on-done: only a fully successful run is added to the recording.
