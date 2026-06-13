@@ -1,6 +1,6 @@
 import argparse
 import sys
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel
 from optics_framework.helper.list_keyword import main as list_main
 from optics_framework.helper.config_manager import main as config_main
@@ -139,6 +139,46 @@ class ServerCommand(Command):
             host=server_args.host,
             port=server_args.port,
             workers=server_args.workers
+        )
+
+
+class MCPArgs(BaseModel):
+    """Arguments for the mcp command."""
+    transport: Literal["stdio", "http"] = "stdio"
+    host: str = "127.0.0.1"
+    port: int = 8090
+
+
+class MCPCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "mcp", help="Run the Optics Framework MCP server (requires the 'mcp' extra)"
+        )
+        parser.add_argument(
+            "--transport", choices=["stdio", "http"], default="stdio",
+            help="MCP transport: stdio (default, local clients) or http"
+        )
+        parser.add_argument(
+            "--host", default="127.0.0.1", help="Host to bind for http transport (default: 127.0.0.1)"
+        )
+        parser.add_argument(
+            "--port", type=int, default=8090, help="Port to bind for http transport (default: 8090)"
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        mcp_args = MCPArgs(
+            transport=args.transport,
+            host=args.host,
+            port=args.port
+        )
+        # Lazy import so the optional 'mcp' extra (fastmcp) is only required
+        # when this command actually runs.
+        from optics_framework.helper.mcp_server import run_mcp_server
+        run_mcp_server(
+            transport=mcp_args.transport,
+            host=mcp_args.host,
+            port=mcp_args.port
         )
 
 class ConfigCommand(Command):
@@ -377,6 +417,7 @@ def main():
         GenerateCommand(),
         DriverInstaller(),
         ServerCommand(),
+        MCPCommand(),
         AutocompletionCommand(),
     ]
     for cmd in commands:
