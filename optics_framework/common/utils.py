@@ -364,38 +364,48 @@ def _is_interesting(el) -> bool:
     return False
 
 
-def _descriptor(el) -> str:
-    """One-line human-readable description of a UI node (platform-agnostic)."""
-    parts = [_short_class(el)]
-    # Text / content-desc / name / label / value — first non-empty wins for display
+def _descriptor_text(el) -> Optional[str]:
+    """First non-empty text-bearing attribute as ``label="value"`` (one is enough)."""
     for attr in _TEXT_ATTRS:
         val = " ".join((el.get(attr) or "").split())
         if val:
             label = "desc" if attr == "content-desc" else attr
-            parts.append(f'{label}="{val}"')
-            break  # one text representation is enough
-    # ID / resource-id
+            return f'{label}="{val}"'
+    return None
+
+
+def _descriptor_id(el) -> Optional[str]:
+    """First non-empty id attribute as ``id=<short>`` (package prefix stripped)."""
     for attr in _ID_ATTRS:
         rid = el.get(attr) or ""
         if rid:
-            parts.append(f"id={rid.split('/', 1)[-1]}")
-            break
-    # Bounds — Android-style or iOS rect
+            return f"id={rid.split('/', 1)[-1]}"
+    return None
+
+
+def _descriptor_bounds(el) -> Optional[str]:
+    """Android-style ``bounds=...`` or, failing that, an iOS/web ``rect=(...)``."""
     bounds = el.get("bounds")
     if bounds:
-        parts.append(f"bounds={bounds}")
-    else:
-        # iOS / web rect attributes
-        x, y, w, h = el.get("x"), el.get("y"), el.get("width"), el.get("height")
-        if x is not None and y is not None:
-            parts.append(f"rect=({x},{y},{w or '?'},{h or '?'})")
-    # State flags
-    parts.extend(flag for flag in _PS_SHOWN_FLAGS if el.get(flag) == "true")
-    # Input hint (Android)
+        return f"bounds={bounds}"
+    x, y, w, h = el.get("x"), el.get("y"), el.get("width"), el.get("height")
+    if x is not None and y is not None:
+        return f"rect=({x},{y},{w or '?'},{h or '?'})"
+    return None
+
+
+def _descriptor(el) -> str:
+    """One-line human-readable description of a UI node (platform-agnostic)."""
     hint = " ".join((el.get("hint") or "").split())
-    if hint:
-        parts.append(f'hint="{hint}"')
-    return " ".join(parts)
+    parts = [
+        _short_class(el),
+        _descriptor_text(el),
+        _descriptor_id(el),
+        _descriptor_bounds(el),
+        *(flag for flag in _PS_SHOWN_FLAGS if el.get(flag) == "true"),
+        f'hint="{hint}"' if hint else None,
+    ]
+    return " ".join(p for p in parts if p)
 
 
 def _walk(el, depth: int, lines: List[str]) -> None:

@@ -75,6 +75,11 @@ class GeminiLLM(LLMInterface):
         api_key = caps.get("api_key") or caps.get("gemini_api_key")
         if api_key:
             client_kwargs["api_key"] = api_key
+            internal_logger.warning(
+                "GeminiLLM: an API key was read from the config 'capabilities'. Storing "
+                "secrets in a plaintext config is insecure — prefer the GOOGLE_API_KEY / "
+                "GEMINI_API_KEY environment variables, and never commit a config with a key."
+            )
         if caps.get("project"):
             client_kwargs["project"] = caps["project"]
         if caps.get("location"):
