@@ -182,3 +182,83 @@ class TestStrategyManagerAssertPresenceTextOnly:
             assert "Submit" in seen_elements
             assert "Login" in seen_elements
             assert "TEXT_ONLY:Login" not in seen_elements
+
+
+# --- capture_screenshot_bytes (native fast path + numpy fallback) ---
+
+
+def _sm_with_source(source):
+    """StrategyManager wrapping a single element source (screenshot path only)."""
+    return StrategyManager(
+        element_source=InstanceFallback([source]),
+        text_detection=None,
+        image_detection=None,
+    )
+
+
+class TestCaptureScreenshotBytes:
+    """StrategyManager.capture_screenshot_bytes() prefers the native path, else encodes numpy."""
+
+    def test_prefers_native_bytes(self):
+        source = MagicMock()
+        source.capture_screenshot_bytes.return_value = b"\x89PNG-native"
+        sm = _sm_with_source(source)
+        assert sm.capture_screenshot_bytes() == b"\x89PNG-native"
+        source.capture.assert_not_called()  # native path => no numpy capture/encode
+
+    def test_falls_back_to_numpy_encode(self):
+        source = MagicMock()
+        source.capture_screenshot_bytes.side_effect = NotImplementedError
+        source.capture.return_value = np.full((8, 8, 3), 255, dtype=np.uint8)  # white, not black
+        sm = _sm_with_source(source)
+        data = sm.capture_screenshot_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"  # real PNG magic from cv2.imencode
+
+    def test_skips_failing_native_then_falls_back(self):
+        source = MagicMock()
+        source.capture_screenshot_bytes.side_effect = RuntimeError("hub timeout")
+        source.capture.return_value = np.full((8, 8, 3), 255, dtype=np.uint8)
+        sm = _sm_with_source(source)
+        assert sm.capture_screenshot_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+class _FakeWD:
+    """Stub webdriver (no ``.driver`` attr, so _require_driver returns it as-is)."""
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.calls = 0
+
+    def get_screenshot_as_base64(self):
+        self.calls += 1
+        item = self._results.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+class TestAppiumScreenshotBytes:
+    """AppiumScreenshot.capture_screenshot_bytes() decodes base64 with a single retry."""
+
+    def test_returns_decoded_base64(self):
+        import base64
+        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
+        png = b"\x89PNG\r\n\x1a\nDATA"
+        drv = _FakeWD([base64.b64encode(png).decode("ascii")])
+        assert AppiumScreenshot(driver=drv).capture_screenshot_bytes() == png
+        assert drv.calls == 1
+
+    def test_retries_then_succeeds(self):
+        import base64
+        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
+        png = b"\x89PNGok"
+        drv = _FakeWD(["not-valid-base64!!!", base64.b64encode(png).decode("ascii")])
+        assert AppiumScreenshot(driver=drv).capture_screenshot_bytes() == png
+        assert drv.calls == 2
+
+    def test_raises_after_exhausted_retries(self):
+        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
+        drv = _FakeWD([ValueError("boom"), ValueError("boom")])
+        with pytest.raises(RuntimeError):
+            AppiumScreenshot(driver=drv).capture_screenshot_bytes()
+        assert drv.calls == 2
