@@ -57,6 +57,22 @@ The full chain when a user types `optics execute <folder>`:
 
 **Device coupling caveat (reviewer note).** Live's *driver* selection is fully config-driven, but its optional **device** features are not driver-agnostic: `list_devices` (`live.py:810`) shells out to `adb devices` and `switch_device` (`:829`) rebuilds the session with new `udid`/`deviceName` caps — Android/Appium only, gated by `supports_device_switching` (`:797`). This is device-management knowledge (adb) leaking into the live helper rather than sitting behind `DriverInterface`; the Appium driver itself already owns the analogous device/install concerns (`adb`/`ideviceinstaller` in `engines/drivers/appium.py`). If device hot-swap should generalise, it belongs behind the driver interface, not in `helper/live.py`.
 
+## MCP server journey (`optics mcp`)
+
+`optics mcp` exposes the keyword machinery over the Model Context Protocol so an LLM client (Claude Desktop/Code, Cursor) can drive a live target. It is a **thin in-process wrapper over `common/expose_api.py`** — it does not reimplement session or execution logic.
+
+1. `cli.py:MCPCommand` → `run_mcp_server(transport, host, port)` (`helper/mcp_server.py`). `MCPArgs` (`cli.py`) is the Pydantic args model; `--transport {stdio,http}` (default stdio).
+2. `mcp_server.build_server()` constructs a `fastmcp.FastMCP` and registers:
+   - **Lifecycle tools** `start_session` / `terminate_session` — wrap `expose_api.create_session` / `delete_session`. Plus a hand-written `screenshot` tool returning a `fastmcp` `Image` (rendered `image/png`), because templated MCP resources can't carry a non-default mime — the screenshot *resource* still returns raw bytes (`application/octet-stream`).
+   - **Per-keyword tools** — `_iter_keyword_tools()` reflects `ActionKeyword`/`AppManagement`/`Verifier` (same set `expose_api.execute_keyword` builds), and `_make_keyword_tool` synthesizes a wrapper whose `__signature__` is `session_id` + the keyword's params, **all annotations forced to `str`** (the `ExecuteRequest.params` boundary is string-only). The wrapper stringifies kwargs and calls `expose_api.execute_keyword(session_id, ExecuteRequest(...))`. `_RESOURCE_ONLY_KEYWORDS` (screenshot/pagesource/screen_elements) are excluded; `_EXCLUDED_PARAMS` drops the self-healing-injected `located`.
+   - **State resources** — `optics://keywords` (catalog) and `optics://session/{session_id}/{screenshot,source,elements,screen_elements}`, backed by `expose_api.run_keyword_endpoint`. The screenshot resource returns raw `bytes` via `base64.b64decode`.
+3. Errors from `expose_api` (`HTTPException` / `OpticsError`) are translated to `fastmcp.exceptions.ToolError`.
+4. `fastmcp` is an **optional extra** (`pip install optics-framework[mcp]`); imports are guarded (`_require_fastmcp`), so the default import path and other CLI commands don't need it.
+
+**Caveat.** `optics mcp` and `optics serve` are separate processes with separate in-memory `SessionManager`s — sessions are **not shared**. A client must `start_session` here before any keyword tool works. User docs: `docs/usage/mcp_usage.md`.
+
+> Note: the optional `mcp` extra pulls `fastmcp` → `starlette>=1.0`, which is why the FastAPI pin (`pyproject.toml`) was lifted past `0.119` (the first FastAPI to support starlette 1.x).
+
 ## Element location pipeline (deep dive)
 
 The element-location subsystem is spread across four layers; all of them live in `common/strategies.py` and have hooks elsewhere.
@@ -83,7 +99,7 @@ The element-location subsystem is spread across four layers; all of them live in
 
 These chains are independent. `_try_execute_with_fallback` only sees the keyword raising; whether that raise came from the strategy ladder (`E0201`/`X0201`) or from the driver ladder or somewhere else is what `Code` discriminates.
 
-## Keyword entry points (there are seven)
+## Keyword entry points (there are eight)
 
 Adding a method to an API class is **not enough** if the keyword should be reachable from every surface.
 
@@ -97,6 +113,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 5. **`optics list` CLI** — `helper/list_keyword.py:7` `list_api_methods` walks `optics_framework.api` via `pkgutil.iter_modules` and `inspect.getmembers`. API class methods show up automatically; `Optics`-facade-only keywords do not.
 6. **Robot Framework library import** — when consumers do `Library    optics_framework.optics.Optics`, only methods decorated with `@keyword(...)` on the `Optics` class are exposed. Same source as (2).
 7. **Interactive `optics live`** — `LiveController._build_registry` (`helper/live.py:354`) builds its own `KeywordRegistry` via `session.optics.build(ActionKeyword/AppManagement/Verifier)` — the **same auto-registration path as the runner** (entry point 1), so new public API-class methods are reachable in the REPL/TUI automatically and need no live-specific wiring. The natural-language mode reaches the same `keyword_map` through `NaturalLanguageAgent` (see the live-session section below).
+8. **MCP server (`optics mcp`)** — `mcp_server._iter_keyword_tools` (`helper/mcp_server.py`) reflects `ActionKeyword`/`AppManagement`/`Verifier` (same classes as `expose_api.execute_keyword`) and registers each public method as a typed MCP tool; dispatch routes back through `expose_api.execute_keyword`. New public API-class methods appear automatically (excluding `_RESOURCE_ONLY_KEYWORDS`, which are surfaced as MCP resources). Reuses entry point 3's reflection machinery; requires the optional `mcp` extra.
 
 ### Checklist when adding a keyword to `ActionKeyword`
 
@@ -189,4 +206,5 @@ optics list                                # print discoverable API keywords (re
 optics generate <folder>                   # emit pytest/robot code from CSV/YAML
 optics serve                               # FastAPI server exposing keyword endpoints
 optics live [folder]                       # interactive REPL/TUI: run keywords (or NL) against a live target
+optics mcp [--transport http]              # MCP server exposing keywords as tools/resources (needs [mcp] extra)
 ```
