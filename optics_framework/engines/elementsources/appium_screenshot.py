@@ -47,6 +47,27 @@ class AppiumScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
+    def capture_screenshot_bytes(self) -> bytes:
+        """
+        Return the device screen as native PNG bytes via Appium's base64 endpoint.
+
+        Skips the ``base64 -> numpy -> cv2.imdecode`` decode that
+        :meth:`capture_screenshot_as_numpy` does, for callers that only need encoded
+        bytes. The retry absorbs the truncated-response ("Incorrect padding") base64
+        failures occasionally seen against busy remote hubs.
+        """
+        driver = self._require_driver()
+        last_exc: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                return base64.b64decode(driver.get_screenshot_as_base64())
+            except Exception as e:
+                last_exc = e
+                internal_logger.warning(
+                    "Appium native screenshot bytes attempt %d/2 failed: %s", attempt + 1, e
+                )
+        raise RuntimeError(f"Error capturing Appium screenshot bytes: {last_exc}")
+
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         internal_logger.exception("AppiumScreenshot does not support getting interactive elements.")
         raise NotImplementedError(
