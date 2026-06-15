@@ -42,43 +42,40 @@ class PlaywrightScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
+    def capture_screenshot_bytes(self) -> bytes:
+        """
+        Return the viewport as native PNG bytes.
+
+        ``page.screenshot()`` already returns encoded PNG, so this is the cheapest
+        path of all backends — no base64 decode and no OpenCV decode/encode at all.
+        """
+        page = self._require_page()
+        try:
+            internal_logger.debug("Capturing Playwright screenshot")
+            # Use run_async to handle async page.screenshot() if page is from async_api.
+            return run_async(page.screenshot(full_page=False))
+        except Exception as e:
+            internal_logger.warning(
+                "Error capturing Playwright screenshot bytes: %s", e, exc_info=True
+            )
+            raise RuntimeError(f"Error capturing Playwright screenshot bytes: {e}") from e
+
     def capture_screenshot_as_numpy(self) -> np.ndarray:
         """
         Captures screenshot via Playwright and converts to NumPy image.
         Only captures the viewport, not the full page.
 
+        Reuses :meth:`capture_screenshot_bytes` and only adds the decode.
+
         Returns:
             numpy.ndarray: Screenshot image
         """
-        page = self._require_page()
-        try:
-            internal_logger.debug("Capturing Playwright screenshot")
-
-            # Playwright returns raw PNG bytes
-            # Use run_async to handle async page.screenshot() if page is from async_api
-            screenshot_bytes = run_async(page.screenshot(full_page=False))
-
-            internal_logger.debug(
-                "Playwright screenshot bytes length: %d",
-                len(screenshot_bytes),
-            )
-
-            np_image = np.frombuffer(screenshot_bytes, np.uint8)
-            np_image = cv2.imdecode(np_image, cv2.IMREAD_COLOR)  # type: ignore
-
-            if np_image is None:
-                raise RuntimeError("Failed to decode Playwright screenshot")
-
-            return np_image
-
-        except Exception as e:
-            internal_logger.warning(
-                f"Error capturing Playwright screenshot: {e}",
-                exc_info=True,
-            )
-            raise RuntimeError(
-                f"Error capturing Playwright screenshot: {e}"
-            ) from e
+        screenshot_bytes = self.capture_screenshot_bytes()
+        np_image = np.frombuffer(screenshot_bytes, np.uint8)
+        np_image = cv2.imdecode(np_image, cv2.IMREAD_COLOR)  # type: ignore
+        if np_image is None:
+            raise RuntimeError("Failed to decode Playwright screenshot")
+        return np_image
 
     # --------------------------------------------------
     # Unsupported operations
