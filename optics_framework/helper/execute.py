@@ -1,5 +1,4 @@
 import os
-import sys
 import asyncio
 from typing import Optional, Tuple, List, Dict, Set, Any
 import yaml
@@ -254,8 +253,11 @@ def validate_required_files(
         ]
         error_msg = f"Missing required files in {folder_path}: {', '.join(missing)}"
         internal_logger.error(error_msg)
-        print(f"Error: {error_msg}", file=sys.stderr)
-        sys.exit(1)
+        # Raise rather than sys.exit: find_files is reachable from library/server
+        # callers (e.g. the REST dry-run endpoint via load_suite_from_folder), where
+        # exiting the process would crash the host. The CLI's main() catches this and
+        # exits cleanly. E0501 maps to HTTP 400.
+        raise OpticsError(Code.E0501, message=error_msg)
 
 
 def _should_include_test_case(
