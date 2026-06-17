@@ -20,7 +20,13 @@ from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData
+from optics_framework.common.models import (
+    ApiData,
+    ModuleData,
+    ElementData,
+    TestCaseNode,
+    TemplateData,
+)
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
@@ -29,9 +35,15 @@ from optics_framework.common.logging_config import internal_logger, reconfigure_
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.common.runner.printers import TestCaseResult
 from optics_framework.common.utils import _is_list_type
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.helper.execute import discover_templates
+from optics_framework.helper.execute import (
+    discover_templates,
+    build_linked_list,
+    filter_test_cases,
+    load_suite_from_folder,
+)
 from optics_framework.helper.version import VERSION
 
 app = FastAPI(title="Optics Framework API", version="1.0")
@@ -48,12 +60,20 @@ MSG_SESSION_CREATION_FAILED = "Session creation failed:"
 MSG_EXECUTION_FAILED = "Execution failed:"
 MSG_SESSION_TERMINATION_FAILED = "Session termination failed:"
 MSG_INVALID_BASE64_IMAGE = "Invalid base64 image data:"
+MSG_DRY_RUN_NO_SUITE = (
+    "Provide a test suite to dry-run: either inline 'test_cases' (with 'modules') "
+    "or a 'project_path' the server can read."
+)
+MSG_DRY_RUN_FAILED = "Dry run failed:"
 
 # --- Execution / request ---
 MODE_KEYWORD = "keyword"
+MODE_DRY_RUN = "dry_run"
 RUNNER_TYPE_KEYWORD = "keyword"
+RUNNER_TYPE_TEST_RUNNER = "test_runner"
 STATUS_RUNNING = "RUNNING"
 STATUS_SUCCESS = "SUCCESS"
+STATUS_PASS = "PASS"  # nosec B105 - test status string, not a credential
 STATUS_FAIL = "FAIL"
 STATUS_HEARTBEAT = "HEARTBEAT"
 STATUS_ERROR = "ERROR"
@@ -295,6 +315,41 @@ class SessionConfig(BaseModel):
             KEY_TEXT_DETECTION: text,
             KEY_IMAGE_DETECTION: image,
         }
+
+
+class DryRunRequest(SessionConfig):
+    """
+    Request model for dry-running a test suite over HTTP.
+
+    Provide the suite in one of two ways:
+    - Inline: set `test_cases` (and usually `modules`, optionally `elements`).
+      Driver/source configuration is taken from this request (same fields as
+      session creation).
+    - Folder: set `project_path` to a directory the server can read; the suite
+      and its driver/source configuration are loaded from that folder's files
+      (test cases, modules, elements, api, config.yaml).
+
+    A dry run validates the suite without driving the device: it resolves
+    `${name}` parameters against the elements and checks that every keyword
+    exists. `include`/`exclude` filter which test cases run.
+    """
+
+    # test case name -> ordered list of module names
+    test_cases: Optional[Dict[str, List[str]]] = None
+    # module name -> ordered list of (keyword, params) steps
+    modules: Optional[Dict[str, List[Tuple[str, List[str]]]]] = None
+    # element name -> ordered fallback list of locator/representation values
+    elements: Optional[Dict[str, List[str]]] = None
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
+
+
+class DryRunResponse(BaseModel):
+    """Response model for a dry-run execution."""
+
+    execution_id: str
+    status: str = STATUS_PASS
+    test_cases: List[TestCaseResult] = []
 
 
 def _parse_api_data_to_model(api_data: Dict[str, Any]) -> ApiData:
@@ -1240,6 +1295,140 @@ async def event_generator(session: Session):
                 message=f"Event streaming failed: {e}"
             ).model_dump())}
             break
+
+class _DryRunSuite(NamedTuple):
+    """Loaded suite + config ready to create a session and dry-run."""
+
+    config: Config
+    execution_queue: TestCaseNode
+    modules: ModuleData
+    elements: ElementData
+    apis: ApiData
+    templates: Optional[TemplateData]
+
+
+def _config_from_request(request: DryRunRequest) -> Config:
+    """Build a Config from a DryRunRequest's inline source settings."""
+    normalized = request.normalize_sources()
+    return Config(
+        driver_sources=normalized.get(KEY_DRIVER_SOURCES, []),
+        elements_sources=normalized.get(KEY_ELEMENTS_SOURCES, []),
+        text_detection=normalized.get(KEY_TEXT_DETECTION, []),
+        image_detection=normalized.get(KEY_IMAGE_DETECTION, []),
+        project_path=request.project_path,
+        log_level=LOG_LEVEL_DEBUG,
+    )
+
+
+def _build_inline_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
+    """Build a dry-run suite from inline test_cases/modules/elements."""
+    config = _config_from_request(request)
+    modules = ModuleData(modules=request.modules or {})
+    elements = ElementData(elements=request.elements or {})
+    apis = _parse_api_data_to_model(request.api_data) if request.api_data else ApiData()
+    filtered = filter_test_cases(request.test_cases or {}, request.include, request.exclude)
+    execution_queue = build_linked_list(filtered, modules)
+    templates = discover_templates(request.project_path) if request.project_path else None
+    return _DryRunSuite(config, execution_queue, modules, elements, apis, templates)
+
+
+def _build_folder_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
+    """Build a dry-run suite by loading a server-side project folder."""
+    suite = load_suite_from_folder(
+        cast(str, request.project_path),
+        include=request.include,
+        exclude=request.exclude,
+    )
+    return _DryRunSuite(
+        suite.config,
+        suite.execution_queue,
+        suite.modules_data,
+        suite.elements_data,
+        suite.api_data,
+        suite.templates_data,
+    )
+
+
+def _build_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
+    """Resolve the suite source: inline test_cases win, else project_path."""
+    if request.test_cases:
+        return _build_inline_dry_run_suite(request)
+    if request.project_path:
+        return _build_folder_dry_run_suite(request)
+    raise ValueError(MSG_DRY_RUN_NO_SUITE)
+
+
+@app.post(
+    "/v1/dry-run",
+    response_model=DryRunResponse,
+    responses={
+        400: {"description": "Invalid request or no suite provided"},
+        500: {"description": "Session creation or dry run failed"},
+    },
+)
+async def dry_run(request: DryRunRequest):
+    """
+    Dry-run a test suite without driving the device.
+
+    Resolves `${name}` parameters and validates that every keyword exists,
+    returning per-test-case results. The suite is provided inline (test_cases /
+    modules / elements) or via a server-side `project_path` (see DryRunRequest).
+    The session is created, dry-run, and terminated within the request; it does
+    not connect to or launch the target app.
+    """
+    try:
+        suite = _build_dry_run_suite(request)
+    except OpticsError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    except (ValueError, ValidationError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Build the engine and id before creating the session so that nothing can
+    # raise between session creation and the try/finally that terminates it
+    # (which would orphan the session).
+    engine = ExecutionEngine(session_manager)
+    execution_id = str(uuid.uuid4())
+
+    try:
+        session_id = session_manager.create_session(
+            suite.config,
+            test_cases=suite.execution_queue,
+            modules=suite.modules,
+            elements=suite.elements,
+            apis=suite.apis,
+            templates=suite.templates,
+        )
+    except OpticsError as e:
+        internal_logger.error(f"Failed to create dry-run session: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    except Exception as e:
+        internal_logger.error(f"Failed to create dry-run session: {e}")
+        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_CREATION_FAILED} {e}") from e
+
+    try:
+        result = await engine.execute(ExecutionParams(
+            session_id=session_id,
+            mode=MODE_DRY_RUN,
+            runner_type=RUNNER_TYPE_TEST_RUNNER,
+            use_printer=False,
+        ))
+        test_cases = list(result.values()) if isinstance(result, dict) else []
+        all_passed = all(tc.status == STATUS_PASS for tc in test_cases)
+        return DryRunResponse(
+            execution_id=execution_id,
+            status=STATUS_PASS if all_passed else STATUS_FAIL,
+            test_cases=test_cases,
+        )
+    except OpticsError as e:
+        internal_logger.error(f"Dry run failed for session {session_id}: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    except Exception as e:
+        internal_logger.error(f"Dry run failed for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"{MSG_DRY_RUN_FAILED} {e}") from e
+    finally:
+        session_manager.terminate_session(session_id)
+        workspace_hashes.pop(session_id, None)
+
 
 @app.delete(
     "/v1/sessions/{session_id}/stop",
