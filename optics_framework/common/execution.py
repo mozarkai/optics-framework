@@ -98,7 +98,7 @@ class DryRunExecutor(Executor):
         if not self.test_case:
             raise OpticsError(Code.E0702, message="Test case is required")
 
-    async def execute(self, session: Session, runner: Runner) -> None:
+    async def execute(self, session: Session, runner: Runner) -> Any:
         status = EventStatus.FAIL
         message = "No test case to execute"
         event_manager = self.event_manager
@@ -127,6 +127,9 @@ class DryRunExecutor(Executor):
             message=message,
             extra={"session_id": session.session_id}
         ))
+        # Return the per-test-case results so callers (e.g. the REST dry-run
+        # endpoint) can surface them; CLI dry-run ignores the return value.
+        return dict(runner.result_printer.test_state)
 
 
 def _deserialize_single_param(param_value: str, param_type: Any) -> Any:
