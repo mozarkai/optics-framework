@@ -2,7 +2,7 @@ import os
 import asyncio
 from typing import Optional, Tuple, List, Dict, Set, Any
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from pathlib import Path
 from optics_framework.common.config_handler import Config
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
@@ -461,6 +461,131 @@ def build_linked_list(
         internal_logger.error(f"Error building linked list: {e}")
         raise OpticsError(Code.E0701, message=f"Failed to build linked list: {e}", details={"exception": str(e)})
 
+def load_test_cases_data(test_case_files: List[str]) -> Dict[str, Any]:
+    """Read and merge test-case files (CSV/YAML) into a {name: [module names]} dict."""
+    csv_reader, yaml_reader = CSVDataReader(), YAMLDataReader()
+    test_cases_data: Dict[str, Any] = {}
+    for file_path in test_case_files:
+        reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+        test_cases_data = merge_dicts(
+            test_cases_data, reader.read_test_cases(file_path), "test_cases"
+        )
+    return test_cases_data
+
+
+def load_modules_data(module_files: List[str]) -> ModuleData:
+    """Read module files (CSV/YAML) into ModuleData, warning on duplicate keys."""
+    csv_reader, yaml_reader = CSVDataReader(), YAMLDataReader()
+    modules_data = ModuleData()
+    for file_path in module_files:
+        reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+        for name, definition in reader.read_modules(file_path).items():
+            if modules_data.get_module_definition(name):
+                internal_logger.warning(
+                    f"Duplicate modules key '{name}' found. Overwriting."
+                )
+            modules_data.add_module_definition(name, definition)
+    return modules_data
+
+
+def _merge_element_values(elements_data: ElementData, name: str, values: Any) -> None:
+    """Add or merge element values (preserving order, avoiding duplicates)."""
+    if not isinstance(values, list):
+        values = [values]
+    existing = elements_data.get_element(name)
+    if existing:
+        for value in values:
+            if value not in existing:
+                elements_data.elements[name].append(value)
+    else:
+        elements_data.elements[name] = list(values)
+
+
+def load_elements_data(element_files: List[str]) -> ElementData:
+    """Read element files (CSV/YAML) into ElementData with fallback-list merging."""
+    csv_reader, yaml_reader = CSVDataReader(), YAMLDataReader()
+    elements_data = ElementData()
+    for file_path in element_files:
+        reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+        for name, values in reader.read_elements(file_path).items():
+            _merge_element_values(elements_data, name, values)
+    return elements_data
+
+
+def load_api_data_files(api_files: List[str]) -> ApiData:
+    """Read API definition files (YAML) into a single ApiData."""
+    yaml_reader = YAMLDataReader()
+    api_data = ApiData()
+    for file_path in api_files:
+        api_data = yaml_reader.read_api_data(file_path, existing_api_data=api_data)
+    return api_data
+
+
+class LoadedSuite(BaseModel):
+    """A project folder loaded into a ready-to-execute suite bundle."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    config: Config
+    execution_queue: TestCaseNode
+    modules_data: ModuleData
+    elements_data: ElementData
+    api_data: ApiData
+    templates_data: TemplateData
+
+
+def load_suite_from_folder(
+    folder_path: str,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> LoadedSuite:
+    """Discover and load a project folder into an executable suite bundle.
+
+    Mirrors :class:`BaseRunner`'s loading pipeline without creating a session,
+    so callers that only need the loaded suite (e.g. the REST dry-run endpoint)
+    can reuse folder discovery. ``include``/``exclude`` override the values from
+    the folder's ``config.yaml`` when provided.
+
+    Raises ``OpticsError(Code.E0501)`` if ``folder_path`` is not a directory or
+    is missing required files (so server callers get a clean 400 rather than a
+    process exit).
+    """
+    if not os.path.isdir(folder_path):
+        raise OpticsError(
+            Code.E0501,
+            message=f"Project path not found or not a directory: {folder_path}",
+        )
+
+    test_case_files, module_files, element_files, api_files, config_obj = find_files(
+        folder_path
+    )
+
+    test_cases_data = load_test_cases_data(test_case_files)
+    modules_data = load_modules_data(module_files)
+    elements_data = load_elements_data(element_files)
+    api_data = load_api_data_files(api_files)
+
+    config = config_obj if config_obj is not None else Config()
+    config.project_path = folder_path
+    templates_data = discover_templates(folder_path)
+
+    resolved_include = include if include is not None else config.get("include")
+    resolved_exclude = exclude if exclude is not None else config.get("exclude")
+    filtered_test_cases = filter_test_cases(
+        test_cases_data, resolved_include, resolved_exclude
+    )
+    execution_queue = build_linked_list(filtered_test_cases, modules_data)
+
+    return LoadedSuite(
+        config=config,
+        execution_queue=execution_queue,
+        modules_data=modules_data,
+        elements_data=elements_data,
+        api_data=api_data,
+        templates_data=templates_data,
+    )
+
+
 class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
 
@@ -501,7 +626,6 @@ class BaseRunner:
             config_obj,
         ) = find_files(self.folder_path)
 
-        self._init_data_readers()
         self._load_test_cases(test_case_files)
         self._load_modules(module_files)
         self._load_elements(element_files)
@@ -526,30 +650,11 @@ class BaseRunner:
         self._filter_and_build_execution_queue()
         self._setup_session()
 
-    def _init_data_readers(self):
-        self.csv_reader = CSVDataReader()
-        self.yaml_reader = YAMLDataReader()
-
     def _load_test_cases(self, test_case_files):
-        self.test_cases_data: Dict[str, Any] = {}
-        for file_path in test_case_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            test_cases = reader.read_test_cases(file_path)
-            self.test_cases_data = merge_dicts(
-                self.test_cases_data, test_cases, "test_cases"
-            )
+        self.test_cases_data: Dict[str, Any] = load_test_cases_data(test_case_files)
 
     def _load_modules(self, module_files):
-        self.modules_data: ModuleData = ModuleData()
-        for file_path in module_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            modules = reader.read_modules(file_path)
-            for name, definition in modules.items():
-                if self.modules_data.get_module_definition(name):
-                    internal_logger.warning(
-                        f"Duplicate modules key '{name}' found. Overwriting."
-                    )
-                self.modules_data.add_module_definition(name, definition)
+        self.modules_data: ModuleData = load_modules_data(module_files)
 
     def _load_elements(self, element_files):
         """
@@ -559,32 +664,10 @@ class BaseRunner:
         :type element_files: list
         :return: Populates self.elements_data with Dict[str, List[str]] for fallback support.
         """
-        self.elements_data: ElementData = ElementData()
-        for file_path in element_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            elements = reader.read_elements(file_path)
-            for name, values in elements.items():
-                self._add_or_merge_element(name, values)
-
-    def _add_or_merge_element(self, name, values):
-        """Helper to add or merge element values into self.elements_data."""
-        # values is a list of element IDs (for fallback)
-        if not isinstance(values, list):
-            values = [values]
-        if self.elements_data.get_element(name):
-            # Merge lists, avoid duplicates
-            existing = self.elements_data.get_element(name) or []
-            for v in values:
-                if v not in existing:
-                    self.elements_data.elements[name].append(v)
-        else:
-            self.elements_data.elements[name] = list(values)
+        self.elements_data: ElementData = load_elements_data(element_files)
 
     def _load_api_data(self, api_files):
-        self.api_data: ApiData = ApiData()
-        for file_path in api_files:
-            reader = self.yaml_reader  # API files are expected to be YAML
-            self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
+        self.api_data: ApiData = load_api_data_files(api_files)
 
     def _load_templates(self):
         """Load template data by discovering image files in the project directory."""
