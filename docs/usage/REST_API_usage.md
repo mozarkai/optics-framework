@@ -132,6 +132,60 @@ Information about an available keyword.
 }
 ```
 
+### DryRunRequest
+
+Request model for dry-running a test suite (extends `SessionConfig`).
+
+```json
+{
+  "driver_sources": [{"appium": {"enabled": true}}],
+  "test_cases": {"Login Test": ["Open App", "Sign In"]},
+  "modules": {
+    "Open App": [["Launch App", []]],
+    "Sign In": [["Press Element", ["${login_button}"]]]
+  },
+  "elements": {"login_button": ["xpath=//*[@text='Login']", "text=Login"]},
+  "include": ["Login Test"]
+}
+```
+
+**Fields** (in addition to the `SessionConfig` fields above):
+
+- `test_cases` (Optional[Dict[str, List[str]]]): Inline suite — maps each test case name to an ordered list of module names.
+- `modules` (Optional[Dict[str, List[[keyword, params]]]]): Maps each module name to an ordered list of `[keyword, [params...]]` steps.
+- `elements` (Optional[Dict[str, List[str]]]): Maps each element name to an ordered fallback list of locator/representation values.
+- `include` / `exclude` (Optional[List[str]]): Filter which test cases run (setup/teardown are always kept). Provide one, not both.
+
+!!! info "Two ways to provide the suite"
+    - **Inline**: set `test_cases` (and usually `modules`, optionally `elements`); driver/source config comes from this request.
+    - **Folder**: set `project_path` to a directory the server can read; the suite *and* its driver/source config are loaded from that folder's files (`config.yaml` included). Inline fields take precedence if both are supplied.
+
+### DryRunResponse
+
+Response model for a dry run.
+
+```json
+{
+  "execution_id": "uuid-string",
+  "status": "PASS",
+  "test_cases": [
+    {
+      "id": "Login Test",
+      "name": "Login Test",
+      "elapsed": "0.0",
+      "status": "PASS",
+      "modules": []
+    }
+  ]
+}
+```
+
+**Fields:**
+
+- `execution_id` (str): Unique ID for this dry run.
+- `status` (str): `"PASS"` if every test case passed dry-run validation, else `"FAIL"`.
+- `test_cases` (List[TestCaseResult]): Per-test-case results (name, status, elapsed, nested module/keyword results).
+
 ## :material-routes: Endpoints
 
 ### Health Check
@@ -174,6 +228,40 @@ curl -X POST "http://localhost:8000/v1/sessions/start" \
     - Automatically executes `launch_app` keyword after session creation
     - Returns both `session_id` and `driver_id` (the underlying driver session ID)
     - If `appium_url` or `appium_config` are provided, a deprecation warning is logged
+
+### Dry Run
+
+**POST** `/v1/dry-run`
+
+Dry-run a test suite without driving the device. Resolves `${name}` parameters against the suite's elements and validates that every keyword exists, returning per-test-case results. The session is created, dry-run, and terminated within the request — it never connects to or launches the target app.
+
+**Request Body:** `DryRunRequest`
+
+**Response:** `DryRunResponse`
+
+**Example (inline suite):**
+```bash
+curl -X POST "http://localhost:8000/v1/dry-run" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "driver_sources": [{"appium": {"enabled": true}}],
+    "test_cases": {"Login Test": ["Sign In"]},
+    "modules": {"Sign In": [["Press Element", ["${login_button}"]]]},
+    "elements": {"login_button": ["xpath=//*[@text=\"Login\"]", "text=Login"]}
+  }'
+```
+
+**Example (server-side project folder):**
+```bash
+curl -X POST "http://localhost:8000/v1/dry-run" \
+  -H "Content-Type: application/json" \
+  -d '{"project_path": "/path/to/project"}'
+```
+
+!!! info "Notes"
+    - A driver must be **configured** (enabled in the request for an inline suite, or in the folder's `config.yaml`), but it is never connected — session creation fails with an error if no driver is enabled.
+    - Use `include`/`exclude` to scope which test cases run; setup/teardown test cases are always kept.
+    - A missing keyword or an unresolved `${name}` marks that test case `FAIL`; the overall `status` is `FAIL` if any test case fails.
 
 ### Execute Keyword
 
