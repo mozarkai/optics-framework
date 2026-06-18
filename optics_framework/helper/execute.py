@@ -24,6 +24,7 @@ from optics_framework.common.models import (
     TestSuite,
     ModuleData,
     TemplateData,
+    LoadedSuite,
 )
 
 
@@ -50,12 +51,17 @@ def discover_templates(project_path: str) -> TemplateData:
     return template_data
 
 
-def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[Any], Config | None]:
+def find_files(folder_path: str, validate: bool = True) -> tuple[list[Any], list[Any], list[Any], list[Any], Config | None]:
     """
     Recursively search for CSV and YAML files under `folder_path` and categorize them by content.
 
     Returns lists of discovered test case, module, element and api files and an optional
     Config object (if a suitable YAML config is found).
+
+    :param validate: When True (default, CLI behaviour), missing test-case/module
+        files terminate via ``validate_required_files`` (``sys.exit``). Library/server
+        callers pass ``validate=False`` to instead get back the (possibly empty)
+        collections and decide how to surface the problem (e.g. a 400 response).
     """
     file_collections = _initialize_file_collections()
     config_obj: Config | None = None
@@ -72,7 +78,8 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
             elif lname.endswith(".csv"):
                 _process_csv_file(file_path, file_collections)
 
-    validate_required_files(file_collections["test_case"], file_collections["module"], folder_path)
+    if validate:
+        validate_required_files(file_collections["test_case"], file_collections["module"], folder_path)
     return (
         file_collections["test_case"],
         file_collections["module"],
@@ -459,6 +466,176 @@ def build_linked_list(
         internal_logger.error(f"Error building linked list: {e}")
         raise OpticsError(Code.E0701, message=f"Failed to build linked list: {e}", details={"exception": str(e)})
 
+
+# ---------------------------------------------------------------------------
+# Reusable, session-free suite loaders.
+#
+# These module-level functions are the single source of truth for turning files
+# (or already-parsed inline data) into the data structures the execution engine
+# consumes. ``BaseRunner`` delegates to them, and the REST dry-run endpoints
+# reuse them directly so the CLI and the API never drift.
+# ---------------------------------------------------------------------------
+
+def load_test_cases_data(test_case_files: List[str]) -> Dict[str, Any]:
+    """Read and merge test-case files (CSV/YAML) into a single dict."""
+    csv_reader = CSVDataReader()
+    yaml_reader = YAMLDataReader()
+    data: Dict[str, Any] = {}
+    for file_path in test_case_files:
+        reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+        test_cases = reader.read_test_cases(file_path)
+        data = merge_dicts(data, test_cases, "test_cases")
+    return data
+
+
+def load_modules_data(module_files: List[str]) -> ModuleData:
+    """Read module files (CSV/YAML) into a ``ModuleData``."""
+    csv_reader = CSVDataReader()
+    yaml_reader = YAMLDataReader()
+    modules_data = ModuleData()
+    for file_path in module_files:
+        reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+        modules = reader.read_modules(file_path)
+        for name, definition in modules.items():
+            if modules_data.get_module_definition(name):
+                internal_logger.warning(
+                    f"Duplicate modules key '{name}' found. Overwriting."
+                )
+            modules_data.add_module_definition(name, definition)
+    return modules_data
+
+
+def _merge_element_values(elements_data: ElementData, name: str, values: Any) -> None:
+    """Append element values for ``name`` into ``elements_data`` (dedup, ordered)."""
+    if not isinstance(values, list):
+        values = [values]
+    existing = elements_data.get_element(name)
+    if existing:
+        for v in values:
+            if v not in existing:
+                elements_data.elements[name].append(v)
+    else:
+        elements_data.elements[name] = list(values)
+
+
+def load_elements_data(element_files: List[str]) -> ElementData:
+    """Read element files (CSV/YAML) into an ``ElementData`` (fallback lists)."""
+    csv_reader = CSVDataReader()
+    yaml_reader = YAMLDataReader()
+    elements_data = ElementData()
+    for file_path in element_files:
+        reader = csv_reader if file_path.endswith(".csv") else yaml_reader
+        elements = reader.read_elements(file_path)
+        for name, values in elements.items():
+            _merge_element_values(elements_data, name, values)
+    return elements_data
+
+
+def load_api_data_files(api_files: List[str]) -> ApiData:
+    """Read API definition files (YAML) into an ``ApiData``."""
+    yaml_reader = YAMLDataReader()
+    api_data = ApiData()
+    for file_path in api_files:
+        api_data = yaml_reader.read_api_data(file_path, existing_api_data=api_data)
+    return api_data
+
+
+def load_suite_from_folder(
+    folder_path: str,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> LoadedSuite:
+    """Discover and load a project folder into a session-free ``LoadedSuite``.
+
+    Mirrors the discovery/loading ``BaseRunner`` performs, but creates no session
+    and touches no device. Raises ``OpticsError`` (E0501/E0701/E0702) on bad input.
+    """
+    test_case_files, module_files, element_files, api_files, config_obj = find_files(
+        folder_path, validate=False
+    )
+    config = config_obj if config_obj is not None else Config()
+    config.project_path = folder_path
+
+    test_cases_data = load_test_cases_data(test_case_files)
+    modules_data = load_modules_data(module_files)
+    elements_data = load_elements_data(element_files)
+    api_data = load_api_data_files(api_files)
+    templates_data = discover_templates(folder_path) if folder_path else TemplateData()
+
+    inc = include if include is not None else config.get("include")
+    exc = exclude if exclude is not None else config.get("exclude")
+    filtered = filter_test_cases(test_cases_data, inc, exc)
+    execution_queue = build_linked_list(filtered, modules_data) if filtered else None
+
+    return LoadedSuite(
+        config=config,
+        execution_queue=execution_queue,
+        modules_data=modules_data,
+        elements_data=elements_data,
+        api_data=api_data,
+        templates_data=templates_data,
+    )
+
+
+def build_suite_from_inline(
+    test_cases: Dict[str, Any],
+    modules: Dict[str, Any],
+    elements: Optional[Dict[str, Any]] = None,
+    api: Optional[Dict[str, Any]] = None,
+    config: Optional[Config] = None,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> LoadedSuite:
+    """Build a session-free ``LoadedSuite`` directly from already-parsed data.
+
+    No files touch disk. JSON shapes mirror the reader outputs:
+      - ``test_cases``: ``{test_case_name: [module_name, ...]}``
+      - ``modules``: ``{module_name: [[keyword, [param, ...]], ...]}``
+      - ``elements``: ``{element_name: [value, ...]}`` (or a bare value)
+      - ``api``: an ``ApiData``-shaped dict (optional)
+    """
+    cfg = config if config is not None else Config()
+
+    modules_data = ModuleData()
+    for name, steps in (modules or {}).items():
+        definition = [_normalize_inline_step(step) for step in steps]
+        modules_data.add_module_definition(name, definition)
+
+    elements_data = ElementData()
+    for name, values in (elements or {}).items():
+        _merge_element_values(elements_data, name, values)
+
+    api_data = ApiData.model_validate(api) if api else ApiData()
+
+    test_cases_data = dict(test_cases or {})
+    filtered = filter_test_cases(test_cases_data, include, exclude)
+    execution_queue = build_linked_list(filtered, modules_data) if filtered else None
+
+    return LoadedSuite(
+        config=cfg,
+        execution_queue=execution_queue,
+        modules_data=modules_data,
+        elements_data=elements_data,
+        api_data=api_data,
+        templates_data=TemplateData(),
+    )
+
+
+def _normalize_inline_step(step: Any) -> tuple[str, List[str]]:
+    """Normalize an inline module step into a ``(keyword, [params])`` tuple."""
+    if isinstance(step, (list, tuple)):
+        if not step:
+            raise OpticsError(Code.E0501, message="Empty module step in inline suite")
+        keyword = str(step[0])
+        params = list(step[1]) if len(step) > 1 and step[1] is not None else []
+        return keyword, [str(p) for p in params]
+    if isinstance(step, str):
+        return step, []
+    raise OpticsError(
+        Code.E0501, message=f"Invalid module step in inline suite: {step!r}"
+    )
+
+
 class RunnerArgs(BaseModel):
     """Arguments for BaseRunner initialization."""
 
@@ -499,7 +676,6 @@ class BaseRunner:
             config_obj,
         ) = find_files(self.folder_path)
 
-        self._init_data_readers()
         self._load_test_cases(test_case_files)
         self._load_modules(module_files)
         self._load_elements(element_files)
@@ -524,65 +700,18 @@ class BaseRunner:
         self._filter_and_build_execution_queue()
         self._setup_session()
 
-    def _init_data_readers(self):
-        self.csv_reader = CSVDataReader()
-        self.yaml_reader = YAMLDataReader()
-
     def _load_test_cases(self, test_case_files):
-        self.test_cases_data: Dict[str, Any] = {}
-        for file_path in test_case_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            test_cases = reader.read_test_cases(file_path)
-            self.test_cases_data = merge_dicts(
-                self.test_cases_data, test_cases, "test_cases"
-            )
+        self.test_cases_data: Dict[str, Any] = load_test_cases_data(test_case_files)
 
     def _load_modules(self, module_files):
-        self.modules_data: ModuleData = ModuleData()
-        for file_path in module_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            modules = reader.read_modules(file_path)
-            for name, definition in modules.items():
-                if self.modules_data.get_module_definition(name):
-                    internal_logger.warning(
-                        f"Duplicate modules key '{name}' found. Overwriting."
-                    )
-                self.modules_data.add_module_definition(name, definition)
+        self.modules_data: ModuleData = load_modules_data(module_files)
 
     def _load_elements(self, element_files):
-        """
-        Load element data from the provided element files (CSV or YAML).
-
-        :param element_files: List of element file paths.
-        :type element_files: list
-        :return: Populates self.elements_data with Dict[str, List[str]] for fallback support.
-        """
-        self.elements_data: ElementData = ElementData()
-        for file_path in element_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            elements = reader.read_elements(file_path)
-            for name, values in elements.items():
-                self._add_or_merge_element(name, values)
-
-    def _add_or_merge_element(self, name, values):
-        """Helper to add or merge element values into self.elements_data."""
-        # values is a list of element IDs (for fallback)
-        if not isinstance(values, list):
-            values = [values]
-        if self.elements_data.get_element(name):
-            # Merge lists, avoid duplicates
-            existing = self.elements_data.get_element(name) or []
-            for v in values:
-                if v not in existing:
-                    self.elements_data.elements[name].append(v)
-        else:
-            self.elements_data.elements[name] = list(values)
+        """Load element data (CSV/YAML) into ``self.elements_data`` (fallback lists)."""
+        self.elements_data: ElementData = load_elements_data(element_files)
 
     def _load_api_data(self, api_files):
-        self.api_data: ApiData = ApiData()
-        for file_path in api_files:
-            reader = self.yaml_reader  # API files are expected to be YAML
-            self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
+        self.api_data: ApiData = load_api_data_files(api_files)
 
     def _load_templates(self):
         """Load template data by discovering image files in the project directory."""
