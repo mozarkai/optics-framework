@@ -8,13 +8,18 @@ to the integration smoke described in docs/usage/REST_API_usage.md.
 import asyncio
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
 
 from optics_framework.common import expose_api
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.events import EventManager
 from optics_framework.common.execution import DryRunExecutor
+from optics_framework.common.models import TestCaseNode
+from optics_framework.common.runner.test_runnner import Runner
+from optics_framework.common.session_manager import Session
 # Aliased: importing the model under its real name makes pytest try to collect
 # it as a test class (it is named TestCaseResult).
 from optics_framework.common.runner.printers import TestCaseResult as TCResult
@@ -79,10 +84,15 @@ def _result(name: str, status: str) -> TCResult:
 def test_dry_run_executor_returns_test_state():
     """DryRunExecutor.execute returns a copy of runner.result_printer.test_state."""
     state = {"TC1": _result("TC1", "PASS")}
-    executor = DryRunExecutor(test_case=object(), event_manager=_FakeEventManager())
+    executor = DryRunExecutor(
+        test_case=cast(TestCaseNode, object()),
+        event_manager=cast(EventManager, _FakeEventManager()),
+    )
     runner = _FakeRunner(state)
 
-    result = asyncio.run(executor.execute(_FakeSession(), runner))
+    result = asyncio.run(
+        executor.execute(cast(Session, _FakeSession()), cast(Runner, runner))
+    )
 
     assert runner.dry_run_called is True
     assert result == state
