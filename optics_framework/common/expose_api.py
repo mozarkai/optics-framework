@@ -384,8 +384,11 @@ def _safe_project_path(project_path: str) -> str:
     Returns the resolved, validated absolute path.
     """
     root = os.path.realpath(os.environ.get(ENV_PROJECTS_ROOT) or os.getcwd())
-    resolved = os.path.realpath(project_path)
-    if resolved != root and not resolved.startswith(root + os.sep):
+    # Join against the root so relative paths resolve under it and absolute
+    # paths stay bounded; realpath collapses any '..'/symlinks. The commonpath
+    # containment check is the canonical guard against path traversal.
+    resolved = os.path.realpath(os.path.join(root, project_path))
+    if os.path.commonpath((root, resolved)) != root:
         raise OpticsError(
             Code.E0501,
             message=(
