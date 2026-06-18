@@ -95,6 +95,10 @@ KEY_ENABLED = "enabled"
 KEY_URL = "url"
 KEY_CAPABILITIES = "capabilities"
 
+# Client-supplied project paths are confined to this root (defaults to the
+# server's working directory) to prevent path traversal / arbitrary file access.
+ENV_PROJECTS_ROOT = "OPTICS_PROJECTS_ROOT"
+
 # --- Response / workspace keys ---
 KEY_SCREENSHOT = "screenshot"
 KEY_ELEMENTS = "elements"
@@ -368,6 +372,30 @@ def _parse_api_data_to_model(api_data: Dict[str, Any]) -> ApiData:
         raise ValueError(str(e)) from e
 
 
+def _safe_project_path(project_path: str) -> str:
+    """Resolve a client-supplied ``project_path`` and confine it to a safe root.
+
+    ``project_path`` arrives over HTTP, so passing it straight to the filesystem
+    (``os.walk``/``Path.rglob`` via ``find_files``/``discover_templates``) is a
+    path-traversal / arbitrary-read vector. The resolved real path must equal or
+    live under ``OPTICS_PROJECTS_ROOT`` (defaulting to the server's working
+    directory); anything else raises ``OpticsError(E0501)`` → HTTP 400.
+
+    Returns the resolved, validated absolute path.
+    """
+    root = os.path.realpath(os.environ.get(ENV_PROJECTS_ROOT) or os.getcwd())
+    resolved = os.path.realpath(project_path)
+    if resolved != root and not resolved.startswith(root + os.sep):
+        raise OpticsError(
+            Code.E0501,
+            message=(
+                f"project_path must be inside the allowed projects root ({root}); "
+                f"set {ENV_PROJECTS_ROOT} to change it or pass the suite inline"
+            ),
+        )
+    return resolved
+
+
 def _get_keyword_parameters(sig: inspect.Signature) -> List[KeywordParameter]:
     """Extract parameter info from a method signature."""
     params = []
@@ -481,16 +509,19 @@ async def create_session(config: SessionConfig):
         text_detection = normalized.get(KEY_TEXT_DETECTION, [])
         image_detection = normalized.get(KEY_IMAGE_DETECTION, [])
 
+        safe_project_path = (
+            _safe_project_path(config.project_path) if config.project_path else None
+        )
         session_config = Config(
             driver_sources=driver_sources,
             elements_sources=elements_sources,
             text_detection=text_detection,
             image_detection=image_detection,
-            project_path=config.project_path,
+            project_path=safe_project_path,
             log_level=LOG_LEVEL_DEBUG
         )
         templates = (
-            discover_templates(config.project_path) if config.project_path else None
+            discover_templates(safe_project_path) if safe_project_path else None
         )
         apis: Optional[ApiData] = None
         if config.api_data is not None:
@@ -1307,7 +1338,7 @@ class _DryRunSuite(NamedTuple):
     templates: Optional[TemplateData]
 
 
-def _config_from_request(request: DryRunRequest) -> Config:
+def _config_from_request(request: DryRunRequest, project_path: Optional[str]) -> Config:
     """Build a Config from a DryRunRequest's inline source settings."""
     normalized = request.normalize_sources()
     return Config(
@@ -1315,27 +1346,35 @@ def _config_from_request(request: DryRunRequest) -> Config:
         elements_sources=normalized.get(KEY_ELEMENTS_SOURCES, []),
         text_detection=normalized.get(KEY_TEXT_DETECTION, []),
         image_detection=normalized.get(KEY_IMAGE_DETECTION, []),
-        project_path=request.project_path,
+        project_path=project_path,
         log_level=LOG_LEVEL_DEBUG,
     )
 
 
-def _build_inline_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
-    """Build a dry-run suite from inline test_cases/modules/elements."""
-    config = _config_from_request(request)
+def _build_inline_dry_run_suite(
+    request: DryRunRequest, project_path: Optional[str]
+) -> _DryRunSuite:
+    """Build a dry-run suite from inline test_cases/modules/elements.
+
+    ``project_path`` (already validated by the caller) is optional here and only
+    used to discover template images for vision-based keywords.
+    """
+    config = _config_from_request(request, project_path)
     modules = ModuleData(modules=request.modules or {})
     elements = ElementData(elements=request.elements or {})
     apis = _parse_api_data_to_model(request.api_data) if request.api_data else ApiData()
     filtered = filter_test_cases(request.test_cases or {}, request.include, request.exclude)
     execution_queue = build_linked_list(filtered, modules)
-    templates = discover_templates(request.project_path) if request.project_path else None
+    templates = discover_templates(project_path) if project_path else None
     return _DryRunSuite(config, execution_queue, modules, elements, apis, templates)
 
 
-def _build_folder_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
-    """Build a dry-run suite by loading a server-side project folder."""
+def _build_folder_dry_run_suite(
+    request: DryRunRequest, project_path: str
+) -> _DryRunSuite:
+    """Build a dry-run suite by loading a (validated) server-side project folder."""
     suite = load_suite_from_folder(
-        cast(str, request.project_path),
+        project_path,
         include=request.include,
         exclude=request.exclude,
     )
@@ -1350,11 +1389,16 @@ def _build_folder_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
 
 
 def _build_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
-    """Resolve the suite source: inline test_cases win, else project_path."""
+    """Resolve the suite source: inline test_cases win, else project_path.
+
+    Any client-supplied project_path is confined to the allowed root before it
+    reaches the filesystem.
+    """
+    safe_path = _safe_project_path(request.project_path) if request.project_path else None
     if request.test_cases:
-        return _build_inline_dry_run_suite(request)
-    if request.project_path:
-        return _build_folder_dry_run_suite(request)
+        return _build_inline_dry_run_suite(request, safe_path)
+    if safe_path:
+        return _build_folder_dry_run_suite(request, safe_path)
     raise ValueError(MSG_DRY_RUN_NO_SUITE)
 
 

@@ -6,6 +6,7 @@ validation. End-to-end HTTP execution needs a configured driver, so it is left
 to the integration smoke described in docs/usage/REST_API_usage.md.
 """
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from optics_framework.common.expose_api import (
     DryRunResponse,
     _build_dry_run_suite,
     _build_inline_dry_run_suite,
+    _safe_project_path,
 )
 from optics_framework.helper.execute import load_suite_from_folder
 
@@ -96,7 +98,7 @@ def test_build_inline_dry_run_suite_builds_linked_list():
         elements={"btn": ["xpath=//a", "text=Login"]},
     )
 
-    suite = _build_inline_dry_run_suite(request)
+    suite = _build_inline_dry_run_suite(request, None)
 
     tc_node = suite.execution_queue
     assert tc_node.name == "TC1"
@@ -157,7 +159,7 @@ def test_build_inline_dry_run_suite_respects_include():
         include=["TC_Keep"],
     )
 
-    suite = _build_inline_dry_run_suite(request)
+    suite = _build_inline_dry_run_suite(request, None)
 
     names = []
     node = suite.execution_queue
@@ -244,6 +246,52 @@ def test_dry_run_endpoint_reports_fail_when_a_test_case_fails(monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "FAIL"
+
+
+# --- project_path confinement (path-traversal defense) ----------------------
+
+
+def test_safe_project_path_allows_within_root(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPTICS_PROJECTS_ROOT", str(tmp_path))
+    sub = tmp_path / "proj"
+    sub.mkdir()
+    assert _safe_project_path(str(sub)) == os.path.realpath(str(sub))
+    # the root itself is allowed
+    assert _safe_project_path(str(tmp_path)) == os.path.realpath(str(tmp_path))
+
+
+def test_safe_project_path_rejects_outside_root(monkeypatch, tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    (tmp_path / "secret").mkdir()
+    monkeypatch.setenv("OPTICS_PROJECTS_ROOT", str(allowed))
+    with pytest.raises(OpticsError):
+        _safe_project_path(str(tmp_path / "secret"))
+
+
+def test_safe_project_path_rejects_traversal(monkeypatch, tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    monkeypatch.setenv("OPTICS_PROJECTS_ROOT", str(allowed))
+    # ../ escapes resolve outside the root and are rejected
+    with pytest.raises(OpticsError):
+        _safe_project_path(str(allowed / ".." / "etc"))
+
+
+def test_safe_project_path_rejects_sibling_prefix(monkeypatch, tmp_path):
+    # "/root-evil" must not be accepted just because it starts with "/root"
+    allowed = tmp_path / "root"
+    allowed.mkdir()
+    (tmp_path / "root-evil").mkdir()
+    monkeypatch.setenv("OPTICS_PROJECTS_ROOT", str(allowed))
+    with pytest.raises(OpticsError):
+        _safe_project_path(str(tmp_path / "root-evil"))
+
+
+def test_dry_run_endpoint_project_path_outside_root_returns_400(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPTICS_PROJECTS_ROOT", str(tmp_path))
+    resp = client.post("/v1/dry-run", json={"project_path": "/etc"})
+    assert resp.status_code == 400
 
 
 def test_dry_run_endpoint_execution_error_maps_status_and_terminates(monkeypatch):

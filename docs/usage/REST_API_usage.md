@@ -263,6 +263,9 @@ curl -X POST "http://localhost:8000/v1/dry-run" \
     - Use `include`/`exclude` to scope which test cases run; setup/teardown test cases are always kept.
     - A missing keyword or an unresolved `${name}` marks that test case `FAIL`; the overall `status` is `FAIL` if any test case fails.
 
+!!! warning "`project_path` is confined to a root"
+    To prevent path traversal, a `project_path` is resolved and must live inside `OPTICS_PROJECTS_ROOT` (defaults to the server's working directory). A path outside that root returns **HTTP 400**. Set `OPTICS_PROJECTS_ROOT` to where your projects live, or pass the suite inline. The same guard applies to `project_path` in **Create Session**.
+
 ### Execute Keyword
 
 **POST** `/v1/sessions/{session_id}/action`
