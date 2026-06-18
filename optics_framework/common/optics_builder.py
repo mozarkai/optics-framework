@@ -111,9 +111,22 @@ class OpticsBuilder:
         self.config.llm_config = self.normalise_config(config)
         return self
 
+    def _require_driver(self) -> bool:
+        """Whether this builder's session demands a real driver/element source.
+
+        Device-less sessions (``Session(require_driver=False)``, used by dry-run
+        validation) get empty fallbacks instead of an ``E0501`` when no driver or
+        element source is configured.
+        """
+        return bool(getattr(self.session, "require_driver", True))
+
     # Instantiation methods
     def instantiate_driver(self) -> InstanceFallback[DriverInterface]:
         if not self.config.driver_config:
+            if not self._require_driver():
+                empty: InstanceFallback[DriverInterface] = InstanceFallback([])
+                self._instances["driver"] = empty
+                return empty
             raise OpticsError(Code.E0501, message="Driver configuration must be set")
         normalized_config = self.normalise_config(self.config.driver_config)
         driver: InstanceFallback[DriverInterface] = DeviceFactory.get_driver(
@@ -125,6 +138,10 @@ class OpticsBuilder:
 
     def instantiate_element_source(self) -> InstanceFallback[ElementSourceInterface]:
         if not self.config.element_source_config:
+            if not self._require_driver():
+                empty: InstanceFallback[ElementSourceInterface] = InstanceFallback([])
+                self._instances["element_source"] = empty
+                return empty
             raise OpticsError(Code.E0501, message="Element source configuration must be set")
         driver: InstanceFallback[DriverInterface] = self.get_driver()
         # Normalize config before passing to factory
