@@ -191,6 +191,8 @@ def _patch_engine(monkeypatch, *, returns=None, raises=None):
 
     class _FakeEngine:
         def __init__(self, *args, **kwargs):
+            # Intentionally empty: the fake ignores ExecutionEngine's
+            # constructor args; only execute() is exercised.
             pass
 
         async def execute(self, params):
