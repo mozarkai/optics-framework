@@ -1403,7 +1403,7 @@ def _build_dry_run_suite(request: DryRunRequest) -> _DryRunSuite:
 
 
 @app.post(
-    "/v1/dry-run",
+    "/v1/dry_run",
     response_model=DryRunResponse,
     responses={
         400: {"description": "Invalid request or no suite provided"},

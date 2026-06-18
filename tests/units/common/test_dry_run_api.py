@@ -205,7 +205,7 @@ def _patch_session(monkeypatch, terminated, session_id="sess-x"):
 
 def test_dry_run_endpoint_no_suite_returns_400():
     resp = client.post(
-        "/v1/dry-run", json={"driver_sources": [{"appium": {"enabled": True}}]}
+        "/v1/dry_run", json={"driver_sources": [{"appium": {"enabled": True}}]}
     )
     assert resp.status_code == 400
     assert "test suite" in resp.text
@@ -213,7 +213,7 @@ def test_dry_run_endpoint_no_suite_returns_400():
 
 def test_dry_run_endpoint_bad_project_path_returns_400():
     """A nonexistent project_path is a client error, never a process exit."""
-    resp = client.post("/v1/dry-run", json={"project_path": "/no/such/optics/dir"})
+    resp = client.post("/v1/dry_run", json={"project_path": "/no/such/optics/dir"})
     assert resp.status_code == 400
 
 
@@ -225,7 +225,7 @@ def test_dry_run_endpoint_success_and_teardown(monkeypatch):
         returns={"TC1": _result("TC1", "PASS"), "TC2": _result("TC2", "PASS")},
     )
 
-    resp = client.post("/v1/dry-run", json=_INLINE_SUITE)
+    resp = client.post("/v1/dry_run", json=_INLINE_SUITE)
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -242,7 +242,7 @@ def test_dry_run_endpoint_reports_fail_when_a_test_case_fails(monkeypatch):
         returns={"TC1": _result("TC1", "PASS"), "TC2": _result("TC2", "FAIL")},
     )
 
-    resp = client.post("/v1/dry-run", json=_INLINE_SUITE)
+    resp = client.post("/v1/dry_run", json=_INLINE_SUITE)
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "FAIL"
@@ -290,7 +290,7 @@ def test_safe_project_path_rejects_sibling_prefix(monkeypatch, tmp_path):
 
 def test_dry_run_endpoint_project_path_outside_root_returns_400(monkeypatch, tmp_path):
     monkeypatch.setenv("OPTICS_PROJECTS_ROOT", str(tmp_path))
-    resp = client.post("/v1/dry-run", json={"project_path": "/etc"})
+    resp = client.post("/v1/dry_run", json={"project_path": "/etc"})
     assert resp.status_code == 400
 
 
@@ -300,7 +300,7 @@ def test_dry_run_endpoint_execution_error_maps_status_and_terminates(monkeypatch
     error = OpticsError(Code.E0701, message="boom")
     _patch_engine(monkeypatch, raises=error)
 
-    resp = client.post("/v1/dry-run", json=_INLINE_SUITE)
+    resp = client.post("/v1/dry_run", json=_INLINE_SUITE)
 
     assert resp.status_code == error.status_code
     assert terminated == ["sess-err"]  # session torn down even on failure

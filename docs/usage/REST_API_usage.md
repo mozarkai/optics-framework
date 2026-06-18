@@ -231,7 +231,7 @@ curl -X POST "http://localhost:8000/v1/sessions/start" \
 
 ### Dry Run
 
-**POST** `/v1/dry-run`
+**POST** `/v1/dry_run`
 
 Dry-run a test suite without driving the device. Resolves `${name}` parameters against the suite's elements and validates that every keyword exists, returning per-test-case results. The session is created, dry-run, and terminated within the request — it never connects to or launches the target app.
 
@@ -241,7 +241,7 @@ Dry-run a test suite without driving the device. Resolves `${name}` parameters a
 
 **Example (inline suite):**
 ```bash
-curl -X POST "http://localhost:8000/v1/dry-run" \
+curl -X POST "http://localhost:8000/v1/dry_run" \
   -H "Content-Type: application/json" \
   -d '{
     "driver_sources": [{"appium": {"enabled": true}}],
@@ -253,7 +253,7 @@ curl -X POST "http://localhost:8000/v1/dry-run" \
 
 **Example (server-side project folder):**
 ```bash
-curl -X POST "http://localhost:8000/v1/dry-run" \
+curl -X POST "http://localhost:8000/v1/dry_run" \
   -H "Content-Type: application/json" \
   -d '{"project_path": "/path/to/project"}'
 ```
