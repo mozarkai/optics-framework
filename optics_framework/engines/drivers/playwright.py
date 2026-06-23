@@ -23,6 +23,8 @@ class Playwright(DriverInterface):
         self._browser = None
         self._context = None
         self.page: Optional[Page] = None
+        self.navigation_timeout_ms = int(self.config.get("navigation_timeout_ms", 60000))
+        self.scroll_multiplier = int(self.config.get("scroll_multiplier", 1))
 
         internal_logger.info("[Playwright] Driver initialized")
 
@@ -40,12 +42,15 @@ class Playwright(DriverInterface):
             self._pw = await async_playwright().start()
 
             browser = self.config.get("browser", "chromium")
-            headless = self.config.get("headless", False)
+            headless = self.config.get("headless", True)
             viewport = self.config.get("viewport", {"width": 1280, "height": 800})
 
             self._browser = await getattr(self._pw, browser).launch(headless=headless)
             self._context = await self._browser.new_context(viewport=viewport)
             self.page = await self._context.new_page()
+            timeout_ms = self.navigation_timeout_ms
+            self.page.set_default_navigation_timeout(timeout_ms)
+            self.page.set_default_timeout(timeout_ms)
 
             if app_identifier:
                 internal_logger.debug("[Playwright] Navigating to %s", app_identifier)
@@ -81,6 +86,7 @@ class Playwright(DriverInterface):
             # Create a new page (tab) in the existing context
             internal_logger.debug("[Playwright] Creating new tab for %s", app_name)
             self.page = await self._context.new_page()
+
 
             # Navigate to the new URL
             if app_name:
@@ -146,12 +152,19 @@ class Playwright(DriverInterface):
         if not isinstance(element, str):
             return element
 
-        # Check if it's an XPath selector
+        # Detect selector type
         element_type = utils.determine_element_type(element)
+
+        # Normalize XPath selectors
         if element_type == "XPath":
-            # If it doesn't already have the xpath= prefix, add it
             if not element.lower().startswith("xpath="):
                 return f"xpath={element}"
+            return element
+
+        # Convert only plain text into Playwright text selectors
+        if element_type == "Text":
+            if not element.lower().startswith("text="):
+                return f"text={element}"
 
         return element
 
@@ -214,6 +227,14 @@ class Playwright(DriverInterface):
         # Use mapped key or the keycode string directly (Playwright accepts key names)
         key = key_map.get(keycode, keycode)
         run_async(self.page.keyboard.press(key))
+        # wait for page load after key press
+        try:
+            run_async(self.page.wait_for_load_state("networkidle", timeout=10000))
+        except Exception:
+            run_async(self.page.wait_for_timeout(4000))
+        # stabilize search navigation
+        if keycode.lower() == "enter":
+            run_async(self.page.wait_for_timeout(3000))
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
@@ -308,9 +329,10 @@ class Playwright(DriverInterface):
 
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
-        for _ in range(2):
-            run_async(self.page.mouse.wheel(0, pixels if direction == "down" else -pixels))
-            run_async(self.page.wait_for_timeout(120))
+        scroll_multiplier = self.scroll_multiplier
+        delta = (pixels if direction == "down" else -pixels) * scroll_multiplier
+        run_async(self.page.mouse.wheel(0, delta))
+        run_async(self.page.wait_for_timeout(200))
 
 
     # =====================================================
