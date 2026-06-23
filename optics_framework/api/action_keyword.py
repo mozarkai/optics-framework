@@ -543,6 +543,9 @@ class ActionKeyword:
             except OpticsError as e:
                 if e.code != Code.E0201:
                     raise
+                # Don't hide configuration/strategy issues; scrolling won't fix these.
+                if "No strategies found" in e.message or "No valid strategies found" in e.message:
+                    raise
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
 
