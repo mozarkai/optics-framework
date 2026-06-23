@@ -916,12 +916,12 @@ class Appium(DriverInterface):
         end_y: int
         if direction == "up":
             start_x = width // 2
-            start_y = int(height * 0.8)
-            end_y = int(height * 0.2)
-        elif direction == "down":
-            start_x = width // 2
             start_y = int(height * 0.2)
             end_y = int(height * 0.8)
+        elif direction == "down":
+            start_x = width // 2
+            start_y = int(height * 0.8)
+            end_y = int(height * 0.2)
         else:
             internal_logger.error(f"Scroll direction '{direction}' not supported.")
             return
