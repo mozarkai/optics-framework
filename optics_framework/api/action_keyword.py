@@ -479,10 +479,14 @@ class ActionKeyword:
         self._save_screenshot_if_available(screenshot_np, "swipe_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
-            result = self.verifier.assert_presence(
-                element, timeout_str="3", rule="any")
-            if result:
-                break
+            try:
+                result = self.verifier.assert_presence(
+                    element, timeout_str="3", rule="any")
+                if result:
+                    break
+            except OpticsError as e:
+                if e.code != Code.E0201:
+                    raise
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
             time.sleep(3)
 
