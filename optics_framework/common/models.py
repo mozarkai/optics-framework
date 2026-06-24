@@ -303,3 +303,18 @@ class TemplateData(BaseModel):
 
     def get_template_path(self, name: str) -> Optional[str]:
         return self.templates.get(name)
+
+
+class ErrorDefinitions(BaseModel):
+    """Stores user-defined error strings for end-of-run screen detection.
+
+    ``match_string`` is matched against on-screen text as a case-insensitive
+    substring (not a regex). See ``error_detection.detect_errors_in_text``.
+    """
+    errors: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+
+    def add_error(self, code: str, match_string: str, description: str = "", severity: str = ""):
+        self.errors[code] = {"match_string": match_string, "description": description, "severity": severity}
+
+    def get_all(self) -> Dict[str, Dict[str, str]]:
+        return self.errors
