@@ -60,7 +60,7 @@ class DataReader(ABC):
         :return: True if the parameter is in key=value format, False otherwise.
         :rtype: bool
         """
-        return "=" in param and not (param.startswith("/") or param.startswith("//") or param.startswith("("))
+        return "=" in param and not param.startswith(("/", "//", "("))
 
     @abstractmethod
     def read_test_cases(self, file_path: str) -> dict:
@@ -202,6 +202,25 @@ class CSVDataReader(DataReader):
                     elements[element_name] = []
                 elements[element_name].extend(element_ids)
         return elements
+
+    def read_error_definitions(self, file_path: str) -> dict:
+        """Read error_code, match_string, description, severity columns from a CSV file.
+
+        ``match_string`` is matched as a case-insensitive substring against
+        on-screen text (not a regex).
+        """
+        result = {}
+        rows = self.read_file(file_path)
+        for row in rows:
+            code = row.get("error_code", "").strip()
+            match_string = row.get("match_string", "").strip()
+            if code and match_string:
+                result[code] = {
+                    "match_string": match_string,
+                    "description": row.get("description", "").strip(),
+                    "severity": row.get("severity", "").strip(),
+                }
+        return result
 
 
 class YAMLDataReader(DataReader):
