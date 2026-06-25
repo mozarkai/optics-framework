@@ -1,207 +1,278 @@
-from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, ListView, ListItem, Label, Input, Button
-from textual.containers import Vertical, Horizontal, Container
-from textual.screen import ModalScreen
-from optics_framework.common.config_handler import ConfigHandler, Config, DependencyConfig
 import ast
 
+from prompt_toolkit.application import Application, get_app
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.document import Document
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import (
+    ConditionalContainer,
+    Float,
+    FloatContainer,
+    HSplit,
+    Window,
+)
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.styles import Style
+from prompt_toolkit.widgets import Frame
 
-class QuitConfirmScreen(ModalScreen[bool]):
-    """Modal screen to confirm quitting without saving."""
+from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig
 
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label("Quit without saving? (y/n)", classes="modal-title"),
-            Horizontal(
-                Button("Yes", variant="error", id="yes"),
-                Button("No", variant="primary", id="no"),
-                classes="modal-buttons"
-            ),
-            classes="modal"
-        )
+_STYLE = Style.from_dict(
+    {
+        "header": "bold #ffffff",
+        "selected": "reverse",
+        "meta": "#999999",
+        "sep": "#444444",
+        "status": "#888888",
+        "frame.border": "#5588cc",
+        "error": "fg:#ff5555 bold",
+        "confirm": "fg:#ffcc00 bold",
+    }
+)
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "yes")
-
-
-class ErrorScreen(ModalScreen[None]):
-    """Modal screen to display error messages."""
-
-    def __init__(self, message: str):
-        super().__init__()
-        self.message = message
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label(self.message, classes="error-message"),
-            Button("OK", variant="primary", id="ok"),
-            classes="modal"
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "ok":
-            self.dismiss(None)
+_STATUS_HINT = "↑↓ navigate · Space edit · s save · q quit"
 
 
-class LoggerTUI(App):
-    """A Textual-based UI for editing logger configuration."""
-    CSS = """
-    Screen {
-        align: center middle;
-        background: $background;
-    }
-    Header {
-        background: $primary;
-    }
-    Footer {
-        background: $secondary;
-    }
-    ListView {
-        height: 80%;
-        width: 80%;
-        border: solid $accent;
-        padding: 1;
-    }
-    ListItem {
-        padding: 0 1;
-    }
-    ListItem.--highlight {
-        background: $primary-darken-1;
-    }
-    .option-label {
-        color: $text;
-    }
-    .editing {
-        height: 3;
-        margin: 1 0;
-    }
-    .modal {
-        width: 40;
-        height: 10;
-        background: $panel;
-        border: solid $accent;
-        padding: 1;
-    }
-    .modal-title {
-        color: $warning;
-        text-align: center;
-    }
-    .modal-buttons {
-        margin-top: 1;
-        align: center middle;
-    }
-    .error-message {
-        color: $error;
-        text-align: center;
-    }
-    """
-
-    BINDINGS = [
-        ("up", "move_up", "Move up"),
-        ("down", "move_down", "Move down"),
-        ("space", "edit", "Edit value"),
-        ("s", "save", "Save config"),
-        ("q", "quit", "Quit"),
-    ]
-
-    def __init__(self):
-        super().__init__()
+class ConfigTUI:
+    def __init__(self) -> None:
         self.config_handler = ConfigHandler(config=Config())
         self.config_handler.load()
-        self.options = list(self.config_handler.config.model_fields.keys())
-        self.selected_index = 0  # Changed to plain int
+        self.options: list[str] = list(self.config_handler.config.model_fields.keys())
+        self.selected_index: int = 0
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield ListView(*[ListItem(Label(f"{key}: {self.get_value(key)}", classes="option-label"))
-                       for key in self.options], id="config-list")
-        yield Footer()
+        self.editing: bool = False
+        self.confirming_quit: bool = False
+        self.error_message: str = ""
 
-    def on_mount(self) -> None:
-        self.query_one("#config-list").focus()
+        self.edit_buffer = Buffer(multiline=False)
+        self.app = self._build_application()
 
-    def get_value(self, key: str) -> str:
-        """Fetch and format the current config value."""
-        value = getattr(self.config_handler.config, key)
+    def _get_value(self, key: str) -> str:
         if key in self.config_handler.DEPENDENCY_KEYS:
             return str(self.config_handler.get(key))
-        return str(value)
+        return str(getattr(self.config_handler.config, key))
 
-    def action_move_up(self) -> None:
-        self.selected_index = max(0, self.selected_index - 1)
-        self.refresh_list()
+    def _is_bool(self, key: str) -> bool:
+        return isinstance(getattr(self.config_handler.config, key), bool)
 
-    def action_move_down(self) -> None:
-        self.selected_index = min(
-            len(self.options) - 1, self.selected_index + 1)
-        self.refresh_list()
+    def _render_list(self) -> StyleAndTextTuples:
+        fragments: StyleAndTextTuples = []
+        for i, key in enumerate(self.options):
+            text = f"  {key}: {self._get_value(key)}\n"
+            style = "class:selected" if i == self.selected_index else ""
+            fragments.append((style, text))
+        return fragments
 
-    def refresh_list(self) -> None:
-        list_view = self.query_one("#config-list", ListView)
-        for idx, key in enumerate(self.options):
-            list_view.children[idx].query_one(Label).update(
-                f"{key}: {self.get_value(key)}")
-        list_view.index = self.selected_index
+    def _render_status(self) -> StyleAndTextTuples:
+        return [("class:status", _STATUS_HINT)]
 
-    async def action_edit(self) -> None:
+    def _render_confirm(self) -> StyleAndTextTuples:
+        return [
+            ("class:confirm", "  Quit without saving? "),
+            ("", "  y"),
+            ("class:meta", " yes  "),
+            ("", "n"),
+            ("class:meta", " no  "),
+        ]
+
+    def _render_error(self) -> StyleAndTextTuples:
+        return [
+            ("class:error", f"  Error: {self.error_message}  "),
+            ("class:meta", "  Press Enter or Esc to dismiss  "),
+        ]
+
+    def _move(self, delta: int) -> None:
+        self.selected_index = max(0, min(len(self.options) - 1, self.selected_index + delta))
+
+    def _start_edit(self) -> None:
         key = self.options[self.selected_index]
-        current_value = getattr(self.config_handler.config, key)
+        if self._is_bool(key):
+            current = getattr(self.config_handler.config, key)
+            setattr(self.config_handler.config, key, not current)
+            get_app().invalidate()
+            return
+        self.edit_buffer.set_document(
+            Document(text=self._get_value(key)),
+            bypass_readonly=True,
+        )
+        self.editing = True
+        get_app().layout.focus(self.edit_buffer)
 
-        if isinstance(current_value, bool):
-            setattr(self.config_handler.config, key, not current_value)
-            self.refresh_list()
-        else:
-            input_widget = Input(placeholder=str(
-                current_value), id="edit-input")
-            confirm_button = Button(
-                "Confirm", variant="success", id="confirm-edit")
-            self.mount(
-                Container(input_widget, confirm_button, classes="editing"))
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.handle_edit_confirm(event.value)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "confirm-edit":
-            input_value = self.query_one("#edit-input", Input).value
-            self.handle_edit_confirm(input_value)
-
-    def handle_edit_confirm(self, new_value: str) -> None:
+    def _confirm_edit(self) -> None:
         key = self.options[self.selected_index]
+        new_value = self.edit_buffer.text
         current_value = getattr(self.config_handler.config, key)
-
         try:
             if isinstance(current_value, list) and key in self.config_handler.DEPENDENCY_KEYS:
                 parsed = ast.literal_eval(new_value)
                 if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
                     raise ValueError("Must be a list of strings")
-                setattr(self.config_handler.config, key,
-                        [{"name": DependencyConfig(enabled=True)} for _ in parsed])
+                setattr(
+                    self.config_handler.config,
+                    key,
+                    [{"name": DependencyConfig(enabled=True)} for _ in parsed],
+                )
             else:
-                parsed = type(current_value)(new_value)
-                setattr(self.config_handler.config, key, parsed)
-            self.refresh_list()
-        except Exception as e:
-            self.push_screen(ErrorScreen(
-                f"Invalid input: {e}"), lambda _: None)
-        finally:
-            self.query_one(".editing").remove()
+                setattr(self.config_handler.config, key, type(current_value)(new_value))
+        except Exception as exc:
+            self.error_message = str(exc)
+        self.editing = False
 
-    def action_save(self) -> None:
+    def _cancel_edit(self) -> None:
+        self.editing = False
+
+    def _save(self) -> None:
         try:
             self.config_handler.save_config()
-            self.exit(0)
-        except Exception as e:
-            self.push_screen(ErrorScreen(
-                f"Error saving config: {e}"), lambda _: None)
+            get_app().exit()
+        except Exception as exc:
+            self.error_message = str(exc)
 
-    async def action_quit(self) -> None:
-        self.push_screen(QuitConfirmScreen(), self.handle_quit)
+    def _build_application(self) -> Application:
+        list_window = Window(
+            content=FormattedTextControl(text=self._render_list, focusable=False),
+        )
 
-    def handle_quit(self, confirmed: bool | None) -> None:
-        if confirmed is True:
-            self.exit(0)
+        header_window = Window(
+            content=FormattedTextControl([("class:header", "  Optics Config\n")]),
+            height=1,
+        )
+
+        status_window = Window(
+            content=FormattedTextControl(self._render_status),
+            height=1,
+        )
+
+        body = HSplit(
+            [
+                header_window,
+                Window(height=1, char="─", style="class:sep"),
+                list_window,
+                Window(height=1, char="─", style="class:sep"),
+                status_window,
+            ]
+        )
+
+        edit_float = Float(
+            content=ConditionalContainer(
+                content=Frame(
+                    body=Window(
+                        content=BufferControl(buffer=self.edit_buffer),
+                        height=1,
+                        width=Dimension(min=40, preferred=60),
+                    ),
+                    title=lambda: f"Edit: {self.options[self.selected_index]}",
+                ),
+                filter=Condition(lambda: self.editing),
+            ),
+        )
+
+        confirm_float = Float(
+            content=ConditionalContainer(
+                content=Frame(
+                    body=Window(
+                        content=FormattedTextControl(self._render_confirm, focusable=False),
+                        height=1,
+                        width=Dimension(min=40, preferred=50),
+                    ),
+                    title="Quit",
+                ),
+                filter=Condition(lambda: self.confirming_quit),
+            ),
+        )
+
+        error_float = Float(
+            content=ConditionalContainer(
+                content=Frame(
+                    body=Window(
+                        content=FormattedTextControl(self._render_error, focusable=False),
+                        height=1,
+                        width=Dimension(min=50, preferred=70),
+                    ),
+                    title="Error",
+                ),
+                filter=Condition(lambda: bool(self.error_message)),
+            ),
+        )
+
+        root = FloatContainer(
+            content=body,
+            floats=[edit_float, confirm_float, error_float],
+        )
+
+        return Application(
+            layout=Layout(root),
+            key_bindings=self._build_key_bindings(),
+            style=_STYLE,
+            full_screen=True,
+            mouse_support=False,
+        )
+
+    def _build_key_bindings(self) -> KeyBindings:
+        kb = KeyBindings()
+
+        not_editing = Condition(lambda: not self.editing)
+        not_confirming = Condition(lambda: not self.confirming_quit)
+        no_error = Condition(lambda: not self.error_message)
+        is_editing = Condition(lambda: self.editing)
+        is_confirming = Condition(lambda: self.confirming_quit)
+        has_error = Condition(lambda: bool(self.error_message))
+
+        idle = not_editing & not_confirming & no_error
+
+        @kb.add("up", filter=idle)
+        def _up(_event):
+            self._move(-1)
+
+        @kb.add("down", filter=idle)
+        def _down(_event):
+            self._move(1)
+
+        @kb.add("space", filter=idle)
+        def _edit(_event):
+            self._start_edit()
+
+        @kb.add("s", filter=idle)
+        def _save(_event):
+            self._save()
+
+        @kb.add("q", filter=idle)
+        def _quit(_event):
+            self.confirming_quit = True
+
+        @kb.add("enter", filter=is_editing)
+        def _confirm(_event):
+            self._confirm_edit()
+
+        @kb.add("escape", filter=is_editing)
+        def _cancel(_event):
+            self._cancel_edit()
+
+        @kb.add("y", filter=is_confirming)
+        @kb.add("enter", filter=is_confirming)
+        def _confirm_quit(_event):
+            get_app().exit()
+
+        @kb.add("n", filter=is_confirming)
+        @kb.add("escape", filter=is_confirming)
+        def _deny_quit(_event):
+            self.confirming_quit = False
+
+        @kb.add("enter", filter=has_error)
+        @kb.add("escape", filter=has_error)
+        def _dismiss_error(_event):
+            self.error_message = ""
+
+        @kb.add("c-c")
+        def _force_quit(_event):
+            get_app().exit()
+
+        return kb
 
 
-def main():
-    LoggerTUI().run()
+def main() -> None:
+    ConfigTUI().app.run()
