@@ -113,12 +113,21 @@ class TestRunner(Runner):
         self._initialize_test_state()
 
     def _initialize_test_state(self) -> None:
+        def _safe_resolve(param):
+            # Used only to build the display name. An unresolved ${var} must not
+            # crash runner construction — it is surfaced later as a keyword
+            # failure (during the run / dry run), not at init time.
+            try:
+                return self.resolve_param(param)
+            except OpticsError:
+                return param
+
         def _init_keywords(module_node):
             keywords = []
             current_keyword = module_node.keywords_head
             while current_keyword:
                 resolved_params = [
-                    self.resolve_param(param) for param in current_keyword.params
+                    _safe_resolve(param) for param in current_keyword.params
                 ]
                 resolved_name = (
                     f"{current_keyword.name} ({', '.join(str(p) for p in resolved_params)})"
@@ -683,8 +692,10 @@ class TestRunner(Runner):
                 func_name = "_".join(keyword_current.name.split()).lower()
                 if func_name not in self.keyword_map:
                     raise ValueError("Keyword not found")
-            except ValueError as e:
+            except (ValueError, OpticsError) as e:
                 keyword_current.state = State.COMPLETED_FAILED
+                if isinstance(keyword_result, KeywordResult):
+                    keyword_result.reason = str(e)
                 await self._send_event(
                     "keyword",
                     keyword_current,

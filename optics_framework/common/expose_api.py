@@ -14,13 +14,13 @@ import warnings
 import hashlib
 from itertools import product
 from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, Body, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData
+from optics_framework.common.models import ApiData, LoadedSuite
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
@@ -29,9 +29,15 @@ from optics_framework.common.logging_config import internal_logger, reconfigure_
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.common.runner.printers import TestCaseResult
 from optics_framework.common.utils import _is_list_type
+from optics_framework.common import dry_run as dry_run_helpers
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.helper.execute import discover_templates
+from optics_framework.helper.execute import (
+    discover_templates,
+    build_suite_from_inline,
+    load_suite_from_folder,
+)
 from optics_framework.helper.version import VERSION
 
 app = FastAPI(title="Optics Framework API", version="1.0")
@@ -198,6 +204,35 @@ class KeywordInfo(BaseModel):
     keyword_slug: str
     description: str
     parameters: List[KeywordParameter]
+
+
+class DryRunRequest(BaseModel):
+    """Inline suite for ``POST /v1/dry_run``.
+
+    Shapes mirror the parsed reader outputs:
+      - ``test_cases``: ``{test_case_name: [module_name, ...]}``
+      - ``modules``: ``{module_name: [[keyword, [param, ...]], ...]}``
+      - ``elements``: ``{element_name: [value, ...]}`` (optional)
+      - ``api``: an ``ApiData``-shaped dict (optional)
+
+    Drivers are never used in a dry run, so any driver config is ignored — the
+    session is built device-less.
+    """
+
+    test_cases: Dict[str, Any]
+    modules: Dict[str, Any]
+    elements: Optional[Dict[str, Any]] = None
+    api: Optional[Dict[str, Any]] = None
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
+
+
+class DryRunResponse(BaseModel):
+    """Result of a dry run: overall status plus per-test-case detail."""
+
+    execution_id: str
+    status: str  # "PASS" | "FAIL"
+    test_cases: List[TestCaseResult]
 
 
 def _humanize_keyword(name: str) -> str:
@@ -1271,3 +1306,200 @@ async def delete_session(session_id: str):
     workspace_hashes.pop(session_id, None)
     internal_logger.info(f"Terminated session: {session_id}")
     return TerminationResponse()
+
+
+# ---------------------------------------------------------------------------
+# Dry-run endpoints
+#
+# A dry run validates a whole suite (every keyword resolves, every ${var}
+# resolves) WITHOUT touching a device. It runs on an ephemeral, device-less
+# session that is always torn down. Two input modes share one core:
+#   POST /v1/dry_run         -> inline JSON suite
+#   POST /v1/dry_run/upload  -> multipart CSV/YAML files and/or a single .zip
+#
+# NOTE: like every other endpoint, these are UNAUTHENTICATED. Do not expose the
+# server to untrusted networks without an auth layer in front of it.
+# ---------------------------------------------------------------------------
+
+def _strip_sources_for_dry_run(config: Config) -> Config:
+    """Force a config device-less so no driver/element engine is instantiated.
+
+    A dry run never locates elements or drives a device, and an uploaded
+    ``config.yaml`` might enable a real driver — emptying the source lists keeps
+    the dry run from accidentally connecting to anything.
+    """
+    config.driver_sources = []
+    config.elements_sources = []
+    config.text_detection = []
+    config.image_detection = []
+    return config
+
+
+async def _execute_dry_run(suite: LoadedSuite) -> DryRunResponse:
+    """Run a loaded suite in dry-run mode on an ephemeral device-less session."""
+    execution_id = str(uuid.uuid4())
+    if suite.execution_queue is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No test cases found in the provided suite",
+        )
+
+    config = _strip_sources_for_dry_run(suite.config or Config())
+    session_id = session_manager.create_session(
+        config,
+        test_cases=suite.execution_queue,
+        modules=suite.modules_data,
+        elements=suite.elements_data,
+        apis=suite.api_data,
+        templates=suite.templates_data,
+        require_driver=False,
+    )
+    engine = ExecutionEngine(session_manager)
+    try:
+        params = ExecutionParams(
+            session_id=session_id,
+            mode="dry_run",
+            runner_type="test_runner",
+            use_printer=False,
+        )
+        test_state = await engine.execute(params)
+        results: List[TestCaseResult] = list((test_state or {}).values())
+        all_passed = bool(results) and all(tc.status == "PASS" for tc in results)
+        return DryRunResponse(
+            execution_id=execution_id,
+            status="PASS" if all_passed else "FAIL",
+            test_cases=results,
+        )
+    except OpticsError as e:
+        internal_logger.error("Dry run failed: %s", e)
+        raise HTTPException(
+            status_code=e.status_code, detail=e.to_payload(include_status=True)
+        ) from e
+    finally:
+        session_manager.terminate_session(session_id)
+
+
+async def _read_body_capped(request: Request, max_bytes: int) -> bytes:
+    """Read a request body, aborting (413) as soon as it exceeds ``max_bytes``.
+
+    Streams the body so an oversized payload never fully materializes in memory.
+    Also short-circuits on a declared ``Content-Length`` when present.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > max_bytes:
+                raise dry_run_helpers.PayloadTooLarge("request body too large")
+        except ValueError:
+            pass
+    chunks: List[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise dry_run_helpers.PayloadTooLarge("request body too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@app.post(
+    "/v1/dry_run",
+    response_model=DryRunResponse,
+    responses={
+        400: {"description": "No test cases / malformed suite"},
+        413: {"description": "Request body too large"},
+        422: {"description": "Invalid request payload"},
+    },
+)
+async def dry_run_inline(request: Request) -> DryRunResponse:
+    """Dry-run a suite supplied inline as JSON (see ``DryRunRequest``)."""
+    try:
+        raw = await _read_body_capped(request, dry_run_helpers.MAX_INLINE_BODY_BYTES)
+    except dry_run_helpers.PayloadTooLarge as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
+
+    try:
+        payload = json.loads(raw)
+        req = DryRunRequest.model_validate(payload)
+    except (json.JSONDecodeError, ValueError, ValidationError) as e:
+        raise HTTPException(status_code=422, detail=f"Invalid dry-run payload: {e}") from e
+
+    try:
+        suite = await asyncio.to_thread(
+            build_suite_from_inline,
+            req.test_cases,
+            req.modules,
+            req.elements,
+            req.api,
+            None,
+            req.include,
+            req.exclude,
+        )
+    except OpticsError as e:
+        raise HTTPException(
+            status_code=e.status_code, detail=e.to_payload(include_status=True)
+        ) from e
+    return await _execute_dry_run(suite)
+
+
+@app.post(
+    "/v1/dry_run/upload",
+    response_model=DryRunResponse,
+    responses={
+        400: {"description": "No test cases / unsafe archive / malformed suite"},
+        413: {"description": "Upload too large"},
+    },
+)
+async def dry_run_upload(
+    files: List[UploadFile] = File(..., description="CSV/YAML suite files or a single .zip"),
+    include: Optional[str] = Form(None, description="Comma-separated test cases to include"),
+    exclude: Optional[str] = Form(None, description="Comma-separated test cases to exclude"),
+) -> DryRunResponse:
+    """Dry-run a suite supplied as uploaded CSV/YAML files or a single .zip."""
+    include_list = [s.strip() for s in include.split(",") if s.strip()] if include else None
+    exclude_list = [s.strip() for s in exclude.split(",") if s.strip()] if exclude else None
+
+    tmp_dir = tempfile.mkdtemp(prefix="optics_dryrun_")
+    try:
+        # Read uploads in chunks with a running size cap so an oversized file is
+        # rejected *before* it is fully buffered in memory (DoS guard).
+        read_files: List[Tuple[str, bytes]] = []
+        total = 0
+        for upload in files:
+            buf = bytearray()
+            while True:
+                chunk = await upload.read(dry_run_helpers._CHUNK)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > dry_run_helpers.MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Upload too large")
+                buf.extend(chunk)
+            read_files.append((upload.filename or "", bytes(buf)))
+
+        try:
+            await asyncio.to_thread(_materialize_uploads, read_files, tmp_dir)
+        except dry_run_helpers.PayloadTooLarge as e:
+            raise HTTPException(status_code=413, detail=str(e)) from e
+        except dry_run_helpers.UnsafeArchive as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        try:
+            suite = await asyncio.to_thread(
+                load_suite_from_folder, tmp_dir, include_list, exclude_list
+            )
+        except OpticsError as e:
+            raise HTTPException(
+                status_code=e.status_code, detail=e.to_payload(include_status=True)
+            ) from e
+        return await _execute_dry_run(suite)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _materialize_uploads(read_files: List[Tuple[str, bytes]], dest_dir: str) -> None:
+    """Write uploaded files into ``dest_dir``; expand a single .zip safely."""
+    if len(read_files) == 1 and (read_files[0][0] or "").lower().endswith(".zip"):
+        dry_run_helpers.safe_extract_zip(read_files[0][1], dest_dir)
+    else:
+        dry_run_helpers.write_uploaded_files(read_files, dest_dir)
