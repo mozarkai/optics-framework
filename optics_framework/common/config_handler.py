@@ -119,11 +119,9 @@ class ConfigHandler:
         "llm_models"
     ]
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Config):
         self.project_name: Optional[str] = None
         self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
-        if config is None:
-            raise OpticsError(Code.E0501, message="ConfigHandler requires a Config object on initialization.")
         if config.execution_output_path is None and config.project_path is not None:
             config.execution_output_path = os.path.join(
                 config.project_path, "execution_output"
