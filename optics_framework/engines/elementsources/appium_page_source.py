@@ -3,9 +3,11 @@ from typing import Optional, Any, Tuple, List
 from lxml import etree  # type: ignore
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import NoSuchElementException
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common import utils
 from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.error import OpticsError, Code
 
 APPIUM_NOT_INITIALISED_MSG = "Appium driver is not initialized for AppiumPageSource."
 
@@ -109,18 +111,22 @@ class AppiumPageSource(ElementSourceInterface):
                 execution_logger.debug(f"Finding element by text: {element} with xpath: {xpath}")
                 element_obj = driver.find_element(AppiumBy.XPATH, xpath)
                 return element_obj
-            except Exception:
-                internal_logger.exception("Error finding element by text: %s", xpath)
-                raise RuntimeError("Error finding element by text.")
+            except NoSuchElementException as e:
+                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
+            except Exception as e:
+                internal_logger.debug("Error finding element by text: %s: %s", xpath, e)
+                raise RuntimeError("Error finding element by text.") from e
         elif element_type == 'XPath':
             if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
                 xpath, _ = self.driver.ui_helper.find_xpath(element)
                 try:
                     element_obj = driver.find_element(AppiumBy.XPATH, xpath)
                     return element_obj
-                except Exception:
-                    internal_logger.exception("Error finding element by xpath: %s", xpath)
-                    raise RuntimeError("Error finding element by xpath.")
+                except NoSuchElementException as e:
+                    raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
+                except Exception as e:
+                    internal_logger.debug("Error finding element by xpath: %s: %s", xpath, e)
+                    raise RuntimeError("Error finding element by xpath.") from e
             else:
                 internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
                 raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
@@ -164,8 +170,10 @@ class AppiumPageSource(ElementSourceInterface):
                 xpath = self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
                 try:
                     element_obj = self._require_webdriver().find_element(AppiumBy.XPATH, xpath)
-                except Exception:
-                    internal_logger.exception("Error finding element by index: %s", xpath)
+                except NoSuchElementException:
+                    return None
+                except Exception as e:
+                    internal_logger.debug("Error finding element by index: %s: %s", xpath, e)
                     return None
                 return element_obj
             return None
