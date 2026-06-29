@@ -20,7 +20,6 @@ from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from optics_framework.common.error import OpticsError, Code
 
 
-
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
@@ -51,6 +50,9 @@ class Appium(DriverInterface):
     CONNECTION_TIMEOUT = 300
     VERSION_NAME_PREFIX = "versionName="
     KEY_PLATFORMNAME = "platformname"
+    CAP_UDID = "udid"
+    CAP_APPIUM_UDID = "appium:udid"
+    CAP_SESSION_DEVICE_UDID = "deviceUDID"
     SESSION_ID_CAP_KEYS = (
         "existingSessionId",
         "sessionId",
@@ -505,30 +507,156 @@ class Appium(DriverInterface):
             self.driver = None
             self.event_sdk.send_all_events()
 
-    def get_app_version(self) -> str:
-        """Get the version of the application."""
-        app_package = self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY) or self.capabilities.get(
-            self.CAP_APP_PACKAGE
+    def get_app_version(self, app_package: Optional[str] = None) -> str:
+        """
+        Get the version of the currently configured application.
+
+        :param app_package: Optional package name / bundle ID override. When provided,
+            this takes precedence over the value in capabilities.
+        """
+        platform = (
+            self.capabilities.get(self.CAP_PLATFORM_NAME)
+            or self.capabilities.get(self.CAP_APPIUM_PLATFORM_NAME)
+            or ""
+        )
+        platform_lower = str(platform).strip().lower()
+
+        if platform_lower == self.PLATFORM_ANDROID:
+            return self._get_android_app_version(app_package_override=app_package)
+        if platform_lower == self.PLATFORM_IOS:
+            return self._get_ios_app_version(bundle_id_override=app_package)
+
+        raise OpticsError(
+            Code.E0104,
+            message=f"get_app_version is not supported for platform: '{platform}'",
+        )
+
+    def _get_android_device_serial(self) -> Optional[str]:
+        # Prefer the serial set by UiAutomator2 in session capabilities after connection
+        if self.driver is not None:
+            session_serial = self.driver.capabilities.get(self.CAP_SESSION_DEVICE_UDID)
+            if session_serial:
+                return str(session_serial)
+        # Fall back to user-configured capability values
+        return (
+            self.capabilities.get(self.CAP_APPIUM_UDID)
+            or self.capabilities.get(self.CAP_UDID)
+            or None
+        )
+
+    def _get_ios_device_udid(self) -> Optional[str]:
+        # XCUITest exposes the connected device UDID in session capabilities
+        if self.driver is not None:
+            session_udid = self.driver.capabilities.get(self.CAP_UDID)
+            if session_udid:
+                return str(session_udid)
+        return (
+            self.capabilities.get(self.CAP_APPIUM_UDID)
+            or self.capabilities.get(self.CAP_UDID)
+        )
+
+    def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
+        app_package = (
+            self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
+            or self.capabilities.get(self.CAP_APP_PACKAGE)
+            or app_package_override
         )
         if not app_package:
             raise OpticsError(
                 Code.E0104,
-                message=f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}",
+                message=(
+                    f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}. "
+                ),
             )
 
-        command = f"adb shell dumpsys package {app_package} | grep versionName"
+        device_serial = self._get_android_device_serial()
+
+        adb_cmd = ["adb"]
+        if device_serial:
+            adb_cmd.extend(["-s", device_serial])
+
+        dumpsys_cmd = adb_cmd + ["shell", "pm", "dump", app_package]
+
+        output = ""
         try:
-            # Run the adb command and capture the output.
-            output = subprocess.check_output(command, shell=False, stderr=subprocess.STDOUT, text=True) # nosec B603
-            # Process the output to find the line containing "versionName"
+            internal_logger.info(f"Executing adb command: {' '.join(dumpsys_cmd)}")
+            output = subprocess.check_output(  # nosec - static trusted arguments, not completely a user input, command injection attack is prevented
+                dumpsys_cmd,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
             for line in output.splitlines():
                 if self.VERSION_NAME_PREFIX in line:
-                    # Extract the version string.
-                    return line.split(self.VERSION_NAME_PREFIX)[-1].strip()
-        except subprocess.CalledProcessError as e:
-            internal_logger.debug(f"Error executing adb command: {e.output}")
-            raise OpticsError(Code.E0401, message="Error executing adb command", details=e.output, cause=e) from e
-        raise OpticsError(Code.E0401, message=f"Could not find versionName for package: {app_package}")
+                    appver = line.split(self.VERSION_NAME_PREFIX)[-1].strip()
+                    internal_logger.info(f"App version: {appver}")
+                    return appver
+
+        except Exception as e:
+            internal_logger.info(f"Error executing adb command {dumpsys_cmd}: {e}")
+            raise OpticsError(
+                Code.E0401,
+                message=f"Error executing adb command {dumpsys_cmd}: {e}. Received output = {output}.",
+                details=str(e),
+                cause=e
+            ) from e
+
+        raise OpticsError(
+            Code.E0401,
+            message=f"Could not find versionName for package: {app_package}. Received output = {output}"
+        )
+
+    def _get_ios_app_version(self, bundle_id_override: Optional[str] = None) -> str:
+        bundle_id = (
+            self.capabilities.get(self.CAP_BUNDLE_ID)
+            or self.capabilities.get(self.CAP_APPIUM_BUNDLE_ID)
+            or bundle_id_override
+        )
+        if not bundle_id:
+            raise OpticsError(
+                Code.E0104,
+                message=f"Missing required capability: bundleId or {self.CAP_APPIUM_BUNDLE_ID}. Can't find iOS version.",
+            )
+
+        device_udid = self._get_ios_device_udid()
+        cmd = ["ideviceinstaller"]
+        if device_udid:
+            cmd.extend(["-u", device_udid])
+        cmd.append("-l")
+
+        output = ""
+        try:
+            internal_logger.info(f"Executing ideviceinstaller command: {' '.join(cmd)}")
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)  # nosec - static trusted args; udid sourced from session caps
+        except FileNotFoundError as e:
+            raise OpticsError(
+                Code.E0401,
+                message="ideviceinstaller not found on PATH. Please install it via 'brew install ideviceinstaller'.",
+                details=str(e),
+                cause=e,
+            ) from e
+        except Exception as e:
+            raise OpticsError(
+                Code.E0401,
+                message=f"ideviceinstaller command failed: {e}. Output: {output}",
+                details=str(e),
+                cause=e,
+            ) from e
+
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped or ', ' not in stripped:
+                continue
+            # Format: bundleId, "CFBundleVersion", "CFBundleDisplayName"
+            parts = [p.strip() for p in stripped.split(', ', 2)]
+            if len(parts) >= 2 and parts[0].strip() == bundle_id.strip():
+                version = parts[1].strip('"')
+                internal_logger.info(f"iOS app version for {bundle_id}: {version}")
+                return version
+
+        raise OpticsError(
+            Code.E0401,
+            message=f"Could not find bundle '{bundle_id}' in ideviceinstaller output. Output: {output}",
+        )
 
     def initialise_setup(self) -> None:
         """Initialize the Appium setup by starting the session."""
@@ -542,12 +670,14 @@ class Appium(DriverInterface):
         event_name: Optional[str] = None,
     ) -> str:
         """Launch the app using the Appium driver."""
+        session_id = self.get_session_id()
         if self.driver is None:
             session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,
                 event_name=event_name,
             )
+
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
 
@@ -663,18 +793,18 @@ class Appium(DriverInterface):
             # The standard driver.swipe() is flaky on iOS, so we're using a script for getting consistent results
             if str(platform).lower() == self.PLATFORM_IOS:
                 internal_logger.debug(
-                    f"iOS swipe from ({x_coor},{y_coor}) to ({end_x},{end_y})"
+                    f"iOS swipe (W3C) from ({x_coor},{y_coor}) to ({end_x},{end_y})"
                 )
-                driver.execute_script(
-                    "mobile: dragFromToForDuration",
-                    {
-                        "duration": 1.0,
-                        "fromX": x_coor,
-                        "fromY": y_coor,
-                        "toX": end_x,
-                        "toY": end_y,
-                    },
+                actions = ActionBuilder(
+                    driver,
+                    mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
                 )
+                actions.pointer_action.move_to_location(x_coor, y_coor)
+                actions.pointer_action.pointer_down()
+                actions.pointer_action.pause(0.4)   # Pausing before next action is important due to API latency
+                actions.pointer_action.move_to_location(end_x, end_y)
+                actions.pointer_action.pointer_up()
+                actions.perform()
             else:
                 internal_logger.debug(
                     f"Android swipe from ({x_coor},{y_coor}) to ({end_x},{end_y})"
@@ -786,12 +916,12 @@ class Appium(DriverInterface):
         end_y: int
         if direction == "up":
             start_x = width // 2
-            start_y = int(height * 0.8)
-            end_y = int(height * 0.2)
-        elif direction == "down":
-            start_x = width // 2
             start_y = int(height * 0.2)
             end_y = int(height * 0.8)
+        elif direction == "down":
+            start_x = width // 2
+            start_y = int(height * 0.8)
+            end_y = int(height * 0.2)
         else:
             internal_logger.error(f"Scroll direction '{direction}' not supported.")
             return
@@ -910,9 +1040,13 @@ class Appium(DriverInterface):
 
     def _press_keycode_or_type_char(self, driver: WebDriver, ch: str, keycode: int) -> None:
         """Press keycode for char, or fall back to mobile:type on failure."""
-        internal_logger.debug(f"Pressing keycode for char '{ch}': {keycode}")
+        metastate = 1 if ch.isupper() else None
+        internal_logger.debug(f"Pressing keycode for char '{ch}': {keycode} (metastate={metastate})")
         try:
-            driver.press_keycode(int(keycode))
+            if metastate is not None:
+                driver.press_keycode(int(keycode), metastate=metastate)
+            else:
+                driver.press_keycode(int(keycode))
         except Exception:
             internal_logger.debug(f"press_keycode failed for '{ch}', falling back to script typing")
             driver.execute_script(
@@ -979,7 +1113,8 @@ class Appium(DriverInterface):
             "\n": 66,  # Enter key
         }
 
-        return mapping.get(char.lower())  # handle lowercase input
+        # Handle lowercase input so uppercase letters map to correct keycodes
+        return mapping.get(char.lower())
 
     def get_text_element(self, element: Any) -> str:
         text = element.get_attribute("text") or element.get_attribute("value")

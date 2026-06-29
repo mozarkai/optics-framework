@@ -104,10 +104,7 @@ class LocatorStrategy(ABC):
     ) -> Tuple[bool, Optional[str], Optional[Any]]:
         """Shared implementation for locator strategies that delegate to element_source.assert_elements and optionally attach a screenshot."""
         try:
-            result = self.element_source.assert_elements(elements, timeout, rule)
-            # Some sources may return (success, timestamp) instead of raising; treat False as failure.
-            if isinstance(result, tuple) and len(result) >= 1 and result[0] is False:
-                return False, None, None
+            self.element_source.assert_elements(elements, timeout, rule)
             timestamp = utils.get_timestamp()
             frame = None
             strategy_manager = getattr(self, '_strategy_manager', None)
@@ -125,6 +122,10 @@ class LocatorStrategy(ABC):
                 ]
             if frame is not None:
                 if bboxes:
+                    # Element bboxes are in the driver's window coordinate space;
+                    # scale them to the screenshot's pixel space before drawing
+                    # (no-op when the two resolutions already match).
+                    bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
                     annotated_frame = utils.annotate(frame.copy(), bboxes)
                     return True, timestamp, annotated_frame
                 return True, timestamp, frame.copy()

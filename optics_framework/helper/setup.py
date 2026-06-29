@@ -36,7 +36,17 @@ TEXT_DRIVERS = DriverCategory(
     }
 )
 
-ALL_DRIVERS = {**ACTION_DRIVERS.drivers, **TEXT_DRIVERS.drivers}
+LLM_DRIVERS = DriverCategory(
+    name="LLM Driver",
+    drivers={
+        "Gemini": DriverPackage(name="Gemini", packages=["google-genai"])
+    }
+)
+
+ALL_DRIVERS = {**ACTION_DRIVERS.drivers, **TEXT_DRIVERS.drivers, **LLM_DRIVERS.drivers}
+
+# Maps a checkbox-id prefix to its driver category.
+_CATEGORY_BY_PREFIX = {"action": ACTION_DRIVERS, "text": TEXT_DRIVERS, "llm": LLM_DRIVERS}
 
 
 class DriverInstallerApp(App):
@@ -69,6 +79,10 @@ class DriverInstallerApp(App):
         for name, driver in TEXT_DRIVERS.drivers.items():
             yield Checkbox(f"{name} ({', '.join(driver.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
 
+        yield Static("LLM Drivers:")
+        for name, driver in LLM_DRIVERS.drivers.items():
+            yield Checkbox(f"{name} ({', '.join(driver.packages)})", id=f"llm_{name.lower().replace(' ', '_')}")
+
         yield Button("Install Selected", id="install", variant="primary")
         yield Button("Quit", id="quit", variant="error")
         yield Footer()
@@ -77,7 +91,7 @@ class DriverInstallerApp(App):
         if event.checkbox.id is None:
             return
         category, driver_key = event.checkbox.id.split("_", 1)
-        drivers_source = ACTION_DRIVERS if category == "action" else TEXT_DRIVERS
+        drivers_source = _CATEGORY_BY_PREFIX.get(category, ACTION_DRIVERS)
         driver_name = next(
             name for name in drivers_source.drivers.keys()
             if name.lower().replace(' ', '_') == driver_key
@@ -132,8 +146,11 @@ def install_packages(requirements: List[str]) -> None:
 def list_drivers() -> None:
     print("Available Drivers:")
     print("\nAction Drivers:")
-    for name, _ in ACTION_DRIVERS.drivers.items():
+    for name in ACTION_DRIVERS.drivers:
         print(f"  {name}")
     print("\nText Drivers:")
-    for name, _ in TEXT_DRIVERS.drivers.items():
+    for name in TEXT_DRIVERS.drivers:
+        print(f"  {name}")
+    print("\nLLM Drivers:")
+    for name in LLM_DRIVERS.drivers:
         print(f"  {name}")

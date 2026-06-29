@@ -5,12 +5,14 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.text_interface import TextInterface
+from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.factories import (
     DeviceFactory,
     ElementSourceFactory,
     ImageFactory,
     TextFactory,
+    LLMFactory,
 )
 
 T = TypeVar("T")  # Generic type for the build method
@@ -23,6 +25,7 @@ class OpticsConfig(BaseModel):
     element_source_config: Optional[Union[str, List[Union[str, Dict]]]] = None
     image_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
     text_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
+    llm_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
 
 
 class OpticsBuilder:
@@ -102,6 +105,12 @@ class OpticsBuilder:
         self.config.text_config = normalized
         return self
 
+    def add_llm(
+        self, config: Union[str, List[Union[str, Dict]]]
+    ) -> "OpticsBuilder":
+        self.config.llm_config = self.normalise_config(config)
+        return self
+
     # Instantiation methods
     def instantiate_driver(self) -> InstanceFallback[DriverInterface]:
         if not self.config.driver_config:
@@ -146,6 +155,14 @@ class OpticsBuilder:
         self._instances["text_detection"] = text_detection
         return text_detection
 
+    def instantiate_llm(self) -> Optional[InstanceFallback[LLMInterface]]:
+        if not self.config.llm_config:
+            return None
+        normalized_config = self.normalise_config(self.config.llm_config)
+        llm: InstanceFallback[LLMInterface] = LLMFactory.get_driver(normalized_config)
+        self._instances["llm"] = llm
+        return llm
+
     # Retrieval methods
     def get_driver(self) -> InstanceFallback[DriverInterface]:
         if "driver" not in self._instances:
@@ -166,6 +183,11 @@ class OpticsBuilder:
         if "text_detection" not in self._instances:
             self.instantiate_text_detection()
         return self._instances.get("text_detection", None)
+
+    def get_llm(self) -> Optional[InstanceFallback[LLMInterface]]:
+        if "llm" not in self._instances:
+            self.instantiate_llm()
+        return self._instances.get("llm", None)
 
     def build(self, cls: Type[T]) -> T:
         """

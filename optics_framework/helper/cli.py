@@ -1,12 +1,13 @@
 import argparse
 import sys
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel
 from optics_framework.helper.list_keyword import main as list_main
 from optics_framework.helper.config_manager import main as config_main
 from optics_framework.helper.initialize import create_project
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
+from optics_framework.helper.live import live_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
 from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, install_packages, ALL_DRIVERS
 from optics_framework.helper.serve import run_uvicorn_server
@@ -138,6 +139,46 @@ class ServerCommand(Command):
             host=server_args.host,
             port=server_args.port,
             workers=server_args.workers
+        )
+
+
+class MCPArgs(BaseModel):
+    """Arguments for the mcp command."""
+    transport: Literal["stdio", "http"] = "stdio"
+    host: str = "127.0.0.1"
+    port: int = 8090
+
+
+class MCPCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "mcp", help="Run the Optics Framework MCP server (requires the 'mcp' extra)"
+        )
+        parser.add_argument(
+            "--transport", choices=["stdio", "http"], default="stdio",
+            help="MCP transport: stdio (default, local clients) or http"
+        )
+        parser.add_argument(
+            "--host", default="127.0.0.1", help="Host to bind for http transport (default: 127.0.0.1)"
+        )
+        parser.add_argument(
+            "--port", type=int, default=8090, help="Port to bind for http transport (default: 8090)"
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        mcp_args = MCPArgs(
+            transport=args.transport,
+            host=args.host,
+            port=args.port
+        )
+        # Lazy import so the optional 'mcp' extra (fastmcp) is only required
+        # when this command actually runs.
+        from optics_framework.helper.mcp_server import run_mcp_server
+        run_mcp_server(
+            transport=mcp_args.transport,
+            host=mcp_args.host,
+            port=mcp_args.port
         )
 
 class ConfigCommand(Command):
@@ -289,6 +330,34 @@ class ExecuteCommand(Command):
         )
 
 
+class LiveArgs(BaseModel):
+    """Arguments for the live command."""
+    project_folder: Optional[str] = None
+
+
+class LiveCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "live", help="Open an interactive session to run keywords against a live target"
+        )
+        parser.add_argument(
+            "project_folder",
+            type=str,
+            nargs="?",
+            default=None,
+            help=(
+                "Path to a project folder containing a config.yaml (with exactly one enabled "
+                "driver_sources entry — appium/selenium/playwright — and at least one enabled "
+                "elements_sources) plus elements. Defaults to the current directory."
+            ),
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        live_args = LiveArgs(project_folder=args.project_folder)
+        live_main(live_args.project_folder)
+
+
 class DriverInstaller(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
@@ -344,9 +413,11 @@ def main():
         DryRunCommand(),
         InitCommand(),
         ExecuteCommand(),
+        LiveCommand(),
         GenerateCommand(),
         DriverInstaller(),
         ServerCommand(),
+        MCPCommand(),
         AutocompletionCommand(),
     ]
     for cmd in commands:

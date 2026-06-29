@@ -122,6 +122,7 @@ class Session:
         enabled_element_configs = _get_enabled_config_list(self.config, "elements_sources")
         enabled_text_configs = _get_enabled_config_list(self.config, "text_detection")
         enabled_image_configs = _get_enabled_config_list(self.config, "image_detection")
+        enabled_llm_configs = _get_enabled_config_list(self.config, "llm_models")
 
         if not enabled_driver_configs:
             raise OpticsError(Code.E0501, message="No enabled drivers found in configuration")
@@ -134,6 +135,7 @@ class Session:
         self.optics.add_image_detection(
             enabled_image_configs, self.config.project_path or "", self._template_resolver
         )
+        self.optics.add_llm(enabled_llm_configs)
         _maybe_setup_junit(config, self.session_id, self.config.execution_output_path)
 
         self.driver = self.optics.get_driver()

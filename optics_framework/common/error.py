@@ -28,6 +28,7 @@ class Category(str, Enum):
     CONFIG = "config"
     MODULE = "module"
     TEST = "test"
+    LIVE = "live"
     GENERAL = "general"
 
 
@@ -81,6 +82,9 @@ class Code(str, Enum):
     # General Issues
     E0801 = "E0801"
     E0802 = "E0802"
+
+    # Live (interactive session) issues
+    E0901 = "E0901"
 
 
 class ErrorSpec(BaseModel):
@@ -316,6 +320,13 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Unhandled exception",
         category=Category.GENERAL,
         default_status=500,
+    ),
+    # Live (interactive session) issues
+    "E0901": ErrorSpec(
+        code=Code.E0901,
+        default_message="Named element not defined in this project",
+        category=Category.LIVE,
+        default_status=404,
     ),
 }
 

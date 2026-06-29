@@ -1,7 +1,7 @@
 #!/bin/bash
 
 _optics_completions() {
-  local cur prev words cword
+  local cur prev
   _init_completion || return
 
   local subcommands="list config dry_run init execute version generate setup serve completion"
@@ -14,6 +14,8 @@ _optics_completions() {
     1)
       COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
       return 0
+      ;;
+    *)
       ;;
   esac
 

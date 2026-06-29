@@ -2,7 +2,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, ListView, ListItem, Label, Input, Button
 from textual.containers import Vertical, Horizontal, Container
 from textual.screen import ModalScreen
-from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
+from optics_framework.common.config_handler import ConfigHandler, Config, DependencyConfig
 import ast
 
 
@@ -106,7 +106,8 @@ class LoggerTUI(App):
 
     def __init__(self):
         super().__init__()
-        self.config_handler = ConfigHandler()
+        self.config_handler = ConfigHandler(config=Config())
+        self.config_handler.load()
         self.options = list(self.config_handler.config.model_fields.keys())
         self.selected_index = 0  # Changed to plain int
 
@@ -175,7 +176,7 @@ class LoggerTUI(App):
                 if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
                     raise ValueError("Must be a list of strings")
                 setattr(self.config_handler.config, key,
-                        [{"name": DependencyConfig(enabled=True)} for name in parsed])
+                        [{"name": DependencyConfig(enabled=True)} for _ in parsed])
             else:
                 parsed = type(current_value)(new_value)
                 setattr(self.config_handler.config, key, parsed)

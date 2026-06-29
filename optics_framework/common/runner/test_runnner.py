@@ -107,7 +107,7 @@ class TestRunner(Runner):
         if hasattr(self.modules, "modules"):
             execution_logger.debug(
                 "Initialized test_state: %s with %d modules",
-                list(self.modules.modules.keys()),
+                self.modules.modules.keys(),
                 len(self.modules.modules)
             )
         self._initialize_test_state()
@@ -170,7 +170,7 @@ class TestRunner(Runner):
         self.result_printer.test_state = test_state
         internal_logger.debug(
             "Initialized test_state: %s with %d modules",
-            list(test_state.keys()),
+            test_state.keys(),
             sum(len(m.modules) for m in test_state.values())
         )
 

@@ -12,13 +12,13 @@ UVICORN_WORKERS=${UVICORN_WORKERS:-2}
 GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
 
 # If running in GPU-enabled image, user can set MOCK_OCR_FORCE_GPU=1
-if [ -n "${MOCK_OCR_FORCE_GPU:-}" ]; then
+if [[ -n "${MOCK_OCR_FORCE_GPU:-}" ]]; then
   echo "MOCK_OCR_FORCE_GPU=${MOCK_OCR_FORCE_GPU}"
 fi
 
 
 # If no arguments are provided, or the first argument is gunicorn, run the default server
-if [ "$#" -eq 0 ] || [ "$1" = "gunicorn" ]; then
+if [[ "$#" -eq 0 ]] || [[ "$1" = "gunicorn" ]]; then
   set -- gunicorn -k uvicorn.workers.UvicornWorker -w "${UVICORN_WORKERS}" \
     --timeout "${GUNICORN_TIMEOUT}" --bind "0.0.0.0:${PORT}" "${APP_MODULE}"
   echo "Starting: $*"

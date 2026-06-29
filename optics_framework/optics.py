@@ -585,11 +585,11 @@ class Optics:
         )
 
     @keyword("Get App Version")
-    def get_app_version(self) -> Optional[str]:
+    def get_app_version(self, app_package: Optional[str] = None) -> Optional[str]:
         """Get the application version."""
         if not self.app_management:
             raise ValueError(INVALID_SETUP)
-        return self.app_management.get_app_version()
+        return self.app_management.get_app_version(app_package=app_package)
 
     ### ActionKeyword Methods ###
     @keyword("Press Element")
