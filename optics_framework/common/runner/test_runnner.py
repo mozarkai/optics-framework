@@ -701,7 +701,7 @@ class TestRunner(Runner):
         await self._send_event(
             "test_case",
             current,
-            EventStatus.FAIL,
+            EventStatus.PASS,
             start_time=start_time,
             end_time=time.time(),
             elapsed=time.time() - start_time,
