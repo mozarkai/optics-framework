@@ -209,20 +209,30 @@ class TestCaptureScreenshotBytes:
         assert sm.capture_screenshot_bytes() == b"\x89PNG-native"
         source.capture.assert_not_called()  # native path => no numpy capture/encode
 
-    def test_falls_back_to_numpy_encode(self):
-        source = MagicMock()
-        source.capture_screenshot_bytes.side_effect = NotImplementedError
-        source.capture.return_value = np.full((8, 8, 3), 255, dtype=np.uint8)  # white, not black
-        sm = _sm_with_source(source)
-        data = sm.capture_screenshot_bytes()
-        assert data[:8] == b"\x89PNG\r\n\x1a\n"  # real PNG magic from cv2.imencode
-
-    def test_skips_failing_native_then_falls_back(self):
+    def test_raises_optics_error_when_all_sources_fail(self):
+        from optics_framework.common.error import OpticsError
         source = MagicMock()
         source.capture_screenshot_bytes.side_effect = RuntimeError("hub timeout")
-        source.capture.return_value = np.full((8, 8, 3), 255, dtype=np.uint8)
         sm = _sm_with_source(source)
-        assert sm.capture_screenshot_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+        with pytest.raises(OpticsError):
+            sm.capture_screenshot_bytes()
+
+    def test_interface_default_encodes_numpy_via_capture(self):
+        """ElementSourceInterface.capture_screenshot_bytes() default encodes capture() result."""
+        from optics_framework.common.elementsource_interface import ElementSourceInterface
+        from unittest.mock import patch
+        import cv2
+
+        class _MinimalSource(ElementSourceInterface):
+            def capture(self) -> np.ndarray:
+                return np.full((8, 8, 3), 255, dtype=np.uint8)
+            def locate(self, element, index=None): raise NotImplementedError
+            def assert_elements(self, elements, timeout=30, rule='any'): raise NotImplementedError
+            def get_interactive_elements(self, filter_config=None): raise NotImplementedError
+
+        source = _MinimalSource()
+        data = source.capture_screenshot_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic bytes from cv2.imencode
 
 
 class _FakeWD:
