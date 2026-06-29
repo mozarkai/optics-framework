@@ -59,6 +59,44 @@ optics mcp --transport http --host 127.0.0.1 --port 8090
 | `--host` | `127.0.0.1` | bind host (http only) |
 | `--port` | `8090` | bind port (http only) |
 
+### Docker
+
+Containerized MCP runs **HTTP transport** bound to `0.0.0.0:8090` (stdio is for
+local clients that spawn the process). Images live under `Docker/mcp/` and
+install the `[mcp]` extra (`fastmcp`).
+
+**Docker Compose** (from the repo root):
+
+```bash
+# Production image (PyPI) — host port 8090
+docker compose -f Docker/docker-compose.yml up --build mcp
+
+# Development image (local .whl) — host port 8091
+docker compose -f Docker/docker-compose.yml up --build mcp-dev
+```
+
+**Standalone build/run:**
+
+```bash
+docker build -f Docker/mcp/prod/Dockerfile -t optics-mcp-prod .
+docker run -d -p 8090:8090 --name optics-mcp-prod optics-mcp-prod
+```
+
+Connect your MCP client to the container:
+
+```json
+{
+  "mcpServers": {
+    "optics": { "url": "http://127.0.0.1:8090/mcp" }
+  }
+}
+```
+
+Use port **8091** for the `mcp-dev` compose service. When `start_session`
+targets Appium on the host, set `"url": "http://host.docker.internal:4723"`.
+See [`Docker/deployment.md`](../../Docker/deployment.md) for vision-backend
+build args, Google Vision credential mounts, and dev-wheel builds.
+
 ## 4. Connect an MCP client
 
 **stdio** — the client launches the server itself. Add to your client's MCP
