@@ -9,13 +9,12 @@ WORKDIR /app
 
 # Accept the .whl filename as a build argument
 ARG WHL_FILE
+ARG VISION_BACKEND=easyocr
+
+ENV VISION_BACKEND=${VISION_BACKEND}
 ENV WHL_FILE=${WHL_FILE}
 
-# Build arguments for vision backend
-ARG VISION_BACKEND=easyocr
-ENV VISION_BACKEND=${VISION_BACKEND}
-
-# Copy the wheel into the container
+# Copy wheel(s) from dist/ (empty WHL_FILE copies all of dist/, matching Docker/dev/Dockerfile)
 COPY dist/${WHL_FILE} /app/
 
 
@@ -30,7 +29,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
    tesseract-ocr \
    && rm -rf /var/lib/apt/lists/*
 
-# Install common Python packages and optics-framework wheel and vision backend
+# Install common Python packages and optics-framework wheel with MCP extra and vision backend
 RUN pip install --no-cache-dir \
    appium-python-client playwright \
    && playwright install-deps chromium firefox \
@@ -39,7 +38,7 @@ RUN pip install --no-cache-dir \
         echo "ERROR: No wheel in dist/. Run 'poetry build' first or set WHL_FILE to the .whl filename."; \
         exit 1; \
       fi \
-   && pip install --no-cache-dir "$WHEEL" \
+   && pip install --no-cache-dir "${WHEEL}[mcp]" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
       pip install --no-cache-dir easyocr; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \
@@ -65,14 +64,14 @@ RUN if [ "$VISION_BACKEND" = "easyocr" ]; then \
 # Install Playwright browsers (Chromium and Firefox) as appuser (must be done as the user who will run the app)
 RUN playwright install chromium firefox
 
-EXPOSE 8000
+EXPOSE 8090
 
-# Allow dynamic worker count via UVICORN_WORKERS env variable (default 1)
-ENV UVICORN_WORKERS=1
+# Allow dynamic port via MCP_PORT env variable (default 8090)
+ENV MCP_PORT=8090
 
 # Set DISPLAY for X11 (xvfb will provide virtual display)
 ENV DISPLAY=:99
 
 # Use exec form for CMD with shell for env var substitution
-# Start xvfb in the background, then run optics serve
-CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & exec optics serve --host 0.0.0.0 --port 8000 --workers \"${UVICORN_WORKERS:-1}\""]
+# Start xvfb in the background, then run optics mcp over HTTP
+CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & exec optics mcp --transport http --host 0.0.0.0 --port \"${MCP_PORT:-8090}\""]

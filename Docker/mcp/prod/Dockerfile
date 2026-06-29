@@ -27,8 +27,8 @@ RUN pip install --no-cache-dir uv \
     && uv pip install --system appium-python-client playwright \
     && playwright install-deps chromium firefox
 
-# Install optics-framework and vision backend (late layer for cache efficiency)
-RUN uv pip install --system optics-framework \
+# Install optics-framework with MCP extra and vision backend (late layer for cache efficiency)
+RUN uv pip install --system "optics-framework[mcp]" \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
         uv pip install --system easyocr; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \
@@ -56,14 +56,14 @@ RUN playwright install chromium firefox
 
 # Note: We stay as appuser for the rest of the Dockerfile
 
-EXPOSE 8000
+EXPOSE 8090
 
-# Allow dynamic worker count via UVICORN_WORKERS env variable (default 1)
-ENV UVICORN_WORKERS=1
+# Allow dynamic port via MCP_PORT env variable (default 8090)
+ENV MCP_PORT=8090
 
 # Set DISPLAY for X11 (xvfb will provide virtual display)
 ENV DISPLAY=:99
 
 # Use exec form for CMD with shell for env var substitution
-# Start xvfb in the background, then run optics serve
-CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & exec optics serve --host 0.0.0.0 --port 8000 --workers \"${UVICORN_WORKERS:-1}\""]
+# Start xvfb in the background, then run optics mcp over HTTP
+CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & exec optics mcp --transport http --host 0.0.0.0 --port \"${MCP_PORT:-8090}\""]
