@@ -249,14 +249,10 @@ def compare_text(given_text, target_text):
 
     # 3. Fuzzy Match (only if exact and partial checks fail)
     fuzzy_match_score = fuzz.ratio(given_text, target_text)
-    internal_logger.debug(f"Fuzzy match score for '{given_text}' and '{target_text}': {fuzzy_match_score}")
     if fuzzy_match_score >= 80:  # Threshold for "close enough"
-        internal_logger.debug(f"Fuzzy match found: score {fuzzy_match_score}")
-        internal_logger.debug(f"Fuzzy match found for text: {given_text}, matched text '{target_text}' with fuzzy score {fuzzy_match_score} ")
+        internal_logger.debug(f"Fuzzy match found for '{given_text}' with score {fuzzy_match_score}")
         return True
 
-    # If no matches found, return False
-    internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
 def save_screenshot(img, name, output_dir, time_stamp=None):
