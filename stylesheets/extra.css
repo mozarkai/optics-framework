@@ -1,0 +1,96 @@
+/* Custom styles for Optics Framework documentation */
+
+:root {
+  --md-primary-fg-color: #5c6bc0;
+  --md-primary-fg-color--light: #8e99f3;
+  --md-primary-fg-color--dark: #26418f;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+}
+
+[data-md-color-scheme="slate"] {
+  --glass-bg: rgba(30, 41, 59, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.05);
+}
+
+/* Modern Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--md-default-fg-color--lighter);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--md-default-fg-color--light);
+}
+
+/* Hero Section */
+.hero-section {
+  background: linear-gradient(135deg, var(--md-primary-fg-color--dark) 0%, var(--md-primary-fg-color) 100%);
+  color: white;
+  padding: 4rem 2rem;
+  margin: -2rem -2rem 2rem -2rem; /* Negative margin to stretch full width within content */
+  border-radius: 0 0 2rem 2rem;
+  text-align: center;
+  box-shadow: 0 10px 30px -10px rgba(63, 81, 181, 0.5);
+}
+
+.hero-section h1 {
+  color: white !important;
+  margin-top: 0 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hero-section p {
+  font-size: 1.2rem;
+  opacity: 0.9;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Glassmorphism Cards */
+.md-typeset .grid.cards > * {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.md-typeset .grid.cards > *:hover {
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: var(--glass-shadow);
+  border-color: var(--md-primary-fg-color);
+}
+
+/* Typography Enhancements */
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+  letter-spacing: -0.02em;
+}
+
+/* Button Gradients */
+.md-typeset .md-button--primary {
+  background: linear-gradient(to right, var(--md-primary-fg-color), var(--md-primary-fg-color--light));
+  border: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .md-button--primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+/* Code block polish */
+.md-typeset pre > code {
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+}
