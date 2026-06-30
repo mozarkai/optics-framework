@@ -106,7 +106,8 @@ class Session:
                  elements: Optional[ElementData],
                  apis: Optional[ApiData],
                  templates: Optional[TemplateData] = None,
-                 error_definitions: Optional[ErrorDefinitions] = None):
+                 error_definitions: Optional[ErrorDefinitions] = None,
+                 require_driver: bool = True):
         self.session_id = session_id
         self.config_handler = ConfigHandler(config)
         self.config = self.config_handler.config
@@ -116,6 +117,11 @@ class Session:
         self.apis = apis
         self.templates = templates
         self.error_definitions = error_definitions
+        # When False (e.g. dry-run validation), a session may be created with no
+        # enabled drivers/element sources: the builder hands back empty fallbacks
+        # instead of raising, so no device is ever touched. Defaults True so normal
+        # execute/live/action sessions keep their fail-fast behaviour.
+        self.require_driver = require_driver
         self.request_template_overrides: Dict[str, str] = {}
         self.inline_templates: Dict[str, str] = {}
         self._inline_templates_dir: str = tempfile.mkdtemp(prefix="optics_session_")
@@ -127,7 +133,7 @@ class Session:
         enabled_image_configs = _get_enabled_config_list(self.config, "image_detection")
         enabled_llm_configs = _get_enabled_config_list(self.config, "llm_models")
 
-        if not enabled_driver_configs:
+        if require_driver and not enabled_driver_configs:
             raise OpticsError(Code.E0501, message="No enabled drivers found in configuration")
 
         self.event_sdk = EventSDK(self.config_handler)
@@ -141,7 +147,7 @@ class Session:
         self.optics.add_llm(enabled_llm_configs)
         _maybe_setup_junit(config, self.session_id, self.config.execution_output_path)
 
-        self.driver = self.optics.get_driver()
+        self.driver = self.optics.get_driver() if require_driver else None
         self.event_queue = asyncio.Queue()
 
 
@@ -157,10 +163,18 @@ class SessionManager(SessionHandler):
                        elements: Optional[ElementData],
                        apis: Optional[ApiData],
                        templates: Optional[TemplateData] = None,
-                       error_definitions: Optional[ErrorDefinitions] = None) -> str:
-        """Creates a new session with a unique ID."""
+                       error_definitions: Optional[ErrorDefinitions] = None,
+                       require_driver: bool = True) -> str:
+        """Creates a new session with a unique ID.
+
+        Pass ``require_driver=False`` for device-less sessions (e.g. dry-run
+        validation) so a session can be built without any enabled driver.
+        """
         session_id = str(uuid.uuid4())
-        self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates, error_definitions)
+        self.sessions[session_id] = Session(
+            session_id, config, test_cases, modules, elements, apis, templates,
+            error_definitions, require_driver=require_driver,
+        )
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Session]:
