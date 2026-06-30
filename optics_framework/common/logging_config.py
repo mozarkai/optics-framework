@@ -36,8 +36,15 @@ class LoggingManager:
             execution_log_path = Path(log_path or log_dir / "execution_logs.log").expanduser()
             internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
             execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
-            self.internal_logger.addHandler(internal_file_handler)
-            self.execution_logger.addHandler(execution_file_handler)
+            for logger, new_handler in (
+                (self.internal_logger, internal_file_handler),
+                (self.execution_logger, execution_file_handler),
+            ):
+                for h in logger.handlers[:]:
+                    if isinstance(h, RotatingFileHandler):
+                        logger.removeHandler(h)
+                        h.close()
+                logger.addHandler(new_handler)
 
     def stop_listeners(self):
         def safe_stop(listener, name):
