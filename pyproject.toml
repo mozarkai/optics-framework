@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "optics-framework"
-version = "1.8.6-beta10"
+version = "1.8.7-beta.1"
 description = "A flexible and modular test automation framework that can be used to automate any mobile application."
 authors = ["Lalitanand Dandge <lalit@mozark.ai>"]
 license = "Apache-2.0"
@@ -24,7 +24,7 @@ include = [
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
 typing_extensions = ">=4.13.0"
-pandas = "^2.2.3"
+pandas = ">=2.2.3,<4.0.0"
 pyyaml = "^6.0.2"
 lxml = ">=5.3.1,<7.0.0"
 fuzzywuzzy = "^0.18.0"
@@ -34,28 +34,38 @@ prompt-toolkit = "^3.0.50"
 rich = ">=13.9.4,<15.0.0"
 python-json-logger = ">=3.3,<5.0"
 sse-starlette = ">=2.2.1,<4.0.0"
-fastapi = ">=0.115.12,<0.119.0"
+# Ceiling lifted past 0.119 so the optional `mcp` extra (fastmcp) can resolve:
+# fastmcp pulls starlette>=1.0, which FastAPI only supports from 0.119 onward.
+fastapi = ">=0.115.12,<0.138.0"
 requests = "^2.32.3"
 textual = ">=3,<7"
-pytest = "^8.3.5"
+pytest = ">=8.3.5,<10.0.0"
 pydantic = "^2.11.2"
 scikit-image = "^0.25.2"
-uvicorn = ">=0.35,<0.38"
+uvicorn = ">=0.35,<0.43"
 jsonpath-ng = "^1.7.0"
 beautifulsoup4 = "^4.12"
+google-genai = { version = ">=2.0.0,<3.0.0", optional = true }
+# >=3.4.2: earlier 3.4.x omit the starlette>=1.0 pin, letting the resolver keep
+# starlette 0.48 (a combo fastmcp's own code is incompatible with at runtime).
+fastmcp = { version = ">=3.4.2,<4.0.0", optional = true }
+
+[tool.poetry.extras]
+llm = ["google-genai"]
+mcp = ["fastmcp"]
 
 [tool.poetry.group.dev.dependencies]
 tox = ">=4.24.1,<4.31.0"
-pytest = ">=8.3.4,<8.5.0"
+pytest = ">=8.3.4,<9.1.0"
 pytest-cov = ">=6.0,<7.1"
 commitizen = "^4.4.1"
 pre-commit = "^4.2.0"
 ruff = ">=0.11.2,<0.15.0"
 bandit = "^1.8.3"
-pylint = "^3.3.7"
+pylint = ">=3.3.7,<5.0.0"
 
 [tool.poetry.group.test.dependencies]
-pytest = ">=8.3.4,<8.5.0"
+pytest = ">=8.3.4,<9.1.0"
 pytest-cov = ">=6.0,<7.1"
 pytest-mock = ">=3.14,<3.16"
 

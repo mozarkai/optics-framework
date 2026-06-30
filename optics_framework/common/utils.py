@@ -133,40 +133,31 @@ def escape_csv_value(s: str) -> str:
 
 
 def determine_element_type(element):
+    element = element.strip()
+    el = element.lower()
 
-    element = element.lstrip().rstrip()
-    # Handle TEXT_ONLY: prefix - determine type from the remainder
-    if element.lower().startswith(TEXT_ONLY_PREFIX):
+    if el.startswith(TEXT_ONLY_PREFIX) or el.startswith("text="):
         return "Text"
-    # Check if the input is an Image path
-    if element.split(".")[-1] in ["jpg", "jpeg", "png", "bmp"]:
+    if el.endswith((".jpg", ".jpeg", ".png", ".bmp")):
         return "Image"
-    # Check for Playwright-specific prefixes first
-    if element.lower().startswith("text="):
-        return "Text"
-    if element.lower().startswith("css="):
+    if el.startswith("css="):
         return "CSS"
-    if element.lower().startswith("xpath="):
+    if el.startswith("xpath=") or element.startswith(("/", "//", "(")):
         return "XPath"
-    # Check if the input is an XPath
-    if element.startswith("/") or element.startswith("//") or element.startswith("("):
-        return "XPath"
-    # Check if it looks like an ID (heuristic: no slashes, no dots, usually alphanumeric/underscores)
-    if element.lower().startswith("id:"):
+    if el.startswith("id:"):
         return "ID"
-    # Check if the input is a class
-    if element.lower().startswith("android.") or element.lower().startswith("xcui"):
+    if el.startswith(("android.", "xcui")):
         return "Class"
-    # Check if it's a CSS selector (has brackets, starts with # or ., or contains CSS selector patterns)
-    # CSS selectors can have: tag[attribute="value"], #id, .class, tag.class, etc.
-    if ("[" in element and "]" in element) or element.startswith("#") or element.startswith("."):
+
+    # Per CSS spec, a valid #id must start with a letter, underscore, or hyphen after #.
+    # Strings that begin with a digit after # are not valid CSS selectors and fall through to Text. E.g. #91
+    _css_tags = {"input", "button", "div", "span", "a", "img", "select", "textarea",
+                 "form", "label", "p", "h1", "h2", "h3", "h4", "h5", "h6"}
+    is_css_id  = element.startswith("#") and len(element) > 1 and (element[1].isalpha() or element[1] in "_-")
+    is_css_tag = any(el.startswith(tag + c) for tag in _css_tags for c in ("[", "#", "."))
+    if ("[" in element and "]" in element) or element.startswith(".") or is_css_id or is_css_tag:
         return "CSS"
-    # Check if it starts with a tag name followed by CSS selector characters
-    # Common HTML tags that might be CSS selectors
-    common_tags = ["input", "button", "div", "span", "a", "img", "select", "textarea", "form", "label", "p", "h1", "h2", "h3", "h4", "h5", "h6"]
-    if any(element.startswith(tag + "[") or element.startswith(tag + "#") or element.startswith(tag + ".") for tag in common_tags):
-        return "CSS"
-    # Default case: consider the input as Text
+
     return "Text"
 
 
@@ -188,12 +179,13 @@ def get_timestamp():
         internal_logger.error('Unable to get current time', exc_info=e)
         return None
 
-def encode_numpy_to_base64(image: np.ndarray) -> str:
+def encode_numpy_to_png_bytes(image: np.ndarray) -> bytes:
     """
-    Encodes a NumPy image (OpenCV format) to a base64 string.
+    Encodes a NumPy image (OpenCV BGR format) to raw PNG bytes.
 
     :param image: The input image as a NumPy array (BGR format).
-    :return: Base64 encoded string.
+    :return: PNG-encoded bytes.
+    :raises ValueError: If the image is not a valid, non-empty NumPy array.
     """
     if image is None or not isinstance(image, np.ndarray):
         raise ValueError("Input image must be a valid NumPy array")
@@ -202,8 +194,17 @@ def encode_numpy_to_base64(image: np.ndarray) -> str:
         raise ValueError("Input image is empty or has invalid dimensions")
 
     _, buffer = cv2.imencode('.png', image)
-    encoded_string = base64.b64encode(buffer).decode('utf-8')
-    return encoded_string
+    return buffer.tobytes()
+
+
+def encode_numpy_to_base64(image: np.ndarray) -> str:
+    """
+    Encodes a NumPy image (OpenCV format) to a base64 string.
+
+    :param image: The input image as a NumPy array (BGR format).
+    :return: Base64 encoded string.
+    """
+    return base64.b64encode(encode_numpy_to_png_bytes(image)).decode('utf-8')
 
 def compute_hash(xml_string):
     """Computes the SHA-256 hash of the XML string."""
@@ -319,6 +320,143 @@ def annotate_element(frame, centre_coor, bbox):
     # Draw a small circle at the center of the bounding box (optional)
     cv2.circle(frame, centre_coor, 5, (0, 0, 255), -1)
     return frame
+
+# Genuine interactivity signals. NOTE: "enabled" is deliberately excluded —
+# virtually every Android node carries enabled="true" (including pure layout
+# wrappers), so treating it as "interesting" would defeat condensation. It
+# remains a *shown* flag below when a node is kept for another reason.
+_PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable")
+_PS_SHOWN_FLAGS = ("clickable", "scrollable", "long-clickable", "checked", "selected",
+                   "focused", "enabled")
+
+# Text-bearing attribute names across platforms (Android, iOS, web).
+_TEXT_ATTRS = ("text", "content-desc", "name", "label", "value", "title", "alt")
+_ID_ATTRS = ("resource-id", "id", "accessibility-id")
+_BOUNDS_ATTRS = ("bounds",)  # Android-style "[x1,y1][x2,y2]"
+_RECT_ATTRS = ("x", "y", "width", "height")  # iOS-style separate attributes
+
+
+def _short_class(el) -> str:
+    """Short class/tag label — works for any XML-based UI hierarchy."""
+    cls = el.get("class") or str(el.tag) or "node"
+    return cls.rsplit(".", 1)[-1]
+
+
+def _is_interesting(el) -> bool:
+    """Return True for nodes that carry user-visible text or are interactive.
+
+    Platform-agnostic: checks common text and interactivity attributes across
+    Android (Appium), iOS (XCUITest), and web (Selenium/Playwright) hierarchies.
+    """
+    # Has meaningful text?
+    for attr in _TEXT_ATTRS:
+        if (el.get(attr) or "").strip():
+            return True
+    # Is interactive?
+    if any(el.get(flag) == "true" for flag in _PS_INTERACTIVE_FLAGS):
+        return True
+    # Platform-specific class heuristics for editable / password fields.
+    cls = el.get("class") or el.tag or ""
+    if cls.endswith("EditText") or cls.endswith("TextField") or cls.endswith("SecureTextField"):
+        return True
+    if el.get("password") == "true":
+        return True
+    return False
+
+
+def _descriptor_text(el) -> Optional[str]:
+    """First non-empty text-bearing attribute as ``label="value"`` (one is enough)."""
+    for attr in _TEXT_ATTRS:
+        val = " ".join((el.get(attr) or "").split())
+        if val:
+            label = "desc" if attr == "content-desc" else attr
+            return f'{label}="{val}"'
+    return None
+
+
+def _descriptor_id(el) -> Optional[str]:
+    """First non-empty id attribute as ``id=<short>`` (package prefix stripped)."""
+    for attr in _ID_ATTRS:
+        rid = el.get(attr) or ""
+        if rid:
+            return f"id={rid.split('/', 1)[-1]}"
+    return None
+
+
+def _descriptor_bounds(el) -> Optional[str]:
+    """Android-style ``bounds=...`` or, failing that, an iOS/web ``rect=(...)``."""
+    bounds = el.get("bounds")
+    if bounds:
+        return f"bounds={bounds}"
+    x, y, w, h = el.get("x"), el.get("y"), el.get("width"), el.get("height")
+    if x is not None and y is not None:
+        return f"rect=({x},{y},{w or '?'},{h or '?'})"
+    return None
+
+
+def _descriptor(el) -> str:
+    """One-line human-readable description of a UI node (platform-agnostic)."""
+    hint = " ".join((el.get("hint") or "").split())
+    parts = [
+        _short_class(el),
+        _descriptor_text(el),
+        _descriptor_id(el),
+        _descriptor_bounds(el),
+        *(flag for flag in _PS_SHOWN_FLAGS if el.get(flag) == "true"),
+        f'hint="{hint}"' if hint else None,
+    ]
+    return " ".join(p for p in parts if p)
+
+
+def _walk(el, depth: int, lines: List[str]) -> None:
+    # lxml represents comments / processing instructions with a callable .tag
+    # (not a str). Skip them — otherwise the attribute checks below raise
+    # AttributeError, which would break the documented graceful-degradation.
+    if not isinstance(el.tag, str):
+        return
+    kept = _is_interesting(el)
+    if kept:
+        lines.append("  " * min(depth, 12) + _descriptor(el))
+    next_depth = depth + 1 if kept else depth
+    for child in el:
+        _walk(child, next_depth, lines)
+
+
+def strip_page_source(page_source: str, max_chars: int = 12000) -> str:
+    """Condense a UI-hierarchy XML dump into a compact, LLM-friendly outline.
+
+    Keeps only signal-bearing nodes — those with visible text, a description, or
+    that are interactive — and a minimal attribute set per node. Kept nodes are
+    indented to preserve hierarchy. Pure layout wrappers are dropped.
+
+    Works across platforms: Android (Appium UIAutomator2), iOS (XCUITest), and
+    web (Selenium/Playwright) page sources all use XML-like hierarchies with
+    different attribute names; the helper functions check common attributes from
+    each platform.
+
+    Returns ``""`` if empty or unparseable, and truncates to ``max_chars`` to
+    bound prompt size.
+
+    .. note::
+       For structured element extraction with bounding boxes and XPaths, prefer
+       the element-source ``get_interactive_elements()`` API instead. This
+       function is a lightweight text-only summary for LLM prompt injection.
+    """
+    if not page_source:
+        return ""
+    try:
+        from lxml import etree  # type: ignore[import-untyped]
+        root = etree.fromstring(page_source.encode("utf-8"))
+    except Exception:  # noqa: BLE001 - any malformed source degrades to "no page source"
+        return ""
+
+    lines: List[str] = []
+    _walk(root, 0, lines)
+    out = "\n".join(lines)
+    if len(out) > max_chars:
+        out = out[:max_chars] + "\n… (truncated)"
+    return out
+
 
 def save_page_source(tree, time_stamp, output_dir):
     """
@@ -702,6 +840,107 @@ def bbox_from_webelement_like(obj: Any) -> Optional[Tuple[Tuple[int, int], Tuple
     except (TypeError, ValueError, AttributeError):
         pass
     return None
+
+
+def _window_size_from_source(element_source: Any) -> Optional[Tuple[int, int]]:
+    """
+    Best-effort fetch of the driver's reported window size from an element source.
+
+    The window size defines the coordinate space that element bounding boxes are
+    expressed in. On some platforms this differs from the screenshot's resolution
+    (see scale_bboxes_for_screenshot), so callers need it to convert between the two.
+
+    Duck-typed and defensive: returns None when the source has no driver, the driver
+    does not expose ``get_window_size``, or the call fails, so callers can fall back
+    to unscaled annotation rather than raising. The element source exposes its driver
+    via ``.driver``, which may itself wrap the underlying WebDriver one level in.
+
+    :param element_source: An element source instance (may be any object).
+    :return: (width, height), or None if undeterminable.
+    """
+    try:
+        driver = getattr(element_source, "driver", None)
+        for candidate in (driver, getattr(driver, "driver", None)):
+            get_window_size = getattr(candidate, "get_window_size", None)
+            if callable(get_window_size):
+                size = get_window_size()
+                width = int(size["width"])
+                height = int(size["height"])
+                if width > 0 and height > 0:
+                    return width, height
+                return None
+    except Exception:
+        return None
+    return None
+
+
+def _scale_bbox(
+    bbox: Optional[Tuple[Tuple[int, int], Tuple[int, int]]],
+    window_size: Tuple[int, int],
+    screenshot: np.ndarray,
+) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """
+    Scale a single bbox from window-coordinate space into the screenshot's
+    pixel space.
+
+    A bbox is reported in the driver's window coordinate space, while the
+    screenshot may be captured at a different resolution. Multiply each corner by
+    the per-axis scale (screenshot size / window size) to map it onto the image.
+    When the window size equals the screenshot size the scale is 1.0 and this is a
+    no-op (``int(x * 1.0) == x``). Returns the bbox unchanged on any failure.
+    """
+    if bbox is None:
+        return bbox
+    try:
+        (x1, y1), (x2, y2) = bbox
+        win_w, win_h = window_size
+        sh_h, sh_w = screenshot.shape[:2]
+        if win_w <= 0 or win_h <= 0:
+            return bbox
+        scale_x = sh_w / win_w
+        scale_y = sh_h / win_h
+        return (
+            (int(x1 * scale_x), int(y1 * scale_y)),
+            (int(x2 * scale_x), int(y2 * scale_y)),
+        )
+    except (TypeError, ValueError, AttributeError):
+        return bbox
+
+
+def scale_bboxes_for_screenshot(
+    bboxes: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]],
+    element_source: Any,
+    screenshot: Optional[np.ndarray],
+) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+    """
+    Scale element bounding boxes into the screenshot's pixel space before
+    annotation, using the element source's driver window size.
+
+    Bounding boxes obtained from a driver's element handles are expressed in the
+    driver's window coordinate space. When that space differs in resolution from
+    the captured screenshot, drawing the raw coordinates places the boxes at the
+    wrong position and size; scaling each box by (screenshot size / window size)
+    maps them correctly. When the two sizes match, the scale is 1.0 and the boxes
+    are left unchanged.
+
+    Best-effort and non-failing: if the window size can't be determined (e.g. the
+    source has no driver, or the driver errors) or no screenshot is available, the
+    bboxes are returned unchanged so annotation falls back to drawing them as-is.
+    Window size is fetched once for the whole list. Do not use this for OCR /
+    image-detection bboxes — those are already computed in the screenshot's pixel
+    space and need no conversion.
+
+    :param bboxes: List of ((x1,y1),(x2,y2)) bboxes (or None entries) in window space.
+    :param element_source: The element source whose driver defines the window space.
+    :param screenshot: The captured frame the bboxes will be drawn onto.
+    :return: bboxes scaled to the screenshot's pixel space, or unchanged on any failure.
+    """
+    if screenshot is None or not bboxes:
+        return bboxes
+    window_size = _window_size_from_source(element_source)
+    if window_size is None:
+        return bboxes
+    return [_scale_bbox(b, window_size, screenshot) for b in bboxes]
 
 
 def bboxes_from_webelements(

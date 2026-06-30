@@ -366,3 +366,92 @@ class TestScreenshotFailureFallback:
 
         mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, None)
         mock_save_screenshot.assert_not_called()
+
+
+class TestSelectDropdownOption:
+    """select_dropdown_option must open the dropdown then select the option (not a no-op)."""
+
+    def test_opens_dropdown_then_selects_option(self, action_keyword):
+        with patch.object(action_keyword, "press_element") as mock_press:
+            action_keyword.select_dropdown_option("Country", "India", event_name="evt")
+
+        assert mock_press.call_count == 2
+        # First press opens the dropdown, second selects the option — order matters.
+        assert mock_press.call_args_list[0].args[0] == "Country"
+        assert mock_press.call_args_list[1].args[0] == "India"
+        # event_name is threaded through to both presses.
+        assert all(c.kwargs.get("event_name") == "evt" for c in mock_press.call_args_list)
+
+    def test_missing_target_raises_instead_of_silent_pass(self, action_keyword):
+        # The old stub returned None (silent PASS); now a not-found target must surface.
+        with patch.object(
+            action_keyword, "press_element",
+            side_effect=OpticsError(Code.X0201, message="element not found"),
+        ):
+            with pytest.raises(OpticsError):
+                action_keyword.select_dropdown_option("Country", "India")
+
+
+class TestSwipeUntilElementAppears:
+    """Tests for OpticsError(E0201) handling in swipe_until_element_appears."""
+
+    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
+    @patch('optics_framework.api.action_keyword.time.time')
+    def test_e0201_continues_loop_until_found(self, mock_time, mock_sleep, action_keyword):
+        """E0201 is caught, loop continues, element found on second call."""
+        mock_time.side_effect = [0, 0, 3, 6, 9]
+        call_count = 0
+
+        def assert_presence_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OpticsError(Code.E0201, message="Element not found")
+            return True
+
+        with patch.object(action_keyword.verifier, 'assert_presence', side_effect=assert_presence_side_effect):
+            action_keyword.swipe_until_element_appears("element", "down", "10")
+
+        assert call_count == 2
+        action_keyword.driver.swipe_percentage.assert_called_once_with(10, 50, "down", 25, None)
+
+    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
+    @patch('optics_framework.api.action_keyword.time.time')
+    def test_non_e0201_is_reraised(self, mock_time, mock_sleep, action_keyword):
+        """Non-E0201 OpticsError is re-raised immediately."""
+        mock_time.side_effect = [0, 0]
+
+        with patch.object(
+            action_keyword.verifier, 'assert_presence',
+            side_effect=OpticsError(Code.E0303, message="Screenshot failed")
+        ):
+            with pytest.raises(OpticsError) as exc_info:
+                action_keyword.swipe_until_element_appears("element", "down", "10")
+
+        assert exc_info.value.code == Code.E0303
+        action_keyword.driver.swipe_percentage.assert_not_called()
+
+    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
+    @patch('optics_framework.api.action_keyword.time.time')
+    def test_element_found_stops_loop(self, mock_time, mock_sleep, action_keyword):
+        """Element found on first call, no swipe performed."""
+        mock_time.side_effect = [0, 0]
+
+        with patch.object(action_keyword.verifier, 'assert_presence', return_value=True):
+            action_keyword.swipe_until_element_appears("element", "down", "10")
+
+        action_keyword.driver.swipe_percentage.assert_not_called()
+
+    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
+    @patch('optics_framework.api.action_keyword.time.time')
+    def test_timeout_stops_loop(self, mock_time, mock_sleep, action_keyword):
+        """Element never found, loop exits after timeout."""
+        mock_time.side_effect = [0, 0, 3, 6, 9, 12]
+
+        with patch.object(
+            action_keyword.verifier, 'assert_presence',
+            side_effect=OpticsError(Code.E0201, message="Element not found")
+        ):
+            action_keyword.swipe_until_element_appears("element", "down", "10")
+
+        assert action_keyword.driver.swipe_percentage.call_count == 4

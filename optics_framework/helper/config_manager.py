@@ -2,7 +2,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, ListView, ListItem, Label, Input, Button
 from textual.containers import Vertical, Horizontal, Container
 from textual.screen import ModalScreen
-from optics_framework.common.config_handler import ConfigHandler, DependencyConfig
+from optics_framework.common.config_handler import ConfigHandler, Config, DependencyConfig
 import ast
 
 
@@ -106,7 +106,8 @@ class LoggerTUI(App):
 
     def __init__(self):
         super().__init__()
-        self.config_handler = ConfigHandler()
+        self.config_handler = ConfigHandler(config=Config())
+        self.config_handler.load()
         self.options = list(self.config_handler.config.model_fields.keys())
         self.selected_index = 0  # Changed to plain int
 

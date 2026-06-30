@@ -1,4 +1,5 @@
 from functools import wraps
+import collections
 import time
 import json
 from typing import Callable, Optional, Any, Tuple
@@ -7,6 +8,7 @@ from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
+from optics_framework.common.ai_self_heal import AISelfHealHandler, HealContext
 from optics_framework.common.error import OpticsError, Code
 from .verifier import Verifier
 
@@ -74,6 +76,9 @@ def _save_annotated_for_result(
         return
     if screenshot_np is None:
         return
+    # Element bbox is in the driver's window coordinate space; scale it to the
+    # screenshot's pixel space before drawing (no-op when the two already match).
+    bbox = utils.scale_bboxes_for_screenshot([bbox], element_source, screenshot_np)[0]
     framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
         framed,
@@ -100,14 +105,23 @@ def _try_results_until_success(
         result_count += 1
         _save_annotated_for_result(result, screenshot_np, execution_dir, func_name)
         try:
-            return func(self, element, located=result.value, *args, **kwargs)
+            ret = func(self, element, located=result.value, *args, **kwargs)
         except Exception as e:
             internal_logger.error(
                 f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
             last_exception = e
+            continue
+        # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
+        # appending after a bare `return` would be unreachable).
+        self._record_successful_step(func_name, element, args)
+        return ret
     if result_count == 0:
+        if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
+            return None
         raise OpticsError(Code.E0201, message=f"No valid strategies found for '{element}' in '{func_name}'")
     if last_exception:
+        if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
+            return None
         raise OpticsError(
             Code.X0201,
             message=f"All strategies failed for '{element}' in '{func_name}': {last_exception}",
@@ -143,6 +157,34 @@ def with_self_healing(func: Callable) -> Callable:
     return wrapper
 
 
+class _HealProviders:
+    """Screenshot / page-source providers for one AI self-heal attempt.
+
+    The first ``screenshot()`` returns the seed frame captured at failure time;
+    later calls re-capture live. Both are best-effort and never raise.
+    """
+
+    def __init__(self, seed_png: bytes, strategy_manager: StrategyManager) -> None:
+        self._seed_png: Optional[bytes] = seed_png
+        self._strategy_manager = strategy_manager
+
+    def screenshot(self) -> Optional[bytes]:
+        if self._seed_png is not None:
+            png, self._seed_png = self._seed_png, None
+            return png
+        try:
+            return utils.encode_numpy_to_png_bytes(self._strategy_manager.capture_screenshot())
+        except Exception:  # noqa: BLE001 - best-effort re-capture
+            return None
+
+    def pagesource(self) -> Optional[str]:
+        try:
+            ps = self._strategy_manager.capture_pagesource()
+            return utils.strip_page_source(ps[0]) if ps else None
+        except OpticsError:
+            return None
+
+
 class ActionKeyword:
     """
     High-Level API for Action Keywords
@@ -165,6 +207,75 @@ class ActionKeyword:
             self.element_source, self.text_detection, self.image_detection
         )
         self.execution_dir = builder.session_config.execution_output_path
+        # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
+        # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
+        # (e.g. the optics-framework[llm] extra missing) must disable the feature, not
+        # crash the run.
+        self.ai_self_heal_enabled = bool(getattr(builder.session_config, "ai_self_heal", False))
+        self._llm = None
+        if self.ai_self_heal_enabled:
+            try:
+                self._llm = builder.get_llm()
+            except Exception as e:  # noqa: BLE001 - degrade to inert, never fatal
+                internal_logger.warning(
+                    "AI self-heal enabled but no usable LLM (%s); self-heal disabled.", e
+                )
+        self._ai_healer: Optional[AISelfHealHandler] = None
+        # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
+        self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
+
+    def _record_successful_step(self, func_name: str, element: Any, args: tuple) -> None:
+        self._recent_steps.append((func_name, [str(element), *map(str, args)]))
+
+    def _ai_self_heal(
+        self, element: Any, func_name: str, args: tuple, kwargs: dict, screenshot_np: Any
+    ) -> bool:
+        """Last-resort AI recovery after every locate strategy failed. Returns True if healed.
+
+        Fully inert (returns False, no LLM call) when the toggle is off, no LLM is enabled, or
+        no screenshot is available. Never raises — on any problem it returns False so the caller
+        re-raises the original element-not-found error and the param-fallback ladder continues.
+        """
+        if not self._ai_self_heal_ready(screenshot_np):
+            return False
+        try:
+            seed_png = utils.encode_numpy_to_png_bytes(screenshot_np)
+        except ValueError:
+            return False
+
+        providers = _HealProviders(seed_png, self.strategy_manager)
+        ctx = HealContext(
+            intent_keyword=func_name,
+            intent_params=[str(a) for a in args],
+            element=str(element),
+            recent_steps=list(self._recent_steps),
+            failed_strategies=sorted(
+                {type(s).__name__ for s in self.strategy_manager.locator_strategies}
+            ),
+        )
+        if self._ai_healer is None:
+            self._ai_healer = AISelfHealHandler(self._llm, self.driver)
+        internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
+        result = self._ai_healer.heal(ctx, providers.screenshot, providers.pagesource)
+        self._log_heal_outcome(result, func_name, element, args)
+        return result.ok
+
+    def _ai_self_heal_ready(self, screenshot_np: Any) -> bool:
+        """True only when self-heal can run: toggle on, an LLM instance, and a screenshot."""
+        if not self.ai_self_heal_enabled or self._llm is None or screenshot_np is None:
+            return False
+        return bool(getattr(self._llm, "instances", None))
+
+    def _log_heal_outcome(self, result: Any, func_name: str, element: Any, args: tuple) -> None:
+        """Log the heal result; on success, record the step so the run stays /save-able."""
+        if not result.ok:
+            internal_logger.info(
+                "AI self-heal: could not recover '%s': %s", func_name, result.message
+            )
+            return
+        action = result.action.action if result.action else "?"
+        internal_logger.info("AI self-heal: recovered '%s' via '%s'", func_name, action)
+        self._record_successful_step(func_name, element, args)
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""
@@ -296,13 +407,21 @@ class ActionKeyword:
 
     def select_dropdown_option(self, element: str, option: str, event_name: Optional[str] = None) -> None:
         """
-        Select a specified dropdown option.
+        Open a dropdown and select one of its options.
+
+        Opens the dropdown by pressing ``element``, then selects ``option`` by pressing it.
+        Both presses go through :meth:`press_element`'s self-healing location
+        (XPath -> text -> OCR -> image), so either step raises ``OpticsError`` (``E0201`` /
+        ``X0201``) when its target can't be found — an honest failure rather than a
+        silent no-op.
 
         :param element: The dropdown element (Image template, OCR template, or XPath).
-        :param option: The option to be selected.
+        :param option: The option to select (visible label, OCR/Image template, or XPath).
         :param event_name: The event triggering the selection.
         """
-        pass
+        internal_logger.info(f"Selecting '{option}' from dropdown '{element}'")
+        self.press_element(element, event_name=event_name)
+        self.press_element(option, event_name=event_name)
 
     # Swipe and Scroll actions
     def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
@@ -360,10 +479,14 @@ class ActionKeyword:
         self._save_screenshot_if_available(screenshot_np, "swipe_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
-            result = self.verifier.assert_presence(
-                element, timeout_str="3", rule="any")
-            if result:
-                break
+            try:
+                result = self.verifier.assert_presence(
+                    element, timeout_str="3", rule="any")
+                if result:
+                    break
+            except OpticsError as e:
+                if e.code != Code.E0201:
+                    raise
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
             time.sleep(3)
 
@@ -416,10 +539,17 @@ class ActionKeyword:
         self._save_screenshot_if_available(screenshot_np, "scroll_until_element_appears")
         start_time = time.time()
         while time.time() - start_time < int(timeout):
-            result = self.verifier.assert_presence(
-                element, timeout_str="3", rule="any")
-            if result:
-                break
+            try:
+                result = self.verifier.assert_presence(
+                    element, timeout_str="3", rule="any")
+                if result:
+                    break
+            except OpticsError as e:
+                if e.code != Code.E0201:
+                    raise
+                # Don't hide configuration/strategy issues; scrolling won't fix these.
+                if "No strategies found" in e.message or "No valid strategies found" in e.message:
+                    raise
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
 

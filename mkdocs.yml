@@ -55,10 +55,12 @@ nav:
   - Usage:
     - Usage Overview: usage/usage.md
     - CLI Usage: usage/CLI_usage.md
+    - Live Usage: usage/live_usage.md
     - Keyword Usage: usage/keyword_usage.md
     - Library Usage: usage/library_usage.md
     - Robot Framework Usage: usage/robot_usage.md
     - REST API Usage: usage/REST_API_usage.md
+    - MCP Usage: usage/mcp_usage.md
   - Architecture:
     - Architecture Overview: architecture.md
     - Components: architecture/components.md
