@@ -168,7 +168,7 @@ def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
             content_types.add("modules")
         if {"element_name", "element_id"}.issubset(headers):
             content_types.add("elements")
-        if {"error_code", "pattern"}.issubset(headers):
+        if {"error_code", "match_string"}.issubset(headers):
             content_types.add("error_definitions")
     return content_types
 

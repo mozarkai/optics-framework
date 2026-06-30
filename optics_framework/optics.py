@@ -522,11 +522,14 @@ class Optics:
         self,
         source: Union[Dict[str, Dict[str, str]], ErrorDefinitions],
     ) -> None:
-        """Load user-defined error patterns onto the active session.
+        """Load user-defined error strings onto the active session.
 
-        Accepts a raw dict ``{code: {pattern, description, severity}}`` or an
-        :class:`ErrorDefinitions` model.  Repeated calls merge into the
+        Accepts a raw dict ``{code: {match_string, description, severity}}`` or
+        an :class:`ErrorDefinitions` model.  Repeated calls merge into the
         existing set (later additions overwrite same-code earlier entries).
+
+        ``match_string`` is matched against on-screen text as a case-insensitive
+        substring (not a regex).
 
         CSV loading is the responsibility of the runner/CLI layer; use the
         auto-discovered ``error_definitions.csv`` file in the project folder
@@ -551,7 +554,7 @@ class Optics:
         for code, meta in raw.items():
             session.error_definitions.add_error(
                 code,
-                pattern=meta.get("pattern", ""),
+                match_string=meta.get("match_string", ""),
                 description=meta.get("description", ""),
                 severity=meta.get("severity", ""),
             )
@@ -565,9 +568,11 @@ class Optics:
         """Capture page source and run on-screen error detection.
 
         Returns a list of matched error dicts (may be empty). Each entry carries
-        ``error_code``, ``matched_on`` (``"pattern"`` or ``"code"``), ``pattern``,
-        ``description``, ``severity``, and ``detected_at=context_label``; the
-        optional ``test_case`` argument adds a ``test_case`` field on each entry.
+        ``error_code``, ``matched_on`` (``"match_string"`` or ``"code"``),
+        ``match_string``, ``description``, ``severity``, and
+        ``detected_at=context_label``; the optional ``test_case`` argument adds a
+        ``test_case`` field on each entry. Matching is case-insensitive substring
+        matching (not regex).
 
         No files are written; the caller decides where the data lands.
         Wraps all driver I/O in try/except so a flaky session returns ``[]``

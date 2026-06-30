@@ -260,7 +260,7 @@ class JUnitEventHandler(EventSubscriber):
             parts = filter(None, [
                 err["error_code"],
                 err.get("severity", ""),
-                err.get("pattern", ""),
+                err.get("match_string", ""),
                 err.get("description", ""),
             ])
             msg = " | ".join(parts)

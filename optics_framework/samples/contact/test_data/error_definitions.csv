@@ -1,4 +1,4 @@
-error_code,pattern,description,severity
+error_code,match_string,description,severity
 ERR_001,Unfortunately,App has crashed with a system dialog,critical
 ERR_002,has stopped,App stopped unexpectedly,critical
 ERR_003,No internet connection,Device lost network connectivity,high

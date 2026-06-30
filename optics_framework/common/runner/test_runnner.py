@@ -535,8 +535,8 @@ class TestRunner(Runner):
                 return
             for m in matched:
                 execution_logger.warning(
-                    "ON-SCREEN ERROR DETECTED — code: %s | matched_on: %s | pattern: '%s' | severity: %s | %s",
-                    m["error_code"], m["matched_on"], m["pattern"],
+                    "ON-SCREEN ERROR DETECTED — code: %s | matched_on: %s | match_string: '%s' | severity: %s | %s",
+                    m["error_code"], m["matched_on"], m.get("match_string", ""),
                     m.get("severity", ""), m.get("description", ""),
                 )
             out_path = os.path.join(output_dir, f"detected_errors_{self.session_id}.json")

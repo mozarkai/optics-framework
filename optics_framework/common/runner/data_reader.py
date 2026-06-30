@@ -204,15 +204,19 @@ class CSVDataReader(DataReader):
         return elements
 
     def read_error_definitions(self, file_path: str) -> dict:
-        """Read error_code, pattern, description, severity columns from a CSV file."""
+        """Read error_code, match_string, description, severity columns from a CSV file.
+
+        ``match_string`` is matched as a case-insensitive substring against
+        on-screen text (not a regex).
+        """
         result = {}
         rows = self.read_file(file_path)
         for row in rows:
             code = row.get("error_code", "").strip()
-            pattern = row.get("pattern", "").strip()
-            if code and pattern:
+            match_string = row.get("match_string", "").strip()
+            if code and match_string:
                 result[code] = {
-                    "pattern": pattern,
+                    "match_string": match_string,
                     "description": row.get("description", "").strip(),
                     "severity": row.get("severity", "").strip(),
                 }
