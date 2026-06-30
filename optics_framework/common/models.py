@@ -1,7 +1,7 @@
 from uuid import uuid4
 from enum import Enum
 from typing import Optional, Dict, List, Callable, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -318,3 +318,21 @@ class ErrorDefinitions(BaseModel):
 
     def get_all(self) -> Dict[str, Dict[str, str]]:
         return self.errors
+
+
+class LoadedSuite(BaseModel):
+    """A fully-loaded test suite, decoupled from any session.
+
+    Produced by ``load_suite_from_folder`` / ``build_suite_from_inline`` so the
+    same suite-building path feeds both the CLI runners and the REST dry-run
+    endpoints without creating a session. ``config`` is a ``Config`` instance
+    (typed ``Any`` here to avoid a circular import with ``config_handler``).
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    config: Any = None
+    execution_queue: Optional["TestCaseNode"] = None
+    modules_data: ModuleData = Field(default_factory=ModuleData)
+    elements_data: ElementData = Field(default_factory=ElementData)
+    api_data: ApiData = Field(default_factory=ApiData)
+    templates_data: TemplateData = Field(default_factory=TemplateData)
