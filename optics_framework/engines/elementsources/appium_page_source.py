@@ -213,7 +213,7 @@ class AppiumPageSource(ElementSourceInterface):
             if (rule == "any" and (text_found or xpath_found)) or (rule == "all" and text_found and xpath_found):
                 return True, utils.get_timestamp()
 
-            time.sleep(0.5)
+            # Optional: time.sleep(0.3)  # Delay to reduce busy looping
 
         # Timeout reached
         internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
