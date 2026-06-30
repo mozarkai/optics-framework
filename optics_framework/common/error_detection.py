@@ -5,10 +5,21 @@ library `Optics` class (`capture_and_detect`) so the matching logic lives in
 one place.
 """
 import re
+import xml.etree.ElementTree as ET  # nosec B405
 from typing import Dict, List, Optional
 
-# Attributes in Appium XML that carry user-visible text on screen.
-_APPIUM_TEXT_ATTRS = re.compile(
+try:
+    from bs4 import BeautifulSoup as _BeautifulSoup
+    _BS4_AVAILABLE = True
+except ImportError:
+    _BeautifulSoup = None  # type: ignore[assignment,misc]
+    _BS4_AVAILABLE = False
+
+# Attributes in mobile XML (Appium/XCUITest) that carry user-visible text.
+_MOBILE_TEXT_ATTRS = ("text", "content-desc", "label", "value", "hint", "name")
+
+# Regex fallback for when the XML is malformed and ElementTree can't parse it.
+_MOBILE_TEXT_ATTRS_RE = re.compile(
     r'\b(?:text|content-desc|label|value|hint|name)="([^"]*)"'
 )
 
@@ -17,22 +28,37 @@ def extract_visible_text(page_source: str) -> str:
     """Extract only user-visible text from a page source string.
 
     For HTML (Selenium/Playwright): strips all tags via BeautifulSoup,
-    returning only rendered text content.
+    returning only rendered text content.  Returns ``""`` when bs4 is
+    unavailable or parsing fails — raw HTML is never returned as it would
+    cause severe false positives (CSS class names like ``class="error"``).
 
-    For Appium XML: pulls values of the attributes that carry on-screen text
-    (text, content-desc, label, value, hint, name), ignoring resource-ids,
-    class names, bounds, and other metadata. This prevents false-positive
-    matches where a pattern appears inside an element attribute name or CSS
-    class rather than as visible text.
+    For Appium / mobile XML: parses via ElementTree and collects values of
+    the attributes that carry on-screen text (text, content-desc, label,
+    value, hint, name), ignoring resource-ids, class names, bounds, and
+    other metadata.  Falls back to regex extraction when the XML is
+    malformed.
     """
     stripped = page_source.lstrip()
     if stripped.lower().startswith(("<html", "<!doctype")):
+        if not _BS4_AVAILABLE or _BeautifulSoup is None:
+            return ""
         try:
-            from bs4 import BeautifulSoup
-            return BeautifulSoup(page_source, "lxml").get_text(separator=" ", strip=True)
+            return _BeautifulSoup(page_source, "lxml").get_text(separator=" ", strip=True)
         except Exception:
-            return page_source
-    return " ".join(_APPIUM_TEXT_ATTRS.findall(page_source))
+            return ""
+
+    # Mobile / Appium XML — prefer ElementTree over regex.
+    try:
+        root = ET.fromstring(page_source)  # nosec B314
+        texts: List[str] = []
+        for elem in root.iter():
+            for attr in _MOBILE_TEXT_ATTRS:
+                val = (elem.get(attr) or "").strip()
+                if val:
+                    texts.append(val)
+        return " ".join(texts)
+    except ET.ParseError:
+        return " ".join(_MOBILE_TEXT_ATTRS_RE.findall(page_source))
 
 
 def detect_errors_in_text(
@@ -43,6 +69,8 @@ def detect_errors_in_text(
 ) -> List[Dict]:
     """OR-match each error definition's pattern OR error_code against `searchable`.
 
+    Matching is case-insensitive.
+
     Returns a list of matched dicts of shape
     ``{error_code, matched_on, pattern, description, severity, ...}``.
     When ``context_label`` is provided, each entry also carries
@@ -52,13 +80,14 @@ def detect_errors_in_text(
     `matched_on` is ``"pattern"`` when the pattern column triggered the match,
     or ``"code"`` when only the error_code substring was present.
     """
+    searchable_lower = searchable.lower()
     matched: List[Dict] = []
     for code, meta in error_definitions.items():
         pattern = meta.get("pattern", "")
         matched_on: Optional[str] = None
-        if pattern and pattern in searchable:
+        if pattern and pattern.lower() in searchable_lower:
             matched_on = "pattern"
-        elif code and code in searchable:
+        elif code and code.lower() in searchable_lower:
             matched_on = "code"
         if matched_on:
             entry: Dict = {"error_code": code, "matched_on": matched_on, **meta}

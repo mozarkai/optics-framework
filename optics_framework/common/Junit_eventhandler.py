@@ -241,22 +241,33 @@ class JUnitEventHandler(EventSubscriber):
                 int(testsuite.get("skipped", "0")) + 1))
 
     def add_detected_errors(self, session_id: str, detected: list) -> None:
-        """Insert a <properties> block with detected on-screen errors into the session testsuite."""
+        """Insert a synthetic testcase with <failure> elements for detected on-screen errors.
+
+        Using a real testcase (rather than <properties>) means standard CI tools
+        (Jenkins, GitLab CI, GitHub Actions) will surface the failures and mark
+        the build accordingly.
+        """
         session_suite = self.session_suites.get(session_id)
         if session_suite is None or not detected:
             return
-        props = ET.Element("properties")
+        testcase = ET.SubElement(
+            session_suite, "testcase",
+            name="on-screen-error-detection",
+            classname=f"session_{session_id}",
+            time="0",
+        )
         for err in detected:
-            value = " | ".join(filter(None, [
-                err.get("pattern", ""),
+            parts = filter(None, [
+                err["error_code"],
                 err.get("severity", ""),
+                err.get("pattern", ""),
                 err.get("description", ""),
-            ]))
-            ET.SubElement(props, "property",
-                name=f"detected_error.{err['error_code']}",
-                value=value,
-            )
-        session_suite.insert(0, props)
+            ])
+            msg = " | ".join(parts)
+            failure = ET.SubElement(testcase, "failure", message=msg, type="OnScreenError")
+            failure.text = msg
+        session_suite.set("tests", str(int(session_suite.get("tests", "0")) + 1))
+        session_suite.set("failures", str(int(session_suite.get("failures", "0")) + len(detected)))
 
     def flush(self):
         try:

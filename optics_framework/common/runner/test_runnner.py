@@ -529,7 +529,7 @@ class TestRunner(Runner):
             if not (error_defs and error_defs.get_all() and page_source):
                 return
             searchable = extract_visible_text(page_source)
-            matched = detect_errors_in_text(searchable, error_defs.get_all())
+            matched = detect_errors_in_text(searchable, error_defs.get_all(), context_label="end_of_run")
             if not matched:
                 internal_logger.debug("No user-defined errors detected in end-of-run page source.")
                 return

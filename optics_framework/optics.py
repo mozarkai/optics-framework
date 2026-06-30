@@ -520,40 +520,33 @@ class Optics:
     @keyword("Add Error Definitions")
     def add_error_definitions(
         self,
-        source: Union[str, Dict[str, Dict[str, str]], ErrorDefinitions],
+        source: Union[Dict[str, Dict[str, str]], ErrorDefinitions],
     ) -> None:
         """Load user-defined error patterns onto the active session.
 
-        Accepts a CSV path (with columns ``error_code, pattern, description,
-        severity``), a raw dict ``{code: {pattern, description, severity}}``,
-        or an :class:`ErrorDefinitions` model. Repeated calls merge into the
+        Accepts a raw dict ``{code: {pattern, description, severity}}`` or an
+        :class:`ErrorDefinitions` model.  Repeated calls merge into the
         existing set (later additions overwrite same-code earlier entries).
+
+        CSV loading is the responsibility of the runner/CLI layer; use the
+        auto-discovered ``error_definitions.csv`` file in the project folder
+        for that path.
 
         Required before :meth:`capture_and_detect` can return any matches.
         """
-        from optics_framework.common.runner.data_reader import CSVDataReader
-
         if not self.session_id or self.session_id not in self.session_manager.sessions:
             raise OpticsError(Code.E0101, message=INVALID_SETUP)
         session = self.session_manager.sessions[self.session_id]
         if session.error_definitions is None:
             session.error_definitions = ErrorDefinitions()
 
-        if isinstance(source, str):
-            if not os.path.isabs(source):
-                project_path = getattr(self.config, "project_path", None)
-                if project_path:
-                    source = os.path.join(project_path, source)
-            if not os.path.exists(source):
-                raise FileNotFoundError(f"Error definitions CSV not found: {source}")
-            raw = CSVDataReader().read_error_definitions(source)
-        elif isinstance(source, ErrorDefinitions):
+        if isinstance(source, ErrorDefinitions):
             raw = source.get_all()
         elif isinstance(source, dict):
             raw = source
         else:
-            raise ValueError(
-                "add_error_definitions: source must be a CSV path, dict, or ErrorDefinitions"
+            raise TypeError(
+                "add_error_definitions: source must be a dict or ErrorDefinitions instance"
             )
         for code, meta in raw.items():
             session.error_definitions.add_error(
