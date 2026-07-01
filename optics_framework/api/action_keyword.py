@@ -662,14 +662,9 @@ class ActionKeyword:
             internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
             self.driver.press_coordinates(x, y, event_name=event_name)
             self.driver.enter_text(str(number), event_name)
-        elif isinstance(located, str):
-            self.driver.enter_text_element(located, str(number), event_name)
         else:
-            internal_logger.error(
-                "Element location %s is not provided correctly for entering number.", element)
-            raise ValueError(
-                f"Element location {element} is not provided correctly for entering number."
-            )
+            internal_logger.debug(f"Entering number '{number}' into element '{element}'")
+            self.driver.enter_text_element(located, str(number), event_name)
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
