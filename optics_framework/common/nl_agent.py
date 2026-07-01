@@ -57,6 +57,10 @@ class AgentResult:
     status: str  # "done" | "failed" | "exhausted" | "aborted"
     steps: List[AgentStep] = field(default_factory=list)
     message: Optional[str] = None
+    # The keyword steps to commit to the /save buffer. Normally every step that succeeded,
+    # in order. On a "done" run with curation enabled (see NaturalLanguageAgent
+    # curate_on_done) this is the minimal pruned subset that reproduces the goal, not
+    # literally every step that passed.
     successful_steps: List[Tuple[str, List[str]]] = field(default_factory=list)
 
 
@@ -216,6 +220,45 @@ coordinate guessing has already failed).
 _MAX_THOUGHT_CHARS = 160
 
 
+# Curation schema. After an instruction is fulfilled, the model is asked to reduce the
+# steps it ran to the minimal subset that reproduces the goal. Flat (no anyOf) for the same
+# Gemini-compatibility reasons as ACTION_SCHEMA.
+CURATION_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "keep": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "description": "1-based indices of the CANDIDATE steps to keep, in any order.",
+        },
+        "reason": {
+            "type": "string",
+            "description": "Brief justification for which steps were dropped.",
+        },
+    },
+    "required": ["keep", "reason"],
+    "propertyOrdering": ["keep", "reason"],
+}
+
+
+CURATION_SYSTEM_PROMPT = """\
+You are cleaning up a UI-automation recording. An instruction was just fulfilled by running a \
+sequence of keywords, one at a time. Some of those keywords were dead-ends, backtracks (e.g. \
+navigating somewhere then pressing back), overshoot-then-correct gestures, or no-op actions that \
+did not contribute to the final result.
+
+Your job: return the MINIMAL ordered subset of the CANDIDATE steps that a fresh run must execute, \
+top to bottom, to reproduce the goal deterministically. Drop steps that do not contribute.
+
+RULES:
+- `keep` is a list of the 1-based CANDIDATE step numbers to keep. Only CANDIDATE numbers are valid.
+- Never reference the FAILED context steps — they already failed and are excluded.
+- Order in `keep` does not matter; it will be re-sorted into execution order.
+- When in doubt, KEEP the step. Never drop a step that might be needed — a broken script is far \
+worse than a slightly long one. If every step contributed, keep them all.
+"""
+
+
 class NaturalLanguageAgent:
     """Bounded ReAct loop translating an instruction into keyword executions."""
 
@@ -232,6 +275,7 @@ class NaturalLanguageAgent:
         max_consecutive_failures: int = 3,
         max_blind_repeats: int = 3,
         non_verifying_keywords: Tuple[str, ...] = DEFAULT_NON_VERIFYING_KEYWORDS,
+        curate_on_done: bool = False,
     ) -> None:
         self.llm = llm
         self.screenshot_provider = screenshot_provider
@@ -243,6 +287,11 @@ class NaturalLanguageAgent:
         self.max_consecutive_failures = max_consecutive_failures
         self.max_blind_repeats = max_blind_repeats
         self.non_verifying_keywords = non_verifying_keywords
+        # When True, a successful ("done") run gets an extra LLM pass that prunes the
+        # recorded steps to the minimal set reproducing the goal (see
+        # _curate_successful_steps). Off by default so the agent stays a pure primitive;
+        # LiveController enables it because /save wants a minimal replayable script.
+        self.curate_on_done = curate_on_done
 
     def run(
         self,
@@ -295,7 +344,14 @@ class NaturalLanguageAgent:
 
         if step.action == "done":
             state.history.append(step)
-            return AgentResult("done", state.history, step.reason or "Goal reached.", state.successful)
+            successful = state.successful
+            message = step.reason or "Goal reached."
+            if self.curate_on_done:
+                curated = self._curate_successful_steps(instruction, state)
+                if curated is not None:
+                    message = f"{message} (kept {len(curated)} of {len(state.successful)} steps)"
+                    successful = curated
+            return AgentResult("done", state.history, message, successful)
         if step.action == "fail":
             state.history.append(step)
             return AgentResult("failed", state.history, step.reason or "Model gave up.", state.successful)
@@ -462,4 +518,88 @@ class NaturalLanguageAgent:
 
         lines.append("")
         lines.append("The attached image is the CURRENT screen. Decide the SINGLE next action as JSON.")
+        return "\n".join(lines)
+
+    def _curate_successful_steps(
+        self, instruction: str, state: "_RunState"
+    ) -> Optional[List[Tuple[str, List[str]]]]:
+        """Prune ``state.successful`` to the minimal subset that reproduces the goal.
+
+        Returns the curated ``(keyword, params)`` list, or ``None`` to signal "keep all"
+        (the caller commits ``state.successful`` unchanged). Every abnormal outcome — too
+        few steps to prune, an LLM error, a malformed response, no valid indices, or the
+        model keeping everything — returns ``None``, so a working recording is never lost.
+        """
+        n = len(state.successful)
+        if n <= 1:
+            return None  # nothing to prune
+
+        prompt = self._build_curation_prompt(instruction, state)
+        try:
+            raw = self.llm.generate_json(
+                prompt, CURATION_SCHEMA, images=None,
+                system=CURATION_SYSTEM_PROMPT, temperature=0.0,
+            )
+        except OpticsError as exc:
+            internal_logger.debug("NL curation: LLM error, keeping all steps: %s", exc.message)
+            return None
+        except Exception as exc:  # noqa: BLE001 - curation must never break a working recording
+            internal_logger.debug("NL curation: unexpected error, keeping all steps: %s", exc)
+            return None
+
+        if not isinstance(raw, dict):
+            return None
+        keep_raw = raw.get("keep")
+        if not isinstance(keep_raw, list):
+            return None
+
+        # Coerce to 0-based indices: reject bools/non-ints, range-check, dedup, sort.
+        seen: set[int] = set()
+        indices: List[int] = []
+        for value in keep_raw:
+            if isinstance(value, bool) or not isinstance(value, int):
+                continue
+            zero = value - 1  # prompt uses 1-based candidate numbering
+            if 0 <= zero < n and zero not in seen:
+                seen.add(zero)
+                indices.append(zero)
+        if not indices or len(indices) == n:
+            return None  # dropped everything, or kept everything -> keep all
+        indices.sort()
+        curated = [state.successful[i] for i in indices]
+        internal_logger.debug(
+            "NL curation: kept %d of %d steps (%s)", len(curated), n, raw.get("reason", "")
+        )
+        return curated
+
+    def _build_curation_prompt(self, instruction: str, state: "_RunState") -> str:
+        """Text-only prompt for the curation pass.
+
+        CANDIDATE steps are the successful keyword steps, numbered 1-based so index ``k``
+        maps to ``state.successful[k-1]``. Failed keyword steps are listed as read-only
+        context (no number) so the model can recognise overshoot/correction, but they are
+        not selectable.
+        """
+        lines = [
+            f"INSTRUCTION (goal that was achieved): {instruction}",
+            "",
+            "CANDIDATE STEPS (selectable — put these numbers in `keep`):",
+        ]
+        candidate = 0
+        for step in state.history:
+            if step.action != "keyword" or step.exec_result is None:
+                continue
+            thought = step.thought[:_MAX_THOUGHT_CHARS]
+            if step.exec_result.ok:
+                candidate += 1
+                lines.append(f"  {candidate}. {step.keyword} {step.params}  | {thought}")
+            else:
+                fail = step.observation or (step.exec_result.message or "FAIL")
+                lines.append(f"  - [FAILED, not selectable] {step.keyword} {step.params} -> {fail}")
+        lines.append("")
+        lines.append(
+            "Return `keep` = the 1-based CANDIDATE numbers to run, in any order, that reproduce "
+            "the goal. Drop dead-ends, backtracks, overshoot-then-correct, and no-op steps. When "
+            "unsure, KEEP."
+        )
         return "\n".join(lines)
