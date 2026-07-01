@@ -1,6 +1,6 @@
 from typing import Optional, Any, List
 
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import OpticsError, Code, Code, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -58,7 +58,47 @@ class Verifier:
         :param timeout: The time to wait for the element in seconds.
         :param event_name: The name of the event associated with the check, if any.
         """
-        pass
+        state = element_state.strip().lower()
+
+        if state in ("visible", "invisible"):
+            try:
+                present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
+            except OpticsError:
+                present = False
+            if state == "visible" and not present:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
+            if state == "invisible" and present:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
+            if event_name:
+                self.event_sdk.capture_event(event_name)
+
+        elif state in ("enabled", "disabled"):
+            located = None
+            try:
+                for result in self.strategy_manager.locate(element):
+                    located = result.value
+                    break
+            except OpticsError:
+                pass
+
+            if located is None:
+                raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+            if isinstance(located, tuple):
+                raise OpticsError(Code.E0401, message=f"Cannot check enabled/disabled state for coordinate-based elements.")
+
+            is_enabled = located.is_enabled()
+            if state == "enabled" and not is_enabled:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is not enabled.")
+            if state == "disabled" and is_enabled:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is enabled but expected disabled.")
+            if event_name:
+                self.event_sdk.capture_event(event_name)
+
+        else:
+            raise OpticsError(
+                Code.E0403,
+                message=f"Unknown element_state '{element_state}'. Expected: visible, invisible, enabled, disabled."
+            )
 
     def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> None:
         """
