@@ -12,6 +12,7 @@ from optics_framework.common.nl_agent import (
     KeywordSpec,
     ExecResult,
     ACTION_SCHEMA,
+    CURATION_SCHEMA,
     SYSTEM_PROMPT,
 )
 from optics_framework.common.error import OpticsError, Code
@@ -53,6 +54,35 @@ def _ok_executor(recorder):
         return ExecResult(ok=True, strategy="OCR", elapsed=0.1)
 
     return _exec
+
+
+class CuratingFakeLLM(FakeLLM):
+    """FakeLLM that also serves the post-'done' curation turn.
+
+    ACTION_SCHEMA turns come from the base ``scripted`` list; the single CURATION_SCHEMA
+    turn returns ``curation_reply``. Curation is text-only, so ``images`` must be None.
+    """
+
+    def __init__(self, scripted, curation_reply):
+        super().__init__(scripted)
+        self.curation_reply = curation_reply
+        self.curation_calls = 0
+
+    def generate_json(self, prompt, response_schema, images=None, system=None, temperature=None):
+        if response_schema is CURATION_SCHEMA:
+            self.curation_calls += 1
+            assert images is None
+            return self.curation_reply
+        return super().generate_json(prompt, response_schema, images, system, temperature)
+
+
+def _kw(keyword, params):
+    return {"thought": f"do {keyword}", "action": "keyword", "keyword": keyword,
+            "params": params, "reason": ""}
+
+
+def _done():
+    return {"thought": "ok", "action": "done", "reason": "goal reached"}
 
 
 class TestAgentControlFlow:
@@ -323,3 +353,132 @@ class TestGeminiMissingDependency:
             gemini.GeminiLLM({"capabilities": {}})
         assert exc_info.value.code == Code.E0601
         assert "optics-framework[llm]" in exc_info.value.message
+
+
+class TestCurationSchema:
+    def test_no_anyof_in_schema(self):
+        import json
+
+        assert "anyOf" not in json.dumps(CURATION_SCHEMA)
+
+    def test_required_fields(self):
+        assert CURATION_SCHEMA["required"] == ["keep", "reason"]
+
+
+class TestCurateOnDone:
+    """The post-'done' curation pass (curate_on_done=True) prunes to a replayable subset."""
+
+    def _agent(self, llm, executed=None, curate=True):
+        return NaturalLanguageAgent(
+            llm, _shots, _ok_executor(executed if executed is not None else []),
+            _catalog, curate_on_done=curate,
+        )
+
+    def test_curation_prunes_non_contributing_step(self):
+        executed = []
+        llm = CuratingFakeLLM(
+            [_kw("press_element", ["Menu"]),      # 1 - dead end
+             _kw("press_element", ["Search"]),    # 2 - needed
+             _kw("enter_text", ["Search", "kids"]),  # 3 - needed
+             _done()],
+            curation_reply={"keep": [2, 3], "reason": "step 1 was a dead-end"},
+        )
+        result = self._agent(llm, executed).run("search kids movies")
+        assert result.status == "done"
+        assert llm.curation_calls == 1
+        assert result.successful_steps == [
+            ("press_element", ["Search"]),
+            ("enter_text", ["Search", "kids"]),
+        ]
+        # All three still executed live; curation is post-hoc.
+        assert len(executed) == 3
+        assert "kept 2 of 3 steps" in (result.message or "")
+
+    def test_curation_sorts_dedups_and_range_checks(self):
+        llm = CuratingFakeLLM(
+            [_kw("press_element", ["A"]), _kw("press_element", ["B"]),
+             _kw("press_element", ["C"]), _done()],
+            curation_reply={"keep": [3, 1, 1, 99, 0], "reason": "reorder/dup/out-of-range"},
+        )
+        result = self._agent(llm).run("go")
+        assert result.successful_steps == [("press_element", ["A"]), ("press_element", ["C"])]
+
+    @pytest.mark.parametrize("bad_reply", [
+        {"keep": [], "reason": "drop all"},          # empty -> keep all
+        {"keep": "nope", "reason": "r"},             # not a list
+        {"reason": "no keep key"},                   # missing keep
+        {"keep": ["x", 2.5, True], "reason": "r"},   # no valid ints (bool rejected)
+        {"keep": [1, 2], "reason": "kept all"},      # kept everything -> no-op
+        [1, 2],                                      # non-dict response
+        "garbage",                                   # non-dict scalar
+    ])
+    def test_curation_falls_back_to_all_steps(self, bad_reply):
+        llm = CuratingFakeLLM(
+            [_kw("press_element", ["A"]), _kw("press_element", ["B"]), _done()],
+            curation_reply=bad_reply,
+        )
+        result = self._agent(llm).run("go")
+        assert result.successful_steps == [("press_element", ["A"]), ("press_element", ["B"])]
+
+    def test_curation_llm_error_keeps_all_steps(self):
+        class Raising(CuratingFakeLLM):
+            def generate_json(self, prompt, schema, images=None, system=None, temperature=None):
+                if schema is CURATION_SCHEMA:
+                    raise OpticsError(Code.E0801, message="boom")
+                return super().generate_json(prompt, schema, images, system, temperature)
+
+        llm = Raising(
+            [_kw("press_element", ["A"]), _kw("press_element", ["B"]), _done()],
+            curation_reply=None,
+        )
+        result = self._agent(llm).run("go")
+        assert result.status == "done"
+        assert result.successful_steps == [("press_element", ["A"]), ("press_element", ["B"])]
+
+    def test_curation_skipped_for_single_step(self):
+        llm = CuratingFakeLLM(
+            [_kw("press_element", ["A"]), _done()],
+            curation_reply={"keep": [1], "reason": "r"},
+        )
+        result = self._agent(llm).run("go")
+        assert llm.curation_calls == 0
+        assert result.successful_steps == [("press_element", ["A"])]
+
+    def test_toggle_off_disables_curation(self):
+        llm = CuratingFakeLLM(
+            [_kw("press_element", ["A"]), _kw("press_element", ["B"]), _done()],
+            curation_reply={"keep": [1], "reason": "r"},
+        )
+        result = self._agent(llm, curate=False).run("go")
+        assert llm.curation_calls == 0
+        assert len(result.successful_steps) == 2
+
+    def test_failed_steps_are_not_selectable_candidates(self):
+        # A failing keyword between two passing ones: it must not appear in successful_steps,
+        # and the curation prompt must number only the passing steps as candidates.
+        captured = {}
+
+        def executor(raw):
+            # "press_element B" fails; A and C pass.
+            ok = "B" not in raw
+            return ExecResult(ok=ok, strategy="OCR", message=None if ok else "not found")
+
+        class Capturing(CuratingFakeLLM):
+            def generate_json(self, prompt, schema, images=None, system=None, temperature=None):
+                if schema is CURATION_SCHEMA:
+                    captured["prompt"] = prompt
+                return super().generate_json(prompt, schema, images, system, temperature)
+
+        llm = Capturing(
+            [_kw("press_element", ["A"]), _kw("press_element", ["B"]),
+             _kw("press_element", ["C"]), _done()],
+            curation_reply={"keep": [1, 2], "reason": "both real steps"},
+        )
+        agent = NaturalLanguageAgent(llm, _shots, executor, _catalog, curate_on_done=True)
+        result = agent.run("go")
+        # Only A and C succeeded; curation keeps both (candidates 1 and 2).
+        assert result.successful_steps == [("press_element", ["A"]), ("press_element", ["C"])]
+        prompt = captured["prompt"]
+        assert "1. press_element ['A']" in prompt
+        assert "2. press_element ['C']" in prompt
+        assert "[FAILED, not selectable] press_element ['B']" in prompt
