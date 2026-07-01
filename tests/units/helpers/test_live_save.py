@@ -19,9 +19,14 @@ pytestmark = pytest.mark.white_box
 
 
 class _Controller(LiveController):
-    """LiveController with the heavy session __init__ bypassed."""
+    """LiveController with the heavy session __init__ bypassed.
 
-    def __init__(self, folder: str):
+    Intentionally does not call super().__init__() since we're unit-testing
+    the save logic without a real session. Only the attributes that save()
+    touches are initialized.
+    """
+
+    def __init__(self, folder: str):  # noqa: super-init-not-called
         self.folder_path = folder
         self._artifacts_dir = os.path.join(folder, "no_artifacts")  # absent -> no snapshot
         self.recorded = []
