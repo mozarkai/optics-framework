@@ -711,34 +711,21 @@ class ActionKeyword:
             internal_logger.debug(f"Clearing text from element '{element}'")
             self.driver.clear_text_element(located, event_name)
 
-    def get_text(self, element: str) -> Optional[str]:
+    @with_self_healing
+    def get_text(self, element: str, *, located=None) -> Optional[str]:
         """
         Get the text from a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
         :return: The text from the element or None if not supported.
         """
-        screenshot_np = self._capture_screenshot_safe()
-        self._save_screenshot_if_available(screenshot_np, "get_text")
-        element_source_type = type(
-            self.element_source.current_instance).__name__
-        element_type = utils.determine_element_type(element)
-        if element_type in ["Text", "XPath"]:
-            if 'appium' in element_source_type.lower():
-                result = self.element_source.locate(element)
-                if result is not None:
-                    return self.driver.get_text_element(result)
-                else:
-                    internal_logger.error('Locate returned None for get_text.')
-                    return None
-            else:
-                internal_logger.error(
-                    'Get Text is not supported for vision based search yet.')
-                return None
-        else:
-            internal_logger.error(
-                'Get Text is not supported for image based search yet.')
+        if located is None:
+            internal_logger.error('get_text: located is None, element could not be found.')
             return None
+        if isinstance(located, tuple):
+            internal_logger.error('Get Text is not supported for coordinate-based (vision) results.')
+            return None
+        return self.driver.get_text_element(located)
 
     def sleep(self, duration: str) -> None:
         """
