@@ -409,11 +409,10 @@ class ActionKeyword:
         """
         Open a dropdown and select one of its options.
 
-        Opens the dropdown by pressing ``element``, then selects ``option`` by pressing it.
-        Both presses go through :meth:`press_element`'s self-healing location
-        (XPath -> text -> OCR -> image), so either step raises ``OpticsError`` (``E0201`` /
-        ``X0201``) when its target can't be found — an honest failure rather than a
-        silent no-op.
+        Opens the dropdown by pressing ``element``, then validates that ``option`` is visible
+        in the page source before pressing it. Raises ``OpticsError`` (``E0201``) when the
+        option text is not found among the dropdown's visible items, preventing a silent
+        mis-selection. Falls back to pressing without validation when page source is unavailable.
 
         :param element: The dropdown element (Image template, OCR template, or XPath).
         :param option: The option to select (visible label, OCR/Image template, or XPath).
@@ -421,7 +420,27 @@ class ActionKeyword:
         """
         internal_logger.info(f"Selecting '{option}' from dropdown '{element}'")
         self.press_element(element, event_name=event_name)
+        self._assert_option_in_dropdown(element, option)
         self.press_element(option, event_name=event_name)
+
+    def _assert_option_in_dropdown(self, dropdown_element: str, option: str) -> None:
+        """Validate that option text is present in the open dropdown via page source."""
+        try:
+            interactive = self.strategy_manager.get_interactive_elements()
+        except (OpticsError, NotImplementedError):
+            return
+        option_normalized = option.strip().lower()
+        available_texts = [
+            el.get("text") or "" for el in interactive if isinstance(el, dict)
+        ]
+        if not any(option_normalized == t.strip().lower() for t in available_texts if t):
+            raise OpticsError(
+                Code.E0201,
+                message=(
+                    f"Option '{option}' not found in dropdown '{dropdown_element}'. "
+                    f"Available options: {[t for t in available_texts if t]}"
+                ),
+            )
 
     # Swipe and Scroll actions
     def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
