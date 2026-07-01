@@ -593,9 +593,9 @@ class ActionKeyword:
         :param event_name: The event triggering the input.
         """
 
-        special_key = str(utils.parse_special_key(text))
-        if special_key != "None":
-            text = special_key
+        parsed = utils.parse_special_key(text)
+        if parsed is not None:
+            text = parsed
 
         if isinstance(located, tuple):
             x, y = located
@@ -632,9 +632,9 @@ class ActionKeyword:
         :param event_name: Optional event label for logging.
         """
 
-        special_key = str(utils.parse_special_key(text_input))
-        if special_key != "None":
-            text_input = special_key
+        parsed = utils.parse_special_key(text_input)
+        if parsed is not None:
+            text_input = parsed
         try:
             screenshot_np = self.strategy_manager.capture_screenshot()
             utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
