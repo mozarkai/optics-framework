@@ -99,12 +99,13 @@ class AppiumPageSource(ElementSourceInterface):
             internal_logger.debug('Appium Page Source does not support finding images.')
             return None
         elif element_type == 'Text':
+            locator = element[len("text="):] if element.lower().startswith("text=") else element
             if index is not None:
-                xpath = self.find_xpath_from_text_index(element, index)
+                xpath = self.find_xpath_from_text_index(locator, index)
             else:
-                xpath = self.find_xpath_from_text(element)
+                xpath = self.find_xpath_from_text(locator)
             try:
-                execution_logger.debug(f"Finding element by text: {element} with xpath: {xpath}")
+                execution_logger.debug(f"Finding element by text: {locator} with xpath: {xpath}")
                 element_obj = driver.find_element(AppiumBy.XPATH, xpath)
                 return element_obj
             except Exception:
