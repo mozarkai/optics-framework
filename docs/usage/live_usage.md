@@ -80,7 +80,7 @@ sleep 5
 
 | Command          | Description |
 |------------------|-------------|
-| `/save <name>`   | Save the recorded actions to `modules/<name>.csv` + `test_cases/<name>.csv`, **and** snapshot every screenshot/artifact the framework generated this session to `execution_output/<name>/`. Re-saving updates the snapshot. |
+| `/save <test_case> <module_name>` | Save the recorded actions as `<module_name>` in `modules/modules.csv` and add a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`. A header-only `elements/elements.csv` stub is created if missing. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `<module_name>` or `<test_case>` already exists, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/<module_name>/`. |
 | `/device [id]`   | **Appium sessions only.** List all connected **Android** (`adb`) and **iOS** (`idevice_id`) devices, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). |
 | `/elements`      | Open a read-only popup of named elements and their locators (Esc closes). |
 | `/screenshot`    | Capture the current device screen to a file and note the path in the history. |
@@ -108,7 +108,15 @@ screenshot **and** a condensed UI hierarchy of the on-screen elements (their tex
 content-desc, resource ids, bounds, and flags — when the driver exposes a page source),
 and drives keywords step-by-step until the goal is reached; `Ctrl-X` aborts. A fully
 successful run is recorded and `/save`-able like any manual session. It works with whatever
-driver your config uses (Appium/Selenium/Playwright). Three steps to enable it:
+driver your config uses (Appium/Selenium/Playwright).
+
+When an instruction completes, the recorded steps are **curated** before they enter the
+`/save` buffer: a final LLM pass keeps only the steps that contribute to the goal and drops
+the agent's dead-ends, backtracks, and no-op gestures — so what you save is a minimal,
+replayable script, not a transcript of everything it tried. An incomplete instruction
+(failed/aborted/step-limit) records nothing. If the curation pass can't produce a usable
+result it safely falls back to keeping every successful step, so a working recording is never
+lost. Three steps to enable AI mode:
 
 **1. Install the optional LLM extra** (the SDK is not in the base install):
 
@@ -153,9 +161,11 @@ you get a clear install hint.
 ## Recording & saving
 
 Recording is always on. Every successful keyword is appended to an in-memory buffer
-in the order it ran. The buffer is only written to disk when you run `/save`. If you
-`/quit` with unsaved actions, you are warned once — run `/save <name>` to keep them,
-or `/quit` again to discard and exit.
+in the order it ran. The buffer is only written to disk when you run
+`/save <test_case> <module_name>`, which persists the buffered actions as one module
+and then **clears the buffer** so the next actions form the next module. If you
+`/quit` with unsaved actions, you are warned once — run `/save <test_case> <module_name>`
+to keep them, or `/quit` again to discard and exit.
 
 ### Screenshots are saved automatically
 
@@ -167,9 +177,9 @@ session these are written to a **persistent per-session folder**,
 matches the session log (`logs/optics_live_<timestamp>.log`) so the two correlate. An
 empty session folder (no screenshots captured) is removed on exit; otherwise it's kept.
 
-`/save <name>` additionally bundles a **copy** of that session's screenshots into
-`execution_output/<name>/`, alongside the saved module, so a saved test is
-self-contained. Re-running `/save` with the same name refreshes the copy.
+`/save <test_case> <module_name>` additionally bundles a **copy** of that session's
+screenshots into `execution_output/<module_name>/`, alongside the saved module, so a
+saved test is self-contained. Re-running `/save` for the same module refreshes the copy.
 
 > The screenshots that the AI mode sends to the model are captured separately and are
 > not written to disk; what you see in `screenshots/session_<timestamp>/` are the
