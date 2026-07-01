@@ -1117,7 +1117,12 @@ class Appium(DriverInterface):
         return mapping.get(char.lower())
 
     def get_text_element(self, element: Any) -> str:
-        text = element.get_attribute("text") or element.get_attribute("value")
+        text = element.get_attribute("text")
+        if text is None:
+            try:
+                text = element.get_attribute("value")
+            except Exception:
+                text = None
         internal_logger.info(f"Text of element: {text}")
         if text is None:
             raise OpticsError(Code.E0401, message="Element text is None")

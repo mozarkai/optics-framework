@@ -109,8 +109,9 @@ class AppiumFindElement(ElementSourceInterface):
                 internal_logger.error('Error finding element: %s', element, exc_info=True)
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
         elif element_type == 'Text':
+            locator = element[len("text="):] if element.lower().startswith("text=") else element
             try:
-                found_element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, element)
+                found_element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, locator)
                 return found_element
             except Exception as e:
                 internal_logger.exception(f" element: {element}", exc_info=e)
