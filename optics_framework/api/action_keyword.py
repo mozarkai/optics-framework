@@ -348,7 +348,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "press_by_coordinates")
         internal_logger.info(f'Pressing by coordinates: ({coor_x}, {coor_y})')
-        self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
+        self.driver.press_coordinates(int(coor_x), int(coor_y), int(repeat), event_name)
 
 
     def detect_and_press(self, element: str, timeout: str = "30", event_name: Optional[str] = None) -> None:

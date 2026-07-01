@@ -1158,7 +1158,7 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug("Clicked on element: %s at %s", element, timestamp)
 
-    def press_coordinates(self, coor_x: int, coor_y: int, event_name: Optional[str] = None) -> None:
+    def press_coordinates(self, coor_x: int, coor_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
         """
         Press an element by absolute coordinates.
 
@@ -1170,7 +1170,8 @@ class Appium(DriverInterface):
         """
         coor_x, coor_y = int(coor_x), int(coor_y)
         internal_logger.debug(f"Pressing at coordinates: ({coor_x}, {coor_y})")
-        self.tap_at_coordinates(coor_x, coor_y, event_name)
+        for _ in range(repeat):
+            self.tap_at_coordinates(coor_x, coor_y, event_name)
 
     def press_percentage_coordinates(
         self,
