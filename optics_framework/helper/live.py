@@ -153,6 +153,36 @@ def keyword_to_title(func_name: str) -> str:
     return " ".join(word.capitalize() for word in func_name.split("_"))
 
 
+class SaveConflictError(Exception):
+    """Raised by :meth:`LiveController.save` when the requested test case or module
+    name already exists in the standard CSVs and the caller has not opted into
+    appending.
+
+    ``conflicts`` is a list of ``(kind, name)`` tuples, e.g. ``[("module", "login")]``,
+    so the caller can ask the user whether to append or pick a new name.
+    """
+
+    def __init__(self, conflicts: List[Tuple[str, str]]):
+        self.conflicts = conflicts
+        joined = ", ".join(f"{kind} {name!r}" for kind, name in conflicts)
+        super().__init__(f"Already exists: {joined}")
+
+
+@dataclass
+class SaveResult:
+    """Outcome of a successful :meth:`LiveController.save`."""
+
+    modules_path: str
+    test_cases_path: str
+    elements_path: str
+    artifacts_path: Optional[str]
+    test_case: str
+    module_name: str
+    step_count: int
+    appended_module: bool
+    appended_test_case: bool
+
+
 _CONFIG_KEYS = frozenset({
     "driver_sources", "element_sources", "elements_sources",
     "text_detection", "image_detection", "llm_models",
@@ -729,67 +759,172 @@ class LiveController:
 
     # -- Recording / save ---------------------------------------------------------
 
-    def save(self, name: str) -> Tuple[str, str, Optional[str]]:
-        """Persist the recorded actions and their accompanying artifacts.
+    def save(
+        self,
+        test_case: str,
+        module_name: str,
+        *,
+        allow_append: bool = False,
+    ) -> SaveResult:
+        """Persist the recorded actions to the project's standard CSV files.
 
-        Writes:
+        Everything is written to three fixed-name files, appending when they already
+        exist so a session can build up a test suite one module at a time:
 
-        * ``modules/<name>.csv`` — Title Case keywords + ``param_N`` columns, matching
-          :class:`CSVDataReader` exactly.
-        * ``test_cases/<name>.csv`` — a single test case referencing the module.
-        * ``execution_output/<name>/`` — a snapshot of every artifact the framework
-          generated during the session so far (the auto pre-/post-action screenshots
-          written by ``@with_self_healing``, AOI captures, annotated detections,
-          per-session logs). These otherwise live only in the tempdir and would
-          vanish on ``/quit``.
+        * ``modules/modules.csv`` — the recorded keywords as one module named
+          ``module_name`` (Title Case ``module_step`` + ``param_N`` columns, matching
+          :class:`CSVDataReader`).
+        * ``test_cases/test_cases.csv`` — a ``(test_case, module_name)`` row linking the
+          test case to the module it should run.
+        * ``elements/elements.csv`` — a header-only stub (``Element_Name,Element_ID``)
+          created once so the standard file exists for manual editing (live recording
+          captures inline locators, not named elements).
 
-        Artifacts are **copied** (not moved) so further keyword runs continue to
-        accumulate into the same tempdir; re-saving captures the up-to-date set.
+        Session artifacts are snapshotted to ``execution_output/<module_name>/`` — the
+        auto pre-/post-action screenshots written by ``@with_self_healing``, AOI
+        captures, annotated detections, per-session logs. They are **copied** (not
+        moved) so further keyword runs keep accumulating in the tempdir.
 
-        Returns ``(modules_path, test_cases_path, artifacts_path or None)``.
-        ``artifacts_path`` is ``None`` only when the session has produced no
-        artifacts yet, not when the copy itself fails (that raises).
+        If ``module_name`` (in modules.csv) or ``test_case`` (in test_cases.csv) already
+        exists and ``allow_append`` is ``False``, raises :class:`SaveConflictError` so
+        the caller can ask the user whether to append or choose a new name. With
+        ``allow_append=True`` the new rows are merged into the existing files.
+
+        On success the in-memory recording buffer is cleared, so subsequent keywords
+        form the next module.
         """
         if not self.recorded:
             raise OpticsError(Code.E0501, message="Nothing recorded to save")
-        safe = re.sub(r"[^A-Za-z0-9_ -]", "", name).strip()
-        if not safe:
-            raise OpticsError(Code.E0501, message=f"Invalid module name: {name!r}")
+        tc = self._sanitize_name(test_case)
+        if not tc:
+            raise OpticsError(Code.E0501, message=f"Invalid test case name: {test_case!r}")
+        mod = self._sanitize_name(module_name)
+        if not mod:
+            raise OpticsError(Code.E0501, message=f"Invalid module name: {module_name!r}")
 
         modules_dir = os.path.join(self.folder_path, "modules")
         test_cases_dir = os.path.join(self.folder_path, "test_cases")
-        os.makedirs(modules_dir, exist_ok=True)
-        os.makedirs(test_cases_dir, exist_ok=True)
-        modules_path = os.path.join(modules_dir, f"{safe}.csv")
-        test_cases_path = os.path.join(test_cases_dir, f"{safe}.csv")
+        elements_dir = os.path.join(self.folder_path, "elements")
+        for directory in (modules_dir, test_cases_dir, elements_dir):
+            os.makedirs(directory, exist_ok=True)
+        modules_path = os.path.join(modules_dir, "modules.csv")
+        test_cases_path = os.path.join(test_cases_dir, "test_cases.csv")
+        elements_path = os.path.join(elements_dir, "elements.csv")
 
-        max_params = max((len(params) for _kw, params in self.recorded), default=0)
-        with open(modules_path, "w", encoding="utf-8", newline="") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(
-                ["module_name", "module_step"] + [f"param_{i}" for i in range(1, max_params + 1)]
-            )
-            for func_name, params in self.recorded:
-                row = [safe, keyword_to_title(func_name)]
-                row.extend(escape_csv_value(p) for p in params)
-                row.extend([""] * (max_params - len(params)))
-                writer.writerow(row)
+        module_exists = mod in self._existing_names(modules_path, "module_name")
+        test_case_exists = tc in self._existing_names(test_cases_path, "test_case")
+        if not allow_append:
+            conflicts: List[Tuple[str, str]] = []
+            if module_exists:
+                conflicts.append(("module", mod))
+            if test_case_exists:
+                conflicts.append(("test case", tc))
+            if conflicts:
+                raise SaveConflictError(conflicts)
 
-        with open(test_cases_path, "w", encoding="utf-8", newline="") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(["test_case", "test_step"])
-            writer.writerow([safe, safe])
+        step_count = len(self.recorded)
+        self._append_module_csv(modules_path, mod)
+        self._append_test_case_csv(test_cases_path, tc, mod)
+        self._ensure_elements_stub(elements_path)
 
         artifacts_path: Optional[str] = None
         if os.path.isdir(self._artifacts_dir) and os.listdir(self._artifacts_dir):
-            destination = os.path.join(self.folder_path, "execution_output", safe)
+            destination = os.path.join(self.folder_path, "execution_output", mod)
             if os.path.isdir(destination):
                 shutil.rmtree(destination)
             shutil.copytree(self._artifacts_dir, destination)
             artifacts_path = destination
 
+        # Clear the buffer so the next keywords form a fresh module (one module per
+        # /save), and mark the (now empty) recording as saved.
+        self.recorded = []
         self.saved = True
-        return modules_path, test_cases_path, artifacts_path
+        return SaveResult(
+            modules_path=modules_path,
+            test_cases_path=test_cases_path,
+            elements_path=elements_path,
+            artifacts_path=artifacts_path,
+            test_case=tc,
+            module_name=mod,
+            step_count=step_count,
+            appended_module=module_exists,
+            appended_test_case=test_case_exists,
+        )
+
+    @staticmethod
+    def _sanitize_name(name: str) -> str:
+        """Strip anything outside ``[A-Za-z0-9_ -]`` and surrounding whitespace."""
+        return re.sub(r"[^A-Za-z0-9_ -]", "", name).strip()
+
+    @staticmethod
+    def _read_rows(path: str) -> List[Dict[str, str]]:
+        """Existing CSV rows as dicts (empty list when the file does not exist)."""
+        if not os.path.isfile(path):
+            return []
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            return list(csv.DictReader(fh))
+
+    def _existing_names(self, path: str, column: str) -> set[str]:
+        """Distinct stripped values of ``column`` already present in a CSV."""
+        return {
+            (row.get(column) or "").strip()
+            for row in self._read_rows(path)
+            if (row.get(column) or "").strip()
+        }
+
+    @staticmethod
+    def _write_rows(path: str, header: List[str], rows: List[Dict[str, str]]) -> None:
+        """Rewrite ``path`` with ``header`` and ``rows``, coercing missing cells to ``""``."""
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=header, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: (row.get(key) or "") for key in header})
+
+    def _append_module_csv(self, path: str, module_name: str) -> None:
+        """Append the recorded keywords as rows for ``module_name``.
+
+        The whole file is rewritten so the ``param_N`` header always spans the widest
+        row across both pre-existing and newly-recorded steps.
+        """
+        rows = self._read_rows(path)
+        for func_name, params in self.recorded:
+            row: Dict[str, str] = {
+                "module_name": module_name,
+                "module_step": keyword_to_title(func_name),
+            }
+            for index, value in enumerate(params, start=1):
+                row[f"param_{index}"] = escape_csv_value(value)
+            rows.append(row)
+
+        max_params = 0
+        for row in rows:
+            for key, value in row.items():
+                if key.startswith("param_") and value and key[len("param_"):].isdigit():
+                    max_params = max(max_params, int(key[len("param_"):]))
+        header = ["module_name", "module_step"] + [
+            f"param_{i}" for i in range(1, max_params + 1)
+        ]
+        self._write_rows(path, header, rows)
+
+    def _append_test_case_csv(self, path: str, test_case: str, module_name: str) -> None:
+        """Append a ``(test_case, module_name)`` step, skipping an exact duplicate row."""
+        rows = self._read_rows(path)
+        existing_pairs = {
+            ((row.get("test_case") or "").strip(), (row.get("test_step") or "").strip())
+            for row in rows
+        }
+        if (test_case, module_name) not in existing_pairs:
+            rows.append({"test_case": test_case, "test_step": module_name})
+        self._write_rows(path, ["test_case", "test_step"], rows)
+
+    @staticmethod
+    def _ensure_elements_stub(path: str) -> None:
+        """Create a header-only ``elements.csv`` if one does not already exist."""
+        if os.path.isfile(path):
+            return
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            csv.writer(fh).writerow(["Element_Name", "Element_ID"])
 
     # -- Devices ------------------------------------------------------------------
 
@@ -975,12 +1110,16 @@ class LiveController:
         return os.path.join(output_dir, f"{timestamp}-{sanitized}.jpg")
 
     def screenshot_png_bytes(self) -> bytes:
-        """Capture the current screen as raw PNG bytes (for the LLM); no file side-effect."""
+        """Capture the current screen as encoded PNG bytes (for the LLM); no file side-effect.
+
+        Delegates to ``StrategyManager.capture_screenshot_bytes()`` so the native
+        fast path (when a backend supports it) and the numpy fallback are chosen
+        driver-agnostically.
+        """
         if self._action_keyword is None:  # pragma: no cover - defensive
             raise OpticsError(Code.E0303, message="Screenshot capture unavailable")
-        image = self._action_keyword.strategy_manager.capture_screenshot()
         try:
-            return utils.encode_numpy_to_png_bytes(image)
+            return self._action_keyword.strategy_manager.capture_screenshot_bytes()
         except ValueError as exc:  # pragma: no cover - defensive
             raise OpticsError(Code.E0303, message="Failed to encode screenshot") from exc
 
@@ -1048,6 +1187,9 @@ class LiveController:
             keyword_catalog=self._nl_catalog,
             element_names=self.element_names,
             pagesource_provider=self.page_source,
+            # Prune a completed run to the minimal replayable script before it reaches
+            # the /save buffer — dead-ends and backtracks that "passed" are dropped.
+            curate_on_done=True,
         )
         return self._nl_agent
 
