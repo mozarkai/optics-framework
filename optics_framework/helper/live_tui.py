@@ -37,7 +37,7 @@ from prompt_toolkit.widgets import Frame
 
 from optics_framework.helper.live import (
     LiveController, ActionResult, NLStep, NLSummary,
-    ActionStatus, NLRunStatus, NLStepKind,
+    ActionStatus, NLRunStatus, NLStepKind, SaveConflictError,
 )
 
 
@@ -69,7 +69,10 @@ Natural-language mode (Ctrl-N)
   Requires an enabled 'llm_models' entry (e.g. gemini) in config.yaml.
 
 Slash commands (work in both modes)
-  /save <name>   Save recorded actions to modules/<name>.csv + a test case
+  /save <test_case> <module_name>
+                 Save recorded actions as <module_name> in modules/modules.csv and a
+                 <test_case> row in test_cases/test_cases.csv (appends if they exist;
+                 clears the buffer so the next actions form the next module)
   /device [id]   List/switch connected Android + iOS devices (Appium sessions only)
   /elements      Show named elements and their locators (read-only)
   /screenshot    Capture the device screen to a file
@@ -169,6 +172,9 @@ class LiveTUI:
         self.entries: List[ActionResult] = []
         self._busy = False
         self._quit_armed = False
+        # Set to the (test_case, module_name) of the last /save that hit a name
+        # conflict; re-running the identical /save then confirms the append.
+        self._save_armed: Optional[Tuple[str, str]] = None
         self._known_devices: List[str] = []
 
         # Natural-language mode: when on, the whole input box is treated as English and
@@ -684,21 +690,38 @@ class LiveTUI:
         handler(arg)
 
     def _cmd_save(self, arg: str) -> None:
-        if not arg:
-            self._info("Usage: /save <name>")
+        tokens = arg.split()
+        if len(tokens) != 2:
+            self._info("Usage: /save <test_case> <module_name>")
             return
+        test_case, module_name = tokens
+        allow_append = self._save_armed == (test_case, module_name)
         try:
-            modules_path, test_cases_path, artifacts_path = self.controller.save(arg)
+            result = self.controller.save(
+                test_case, module_name, allow_append=allow_append
+            )
+        except SaveConflictError as conflict:
+            self._save_armed = (test_case, module_name)
+            existing = ", ".join(f"{kind} '{name}'" for kind, name in conflict.conflicts)
+            self._info(
+                f"{existing} already exist(s). Re-run the same /save to append, "
+                "or run /save with a different name."
+            )
+            return
         except Exception as exc:  # noqa: BLE001
+            self._save_armed = None
             self._info(f"Save failed: {exc}")
             return
+        self._save_armed = None
         import os as _os  # local: avoid widening module imports for one count
+        verb = "Appended" if (result.appended_module or result.appended_test_case) else "Saved"
         self._info(
-            f"Saved {len(self.controller.recorded)} step(s) → {modules_path} + {test_cases_path}"
+            f"{verb} {result.step_count} step(s) → module '{result.module_name}' in "
+            f"{result.modules_path}, test case '{result.test_case}' in {result.test_cases_path}"
         )
-        if artifacts_path:
-            count = len(_os.listdir(artifacts_path))
-            self._info(f"Snapshotted {count} artifact(s) → {artifacts_path}")
+        if result.artifacts_path:
+            count = len(_os.listdir(result.artifacts_path))
+            self._info(f"Snapshotted {count} artifact(s) → {result.artifacts_path}")
 
     def _cmd_device(self, arg: str) -> None:
         if not self.controller.supports_device_switching():
@@ -787,7 +810,8 @@ class LiveTUI:
             self._quit_armed = True
             self._info(
                 f"{len(self.controller.recorded)} recorded step(s) are unsaved. "
-                "Use /save <name> to keep them, or /quit again to discard and exit."
+                "Use /save <test_case> <module_name> to keep them, or /quit again to "
+                "discard and exit."
             )
             return
         get_app().exit()
