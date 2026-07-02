@@ -37,6 +37,7 @@ sse-starlette = ">=2.2.1,<4.0.0"
 # Ceiling lifted past 0.119 so the optional `mcp` extra (fastmcp) can resolve:
 # fastmcp pulls starlette>=1.0, which FastAPI only supports from 0.119 onward.
 fastapi = ">=0.115.12,<0.138.0"
+python-multipart = ">=0.0.9,<0.1.0"
 requests = "^2.32.3"
 textual = ">=3,<7"
 pytest = "^9.0.0"
