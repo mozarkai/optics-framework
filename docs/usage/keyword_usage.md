@@ -92,6 +92,26 @@ Detects a specified element and presses it if found.
 Detect And Press,login_button.png,30,detect_login
 ```
 
+### Select Dropdown Option
+
+Opens a dropdown and selects one of its options.
+
+Presses the dropdown element to open it, validates that the option text is visible in the resulting page source, then presses it. Raises an error (`E0201`) when the specified option is not found among the dropdown's visible items, preventing a silent mis-selection.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The dropdown element (Image template, OCR template, or XPath) | - |
+| `option` | Required | The option to select (visible label text, OCR template, or XPath) | - |
+| `event_name` | Optional | A string identifier for the selection event | - |
+
+**Example:**
+
+```csv
+Select Dropdown Option,${country_dropdown},India,country_selected
+```
+
 ### Swipe
 
 Performs a swipe action in a specified direction from given coordinates.
