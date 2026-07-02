@@ -1,14 +1,16 @@
 from functools import wraps
 import collections
+import inspect
+import shlex
 import time
 import json
-from typing import Callable, Optional, Any, Tuple
+from typing import Callable, Optional, Any, Tuple, List
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
-from optics_framework.common.ai_self_heal import AISelfHealHandler, HealContext
+from optics_framework.common.ai_self_heal import AISelfHealHandler, HealContext, HealKeywordSpec
 from optics_framework.common.error import OpticsError, Code
 from .verifier import Verifier
 
@@ -101,7 +103,13 @@ def _try_results_until_success(
 ):
     last_exception = None
     result_count = 0
-    for result in results:
+
+    try:
+        results_list = list(results)
+    except OpticsError:
+        results_list = []
+
+    for result in results_list:
         result_count += 1
         _save_annotated_for_result(result, screenshot_np, execution_dir, func_name)
         try:
@@ -254,7 +262,11 @@ class ActionKeyword:
             ),
         )
         if self._ai_healer is None:
-            self._ai_healer = AISelfHealHandler(self._llm, self.driver)
+            self._ai_healer = AISelfHealHandler(
+                self._llm,
+                keyword_executor=self._heal_execute,
+                keyword_catalog=self._heal_catalog,
+            )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
         result = self._ai_healer.heal(ctx, providers.screenshot, providers.pagesource)
         self._log_heal_outcome(result, func_name, element, args)
@@ -273,9 +285,105 @@ class ActionKeyword:
                 "AI self-heal: could not recover '%s': %s", func_name, result.message
             )
             return
-        action = result.action.action if result.action else "?"
-        internal_logger.info("AI self-heal: recovered '%s' via '%s'", func_name, action)
+        action = result.action
+        kw = action.keyword if action else "?"
+        internal_logger.info("AI self-heal: recovered '%s' via keyword '%s'", func_name, kw)
         self._record_successful_step(func_name, element, args)
+
+    # -- Self-heal keyword executor and catalog --------------------------------
+
+    # The focused subset of keywords the self-healer is allowed to call.
+    # These are methods on this class (or simple enough to forward).
+    _HEAL_KEYWORDS: List[str] = [
+        "press_element",
+        "enter_text",
+        "scroll",
+        "swipe_by_percentage",
+        "press_keycode",
+        "press_by_percentage",
+    ]
+
+    def _heal_execute(self, line: str) -> Any:
+        """Keyword executor for self-heal: parse and run one keyword, returning an ExecResult-like.
+
+        Calls the ActionKeyword methods directly but avoids re-triggering self-heal by
+        passing ``located=`` for self-healing-decorated methods or calling non-decorated ones.
+
+        Returns an object with ``.ok`` (bool) and ``.message`` (str).
+        """
+        from dataclasses import dataclass as _dc
+
+        @_dc
+        class _Result:
+            ok: bool
+            message: str = ""
+
+        try:
+            tokens = shlex.split(line, posix=True)
+        except ValueError as exc:
+            return _Result(ok=False, message=f"Parse error: {exc}")
+        if not tokens:
+            return _Result(ok=False, message="Empty keyword line")
+
+        keyword_name = tokens[0]
+        params = tokens[1:]
+
+        if keyword_name not in self._HEAL_KEYWORDS:
+            return _Result(ok=False, message=f"Unknown keyword: {keyword_name}")
+
+        method = getattr(self, keyword_name, None)
+        if method is None:
+            return _Result(ok=False, message=f"Method not found: {keyword_name}")
+
+        try:
+            # Non-self-healing methods: call directly with params.
+            # Self-healing methods (press_element, enter_text): they will go through
+            # `with_self_healing` decorator, but self-heal is already running, so
+            # we need to temporarily disable it to avoid recursion.
+            original_enabled = self.ai_self_heal_enabled
+            self.ai_self_heal_enabled = False
+            try:
+                method(*params)
+            finally:
+                self.ai_self_heal_enabled = original_enabled
+            return _Result(ok=True)
+        except OpticsError as exc:
+            return _Result(ok=False, message=str(exc.message))
+        except Exception as exc:  # noqa: BLE001 - never crash the heal loop
+            return _Result(ok=False, message=str(exc))
+
+    def _heal_catalog(self) -> List[HealKeywordSpec]:
+        """Return the keyword catalog for the self-healer (focused subset with signatures)."""
+        catalog = []
+        for name in self._HEAL_KEYWORDS:
+            method = getattr(self, name, None)
+            if method is None:
+                continue
+            sig = self._heal_keyword_signature(name, method)
+            catalog.append(HealKeywordSpec(name=name, signature=sig))
+        return catalog
+
+    @staticmethod
+    def _heal_keyword_signature(name: str, method: Callable) -> str:
+        """Build a ghost-text signature like ``press_element <element> [repeat] [offset_x]``."""
+        try:
+            sig = inspect.signature(method)
+        except (TypeError, ValueError):
+            return name
+        parts: List[str] = [name]
+        for pname, param in sig.parameters.items():
+            if pname == "self":
+                continue
+            # Skip internal keyword-only params (located, event_name, aoi_*)
+            if param.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.VAR_KEYWORD):
+                continue
+            if pname in ("event_name", "aoi_x", "aoi_y", "aoi_width", "aoi_height"):
+                continue
+            if param.default is inspect.Parameter.empty:
+                parts.append(f"<{pname}>")
+            else:
+                parts.append(f"[{pname}]")
+        return " ".join(parts)
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""

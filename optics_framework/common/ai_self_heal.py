@@ -2,16 +2,20 @@
 
 When the normal element-location ladder (XPath -> on-screen text -> OCR -> image) exhausts
 for a locate-based keyword, :class:`AISelfHealHandler` asks an :class:`LLMInterface` to look at
-the current screen (screenshot + condensed page source) plus the keyword's intent and recent
-context, and to take ONE corrective device action at a time (tap / type / swipe / scroll) until
-the keyword's goal is achieved or a small step budget is hit.
+the current screen (screenshot + condensed page source) plus the keyword's intent and the
+available keyword catalog, and to emit ONE keyword call at a time (e.g. ``press_element "Meesho"``,
+``scroll "down"``) until the keyword's goal is achieved or a small step budget is hit.
 
-The handler runs *independently* of :class:`StrategyManager`: it drives the device directly via
-the :class:`DriverInterface` primitives, so the LLM must FINISH THE JOB itself (it cannot defer
-back to the normal locators). It is decoupled from any controller — it depends only on an ``llm``,
-a ``driver``, and screenshot/page-source provider callables — so it is unit-testable with fakes.
+Unlike the old coordinate-guessing approach, this routes through the framework's own keyword
+methods — so ``press_element "Meesho"`` uses the full locate ladder (XPath -> text -> OCR -> image)
+instead of the LLM blindly tapping pixel percentages.
+
+The handler is decoupled from any controller — it depends only on an ``llm``, a keyword executor
+callable, a keyword catalog callable, and screenshot/page-source provider callables — so it is
+unit-testable with fakes.
 """
 
+import shlex
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -25,16 +29,28 @@ from optics_framework.common.logging_config import internal_logger
 ScreenshotProvider = Callable[[], Optional[bytes]]
 PagesourceProvider = Callable[[], Optional[str]]
 
-# Actions that complete the keyword's goal (heal succeeds) vs. intermediate ones that
-# merely change what is on screen (loop continues to re-observe).
-_TERMINAL_ACTIONS = ("tap", "type")
-_LAYOUT_ACTIONS = ("tap", "type", "swipe", "scroll")
+# Keyword executor: takes a keyword line string (e.g. 'press_element "Login"'),
+# returns an ExecResult-like with .ok and .message.
+KeywordExecutor = Callable[[str], Any]
 
-# Defaults for driver args the LLM schema does not carry.
-_DEFAULT_SWIPE_LENGTH_PCT = 50
-_DEFAULT_SCROLL_DURATION_MS = 1000
+# Keyword catalog entry.
+@dataclass
+class HealKeywordSpec:
+    """A keyword the self-healer may call, with a human-readable signature."""
+    name: str
+    signature: str
+
+
+# Keyword catalog provider.
+KeywordCatalog = Callable[[], List[HealKeywordSpec]]
+
 # Let the UI settle after a layout-changing action before re-screenshotting.
 _SETTLE_SECONDS = 1.5
+
+# Keywords that just change what's on screen but don't complete a locate-based goal.
+_NON_COMPLETING_KEYWORDS = (
+    "scroll", "swipe_by_percentage", "swipe", "press_keycode", "press_by_percentage",
+)
 
 
 @dataclass
@@ -53,12 +69,11 @@ class HealContext:
 class HealAction:
     """A single parsed action the LLM asked for."""
 
-    action: str                  # "tap" | "type" | "swipe" | "scroll" | "give_up"
-    percent_x: Optional[float] = None
-    percent_y: Optional[float] = None
-    text: str = ""
-    direction: str = ""
+    action: str                  # "keyword" | "done" | "give_up"
+    keyword: str = ""            # snake_case keyword name (when action == "keyword")
+    params: List[str] = field(default_factory=list)
     reason: str = ""
+    completed: bool = True       # False for intermediate navigation steps
 
 
 @dataclass
@@ -70,77 +85,149 @@ class HealResult:
     message: str = ""
 
 
-# Flat schema (no anyOf/discriminated unions — Gemini's response_schema support for them is
-# unreliable; same discipline as nl_agent.ACTION_SCHEMA). percent_x/percent_y are also used by
-# the "type" action so the field can be focused (tapped) before typing.
+# Structured-output schema. Mirrors the NL agent's schema pattern (flat, no anyOf).
 HEAL_ACTION_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "properties": {
         "reason": {
             "type": "string",
-            "description": "Brief reasoning about the screen and the chosen action.",
+            "description": "Brief reasoning about the current screen and the chosen action.",
         },
         "action": {
             "type": "string",
-            "enum": ["tap", "type", "swipe", "scroll", "give_up"],
-            "description": "tap/type complete the goal; swipe/scroll reveal it; give_up if blocked.",
+            "enum": ["keyword", "done", "give_up"],
+            "description": "keyword = run one keyword; done = goal achieved; give_up = blocked.",
         },
-        "percent_x": {
-            "type": "number",
-            "description": "X position 0-100 of screen width (for tap, and the field to tap before type).",
-        },
-        "percent_y": {
-            "type": "number",
-            "description": "Y position 0-100 of screen height (for tap, and the field to tap before type).",
-        },
-        "text": {"type": "string", "description": "Text to type (only when action == type)."},
-        "direction": {
+        "keyword": {
             "type": "string",
-            "enum": ["up", "down", "left", "right"],
-            "description": "Direction for swipe/scroll.",
+            "description": "snake_case keyword name (only when action == keyword).",
+        },
+        "params": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Positional parameters in keyword-signature order (strings).",
+        },
+        "completed": {
+            "type": "boolean",
+            "description": (
+                "Set to true if this keyword call completes the original keyword's goal "
+                "(e.g. pressing the final target element). Set to false if this is an "
+                "intermediate navigation step (e.g. scrolling to reveal the target, pressing "
+                "a menu to navigate, typing in a search bar) and more steps are needed."
+            ),
         },
     },
     "required": ["reason", "action"],
-    "propertyOrdering": ["reason", "action", "percent_x", "percent_y", "text", "direction"],
+    "propertyOrdering": ["reason", "action", "keyword", "params", "completed"],
 }
 
 
 HEAL_SYSTEM_PROMPT = """\
 You are the LAST-RESORT self-healing layer of a UI test-automation framework. The normal element \
 locators (XPath, on-screen text, OCR, image matching) have ALL failed to find the target for the \
-keyword described below. Your job is to look at the current screen and take ONE corrective device \
-action so the keyword's goal is achieved.
+keyword described below. Your job is to look at the current screen and execute framework keywords \
+step-by-step until the original keyword's goal is achieved.
 
-YOU MUST FINISH THE JOB YOURSELF — you cannot hand control back to the normal locators. If the \
-target is not on screen, `scroll` or `swipe` to reveal it, and once it is visible complete the \
-action yourself (`tap` to press it, `type` to enter text). Only use `give_up` when there is no \
-recoverable next action.
+YOU MUST FINISH THE JOB YOURSELF by issuing keyword calls. You have access to the same keywords \
+the framework uses. The most important one is `press_element` — it takes a visible text label \
+as its element parameter and the framework will locate the element using its full strategy ladder \
+(XPath → text → OCR → image matching). NAME TARGETS BY THEIR VISIBLE TEXT whenever possible.
 
-COORDINATES: always express positions as PERCENTAGES of the screen (percent_x, percent_y in 0-100). \
-Read element bounds from the condensed UI hierarchy (when provided) to compute a precise center, \
-or estimate from the screenshot. Percentages are resolution-independent and safer than pixels.
+WORKFLOW:
+1. Look at the screenshot and UI hierarchy to understand the current screen state.
+2. If the target element IS visible on screen, call the appropriate keyword to act on it \
+(e.g. `press_element` with the element's visible text). Set `completed` to true.
+3. If the target element is NOT visible, navigate to reveal it — scroll, swipe, press a menu, \
+or type in a search bar. Set `completed` to false for intermediate steps.
+4. Use `action: "done"` when you believe the original keyword's goal has been fully achieved.
+5. Use `action: "give_up"` only when there is no recoverable next action.
 
-ACTIONS:
-- tap: press at (percent_x, percent_y). Completes a press/click goal.
-- type: focus the field at (percent_x, percent_y) then enter `text`. Completes a text-entry goal.
-- swipe: swipe from (percent_x, percent_y) in `direction`. Intermediate (re-observe afterwards).
-- scroll: scroll the screen in `direction`. Intermediate (re-observe afterwards).
-- give_up: nothing recoverable remains.
+TARGETING POLICY (strict order of preference):
+1. Name the target by its VISIBLE TEXT as the element parameter (e.g. press_element ["Meesho"]). \
+Use the condensed hierarchy for EXACT text / content-desc / resource id.
+2. If the target is not visible, swipe to reveal it, THEN name it by text.
+3. For system buttons (home/back/recents), use press_keycode with the Android keycode \
+(HOME=3, BACK=4, RECENTS=187, ENTER=66).
+4. LAST RESORT: use press_by_percentage with coordinate percentages.
+5. Use swipe instead of scroll.
 
-RULES: emit exactly ONE action as JSON. Keep `reason` short. Be conservative: prefer revealing the \
-real target and tapping it over blindly tapping a guessed position.
+GESTURE DIRECTIONS:
+- To reveal content below (swipe down the list to see lower items), you must use direction "up" (finger drags from bottom to top).
+- To reveal content above (swipe up the list to see upper items), you must use direction "down" (finger drags from top to bottom).
+
+RULES:
+- Emit exactly ONE action per turn as JSON.
+- Keep `reason` short.
+- Prefer naming elements by text over guessing coordinates.
+- Set `completed` to true only when this step achieves the original keyword's goal.
 """
 
 _MAX_THOUGHT_CHARS = 160
 
 
 class AISelfHealHandler:
-    """Bounded loop that drives the device via LLM decisions to land a failed keyword."""
+    """Bounded loop that drives the device via keyword calls to land a failed keyword."""
 
-    def __init__(self, llm: LLMInterface, driver: Any, *, max_steps: int = 2) -> None:
+    def __init__(
+        self,
+        llm: LLMInterface,
+        keyword_executor: KeywordExecutor,
+        keyword_catalog: KeywordCatalog,
+        *,
+        max_steps: int = 5,
+    ) -> None:
         self.llm = llm
-        self.driver = driver
+        self.keyword_executor = keyword_executor
+        self.keyword_catalog = keyword_catalog
         self.max_steps = max_steps
+
+    def _execute_single_step(
+        self,
+        step: int,
+        ctx: HealContext,
+        screenshot_provider: ScreenshotProvider,
+        pagesource_provider: PagesourceProvider,
+        catalog: List[HealKeywordSpec],
+    ) -> Optional[HealResult]:
+        """Execute a single iteration of self-healing and return terminal result or None to continue."""
+        png = self._safe_call(screenshot_provider)
+        if not png:
+            return HealResult(False, message="No screenshot available for self-heal.")
+        page_source = self._safe_call(pagesource_provider)
+
+        prompt = self._build_prompt(ctx, step, page_source, catalog)
+        try:
+            raw = self.llm.generate_json(
+                prompt, HEAL_ACTION_SCHEMA, images=[png],
+                system=HEAL_SYSTEM_PROMPT, temperature=0.0,
+            )
+        except OpticsError as exc:
+            return HealResult(False, message=f"LLM error: {exc.message}")
+        except Exception as exc:  # noqa: BLE001 - self-heal must never raise a new error type
+            return HealResult(False, message=f"LLM error: {exc}")
+
+        action = self._validate(raw)
+        internal_logger.info(
+            "AI self-heal step %d/%d for '%s': action=%s keyword=%s params=%s reason=%s",
+            step + 1, self.max_steps, ctx.intent_keyword, action.action,
+            action.keyword, action.params, action.reason[:_MAX_THOUGHT_CHARS],
+        )
+
+        if action.action == "give_up":
+            return HealResult(False, action=action, message=action.reason or "Model gave up.")
+        if action.action == "done":
+            return HealResult(True, action=action, message=action.reason or "Goal reached.")
+
+        # action.action == "keyword"
+        try:
+            done = self._dispatch(action)
+        except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
+            return HealResult(False, action=action, message=f"Keyword failed: {exc}")
+
+        if done:
+            return HealResult(True, action=action, message=action.reason or "Healed.")
+
+        return None
 
     def heal(
         self,
@@ -149,41 +236,15 @@ class AISelfHealHandler:
         pagesource_provider: PagesourceProvider,
     ) -> HealResult:
         """Attempt to recover the failed keyword. Never raises — returns ok=False on any problem."""
+        catalog = self.keyword_catalog()
+
         for step in range(self.max_steps):
-            png = self._safe_call(screenshot_provider)
-            if not png:
-                return HealResult(False, message="No screenshot available for self-heal.")
-            page_source = self._safe_call(pagesource_provider)
-
-            prompt = self._build_prompt(ctx, step, page_source)
-            try:
-                raw = self.llm.generate_json(
-                    prompt, HEAL_ACTION_SCHEMA, images=[png],
-                    system=HEAL_SYSTEM_PROMPT, temperature=0.0,
-                )
-            except OpticsError as exc:
-                return HealResult(False, message=f"LLM error: {exc.message}")
-            except Exception as exc:  # noqa: BLE001 - self-heal must never raise a new error type
-                return HealResult(False, message=f"LLM error: {exc}")
-
-            action = self._validate(raw)
-            internal_logger.info(
-                "AI self-heal step %d/%d for '%s': action=%s reason=%s",
-                step + 1, self.max_steps, ctx.intent_keyword, action.action,
-                action.reason[:_MAX_THOUGHT_CHARS],
+            result = self._execute_single_step(
+                step, ctx, screenshot_provider, pagesource_provider, catalog
             )
-
-            if action.action == "give_up":
-                return HealResult(False, action=action, message=action.reason or "Model gave up.")
-
-            try:
-                done = self._dispatch(action)
-            except Exception as exc:  # noqa: BLE001 - a driver error ends the heal cleanly
-                return HealResult(False, action=action, message=f"Action failed: {exc}")
-
-            if done:
-                return HealResult(True, action=action, message=action.reason or "Healed.")
-            # Intermediate (scroll/swipe): UI changed, loop to re-observe.
+            if result is not None:
+                return result
+            # Intermediate step: UI changed, loop to re-observe.
 
         return HealResult(False, message="Self-heal step budget exhausted.")
 
@@ -200,44 +261,67 @@ class AISelfHealHandler:
             return None
 
     def _dispatch(self, action: HealAction) -> bool:
-        """Execute one action via the driver. Returns True when the keyword goal is complete."""
-        px = action.percent_x if action.percent_x is not None else 50.0
-        py = action.percent_y if action.percent_y is not None else 50.0
-
-        if action.action == "tap":
-            self.driver.press_percentage_coordinates(px, py, 1)
-        elif action.action == "type":
-            self.driver.press_percentage_coordinates(px, py, 1)
-            self.driver.enter_text(action.text)
-        elif action.action == "swipe":
-            direction = action.direction or "up"
-            self.driver.swipe_percentage(int(px), int(py), direction, _DEFAULT_SWIPE_LENGTH_PCT)
-        elif action.action == "scroll":
-            direction = action.direction or "down"
-            self.driver.scroll(direction, _DEFAULT_SCROLL_DURATION_MS)
-        else:  # pragma: no cover - _validate guarantees a known action
+        """Execute one keyword via the injected executor. Returns True when the goal is complete."""
+        if not action.keyword:
             return False
 
-        if action.action in _LAYOUT_ACTIONS:
-            # Handler bypasses keyword-level settling; let the UI finish animating.
-            time.sleep(_SETTLE_SECONDS)
-        return action.action in _TERMINAL_ACTIONS
+        line = self._build_line(action.keyword, action.params)
+        result = self.keyword_executor(line)
+
+        # Let the UI settle after the keyword runs.
+        time.sleep(_SETTLE_SECONDS)
+
+        ok = getattr(result, "ok", False)
+        if not ok:
+            msg = getattr(result, "message", "keyword failed")
+            internal_logger.debug("AI self-heal: keyword '%s' failed: %s", line, msg)
+            # Don't abort the whole heal on a single keyword failure —
+            # the LLM can try a different approach on the next step.
+            return False
+
+        # A completing keyword with completed=True means the goal is done.
+        if action.keyword not in _NON_COMPLETING_KEYWORDS and action.completed:
+            return True
+        return False
 
     @staticmethod
     def _validate(raw: Dict[str, Any]) -> HealAction:
+        if not isinstance(raw, dict):
+            raw = {}
         action = raw.get("action")
-        if action not in ("tap", "type", "swipe", "scroll", "give_up"):
+        if action not in ("keyword", "done", "give_up"):
             action = "give_up"
+
+        params_raw = raw.get("params") or []
+        params = [str(p) for p in params_raw] if isinstance(params_raw, list) else []
+
+        completed = raw.get("completed")
+        if completed is None:
+            # Default: completing keywords complete by default; navigation ones don't.
+            keyword = str(raw.get("keyword") or "")
+            completed = keyword not in _NON_COMPLETING_KEYWORDS
+        else:
+            completed = bool(completed)
+
         return HealAction(
             action=action,
-            percent_x=_as_float(raw.get("percent_x")),
-            percent_y=_as_float(raw.get("percent_y")),
-            text=str(raw.get("text") or ""),
-            direction=str(raw.get("direction") or ""),
+            keyword=str(raw.get("keyword") or ""),
+            params=params,
             reason=str(raw.get("reason") or ""),
+            completed=completed,
         )
 
-    def _build_prompt(self, ctx: HealContext, step: int, page_source: Optional[str]) -> str:
+    @staticmethod
+    def _build_line(keyword: str, params: List[str]) -> str:
+        """Build a keyword line string from keyword name and params."""
+        if not params:
+            return keyword
+        return keyword + " " + " ".join(shlex.quote(p) for p in params)
+
+    def _build_prompt(
+        self, ctx: HealContext, step: int, page_source: Optional[str],
+        catalog: List[HealKeywordSpec],
+    ) -> str:
         params = " ".join(str(p) for p in ctx.intent_params)
         lines = [
             f"FAILED KEYWORD: {ctx.intent_keyword} {params}".rstrip(),
@@ -248,6 +332,12 @@ class AISelfHealHandler:
             lines.append(f"RESOLVED VARIABLES: {pairs}")
         if ctx.failed_strategies:
             lines.append("STRATEGIES ALREADY TRIED (all failed): " + ", ".join(ctx.failed_strategies))
+
+        lines.append("")
+        lines.append("AVAILABLE KEYWORDS (name and parameters):")
+        for spec in catalog:
+            lines.append(f"  {spec.signature}")
+
         if page_source:
             lines.append("")
             lines.append(
@@ -263,18 +353,9 @@ class AISelfHealHandler:
         if step > 0:
             lines.append("")
             lines.append(
-                f"This is attempt {step + 1}. Your previous action changed the screen; "
-                "re-read the CURRENT screenshot and complete the goal (tap/type)."
+                f"This is attempt {step + 1}. Your previous keyword changed the screen; "
+                "re-read the CURRENT screenshot and complete the goal."
             )
         lines.append("")
         lines.append("The attached image is the CURRENT screen. Decide the SINGLE next action as JSON.")
         return "\n".join(lines)
-
-
-def _as_float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None

@@ -735,6 +735,27 @@ class StrategyManager:
         internal_logger.debug("No screenshot captured.")
         raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.")
 
+    def capture_screenshot_bytes(self) -> bytes:
+        """Return the current screen as encoded PNG bytes.
+
+        Delegates to :meth:`ElementSourceInterface.capture_screenshot_bytes` on each
+        strategy's source. Backends with a native encoded path (Appium, Playwright,
+        Selenium) override that method for efficiency; others encode the numpy frame
+        via the default base-class implementation.
+        """
+        for strategy in self.screenshot_strategies:
+            source = strategy.element_source
+            try:
+                data = source.capture_screenshot_bytes()
+                if data:
+                    execution_tracer.log_attempt(strategy, "screenshot_bytes", "success")
+                    return data
+            except Exception as e:
+                execution_tracer.log_attempt(strategy, "screenshot_bytes", "fail", error=str(e))
+                internal_logger.debug(
+                    "Screenshot bytes via %s failed: %s", source.__class__.__name__, e)
+        raise OpticsError(Code.E0303, message="No screenshot bytes captured using available strategies.")
+
     def capture_screenshot_stream(self, timeout: int = 30):
         """Capture a screenshot stream using the available strategies."""
         execution_logger.debug("Starting screenshot stream with available strategies.")

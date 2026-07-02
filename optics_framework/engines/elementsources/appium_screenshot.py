@@ -1,11 +1,14 @@
 import base64
+import time
 from typing import Optional, Any, List
 import numpy as np
 import cv2
 from appium.webdriver.webdriver import WebDriver
-from selenium.common.exceptions import ScreenshotException
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
+
+# Delay between screenshot retries; an immediate retry tends to hit the same transient failure.
+_SCREENSHOT_RETRY_BACKOFF_S = 0.5
 
 
 class AppiumScreenshot(ElementSourceInterface):
@@ -47,6 +50,29 @@ class AppiumScreenshot(ElementSourceInterface):
         """
         return self.capture_screenshot_as_numpy()
 
+    def capture_screenshot_bytes(self) -> bytes:
+        """
+        Return the device screen as native PNG bytes via Appium's base64 endpoint.
+
+        Skips the ``base64 -> numpy -> cv2.imdecode`` decode that
+        :meth:`capture_screenshot_as_numpy` does, for callers that only need encoded
+        bytes. The retry absorbs the truncated-response ("Incorrect padding") base64
+        failures occasionally seen against busy remote hubs.
+        """
+        driver = self._require_driver()
+        last_exc: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                return base64.b64decode(driver.get_screenshot_as_base64())
+            except Exception as e:
+                last_exc = e
+                internal_logger.warning(
+                    "Appium native screenshot bytes attempt %d/2 failed: %s", attempt + 1, e
+                )
+                if attempt == 0:
+                    time.sleep(_SCREENSHOT_RETRY_BACKOFF_S)
+        raise RuntimeError(f"Error capturing Appium screenshot bytes: {last_exc}") from last_exc
+
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         internal_logger.exception("AppiumScreenshot does not support getting interactive elements.")
         raise NotImplementedError(
@@ -57,28 +83,15 @@ class AppiumScreenshot(ElementSourceInterface):
         """
         Captures a screenshot using Appium and returns it as a NumPy array.
 
+        Reuses :meth:`capture_screenshot_bytes` (shared fetch + retry) and only adds
+        the decode, so the numpy and bytes paths stay in sync.
+
         Returns:
             numpy.ndarray: The captured screenshot as a NumPy array.
         """
-        try:
-            # Use Base64 encoding for faster processing
-            driver = self._require_driver()
-            internal_logger.debug('driver session_id: %s', driver.session_id)
-            screenshot_base64 = driver.get_screenshot_as_base64()
-            screenshot_bytes = base64.b64decode(screenshot_base64)
-            internal_logger.debug("Screenshot bytes length: %d", len(screenshot_bytes))
-            numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
-            numpy_image = cv2.imdecode(numpy_image, cv2.IMREAD_COLOR) # type: ignore
-            return numpy_image
-
-        except ScreenshotException as se:
-            # internal_logger.debug(f'ScreenshotException: {se}. Using external camera')
-            internal_logger.warning(f'ScreenshotException : {se}. Using external camera.')
-            raise RuntimeError("ScreenshotException occurred.")
-        except Exception as e:
-            # Log the error and fallback to external camera
-            internal_logger.warning(f"Error capturing Appium screenshot: {e}. Using external camera.")
-            raise RuntimeError(f"Error capturing Appium screenshot: {e}") from e
+        screenshot_bytes = self.capture_screenshot_bytes()
+        numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
+        return cv2.imdecode(numpy_image, cv2.IMREAD_COLOR)  # type: ignore
 
     def assert_elements(self, elements, timeout=30, rule='any') -> None:
         internal_logger.exception("AppiumScreenshot does not support asserting elements.")
