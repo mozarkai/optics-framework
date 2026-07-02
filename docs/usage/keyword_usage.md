@@ -213,7 +213,7 @@ Scroll,down,scroll_down
 
 ### Scroll Until Element Appears
 
-Scrolls in a specified direction until an element appears.
+Scrolls in a specified direction until an element appears. Raises an error if the element does not appear within the timeout.
 
 **Parameters:**
 
@@ -221,7 +221,7 @@ Scrolls in a specified direction until an element appears.
 |-----------|------|-------------|---------|
 | `element` | Required | The target element to find (Image template, OCR template, or XPath) | - |
 | `direction` | Required | The scroll direction: `up`, `down`, `left`, or `right` | - |
-| `timeout` | Required | Timeout in seconds for the scroll operation (integer) | - |
+| `timeout` | Required | Maximum time in seconds to keep scrolling before raising an error (integer) | - |
 | `event_name` | Optional | A string identifier for the scroll event | - |
 
 **Example:**
