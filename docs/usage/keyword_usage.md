@@ -424,6 +424,24 @@ Execute Script,{"script": "mobile:pressKey", "args": {"keycode": 3}},execute_bac
 
 These keywords handle verification and validation operations.
 
+### Assert Equality
+
+Compares two values for equality. Both values are converted to strings and stripped of leading/trailing whitespace before comparison. Returns `true` if equal, `false` otherwise. Either value can be a `${variable}` reference.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `output` | Required | The actual value to check (e.g. result of `Get Text`) | - |
+| `expression` | Required | The expected value | - |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
+
+```csv
+Assert Equality,${price_text},9.99,price_verified
+```
+
 ### Validate Element
 
 Verifies the specified element is present on the screen.
