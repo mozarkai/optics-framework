@@ -1,9 +1,10 @@
 from typing import Optional, Any, List
 
-from optics_framework.common.error import OpticsError, Code, Code, Code
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.models import ElementData
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.eventSDK import EventSDK
@@ -23,6 +24,7 @@ class Verifier:
         )
         self.event_sdk: EventSDK = builder.event_sdk
         self.execution_dir = builder.session_config.execution_output_path
+        self.session = builder.session
 
     def validate_element(
         self,
@@ -84,7 +86,7 @@ class Verifier:
             if located is None:
                 raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
             if isinstance(located, tuple):
-                raise OpticsError(Code.E0401, message=f"Cannot check enabled/disabled state for coordinate-based elements.")
+                raise OpticsError(Code.E0401, message="Cannot check enabled/disabled state for coordinate-based elements.")
 
             is_enabled = located.is_enabled()
             if state == "enabled" and not is_enabled:
@@ -100,15 +102,40 @@ class Verifier:
                 message=f"Unknown element_state '{element_state}'. Expected: visible, invisible, enabled, disabled."
             )
 
-    def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> None:
-        """
-        Compares two values for equality.
+    def _resolve_param(self, param: str) -> str:
+        """Resolve a `${variable}` reference from session elements, returning its first value."""
+        param = str(param).strip()
+        if not (param.startswith("${") and param.endswith("}")):
+            return param
+        var_name = param[2:-1].strip()
+        elements = getattr(self.session, "elements", None)
+        if not isinstance(elements, ElementData):
+            raise OpticsError(Code.E0702, message=f"Cannot resolve '{param}': no element data in session.")
+        value = elements.get_element(var_name)
+        if value is None:
+            raise OpticsError(Code.E0702, message=f"Variable '{param}' not found in session elements.")
+        if isinstance(value, list):
+            if not value:
+                raise OpticsError(Code.E0702, message=f"Variable '{param}' is an empty list.")
+            return str(value[0])
+        return str(value)
 
-        :param output: The first value to be compared.
-        :param expression: The second value to be compared.
-        :param event_name: The name of the event associated with the comparison, if any.
+    def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> bool:
         """
-        pass
+        Compares two values for equality. Both values are resolved from session
+        elements if they are ``${variable}`` references before comparison.
+
+        :param output: The actual value or ``${variable}`` reference.
+        :param expression: The expected value or ``${variable}`` reference.
+        :param event_name: The name of the event associated with the comparison, if any.
+        :return: True if equal, False otherwise.
+        """
+        actual = self._resolve_param(str(output)).strip()
+        expected = self._resolve_param(str(expression)).strip()
+        result = actual == expected
+        if result and event_name:
+            self.event_sdk.capture_event(event_name)
+        return result
 
 
     def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
