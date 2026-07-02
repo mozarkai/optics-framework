@@ -4,7 +4,7 @@ import os
 import json
 import inspect
 from abc import ABC, abstractmethod
-from typing import Optional, List, Any, Callable
+from typing import Optional, List, Any, Callable, Dict
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
@@ -98,7 +98,7 @@ class DryRunExecutor(Executor):
         if not self.test_case:
             raise OpticsError(Code.E0702, message="Test case is required")
 
-    async def execute(self, session: Session, runner: Runner) -> None:
+    async def execute(self, session: Session, runner: Runner) -> Dict[str, Any]:
         status = EventStatus.FAIL
         message = "No test case to execute"
         event_manager = self.event_manager
@@ -127,6 +127,9 @@ class DryRunExecutor(Executor):
             message=message,
             extra={"session_id": session.session_id}
         ))
+        # Return the per-test-case results so callers (e.g. the REST dry-run
+        # endpoint) can surface them. The CLI dry-run path ignores the return.
+        return dict(runner.result_printer.test_state)
 
 
 def _deserialize_single_param(param_value: str, param_type: Any) -> Any:
