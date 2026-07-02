@@ -443,6 +443,30 @@ Verifies the specified element is present on the screen.
 Validate Element,login_button.png,10,any,verify_login
 ```
 
+### Is Element
+
+Checks if an element is in a given state: `visible`, `invisible`, `enabled`, or `disabled`. Raises an error if the element's actual state does not match the expected state.
+
+- **visible / invisible** — asserts presence or absence of the element on screen within the timeout.
+- **enabled / disabled** — locates the element and checks its interactive state via the accessibility tree. Coordinate-based results (e.g. from OCR) are not supported for enabled/disabled checks.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The element to check (Image template, OCR template, or XPath) | - |
+| `element_state` | Required | Expected state: `visible`, `invisible`, `enabled`, or `disabled` | - |
+| `timeout` | Required | Time to wait for the element in seconds (integer) | - |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
+
+```csv
+Is Element,login_button.png,visible,10,check_login_visible
+Is Element,//android.widget.Button[@text="Submit"],enabled,5,check_submit_enabled
+Is Element,loading_spinner.png,invisible,15,wait_for_load
+```
+
 ### Assert Presence
 
 Asserts the presence of elements. Can check multiple elements with pipe separator (`|`).
