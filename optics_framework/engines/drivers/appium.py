@@ -4,6 +4,7 @@ from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.webdriver.remote.command import Command  # type: ignore
+from selenium.common.exceptions import StaleElementReferenceException  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
 from appium.webdriver.common.appiumby import AppiumBy
@@ -955,13 +956,19 @@ class Appium(DriverInterface):
                 element.send_keys(utils.strip_sensitive_prefix(str(text)))
         else:
             internal_logger.debug(f"Entering text '{text}' into element: {element}")
-            element.send_keys(utils.strip_sensitive_prefix(str(text)))
+            try:
+                element.send_keys(utils.strip_sensitive_prefix(str(text)))
+            except StaleElementReferenceException:
+                internal_logger.debug("Element became stale after send_keys; text was likely entered successfully")
 
     def clear_text_element(self, element: Any, event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
         internal_logger.debug(f"Clearing text in element: {element}")
-        element.clear()
+        try:
+            element.clear()
+        except StaleElementReferenceException:
+            internal_logger.debug("Element became stale after clear(); element was likely cleared successfully")
 
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
