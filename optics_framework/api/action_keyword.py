@@ -561,11 +561,13 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "scroll_until_element_appears")
         start_time = time.time()
+        found = False
         while time.time() - start_time < int(timeout):
             try:
                 result = self.verifier.assert_presence(
                     element, timeout_str="3", rule="any")
                 if result:
+                    found = True
                     break
             except OpticsError as e:
                 if e.code != Code.E0201:
@@ -575,6 +577,8 @@ class ActionKeyword:
                     raise
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
+        if not found:
+            raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
 
     @with_self_healing
     def scroll_from_element(self, element: str, direction: str, scroll_length: str, aoi_x: str = "0", aoi_y: str = "0",
