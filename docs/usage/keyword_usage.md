@@ -154,7 +154,7 @@ Swipe By Percentage,50,50,up,25,swipe_up
 
 ### Swipe Until Element Appears
 
-Swipes in a specified direction until an element appears.
+Swipes in a specified direction until an element appears. Raises an error if the element does not appear within the timeout.
 
 **Parameters:**
 
@@ -162,7 +162,7 @@ Swipes in a specified direction until an element appears.
 |-----------|------|-------------|---------|
 | `element` | Required | The target element to find (Image template, OCR template, or XPath) | - |
 | `direction` | Required | The swipe direction: `up`, `down`, `left`, or `right` | - |
-| `timeout` | Required | Timeout in seconds until element search is performed (integer) | - |
+| `timeout` | Required | Maximum time in seconds to keep swiping before raising an error (integer) | - |
 | `event_name` | Optional | A string identifier for the swipe event | - |
 
 **Example:**
