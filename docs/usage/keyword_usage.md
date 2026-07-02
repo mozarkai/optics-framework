@@ -571,6 +571,20 @@ Retrieves a list of interactive elements on the current screen.
 Get Interactive Elements,buttons
 ```
 
+### Get Screen Elements
+
+Captures a screenshot and retrieves interactive elements from the current screen in a single call. Returns a dict with a base64-encoded screenshot and a list of elements.
+
+**Parameters:**
+
+None.
+
+**Example:**
+
+```csv
+Get Screen Elements
+```
+
 ## App Management Keywords
 
 These keywords handle application lifecycle operations.
