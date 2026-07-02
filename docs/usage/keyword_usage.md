@@ -92,6 +92,26 @@ Detects a specified element and presses it if found.
 Detect And Press,login_button.png,30,detect_login
 ```
 
+### Select Dropdown Option
+
+Opens a dropdown and selects one of its options.
+
+Presses the dropdown element to open it, validates that the option text is visible in the resulting page source, then presses it. Raises an error (`E0201`) when the specified option is not found among the dropdown's visible items, preventing a silent mis-selection.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The dropdown element (Image template, OCR template, or XPath) | - |
+| `option` | Required | The option to select (visible label text, OCR template, or XPath) | - |
+| `event_name` | Optional | A string identifier for the selection event | - |
+
+**Example:**
+
+```csv
+Select Dropdown Option,${country_dropdown},India,country_selected
+```
+
 ### Swipe
 
 Performs a swipe action in a specified direction from given coordinates.
@@ -112,7 +132,7 @@ Performs a swipe action in a specified direction from given coordinates.
 Swipe,500,800,down,100,swipe_down
 ```
 
-### Swipe Percentage
+### Swipe By Percentage
 
 Performs a swipe action in a specified direction by percentage of the screen (0-100).
 
@@ -129,12 +149,12 @@ Performs a swipe action in a specified direction by percentage of the screen (0-
 **Example:**
 
 ```csv
-Swipe Percentage,50,50,up,25,swipe_up
+Swipe By Percentage,50,50,up,25,swipe_up
 ```
 
 ### Swipe Until Element Appears
 
-Swipes in a specified direction until an element appears.
+Swipes in a specified direction until an element appears. Raises an error if the element does not appear within the timeout.
 
 **Parameters:**
 
@@ -142,7 +162,7 @@ Swipes in a specified direction until an element appears.
 |-----------|------|-------------|---------|
 | `element` | Required | The target element to find (Image template, OCR template, or XPath) | - |
 | `direction` | Required | The swipe direction: `up`, `down`, `left`, or `right` | - |
-| `timeout` | Required | Timeout in seconds until element search is performed (integer) | - |
+| `timeout` | Required | Maximum time in seconds to keep swiping before raising an error (integer) | - |
 | `event_name` | Optional | A string identifier for the swipe event | - |
 
 **Example:**
@@ -193,7 +213,7 @@ Scroll,down,scroll_down
 
 ### Scroll Until Element Appears
 
-Scrolls in a specified direction until an element appears.
+Scrolls in a specified direction until an element appears. Raises an error if the element does not appear within the timeout.
 
 **Parameters:**
 
@@ -201,7 +221,7 @@ Scrolls in a specified direction until an element appears.
 |-----------|------|-------------|---------|
 | `element` | Required | The target element to find (Image template, OCR template, or XPath) | - |
 | `direction` | Required | The scroll direction: `up`, `down`, `left`, or `right` | - |
-| `timeout` | Required | Timeout in seconds for the scroll operation (integer) | - |
+| `timeout` | Required | Maximum time in seconds to keep scrolling before raising an error (integer) | - |
 | `event_name` | Optional | A string identifier for the scroll event | - |
 
 **Example:**
@@ -404,6 +424,24 @@ Execute Script,{"script": "mobile:pressKey", "args": {"keycode": 3}},execute_bac
 
 These keywords handle verification and validation operations.
 
+### Assert Equality
+
+Compares two values for equality. Both values are converted to strings and stripped of leading/trailing whitespace before comparison. Returns `true` if equal, `false` otherwise. Either value can be a `${variable}` reference.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `output` | Required | The actual value to check (e.g. result of `Get Text`) | - |
+| `expression` | Required | The expected value | - |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
+
+```csv
+Assert Equality,${price_text},9.99,price_verified
+```
+
 ### Validate Element
 
 Verifies the specified element is present on the screen.
@@ -421,6 +459,30 @@ Verifies the specified element is present on the screen.
 
 ```csv
 Validate Element,login_button.png,10,any,verify_login
+```
+
+### Is Element
+
+Checks if an element is in a given state: `visible`, `invisible`, `enabled`, or `disabled`. Raises an error if the element's actual state does not match the expected state.
+
+- **visible / invisible** — asserts presence or absence of the element on screen within the timeout.
+- **enabled / disabled** — locates the element and checks its interactive state via the accessibility tree. Coordinate-based results (e.g. from OCR) are not supported for enabled/disabled checks.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The element to check (Image template, OCR template, or XPath) | - |
+| `element_state` | Required | Expected state: `visible`, `invisible`, `enabled`, or `disabled` | - |
+| `timeout` | Required | Time to wait for the element in seconds (integer) | - |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
+
+```csv
+Is Element,login_button.png,visible,10,check_login_visible
+Is Element,//android.widget.Button[@text="Submit"],enabled,5,check_submit_enabled
+Is Element,loading_spinner.png,invisible,15,wait_for_load
 ```
 
 ### Assert Presence
@@ -507,6 +569,20 @@ Retrieves a list of interactive elements on the current screen.
 
 ```csv
 Get Interactive Elements,buttons
+```
+
+### Get Screen Elements
+
+Captures a screenshot and retrieves interactive elements from the current screen in a single call. Returns a dict with a base64-encoded screenshot and a list of elements.
+
+**Parameters:**
+
+None.
+
+**Example:**
+
+```csv
+Get Screen Elements
 ```
 
 ## App Management Keywords

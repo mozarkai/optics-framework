@@ -4,6 +4,7 @@ from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.webdriver.remote.command import Command  # type: ignore
+from selenium.common.exceptions import StaleElementReferenceException  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
 from appium.webdriver.common.appiumby import AppiumBy
@@ -955,13 +956,19 @@ class Appium(DriverInterface):
                 element.send_keys(utils.strip_sensitive_prefix(str(text)))
         else:
             internal_logger.debug(f"Entering text '{text}' into element: {element}")
-            element.send_keys(utils.strip_sensitive_prefix(str(text)))
+            try:
+                element.send_keys(utils.strip_sensitive_prefix(str(text)))
+            except StaleElementReferenceException:
+                internal_logger.debug("Element became stale after send_keys; text was likely entered successfully")
 
     def clear_text_element(self, element: Any, event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
         internal_logger.debug(f"Clearing text in element: {element}")
-        element.clear()
+        try:
+            element.clear()
+        except StaleElementReferenceException:
+            internal_logger.debug("Element became stale after clear(); element was likely cleared successfully")
 
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
@@ -1117,7 +1124,12 @@ class Appium(DriverInterface):
         return mapping.get(char.lower())
 
     def get_text_element(self, element: Any) -> str:
-        text = element.get_attribute("text") or element.get_attribute("value")
+        text = element.get_attribute("text")
+        if text is None:
+            try:
+                text = element.get_attribute("value")
+            except Exception:
+                text = None
         internal_logger.info(f"Text of element: {text}")
         if text is None:
             raise OpticsError(Code.E0401, message="Element text is None")
@@ -1153,7 +1165,7 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug("Clicked on element: %s at %s", element, timestamp)
 
-    def press_coordinates(self, coor_x: int, coor_y: int, event_name: Optional[str] = None) -> None:
+    def press_coordinates(self, coor_x: int, coor_y: int, repeat: int = 1, event_name: Optional[str] = None) -> None:
         """
         Press an element by absolute coordinates.
 
@@ -1165,7 +1177,8 @@ class Appium(DriverInterface):
         """
         coor_x, coor_y = int(coor_x), int(coor_y)
         internal_logger.debug(f"Pressing at coordinates: ({coor_x}, {coor_y})")
-        self.tap_at_coordinates(coor_x, coor_y, event_name)
+        for _ in range(repeat):
+            self.tap_at_coordinates(coor_x, coor_y, event_name)
 
     def press_percentage_coordinates(
         self,

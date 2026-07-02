@@ -822,11 +822,11 @@ class FlowControl:
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         var_name = self._extract_variable_name(param1)
-        result = self._compute_expression(param2)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             runner_elements = ElementData()
             setattr(self.session, "elements", runner_elements)
+        result = self._compute_expression(param2)
         runner_elements.remove_element(var_name)
         runner_elements.add_element(var_name, str(result))
         return result

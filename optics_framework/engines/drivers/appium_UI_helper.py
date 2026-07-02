@@ -1175,10 +1175,13 @@ class UIHelper:
     def _is_input(self, node: etree.Element) -> bool:
         """Check if element is an input/text field."""
         tag = node.tag or ""
-        # Android: EditText, TextView (when editable)
+        # Android: EditText, TextView (when editable/focusable)
         # iOS: XCUIElementTypeTextField, XCUIElementTypeSecureTextField, XCUIElementTypeTextView
-        input_tags = ["TextField", "EditText", "SecureTextField", "TextView"]
-        return any(input_tag in tag for input_tag in input_tags)
+        if any(t in tag for t in ["TextField", "EditText", "SecureTextField"]):
+            return True
+        if "TextView" in tag and node.attrib.get("focusable") == "true":
+            return True
+        return False
 
     def _is_image(self, node: etree.Element) -> bool:
         """Check if element is an image."""
