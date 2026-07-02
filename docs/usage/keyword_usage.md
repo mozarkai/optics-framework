@@ -132,7 +132,7 @@ Performs a swipe action in a specified direction from given coordinates.
 Swipe,500,800,down,100,swipe_down
 ```
 
-### Swipe Percentage
+### Swipe By Percentage
 
 Performs a swipe action in a specified direction by percentage of the screen (0-100).
 
@@ -149,7 +149,7 @@ Performs a swipe action in a specified direction by percentage of the screen (0-
 **Example:**
 
 ```csv
-Swipe Percentage,50,50,up,25,swipe_up
+Swipe By Percentage,50,50,up,25,swipe_up
 ```
 
 ### Swipe Until Element Appears
