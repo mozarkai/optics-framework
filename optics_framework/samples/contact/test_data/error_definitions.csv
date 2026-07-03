@@ -1,0 +1,11 @@
+error_code,match_string,description,severity
+ERR_001,Unfortunately,App has crashed with a system dialog,critical
+ERR_002,has stopped,App stopped unexpectedly,critical
+ERR_003,No internet connection,Device lost network connectivity,high
+ERR_004,Network error,Network request failed,high
+ERR_005,Connection timed out,Request timed out before completing,high
+ERR_006,Something went wrong,Generic app error screen,medium
+ERR_007,An error occurred,Generic error message detected,medium
+ERR_008,Page not found,404 or missing page error,medium
+ERR_009,Session expired,User session timed out,high
+ERR_010,Permission denied,Access control error on screen,medium
