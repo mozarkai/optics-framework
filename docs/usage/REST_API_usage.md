@@ -528,6 +528,104 @@ curl "http://localhost:8000/v1/keywords"
 ]
 ```
 
+### Dry Run a Suite
+
+Validate a whole test suite **without touching a device**: every keyword is
+checked against the registry and every `${variable}` is resolved, producing a
+per-test-case / per-module / per-keyword PASS/FAIL report. The dry run executes
+on an ephemeral, **device-less** session (no `driver_sources` required — any
+driver configuration you send is ignored), which is always torn down afterwards.
+
+There are two ways to submit a suite.
+
+#### Inline JSON
+
+**POST** `/v1/dry_run`
+
+**Request Body:** `DryRunRequest`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `test_cases` | `{name: [module, ...]}` | required |
+| `modules` | `{name: [[keyword, [param, ...]], ...]}` | required |
+| `elements` | `{name: [value, ...]}` | optional |
+| `api` | `ApiData`-shaped object | optional |
+| `include` / `exclude` | `[name, ...]` | optional filter (setup/teardown always kept) |
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8000/v1/dry_run" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "test_cases": {"Smoke": ["Open and Search"]},
+        "modules": {"Open and Search": [["Launch App"], ["Press Element", ["${search_box}"]]]},
+        "elements": {"search_box": ["xpath=//input", "text=Search"]}
+      }'
+```
+
+#### File / Archive Upload
+
+**POST** `/v1/dry_run/upload` (`multipart/form-data`)
+
+Upload your CSV/YAML suite files directly, or a single `.zip` of the project.
+Optional `include` / `exclude` form fields are comma-separated.
+
+**Example (zip):**
+```bash
+curl -X POST "http://localhost:8000/v1/dry_run/upload" \
+  -F "files=@my_suite.zip"
+```
+
+**Example (individual files):**
+```bash
+curl -X POST "http://localhost:8000/v1/dry_run/upload" \
+  -F "files=@test_cases/cases.csv" \
+  -F "files=@modules/mods.csv" \
+  -F "files=@test_data/elements.csv" \
+  -F "include=Smoke"
+```
+
+**Response (both endpoints):** `DryRunResponse`
+```json
+{
+  "execution_id": "1f0b5e32-...",
+  "status": "FAIL",
+  "test_cases": [
+    {
+      "id": "6aa0f938-...",
+      "name": "Smoke",
+      "status": "FAIL",
+      "elapsed": "0.00s",
+      "modules": [
+        {
+          "name": "Open and Search",
+          "status": "FAIL",
+          "elapsed": "0.00s",
+          "keywords": [
+            {"name": "Launch App", "status": "PASS", "reason": ""},
+            {"name": "Bad Keyword", "status": "FAIL", "reason": ""}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+!!! note "Status codes"
+    - A suite with an unknown keyword or unresolved variable returns **200** with
+      `status: "FAIL"` and the offending step marked `FAIL` — that is the dry
+      run's job, not a server error.
+    - An empty / no-test-case suite returns **400**.
+    - An unsafe archive (path traversal) returns **400**; an oversized body or
+      archive returns **413**.
+
+!!! warning "Limits & security"
+    - Inline JSON body is capped at 5 MiB; total upload at 10 MiB; total
+      decompressed archive at 50 MiB (zip-slip and zip-bomb protected).
+    - As with every endpoint, the dry-run endpoints are **unauthenticated** — do
+      not expose the server to untrusted networks without an auth layer in front.
+
 ### Terminate Session
 
 **DELETE** `/v1/sessions/{session_id}/stop`
