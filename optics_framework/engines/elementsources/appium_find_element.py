@@ -3,6 +3,7 @@ from typing import Optional, Any, List, Tuple
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.common.appiumby import AppiumBy
 from lxml import etree # type: ignore
+from selenium.common.exceptions import NoSuchElementException
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.elementsource_interface import ElementSourceInterface
@@ -113,8 +114,10 @@ class AppiumFindElement(ElementSourceInterface):
             try:
                 found_element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, locator)
                 return found_element
+            except NoSuchElementException as e:
+                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:
-                internal_logger.exception(f" element: {element}", exc_info=e)
+                internal_logger.debug(f"Unexpected error finding element {element}: {e}")
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
         elif element_type == 'Class':
             try:
@@ -129,8 +132,12 @@ class AppiumFindElement(ElementSourceInterface):
 
                 found_element = found_elements[index_to_use]
                 return found_element
+            except OpticsError:
+                raise
+            except NoSuchElementException as e:
+                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:
-                internal_logger.exception(f" element: {element}", exc_info=e)
+                internal_logger.debug(f"Unexpected error finding class element {element}: {e}")
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
         return None
 
