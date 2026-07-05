@@ -26,18 +26,19 @@ class ElementSourceInterface(ABC):
 
     def capture_screenshot_bytes(self) -> bytes:
         """
-        Return the current screen as already-encoded image bytes (e.g. PNG/JPEG).
+        Return the current screen as encoded PNG bytes.
 
-        Optional fast-path companion to :meth:`capture`. A backend that can return the
-        device's native encoded screenshot should override this; callers then skip the
-        decode-to-numpy and re-encode round-trip. Otherwise they fall back to encoding
-        :meth:`capture`'s frame.
+        Combines the numpy and bytes screenshot paths into one call. Backends that can
+        return native encoded bytes (e.g. Appium, Playwright) should override this for
+        efficiency; the default implementation encodes the result of :meth:`capture`.
 
-        :raises NotImplementedError: if this element source has no native encoded path.
+        :return: PNG-encoded screenshot bytes.
+        :rtype: bytes
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support capture_screenshot_bytes"
-        )
+        import cv2  # local import — cv2 is a runtime dep, not needed at module load
+        frame = self.capture()
+        _, buf = cv2.imencode(".png", frame)
+        return bytes(buf)
 
     @abstractmethod
     def locate(self, element: Any, index: int | None = None) -> tuple:
