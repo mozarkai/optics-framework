@@ -262,9 +262,11 @@ class Verifier:
         :param event_name: The name of the event associated with the page source capture, if any.
         :return: Dict with "page_source" and "timestamp" keys.
         """
+        internal_logger.debug("Capturing page source")
         result = self.strategy_manager.capture_pagesource()
         if result is not None:
             page_source, timestamp = result
+            internal_logger.debug(f"Page source captured at timestamp: {timestamp}")
             utils.save_page_source(page_source, timestamp, self.execution_dir)
             if event_name:
                 self.event_sdk.capture_event(event_name)
