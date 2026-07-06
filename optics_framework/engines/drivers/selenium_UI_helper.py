@@ -27,9 +27,7 @@ class UIHelper:
         # Parse using BeautifulSoup
         soup = BeautifulSoup(page_source, 'lxml')
         utils.save_page_source_html(soup.prettify(), time_stamp, self.driver.event_sdk.config_handler.config.execution_output_path)
-        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========\n')
         internal_logger.debug(f'Page source fetched at: {time_stamp}')
-        internal_logger.debug('\n==========================================\n')
         return page_source
 
     def find_element_by_text(self, text: str, threshold: int = 80):
