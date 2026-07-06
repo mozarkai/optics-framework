@@ -244,8 +244,10 @@ class Verifier:
         :param event_name: The name of the event associated with the screenshot capture, if any.
         :return: The path to the captured screenshot.
         """
+        internal_logger.debug("Capturing screenshot")
         screenshot = self.strategy_manager.capture_screenshot()
         if screenshot is not None:
+            internal_logger.debug("Screenshot captured successfully")
             screenshot = utils.encode_numpy_to_base64(screenshot)
         else:
             internal_logger.warning("Screenshot capture returned None.")
