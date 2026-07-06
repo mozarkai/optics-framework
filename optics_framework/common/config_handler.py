@@ -122,12 +122,16 @@ class ConfigHandler:
     def __init__(self, config: Config):
         self.project_name: Optional[str] = None
         self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
-        if config.execution_output_path is None and config.project_path is not None:
-            config.execution_output_path = os.path.join(
-                config.project_path, "execution_output"
-            )
-            if not os.path.exists(config.execution_output_path):
-                os.makedirs(config.execution_output_path, exist_ok=True)
+        if config.execution_output_path is None:
+            if config.project_path is not None:
+                config.execution_output_path = os.path.join(
+                    config.project_path, "execution_output"
+                )
+            else:
+                config.execution_output_path = os.path.join(
+                    os.getcwd(), "execution_output"
+                )
+            os.makedirs(config.execution_output_path, exist_ok=True)
 
         self.config: Config = config
         self._enabled_configs: Dict[str, List[str]] = {}
