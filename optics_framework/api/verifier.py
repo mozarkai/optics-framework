@@ -263,10 +263,10 @@ class Verifier:
         :return: Dict with "page_source" and "timestamp" keys.
         """
         result = self.strategy_manager.capture_pagesource()
-        if event_name:
-            self.event_sdk.capture_event(event_name)
         if result is not None:
             page_source, timestamp = result
+            if event_name:
+                self.event_sdk.capture_event(event_name)
             return {"page_source": page_source, "timestamp": timestamp}
         raise ValueError("Page source capture returned None.")
 
