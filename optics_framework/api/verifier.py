@@ -248,6 +248,7 @@ class Verifier:
         screenshot = self.strategy_manager.capture_screenshot()
         if screenshot is not None:
             internal_logger.debug("Screenshot captured successfully")
+            utils.save_screenshot(screenshot, "capture_screenshot", output_dir=self.execution_dir)
             screenshot = utils.encode_numpy_to_base64(screenshot)
         else:
             internal_logger.warning("Screenshot capture returned None.")
