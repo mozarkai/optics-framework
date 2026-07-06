@@ -68,9 +68,7 @@ class AppiumPageSource(ElementSourceInterface):
             self.root = self.tree.getroot()
         else:
             self.root = None
-        internal_logger.debug('\n\n========== PAGE SOURCE FETCHED ==========' )
         internal_logger.debug('Page source fetched at: %s', time_stamp)
-        internal_logger.debug('\n==========================================')
         return str(page_source), str(time_stamp)
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None):

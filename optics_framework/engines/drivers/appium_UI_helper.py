@@ -32,9 +32,7 @@ class UIHelper:
         page_source = self.driver.driver.page_source
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
         self.root = self.tree.getroot()
-        internal_logger.debug("\n\n========== PAGE SOURCE FETCHED ==========")
         internal_logger.debug(f"Page source fetched at: {time_stamp}")
-        internal_logger.debug("\n==========================================")
         utils.save_page_source(page_source, time_stamp, self.driver.event_sdk.config_handler.config.execution_output_path)
         return page_source, time_stamp
 
@@ -57,9 +55,7 @@ class UIHelper:
         self.prev_hash = new_hash
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
         self.root = self.tree.getroot()
-        internal_logger.debug("\n\n========== PAGE SOURCE FETCHED ==========")
         internal_logger.debug(f"Page source fetched at: {time_stamp}")
-        internal_logger.debug("\n==========================================")
         return page_source, time_stamp
 
     def find_xpath_from_text(self, text):
