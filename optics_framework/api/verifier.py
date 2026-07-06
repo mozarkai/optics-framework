@@ -265,6 +265,7 @@ class Verifier:
         result = self.strategy_manager.capture_pagesource()
         if result is not None:
             page_source, timestamp = result
+            utils.save_page_source(page_source, timestamp, self.execution_dir)
             if event_name:
                 self.event_sdk.capture_event(event_name)
             return {"page_source": page_source, "timestamp": timestamp}
