@@ -1630,7 +1630,7 @@ Manages application lifecycle.
 - `launch_app()` - Launch with identifier/activity
 - `launch_other_app()` - Launch different app
 - `start_appium_session()` - Start Appium session
-- `close_and_terminate_app()` - Cleanup
+- `close_and_terminate_app()` - Tear down driver session and flush events
 - `force_terminate_app()` - Force kill
 - `get_app_version()` - Version info
 
