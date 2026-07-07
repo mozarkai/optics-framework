@@ -642,7 +642,9 @@ Launch Other App,com.example.otherapp,launch_other
 
 ### Close And Terminate App
 
-Closes and terminates the current application.
+Tears down the active driver session and flushes all pending events. The exact
+behaviour depends on the configured driver (Appium, Selenium, Playwright, BLE)
+but in all cases the driver reference is released after this call.
 
 **Parameters:**
 
