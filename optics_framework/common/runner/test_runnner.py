@@ -325,46 +325,51 @@ class TestRunner(Runner):
     ) -> bool:
         capture_handler = LogCaptureBuffer()
         execution_logger.addHandler(capture_handler)
+        should_retry = False
+        try:
+            keyword_result = self._find_result(
+                test_case_result.name, module_node.name, keyword_node.id
+            )
+            internal_logger.debug(
+                "Executing keyword: %s (id: %s)", keyword_node.name, keyword_node.id
+            )
+            start_time = time.time()
 
-        keyword_result = self._find_result(
-            test_case_result.name, module_node.name, keyword_node.id
-        )
-        internal_logger.debug(
-            "Executing keyword: %s (id: %s)", keyword_node.name, keyword_node.id
-        )
-        start_time = time.time()
+            keyword_node.state = State.RUNNING
+            await self._send_event(
+                "keyword",
+                keyword_node,
+                EventStatus.RUNNING,
+                parent_id=module_node.id,
+                start_time=start_time,
+            )
+            self._update_status(
+                keyword_result, "RUNNING", time.time() - start_time, test_case_result.name
+            )
 
-        keyword_node.state = State.RUNNING
-        await self._send_event(
-            "keyword",
-            keyword_node,
-            EventStatus.RUNNING,
-            parent_id=module_node.id,
-            start_time=start_time,
-        )
-        self._update_status(
-            keyword_result, "RUNNING", time.time() - start_time, test_case_result.name
-        )
+            func_name = "_".join(keyword_node.name.split()).lower()
+            method = self.keyword_map.get(func_name)
+            if not method:
+                await self._handle_keyword_not_found(keyword_node, module_node, keyword_result, start_time, test_case_result)
+                return False
 
-        func_name = "_".join(keyword_node.name.split()).lower()
-        method = self.keyword_map.get(func_name)
-        if not method:
-            await self._handle_keyword_not_found(keyword_node, module_node, keyword_result, start_time, test_case_result)
-            return False
+            param_candidates = await self._build_param_candidates(keyword_node, keyword_node.params, module_node, keyword_result, start_time, test_case_result, capture_handler)
+            if param_candidates is None:
+                return False
 
-        param_candidates = await self._build_param_candidates(keyword_node, keyword_node.params, module_node, keyword_result, start_time, test_case_result, capture_handler)
-        if param_candidates is None:
-            return False
+            result = await self._try_execute_with_fallback(
+                method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler
+            )
+            if result is not None:
+                return result
 
-        result = await self._try_execute_with_fallback(
-            method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler
-        )
-        if result is not None:
-            return result
+            await self._handle_fallback_exhausted(keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler)
+            await asyncio.sleep(self.config.halt_duration)
+            should_retry = await self._process_commands(keyword_node, module_node)
+        finally:
+            execution_logger.removeHandler(capture_handler)
 
-        await self._handle_fallback_exhausted(keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler)
-        await asyncio.sleep(self.config.halt_duration)
-        if await self._process_commands(keyword_node, module_node):
+        if should_retry:
             return await self._execute_keyword(
                 keyword_node, module_node, test_case_result, extra
             )
