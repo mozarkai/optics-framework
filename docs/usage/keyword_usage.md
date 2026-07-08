@@ -798,7 +798,7 @@ Read Data,${filtered},users.csv,role=='${expected_role}';select=id,name
 
 ### Evaluate
 
-Evaluates an expression and stores the result in session.elements.
+Evaluates an expression and stores the result in `session.elements` under the given variable name.
 
 **Parameters:**
 
@@ -807,17 +807,70 @@ Evaluates an expression and stores the result in session.elements.
 | `param1` | Required | The variable name where the result will be stored (e.g., `${result}`) | - |
 | `param2` | Required | The expression to evaluate (can use variables like `${var1} + ${var2}`) | - |
 
-**Example:**
+**How `param2` is evaluated:**
+
+- Every `${var}` in `param2` is first replaced, as plain text, with the variable's *stored string value* — before anything is evaluated as Python.
+- The result of that substitution is then run through a restricted `eval()`. Only arithmetic (`+ - * / % **`), comparisons (`> < >= <= == !=`), boolean logic (`and or not`), a ternary `... if ... else ...`, and literal `list`/`tuple` values are allowed. Anything else (function calls, attribute access, imports, f-strings, etc.) is rejected with `Code.E0403 Unsafe expression detected`.
+- Because the substitution is textual and unquoted, a `${var}` that holds **text** must be wrapped in quotes *inside the expression* (e.g. `'${name}'`), otherwise the substituted word is treated as a bare Python name and raises a `NameError`. A `${var}` that holds a **number** does not need quotes.
+- The final result is stored via `str(result)`, so even numbers and booleans end up as strings in `session.elements` (e.g. `True` → `"True"`).
+- `param1` must be in `${name}` form; if it isn't, a warning is logged and the raw string is used as the variable name as-is.
+
+**Example (numeric arithmetic):**
 
 ```csv
+Evaluate,${a},5
+Evaluate,${b},3
 Evaluate,${sum},${a} + ${b}
 ```
 
-**Example (with comparison):**
+`${sum}` → `8`
+
+**Example (comparison):**
 
 ```csv
+Evaluate,${count},15
 Evaluate,${is_valid},${count} > 10
 ```
+
+`${is_valid}` → `True`
+
+**Example (string literal):**
+
+Wrap plain text in quotes so it's evaluated as a Python string, not as bare identifiers:
+
+```csv
+Evaluate,${greeting},'hello world'
+```
+
+`${greeting}` → `hello world`
+
+**Example (concatenating a stored text variable):**
+
+`${name}` holds text, so it must be quoted inside the expression once substituted:
+
+```csv
+Evaluate,${name},'Alice'
+Evaluate,${message},'Hello, ' + '${name}'
+```
+
+`${message}` → `Hello, Alice`
+
+**Example (ternary if/else):**
+
+```csv
+Evaluate,${score},72
+Evaluate,${result},'Pass' if ${score} >= 50 else 'Fail'
+```
+
+`${result}` → `Pass`
+
+**Example (list literal):**
+
+```csv
+Evaluate,${numbers},[1, 2, 3, 4]
+```
+
+`${numbers}` → `[1, 2, 3, 4]`
 
 ### Date Evaluate
 
