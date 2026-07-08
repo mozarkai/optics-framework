@@ -79,6 +79,26 @@ def write_uploaded_files(files: Iterable[Tuple[str, bytes]], dest_dir: str) -> i
     return written
 
 
+def _extract_zip_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, target: str, current_total: int) -> int:
+    """Extract a single zip member to target, returning the bytes written."""
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    entry_written = 0
+    with archive.open(info, "r") as src, open(target, "wb") as dst:
+        while True:
+            chunk = src.read(_CHUNK)
+            if not chunk:
+                break
+            entry_written += len(chunk)
+            current_total += len(chunk)
+            if current_total > MAX_UNCOMPRESSED_BYTES:
+                raise PayloadTooLarge("archive expands beyond maximum size")
+            dst.write(chunk)
+    
+    if info.compress_size > 0 and entry_written / info.compress_size > MAX_COMPRESSION_RATIO:
+        raise PayloadTooLarge("archive entry has a suspicious compression ratio")
+    return entry_written
+
+
 def safe_extract_zip(data: bytes, dest_dir: str) -> int:
     """Extract suite files from an in-memory zip into ``dest_dir`` safely."""
     if len(data) > MAX_UPLOAD_BYTES:
@@ -102,19 +122,8 @@ def safe_extract_zip(data: bytes, dest_dir: str) -> int:
         target = _resolve_within(base_real, dest_dir, info.filename)
         if not is_suite_relevant(info.filename):
             continue
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        entry_written = 0
-        with archive.open(info, "r") as src, open(target, "wb") as dst:
-            while True:
-                chunk = src.read(_CHUNK)
-                if not chunk:
-                    break
-                entry_written += len(chunk)
-                total_written += len(chunk)
-                if total_written > MAX_UNCOMPRESSED_BYTES:
-                    raise PayloadTooLarge("archive expands beyond maximum size")
-                dst.write(chunk)
-        if info.compress_size > 0 and entry_written / info.compress_size > MAX_COMPRESSION_RATIO:
-            raise PayloadTooLarge("archive entry has a suspicious compression ratio")
+        
+        entry_written = _extract_zip_member(archive, info, target, total_written)
+        total_written += entry_written
         written += 1
     return written
