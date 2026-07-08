@@ -45,7 +45,52 @@ services:
       timeout: 10s
       retries: 5
 
+  mcp:
+    build:
+      context: ..
+      dockerfile: Docker/mcp/prod/Dockerfile
+    image: optics/mcp:prod
+    container_name: optics_mcp_prod
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8090),2); s.close()\""]
+      interval: 45s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+  mcp-dev:
+    build:
+      context: ..
+      dockerfile: Docker/mcp/dev/Dockerfile
+      args:
+        # pass WHL_FILE if you want to install from a specific wheel in dist/
+        WHL_FILE: ""
+    image: optics/mcp:dev
+    container_name: optics_mcp_dev
+    ports:
+      - "8091:8090" # maps host 8091 -> container 8090 so prod MCP / mock OCR don't conflict
+    volumes:
+      - ..:/app:cached
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8090),2); s.close()\""]
+      interval: 45s
+      timeout: 10s
+      retries: 5
+
 # Usage examples:
 #  docker compose -f Docker/docker-compose.yml up --build app
 #  docker compose -f Docker/docker-compose.yml up --build dev
+#  docker compose -f Docker/docker-compose.yml up --build mcp
+#  docker compose -f Docker/docker-compose.yml up --build mcp-dev
 #  docker compose -f Docker/docker-compose.yml up --build

@@ -24,6 +24,7 @@ from optics_framework.common.models import (
     TestSuite,
     ModuleData,
     TemplateData,
+    ErrorDefinitions,
 )
 
 
@@ -50,12 +51,12 @@ def discover_templates(project_path: str) -> TemplateData:
     return template_data
 
 
-def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[Any], Config | None]:
+def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any], Config | None]:
     """
     Recursively search for CSV and YAML files under `folder_path` and categorize them by content.
 
-    Returns lists of discovered test case, module, element and api files and an optional
-    Config object (if a suitable YAML config is found).
+    Returns lists of discovered test case, module, element, api and error_definitions files
+    and an optional Config object (if a suitable YAML config is found).
     """
     file_collections = _initialize_file_collections()
     config_obj: Config | None = None
@@ -78,6 +79,7 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
         file_collections["module"],
         file_collections["element"],
         file_collections["api"],
+        file_collections["error_definitions"],
         config_obj,
     )
 
@@ -88,7 +90,8 @@ def _initialize_file_collections():
         'test_case': [],
         'module': [],
         'element': [],
-        'api': []
+        'api': [],
+        'error_definitions': [],
     }
 
 
@@ -146,6 +149,8 @@ def _categorize_file_by_content(file_path: str, file_collections: dict):
         file_collections['element'].append(file_path)
     if "api" in content_type:
         file_collections['api'].append(file_path)
+    if "error_definitions" in content_type:
+        file_collections['error_definitions'].append(file_path)
 
 
 def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
@@ -163,6 +168,8 @@ def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
             content_types.add("modules")
         if {"element_name", "element_id"}.issubset(headers):
             content_types.add("elements")
+        if {"error_code", "match_string"}.issubset(headers):
+            content_types.add("error_definitions")
     return content_types
 
 
@@ -496,6 +503,7 @@ class BaseRunner:
             module_files,
             element_files,
             api_files,
+            error_definition_files,
             config_obj,
         ) = find_files(self.folder_path)
 
@@ -504,6 +512,7 @@ class BaseRunner:
         self._load_modules(module_files)
         self._load_elements(element_files)
         self._load_api_data(api_files)
+        self._load_error_definitions(error_definition_files)
 
         if not self.test_cases_data:
             internal_logger.debug(f"No test cases found in {test_case_files}")
@@ -584,6 +593,13 @@ class BaseRunner:
             reader = self.yaml_reader  # API files are expected to be YAML
             self.api_data = reader.read_api_data(file_path, existing_api_data=self.api_data)
 
+    def _load_error_definitions(self, error_definition_files):
+        self.error_definitions_data: ErrorDefinitions = ErrorDefinitions()
+        for file_path in error_definition_files:
+            raw = self.csv_reader.read_error_definitions(file_path)
+            for code, meta in raw.items():
+                self.error_definitions_data.add_error(code, **meta)
+
     def _load_templates(self):
         """Load template data by discovering image files in the project directory."""
         self.templates_data: TemplateData = TemplateData()
@@ -611,6 +627,7 @@ class BaseRunner:
             self.elements_data,
             self.api_data,
             self.templates_data,
+            self.error_definitions_data,
         )
         self.engine: ExecutionEngine = ExecutionEngine(self.manager)
     async def run(self, mode: str):
