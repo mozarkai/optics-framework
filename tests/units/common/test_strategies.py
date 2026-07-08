@@ -220,8 +220,6 @@ class TestCaptureScreenshotBytes:
     def test_interface_default_encodes_numpy_via_capture(self):
         """ElementSourceInterface.capture_screenshot_bytes() default encodes capture() result."""
         from optics_framework.common.elementsource_interface import ElementSourceInterface
-        from unittest.mock import patch
-        import cv2
 
         class _MinimalSource(ElementSourceInterface):
             def capture(self) -> np.ndarray:
