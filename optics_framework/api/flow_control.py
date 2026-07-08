@@ -851,7 +851,7 @@ class FlowControl:
 
         def replace_var(match):
             var_name = match.group(1)
-            value = runner_elements.get_element(var_name)
+            value = runner_elements.get_first(var_name)
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements.")
             return str(value)
@@ -905,7 +905,7 @@ class FlowControl:
             return eval(
                 expression,
                 {"__builtins__": None},
-                {k: str(v) for k, v in runner_elements.elements.items()},
+                {k: v[0] for k, v in runner_elements.elements.items() if v},
             )  # nosec B307 # pylint: disable=eval-used
             # Note: eval() is used here for simplicity, i know it should be should be avoided in production code.
             # In some time, i will replace it with a safer alternative.
