@@ -181,6 +181,54 @@ class AISelfHealHandler:
         self.keyword_catalog = keyword_catalog
         self.max_steps = max_steps
 
+    def _execute_single_step(
+        self,
+        step: int,
+        ctx: HealContext,
+        screenshot_provider: ScreenshotProvider,
+        pagesource_provider: PagesourceProvider,
+        catalog: List[HealKeywordSpec],
+    ) -> Optional[HealResult]:
+        """Execute a single iteration of self-healing and return terminal result or None to continue."""
+        png = self._safe_call(screenshot_provider)
+        if not png:
+            return HealResult(False, message="No screenshot available for self-heal.")
+        page_source = self._safe_call(pagesource_provider)
+
+        prompt = self._build_prompt(ctx, step, page_source, catalog)
+        try:
+            raw = self.llm.generate_json(
+                prompt, HEAL_ACTION_SCHEMA, images=[png],
+                system=HEAL_SYSTEM_PROMPT, temperature=0.0,
+            )
+        except OpticsError as exc:
+            return HealResult(False, message=f"LLM error: {exc.message}")
+        except Exception as exc:  # noqa: BLE001 - self-heal must never raise a new error type
+            return HealResult(False, message=f"LLM error: {exc}")
+
+        action = self._validate(raw)
+        internal_logger.info(
+            "AI self-heal step %d/%d for '%s': action=%s keyword=%s params=%s reason=%s",
+            step + 1, self.max_steps, ctx.intent_keyword, action.action,
+            action.keyword, action.params, action.reason[:_MAX_THOUGHT_CHARS],
+        )
+
+        if action.action == "give_up":
+            return HealResult(False, action=action, message=action.reason or "Model gave up.")
+        if action.action == "done":
+            return HealResult(True, action=action, message=action.reason or "Goal reached.")
+
+        # action.action == "keyword"
+        try:
+            done = self._dispatch(action)
+        except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
+            return HealResult(False, action=action, message=f"Keyword failed: {exc}")
+
+        if done:
+            return HealResult(True, action=action, message=action.reason or "Healed.")
+        
+        return None
+
     def heal(
         self,
         ctx: HealContext,
@@ -191,42 +239,11 @@ class AISelfHealHandler:
         catalog = self.keyword_catalog()
 
         for step in range(self.max_steps):
-            png = self._safe_call(screenshot_provider)
-            if not png:
-                return HealResult(False, message="No screenshot available for self-heal.")
-            page_source = self._safe_call(pagesource_provider)
-
-            prompt = self._build_prompt(ctx, step, page_source, catalog)
-            try:
-                raw = self.llm.generate_json(
-                    prompt, HEAL_ACTION_SCHEMA, images=[png],
-                    system=HEAL_SYSTEM_PROMPT, temperature=0.0,
-                )
-            except OpticsError as exc:
-                return HealResult(False, message=f"LLM error: {exc.message}")
-            except Exception as exc:  # noqa: BLE001 - self-heal must never raise a new error type
-                return HealResult(False, message=f"LLM error: {exc}")
-
-            action = self._validate(raw)
-            internal_logger.info(
-                "AI self-heal step %d/%d for '%s': action=%s keyword=%s params=%s reason=%s",
-                step + 1, self.max_steps, ctx.intent_keyword, action.action,
-                action.keyword, action.params, action.reason[:_MAX_THOUGHT_CHARS],
+            result = self._execute_single_step(
+                step, ctx, screenshot_provider, pagesource_provider, catalog
             )
-
-            if action.action == "give_up":
-                return HealResult(False, action=action, message=action.reason or "Model gave up.")
-            if action.action == "done":
-                return HealResult(True, action=action, message=action.reason or "Goal reached.")
-
-            # action.action == "keyword"
-            try:
-                done = self._dispatch(action)
-            except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
-                return HealResult(False, action=action, message=f"Keyword failed: {exc}")
-
-            if done:
-                return HealResult(True, action=action, message=action.reason or "Healed.")
+            if result is not None:
+                return result
             # Intermediate step: UI changed, loop to re-observe.
 
         return HealResult(False, message="Self-heal step budget exhausted.")
