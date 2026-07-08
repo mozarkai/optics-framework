@@ -112,12 +112,7 @@ class OpticsBuilder:
         return self
 
     def _require_driver(self) -> bool:
-        """Whether this builder's session demands a real driver/element source.
-
-        Device-less sessions (``Session(require_driver=False)``, used by dry-run
-        validation) get empty fallbacks instead of an ``E0501`` when no driver or
-        element source is configured.
-        """
+        """Whether this builder's session demands a real driver/element source."""
         return bool(getattr(self.session, "require_driver", True))
 
     # Instantiation methods

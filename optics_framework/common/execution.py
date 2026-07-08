@@ -127,8 +127,7 @@ class DryRunExecutor(Executor):
             message=message,
             extra={"session_id": session.session_id}
         ))
-        # Return the per-test-case results so callers (e.g. the REST dry-run
-        # endpoint) can surface them. The CLI dry-run path ignores the return.
+        # Return the per-test-case results.
         return dict(runner.result_printer.test_state)
 
 

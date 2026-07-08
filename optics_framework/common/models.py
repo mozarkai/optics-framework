@@ -321,13 +321,7 @@ class ErrorDefinitions(BaseModel):
 
 
 class LoadedSuite(BaseModel):
-    """A fully-loaded test suite, decoupled from any session.
-
-    Produced by ``load_suite_from_folder`` / ``build_suite_from_inline`` so the
-    same suite-building path feeds both the CLI runners and the REST dry-run
-    endpoints without creating a session. ``config`` is a ``Config`` instance
-    (typed ``Any`` here to avoid a circular import with ``config_handler``).
-    """
+    """A fully-loaded test suite, decoupled from any session."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: Any = None

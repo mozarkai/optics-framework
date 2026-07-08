@@ -117,10 +117,7 @@ class Session:
         self.apis = apis
         self.templates = templates
         self.error_definitions = error_definitions
-        # When False (e.g. dry-run validation), a session may be created with no
-        # enabled drivers/element sources: the builder hands back empty fallbacks
-        # instead of raising, so no device is ever touched. Defaults True so normal
-        # execute/live/action sessions keep their fail-fast behaviour.
+        # When False, session can be built without enabled drivers/element sources.
         self.require_driver = require_driver
         self.request_template_overrides: Dict[str, str] = {}
         self.inline_templates: Dict[str, str] = {}
@@ -165,11 +162,7 @@ class SessionManager(SessionHandler):
                        templates: Optional[TemplateData] = None,
                        error_definitions: Optional[ErrorDefinitions] = None,
                        require_driver: bool = True) -> str:
-        """Creates a new session with a unique ID.
-
-        Pass ``require_driver=False`` for device-less sessions (e.g. dry-run
-        validation) so a session can be built without any enabled driver.
-        """
+        """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
         self.sessions[session_id] = Session(
             session_id, config, test_cases, modules, elements, apis, templates,

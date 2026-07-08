@@ -207,17 +207,7 @@ class KeywordInfo(BaseModel):
 
 
 class DryRunRequest(BaseModel):
-    """Inline suite for ``POST /v1/dry_run``.
-
-    Shapes mirror the parsed reader outputs:
-      - ``test_cases``: ``{test_case_name: [module_name, ...]}``
-      - ``modules``: ``{module_name: [[keyword, [param, ...]], ...]}``
-      - ``elements``: ``{element_name: [value, ...]}`` (optional)
-      - ``api``: an ``ApiData``-shaped dict (optional)
-
-    Drivers are never used in a dry run, so any driver config is ignored — the
-    session is built device-less.
-    """
+    """Inline suite for ``POST /v1/dry_run``."""
 
     test_cases: Dict[str, Any]
     modules: Dict[str, Any]
@@ -1311,24 +1301,10 @@ async def delete_session(session_id: str):
 
 # ---------------------------------------------------------------------------
 # Dry-run endpoints
-#
-# A dry run validates a whole suite (every keyword resolves, every ${var}
-# resolves) WITHOUT touching a device. It runs on an ephemeral, device-less
-# session that is always torn down. Two input modes share one core:
-#   POST /v1/dry_run         -> inline JSON suite
-#   POST /v1/dry_run/upload  -> multipart CSV/YAML files and/or a single .zip
-#
-# NOTE: like every other endpoint, these are UNAUTHENTICATED. Do not expose the
-# server to untrusted networks without an auth layer in front of it.
 # ---------------------------------------------------------------------------
 
 def _strip_sources_for_dry_run(config: Config) -> Config:
-    """Force a config device-less so no driver/element engine is instantiated.
-
-    A dry run never locates elements or drives a device, and an uploaded
-    ``config.yaml`` might enable a real driver — emptying the source lists keeps
-    the dry run from accidentally connecting to anything.
-    """
+    """Force a config device-less so no driver/element engine is instantiated."""
     config.driver_sources = []
     config.elements_sources = []
     config.text_detection = []
@@ -1381,11 +1357,7 @@ async def _execute_dry_run(suite: LoadedSuite) -> DryRunResponse:
 
 
 async def _read_body_capped(request: Request, max_bytes: int) -> bytes:
-    """Read a request body, aborting (413) as soon as it exceeds ``max_bytes``.
-
-    Streams the body so an oversized payload never fully materializes in memory.
-    Also short-circuits on a declared ``Content-Length`` when present.
-    """
+    """Read a request body, aborting (413) as soon as it exceeds ``max_bytes``."""
     declared = request.headers.get("content-length")
     if declared is not None:
         try:
@@ -1462,8 +1434,7 @@ async def dry_run_upload(
 
     tmp_dir = tempfile.mkdtemp(prefix="optics_dryrun_")
     try:
-        # Read uploads in chunks with a running size cap so an oversized file is
-        # rejected *before* it is fully buffered in memory (DoS guard).
+        # Read uploads in chunks with a running size cap.
         read_files: List[Tuple[str, bytes]] = []
         total = 0
         for upload in files:

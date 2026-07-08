@@ -59,10 +59,7 @@ def find_files(folder_path: str, validate: bool = True) -> tuple[list[Any], list
     Returns lists of discovered test case, module, element, api and error_definitions files
     and an optional Config object (if a suitable YAML config is found).
 
-    :param validate: When True (default, CLI behaviour), missing test-case/module
-        files terminate via ``validate_required_files`` (``sys.exit``). Library/server
-        callers pass ``validate=False`` to instead get back the (possibly empty)
-        collections and decide how to surface the problem (e.g. a 400 response).
+    :param validate: When True, missing files terminate via ``validate_required_files``.
     """
     file_collections = _initialize_file_collections()
     config_obj: Config | None = None
@@ -476,11 +473,6 @@ def build_linked_list(
 
 # ---------------------------------------------------------------------------
 # Reusable, session-free suite loaders.
-#
-# These module-level functions are the single source of truth for turning files
-# (or already-parsed inline data) into the data structures the execution engine
-# consumes. ``BaseRunner`` delegates to them, and the REST dry-run endpoints
-# reuse them directly so the CLI and the API never drift.
 # ---------------------------------------------------------------------------
 
 def load_test_cases_data(test_case_files: List[str]) -> Dict[str, Any]:
@@ -552,11 +544,7 @@ def load_suite_from_folder(
     include: Optional[List[str]] = None,
     exclude: Optional[List[str]] = None,
 ) -> LoadedSuite:
-    """Discover and load a project folder into a session-free ``LoadedSuite``.
-
-    Mirrors the discovery/loading ``BaseRunner`` performs, but creates no session
-    and touches no device. Raises ``OpticsError`` (E0501/E0701/E0702) on bad input.
-    """
+    """Discover and load a project folder into a session-free ``LoadedSuite``."""
     test_case_files, module_files, element_files, api_files, _error_definition_files, config_obj = find_files(
         folder_path, validate=False
     )
@@ -593,14 +581,7 @@ def build_suite_from_inline(
     include: Optional[List[str]] = None,
     exclude: Optional[List[str]] = None,
 ) -> LoadedSuite:
-    """Build a session-free ``LoadedSuite`` directly from already-parsed data.
-
-    No files touch disk. JSON shapes mirror the reader outputs:
-      - ``test_cases``: ``{test_case_name: [module_name, ...]}``
-      - ``modules``: ``{module_name: [[keyword, [param, ...]], ...]}``
-      - ``elements``: ``{element_name: [value, ...]}`` (or a bare value)
-      - ``api``: an ``ApiData``-shaped dict (optional)
-    """
+    """Build a session-free ``LoadedSuite`` directly from already-parsed data."""
     cfg = config if config is not None else Config()
 
     modules_data = ModuleData()

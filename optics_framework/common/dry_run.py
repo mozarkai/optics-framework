@@ -1,11 +1,4 @@
-"""Helpers for the REST dry-run endpoints.
-
-This module holds the HTTP-agnostic pieces of the dry-run feature so they can be
-unit-tested without a running server: payload/size limits, safe filename
-handling, and a hardened ZIP extractor (zip-slip + zip-bomb resistant). The
-FastAPI endpoints in ``expose_api`` import these and map the raised exceptions to
-HTTP status codes.
-"""
+"""Helpers for the REST dry-run endpoints."""
 from __future__ import annotations
 
 import io
@@ -14,8 +7,7 @@ import re
 import zipfile
 from typing import Iterable, Tuple
 
-# --- Limits (deliberately conservative; the dry-run feature only needs to parse
-# small CSV/YAML suites, never large media). ---
+
 MAX_INLINE_BODY_BYTES = 5 * 1024 * 1024        # 5 MiB JSON body
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024            # 10 MiB total received upload
 MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024      # 50 MiB total after decompression
@@ -29,19 +21,15 @@ _ALLOWED_EXTENSIONS = SUITE_FILE_EXTENSIONS | IMAGE_EXTENSIONS
 
 
 class PayloadTooLarge(Exception):
-    """Raised when an inline body or (de)compressed upload exceeds a limit (-> 413)."""
+    """Raised when an inline body or upload exceeds a limit."""
 
 
 class UnsafeArchive(Exception):
-    """Raised for malformed archives or unsafe member paths/names (-> 400)."""
+    """Raised for malformed or unsafe archives."""
 
 
 def safe_suite_filename(name: str) -> str:
-    """Return a sanitized basename, preserving a recognized extension.
-
-    Rejects path-like or empty names. The extension is kept (lowercased) so the
-    downstream content/extension routing in ``find_files`` still works.
-    """
+    """Return a sanitized basename, preserving a recognized extension."""
     base = os.path.basename(name or "")
     if not base or base in (".", "..") or "/" in name or "\\" in name:
         raise UnsafeArchive(f"unsafe filename: {name!r}")
@@ -61,10 +49,7 @@ def is_suite_relevant(filename: str) -> bool:
 
 
 def _resolve_within(base_real: str, dest_dir: str, member_name: str) -> str:
-    """Resolve a member path under ``dest_dir`` and guarantee it stays inside.
-
-    Blocks absolute paths, ``..`` traversal, and symlink-style escapes (zip-slip).
-    """
+    """Resolve a member path under ``dest_dir`` safely."""
     normalized = os.path.normpath(member_name)
     if os.path.isabs(normalized) or normalized.startswith(".."):
         raise UnsafeArchive(f"unsafe path in archive: {member_name!r}")
@@ -75,11 +60,7 @@ def _resolve_within(base_real: str, dest_dir: str, member_name: str) -> str:
 
 
 def write_uploaded_files(files: Iterable[Tuple[str, bytes]], dest_dir: str) -> int:
-    """Write already-read upload (filename, bytes) pairs into ``dest_dir``.
-
-    Enforces a total-size ceiling and filename safety. Non-suite files are
-    skipped. Returns the count of files written.
-    """
+    """Write already-read upload files into ``dest_dir``."""
     base_real = os.path.realpath(dest_dir)
     total = 0
     written = 0
@@ -99,16 +80,7 @@ def write_uploaded_files(files: Iterable[Tuple[str, bytes]], dest_dir: str) -> i
 
 
 def safe_extract_zip(data: bytes, dest_dir: str) -> int:
-    """Extract suite files from an in-memory zip into ``dest_dir``, safely.
-
-    Hardened against:
-      - zip-slip: every member is resolved and confined to ``dest_dir``.
-      - zip-bomb: members are streamed in chunks with a running written-byte
-        counter (header ``file_size`` is NOT trusted), entry count is capped, and
-        a per-entry compression-ratio ceiling is enforced.
-
-    Returns the count of files written. Raises ``UnsafeArchive`` / ``PayloadTooLarge``.
-    """
+    """Extract suite files from an in-memory zip into ``dest_dir`` safely."""
     if len(data) > MAX_UPLOAD_BYTES:
         raise PayloadTooLarge("upload exceeds maximum size")
     try:
@@ -126,8 +98,7 @@ def safe_extract_zip(data: bytes, dest_dir: str) -> int:
     for info in infos:
         if info.is_dir():
             continue
-        # Validate the path even for files we will skip, so a malicious path can
-        # never slip through on a non-suite extension.
+        # Validate path even for skipped files
         target = _resolve_within(base_real, dest_dir, info.filename)
         if not is_suite_relevant(info.filename):
             continue

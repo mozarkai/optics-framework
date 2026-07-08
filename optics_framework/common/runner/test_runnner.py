@@ -123,9 +123,7 @@ class TestRunner(Runner):
 
     def _initialize_test_state(self) -> None:
         def _safe_resolve(param):
-            # Used only to build the display name. An unresolved ${var} must not
-            # crash runner construction — it is surfaced later as a keyword
-            # failure (during the run / dry run), not at init time.
+            # Used only to build the display name.
             try:
                 return self.resolve_param(param)
             except OpticsError:
