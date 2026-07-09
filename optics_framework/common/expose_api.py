@@ -257,6 +257,7 @@ class SessionConfig(BaseModel):
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
+    file_log: bool = False
 
     def _normalize_item(self, item: Union[str, Dict[str, Any]], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
         """Normalize a single source item into {name: DependencyConfig}.
@@ -425,6 +426,7 @@ async def create_session(config: SessionConfig):
         elements_sources = normalized.get(KEY_ELEMENTS_SOURCES, [])
         text_detection = normalized.get(KEY_TEXT_DETECTION, [])
         image_detection = normalized.get(KEY_IMAGE_DETECTION, [])
+        file_log = config.file_log
 
         session_config = Config(
             driver_sources=driver_sources,
@@ -432,7 +434,8 @@ async def create_session(config: SessionConfig):
             text_detection=text_detection,
             image_detection=image_detection,
             project_path=config.project_path,
-            log_level=LOG_LEVEL_DEBUG
+            log_level=LOG_LEVEL_DEBUG,
+            file_log=file_log
         )
         templates = (
             discover_templates(config.project_path) if config.project_path else None
