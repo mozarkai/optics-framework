@@ -31,7 +31,7 @@ def resolve_scalar_param(session: Any, param: str) -> str:
     Non-matching input is returned unchanged (stripped).
     """
     if not isinstance(param, str):
-        return param
+        param = str(param)
     param = param.strip()
     match = WHOLE_VAR_PATTERN.match(param)
     if not match:
@@ -43,11 +43,9 @@ def resolve_scalar_param(session: Any, param: str) -> str:
     value = elements.get_element(var_name)
     if value is None:
         raise OpticsError(Code.E0201, message=f"Variable '{param}' not found in session elements.")
-    if isinstance(value, list):
-        if not value:
-            raise OpticsError(Code.E0201, message=f"Variable '{param}' is an empty list.")
-        return str(value[0])
-    return str(value)
+    if not value:
+        raise OpticsError(Code.E0201, message=f"Variable '{param}' is an empty list.")
+    return str(value[0])
 
 
 class SpecialKey(Enum):
