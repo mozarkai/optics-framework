@@ -143,7 +143,12 @@ class FlowControl:
         raise OpticsError(Code.E0402, message=f"Keyword '{keyword}' not found in keyword_map.")
 
     def execute_module(self, module_name: str) -> List[Any]:
-        """Executes a module's keywords using the session's keyword_map."""
+        """Executes a module's keywords using the session's keyword_map.
+
+        Not exposed on the Optics SDK — session.modules is only populated by
+        CSV/YAML-driven execution; SDK/Robot Framework users should call keywords
+        directly or write a real function/keyword instead.
+        """
         module_def = self._get_validated_module_def(module_name)
         results = []
         execution_logger.info(f"Executing module: {module_name}")

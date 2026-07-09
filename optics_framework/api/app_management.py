@@ -28,6 +28,9 @@ class AppManagement:
 
         This method should be called before performing any application
         management operations.
+
+        Not exposed on the Optics SDK because it currently performs no operation and doesn't
+        delegate to the driver's own initialise_setup (e.g. AppiumDriver.initialise_setup).
         """
         internal_logger.debug("Initialising setup for AppManagement.")
 
