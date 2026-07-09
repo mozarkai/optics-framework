@@ -1019,6 +1019,23 @@ class Optics:
             raise ValueError(INVALID_SETUP)
         return self.action_keyword.get_text(cast(str, element))
 
+    @keyword("Select Dropdown Option")
+    @fallback_params
+    def select_dropdown_option(
+        self,
+        element: fallback_str,
+        option: fallback_str,
+        event_name: Optional[fallback_str] = None,
+    ) -> None:
+        """Open a dropdown and select one of its options."""
+        if not self.action_keyword:
+            raise ValueError(INVALID_SETUP)
+        self.action_keyword.select_dropdown_option(
+            element=cast(str, element),
+            option=cast(str, option),
+            event_name=cast(Optional[str], event_name),
+        )
+
     @keyword("Sleep")
     @fallback_params
     def sleep(self, duration: fallback_str) -> None:
@@ -1110,6 +1127,42 @@ class Optics:
             event_name=cast(Optional[str], event_name),
         )
 
+    @keyword("Assert Equality")
+    @fallback_params
+    def assert_equality(
+        self,
+        output: fallback_str,
+        expression: fallback_str,
+        event_name: Optional[fallback_str] = None,
+    ) -> bool:
+        """Compare two values (or ${variable} references) for equality."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.assert_equality(
+            output=cast(str, output),
+            expression=cast(str, expression),
+            event_name=cast(Optional[str], event_name),
+        )
+
+    @keyword("Is Element")
+    @fallback_params
+    def is_element(
+        self,
+        element: fallback_str,
+        element_state: fallback_str,
+        timeout: fallback_str,
+        event_name: Optional[fallback_str] = None,
+    ) -> None:
+        """Check if the specified element is in a given state (visible/invisible/enabled/disabled)."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        self.verifier.is_element(
+            element=cast(str, element),
+            element_state=cast(str, element_state),
+            timeout=int(cast(str, timeout)),
+            event_name=cast(Optional[str], event_name),
+        )
+
     @keyword("Get Interactive Elements")
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List:
         """
@@ -1142,6 +1195,13 @@ class Optics:
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
         return self.verifier.capture_pagesource()
+
+    @keyword("Get Screen Elements")
+    def get_screen_elements(self) -> dict:
+        """Capture a screenshot and retrieve interactive elements for API response."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.get_screen_elements()
 
     @keyword("Invoke API")
     @fallback_params
