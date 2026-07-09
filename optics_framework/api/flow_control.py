@@ -16,6 +16,7 @@ from optics_framework.common.logging_config import internal_logger, execution_lo
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common import utils
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -58,28 +59,9 @@ class FlowControl:
 
     def _resolve_param(self, param: str) -> str:
         """Resolve ${variable} references from session.elements, always returning a scalar (first value if list)."""
-        param = param.strip()
-        if (
-            not isinstance(param, str)
-            or not param.startswith("${")
-            or not param.endswith("}")
-        ):
-            return str(param)
         if self.session is None:
             raise OpticsError(Code.E0702, message="Session is None in resolve_param.")
-        var_name = param[2:-1].strip()
-        elements = getattr(self.session, "elements", None)
-        if not isinstance(elements, ElementData):
-            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
-        value = elements.get_element(var_name)
-        if value is None:
-            raise OpticsError(Code.E0702, message=f"Variable '{param}' not found in elements dictionary")
-        # If value is a list, return the first item
-        if isinstance(value, list):
-            if not value:
-                raise OpticsError(Code.E0702, message=f"Variable '{param}' is an empty list in elements dictionary")
-            return str(value[0])
-        return str(value)
+        return utils.resolve_scalar_param(self.session, param)
 
     def _get_validated_module_def(self, module_name: str) -> List[Tuple[str, List]]:
         """Validate session and modules, return the module definition or raise."""

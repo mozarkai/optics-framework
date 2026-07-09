@@ -13,9 +13,39 @@ from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_
 import inspect
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.models import ElementData
 
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 TEXT_ONLY_PREFIX = "text_only:"
+WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
+
+
+def resolve_scalar_param(session: Any, param: str) -> str:
+    """
+    Resolve a `${name}` reference from `session.elements`, returning its first value as a string.
+
+    Only resolves when the *entire* param is exactly one `${name}` reference (anchored match) —
+    a param that embeds `${var}` inside a larger expression (e.g. `${a} + ${b}`) is left
+    untouched, since that's for the keyword itself to substitute (see `Evaluate`/`Condition`).
+    Non-matching input is returned unchanged (stripped).
+    """
+    if not isinstance(param, str):
+        param = str(param)
+    param = param.strip()
+    match = WHOLE_VAR_PATTERN.match(param)
+    if not match:
+        return param
+    var_name = match.group(1).strip()
+    elements = getattr(session, "elements", None)
+    if not isinstance(elements, ElementData):
+        raise OpticsError(Code.E0702, message=f"Cannot resolve '{param}': no element data in session.")
+    value = elements.get_element(var_name)
+    if value is None:
+        raise OpticsError(Code.E0201, message=f"Variable '{param}' not found in session elements.")
+    if not value:
+        raise OpticsError(Code.E0201, message=f"Variable '{param}' is an empty list.")
+    return str(value[0])
 
 
 class SpecialKey(Enum):
