@@ -125,9 +125,9 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     ### `execution_output_path`
 
-    **Type:** `Optional[str]` | **Default:** `null` (auto-generated if `project_path` is set)
+    **Type:** `Optional[str]` | **Default:** `null` (auto-generated)
 
-    Directory where execution outputs (logs, screenshots, etc.) are stored. If not specified and `project_path` is set, defaults to `{project_path}/execution_output`.
+    Directory where execution outputs (logs, screenshots, etc.) are stored. If not specified, defaults to `{project_path}/execution_output` when `project_path` is set, or `{cwd}/execution_output` (current working directory) otherwise.
 
     ```yaml
     execution_output_path: "./outputs"
