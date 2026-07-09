@@ -4,7 +4,6 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
-from optics_framework.common.models import ElementData
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.eventSDK import EventSDK
@@ -104,21 +103,7 @@ class Verifier:
 
     def _resolve_param(self, param: str) -> str:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
-        param = str(param).strip()
-        if not (param.startswith("${") and param.endswith("}")):
-            return param
-        var_name = param[2:-1].strip()
-        elements = getattr(self.session, "elements", None)
-        if not isinstance(elements, ElementData):
-            raise OpticsError(Code.E0702, message=f"Cannot resolve '{param}': no element data in session.")
-        value = elements.get_element(var_name)
-        if value is None:
-            raise OpticsError(Code.E0702, message=f"Variable '{param}' not found in session elements.")
-        if isinstance(value, list):
-            if not value:
-                raise OpticsError(Code.E0702, message=f"Variable '{param}' is an empty list.")
-            return str(value[0])
-        return str(value)
+        return utils.resolve_scalar_param(self.session, param)
 
     def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> bool:
         """
