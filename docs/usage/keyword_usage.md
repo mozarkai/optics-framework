@@ -539,7 +539,7 @@ Captures a screenshot of the current screen.
 Capture Screenshot,screenshot_before_action
 ```
 
-### Capture Page Source
+### Capture Pagesource
 
 Captures the page source of the current screen.
 
@@ -552,7 +552,7 @@ Captures the page source of the current screen.
 **Example:**
 
 ```csv
-Capture Page Source,get_source
+Capture Pagesource,get_source
 ```
 
 ### Get Interactive Elements

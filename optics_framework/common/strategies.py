@@ -415,7 +415,7 @@ class PagesourceStrategy:
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:
         """
-        Capture page source and timestamp from the element source.
+        Capture pagesource and timestamp from the element source.
         Returns:
             Optional[Tuple[str, str]]: (page_source, timestamp) or None
         """
