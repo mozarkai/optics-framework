@@ -428,19 +428,41 @@ These keywords handle verification and validation operations.
 
 Compares two values for equality. Both values are converted to strings and stripped of leading/trailing whitespace before comparison. Returns `true` if equal, `false` otherwise. Either value can be a `${variable}` reference.
 
+**Usage note:** `Evaluate` writes its result directly into `session.elements`, so `${var}` from `Evaluate` can be passed straight into `Assert Equality`.
+
+**No expression evaluation:** `Assert Equality` only resolves `${var}` references to their stored string value, then compares the two resulting strings as-is — it does not evaluate anything as Python. Quote characters you type are compared literally, not stripped. So a stored value of `9.99` must be compared against the bare literal `9.99` (not `'9.99'`).
+
 **Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `output` | Required | The actual value to check (e.g. result of `Get Text`) | - |
+| `output` | Required | The actual value to check — typically a `${variable}` already populated by `Evaluate`, or a value read back from a keyword like `Get Text` | - |
 | `expression` | Required | The expected value | - |
 | `event_name` | Optional | A string identifier for the event | - |
 
-**Example:**
+**Example (direct literal comparison):**
 
 ```csv
 Assert Equality,${price_text},9.99,price_verified
 ```
+
+**Example (chained after `Evaluate`):**
+
+```csv
+Evaluate,${price},'9.99'
+Assert Equality,${price},9.99
+```
+
+**Example (chained after `Get Text`):**
+
+`Get Text` doesn't store its result automatically, so capture the returned text and compare it directly:
+
+```csv
+Get Text,//android.widget.TextView[@resource-id="price_label"]
+Assert Equality,9.99,9.99
+```
+
+Here, the first `9.99` in `Assert Equality` is the text `Get Text` returned from the label. You paste in whatever value it gave back, not a fresh literal.
 
 ### Validate Element
 
