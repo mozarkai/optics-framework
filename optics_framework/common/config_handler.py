@@ -29,6 +29,7 @@ class Config(BaseModel):
     llm_models: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     file_log: bool = False
     json_log: bool = False
+    save_captures: bool = True
     json_path: Optional[str] = None
     log_level: str = "INFO"
     log_path: Optional[str] = None

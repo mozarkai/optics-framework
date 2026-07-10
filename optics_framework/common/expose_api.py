@@ -432,7 +432,8 @@ async def create_session(config: SessionConfig):
             text_detection=text_detection,
             image_detection=image_detection,
             project_path=config.project_path,
-            log_level=LOG_LEVEL_DEBUG
+            log_level=LOG_LEVEL_DEBUG,
+            save_captures=False  # do not save screenshots or pagesource when using `optics serve`
         )
         templates = (
             discover_templates(config.project_path) if config.project_path else None
