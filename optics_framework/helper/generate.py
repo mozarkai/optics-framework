@@ -163,7 +163,7 @@ class YAMLDataReader(DataReader):
             "Validate Screen",
             "Get Interactive Elements",
             "Capture Screenshot",
-            "Capture Page Source",
+            "Capture Pagesource",
             "Quit",
         }
         modules_list = data.get("Modules", [])
@@ -226,7 +226,7 @@ class TestFrameworkGenerator(ABC):
             "Validate Screen": "validate_screen",
             "Get Interactive Elements": "get_interactive_elements",
             "Capture Screenshot": "capture_screenshot",
-            "Capture Page Source": "capture_pagesource",
+            "Capture Pagesource": "capture_pagesource",
             "Quit": "quit",
         }
 

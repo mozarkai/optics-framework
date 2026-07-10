@@ -269,8 +269,8 @@ optics.validate_screen(["header", "content", "footer"])
 screenshot = optics.capture_screenshot()
 print(f"Screenshot: {screenshot}")
 
-# Capture page source
-page_source = optics.capture_page_source()
+# Capture pagesource
+page_source = optics.capture_pagesource()
 print(f"Page source: {page_source}")
 
 # Get interactive elements
