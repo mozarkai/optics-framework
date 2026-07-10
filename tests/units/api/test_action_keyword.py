@@ -375,7 +375,8 @@ class TestSelectDropdownOption:
     """select_dropdown_option must open the dropdown then select the option (not a no-op)."""
 
     def test_opens_dropdown_then_selects_option(self, action_keyword):
-        with patch.object(action_keyword, "press_element") as mock_press:
+        with patch.object(action_keyword, "press_element") as mock_press, \
+             patch.object(action_keyword.strategy_manager, "get_interactive_elements", return_value=[{"text": "India"}]):
             action_keyword.select_dropdown_option("Country", "India", event_name="evt")
 
         assert mock_press.call_count == 2
