@@ -22,6 +22,9 @@ class MockOpticsBuilder(OpticsBuilder):
         self.session_config = MagicMock()
         self.session_config.execution_output_path = self.temp_dir
 
+        # Mock session (Verifier reads builder.session directly)
+        self.session = MagicMock()
+
     def get_driver(self):
         return self.mock_driver
 
