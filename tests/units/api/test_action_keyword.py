@@ -449,13 +449,15 @@ class TestSwipeUntilElementAppears:
     @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
     @patch('optics_framework.api.action_keyword.time.time')
     def test_timeout_stops_loop(self, mock_time, mock_sleep, action_keyword):
-        """Element never found, loop exits after timeout."""
+        """Element never found, loop exits after timeout and raises."""
         mock_time.side_effect = [0, 0, 3, 6, 9, 12]
 
         with patch.object(
             action_keyword.verifier, 'assert_presence',
             side_effect=OpticsError(Code.E0201, message="Element not found")
         ):
-            action_keyword.swipe_until_element_appears("element", "down", "10")
+            with pytest.raises(OpticsError) as exc_info:
+                action_keyword.swipe_until_element_appears("element", "down", "10")
 
+        assert exc_info.value.code == Code.E0201
         assert action_keyword.driver.swipe_percentage.call_count == 4
