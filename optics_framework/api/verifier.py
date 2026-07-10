@@ -23,6 +23,7 @@ class Verifier:
         )
         self.event_sdk: EventSDK = builder.event_sdk
         self.execution_dir = builder.session_config.execution_output_path
+        self.capture_output_dir = self.execution_dir if builder.session_config.save_captures else None
         self.session = builder.session
 
     def validate_element(
@@ -233,7 +234,7 @@ class Verifier:
         screenshot = self.strategy_manager.capture_screenshot()
         if screenshot is not None:
             internal_logger.debug("Screenshot captured successfully")
-            utils.save_screenshot(screenshot, "capture_screenshot", output_dir=self.execution_dir)
+            utils.save_screenshot(screenshot, "capture_screenshot", output_dir=self.capture_output_dir)
             screenshot = utils.encode_numpy_to_base64(screenshot)
         else:
             internal_logger.warning("Screenshot capture returned None.")
@@ -255,7 +256,7 @@ class Verifier:
         if result is not None:
             page_source, timestamp = result
             internal_logger.debug(f"Page source captured at timestamp: {timestamp}")
-            utils.save_page_source(page_source, timestamp, self.execution_dir)
+            utils.save_page_source(page_source, timestamp, self.capture_output_dir)
             if event_name:
                 self.event_sdk.capture_event(event_name)
             return {"page_source": page_source, "timestamp": timestamp}
