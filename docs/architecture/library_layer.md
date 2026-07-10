@@ -197,7 +197,7 @@ optics.validate_screen(["element1", "element2"])
 
 # Screenshots and page source
 screenshot = optics.capture_screenshot()
-page_source = optics.capture_page_source()
+page_source = optics.capture_pagesource()
 ```
 
 ### Flow Control

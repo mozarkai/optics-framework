@@ -274,8 +274,8 @@ Capture Test
     ${screenshot}=    Capture Screenshot
     Log    Screenshot: ${screenshot}
 
-    # Capture page source
-    ${page_source}=    Capture Page Source
+    # Capture pagesource
+    ${page_source}=    Capture Pagesource
     Log    Page source: ${page_source}
 
     # Get interactive elements
