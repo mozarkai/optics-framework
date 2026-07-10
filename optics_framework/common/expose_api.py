@@ -1377,7 +1377,6 @@ async def _read_body_capped(request: Request, max_bytes: int) -> bytes:
 
 @app.post(
     "/v1/dry_run",
-    response_model=DryRunResponse,
     responses={
         400: {"description": "No test cases / malformed suite"},
         413: {"description": "Request body too large"},
@@ -1394,7 +1393,7 @@ async def dry_run_inline(request: Request) -> DryRunResponse:
     try:
         payload = json.loads(raw)
         req = DryRunRequest.model_validate(payload)
-    except (json.JSONDecodeError, ValueError, ValidationError) as e:
+    except (json.JSONDecodeError, ValidationError) as e:
         raise HTTPException(status_code=422, detail=f"Invalid dry-run payload: {e}") from e
 
     try:
@@ -1417,16 +1416,15 @@ async def dry_run_inline(request: Request) -> DryRunResponse:
 
 @app.post(
     "/v1/dry_run/upload",
-    response_model=DryRunResponse,
     responses={
         400: {"description": "No test cases / unsafe archive / malformed suite"},
         413: {"description": "Upload too large"},
     },
 )
 async def dry_run_upload(
-    files: List[UploadFile] = File(..., description="CSV/YAML suite files or a single .zip"),
-    include: Optional[str] = Form(None, description="Comma-separated test cases to include"),
-    exclude: Optional[str] = Form(None, description="Comma-separated test cases to exclude"),
+    files: Annotated[List[UploadFile], File(description="CSV/YAML suite files or a single .zip")],
+    include: Annotated[Optional[str], Form(description="Comma-separated test cases to include")] = None,
+    exclude: Annotated[Optional[str], Form(description="Comma-separated test cases to exclude")] = None,
 ) -> DryRunResponse:
     """Dry-run a suite supplied as uploaded CSV/YAML files or a single .zip."""
     include_list = [s.strip() for s in include.split(",") if s.strip()] if include else None
