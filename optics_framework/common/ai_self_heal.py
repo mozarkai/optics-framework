@@ -226,7 +226,7 @@ class AISelfHealHandler:
 
         if done:
             return HealResult(True, action=action, message=action.reason or "Healed.")
-        
+
         return None
 
     def heal(
