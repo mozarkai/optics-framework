@@ -103,11 +103,17 @@ def _try_results_until_success(
 ):
     last_exception = None
     result_count = 0
+    locate_error: Optional[OpticsError] = None
 
     try:
         results_list = list(results)
-    except OpticsError:
+    except OpticsError as e:
+        # The locate generator raises when no strategy yields a result; treat that
+        # as "no results" so self-heal below gets a chance, but keep the original
+        # error as the cause instead of losing it.
+        internal_logger.debug(f"Locate generator raised for '{element}' in '{func_name}': {e}")
         results_list = []
+        locate_error = e
 
     for result in results_list:
         result_count += 1
@@ -126,7 +132,11 @@ def _try_results_until_success(
     if result_count == 0:
         if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
             return None
-        raise OpticsError(Code.E0201, message=f"No valid strategies found for '{element}' in '{func_name}'")
+        raise OpticsError(
+            Code.E0201,
+            message=f"No valid strategies found for '{element}' in '{func_name}'",
+            cause=locate_error,
+        ) from locate_error
     if last_exception:
         if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
             return None
