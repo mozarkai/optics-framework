@@ -79,8 +79,13 @@ def write_uploaded_files(files: Iterable[Tuple[str, bytes]], dest_dir: str) -> i
     return written
 
 
-def _extract_zip_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, target: str, current_total: int) -> int:
-    """Extract a single zip member to target, returning the bytes written."""
+def _extract_zip_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, target: str, total_written_so_far: int) -> int:
+    """Extract a single zip member to target, returning the bytes written for this entry.
+
+    ``total_written_so_far`` is only used to enforce ``MAX_UNCOMPRESSED_BYTES`` across the
+    whole archive as this entry is streamed; the running grand total lives in the caller and
+    is advanced by the returned value, not by mutating this parameter.
+    """
     os.makedirs(os.path.dirname(target), exist_ok=True)
     entry_written = 0
     with archive.open(info, "r") as src, open(target, "wb") as dst:
@@ -89,11 +94,10 @@ def _extract_zip_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, target:
             if not chunk:
                 break
             entry_written += len(chunk)
-            current_total += len(chunk)
-            if current_total > MAX_UNCOMPRESSED_BYTES:
+            if total_written_so_far + entry_written > MAX_UNCOMPRESSED_BYTES:
                 raise PayloadTooLarge("archive expands beyond maximum size")
             dst.write(chunk)
-    
+
     if info.compress_size > 0 and entry_written / info.compress_size > MAX_COMPRESSION_RATIO:
         raise PayloadTooLarge("archive entry has a suspicious compression ratio")
     return entry_written
@@ -104,26 +108,25 @@ def safe_extract_zip(data: bytes, dest_dir: str) -> int:
     if len(data) > MAX_UPLOAD_BYTES:
         raise PayloadTooLarge("upload exceeds maximum size")
     try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_ARCHIVE_ENTRIES:
+                raise UnsafeArchive("archive has too many entries")
+
+            base_real = os.path.realpath(dest_dir)
+            total_written = 0
+            written = 0
+            for info in infos:
+                if info.is_dir():
+                    continue
+                # Validate path even for skipped files
+                target = _resolve_within(base_real, dest_dir, info.filename)
+                if not is_suite_relevant(info.filename):
+                    continue
+
+                entry_written = _extract_zip_member(archive, info, target, total_written)
+                total_written += entry_written
+                written += 1
+            return written
     except zipfile.BadZipFile as exc:
         raise UnsafeArchive("not a valid zip archive") from exc
-
-    infos = archive.infolist()
-    if len(infos) > MAX_ARCHIVE_ENTRIES:
-        raise UnsafeArchive("archive has too many entries")
-
-    base_real = os.path.realpath(dest_dir)
-    total_written = 0
-    written = 0
-    for info in infos:
-        if info.is_dir():
-            continue
-        # Validate path even for skipped files
-        target = _resolve_within(base_real, dest_dir, info.filename)
-        if not is_suite_relevant(info.filename):
-            continue
-        
-        entry_written = _extract_zip_member(archive, info, target, total_written)
-        total_written += entry_written
-        written += 1
-    return written

@@ -4,6 +4,7 @@ from typing import Optional, Dict, List, Callable, Any
 from pydantic import BaseModel, ConfigDict, Field
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.config_handler import Config
 
 # State Enum
 class State(str, Enum):
@@ -324,7 +325,7 @@ class LoadedSuite(BaseModel):
     """A fully-loaded test suite, decoupled from any session."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    config: Any = None
+    config: Optional[Config] = None
     execution_queue: Optional["TestCaseNode"] = None
     modules_data: ModuleData = Field(default_factory=ModuleData)
     elements_data: ElementData = Field(default_factory=ElementData)

@@ -13,7 +13,7 @@ import asyncio
 import warnings
 import hashlib
 from itertools import product
-from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
+from typing import Annotated, Optional, Dict, Any, List, Literal, Union, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
@@ -42,6 +42,13 @@ from optics_framework.helper.version import VERSION
 
 app = FastAPI(title="Optics Framework API", version="1.0")
 session_manager = SessionManager()
+
+# Dry-run endpoints each spin up a full ExecutionEngine per request. Cap how many
+# run concurrently so a burst of requests can't exhaust CPU/memory (a fuller
+# per-client rate limit belongs at the reverse-proxy/gateway layer, since it needs
+# shared state across worker processes that this single-process semaphore can't give).
+MAX_CONCURRENT_DRY_RUNS = int(os.environ.get("OPTICS_MAX_CONCURRENT_DRY_RUNS", "4"))
+_dry_run_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DRY_RUNS)
 
 # Store last workspace hash per session for change detection
 workspace_hashes: Dict[str, str] = {}
@@ -221,7 +228,7 @@ class DryRunResponse(BaseModel):
     """Result of a dry run: overall status plus per-test-case detail."""
 
     execution_id: str
-    status: str  # "PASS" | "FAIL"
+    status: Literal["PASS", "FAIL"]
     test_cases: List[TestCaseResult]
 
 
@@ -1304,12 +1311,13 @@ async def delete_session(session_id: str):
 # ---------------------------------------------------------------------------
 
 def _strip_sources_for_dry_run(config: Config) -> Config:
-    """Force a config device-less so no driver/element engine is instantiated."""
-    config.driver_sources = []
-    config.elements_sources = []
-    config.text_detection = []
-    config.image_detection = []
-    return config
+    """Return a device-less copy of ``config`` so no driver/element engine is instantiated."""
+    stripped = config.model_copy(deep=True)
+    stripped.driver_sources = []
+    stripped.elements_sources = []
+    stripped.text_detection = []
+    stripped.image_detection = []
+    return stripped
 
 
 async def _execute_dry_run(suite: LoadedSuite) -> DryRunResponse:
@@ -1321,6 +1329,27 @@ async def _execute_dry_run(suite: LoadedSuite) -> DryRunResponse:
             detail="No test cases found in the provided suite",
         )
 
+    if not await _acquire_dry_run_slot():
+        raise HTTPException(
+            status_code=429,
+            detail="Too many concurrent dry-run requests; please retry shortly",
+        )
+    try:
+        return await _run_dry_run_session(suite, execution_id)
+    finally:
+        _dry_run_semaphore.release()
+
+
+async def _acquire_dry_run_slot(timeout: float = 5.0) -> bool:
+    """Try to reserve a dry-run execution slot, waiting briefly before giving up."""
+    try:
+        await asyncio.wait_for(_dry_run_semaphore.acquire(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
+async def _run_dry_run_session(suite: LoadedSuite, execution_id: str) -> DryRunResponse:
     config = _strip_sources_for_dry_run(suite.config or Config())
     session_id = session_manager.create_session(
         config,
@@ -1381,6 +1410,19 @@ async def _read_body_capped(request: Request, max_bytes: int) -> bytes:
         400: {"description": "No test cases / malformed suite"},
         413: {"description": "Request body too large"},
         422: {"description": "Invalid request payload"},
+    },
+    # The body is read manually (see `_read_body_capped`) so it can be size-capped
+    # before JSON parsing, bypassing FastAPI's automatic Body() schema generation.
+    # Declare the schema explicitly so it still shows up in the OpenAPI docs.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": DryRunRequest.model_json_schema()
+                }
+            },
+        }
     },
 )
 async def dry_run_inline(request: Request) -> DryRunResponse:
