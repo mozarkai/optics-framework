@@ -22,6 +22,9 @@ class MockOpticsBuilder(OpticsBuilder):
         self.session_config = MagicMock()
         self.session_config.execution_output_path = self.temp_dir
 
+        # Mock session (Verifier reads builder.session directly)
+        self.session = MagicMock()
+
     def get_driver(self):
         return self.mock_driver
 
@@ -372,7 +375,8 @@ class TestSelectDropdownOption:
     """select_dropdown_option must open the dropdown then select the option (not a no-op)."""
 
     def test_opens_dropdown_then_selects_option(self, action_keyword):
-        with patch.object(action_keyword, "press_element") as mock_press:
+        with patch.object(action_keyword, "press_element") as mock_press, \
+             patch.object(action_keyword.strategy_manager, "get_interactive_elements", return_value=[{"text": "India"}]):
             action_keyword.select_dropdown_option("Country", "India", event_name="evt")
 
         assert mock_press.call_count == 2
@@ -445,13 +449,15 @@ class TestSwipeUntilElementAppears:
     @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
     @patch('optics_framework.api.action_keyword.time.time')
     def test_timeout_stops_loop(self, mock_time, mock_sleep, action_keyword):
-        """Element never found, loop exits after timeout."""
+        """Element never found, loop exits after timeout and raises."""
         mock_time.side_effect = [0, 0, 3, 6, 9, 12]
 
         with patch.object(
             action_keyword.verifier, 'assert_presence',
             side_effect=OpticsError(Code.E0201, message="Element not found")
         ):
-            action_keyword.swipe_until_element_appears("element", "down", "10")
+            with pytest.raises(OpticsError) as exc_info:
+                action_keyword.swipe_until_element_appears("element", "down", "10")
 
+        assert exc_info.value.code == Code.E0201
         assert action_keyword.driver.swipe_percentage.call_count == 4

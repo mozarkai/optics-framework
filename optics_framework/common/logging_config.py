@@ -34,10 +34,16 @@ class LoggingManager:
             log_dir.mkdir(parents=True, exist_ok=True)
             internal_log_path = Path(log_path or log_dir / "internal_logs.log").expanduser()
             execution_log_path = Path(log_path or log_dir / "execution_logs.log").expanduser()
-            internal_file_handler = create_file_handler(internal_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
-            execution_file_handler = create_file_handler(execution_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
-            self.internal_logger.addHandler(internal_file_handler)
-            self.execution_logger.addHandler(execution_file_handler)
+            existing_internal = {getattr(h, "baseFilename", None) for h in self.internal_logger.handlers}
+            existing_execution = {getattr(h, "baseFilename", None) for h in self.execution_logger.handlers}
+            if str(internal_log_path) not in existing_internal:
+                self.internal_logger.addHandler(
+                    create_file_handler(internal_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
+                )
+            if str(execution_log_path) not in existing_execution:
+                self.execution_logger.addHandler(
+                    create_file_handler(execution_log_path, log_level, LOG_FORMATTER, use_sensitive=True)
+                )
 
     def stop_listeners(self):
         def safe_stop(listener, name):

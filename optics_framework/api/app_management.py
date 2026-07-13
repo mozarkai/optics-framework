@@ -28,6 +28,9 @@ class AppManagement:
 
         This method should be called before performing any application
         management operations.
+
+        Not exposed on the Optics SDK because it currently performs no operation and doesn't
+        delegate to the driver's own initialise_setup (e.g. AppiumDriver.initialise_setup).
         """
         internal_logger.debug("Initialising setup for AppManagement.")
 
@@ -66,10 +69,12 @@ class AppManagement:
 
     def close_and_terminate_app(self) -> None:
         """
-        Closes and terminates a specified application.
+        Tears down the active driver session and flushes all pending events.
 
-        :param package_name: The package name of the application.
-        :param event_name: The event triggering the app termination, if any.
+        Behaviour depends on the configured driver: WebDriver-based drivers
+        (Appium, Selenium) call quit(); Playwright closes the page, context,
+        and browser; BLE closes the serial port. All variants flush pending
+        EventSDK events and release the driver reference.
         """
         self.driver.terminate()
 

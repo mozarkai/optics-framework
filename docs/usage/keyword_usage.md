@@ -92,6 +92,26 @@ Detects a specified element and presses it if found.
 Detect And Press,login_button.png,30,detect_login
 ```
 
+### Select Dropdown Option
+
+Opens a dropdown and selects one of its options.
+
+Presses the dropdown element to open it, validates that the option text is visible in the resulting page source, then presses it. Raises an error (`E0201`) when the specified option is not found among the dropdown's visible items, preventing a silent mis-selection.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The dropdown element (Image template, OCR template, or XPath) | - |
+| `option` | Required | The option to select (visible label text, OCR template, or XPath) | - |
+| `event_name` | Optional | A string identifier for the selection event | - |
+
+**Example:**
+
+```csv
+Select Dropdown Option,${country_dropdown},India,country_selected
+```
+
 ### Swipe
 
 Performs a swipe action in a specified direction from given coordinates.
@@ -112,7 +132,7 @@ Performs a swipe action in a specified direction from given coordinates.
 Swipe,500,800,down,100,swipe_down
 ```
 
-### Swipe Percentage
+### Swipe By Percentage
 
 Performs a swipe action in a specified direction by percentage of the screen (0-100).
 
@@ -129,12 +149,12 @@ Performs a swipe action in a specified direction by percentage of the screen (0-
 **Example:**
 
 ```csv
-Swipe Percentage,50,50,up,25,swipe_up
+Swipe By Percentage,50,50,up,25,swipe_up
 ```
 
 ### Swipe Until Element Appears
 
-Swipes in a specified direction until an element appears.
+Swipes in a specified direction until an element appears. Raises an error if the element does not appear within the timeout.
 
 **Parameters:**
 
@@ -142,7 +162,7 @@ Swipes in a specified direction until an element appears.
 |-----------|------|-------------|---------|
 | `element` | Required | The target element to find (Image template, OCR template, or XPath) | - |
 | `direction` | Required | The swipe direction: `up`, `down`, `left`, or `right` | - |
-| `timeout` | Required | Timeout in seconds until element search is performed (integer) | - |
+| `timeout` | Required | Maximum time in seconds to keep swiping before raising an error (integer) | - |
 | `event_name` | Optional | A string identifier for the swipe event | - |
 
 **Example:**
@@ -193,7 +213,7 @@ Scroll,down,scroll_down
 
 ### Scroll Until Element Appears
 
-Scrolls in a specified direction until an element appears.
+Scrolls in a specified direction until an element appears. Raises an error if the element does not appear within the timeout.
 
 **Parameters:**
 
@@ -201,7 +221,7 @@ Scrolls in a specified direction until an element appears.
 |-----------|------|-------------|---------|
 | `element` | Required | The target element to find (Image template, OCR template, or XPath) | - |
 | `direction` | Required | The scroll direction: `up`, `down`, `left`, or `right` | - |
-| `timeout` | Required | Timeout in seconds for the scroll operation (integer) | - |
+| `timeout` | Required | Maximum time in seconds to keep scrolling before raising an error (integer) | - |
 | `event_name` | Optional | A string identifier for the scroll event | - |
 
 **Example:**
@@ -404,6 +424,46 @@ Execute Script,{"script": "mobile:pressKey", "args": {"keycode": 3}},execute_bac
 
 These keywords handle verification and validation operations.
 
+### Assert Equality
+
+Compares two values for equality. Both values are converted to strings and stripped of leading/trailing whitespace before comparison. Returns `true` if equal, `false` otherwise. Either value can be a `${variable}` reference.
+
+**Usage note:** `Evaluate` writes its result directly into `session.elements`, so `${var}` from `Evaluate` can be passed straight into `Assert Equality`.
+
+**No expression evaluation:** `Assert Equality` only resolves `${var}` references to their stored string value, then compares the two resulting strings as-is — it does not evaluate anything as Python. Quote characters you type are compared literally, not stripped. So a stored value of `9.99` must be compared against the bare literal `9.99` (not `'9.99'`).
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `output` | Required | The actual value to check — typically a `${variable}` already populated by `Evaluate`, or a value read back from a keyword like `Get Text` | - |
+| `expression` | Required | The expected value | - |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example (direct literal comparison):**
+
+```csv
+Assert Equality,${price_text},9.99,price_verified
+```
+
+**Example (chained after `Evaluate`):**
+
+```csv
+Evaluate,${price},'9.99'
+Assert Equality,${price},9.99
+```
+
+**Example (chained after `Get Text`):**
+
+`Get Text` doesn't store its result automatically, so capture the returned text and compare it directly:
+
+```csv
+Get Text,//android.widget.TextView[@resource-id="price_label"]
+Assert Equality,9.99,9.99
+```
+
+Here, the first `9.99` in `Assert Equality` is the text `Get Text` returned from the label. You paste in whatever value it gave back, not a fresh literal.
+
 ### Validate Element
 
 Verifies the specified element is present on the screen.
@@ -421,6 +481,30 @@ Verifies the specified element is present on the screen.
 
 ```csv
 Validate Element,login_button.png,10,any,verify_login
+```
+
+### Is Element
+
+Checks if an element is in a given state: `visible`, `invisible`, `enabled`, or `disabled`. Raises an error if the element's actual state does not match the expected state.
+
+- **visible / invisible** — asserts presence or absence of the element on screen within the timeout.
+- **enabled / disabled** — locates the element and checks its interactive state via the accessibility tree. Coordinate-based results (e.g. from OCR) are not supported for enabled/disabled checks.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The element to check (Image template, OCR template, or XPath) | - |
+| `element_state` | Required | Expected state: `visible`, `invisible`, `enabled`, or `disabled` | - |
+| `timeout` | Required | Time to wait for the element in seconds (integer) | - |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
+
+```csv
+Is Element,login_button.png,visible,10,check_login_visible
+Is Element,//android.widget.Button[@text="Submit"],enabled,5,check_submit_enabled
+Is Element,loading_spinner.png,invisible,15,wait_for_load
 ```
 
 ### Assert Presence
@@ -477,7 +561,7 @@ Captures a screenshot of the current screen.
 Capture Screenshot,screenshot_before_action
 ```
 
-### Capture Page Source
+### Capture Pagesource
 
 Captures the page source of the current screen.
 
@@ -490,7 +574,7 @@ Captures the page source of the current screen.
 **Example:**
 
 ```csv
-Capture Page Source,get_source
+Capture Pagesource,get_source
 ```
 
 ### Get Interactive Elements
@@ -507,6 +591,20 @@ Retrieves a list of interactive elements on the current screen.
 
 ```csv
 Get Interactive Elements,buttons
+```
+
+### Get Screen Elements
+
+Captures a screenshot and retrieves interactive elements from the current screen in a single call. Returns a dict with a base64-encoded screenshot and a list of elements.
+
+**Parameters:**
+
+None.
+
+**Example:**
+
+```csv
+Get Screen Elements
 ```
 
 ## App Management Keywords
@@ -566,7 +664,9 @@ Launch Other App,com.example.otherapp,launch_other
 
 ### Close And Terminate App
 
-Closes and terminates the current application.
+Tears down the active driver session and flushes all pending events. The exact
+behaviour depends on the configured driver (Appium, Selenium, Playwright, BLE)
+but in all cases the driver reference is released after this call.
 
 **Parameters:**
 
@@ -720,7 +820,7 @@ Read Data,${filtered},users.csv,role=='${expected_role}';select=id,name
 
 ### Evaluate
 
-Evaluates an expression and stores the result in session.elements.
+Evaluates an expression and stores the result in `session.elements` under the given variable name.
 
 **Parameters:**
 
@@ -729,17 +829,70 @@ Evaluates an expression and stores the result in session.elements.
 | `param1` | Required | The variable name where the result will be stored (e.g., `${result}`) | - |
 | `param2` | Required | The expression to evaluate (can use variables like `${var1} + ${var2}`) | - |
 
-**Example:**
+**How `param2` is evaluated:**
+
+- Every `${var}` in `param2` is first replaced, as plain text, with the variable's *stored string value* — before anything is evaluated as Python.
+- The result of that substitution is then run through a restricted `eval()`. Only arithmetic (`+ - * / % **`), comparisons (`> < >= <= == !=`), boolean logic (`and or not`), a ternary `... if ... else ...`, and literal `list`/`tuple` values are allowed. Anything else (function calls, attribute access, imports, f-strings, etc.) is rejected with `Code.E0403 Unsafe expression detected`.
+- Because the substitution is textual and unquoted, a `${var}` that holds **text** must be wrapped in quotes *inside the expression* (e.g. `'${name}'`), otherwise the substituted word is treated as a bare Python name and raises a `NameError`. A `${var}` that holds a **number** does not need quotes.
+- The final result is stored via `str(result)`, so even numbers and booleans end up as strings in `session.elements` (e.g. `True` → `"True"`).
+- `param1` must be in `${name}` form; if it isn't, a warning is logged and the raw string is used as the variable name as-is.
+
+**Example (numeric arithmetic):**
 
 ```csv
+Evaluate,${a},5
+Evaluate,${b},3
 Evaluate,${sum},${a} + ${b}
 ```
 
-**Example (with comparison):**
+`${sum}` → `8`
+
+**Example (comparison):**
 
 ```csv
+Evaluate,${count},15
 Evaluate,${is_valid},${count} > 10
 ```
+
+`${is_valid}` → `True`
+
+**Example (string literal):**
+
+Wrap plain text in quotes so it's evaluated as a Python string, not as bare identifiers:
+
+```csv
+Evaluate,${greeting},'hello world'
+```
+
+`${greeting}` → `hello world`
+
+**Example (concatenating a stored text variable):**
+
+`${name}` holds text, so it must be quoted inside the expression once substituted:
+
+```csv
+Evaluate,${name},'Alice'
+Evaluate,${message},'Hello, ' + '${name}'
+```
+
+`${message}` → `Hello, Alice`
+
+**Example (ternary if/else):**
+
+```csv
+Evaluate,${score},72
+Evaluate,${result},'Pass' if ${score} >= 50 else 'Fail'
+```
+
+`${result}` → `Pass`
+
+**Example (list literal):**
+
+```csv
+Evaluate,${numbers},[1, 2, 3, 4]
+```
+
+`${numbers}` → `[1, 2, 3, 4]`
 
 ### Date Evaluate
 

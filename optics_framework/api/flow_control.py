@@ -16,6 +16,7 @@ from optics_framework.common.logging_config import internal_logger, execution_lo
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common import utils
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -58,28 +59,9 @@ class FlowControl:
 
     def _resolve_param(self, param: str) -> str:
         """Resolve ${variable} references from session.elements, always returning a scalar (first value if list)."""
-        param = param.strip()
-        if (
-            not isinstance(param, str)
-            or not param.startswith("${")
-            or not param.endswith("}")
-        ):
-            return str(param)
         if self.session is None:
             raise OpticsError(Code.E0702, message="Session is None in resolve_param.")
-        var_name = param[2:-1].strip()
-        elements = getattr(self.session, "elements", None)
-        if not isinstance(elements, ElementData):
-            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
-        value = elements.get_element(var_name)
-        if value is None:
-            raise OpticsError(Code.E0702, message=f"Variable '{param}' not found in elements dictionary")
-        # If value is a list, return the first item
-        if isinstance(value, list):
-            if not value:
-                raise OpticsError(Code.E0702, message=f"Variable '{param}' is an empty list in elements dictionary")
-            return str(value[0])
-        return str(value)
+        return utils.resolve_scalar_param(self.session, param)
 
     def _get_validated_module_def(self, module_name: str) -> List[Tuple[str, List]]:
         """Validate session and modules, return the module definition or raise."""
@@ -143,7 +125,12 @@ class FlowControl:
         raise OpticsError(Code.E0402, message=f"Keyword '{keyword}' not found in keyword_map.")
 
     def execute_module(self, module_name: str) -> List[Any]:
-        """Executes a module's keywords using the session's keyword_map."""
+        """Executes a module's keywords using the session's keyword_map.
+
+        Not exposed on the Optics SDK — session.modules is only populated by
+        CSV/YAML-driven execution; SDK/Robot Framework users should call keywords
+        directly or write a real function/keyword instead.
+        """
         module_def = self._get_validated_module_def(module_name)
         results = []
         execution_logger.info(f"Executing module: {module_name}")
@@ -822,11 +809,11 @@ class FlowControl:
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         var_name = self._extract_variable_name(param1)
-        result = self._compute_expression(param2)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             runner_elements = ElementData()
             setattr(self.session, "elements", runner_elements)
+        result = self._compute_expression(param2)
         runner_elements.remove_element(var_name)
         runner_elements.add_element(var_name, str(result))
         return result
@@ -851,7 +838,7 @@ class FlowControl:
 
         def replace_var(match):
             var_name = match.group(1)
-            value = runner_elements.get_element(var_name)
+            value = runner_elements.get_first(var_name)
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements.")
             return str(value)
@@ -905,7 +892,7 @@ class FlowControl:
             return eval(
                 expression,
                 {"__builtins__": None},
-                {k: str(v) for k, v in runner_elements.elements.items()},
+                {k: v[0] for k, v in runner_elements.elements.items() if v},
             )  # nosec B307 # pylint: disable=eval-used
             # Note: eval() is used here for simplicity, i know it should be should be avoided in production code.
             # In some time, i will replace it with a safer alternative.

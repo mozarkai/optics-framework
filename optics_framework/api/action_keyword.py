@@ -409,11 +409,10 @@ class ActionKeyword:
         """
         Open a dropdown and select one of its options.
 
-        Opens the dropdown by pressing ``element``, then selects ``option`` by pressing it.
-        Both presses go through :meth:`press_element`'s self-healing location
-        (XPath -> text -> OCR -> image), so either step raises ``OpticsError`` (``E0201`` /
-        ``X0201``) when its target can't be found — an honest failure rather than a
-        silent no-op.
+        Opens the dropdown by pressing ``element``, then validates that ``option`` is visible
+        in the page source before pressing it. Raises ``OpticsError`` (``E0201``) when the
+        option text is not found among the dropdown's visible items, preventing a silent
+        mis-selection. Falls back to pressing without validation when page source is unavailable.
 
         :param element: The dropdown element (Image template, OCR template, or XPath).
         :param option: The option to select (visible label, OCR/Image template, or XPath).
@@ -421,7 +420,27 @@ class ActionKeyword:
         """
         internal_logger.info(f"Selecting '{option}' from dropdown '{element}'")
         self.press_element(element, event_name=event_name)
+        self._assert_option_in_dropdown(element, option)
         self.press_element(option, event_name=event_name)
+
+    def _assert_option_in_dropdown(self, dropdown_element: str, option: str) -> None:
+        """Validate that option text is present in the open dropdown via page source."""
+        try:
+            interactive = self.strategy_manager.get_interactive_elements()
+        except (OpticsError, NotImplementedError):
+            return
+        option_normalized = option.strip().lower()
+        available_texts = [
+            el.get("text") or "" for el in interactive if isinstance(el, dict)
+        ]
+        if not any(option_normalized == t.strip().lower() for t in available_texts if t):
+            raise OpticsError(
+                Code.E0201,
+                message=(
+                    f"Option '{option}' not found in dropdown '{dropdown_element}'. "
+                    f"Available options: {[t for t in available_texts if t]}"
+                ),
+            )
 
     # Swipe and Scroll actions
     def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
@@ -478,17 +497,21 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe_until_element_appears")
         start_time = time.time()
+        found = False
         while time.time() - start_time < int(timeout):
             try:
                 result = self.verifier.assert_presence(
                     element, timeout_str="3", rule="any")
                 if result:
+                    found = True
                     break
             except OpticsError as e:
                 if e.code != Code.E0201:
                     raise
             self.driver.swipe_percentage(10, 50, direction, 25, event_name)
             time.sleep(3)
+        if not found:
+            raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after swiping {direction} for {timeout}s.")
 
     @with_self_healing
     def swipe_from_element(self, element: str, direction: str, swipe_length: str, aoi_x: str = "0", aoi_y: str = "0",
@@ -538,11 +561,13 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "scroll_until_element_appears")
         start_time = time.time()
+        found = False
         while time.time() - start_time < int(timeout):
             try:
                 result = self.verifier.assert_presence(
                     element, timeout_str="3", rule="any")
                 if result:
+                    found = True
                     break
             except OpticsError as e:
                 if e.code != Code.E0201:
@@ -552,6 +577,8 @@ class ActionKeyword:
                     raise
             self.driver.scroll(direction, 1000, event_name)
             time.sleep(3)
+        if not found:
+            raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
 
     @with_self_healing
     def scroll_from_element(self, element: str, direction: str, scroll_length: str, aoi_x: str = "0", aoi_y: str = "0",
@@ -593,9 +620,9 @@ class ActionKeyword:
         :param event_name: The event triggering the input.
         """
 
-        special_key = str(utils.parse_special_key(text))
-        if special_key != "None":
-            text = special_key
+        parsed = utils.parse_special_key(text)
+        if parsed is not None:
+            text = parsed
 
         if isinstance(located, tuple):
             x, y = located
@@ -632,9 +659,9 @@ class ActionKeyword:
         :param event_name: Optional event label for logging.
         """
 
-        special_key = str(utils.parse_special_key(text_input))
-        if special_key != "None":
-            text_input = special_key
+        parsed = utils.parse_special_key(text_input)
+        if parsed is not None:
+            text_input = parsed
         try:
             screenshot_np = self.strategy_manager.capture_screenshot()
             utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
@@ -662,14 +689,9 @@ class ActionKeyword:
             internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
             self.driver.press_coordinates(x, y, event_name=event_name)
             self.driver.enter_text(str(number), event_name)
-        elif isinstance(located, str):
-            self.driver.enter_text_element(located, str(number), event_name)
         else:
-            internal_logger.error(
-                "Element location %s is not provided correctly for entering number.", element)
-            raise ValueError(
-                f"Element location {element} is not provided correctly for entering number."
-            )
+            internal_logger.debug(f"Entering number '{number}' into element '{element}'")
+            self.driver.enter_text_element(located, str(number), event_name)
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
@@ -711,34 +733,21 @@ class ActionKeyword:
             internal_logger.debug(f"Clearing text from element '{element}'")
             self.driver.clear_text_element(located, event_name)
 
-    def get_text(self, element: str) -> Optional[str]:
+    @with_self_healing
+    def get_text(self, element: str, *, located=None) -> Optional[str]:
         """
         Get the text from a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
         :return: The text from the element or None if not supported.
         """
-        screenshot_np = self._capture_screenshot_safe()
-        self._save_screenshot_if_available(screenshot_np, "get_text")
-        element_source_type = type(
-            self.element_source.current_instance).__name__
-        element_type = utils.determine_element_type(element)
-        if element_type in ["Text", "XPath"]:
-            if 'appium' in element_source_type.lower():
-                result = self.element_source.locate(element)
-                if result is not None:
-                    return self.driver.get_text_element(result)
-                else:
-                    internal_logger.error('Locate returned None for get_text.')
-                    return None
-            else:
-                internal_logger.error(
-                    'Get Text is not supported for vision based search yet.')
-                return None
-        else:
-            internal_logger.error(
-                'Get Text is not supported for image based search yet.')
+        if located is None:
+            internal_logger.error('get_text: located is None, element could not be found.')
             return None
+        if isinstance(located, tuple):
+            internal_logger.error('Get Text is not supported for coordinate-based (vision) results.')
+            return None
+        return self.driver.get_text_element(located)
 
     def sleep(self, duration: str) -> None:
         """

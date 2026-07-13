@@ -432,7 +432,8 @@ async def create_session(config: SessionConfig):
             text_detection=text_detection,
             image_detection=image_detection,
             project_path=config.project_path,
-            log_level=LOG_LEVEL_DEBUG
+            log_level=LOG_LEVEL_DEBUG,
+            save_captures=False  # do not save screenshots or pagesource when using `optics serve`
         )
         templates = (
             discover_templates(config.project_path) if config.project_path else None
@@ -1073,12 +1074,12 @@ def _empty_workspace_data(include_source: bool) -> Dict[str, Any]:
 
 
 async def _capture_source_safe(verifier: Verifier) -> str:
-    """Capture page source, returning empty string on failure."""
+    """Capture pagesource, returning empty string on failure."""
     try:
         source = await asyncio.to_thread(verifier.capture_pagesource)
         return source or ""
     except Exception as e:
-        internal_logger.warning(f"Failed to capture page source: {e}")
+        internal_logger.warning(f"Failed to capture pagesource: {e}")
         return ""
 
 

@@ -1,6 +1,6 @@
 from typing import Optional, Any, List
 
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -23,6 +23,8 @@ class Verifier:
         )
         self.event_sdk: EventSDK = builder.event_sdk
         self.execution_dir = builder.session_config.execution_output_path
+        self.capture_output_dir = self.execution_dir if builder.session_config.save_captures else None
+        self.session = builder.session
 
     def validate_element(
         self,
@@ -58,17 +60,68 @@ class Verifier:
         :param timeout: The time to wait for the element in seconds.
         :param event_name: The name of the event associated with the check, if any.
         """
-        pass
+        state = element_state.strip().lower()
 
-    def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> None:
+        if state in ("visible", "invisible"):
+            try:
+                present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
+            except OpticsError:
+                present = False
+            if state == "visible" and not present:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
+            if state == "invisible" and present:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
+            if event_name:
+                self.event_sdk.capture_event(event_name)
+
+        elif state in ("enabled", "disabled"):
+            located = None
+            try:
+                for result in self.strategy_manager.locate(element):
+                    located = result.value
+                    break
+            except OpticsError:
+                pass
+
+            if located is None:
+                raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+            if isinstance(located, tuple):
+                raise OpticsError(Code.E0401, message="Cannot check enabled/disabled state for coordinate-based elements.")
+
+            is_enabled = located.is_enabled()
+            if state == "enabled" and not is_enabled:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is not enabled.")
+            if state == "disabled" and is_enabled:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is enabled but expected disabled.")
+            if event_name:
+                self.event_sdk.capture_event(event_name)
+
+        else:
+            raise OpticsError(
+                Code.E0403,
+                message=f"Unknown element_state '{element_state}'. Expected: visible, invisible, enabled, disabled."
+            )
+
+    def _resolve_param(self, param: str) -> str:
+        """Resolve a `${variable}` reference from session elements, returning its first value."""
+        return utils.resolve_scalar_param(self.session, param)
+
+    def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> bool:
         """
-        Compares two values for equality.
+        Compares two values for equality. Both values are resolved from session
+        elements if they are ``${variable}`` references before comparison.
 
-        :param output: The first value to be compared.
-        :param expression: The second value to be compared.
+        :param output: The actual value or ``${variable}`` reference.
+        :param expression: The expected value or ``${variable}`` reference.
         :param event_name: The name of the event associated with the comparison, if any.
+        :return: True if equal, False otherwise.
         """
-        pass
+        actual = self._resolve_param(str(output)).strip()
+        expected = self._resolve_param(str(expression)).strip()
+        result = actual == expected
+        if result and event_name:
+            self.event_sdk.capture_event(event_name)
+        return result
 
 
     def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
@@ -177,8 +230,11 @@ class Verifier:
         :param event_name: The name of the event associated with the screenshot capture, if any.
         :return: The path to the captured screenshot.
         """
+        internal_logger.debug("Capturing screenshot")
         screenshot = self.strategy_manager.capture_screenshot()
         if screenshot is not None:
+            internal_logger.debug("Screenshot captured successfully")
+            utils.save_screenshot(screenshot, "capture_screenshot", output_dir=self.capture_output_dir)
             screenshot = utils.encode_numpy_to_base64(screenshot)
         else:
             internal_logger.warning("Screenshot capture returned None.")
@@ -195,11 +251,14 @@ class Verifier:
         :param event_name: The name of the event associated with the page source capture, if any.
         :return: Dict with "page_source" and "timestamp" keys.
         """
+        internal_logger.debug("Capturing page source")
         result = self.strategy_manager.capture_pagesource()
-        if event_name:
-            self.event_sdk.capture_event(event_name)
         if result is not None:
             page_source, timestamp = result
+            internal_logger.debug(f"Page source captured at timestamp: {timestamp}")
+            utils.save_page_source(page_source, timestamp, self.capture_output_dir)
+            if event_name:
+                self.event_sdk.capture_event(event_name)
             return {"page_source": page_source, "timestamp": timestamp}
         raise ValueError("Page source capture returned None.")
 
