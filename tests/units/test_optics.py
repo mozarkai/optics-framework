@@ -30,6 +30,22 @@ def live_servers():
     thread.join()
 
 
+def test_extract_config_data_forwards_save_captures():
+    optics = Optics()
+    config_data = optics._extract_config_data(
+        config={
+            "driver_sources": [],
+            "elements_sources": [],
+            "save_captures": False,
+        },
+        driver_sources=None,
+        elements_sources=None,
+        image_detection=None,
+        text_detection=None,
+        execution_output_path_param=None,
+    )
+    assert config_data["save_captures"] is False
+
 def test_setup_and_elements():
     elements = load_elements(ELEMENTS_CSV_PATH)
     config = load_config(CONTACT_CONFIG_PATH)
