@@ -284,6 +284,7 @@ class Optics:
         project_path = None
         execution_output_path = execution_output_path_param
         event_attributes_json = None
+        save_captures = None
         _driver_config = driver_sources
         _element_source_config = elements_sources
         _image_config = image_detection
@@ -311,6 +312,7 @@ class Optics:
                 "execution_output_path", execution_output_path_param
             )
             event_attributes_json = parsed_config.get("event_attributes_json")
+            save_captures = parsed_config.get("save_captures")
         elif _driver_config is not None and _element_source_config is not None:
             internal_logger.warning(
                 "Using deprecated parameter format. Consider migrating to the new config parameter."
@@ -328,6 +330,7 @@ class Optics:
             "project_path": project_path,
             "execution_output_path": execution_output_path,
             "event_attributes_json": event_attributes_json,
+            "save_captures": save_captures,
         }
 
     def discover_templates(self, project_path: str) -> TemplateData:
