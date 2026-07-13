@@ -39,6 +39,19 @@ def flow_control():
         'concat': lambda a, b: f"{a}{b}",
     })
 
+# ---- evaluate Tests ----
+def test_evaluate_bare_name_resolves_to_scalar_not_list_repr(flow_control):
+    flow_control.session.elements.add_element("count", "15")
+    result = flow_control.evaluate("${result}", "count")
+    assert result == "15"
+    assert flow_control.session.elements.get_first("result") == "15"
+
+def test_evaluate_ignores_elements_with_empty_value_list(flow_control):
+    flow_control.session.elements.elements["empty"] = []
+    flow_control.session.elements.add_element("a", "5")
+    result = flow_control.evaluate("${result}", "${a}")
+    assert result == 5
+
 # ---- read_data Tests ----
 def test_read_data_csv_relative(tmp_path, flow_control, monkeypatch):
     csv_content = 'a,b\n1,2\n3,4\n5,6'
