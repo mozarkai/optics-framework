@@ -13,7 +13,7 @@ from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.utils import _is_list_type
+from optics_framework.common.utils import _is_list_type, resolve_scalar_param
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
 
@@ -174,8 +174,16 @@ class KeywordExecutor(Executor):
         result = None
         if method:
             try:
+                # Resolve whole-param `${var}` references from session.elements before dispatch,
+                # skipping any index the keyword itself marks as raw (e.g. Evaluate's assignment
+                # target, or params it resolves internally as part of a larger expression).
+                raw_indices = set(getattr(method, "_raw_param_indices", ()))
+                resolved_params = [
+                    p if i in raw_indices else resolve_scalar_param(session, p)
+                    for i, p in enumerate(self.params)
+                ]
                 # Deserialize parameters based on method signature
-                deserialized_params = _deserialize_params(method, self.params)
+                deserialized_params = _deserialize_params(method, resolved_params)
                 result = method(*deserialized_params)
             except Exception as e:
                 await event_manager.publish_event(Event(
