@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
+from selenium.common import WebDriverException
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
@@ -1121,7 +1122,7 @@ class Appium(DriverInterface):
         if text is None:
             try:
                 text = element.get_attribute("value")
-            except Exception:
+            except WebDriverException:
                 text = None
         internal_logger.info(f"Text of element: {text}")
         if text is None:
