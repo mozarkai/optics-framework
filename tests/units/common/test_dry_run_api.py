@@ -255,7 +255,7 @@ def test_find_files_validate_false_does_not_exit(tmp_path):
     """find_files(validate=False) returns empty collections instead of sys.exit."""
     from optics_framework.helper.execute import find_files
 
-    tc, mod, el, api, cfg = find_files(str(tmp_path), validate=False)
+    tc, mod, el, api, _error_defs, cfg = find_files(str(tmp_path), validate=False)
     assert tc == [] and mod == []
 
 
