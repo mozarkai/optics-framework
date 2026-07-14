@@ -137,6 +137,13 @@ def install_packages(requirements: List[str]) -> None:
 
         if "playwright" in requirements:
             print("Installing Playwright Chromium driver along with system dependencies...")
+            # have to run this command because as per docs
+            # https://playwright.dev/python/docs/browsers#install-system-dependencies
+            # this separate command has to be run after installing playwright via pip
+            #
+            # used chromium because it is the most popular browser
+            # not specifying "--with-deps chromium" would install all browsers without system
+            # dependencies
             subprocess.run(  # nosec B603
                 [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
                 check=True, shell=False)
