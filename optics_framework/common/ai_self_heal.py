@@ -268,20 +268,22 @@ class AISelfHealHandler:
         line = self._build_line(action.keyword, action.params)
         result = self.keyword_executor(line)
 
-        # Let the UI settle after the keyword runs.
-        time.sleep(_SETTLE_SECONDS)
-
         ok = getattr(result, "ok", False)
         if not ok:
             msg = getattr(result, "message", "keyword failed")
             internal_logger.debug("AI self-heal: keyword '%s' failed: %s", line, msg)
-            # Don't abort the whole heal on a single keyword failure —
-            # the LLM can try a different approach on the next step.
+            # Don't abort the whole heal on a single keyword failure — the LLM can
+            # try a different approach on the next step, so let the UI settle first.
+            time.sleep(_SETTLE_SECONDS)
             return False
 
-        # A completing keyword with completed=True means the goal is done.
+        # A completing keyword with completed=True means the goal is done — return
+        # immediately without waiting, since there's no next screenshot to settle for.
         if action.keyword not in _NON_COMPLETING_KEYWORDS and action.completed:
             return True
+
+        # Intermediate/navigation step: let the UI settle before the next screenshot.
+        time.sleep(_SETTLE_SECONDS)
         return False
 
     @staticmethod
