@@ -23,7 +23,8 @@ ACTION_DRIVERS = DriverCategory(
     drivers={
         "Appium": DriverPackage(name="Appium", packages=["appium-python-client"]),
         "BLE": DriverPackage(name="BLE", packages=["pyserial"]),
-        "Selenium": DriverPackage(name="Selenium", packages=["selenium", "beautifulsoup4"])
+        "Selenium": DriverPackage(name="Selenium", packages=["selenium", "beautifulsoup4"]),
+        "Playwright": DriverPackage(name="Playwright", packages=["playwright"]),
     }
 )
 
@@ -130,17 +131,22 @@ def install_packages(requirements: List[str]) -> None:
         with open(req_file, "w") as f:
             f.write("\n".join(requirements))
 
-        result = subprocess.run( # nosec B603
-            [sys.executable, "-m","pip", "install", "-r", req_file], capture_output=True, text=True, check=True, shell=False)  # nosec B603
-        if result.returncode == 0:
-            print("Drivers installed successfully!")
-        else:
-            print("Installation failed!")
+        subprocess.run(  # nosec B603
+            [sys.executable, "-m", "pip", "install", "-r", req_file],
+            capture_output=True, text=True, check=True, shell=False)
 
+        if "playwright" in requirements:
+            print("Installing Playwright Chromium driver along with system dependencies...")
+            subprocess.run(  # nosec B603
+                [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
+                capture_output=True, text=True, check=True, shell=False)
+
+        print("Drivers installed successfully!")
+    except subprocess.CalledProcessError as e:
+        print(f"Installation failed: {e.stderr}")
+    finally:
         if os.path.exists(req_file):
             os.remove(req_file)
-    except Exception as e:
-        print(f"Installation failed: {str(e)}")
 
 
 def list_drivers() -> None:
