@@ -27,7 +27,7 @@ jobs:
         run: poetry install --no-interaction --with dev,test
 
       - name: Run `optics setup`
-        run: poetry run optics setup --install "EasyOCR"
+        run: poetry run optics setup --install "EasyOCR" "Appium"
 
       - name: Run tests
         run: poetry run pytest -m "not live"
