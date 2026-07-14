@@ -139,11 +139,11 @@ def install_packages(requirements: List[str]) -> None:
             print("Installing Playwright Chromium driver along with system dependencies...")
             subprocess.run(  # nosec B603
                 [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
-                capture_output=True, text=True, check=True, shell=False)
+                check=True, shell=False)
 
         print("Drivers installed successfully!")
     except subprocess.CalledProcessError as e:
-        print(f"Installation failed: {e.stderr}")
+        print(f"Installation failed: {e.stderr or e}")
     finally:
         if os.path.exists(req_file):
             os.remove(req_file)
