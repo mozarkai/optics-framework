@@ -29,5 +29,9 @@ jobs:
       - name: Run `optics setup`
         run: poetry run optics setup --install "EasyOCR" "Appium" "Playwright"
 
+      # have to use `xvfb-run` because github actions doesn't have an XServer
+      # tests/feature/engine/test_playwright_youtube.py uses the file from
+      # optics_framework/samples/playwright/config.yaml for the config which uses headed mode
+      # `xvfb-run` fixes this without having to change the config
       - name: Run tests
-        run: poetry run pytest
+        run: xvfb-run poetry run pytest
