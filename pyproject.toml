@@ -78,11 +78,6 @@ mkdocs-minify-plugin = "^0.8.0"
 [tool.poetry.scripts]
 optics = "optics_framework.helper.cli:main"
 
-[tool.pytest.ini_options]
-minversion = "9.0.0"
-addopts = "-ra -q --cov=optics_framework"
-testpaths = ["tests"]
-
 [tool.pylint.main]
 disable = ["C0114", "C0115", "C0116"]
 
