@@ -79,7 +79,7 @@ mkdocs-minify-plugin = "^0.8.0"
 optics = "optics_framework.helper.cli:main"
 
 [tool.pytest.ini_options]
-minversion = "8.3.4"
+minversion = "8.3.5"
 addopts = "-ra -q --cov=optics_framework"
 testpaths = ["tests"]
 
