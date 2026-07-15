@@ -66,6 +66,14 @@ STARTUP_TIMEOUT_S = float(os.environ.get("SUPERVISOR_STARTUP_TIMEOUT_S", "30"))
 LEASE_TTL_S = float(os.environ.get("SUPERVISOR_LEASE_TTL_S", "120"))
 REAP_INTERVAL_S = float(os.environ.get("SUPERVISOR_REAP_INTERVAL_S", "5"))
 
+# Admission cap on concurrent sessions (unset/<=0 = unlimited). Size this to
+# the Appium hub's parallel-session/device-slot count: autoscaling workers
+# past hub capacity only moves the bottleneck, it does not remove it.
+_max_sessions_env = os.environ.get("SUPERVISOR_MAX_SESSIONS", "").strip()
+MAX_SESSIONS: int | None = int(_max_sessions_env) if _max_sessions_env else None
+if MAX_SESSIONS is not None and MAX_SESSIONS <= 0:
+    MAX_SESSIONS = None
+
 # Launcher for per_session mode; created lazily so pool mode never needs it.
 launcher: WorkerLauncher | None = None
 
@@ -552,6 +560,16 @@ def _extract_session_id_from_body(httpx_response: httpx.Response) -> str | None:
 @app.post("/v1/sessions/start")
 async def create_session(request: Request):
     """Create a new session by forwarding to a worker."""
+    if MAX_SESSIONS is not None and len(store.list_routes()) >= MAX_SESSIONS:
+        # Refuse before touching a worker or launching one. Check-then-act is
+        # a soft cap across replicas, which is fine for a capacity guard.
+        logger.warning(f"Session admission refused: at SUPERVISOR_MAX_SESSIONS={MAX_SESSIONS}")
+        return Response(
+            content=b"Session limit reached; retry when a session frees up",
+            status_code=429,
+            headers={"Retry-After": "5"},
+        )
+
     if WORKER_MODE == "per_session":
         return await _create_session_per_session(request)
 

@@ -570,6 +570,61 @@ class TestPerSessionMode:
         assert st.store.list_live_workers() == []
 
 
+class TestMaxSessionsCap:
+    """SUPERVISOR_MAX_SESSIONS admission control."""
+
+    @patch("supervisor_tool.forward_request")
+    def test_pool_mode_cap_returns_429(self, mock_forward):
+        _register_pool(9000)
+        st.store.put_route("existing-1", "http://127.0.0.1:9000")
+        st.store.put_route("existing-2", "http://127.0.0.1:9000")
+
+        with patch.object(st, "MAX_SESSIONS", 2), TestClient(test_app) as client:
+            response = client.post("/v1/sessions/start", json={})
+
+        assert response.status_code == 429
+        assert "Retry-After" in response.headers
+        mock_forward.assert_not_called()  # refused before touching a worker
+
+    def test_per_session_cap_launches_no_worker(self):
+        fake = FakeLauncher()
+        st.store.put_route("existing-1", "http://127.0.0.1:9501")
+
+        with patch.object(st, "WORKER_MODE", "per_session"), \
+             patch.object(st, "launcher", fake), \
+             patch.object(st, "MAX_SESSIONS", 1), \
+             TestClient(test_app) as client:
+            response = client.post("/v1/sessions/start", json={})
+
+        assert response.status_code == 429
+        assert fake.launched == []
+
+    @patch("supervisor_tool.forward_request")
+    def test_below_cap_admits(self, mock_forward):
+        _register_pool(9000)
+        mock_forward.return_value = _forward_response(200, {"session_id": "sid-1"})
+
+        with patch.object(st, "MAX_SESSIONS", 2), TestClient(test_app) as client:
+            response = client.post("/v1/sessions/start", json={})
+
+        assert response.status_code == 200
+
+    @patch("supervisor_tool.forward_request")
+    def test_stop_frees_capacity(self, mock_forward):
+        _register_pool(9000)
+        st.store.put_route(SESSION_ID, "http://127.0.0.1:9000")
+        stop_response = _forward_response(200, {"status": "terminated"})
+        create_response = _forward_response(200, {"session_id": "sid-new"})
+        mock_forward.side_effect = [stop_response, create_response]
+
+        with patch.object(st, "MAX_SESSIONS", 1), TestClient(test_app) as client:
+            assert client.post("/v1/sessions/start", json={}).status_code == 429
+            # mock_forward not consumed by the refused create
+            mock_forward.side_effect = [stop_response, create_response]
+            assert client.delete(f"/v1/sessions/{SESSION_ID}/stop").status_code == 200
+            assert client.post("/v1/sessions/start", json={}).status_code == 200
+
+
 class TestReaper:
     """Unit tests for the lease reaper sweep."""
 
