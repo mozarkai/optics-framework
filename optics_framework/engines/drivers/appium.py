@@ -1118,12 +1118,18 @@ class Appium(DriverInterface):
         return mapping.get(char.lower())
 
     def get_text_element(self, element: Any) -> str:
-        text = element.get_attribute("text")
-        if text is None:
+        text: Optional[str] = None
+        # "value", "label" and "name" are for ios. Found at
+        # https://appium.github.io/appium-xcuitest-driver/11.17/reference/element-attributes/
+        # "text" is enough for android. Found at
+        # https://github.com/appium/appium-uiautomator2-driver/blob/5e7f19e70caa31851f620b1381509d442c4854ac/README.md#element-attributes
+        for attr in ("text", "value", "label", "name"):
             try:
-                text = element.get_attribute("value")
+                text = element.get_attribute(attr)
             except WebDriverException:
-                text = None
+                continue
+            if text is not None:
+                break
         internal_logger.info(f"Text of element: {text}")
         if text is None:
             raise OpticsError(Code.E0401, message="Element text is None")
