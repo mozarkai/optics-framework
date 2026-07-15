@@ -27,6 +27,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dataclasses import dataclass
 
+from launcher import WorkerHandle, WorkerLauncher, create_launcher, signal_process_group
 from routing_store import InMemoryRoutingStore, RedisRoutingStore, RoutingStore
 
 # Configure logging
@@ -47,6 +48,25 @@ WORKER_APP = os.environ.get("SUPERVISOR_WORKER_APP", "optics_framework.common.ex
 
 # How long a worker registration stays live without a heartbeat.
 WORKER_TTL_S = float(os.environ.get("SUPERVISOR_WORKER_TTL_S", "10"))
+
+# Worker topology: "pool" (fixed pool, sessions share workers — default) or
+# "per_session" (one worker launched per session, reaped via leases).
+WORKER_MODE = os.environ.get("SUPERVISOR_WORKER_MODE", "pool").strip().lower()
+if WORKER_MODE not in ("pool", "per_session"):
+    raise ValueError(f"Unknown SUPERVISOR_WORKER_MODE: {WORKER_MODE!r} (expected 'pool' or 'per_session')")
+
+# per_session knobs
+STARTUP_TIMEOUT_S = float(os.environ.get("SUPERVISOR_STARTUP_TIMEOUT_S", "30"))
+LEASE_TTL_S = float(os.environ.get("SUPERVISOR_LEASE_TTL_S", "120"))
+REAP_INTERVAL_S = float(os.environ.get("SUPERVISOR_REAP_INTERVAL_S", "5"))
+
+# Launcher for per_session mode; created lazily so pool mode never needs it.
+launcher: WorkerLauncher | None = None
+
+# Handles of session workers THIS replica launched (sid -> handle). A replica
+# can only tear down subprocess workers it owns; remote-capable launchers can
+# also stop workers by lease owner id (see _reap_expired_sessions).
+session_workers: dict[str, WorkerHandle] = {}
 
 
 def _create_store() -> RoutingStore:
@@ -119,12 +139,16 @@ async def health_check():
     live_endpoints = store.list_live_workers()
     routes = store.list_routes()
     crashed_workers = [w["port"] for w in workers if not w["active"]]
+    # per_session has no standing pool: an empty fleet is healthy (workers are
+    # created on demand); an empty pool is not.
+    healthy = bool(live_endpoints) or WORKER_MODE == "per_session"
     return {
-        "status": "healthy" if live_endpoints else "unhealthy",
+        "status": "healthy" if healthy else "unhealthy",
         "active_workers": len(live_endpoints),
         "total_workers": len(workers),
         "crashed_workers": crashed_workers,
         "total_sessions": len(routes),
+        "worker_mode": WORKER_MODE,
         "session_distribution": {
             _port_from_endpoint(endpoint): sum(1 for ep in routes.values() if ep == endpoint)
             for endpoint in live_endpoints
@@ -139,16 +163,23 @@ async def root():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage worker lifecycle."""
-    logger.info("Starting Optics Supervisor...")
+    logger.info("Starting Optics Supervisor (worker mode: %s)...", WORKER_MODE)
     # Reset shutdown event
     shutdown_event.clear()
 
     # Clear any existing local state; a fresh store instance drops nothing
     # shared (in-memory state is per-process anyway).
-    global store
+    global store, launcher
     store = _create_store()
     workers.clear()
-    start_workers()
+    session_workers.clear()
+
+    reaper_task: asyncio.Task | None = None
+    if WORKER_MODE == "pool":
+        start_workers()
+    else:
+        launcher = create_launcher()
+        reaper_task = asyncio.create_task(reap_expired_sessions())
 
     # Start monitoring task
     global monitor_task
@@ -159,15 +190,18 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Shutting down Optics Supervisor...")
 
-        # Signal shutdown to monitoring task
+        # Signal shutdown to monitoring/reaper tasks
         shutdown_event.set()
 
-        # Stop monitoring task
-        if monitor_task and not monitor_task.done():
-            monitor_task.cancel()
+        for task in (monitor_task, reaper_task):
+            if task and not task.done():
+                task.cancel()
 
         # Stop all workers
-        stop_workers()
+        if WORKER_MODE == "pool":
+            stop_workers()
+        else:
+            await stop_session_workers()
 
         logger.info("Optics Supervisor shutdown complete")
 
@@ -192,21 +226,6 @@ def start_workers():
     # Startup is serialized and can outlast WORKER_TTL_S with several workers;
     # refresh every registration before requests start flowing.
     _heartbeat_workers()
-
-def _signal_process_group(proc: subprocess.Popen, sig: signal.Signals, port: int) -> None:
-    """Signal a worker's process group, falling back to the single process."""
-    pid = getattr(proc, "pid", None)
-    try:
-        if pid is not None:
-            os.killpg(os.getpgid(int(pid)), sig)
-        else:
-            proc.send_signal(sig)
-    except (ProcessLookupError, PermissionError, OSError):
-        try:
-            proc.send_signal(sig)
-        except (ProcessLookupError, OSError):
-            logger.debug("Worker pid %s on port %s already gone", pid, port)
-
 
 def _kill_orphans_on_port(port: int) -> None:
     """Best-effort kill of any process still listening on a worker port (POSIX-only)."""
@@ -238,12 +257,12 @@ def _kill_worker(worker: dict[str, Any], grace_s: float = 2.0) -> None:
     proc = worker.get("process")
     if proc and proc.poll() is None:
         logger.info(f"Terminating worker process group on port {port} (pid={getattr(proc, 'pid', None)})")
-        _signal_process_group(proc, signal.SIGTERM, port)
+        signal_process_group(proc, signal.SIGTERM)
         try:
             proc.wait(timeout=grace_s)
         except subprocess.TimeoutExpired:
             logger.warning(f"Force killing worker process group on port {port}")
-            _signal_process_group(proc, signal.SIGKILL, port)
+            signal_process_group(proc, signal.SIGKILL)
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
@@ -283,17 +302,95 @@ async def monitor_workers():
             break  # Shutdown event was set
         except asyncio.TimeoutError:
             # Timeout reached, check worker health
-            check_worker_health()
-            _heartbeat_workers()
+            if WORKER_MODE == "pool":
+                check_worker_health()
+                _heartbeat_workers()
+            else:
+                await _heartbeat_session_workers()
 
     logger.info("Monitor task stopping due to shutdown signal")
 
 
 def _heartbeat_workers():
-    """Refresh the store TTL of every locally-owned live worker."""
+    """Refresh the store TTL of every locally-owned live pool worker."""
     for worker in workers:
         if worker["active"]:
             store.heartbeat_worker(_endpoint_for_port(worker["port"]), WORKER_TTL_S)
+
+
+async def _heartbeat_session_workers():
+    """Refresh the store TTL of every locally-owned live session worker.
+
+    A dead worker is deliberately NOT cleaned up here: its route stays until
+    the lease reaper claims it, and requests in between get a 502 from the
+    failed forward — a crashed worker means that session is lost.
+    # NOTE: mid-session worker recovery (relaunch + reattach to a still-live
+    # backend session) would hook in here, gated on the driver capability
+    # contract from the stateless API design doc. Out of scope for now.
+    """
+    if launcher is None:
+        return
+    for handle in list(session_workers.values()):
+        if await launcher.is_alive(handle):
+            store.heartbeat_worker(handle.endpoint, WORKER_TTL_S)
+
+
+async def reap_expired_sessions():
+    """Reclaim workers of sessions whose lease expired, and locally-owned
+    workers whose route was removed by another replica."""
+    while not shutdown_event.is_set():
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=REAP_INTERVAL_S)
+            break
+        except asyncio.TimeoutError:
+            try:
+                await _reap_once()
+            except Exception:
+                logger.exception("Reaper sweep failed; will retry")
+
+    logger.info("Reaper task stopping due to shutdown signal")
+
+
+async def _reap_once():
+    if launcher is None:
+        return
+    for session_id, owner in store.expired_leases():
+        logger.info(f"Reaping expired session {session_id} (owner={owner})")
+        handle = session_workers.pop(session_id, None)
+        if handle is None and owner:
+            # Not launched here: reconstruct the handle so remote-capable
+            # launchers (containers/pods) can stop it from any replica; the
+            # subprocess launcher treats unknown handles as a no-op and the
+            # owning replica's reaper cleans the process up.
+            endpoint = store.get_route(session_id)
+            if endpoint:
+                handle = WorkerHandle(id=owner, endpoint=endpoint)
+        if handle:
+            await launcher.stop(handle)
+            store.deregister_worker(handle.endpoint)
+        store.delete_route(session_id)
+        store.release_lease(session_id)
+
+    # Sessions stopped through another replica: the route (and lease) are
+    # gone, but the subprocess is ours to kill.
+    for session_id, handle in list(session_workers.items()):
+        if store.get_route(session_id) is None:
+            logger.info(f"Reaping session {session_id}: route removed elsewhere")
+            session_workers.pop(session_id, None)
+            await launcher.stop(handle)
+            store.deregister_worker(handle.endpoint)
+
+
+async def stop_session_workers():
+    """Tear down every session worker this replica launched (shutdown path)."""
+    if launcher is None:
+        return
+    for session_id, handle in list(session_workers.items()):
+        session_workers.pop(session_id, None)
+        store.deregister_worker(handle.endpoint)
+        store.delete_route(session_id)
+        store.release_lease(session_id)
+        await launcher.stop(handle)
 
 def check_worker_health():
     """Check health of all workers and handle failures."""
@@ -435,10 +532,23 @@ def convert_httpx_to_fastapi_response(httpx_response: httpx.Response) -> Respons
         headers=dict(httpx_response.headers)
     )
 
+def _extract_session_id_from_body(httpx_response: httpx.Response) -> str | None:
+    """Pull session_id out of a successful create-session response body."""
+    try:
+        session_data = json.loads(httpx_response.content.decode("utf-8"))
+        return session_data.get("session_id")
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError) as e:
+        logger.warning(f"Failed to extract session_id from response: {e}")
+        return None
+
+
 # Session management endpoints
 @app.post("/v1/sessions/start")
 async def create_session(request: Request):
     """Create a new session by forwarding to a worker."""
+    if WORKER_MODE == "per_session":
+        return await _create_session_per_session(request)
+
     endpoint = store.next_worker()
     if not endpoint:
         return Response(content=b"No workers available", status_code=503)
@@ -467,15 +577,46 @@ async def create_session(request: Request):
     # The worker mints the session_id, so the route can only be written after
     # a successful forward — never before.
     if httpx_response.status_code == 200:
-        try:
-            response_data = httpx_response.content.decode('utf-8')
-            session_data = json.loads(response_data)
-            session_id = session_data.get("session_id")
-            if session_id:
-                store.put_route(session_id, endpoint)
-                logger.info(f"Mapped session {session_id} to worker at {endpoint}")
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"Failed to extract session_id from response: {e}")
+        session_id = _extract_session_id_from_body(httpx_response)
+        if session_id:
+            store.put_route(session_id, endpoint)
+            logger.info(f"Mapped session {session_id} to worker at {endpoint}")
+
+    return convert_httpx_to_fastapi_response(httpx_response)
+
+
+async def _create_session_per_session(request: Request):
+    """per_session mode: launch a dedicated worker, then forward the create."""
+    handle = await launcher.launch()
+    if not await launcher.wait_ready(handle, timeout_s=STARTUP_TIMEOUT_S):
+        logger.error(f"Session worker {handle.id} failed to become ready within {STARTUP_TIMEOUT_S}s")
+        await launcher.stop(handle)
+        return Response(content=b"worker failed to start", status_code=503)
+
+    body_bytes = await request.body()
+    httpx_response = await forward_request(
+        method="POST",
+        url=f"{handle.endpoint}/v1/sessions/start",
+        headers=dict(request.headers),
+        body=body_bytes,
+    )
+
+    session_id = _extract_session_id_from_body(httpx_response) if httpx_response.status_code == 200 else None
+    if session_id:
+        store.put_route(session_id, handle.endpoint)
+        store.acquire_lease(session_id, owner=handle.id, ttl_s=LEASE_TTL_S)
+        store.register_worker(handle.endpoint, WORKER_TTL_S)
+        session_workers[session_id] = handle
+        logger.info(f"Session {session_id} owns worker {handle.id} at {handle.endpoint}")
+    else:
+        # Session creation failed — don't leak the worker.
+        logger.error(
+            "Worker %s returned %s for /v1/sessions/start; tearing it down. Response body=%s",
+            handle.endpoint,
+            httpx_response.status_code,
+            (httpx_response.content.decode("utf-8", errors="replace")[:200] if httpx_response.content else "<empty>"),
+        )
+        await launcher.stop(handle)
 
     return convert_httpx_to_fastapi_response(httpx_response)
 
@@ -487,7 +628,15 @@ async def forward_to_worker(path: str, request: Request):
     session_id = extract_session_id_from_path(path)
 
     if session_id:
-        endpoint = select_worker_for_session(session_id)
+        if WORKER_MODE == "per_session":
+            # Workers are session-owned: never bind an unknown session to
+            # someone else's worker.
+            endpoint = store.get_route(session_id)
+            if endpoint:
+                # Traffic keeps the session alive.
+                store.renew_lease(session_id, LEASE_TTL_S)
+        else:
+            endpoint = select_worker_for_session(session_id)
         if not endpoint:
             return Response(content=b"No worker available for session", status_code=503)
     else:
@@ -511,6 +660,16 @@ async def forward_to_worker(path: str, request: Request):
     if session_id and path.rstrip("/").endswith("/stop") and 200 <= httpx_response.status_code < 300:
         store.delete_route(session_id)
         logger.info(f"Removed route for terminated session {session_id}")
+        if WORKER_MODE == "per_session":
+            store.release_lease(session_id)
+            handle = session_workers.pop(session_id, None)
+            if handle:
+                # The worker already quit its driver via the forwarded stop;
+                # now retire the process itself.
+                store.deregister_worker(handle.endpoint)
+                await launcher.stop(handle)
+            # else: launched by another replica; its reaper notices the
+            # missing route and cleans the process up.
 
     return convert_httpx_to_fastapi_response(httpx_response)
 

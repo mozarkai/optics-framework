@@ -46,9 +46,11 @@ def _register_pool(*ports: int):
 def reset_state():
     """Reset supervisor global state before each test."""
     st.workers.clear()
+    st.session_workers.clear()
     st.store = st._create_store()
     yield
     st.workers.clear()
+    st.session_workers.clear()
     st.store = st._create_store()
 
 
@@ -419,6 +421,228 @@ class TestAPIEndpoints:
 
             assert response.status_code == 500
             assert st.store.get_route(SESSION_ID) == "http://127.0.0.1:9000"
+
+
+class FakeLauncher:
+    """In-memory WorkerLauncher double recording lifecycle calls."""
+
+    def __init__(self, ready=True, forward_status=200):
+        self.ready = ready
+        self.launched = []
+        self.stopped = []
+        self._alive = set()
+        self._counter = 0
+
+    async def launch(self):
+        from launcher import WorkerHandle
+
+        self._counter += 1
+        handle = WorkerHandle(id=f"fake-{self._counter}",
+                              endpoint=f"http://127.0.0.1:{9500 + self._counter}")
+        self.launched.append(handle)
+        self._alive.add(handle.id)
+        return handle
+
+    async def wait_ready(self, handle, timeout_s):
+        return self.ready
+
+    async def stop(self, handle):
+        self.stopped.append(handle)
+        self._alive.discard(handle.id)
+
+    async def is_alive(self, handle):
+        return handle.id in self._alive
+
+
+def _forward_response(status_code=200, body=None):
+    response = Mock()
+    response.status_code = status_code
+    response.content = json.dumps(body or {}).encode()
+    response.headers = {"content-type": "application/json"}
+    return response
+
+
+class TestPerSessionMode:
+    """Unit tests for the per_session worker mode (mocked launcher/forward)."""
+
+    @pytest.fixture(autouse=True)
+    def per_session(self):
+        fake = FakeLauncher()
+        with patch.object(st, "WORKER_MODE", "per_session"), \
+             patch.object(st, "launcher", fake):
+            yield fake
+
+    @patch("supervisor_tool.forward_request")
+    def test_create_launches_dedicated_worker(self, mock_forward, per_session):
+        mock_forward.return_value = _forward_response(200, {"session_id": "sid-1"})
+
+        with TestClient(test_app) as client:
+            response = client.post("/v1/sessions/start", json={"driver_sources": []})
+
+        assert response.status_code == 200
+        assert len(per_session.launched) == 1
+        handle = per_session.launched[0]
+        assert st.store.get_route("sid-1") == handle.endpoint
+        assert st.session_workers["sid-1"] is handle
+        assert handle.endpoint in st.store.list_live_workers()
+        assert st.store.expired_leases() == []  # lease exists and is fresh
+        assert per_session.stopped == []
+
+    @patch("supervisor_tool.forward_request")
+    def test_two_sessions_get_distinct_workers(self, mock_forward, per_session):
+        mock_forward.side_effect = [
+            _forward_response(200, {"session_id": "sid-1"}),
+            _forward_response(200, {"session_id": "sid-2"}),
+        ]
+
+        with TestClient(test_app) as client:
+            client.post("/v1/sessions/start", json={})
+            client.post("/v1/sessions/start", json={})
+
+        assert st.store.get_route("sid-1") != st.store.get_route("sid-2")
+
+    def test_worker_not_ready_returns_503(self, per_session):
+        per_session.ready = False
+
+        with TestClient(test_app) as client:
+            response = client.post("/v1/sessions/start", json={})
+
+        assert response.status_code == 503
+        assert len(per_session.stopped) == 1  # no leaked worker
+        assert st.store.list_routes() == {}
+
+    @patch("supervisor_tool.forward_request")
+    def test_failed_create_tears_worker_down(self, mock_forward, per_session):
+        mock_forward.return_value = _forward_response(500, {"detail": "boom"})
+
+        with TestClient(test_app) as client:
+            response = client.post("/v1/sessions/start", json={})
+
+        assert response.status_code == 500
+        assert len(per_session.stopped) == 1
+        assert st.store.list_routes() == {}
+
+    @patch("supervisor_tool.forward_request")
+    def test_unknown_session_is_not_bound(self, mock_forward, per_session):
+        """per_session must never round-robin an unknown session onto someone
+        else's worker."""
+        st.store.register_worker("http://127.0.0.1:9501", ttl_s=10)
+
+        with TestClient(test_app) as client:
+            response = client.post(f"/v1/sessions/{SESSION_ID}/action", json={})
+
+        assert response.status_code == 503
+        assert st.store.list_routes() == {}
+        mock_forward.assert_not_called()
+
+    @patch("supervisor_tool.forward_request")
+    def test_request_renews_expired_lease(self, mock_forward, per_session):
+        """Traffic on a still-routed session refreshes its lease."""
+        import time as _time
+
+        st.store.put_route(SESSION_ID, "http://127.0.0.1:9501")
+        st.store.acquire_lease(SESSION_ID, owner="fake-1", ttl_s=0.05)
+        _time.sleep(0.1)
+        assert st.store.expired_leases() != []
+
+        mock_forward.return_value = _forward_response(200, {"status": "SUCCESS"})
+        with TestClient(test_app) as client:
+            client.post(f"/v1/sessions/{SESSION_ID}/action", json={})
+
+        assert st.store.expired_leases() == []
+
+    @patch("supervisor_tool.forward_request")
+    def test_stop_tears_down_worker_route_and_lease(self, mock_forward, per_session):
+        mock_forward.side_effect = [
+            _forward_response(200, {"session_id": SESSION_ID}),
+            _forward_response(200, {"status": "terminated"}),
+        ]
+
+        with TestClient(test_app) as client:
+            client.post("/v1/sessions/start", json={})
+            response = client.delete(f"/v1/sessions/{SESSION_ID}/stop")
+
+        assert response.status_code == 200
+        assert st.store.get_route(SESSION_ID) is None
+        assert st.session_workers == {}
+        assert len(per_session.stopped) == 1
+        assert st.store.expired_leases() == []
+        assert st.store.list_live_workers() == []
+
+
+class TestReaper:
+    """Unit tests for the lease reaper sweep."""
+
+    @pytest.fixture(autouse=True)
+    def per_session(self):
+        fake = FakeLauncher()
+        with patch.object(st, "WORKER_MODE", "per_session"), \
+             patch.object(st, "launcher", fake):
+            yield fake
+
+    def _launch_session(self, fake, session_id, ttl_s):
+        import asyncio
+
+        handle = asyncio.run(fake.launch())
+        st.session_workers[session_id] = handle
+        st.store.put_route(session_id, handle.endpoint)
+        st.store.register_worker(handle.endpoint, ttl_s=10)
+        st.store.acquire_lease(session_id, owner=handle.id, ttl_s=ttl_s)
+        return handle
+
+    def test_expired_lease_reaps_local_worker(self, per_session):
+        import asyncio
+        import time as _time
+
+        handle = self._launch_session(per_session, "sid-1", ttl_s=0.05)
+        _time.sleep(0.1)
+
+        asyncio.run(st._reap_once())
+
+        assert per_session.stopped == [handle]
+        assert st.store.get_route("sid-1") is None
+        assert st.store.expired_leases() == []
+        assert st.session_workers == {}
+        assert st.store.list_live_workers() == []
+
+    def test_active_lease_is_untouched(self, per_session):
+        import asyncio
+
+        handle = self._launch_session(per_session, "sid-1", ttl_s=10)
+
+        asyncio.run(st._reap_once())
+
+        assert per_session.stopped == []
+        assert st.store.get_route("sid-1") == handle.endpoint
+
+    def test_expired_foreign_lease_reconstructs_handle(self, per_session):
+        """A remote-capable launcher can stop a worker owned by a dead replica."""
+        import asyncio
+        import time as _time
+
+        st.store.put_route("sid-remote", "http://10.0.0.9:9001")
+        st.store.acquire_lease("sid-remote", owner="pod-abc", ttl_s=0.05)
+        _time.sleep(0.1)
+
+        asyncio.run(st._reap_once())
+
+        assert len(per_session.stopped) == 1
+        assert per_session.stopped[0].id == "pod-abc"
+        assert per_session.stopped[0].endpoint == "http://10.0.0.9:9001"
+        assert st.store.get_route("sid-remote") is None
+        assert st.store.expired_leases() == []
+
+    def test_route_removed_elsewhere_stops_local_worker(self, per_session):
+        """Another replica handled the stop; this replica owns the process."""
+        import asyncio
+
+        handle = self._launch_session(per_session, "sid-1", ttl_s=10)
+        st.store.delete_route("sid-1")  # simulates a stop via another replica
+
+        asyncio.run(st._reap_once())
+
+        assert per_session.stopped == [handle]
+        assert st.session_workers == {}
 
 
 if __name__ == "__main__":

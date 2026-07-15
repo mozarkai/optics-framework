@@ -108,6 +108,51 @@ class TestRoundRobin:
         assert all(store.next_worker() == WORKER_B for _ in range(3))
 
 
+class TestLeases:
+    def test_no_leases_initially(self, store):
+        assert store.expired_leases() == []
+
+    def test_active_lease_not_expired(self, store):
+        store.acquire_lease("sid-1", owner="worker-1", ttl_s=10)
+        assert store.expired_leases() == []
+
+    def test_expired_lease_is_reported_with_owner(self, store):
+        store.acquire_lease("sid-1", owner="worker-1", ttl_s=0.05)
+        time.sleep(0.15)
+        assert store.expired_leases() == [("sid-1", "worker-1")]
+
+    def test_expired_lease_stays_visible_until_released(self, store):
+        """Unlike the worker registry, expiry must not delete the lease —
+        the reaper needs to observe it."""
+        store.acquire_lease("sid-1", owner="worker-1", ttl_s=0.05)
+        time.sleep(0.15)
+        assert store.expired_leases() == [("sid-1", "worker-1")]
+        assert store.expired_leases() == [("sid-1", "worker-1")]
+
+    def test_renew_extends_lease(self, store):
+        store.acquire_lease("sid-1", owner="worker-1", ttl_s=0.2)
+        time.sleep(0.1)
+        store.renew_lease("sid-1", ttl_s=10)
+        time.sleep(0.15)  # would have expired without the renewal
+        assert store.expired_leases() == []
+
+    def test_renew_unknown_lease_is_noop(self, store):
+        """A stray late request must not resurrect a released session."""
+        store.renew_lease("sid-ghost", ttl_s=0.01)
+        time.sleep(0.05)
+        # Had the renew created a lease, it would show up expired by now.
+        assert store.expired_leases() == []
+
+    def test_release_lease(self, store):
+        store.acquire_lease("sid-1", owner="worker-1", ttl_s=0.05)
+        store.release_lease("sid-1")
+        time.sleep(0.1)
+        assert store.expired_leases() == []
+
+    def test_release_missing_lease_is_noop(self, store):
+        store.release_lease("nope")  # must not raise
+
+
 class TestRedisSpecific:
     """Behavior only meaningful for the shared backend."""
 

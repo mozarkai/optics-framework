@@ -320,5 +320,105 @@ class TestTwoSupervisorsSharedStore:
         assert result["pid"] == owner_pid
 
 
+def _wait_pid_dead(pid: int, timeout_s: float = 10) -> bool:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+PER_SESSION_LEASE_TTL_S = 4
+PER_SESSION_REAP_INTERVAL_S = 1
+
+
+@pytest.fixture(scope="class")
+def per_session_supervisor():
+    """A supervisor in per_session mode with an aggressive lease TTL."""
+    fixture = SupervisorTestFixture(
+        port=18400,
+        worker_base_port=19400,  # unused in per_session mode
+        num_workers=0,
+        extra_env={
+            "SUPERVISOR_WORKER_MODE": "per_session",
+            "SUPERVISOR_LEASE_TTL_S": str(PER_SESSION_LEASE_TTL_S),
+            "SUPERVISOR_REAP_INTERVAL_S": str(PER_SESSION_REAP_INTERVAL_S),
+        },
+    )
+    fixture.start()
+    yield fixture
+    fixture.stop()
+
+
+class TestPerSessionWorkers:
+    """Upgrade 2 acceptance: one isolated worker per session, reaped on idle
+    or explicit stop."""
+
+    def test_sessions_get_distinct_concurrent_workers(self, per_session_supervisor):
+        supervisor = per_session_supervisor
+        session_a = supervisor.create_session()
+        session_b = supervisor.create_session()
+
+        # Two sessions, two distinct worker processes.
+        assert session_a["pid"] != session_b["pid"]
+
+        # A slow keyword on session A must not block session B.
+        timings = {}
+
+        def slow_action():
+            start = time.monotonic()
+            result = supervisor.execute_action(
+                session_a["session_id"], {"stub_delay_s": 3})
+            timings["slow"] = (start, time.monotonic())
+            return result
+
+        def fast_action():
+            time.sleep(0.5)  # let the slow one get in flight first
+            start = time.monotonic()
+            result = supervisor.execute_action(session_b["session_id"])
+            timings["fast"] = (start, time.monotonic())
+            return result
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            slow_future = executor.submit(slow_action)
+            fast_future = executor.submit(fast_action)
+            assert fast_future.result()["status"] == "SUCCESS"
+            assert slow_future.result()["status"] == "SUCCESS"
+
+        fast_start, fast_end = timings["fast"]
+        slow_start, slow_end = timings["slow"]
+        assert slow_start < fast_start and fast_end < slow_end, "actions did not overlap"
+        assert fast_end - fast_start < 2, "fast action was blocked by the slow one"
+
+    def test_idle_session_is_reaped(self, per_session_supervisor):
+        supervisor = per_session_supervisor
+        created = supervisor.create_session()
+        session_id, worker_pid = created["session_id"], created["pid"]
+
+        # Never renew: the lease expires and the reaper reclaims the worker.
+        time.sleep(PER_SESSION_LEASE_TTL_S + 3 * PER_SESSION_REAP_INTERVAL_S + 1)
+
+        assert _wait_pid_dead(worker_pid)
+        response = requests.post(
+            f"{supervisor.base_url}/v1/sessions/{session_id}/action", json={}, timeout=10)
+        assert response.status_code == 503  # route is gone
+
+    def test_explicit_stop_tears_worker_down(self, per_session_supervisor):
+        supervisor = per_session_supervisor
+        created = supervisor.create_session()
+        session_id, worker_pid = created["session_id"], created["pid"]
+
+        response = supervisor.stop_session(session_id)
+        assert response.status_code == 200
+
+        assert _wait_pid_dead(worker_pid)
+        response = requests.post(
+            f"{supervisor.base_url}/v1/sessions/{session_id}/action", json={}, timeout=10)
+        assert response.status_code == 503
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

@@ -69,6 +69,29 @@ class RoutingStore(ABC):
     def next_worker(self) -> str | None:
         """Atomic round-robin pick over live workers; None if none live."""
 
+    # -- session leases (per-session worker reaping) ----------------------
+    # A lease says "this session was recently active". It is acquired when a
+    # per-session worker is created, renewed on traffic, released on explicit
+    # stop, and — unlike the TTL worker registry — an expired lease stays
+    # observable so a reaper can find and reclaim the abandoned worker.
+    @abstractmethod
+    def acquire_lease(self, session_id: str, owner: str, ttl_s: float) -> None:
+        """Create/refresh a lease. `owner` is the worker handle id, so any
+        replica with a remote-capable launcher can stop the worker."""
+
+    @abstractmethod
+    def renew_lease(self, session_id: str, ttl_s: float) -> None:
+        """Extend an existing lease. No-op for unknown/released sessions so a
+        stray late request cannot resurrect a torn-down session."""
+
+    @abstractmethod
+    def release_lease(self, session_id: str) -> None:
+        """Remove a lease entirely (explicit stop or completed reap)."""
+
+    @abstractmethod
+    def expired_leases(self) -> list[tuple[str, str | None]]:
+        """(session_id, owner) for every lease past its expiry."""
+
 
 class InMemoryRoutingStore(RoutingStore):
     """Exactly the original single-supervisor behavior. Default."""
@@ -76,6 +99,7 @@ class InMemoryRoutingStore(RoutingStore):
     def __init__(self) -> None:
         self._routes: dict[str, str] = {}
         self._workers: dict[str, float] = {}  # endpoint -> monotonic expiry
+        self._leases: dict[str, tuple[str | None, float]] = {}  # sid -> (owner, monotonic expiry)
         self._rr_index = 0
         self._lock = threading.Lock()
 
@@ -125,6 +149,30 @@ class InMemoryRoutingStore(RoutingStore):
         now = time.monotonic()
         return [ep for ep, expiry in self._workers.items() if expiry > now]
 
+    # -- session leases ----------------------------------------------------
+    def acquire_lease(self, session_id: str, owner: str, ttl_s: float) -> None:
+        with self._lock:
+            self._leases[session_id] = (owner, time.monotonic() + ttl_s)
+
+    def renew_lease(self, session_id: str, ttl_s: float) -> None:
+        with self._lock:
+            lease = self._leases.get(session_id)
+            if lease is not None:
+                self._leases[session_id] = (lease[0], time.monotonic() + ttl_s)
+
+    def release_lease(self, session_id: str) -> None:
+        with self._lock:
+            self._leases.pop(session_id, None)
+
+    def expired_leases(self) -> list[tuple[str, str | None]]:
+        now = time.monotonic()
+        with self._lock:
+            return [
+                (sid, owner)
+                for sid, (owner, expiry) in self._leases.items()
+                if expiry <= now
+            ]
+
 
 class RedisRoutingStore(RoutingStore):
     """Shared-store backend: any supervisor replica can route any session.
@@ -136,6 +184,9 @@ class RedisRoutingStore(RoutingStore):
       stop, crash cleanup, or reaping)
     - ``{prefix}:worker:{endpoint}``  -> "1" with PX TTL (liveness)
     - ``{prefix}:rr``                 -> round-robin cursor via atomic INCR
+    - ``{prefix}:leases``             -> ZSET of session_id scored by unix
+      expiry (expired members stay visible for the reaper, unlike TTL keys)
+    - ``{prefix}:lease_owners``       -> HASH session_id -> worker handle id
     """
 
     def __init__(
@@ -211,3 +262,33 @@ class RedisRoutingStore(RoutingStore):
             return None
         cursor = int(self._redis.incr(f"{self._prefix}:rr"))
         return live[(cursor - 1) % len(live)]
+
+    # -- session leases ----------------------------------------------------
+    def _leases_key(self) -> str:
+        return f"{self._prefix}:leases"
+
+    def _lease_owners_key(self) -> str:
+        return f"{self._prefix}:lease_owners"
+
+    def acquire_lease(self, session_id: str, owner: str, ttl_s: float) -> None:
+        pipe = self._redis.pipeline()
+        pipe.zadd(self._leases_key(), {session_id: time.time() + ttl_s})
+        pipe.hset(self._lease_owners_key(), session_id, owner)
+        pipe.execute()
+
+    def renew_lease(self, session_id: str, ttl_s: float) -> None:
+        # XX: only extend existing leases; never resurrect a released one.
+        self._redis.zadd(self._leases_key(), {session_id: time.time() + ttl_s}, xx=True)
+
+    def release_lease(self, session_id: str) -> None:
+        pipe = self._redis.pipeline()
+        pipe.zrem(self._leases_key(), session_id)
+        pipe.hdel(self._lease_owners_key(), session_id)
+        pipe.execute()
+
+    def expired_leases(self) -> list[tuple[str, str | None]]:
+        expired = self._redis.zrangebyscore(self._leases_key(), "-inf", time.time())
+        if not expired:
+            return []
+        owners = self._redis.hmget(self._lease_owners_key(), expired)
+        return list(zip(expired, owners))
