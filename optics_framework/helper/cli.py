@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from typing import Literal, Optional
 from pydantic import BaseModel
@@ -180,6 +181,88 @@ class MCPCommand(Command):
             host=mcp_args.host,
             port=mcp_args.port
         )
+
+
+class SupervisorArgs(BaseModel):
+    """Arguments for the supervise command.
+
+    The optional fields map 1:1 to SUPERVISOR_* env vars; None means the flag
+    was not given, so the env var (or the built-in default) applies.
+    """
+    host: str = "127.0.0.1"
+    port: int = 8000
+    workers: int = 2                 # pool mode only
+    base_port: int = 9000            # pool mode only
+    store: Literal["memory", "redis"] | None = None
+    redis_url: str | None = None
+    worker_mode: Literal["pool", "per_session"] | None = None
+    launcher: Literal["subprocess", "docker", "k8s"] | None = None
+    max_sessions: int | None = None  # None = unlimited
+
+
+class SupervisorCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "supervise",
+            help="Run the Optics Framework supervisor (scaled, multi-worker API front tier)",
+        )
+        parser.add_argument("--host", default="127.0.0.1", help="Supervisor bind host")
+        parser.add_argument("--port", type=int, default=8000, help="Supervisor bind port")
+        parser.add_argument("--workers", type=int, default=2,
+                            help="Worker count (pool mode only; ignored for per-session)")
+        parser.add_argument("--base-port", type=int, default=9000,
+                            help="First worker port (pool mode only)")
+        parser.add_argument("--store", choices=["memory", "redis"], default=None,
+                            help="Routing/lease store backend (default: memory)")
+        parser.add_argument("--redis-url", default=None, help="Redis URL when --store=redis")
+        parser.add_argument("--worker-mode", choices=["pool", "per_session"], default=None,
+                            help="Fixed worker pool, or one worker per session (default: pool)")
+        parser.add_argument("--launcher", choices=["subprocess", "docker", "k8s"], default=None,
+                            help="How per-session workers are launched (default: subprocess)")
+        parser.add_argument("--max-sessions", type=int, default=None,
+                            help="Admission cap; at the cap start_session returns 429")
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        supervisor_args = SupervisorArgs(
+            host=args.host,
+            port=args.port,
+            workers=args.workers,
+            base_port=args.base_port,
+            store=args.store,
+            redis_url=args.redis_url,
+            worker_mode=args.worker_mode,
+            launcher=args.launcher,
+            max_sessions=args.max_sessions,
+        )
+        # Resolution order: CLI flag > env var > built-in default. A given
+        # flag is written into the env BEFORE the supervisor module — which
+        # reads its env at import — is loaded (hence the deferred import).
+        flag_env = {
+            "SUPERVISOR_STORE": supervisor_args.store,
+            "SUPERVISOR_REDIS_URL": supervisor_args.redis_url,
+            "SUPERVISOR_WORKER_MODE": supervisor_args.worker_mode,
+            "SUPERVISOR_LAUNCHER": supervisor_args.launcher,
+            "SUPERVISOR_MAX_SESSIONS": (
+                str(supervisor_args.max_sessions)
+                if supervisor_args.max_sessions is not None else None
+            ),
+        }
+        for env_var, value in flag_env.items():
+            if value is not None:
+                os.environ[env_var] = value
+
+        from optics_framework.helper.supervisor.supervisor_tool import (
+            SupervisorConfig,
+            run_supervisor,
+        )
+        run_supervisor(SupervisorConfig(
+            num_workers=supervisor_args.workers,
+            base_port=supervisor_args.base_port,
+            host=supervisor_args.host,
+            port=supervisor_args.port,
+        ))
+
 
 class ConfigCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
@@ -418,6 +501,7 @@ def main():
         DriverInstaller(),
         ServerCommand(),
         MCPCommand(),
+        SupervisorCommand(),
         AutocompletionCommand(),
     ]
     for cmd in commands:

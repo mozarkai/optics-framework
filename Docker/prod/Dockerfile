@@ -23,12 +23,22 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
+# kubectl for the supervisor's per-session K8sLauncher (`optics supervise
+# --launcher k8s`). Inside a pod with no kubeconfig, kubectl falls back to the
+# pod's service-account token automatically.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && KUBECTL_VERSION="$(curl -Ls https://dl.k8s.io/release/stable.txt)" \
+    && curl -fsSLo /usr/local/bin/kubectl \
+       "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" \
+    && chmod +x /usr/local/bin/kubectl
+
 RUN pip install --no-cache-dir uv \
     && uv pip install --system appium-python-client playwright \
     && playwright install-deps chromium firefox
 
-# Install optics-framework and vision backend (late layer for cache efficiency)
-RUN uv pip install --system optics-framework \
+# Install optics-framework and vision backend (late layer for cache efficiency).
+# The [supervisor] extra pulls the redis client for `optics supervise --store redis`.
+RUN uv pip install --system "optics-framework[supervisor]" \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
         uv pip install --system easyocr; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \

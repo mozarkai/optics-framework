@@ -11,7 +11,7 @@ repos:
     hooks:
       - id: bandit
         args: ["-r", "optics_framework"]
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|tests/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|tests/|^tools/supervisor_app/test_)'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -21,6 +21,8 @@ repos:
       - id: end-of-file-fixer
         exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
       - id: check-yaml
+        # Kubernetes manifests (tools/supervisor_app/deploy/) are multi-doc
+        args: ["--allow-multiple-documents"]
         exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|mkdocs\.yml)'
       - id: check-json
         exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
