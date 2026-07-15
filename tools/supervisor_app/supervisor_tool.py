@@ -27,7 +27,13 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dataclasses import dataclass
 
-from launcher import WorkerHandle, WorkerLauncher, create_launcher, signal_process_group
+from launcher import (
+    WorkerHandle,
+    WorkerLauncher,
+    WorkerLaunchError,
+    create_launcher,
+    signal_process_group,
+)
 from routing_store import InMemoryRoutingStore, RedisRoutingStore, RoutingStore
 
 # Configure logging
@@ -587,7 +593,11 @@ async def create_session(request: Request):
 
 async def _create_session_per_session(request: Request):
     """per_session mode: launch a dedicated worker, then forward the create."""
-    handle = await launcher.launch()
+    try:
+        handle = await launcher.launch()
+    except WorkerLaunchError as e:
+        logger.error(f"Worker launch failed: {e}")
+        return Response(content=b"worker failed to start", status_code=503)
     if not await launcher.wait_ready(handle, timeout_s=STARTUP_TIMEOUT_S):
         logger.error(f"Session worker {handle.id} failed to become ready within {STARTUP_TIMEOUT_S}s")
         await launcher.stop(handle)

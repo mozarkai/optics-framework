@@ -10,12 +10,14 @@ interface.
 import asyncio
 import logging
 import os
+import shlex
 import signal
 import socket
 import subprocess  # nosec B404 - spawning local worker processes is this module's purpose
 import sys
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, TextIO
 
@@ -178,9 +180,200 @@ class SubprocessLauncher(WorkerLauncher):
         return list(self._procs)
 
 
+# (returncode, stdout, stderr) of one CLI invocation
+CommandRunner = Callable[[list[str]], Awaitable[tuple[int, str, str]]]
+
+
+async def _run_cli(cmd: list[str]) -> tuple[int, str, str]:
+    """Default CommandRunner: run a CLI tool and capture its output."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    return proc.returncode or 0, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+
+
+class WorkerLaunchError(RuntimeError):
+    """A launcher could not create a worker."""
+
+
+class DockerLauncher(WorkerLauncher):
+    """One container per session; WorkerHandle.endpoint is the container's
+    subnet IP, so sessions spread across any host reachable on that network.
+
+    Speaks the `docker` CLI through an injectable runner (no docker SDK
+    dependency); the handle id is the container name, so ANY replica can stop
+    a worker it did not launch.
+    """
+
+    def __init__(
+        self,
+        image: str | None = None,
+        network: str | None = None,
+        resources: str | None = None,
+        port: int | None = None,
+        runner: CommandRunner | None = None,
+    ) -> None:
+        self._image = image or os.environ.get("SUPERVISOR_WORKER_IMAGE", "")
+        if not self._image:
+            raise ValueError("DockerLauncher requires SUPERVISOR_WORKER_IMAGE")
+        self._network = network if network is not None else os.environ.get("SUPERVISOR_WORKER_NETWORK")
+        # Extra `docker run` args, e.g. "--memory=1g --cpus=1"
+        self._resources = shlex.split(
+            resources if resources is not None else os.environ.get("SUPERVISOR_WORKER_RESOURCES", "")
+        )
+        self._port = port if port is not None else int(os.environ.get("SUPERVISOR_WORKER_PORT", "8000"))
+        self._run = runner or _run_cli
+
+    async def launch(self) -> WorkerHandle:
+        # NOTE: placement is delegated to the container scheduler. A
+        # DeviceRegistry-backed launcher (device-aware scheduling, design doc
+        # Layer 3) would slot in here by picking image/env per free device.
+        name = f"optics-worker-{uuid.uuid4().hex[:12]}"
+        cmd = ["docker", "run", "--detach", "--name", name]
+        if self._network:
+            cmd += ["--network", self._network]
+        cmd += self._resources
+        cmd.append(self._image)
+        code, _, stderr = await self._run(cmd)
+        if code != 0:
+            raise WorkerLaunchError(f"docker run failed for {name}: {stderr.strip()}")
+
+        code, stdout, stderr = await self._run([
+            "docker", "inspect", "-f",
+            "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", name,
+        ])
+        ip = stdout.strip()
+        if code != 0 or not ip:
+            await self.stop(WorkerHandle(id=name, endpoint=""))
+            raise WorkerLaunchError(f"could not resolve subnet IP for {name}: {stderr.strip()}")
+        # NOTE: supervisor<->worker auth (shared token / mTLS) would be
+        # injected here as container env; workers must only ever bind the
+        # subnet interface, with the supervisor as the sole ingress.
+        return WorkerHandle(id=name, endpoint=f"http://{ip}:{self._port}")
+
+    async def wait_ready(self, handle: WorkerHandle, timeout_s: float) -> bool:
+        deadline = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < deadline:
+            if not await self.is_alive(handle):
+                logger.error("Container %s exited during startup", handle.id)
+                return False
+            if await _poll_health(handle.endpoint, timeout_s=0.5):
+                return True
+        return False
+
+    async def stop(self, handle: WorkerHandle) -> None:
+        code, _, stderr = await self._run(["docker", "rm", "--force", handle.id])
+        if code != 0 and "No such container" not in stderr:
+            logger.warning("docker rm %s failed: %s", handle.id, stderr.strip())
+
+    async def is_alive(self, handle: WorkerHandle) -> bool:
+        code, stdout, _ = await self._run([
+            "docker", "inspect", "-f", "{{.State.Running}}", handle.id,
+        ])
+        return code == 0 and stdout.strip() == "true"
+
+
+class K8sLauncher(WorkerLauncher):
+    """One Pod per session; WorkerHandle.endpoint is the pod IP.
+
+    Speaks `kubectl` through the same injectable runner. Node placement is
+    the scheduler's job; the handle id is the pod name, so any replica can
+    delete it.
+    """
+
+    def __init__(
+        self,
+        image: str | None = None,
+        namespace: str | None = None,
+        port: int | None = None,
+        pod_deadline_s: int | None = None,
+        runner: CommandRunner | None = None,
+        ip_timeout_s: float = 30.0,
+    ) -> None:
+        self._image = image or os.environ.get("SUPERVISOR_WORKER_IMAGE", "")
+        if not self._image:
+            raise ValueError("K8sLauncher requires SUPERVISOR_WORKER_IMAGE")
+        self._namespace = namespace or os.environ.get("SUPERVISOR_WORKER_NAMESPACE", "default")
+        self._port = port if port is not None else int(os.environ.get("SUPERVISOR_WORKER_PORT", "8000"))
+        # Orchestrator-side backstop TTL: the pod dies even if every reaper
+        # misses it (two independent timers, no single failure leaks pods).
+        self._pod_deadline_s = pod_deadline_s if pod_deadline_s is not None else int(
+            os.environ.get("SUPERVISOR_WORKER_DEADLINE_S", "0")
+        )
+        self._run = runner or _run_cli
+        self._ip_timeout_s = ip_timeout_s
+
+    def _kubectl(self, *args: str) -> list[str]:
+        return ["kubectl", "--namespace", self._namespace, *args]
+
+    async def launch(self) -> WorkerHandle:
+        # NOTE: placement is delegated to the Kubernetes scheduler. A
+        # DeviceRegistry-backed launcher (design doc Layer 3) would slot in
+        # here via node selectors / affinity per free device.
+        name = f"optics-worker-{uuid.uuid4().hex[:12]}"
+        cmd = self._kubectl(
+            "run", name,
+            f"--image={self._image}",
+            "--restart=Never",
+            f"--port={self._port}",
+            "--labels=app=optics-session-worker",
+        )
+        if self._pod_deadline_s > 0:
+            cmd.append(f"--overrides={{\"spec\": {{\"activeDeadlineSeconds\": {self._pod_deadline_s}}}}}")
+        code, _, stderr = await self._run(cmd)
+        if code != 0:
+            raise WorkerLaunchError(f"kubectl run failed for {name}: {stderr.strip()}")
+
+        # Pod IPs are assigned asynchronously by the scheduler/CNI.
+        deadline = asyncio.get_event_loop().time() + self._ip_timeout_s
+        while asyncio.get_event_loop().time() < deadline:
+            code, stdout, _ = await self._run(
+                self._kubectl("get", "pod", name, "-o", "jsonpath={.status.podIP}")
+            )
+            ip = stdout.strip()
+            if code == 0 and ip:
+                # NOTE: supervisor<->worker auth (shared token / mTLS) is a
+                # follow-up; keep worker pods on the cluster network only.
+                return WorkerHandle(id=name, endpoint=f"http://{ip}:{self._port}")
+            await asyncio.sleep(0.5)
+
+        await self.stop(WorkerHandle(id=name, endpoint=""))
+        raise WorkerLaunchError(f"pod {name} got no IP within {self._ip_timeout_s}s")
+
+    async def wait_ready(self, handle: WorkerHandle, timeout_s: float) -> bool:
+        deadline = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < deadline:
+            if not await self.is_alive(handle):
+                logger.error("Pod %s died during startup", handle.id)
+                return False
+            if await _poll_health(handle.endpoint, timeout_s=0.5):
+                return True
+        return False
+
+    async def stop(self, handle: WorkerHandle) -> None:
+        code, _, stderr = await self._run(
+            self._kubectl("delete", "pod", handle.id, "--ignore-not-found", "--wait=false")
+        )
+        if code != 0:
+            logger.warning("kubectl delete pod %s failed: %s", handle.id, stderr.strip())
+
+    async def is_alive(self, handle: WorkerHandle) -> bool:
+        code, stdout, _ = await self._run(
+            self._kubectl("get", "pod", handle.id, "-o", "jsonpath={.status.phase}")
+        )
+        return code == 0 and stdout.strip() in ("Pending", "Running")
+
+
 def create_launcher(kind: str | None = None, **kwargs: Any) -> WorkerLauncher:
     """Build the launcher selected by SUPERVISOR_LAUNCHER (subprocess default)."""
     kind = (kind or os.environ.get("SUPERVISOR_LAUNCHER", "subprocess")).strip().lower()
     if kind == "subprocess":
         return SubprocessLauncher(**kwargs)
-    raise ValueError(f"Unknown SUPERVISOR_LAUNCHER: {kind!r} (expected 'subprocess')")
+    if kind == "docker":
+        return DockerLauncher(**kwargs)
+    if kind == "k8s":
+        return K8sLauncher(**kwargs)
+    raise ValueError(f"Unknown SUPERVISOR_LAUNCHER: {kind!r} (expected 'subprocess', 'docker', or 'k8s')")
