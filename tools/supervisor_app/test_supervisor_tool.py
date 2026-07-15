@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
-import supervisor_tool as st
+import optics_framework.helper.supervisor.supervisor_tool as st
 
 # Create a test app without lifespan
 test_app = FastAPI(title="Optics Supervisor Test")
@@ -82,8 +82,8 @@ class TestSupervisorConfig:
 class TestWorkerManagement:
     """Test worker management functions."""
 
-    @patch("supervisor_tool.time.sleep")
-    @patch("supervisor_tool.start_worker_process")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.time.sleep")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.start_worker_process")
     def test_start_workers(self, mock_start, _mock_sleep):
         """Started workers appear in the local pool and the store registry."""
         st.config.num_workers = 2
@@ -101,8 +101,8 @@ class TestWorkerManagement:
             "http://127.0.0.1:9001",
         ]
 
-    @patch("supervisor_tool.time.sleep")
-    @patch("supervisor_tool.start_worker_process")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.time.sleep")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.start_worker_process")
     def test_start_workers_partial_failure(self, mock_start, _mock_sleep):
         """A worker that fails to start is registered nowhere."""
         st.config.num_workers = 2
@@ -114,7 +114,7 @@ class TestWorkerManagement:
         assert len(st.workers) == 1
         assert st.store.list_live_workers() == ["http://127.0.0.1:9000"]
 
-    @patch("supervisor_tool._kill_worker")
+    @patch("optics_framework.helper.supervisor.supervisor_tool._kill_worker")
     def test_stop_workers(self, mock_kill):
         """Stopping tears down each worker and clears its registry entries and routes."""
         _register_pool(9000, 9001)
@@ -127,7 +127,7 @@ class TestWorkerManagement:
         assert st.store.list_live_workers() == []
         assert st.store.get_route("some-session") is None
 
-    @patch("supervisor_tool._kill_worker")
+    @patch("optics_framework.helper.supervisor.supervisor_tool._kill_worker")
     def test_stop_workers_leaves_foreign_routes(self, mock_kill):
         """A supervisor only cleans up routes that point at its own workers."""
         _register_pool(9000)
@@ -139,7 +139,7 @@ class TestWorkerManagement:
         assert st.store.get_route("mine") is None
         assert st.store.get_route("someone-elses") == "http://10.0.0.9:9000"
 
-    @patch("supervisor_tool._kill_orphans_on_port")
+    @patch("optics_framework.helper.supervisor.supervisor_tool._kill_orphans_on_port")
     def test_kill_worker_graceful(self, mock_orphans):
         """_kill_worker SIGTERMs the process and closes the log handle."""
         proc = Mock(spec=subprocess.Popen)
@@ -148,7 +148,7 @@ class TestWorkerManagement:
         log_fh = Mock()
         worker = {"port": 9000, "process": proc, "active": True, "log_fh": log_fh}
 
-        with patch("supervisor_tool.os.getpgid", side_effect=ProcessLookupError):
+        with patch("optics_framework.helper.supervisor.supervisor_tool.os.getpgid", side_effect=ProcessLookupError):
             st._kill_worker(worker)
 
         proc.send_signal.assert_called_with(signal.SIGTERM)
@@ -205,8 +205,8 @@ class TestWorkerCrashHandling:
         assert st.store.get_route("dead-session") is None
         assert st.store.get_route("other-session") == "http://127.0.0.1:9001"
 
-    @patch("supervisor_tool.time.sleep")
-    @patch("supervisor_tool.start_worker_process")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.time.sleep")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.start_worker_process")
     def test_restart_stores_unpacked_process(self, mock_start, _mock_sleep):
         """Regression: the restart path must unpack (process, log_fh) — it used to
         store the whole tuple as the process handle."""
@@ -308,7 +308,7 @@ class TestAPIEndpoints:
         assert data["total_sessions"] == 2
         assert data["session_distribution"] == {"9000": 2, "9001": 0}
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_create_session_endpoint(self, mock_forward):
         """Test session creation endpoint."""
         _register_pool(9000)
@@ -332,7 +332,7 @@ class TestAPIEndpoints:
             response = client.post("/v1/sessions/start", json={"driver_sources": []})
             assert response.status_code == 503
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_create_session_failure_does_not_map(self, mock_forward):
         """A non-200 from the worker must not create a route."""
         _register_pool(9000)
@@ -349,7 +349,7 @@ class TestAPIEndpoints:
             assert response.status_code == 500
             assert st.store.list_routes() == {}
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_forward_to_worker_with_session(self, mock_forward):
         """Test forwarding request with session ID."""
         _register_pool(9000)
@@ -369,7 +369,7 @@ class TestAPIEndpoints:
             forwarded_url = mock_forward.call_args.kwargs.get("url") or mock_forward.call_args.args[1]
             assert forwarded_url.startswith("http://127.0.0.1:9000/")
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_forward_to_worker_no_session(self, mock_forward):
         """Test forwarding request without session ID."""
         _register_pool(9000)
@@ -386,7 +386,7 @@ class TestAPIEndpoints:
             assert response.status_code == 200
             mock_forward.assert_called_once()
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_stop_session_deletes_route(self, mock_forward):
         """A successful stop removes the session's route."""
         _register_pool(9000)
@@ -404,7 +404,7 @@ class TestAPIEndpoints:
             assert response.status_code == 200
             assert st.store.get_route(SESSION_ID) is None
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_failed_stop_keeps_route(self, mock_forward):
         """A failed stop (worker error) must not drop the route."""
         _register_pool(9000)
@@ -434,7 +434,7 @@ class FakeLauncher:
         self._counter = 0
 
     async def launch(self):
-        from launcher import WorkerHandle
+        from optics_framework.helper.supervisor.launcher import WorkerHandle
 
         self._counter += 1
         handle = WorkerHandle(id=f"fake-{self._counter}",
@@ -472,7 +472,7 @@ class TestPerSessionMode:
              patch.object(st, "launcher", fake):
             yield fake
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_create_launches_dedicated_worker(self, mock_forward, per_session):
         mock_forward.return_value = _forward_response(200, {"session_id": "sid-1"})
 
@@ -488,7 +488,7 @@ class TestPerSessionMode:
         assert st.store.expired_leases() == []  # lease exists and is fresh
         assert per_session.stopped == []
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_two_sessions_get_distinct_workers(self, mock_forward, per_session):
         mock_forward.side_effect = [
             _forward_response(200, {"session_id": "sid-1"}),
@@ -511,7 +511,7 @@ class TestPerSessionMode:
         assert len(per_session.stopped) == 1  # no leaked worker
         assert st.store.list_routes() == {}
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_failed_create_tears_worker_down(self, mock_forward, per_session):
         mock_forward.return_value = _forward_response(500, {"detail": "boom"})
 
@@ -522,7 +522,7 @@ class TestPerSessionMode:
         assert len(per_session.stopped) == 1
         assert st.store.list_routes() == {}
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_unknown_session_is_not_bound(self, mock_forward, per_session):
         """per_session must never round-robin an unknown session onto someone
         else's worker."""
@@ -535,7 +535,7 @@ class TestPerSessionMode:
         assert st.store.list_routes() == {}
         mock_forward.assert_not_called()
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_request_renews_expired_lease(self, mock_forward, per_session):
         """Traffic on a still-routed session refreshes its lease."""
         import time as _time
@@ -551,7 +551,7 @@ class TestPerSessionMode:
 
         assert st.store.expired_leases() == []
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_stop_tears_down_worker_route_and_lease(self, mock_forward, per_session):
         mock_forward.side_effect = [
             _forward_response(200, {"session_id": SESSION_ID}),
@@ -573,7 +573,7 @@ class TestPerSessionMode:
 class TestMaxSessionsCap:
     """SUPERVISOR_MAX_SESSIONS admission control."""
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_pool_mode_cap_returns_429(self, mock_forward):
         _register_pool(9000)
         st.store.put_route("existing-1", "http://127.0.0.1:9000")
@@ -599,7 +599,7 @@ class TestMaxSessionsCap:
         assert response.status_code == 429
         assert fake.launched == []
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_below_cap_admits(self, mock_forward):
         _register_pool(9000)
         mock_forward.return_value = _forward_response(200, {"session_id": "sid-1"})
@@ -609,7 +609,7 @@ class TestMaxSessionsCap:
 
         assert response.status_code == 200
 
-    @patch("supervisor_tool.forward_request")
+    @patch("optics_framework.helper.supervisor.supervisor_tool.forward_request")
     def test_stop_frees_capacity(self, mock_forward):
         _register_pool(9000)
         st.store.put_route(SESSION_ID, "http://127.0.0.1:9000")

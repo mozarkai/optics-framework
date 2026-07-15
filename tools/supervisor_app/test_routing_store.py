@@ -13,7 +13,7 @@ import time
 import fakeredis
 import pytest
 
-from routing_store import InMemoryRoutingStore, RedisRoutingStore
+from optics_framework.helper.supervisor.routing_store import InMemoryRoutingStore, RedisRoutingStore
 
 
 @pytest.fixture(params=["memory", "redis"])

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from launcher import (
+from optics_framework.helper.supervisor.launcher import (
     DockerLauncher,
     K8sLauncher,
     SubprocessLauncher,
