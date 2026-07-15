@@ -229,8 +229,8 @@ class DockerLauncher(WorkerLauncher):
 
     async def launch(self) -> WorkerHandle:
         # NOTE: placement is delegated to the container scheduler. A
-        # DeviceRegistry-backed launcher (device-aware scheduling, design doc
-        # Layer 3) would slot in here by picking image/env per free device.
+        # device-aware launcher backed by a device registry could slot in
+        # here, picking image/env per free device. Out of scope.
         name = f"optics-worker-{uuid.uuid4().hex[:12]}"
         cmd = ["docker", "run", "--detach", "--name", name]
         if self._network:
@@ -311,8 +311,8 @@ class K8sLauncher(WorkerLauncher):
 
     async def launch(self) -> WorkerHandle:
         # NOTE: placement is delegated to the Kubernetes scheduler. A
-        # DeviceRegistry-backed launcher (design doc Layer 3) would slot in
-        # here via node selectors / affinity per free device.
+        # device-aware launcher backed by a device registry could slot in
+        # here via node selectors / affinity per free device. Out of scope.
         name = f"optics-worker-{uuid.uuid4().hex[:12]}"
         cmd = self._kubectl(
             "run", name,

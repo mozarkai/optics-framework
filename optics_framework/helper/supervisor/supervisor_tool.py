@@ -343,8 +343,8 @@ async def _heartbeat_session_workers():
     the lease reaper claims it, and requests in between get a 502 from the
     failed forward — a crashed worker means that session is lost.
     # NOTE: mid-session worker recovery (relaunch + reattach to a still-live
-    # backend session) would hook in here, gated on the driver capability
-    # contract from the stateless API design doc. Out of scope for now.
+    # backend session) would hook in here, once drivers can declare a
+    # reattach capability. Out of scope for now.
     """
     if launcher is None:
         return

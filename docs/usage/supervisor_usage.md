@@ -98,5 +98,4 @@ worker pod needs.
 
 ## Related
 
-- [Supervisor Scaling — Implementation Brief](../contribution/supervisor_scaling_guide.md)
-- [Stateless API Layer — Design](../contribution/stateless_api_design.md)
+- [PR #202 — the original supervisor](https://github.com/mozarkai/optics-framework/pull/202)

@@ -1,6 +1,6 @@
 """Optics supervisor: a scaled, multi-worker front tier for the optics API.
 
-See docs/contribution/supervisor_scaling_guide.md and `optics supervise --help`.
+See docs/usage/supervisor_usage.md and `optics supervise --help`.
 """
 
 from optics_framework.helper.supervisor.supervisor_tool import (
