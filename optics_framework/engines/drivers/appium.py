@@ -964,6 +964,18 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Clearing text in element: {element}")
         element.clear()
 
+    def _type_into_focused_element(self, driver: Any, text: str) -> None:
+        # "mobile: type" is a UiAutomator2-only command with no XCUITest equivalent
+        # (https://github.com/appium/appium/issues/16419). On ios, fall back to the
+        # standard "active element" endpoint to resolve the keyboard-focused element
+        # and send keys to it directly.
+        try:
+            # path for android
+            driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text})
+        except WebDriverException as e:
+            # path for ios because MOBILE_TYPE_COMMAND doesn't exist for ios which uses XCUITest
+            driver.switch_to.active_element.send_keys(text)
+
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
@@ -981,11 +993,11 @@ class Appium(DriverInterface):
                 internal_logger.warning(f"Unknown special key: {text}")
                 internal_logger.debug(f"Unknown special key, treating as text: {text}")
                 text_to_send = utils.strip_sensitive_prefix(str(text))
-                driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
+                self._type_into_focused_element(driver, text_to_send)
         else:
             internal_logger.debug(f"Entering text: {text}")
             text_to_send = utils.strip_sensitive_prefix(str(text))
-            driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
+            self._type_into_focused_element(driver, text_to_send)
 
     def clear_text(self, event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
