@@ -27,7 +27,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dataclasses import dataclass
 
-from routing_store import InMemoryRoutingStore, RoutingStore
+from routing_store import InMemoryRoutingStore, RedisRoutingStore, RoutingStore
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -50,9 +50,19 @@ WORKER_TTL_S = float(os.environ.get("SUPERVISOR_WORKER_TTL_S", "10"))
 
 
 def _create_store() -> RoutingStore:
-    """Build the routing store. In-memory is the only backend for now;
-    SUPERVISOR_STORE selects a shared backend in a later upgrade."""
-    return InMemoryRoutingStore()
+    """Build the routing store selected by SUPERVISOR_STORE.
+
+    - ``memory`` (default): single-supervisor, today's behavior.
+    - ``redis``: shared store so any supervisor replica can route any
+      session; needs SUPERVISOR_REDIS_URL (default redis://127.0.0.1:6379/0)
+      and the optional redis dependency (optics-framework[supervisor]).
+    """
+    backend = os.environ.get("SUPERVISOR_STORE", "memory").strip().lower()
+    if backend == "memory":
+        return InMemoryRoutingStore()
+    if backend == "redis":
+        return RedisRoutingStore(os.environ.get("SUPERVISOR_REDIS_URL"))
+    raise ValueError(f"Unknown SUPERVISOR_STORE backend: {backend!r} (expected 'memory' or 'redis')")
 
 
 store: RoutingStore = _create_store()

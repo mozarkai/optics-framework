@@ -17,6 +17,12 @@ implementation makes any supervisor replica able to route any session.
 import threading
 import time
 from abc import ABC, abstractmethod
+from typing import Any
+
+try:  # optional dependency: pip install optics-framework[supervisor]
+    import redis as _redis
+except ImportError:  # pragma: no cover - exercised only without the extra
+    _redis = None
 
 
 class RoutingStore(ABC):
@@ -118,3 +124,90 @@ class InMemoryRoutingStore(RoutingStore):
     def _live_workers_locked(self) -> list[str]:
         now = time.monotonic()
         return [ep for ep, expiry in self._workers.items() if expiry > now]
+
+
+class RedisRoutingStore(RoutingStore):
+    """Shared-store backend: any supervisor replica can route any session.
+
+    Key layout (all under one prefix so routes / worker registry / cursor are
+    separate key spaces of a single store):
+
+    - ``{prefix}:route:{session_id}`` -> worker endpoint (no TTL; deleted on
+      stop, crash cleanup, or reaping)
+    - ``{prefix}:worker:{endpoint}``  -> "1" with PX TTL (liveness)
+    - ``{prefix}:rr``                 -> round-robin cursor via atomic INCR
+    """
+
+    def __init__(
+        self,
+        url: str | None = None,
+        *,
+        client: Any | None = None,
+        key_prefix: str = "optics:supervisor",
+    ) -> None:
+        if client is not None:
+            self._redis = client
+        else:
+            if _redis is None:
+                raise RuntimeError(
+                    "SUPERVISOR_STORE=redis requires the redis package; "
+                    "install with: pip install optics-framework[supervisor]"
+                )
+            self._redis = _redis.Redis.from_url(
+                url or "redis://127.0.0.1:6379/0", decode_responses=True
+            )
+        self._prefix = key_prefix
+
+    # -- keys --------------------------------------------------------------
+    def _route_key(self, session_id: str) -> str:
+        return f"{self._prefix}:route:{session_id}"
+
+    def _worker_key(self, endpoint: str) -> str:
+        return f"{self._prefix}:worker:{endpoint}"
+
+    # -- session routes -------------------------------------------------
+    def get_route(self, session_id: str) -> str | None:
+        return self._redis.get(self._route_key(session_id))
+
+    def put_route(self, session_id: str, endpoint: str) -> None:
+        self._redis.set(self._route_key(session_id), endpoint)
+
+    def delete_route(self, session_id: str) -> None:
+        self._redis.delete(self._route_key(session_id))
+
+    def list_routes(self) -> dict[str, str]:
+        prefix = f"{self._prefix}:route:"
+        keys = list(self._redis.scan_iter(match=f"{prefix}*"))
+        if not keys:
+            return {}
+        values = self._redis.mget(keys)
+        return {
+            key[len(prefix):]: value
+            for key, value in zip(keys, values)
+            if value is not None
+        }
+
+    # -- worker registry -------------------------------------------------
+    def register_worker(self, endpoint: str, ttl_s: float) -> None:
+        self._redis.set(self._worker_key(endpoint), "1", px=max(1, int(ttl_s * 1000)))
+
+    def heartbeat_worker(self, endpoint: str, ttl_s: float) -> None:
+        self.register_worker(endpoint, ttl_s)
+
+    def deregister_worker(self, endpoint: str) -> None:
+        self._redis.delete(self._worker_key(endpoint))
+
+    def list_live_workers(self) -> list[str]:
+        prefix = f"{self._prefix}:worker:"
+        # Sorted (SCAN has no stable order) so every replica agrees on the
+        # round-robin sequence.
+        return sorted(
+            key[len(prefix):] for key in self._redis.scan_iter(match=f"{prefix}*")
+        )
+
+    def next_worker(self) -> str | None:
+        live = self.list_live_workers()
+        if not live:
+            return None
+        cursor = int(self._redis.incr(f"{self._prefix}:rr"))
+        return live[(cursor - 1) % len(live)]

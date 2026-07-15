@@ -44,9 +44,14 @@ WORKER_APP = os.environ.get("SUPERVISOR_WORKER_APP", "stub_worker:app")
 class SupervisorTestFixture:
     """Test fixture for running the supervisor with real worker processes."""
 
-    def __init__(self):
+    def __init__(self, port=SUPERVISOR_PORT, worker_base_port=WORKER_BASE_PORT,
+                 num_workers=NUM_WORKERS, extra_env=None):
         self.supervisor_process = None
-        self.base_url = f"http://{SUPERVISOR_HOST}:{SUPERVISOR_PORT}"
+        self.port = port
+        self.worker_base_port = worker_base_port
+        self.num_workers = num_workers
+        self.extra_env = extra_env or {}
+        self.base_url = f"http://{SUPERVISOR_HOST}:{port}"
 
     def start(self):
         """Start supervisor (which starts its own workers)."""
@@ -54,14 +59,15 @@ class SupervisorTestFixture:
         env["SUPERVISOR_WORKER_APP"] = WORKER_APP
         # Workers must be able to import the stub app module.
         env["PYTHONPATH"] = str(HERE) + os.pathsep + env.get("PYTHONPATH", "")
+        env.update(self.extra_env)
 
         cmd = [
             sys.executable,
             str(SUPERVISOR_SCRIPT),
-            "--workers", str(NUM_WORKERS),
-            "--base-port", str(WORKER_BASE_PORT),
+            "--workers", str(self.num_workers),
+            "--base-port", str(self.worker_base_port),
             "--host", SUPERVISOR_HOST,
-            "--port", str(SUPERVISOR_PORT),
+            "--port", str(self.port),
         ]
         self.supervisor_process = subprocess.Popen(
             cmd,
@@ -109,6 +115,27 @@ class SupervisorTestFixture:
             except subprocess.TimeoutExpired:
                 self.supervisor_process.kill()
                 self.supervisor_process.wait()
+
+    def kill_hard(self):
+        """SIGKILL the supervisor so its shutdown/cleanup never runs.
+
+        Its workers survive (they run in their own process groups), simulating
+        a supervisor replica dying while sessions are live.
+        """
+        if self.supervisor_process:
+            self.supervisor_process.kill()
+            self.supervisor_process.wait()
+
+    def reap_orphan_workers(self):
+        """Kill workers left behind by kill_hard()."""
+        for i in range(self.num_workers):
+            port = self.worker_base_port + i
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}"], capture_output=True, text=True, timeout=5
+            )
+            for pid in result.stdout.strip().split("\n"):
+                if pid.strip():
+                    subprocess.run(["kill", "-9", pid.strip()], timeout=5)
 
     def get_health(self):
         response = requests.get(f"{self.base_url}/health", timeout=5)
@@ -224,6 +251,73 @@ class TestSupervisorIntegration:
         initial_workers = supervisor.get_health()["active_workers"]
         time.sleep(3 * 2)  # a few MONITOR_INTERVAL ticks
         assert supervisor.get_health()["active_workers"] == initial_workers
+
+
+@pytest.fixture(scope="class")
+def redis_supervisors():
+    """Two supervisor replicas sharing one (fake) Redis routing store.
+
+    fakeredis's TcpFakeServer speaks the real Redis protocol over TCP, so the
+    two supervisor subprocesses connect to it like a real server and no Redis
+    install is needed.
+    """
+    import threading
+
+    from fakeredis import TcpFakeServer
+
+    redis_port = 16379
+    server = TcpFakeServer((SUPERVISOR_HOST, redis_port), server_type="redis")
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    shared_env = {
+        "SUPERVISOR_STORE": "redis",
+        "SUPERVISOR_REDIS_URL": f"redis://{SUPERVISOR_HOST}:{redis_port}/0",
+    }
+    replica_a = SupervisorTestFixture(port=18200, worker_base_port=19200,
+                                      num_workers=1, extra_env=shared_env)
+    replica_b = SupervisorTestFixture(port=18300, worker_base_port=19300,
+                                      num_workers=1, extra_env=shared_env)
+    try:
+        replica_a.start()
+        replica_b.start()
+        yield replica_a, replica_b
+    finally:
+        replica_b.stop()
+        replica_a.stop()
+        replica_a.reap_orphan_workers()  # in case A was hard-killed mid-test
+        server.shutdown()
+
+
+class TestTwoSupervisorsSharedStore:
+    """Upgrade 1 acceptance: routing state lives in the shared store, so any
+    replica can route any session and losing a replica loses nothing."""
+
+    def test_cross_replica_routing_and_replica_loss(self, redis_supervisors):
+        replica_a, replica_b = redis_supervisors
+
+        # Both replicas see the whole worker fleet through the shared registry.
+        assert replica_a.get_health()["active_workers"] == 2
+        assert replica_b.get_health()["active_workers"] == 2
+
+        # Create via A ...
+        created = replica_a.create_session()
+        session_id = created["session_id"]
+        owner_pid = created["pid"]
+
+        # ... act via B: the route comes from the shared store, and the action
+        # lands on the worker that owns the session (wrong worker would 404).
+        result = replica_b.execute_action(session_id)
+        assert result["status"] == "SUCCESS"
+        assert result["pid"] == owner_pid
+
+        # Kill A without cleanup (its worker survives as an orphan process).
+        replica_a.kill_hard()
+
+        # B keeps serving the session, whichever replica created it.
+        result = replica_b.execute_action(session_id)
+        assert result["status"] == "SUCCESS"
+        assert result["pid"] == owner_pid
 
 
 if __name__ == "__main__":
