@@ -2,186 +2,155 @@
 """
 Integration tests for supervisor_tool.py
 
-These tests run the actual supervisor tool with real worker processes.
-Run with: python -m pytest test_supervisor_integration.py -v -s
+These tests spawn the real supervisor process, which in turn spawns real
+uvicorn worker processes. Workers run the stub app (stub_worker.py) instead of
+the full optics API so no Appium hub or device is needed — the stub keeps
+per-process session state, so a request routed to the wrong worker fails with
+404 exactly like the real app would.
+
+They bind real ports and take tens of seconds, so they are gated:
+
+    SUPERVISOR_INTEGRATION=1 python -m pytest test_supervisor_integration.py -v -s
+
+Set SUPERVISOR_WORKER_APP=optics_framework.common.expose_api:app (and have an
+Appium hub + device available) to run the same suite against real workers.
 """
 
+import os
 import subprocess
 import sys
 import time
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import pytest
+from pathlib import Path
 
-# Add the tools directory to path
-sys.path.insert(0, '/Users/dhruvmenon/Documents/optics-framework-1/tools')
+import pytest
+import requests
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("SUPERVISOR_INTEGRATION") != "1",
+    reason="integration tests spawn real processes; set SUPERVISOR_INTEGRATION=1 to run",
+)
+
+HERE = Path(__file__).resolve().parent
+SUPERVISOR_SCRIPT = HERE / "supervisor_tool.py"
 
 SUPERVISOR_HOST = "127.0.0.1"
-SUPERVISOR_PORT = 8000
-WORKER_BASE_PORT = 9000
+SUPERVISOR_PORT = 18000
+WORKER_BASE_PORT = 19000
 NUM_WORKERS = 2
+WORKER_APP = os.environ.get("SUPERVISOR_WORKER_APP", "stub_worker:app")
+
 
 class SupervisorTestFixture:
-    """Test fixture for running supervisor with workers."""
+    """Test fixture for running the supervisor with real worker processes."""
 
     def __init__(self):
         self.supervisor_process = None
-        self.worker_processes = []
+        self.base_url = f"http://{SUPERVISOR_HOST}:{SUPERVISOR_PORT}"
 
     def start(self):
-        """Start supervisor and workers."""
-        print("Starting supervisor and workers...")
+        """Start supervisor (which starts its own workers)."""
+        env = dict(os.environ)
+        env["SUPERVISOR_WORKER_APP"] = WORKER_APP
+        # Workers must be able to import the stub app module.
+        env["PYTHONPATH"] = str(HERE) + os.pathsep + env.get("PYTHONPATH", "")
 
-        # Start supervisor
-        supervisor_cmd = [
+        cmd = [
             sys.executable,
-            "/Users/dhruvmenon/Documents/optics-framework-1/tools/supervisor_tool.py",
+            str(SUPERVISOR_SCRIPT),
             "--workers", str(NUM_WORKERS),
             "--base-port", str(WORKER_BASE_PORT),
             "--host", SUPERVISOR_HOST,
-            "--port", str(SUPERVISOR_PORT)
+            "--port", str(SUPERVISOR_PORT),
         ]
-
         self.supervisor_process = subprocess.Popen(
-            supervisor_cmd,
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            env=env,
+            cwd=str(HERE),
         )
 
-        # Poll for supervisor /health until it's ready (timeout after 30s).
-        deadline = time.time() + 30
-        started = False
+        # Poll /health until ready (worker startup is serialized and slow).
+        deadline = time.time() + 60
         while time.time() < deadline:
-            # If the supervisor process died early, capture stderr and fail fast
             if self.supervisor_process.poll() is not None:
-                stderr = ""
-                try:
-                    if self.supervisor_process.stderr:
-                        stderr = self.supervisor_process.stderr.read()
-                except Exception:
-                    stderr = "<failed to read supervisor stderr>"
-                self.stop()
-                raise RuntimeError(f"Supervisor exited early during startup. Stderr:\n{stderr}")
-
+                raise RuntimeError(
+                    "Supervisor exited early during startup. Stderr:\n"
+                    + self._read_stderr()
+                )
             try:
-                response = requests.get(f"http://{SUPERVISOR_HOST}:{SUPERVISOR_PORT}/health", timeout=2)
+                response = requests.get(f"{self.base_url}/health", timeout=2)
                 if response.status_code == 200:
-                    started = True
-                    break
-            except Exception:
-                # Not ready yet
+                    return
+            except requests.RequestException:
                 pass
-
             time.sleep(0.5)
 
-        if not started:
-            stderr = ""
-            try:
-                if self.supervisor_process and self.supervisor_process.stderr:
-                    stderr = self.supervisor_process.stderr.read()
-            except Exception:
-                stderr = "<failed to read supervisor stderr>"
-            self.stop()
-            raise RuntimeError(f"Failed to start supervisor within timeout. Stderr:\n{stderr}")
+        stderr = self._read_stderr()
+        self.stop()
+        raise RuntimeError(f"Failed to start supervisor within timeout. Stderr:\n{stderr}")
 
-        print("Supervisor and workers started successfully")
+    def _read_stderr(self) -> str:
+        try:
+            if self.supervisor_process and self.supervisor_process.stderr:
+                return self.supervisor_process.stderr.read()
+        except OSError:
+            pass
+        return "<failed to read supervisor stderr>"
 
     def stop(self):
-        """Stop supervisor and workers."""
-        print("Stopping supervisor and workers...")
-
+        """Stop supervisor; it stops its own workers on shutdown."""
         if self.supervisor_process:
             self.supervisor_process.terminate()
             try:
-                self.supervisor_process.wait(timeout=10)
+                self.supervisor_process.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 self.supervisor_process.kill()
                 self.supervisor_process.wait()
 
-        # Workers should be stopped by supervisor shutdown
-        print("Supervisor and workers stopped")
-
     def get_health(self):
-        """Get supervisor health status."""
-        try:
-            response = requests.get(f"http://{SUPERVISOR_HOST}:{SUPERVISOR_PORT}/health", timeout=5)
-            return response.json()
-        except Exception as e:
-            return {"error": str(e)}
+        response = requests.get(f"{self.base_url}/health", timeout=5)
+        response.raise_for_status()
+        return response.json()
 
-    def create_session(self, config=None):
-        """Create a new session."""
-        if config is None:
-            config = {
-                "driver_sources": [
-                    {
-                        "appium": {
-                            "enabled": True,
-                            "url": "http://localhost:4723",
-                            "capabilities": {
-                                "appActivity": "com.android.contacts.activities.PeopleActivity",
-                                "appPackage": "com.google.android.contacts",
-                                "automationName": "UiAutomator2",
-                                "deviceName": "emulator-5554",
-                                "platformName": "Android"
-                            }
-                        }
-                    }
-                ],
-                "elements_sources": [
-                    {"appium_find_element": {"enabled": True}},
-                    {"appium_screenshot": {"enabled": True}},
-                    {"appium_page_source": {"enabled": True}}
-                ],
-                "text_detection": [
-                    {"easyocr": {"enabled": False}}
-                ],
-                "image_detection": [
-                    {"templatematch": {"enabled": False}}
-                ]
-            }
-
-        try:
-            response = requests.post(
-                f"http://{SUPERVISOR_HOST}:{SUPERVISOR_PORT}/v1/sessions/start",
-                json=config,
-                timeout=10
-            )
-            return response.json()
-        except Exception as e:
-            return {"error": str(e)}
+    def create_session(self):
+        response = requests.post(
+            f"{self.base_url}/v1/sessions/start",
+            json={"driver_sources": []},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
 
     def execute_action(self, session_id, action_data=None):
-        """Execute an action on a session."""
-        if action_data is None:
-            action_data = {
-                "mode": "keyword",
-                "keyword": "get_driver_session_id"
-            }
+        response = requests.post(
+            f"{self.base_url}/v1/sessions/{session_id}/action",
+            json=action_data or {"mode": "keyword", "keyword": "noop"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
 
-        try:
-            response = requests.post(
-                f"http://{SUPERVISOR_HOST}:{SUPERVISOR_PORT}/v1/sessions/{session_id}/action",
-                json=action_data,
-                timeout=10
-            )
-            return response.json()
-        except Exception as e:
-            return {"error": str(e)}
+    def stop_session(self, session_id):
+        response = requests.delete(
+            f"{self.base_url}/v1/sessions/{session_id}/stop",
+            timeout=30,
+        )
+        return response
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="module")
 def supervisor():
-    """Pytest fixture for supervisor test setup."""
+    """One supervisor (with its worker pool) shared by the whole module.
+
+    Tests must make delta-based assertions on session counts — sessions
+    accumulate across tests within the module.
+    """
     fixture = SupervisorTestFixture()
-
-    # Start supervisor
     fixture.start()
-
     yield fixture
-
-    # Cleanup
     fixture.stop()
 
 
@@ -189,146 +158,72 @@ class TestSupervisorIntegration:
     """Integration tests for supervisor tool."""
 
     def test_supervisor_health(self, supervisor):
-        """Test that supervisor health endpoint works."""
+        """Supervisor reports its worker pool as healthy."""
         health = supervisor.get_health()
 
-        assert "status" in health
         assert health["status"] == "healthy"
-        assert "active_workers" in health
         assert health["active_workers"] == NUM_WORKERS
-        assert "total_sessions" in health
-        assert health["total_sessions"] == 0
 
-    def test_session_creation(self, supervisor):
-        """Test session creation and routing."""
-        # Create a session
+    def test_session_creation_and_action(self, supervisor):
+        """A created session is routed back to the worker that owns it."""
+        before = supervisor.get_health()["total_sessions"]
+
         result = supervisor.create_session()
-
         assert "session_id" in result
-        assert "driver_id" in result
         session_id = result["session_id"]
 
-        # Check health again - should have 1 session
-        health = supervisor.get_health()
-        assert health["total_sessions"] == 1
+        assert supervisor.get_health()["total_sessions"] == before + 1
 
-        # Execute an action on the session
         action_result = supervisor.execute_action(session_id)
         assert "execution_id" in action_result
-        assert "status" in action_result
+        assert action_result["status"] == "SUCCESS"
 
     def test_session_affinity(self, supervisor):
-        """Test that the same session always routes to the same worker."""
-        # Create multiple sessions
-        sessions = []
-        for _ in range(5):
-            result = supervisor.create_session()
-            assert "session_id" in result
-            sessions.append(result["session_id"])
+        """The same session always lands on the same worker process."""
+        sessions = [supervisor.create_session()["session_id"] for _ in range(4)]
 
-        # Execute actions on each session multiple times
         for session_id in sessions:
-            for _ in range(3):
-                result = supervisor.execute_action(session_id)
-                assert "execution_id" in result
-                assert result["status"] == "SUCCESS"
+            pids = {supervisor.execute_action(session_id)["pid"] for _ in range(3)}
+            # The stub reports its pid; affinity means every action for one
+            # session hits the same process (a miss would 404 anyway).
+            assert len(pids) == 1
 
-        # Check that sessions are distributed across workers
-        health = supervisor.get_health()
-        assert health["total_sessions"] == 5
+    def test_load_balancing(self, supervisor):
+        """Sessions are spread across the worker pool round-robin."""
+        results = [supervisor.create_session() for _ in range(4)]
+        pids = {r["pid"] for r in results}
+        assert len(pids) == NUM_WORKERS
 
-        # Check session distribution
-        distribution = health.get("session_distribution", {})
-        total_sessions_in_workers = sum(distribution.values())
-        assert total_sessions_in_workers == 5
+        distribution = supervisor.get_health()["session_distribution"]
+        workers_with_sessions = [p for p, count in distribution.items() if count > 0]
+        assert len(workers_with_sessions) == NUM_WORKERS
 
     def test_concurrent_requests(self, supervisor):
-        """Test handling of concurrent requests."""
+        """Concurrent session creation and usage succeeds."""
+
         def create_and_use_session(session_num):
-            """Create a session and perform some actions."""
-            try:
-                # Create session
-                result = supervisor.create_session()
-                if "error" in result:
-                    return {"session_num": session_num, "error": result["error"]}
+            result = supervisor.create_session()
+            session_id = result["session_id"]
+            actions_completed = 0
+            for _ in range(3):
+                action_result = supervisor.execute_action(session_id)
+                if "execution_id" in action_result:
+                    actions_completed += 1
+            return {"session_num": session_num, "session_id": session_id, "actions_completed": actions_completed}
 
-                session_id = result["session_id"]
-
-                # Perform multiple actions
-                actions_completed = 0
-                for _ in range(3):
-                    action_result = supervisor.execute_action(session_id)
-                    if "execution_id" in action_result:
-                        actions_completed += 1
-
-                return {
-                    "session_num": session_num,
-                    "session_id": session_id,
-                    "actions_completed": actions_completed
-                }
-            except Exception as e:
-                return {"session_num": session_num, "error": str(e)}
-
-        # Run concurrent session creation and usage
         num_concurrent = 10
         with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
             futures = [executor.submit(create_and_use_session, i) for i in range(num_concurrent)]
             results = [future.result() for future in as_completed(futures)]
 
-        # Analyze results
-        successful_sessions = [r for r in results if "session_id" in r]
-        failed_sessions = [r for r in results if "error" in r]
+        assert len(results) == num_concurrent
+        assert all(r["actions_completed"] == 3 for r in results)
 
-        print(f"Successful sessions: {len(successful_sessions)}")
-        print(f"Failed sessions: {len(failed_sessions)}")
-
-        # Should have created most sessions successfully
-        assert len(successful_sessions) >= num_concurrent * 0.8  # At least 80% success rate
-
-        # Check final health
-        health = supervisor.get_health()
-        assert health["total_sessions"] >= len(successful_sessions)
-
-    def test_load_balancing(self, supervisor):
-        """Test that sessions are distributed across workers."""
-        # Create many sessions to test load balancing
-        sessions = []
-        for _ in range(20):
-            result = supervisor.create_session()
-            if "session_id" in result:
-                sessions.append(result["session_id"])
-
-        # Check distribution
-        health = supervisor.get_health()
-        distribution = health.get("session_distribution", {})
-
-        print(f"Session distribution: {distribution}")
-
-        # Should have sessions on multiple workers
-        workers_with_sessions = [port for port, count in distribution.items() if count > 0]
-        assert len(workers_with_sessions) >= 1  # At least one worker has sessions
-
-        # Total should match
-        total_sessions = sum(distribution.values())
-        assert total_sessions == len(sessions)
-
-    def test_fault_tolerance(self, supervisor):
-        """Test fault tolerance (basic check that monitoring is working)."""
-        # Get initial health
-        initial_health = supervisor.get_health()
-        initial_workers = initial_health["active_workers"]
-
-        # Wait a bit for monitoring to run
-        time.sleep(15)
-
-        # Check health again
-        current_health = supervisor.get_health()
-        current_workers = current_health["active_workers"]
-
-        # Workers should still be active (no crashes detected)
-        assert current_workers == initial_workers
-
-        print(f"Workers stable: {current_workers} active")
+    def test_worker_pool_stability(self, supervisor):
+        """Monitoring keeps the pool healthy over time (no false crash detection)."""
+        initial_workers = supervisor.get_health()["active_workers"]
+        time.sleep(3 * 2)  # a few MONITOR_INTERVAL ticks
+        assert supervisor.get_health()["active_workers"] == initial_workers
 
 
 if __name__ == "__main__":

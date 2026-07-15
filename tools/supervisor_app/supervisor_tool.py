@@ -14,11 +14,11 @@ import asyncio
 import json
 import logging
 import signal
-import subprocess
+import subprocess  # nosec B404 - spawning local worker processes is this tool's purpose
 import os
 import sys
 import time
-from typing import Dict, List, Optional, Any
+from typing import Any, TextIO
 from contextlib import asynccontextmanager
 
 import httpx
@@ -31,17 +31,18 @@ from dataclasses import dataclass
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Worker management
-
-
 # FastAPI app
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # Worker management
-workers: List[Dict[str, Any]] = []  # List of {"port": int, "process": subprocess.Popen, "active": bool}
-session_map: Dict[str, int] = {}  # session_id -> worker_port
+workers: list[dict[str, Any]] = []  # List of {"port": int, "process": subprocess.Popen, "active": bool, "log_path": str | None, "log_fh": TextIO | None}
+session_map: dict[str, int] = {}  # session_id -> worker_port
 worker_index = 0  # For round-robin selection
+
+# ASGI app each worker runs. Overridable so the integration-test harness can
+# point workers at a lightweight stub instead of the full optics API.
+WORKER_APP = os.environ.get("SUPERVISOR_WORKER_APP", "optics_framework.common.expose_api:app")
 
 
 @dataclass
@@ -52,6 +53,11 @@ class SupervisorConfig:
     port: int = 8000
 
 
+# Default config so importing this module (e.g. `uvicorn supervisor_tool:app`)
+# never hits an undefined name; `__main__` overrides it from CLI args.
+config = SupervisorConfig()
+
+
 # Monitoring/behavior flags
 MONITOR_INTERVAL = 2
 RESTART_WORKERS = False
@@ -59,7 +65,7 @@ RESTART_WORKERS = False
 
 # Shutdown/monitor coordination
 shutdown_event = asyncio.Event()
-monitor_task: Optional[asyncio.Task] = None
+monitor_task: asyncio.Task | None = None
 
 
 def emergency_cleanup():
@@ -90,12 +96,10 @@ async def health_check():
         "session_distribution": {port: len([s for s, p in session_map.items() if p == port]) for port in [w["port"] for w in workers]}
     }
 
-# Placeholder endpoints - will be implemented with forwarding
 @app.get("/")
 async def root():
     return {"message": "Optics Supervisor API"}
 
-# Placeholder endpoints - will be implemented with forwarding logic
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -148,79 +152,77 @@ def start_workers():
         else:
             logger.error(f"Failed to start worker on port {port}")
 
+def _signal_process_group(proc: subprocess.Popen, sig: signal.Signals, port: int) -> None:
+    """Signal a worker's process group, falling back to the single process."""
+    pid = getattr(proc, "pid", None)
+    try:
+        if pid is not None:
+            os.killpg(os.getpgid(int(pid)), sig)
+        else:
+            proc.send_signal(sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.send_signal(sig)
+        except (ProcessLookupError, OSError):
+            logger.debug("Worker pid %s on port %s already gone", pid, port)
+
+
+def _kill_orphans_on_port(port: int) -> None:
+    """Best-effort kill of any process still listening on a worker port (POSIX-only)."""
+    try:
+        # Use lsof to find processes listening on the port and kill them
+        result = subprocess.run(  # nosec B603 B607 - fixed argv, port is an int from config
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for pid in result.stdout.strip().split("\n"):
+                if pid.strip():
+                    logger.info(f"Killing orphaned process {pid} on port {port}")
+                    subprocess.run(["kill", "-9", pid.strip()], timeout=5)  # nosec B603 B607 - pids come from lsof output
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        pass  # lsof might not be available or no processes found
+
+
+def _kill_worker(worker: dict[str, Any], grace_s: float = 2.0) -> None:
+    """Tear down a single worker: SIGTERM its process group, escalate to SIGKILL,
+    close its log handle, and reap anything still bound to its port.
+
+    Isolated here so alternative launchers can override teardown without touching
+    the pool logic.
+    """
+    port = worker["port"]
+    proc = worker.get("process")
+    if proc and proc.poll() is None:
+        logger.info(f"Terminating worker process group on port {port} (pid={getattr(proc, 'pid', None)})")
+        _signal_process_group(proc, signal.SIGTERM, port)
+        try:
+            proc.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Force killing worker process group on port {port}")
+            _signal_process_group(proc, signal.SIGKILL, port)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.error("Worker on port %s did not exit after SIGKILL", port)
+
+    log_fh = worker.get("log_fh")
+    if log_fh:
+        try:
+            log_fh.close()
+        except OSError:
+            logger.debug("Failed to close log handle for worker on port %s", port)
+
+    _kill_orphans_on_port(port)
+
+
 def stop_workers():
     """Stop all worker processes."""
-    global workers, session_map
     logger.info("Stopping all workers...")
-    # First, try graceful termination by signalling the worker process group
     for worker in workers:
-        proc = worker.get("process")
-        if proc and proc.poll() is None:
-            pid = getattr(proc, "pid", None)
-            logger.info(f"Terminating worker process group on port {worker['port']} (pid={pid})")
-            try:
-                if pid is not None:
-                    pgid = os.getpgid(int(pid))
-                    os.killpg(pgid, signal.SIGTERM)
-                else:
-                    proc.terminate()
-            except Exception:
-                # Fallback to terminating the single process
-                try:
-                    proc.terminate()
-                except Exception:
-                    logger.exception("Failed to terminate worker pid %s", pid)
-
-    # Wait for processes to terminate gracefully
-    time.sleep(2)
-
-    # Force kill any remaining processes (SIGKILL to process groups)
-    for worker in workers:
-        proc = worker.get("process")
-        if proc and proc.poll() is None:
-            pid = getattr(proc, "pid", None)
-            logger.warning(f"Force killing worker process group on port {worker['port']} (pid={pid})")
-            try:
-                if pid is not None:
-                    pgid = os.getpgid(int(pid))
-                    os.killpg(pgid, signal.SIGKILL)
-                else:
-                    proc.kill()
-                    proc.wait(timeout=5)
-            except Exception:
-                # Fallback to killing single process
-                try:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                except Exception:
-                    logger.exception("Failed to force-kill worker pid %s", pid)
-        # Close log file handle if present
-        try:
-            if worker.get("log_fh"):
-                worker["log_fh"].close()
-        except Exception:
-            pass
-
-    # Also try to kill any orphaned worker processes by port
-    for worker in workers:
-        port = worker["port"]
-        try:
-            # Use lsof to find processes listening on the port and kill them
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port}"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                pids = result.stdout.strip().split('\n')
-                for pid in pids:
-                    if pid.strip():
-                        logger.info(f"Killing orphaned process {pid} on port {port}")
-                        subprocess.run(["kill", "-9", pid.strip()], timeout=5)
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-            pass  # lsof might not be available or no processes found
-
+        _kill_worker(worker)
     workers.clear()
     session_map.clear()
     logger.info("All workers stopped")
@@ -263,9 +265,16 @@ def check_worker_health():
                 logger.info(f"Waiting before restarting worker on port {port}")
                 time.sleep(5)  # Wait 5 seconds before restart
                 logger.info(f"Attempting to restart worker on port {port}")
-                new_process = start_worker_process(port)
+                old_fh = worker.get("log_fh")
+                if old_fh:
+                    try:
+                        old_fh.close()
+                    except OSError:
+                        logger.debug("Failed to close old log handle for worker on port %s", port)
+                new_process, new_log_fh = start_worker_process(port, worker.get("log_path"))
                 if new_process:
                     worker["process"] = new_process
+                    worker["log_fh"] = new_log_fh
                     worker["active"] = True
                     logger.info(f"Restarted worker on port {port}")
                 else:
@@ -274,8 +283,8 @@ def check_worker_health():
     if crashed_workers:
         logger.warning(f"Crashed workers: {crashed_workers}. Active workers: {len([w for w in workers if w['active']])}")
 
-def start_worker_process(port: int, log_path: Optional[str] = None) -> tuple[Optional[subprocess.Popen], Optional[object]]:
-    """Start a single worker process running optics serve and redirect output to log_path.
+def start_worker_process(port: int, log_path: str | None = None) -> tuple[subprocess.Popen | None, TextIO | None]:
+    """Start a single worker process running the optics API and redirect output to log_path.
 
     Returns a tuple of (process, log_file_handle).
     """
@@ -284,23 +293,25 @@ def start_worker_process(port: int, log_path: Optional[str] = None) -> tuple[Opt
         # Use uvicorn directly to run the optics API
         cmd = [
             sys.executable, "-m", "uvicorn",
-            "optics_framework.common.expose_api:app",
+            WORKER_APP,
             "--host", "127.0.0.1",
             "--port", str(port),
             "--log-level", "info"
         ]
         logger.info(f"Starting worker with command: {' '.join(cmd)}")
-        log_fh = None
         if log_path:
             log_fh = open(log_path, "a", encoding="utf-8", errors="replace")
-            process = subprocess.Popen(
-                cmd,
-                stdout=log_fh,
-                stderr=log_fh,
-                text=True
-            )
-        else:
-            process = subprocess.Popen(cmd, text=True)
+
+        # start_new_session gives each worker its own process group, so the
+        # killpg-based teardown in _kill_worker targets only that worker and
+        # never the supervisor's own group.
+        process = subprocess.Popen(  # nosec B603 - argv is sys.executable plus validated config values
+            cmd,
+            stdout=log_fh,
+            stderr=log_fh,
+            text=True,
+            start_new_session=True,
+        )
 
         # Give it a moment to start
         time.sleep(2)
@@ -308,21 +319,20 @@ def start_worker_process(port: int, log_path: Optional[str] = None) -> tuple[Opt
         if process.poll() is None:
             logger.info(f"Worker on port {port} started successfully")
             return process, log_fh
-        else:
-            logger.error(f"Worker on port {port} exited immediately with code {process.poll()}")
-            if log_fh:
-                log_fh.close()
-            return None, None
-    except Exception as e:
+        logger.error(f"Worker on port {port} exited immediately with code {process.poll()}")
+        if log_fh:
+            log_fh.close()
+        return None, None
+    except OSError as e:
         logger.error(f"Failed to start worker process on port {port}: {e}")
-        try:
-            if log_fh:
+        if log_fh:
+            try:
                 log_fh.close()
-        except Exception:
-            pass
+            except OSError:
+                logger.debug("Failed to close log handle for worker on port %s", port)
         return None, None
 
-def get_next_worker_port() -> Optional[int]:
+def get_next_worker_port() -> int | None:
     """Get next available worker port using round-robin."""
     global worker_index
     active_workers = [w for w in workers if w["active"]]
@@ -333,7 +343,7 @@ def get_next_worker_port() -> Optional[int]:
     worker_index += 1
     return port
 
-def select_worker_for_session(session_id: str) -> Optional[int]:
+def select_worker_for_session(session_id: str) -> int | None:
     """Select worker for a session. If session exists, return its worker; otherwise, assign new."""
     if session_id in session_map:
         return session_map[session_id]
@@ -344,7 +354,7 @@ def select_worker_for_session(session_id: str) -> Optional[int]:
             session_map[session_id] = port
         return port
 
-async def forward_request(method: str, url: str, headers: Dict[str, str], body: Optional[bytes] = None) -> httpx.Response:
+async def forward_request(method: str, url: str, headers: dict[str, str], body: bytes | None = None) -> httpx.Response:
     """Forward request to worker and return httpx response.
 
     Increased timeout and improved logging to aid diagnosing slow or failing upstream workers.
@@ -450,7 +460,7 @@ async def forward_to_worker(path: str, request: Request):
 
     return convert_httpx_to_fastapi_response(httpx_response)
 
-def extract_session_id_from_path(path: str) -> Optional[str]:
+def extract_session_id_from_path(path: str) -> str | None:
     """Extract session_id from URL path if present."""
     if "/sessions/" not in path and "/session/" not in path:
         return None
