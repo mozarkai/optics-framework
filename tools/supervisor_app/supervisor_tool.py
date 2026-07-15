@@ -27,6 +27,8 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dataclasses import dataclass
 
+from routing_store import InMemoryRoutingStore, RoutingStore
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,14 +37,33 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# Worker management
+# Local process handles for the workers THIS supervisor spawned. Routing never
+# reads this list — routes and the live-worker registry live in `store`.
 workers: list[dict[str, Any]] = []  # List of {"port": int, "process": subprocess.Popen, "active": bool, "log_path": str | None, "log_fh": TextIO | None}
-session_map: dict[str, int] = {}  # session_id -> worker_port
-worker_index = 0  # For round-robin selection
 
 # ASGI app each worker runs. Overridable so the integration-test harness can
 # point workers at a lightweight stub instead of the full optics API.
 WORKER_APP = os.environ.get("SUPERVISOR_WORKER_APP", "optics_framework.common.expose_api:app")
+
+# How long a worker registration stays live without a heartbeat.
+WORKER_TTL_S = float(os.environ.get("SUPERVISOR_WORKER_TTL_S", "10"))
+
+
+def _create_store() -> RoutingStore:
+    """Build the routing store. In-memory is the only backend for now;
+    SUPERVISOR_STORE selects a shared backend in a later upgrade."""
+    return InMemoryRoutingStore()
+
+
+store: RoutingStore = _create_store()
+
+
+def _endpoint_for_port(port: int) -> str:
+    return f"http://127.0.0.1:{port}"
+
+
+def _port_from_endpoint(endpoint: str) -> int:
+    return int(endpoint.rsplit(":", 1)[1])
 
 
 @dataclass
@@ -85,15 +106,19 @@ atexit.register(emergency_cleanup)
 @app.get("/health")
 async def health_check():
     """Supervisor health check endpoint."""
-    active_workers = [w for w in workers if w["active"]]
+    live_endpoints = store.list_live_workers()
+    routes = store.list_routes()
     crashed_workers = [w["port"] for w in workers if not w["active"]]
     return {
-        "status": "healthy" if active_workers else "unhealthy",
-        "active_workers": len(active_workers),
+        "status": "healthy" if live_endpoints else "unhealthy",
+        "active_workers": len(live_endpoints),
         "total_workers": len(workers),
         "crashed_workers": crashed_workers,
-        "total_sessions": len(session_map),
-        "session_distribution": {port: len([s for s, p in session_map.items() if p == port]) for port in [w["port"] for w in workers]}
+        "total_sessions": len(routes),
+        "session_distribution": {
+            _port_from_endpoint(endpoint): sum(1 for ep in routes.values() if ep == endpoint)
+            for endpoint in live_endpoints
+        },
     }
 
 @app.get("/")
@@ -108,8 +133,10 @@ async def lifespan(app: FastAPI):
     # Reset shutdown event
     shutdown_event.clear()
 
-    # Clear any existing state
-    session_map.clear()
+    # Clear any existing local state; a fresh store instance drops nothing
+    # shared (in-memory state is per-process anyway).
+    global store
+    store = _create_store()
     workers.clear()
     start_workers()
 
@@ -138,7 +165,6 @@ app.router.lifespan_context = lifespan
 
 def start_workers():
     """Start worker processes."""
-    global workers
     for i in range(config.num_workers):
         port = config.base_port + i
         logger.info(f"Starting worker on port {port}")
@@ -148,9 +174,14 @@ def start_workers():
         worker_process, log_fh = start_worker_process(port, log_path)
         if worker_process:
             workers.append({"port": port, "process": worker_process, "active": True, "log_path": log_path, "log_fh": log_fh})
+            store.register_worker(_endpoint_for_port(port), WORKER_TTL_S)
             time.sleep(5)  # Increased delay to allow worker to fully start
         else:
             logger.error(f"Failed to start worker on port {port}")
+
+    # Startup is serialized and can outlast WORKER_TTL_S with several workers;
+    # refresh every registration before requests start flowing.
+    _heartbeat_workers()
 
 def _signal_process_group(proc: subprocess.Popen, sig: signal.Signals, port: int) -> None:
     """Signal a worker's process group, falling back to the single process."""
@@ -219,12 +250,19 @@ def _kill_worker(worker: dict[str, Any], grace_s: float = 2.0) -> None:
 
 
 def stop_workers():
-    """Stop all worker processes."""
+    """Stop all worker processes owned by this supervisor."""
     logger.info("Stopping all workers...")
+    my_endpoints = {_endpoint_for_port(w["port"]) for w in workers}
+    # Only this supervisor's workers and their routes are removed — a shared
+    # store may hold routes owned by other replicas.
+    for endpoint in my_endpoints:
+        store.deregister_worker(endpoint)
+    for session_id, endpoint in store.list_routes().items():
+        if endpoint in my_endpoints:
+            store.delete_route(session_id)
     for worker in workers:
         _kill_worker(worker)
     workers.clear()
-    session_map.clear()
     logger.info("All workers stopped")
 
 async def monitor_workers():
@@ -236,12 +274,19 @@ async def monitor_workers():
         except asyncio.TimeoutError:
             # Timeout reached, check worker health
             check_worker_health()
+            _heartbeat_workers()
 
     logger.info("Monitor task stopping due to shutdown signal")
 
+
+def _heartbeat_workers():
+    """Refresh the store TTL of every locally-owned live worker."""
+    for worker in workers:
+        if worker["active"]:
+            store.heartbeat_worker(_endpoint_for_port(worker["port"]), WORKER_TTL_S)
+
 def check_worker_health():
     """Check health of all workers and handle failures."""
-    global workers, session_map
     crashed_workers = []
 
     for worker in workers:
@@ -254,10 +299,12 @@ def check_worker_health():
             worker["active"] = False
             crashed_workers.append(port)
 
-            # Clean up sessions for this worker
-            affected_sessions = [sid for sid, wport in session_map.items() if wport == port]
+            # Remove the dead worker from the registry and its sessions' routes
+            endpoint = _endpoint_for_port(port)
+            store.deregister_worker(endpoint)
+            affected_sessions = [sid for sid, ep in store.list_routes().items() if ep == endpoint]
             for session_id in affected_sessions:
-                del session_map[session_id]
+                store.delete_route(session_id)
                 logger.info(f"Cleaned up session {session_id} due to worker crash on port {port}")
 
             # Optional: Restart worker (with delay to avoid rapid restart loops)
@@ -276,6 +323,7 @@ def check_worker_health():
                     worker["process"] = new_process
                     worker["log_fh"] = new_log_fh
                     worker["active"] = True
+                    store.register_worker(_endpoint_for_port(port), WORKER_TTL_S)
                     logger.info(f"Restarted worker on port {port}")
                 else:
                     logger.error(f"Failed to restart worker on port {port}")
@@ -332,27 +380,16 @@ def start_worker_process(port: int, log_path: str | None = None) -> tuple[subpro
                 logger.debug("Failed to close log handle for worker on port %s", port)
         return None, None
 
-def get_next_worker_port() -> int | None:
-    """Get next available worker port using round-robin."""
-    global worker_index
-    active_workers = [w for w in workers if w["active"]]
-    if not active_workers:
-        return None
-
-    port = active_workers[worker_index % len(active_workers)]["port"]
-    worker_index += 1
-    return port
-
-def select_worker_for_session(session_id: str) -> int | None:
-    """Select worker for a session. If session exists, return its worker; otherwise, assign new."""
-    if session_id in session_map:
-        return session_map[session_id]
-    else:
-        # New session - assign to next worker
-        port = get_next_worker_port()
-        if port:
-            session_map[session_id] = port
-        return port
+def select_worker_for_session(session_id: str) -> str | None:
+    """Return the endpoint owning a session; assign a new worker if unrouted."""
+    endpoint = store.get_route(session_id)
+    if endpoint:
+        return endpoint
+    # New session - assign to next worker
+    endpoint = store.next_worker()
+    if endpoint:
+        store.put_route(session_id, endpoint)
+    return endpoint
 
 async def forward_request(method: str, url: str, headers: dict[str, str], body: bytes | None = None) -> httpx.Response:
     """Forward request to worker and return httpx response.
@@ -392,11 +429,11 @@ def convert_httpx_to_fastapi_response(httpx_response: httpx.Response) -> Respons
 @app.post("/v1/sessions/start")
 async def create_session(request: Request):
     """Create a new session by forwarding to a worker."""
-    port = get_next_worker_port()
-    if not port:
+    endpoint = store.next_worker()
+    if not endpoint:
         return Response(content=b"No workers available", status_code=503)
 
-    worker_url = f"http://127.0.0.1:{port}/v1/sessions/start"
+    worker_url = f"{endpoint}/v1/sessions/start"
 
     # Forward the request
     body_bytes = await request.body()
@@ -417,15 +454,16 @@ async def create_session(request: Request):
             (httpx_response.content.decode('utf-8', errors='replace')[:200] if httpx_response.content else "<empty>")
         )
 
-    # If successful, extract session_id and store mapping
+    # The worker mints the session_id, so the route can only be written after
+    # a successful forward — never before.
     if httpx_response.status_code == 200:
         try:
             response_data = httpx_response.content.decode('utf-8')
             session_data = json.loads(response_data)
             session_id = session_data.get("session_id")
             if session_id:
-                session_map[session_id] = port
-                logger.info(f"Mapped session {session_id} to worker on port {port}")
+                store.put_route(session_id, endpoint)
+                logger.info(f"Mapped session {session_id} to worker at {endpoint}")
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(f"Failed to extract session_id from response: {e}")
 
@@ -439,16 +477,16 @@ async def forward_to_worker(path: str, request: Request):
     session_id = extract_session_id_from_path(path)
 
     if session_id:
-        port = select_worker_for_session(session_id)
-        if not port:
+        endpoint = select_worker_for_session(session_id)
+        if not endpoint:
             return Response(content=b"No worker available for session", status_code=503)
     else:
         # For non-session endpoints, use round-robin
-        port = get_next_worker_port()
-        if not port:
+        endpoint = store.next_worker()
+        if not endpoint:
             return Response(content=b"No workers available", status_code=503)
 
-    worker_url = f"http://127.0.0.1:{port}/{path}"
+    worker_url = f"{endpoint}/{path}"
 
     # Forward the request
     httpx_response = await forward_request(
@@ -457,6 +495,12 @@ async def forward_to_worker(path: str, request: Request):
         headers=dict(request.headers),
         body=await request.body()
     )
+
+    # A successfully-stopped session no longer needs its route
+    # (the worker's stop endpoint is DELETE /v1/sessions/{id}/stop).
+    if session_id and path.rstrip("/").endswith("/stop") and 200 <= httpx_response.status_code < 300:
+        store.delete_route(session_id)
+        logger.info(f"Removed route for terminated session {session_id}")
 
     return convert_httpx_to_fastapi_response(httpx_response)
 

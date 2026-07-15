@@ -32,17 +32,24 @@ test_app.get("/health")(st.health_check)
 test_app.post("/v1/sessions/start")(st.create_session)
 test_app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])(st.forward_to_worker)
 
+SESSION_ID = "12345678-1234-5678-9012-123456789012"
+
+
+def _register_pool(*ports: int):
+    """Register pool workers both locally and in the routing store."""
+    for port in ports:
+        st.workers.append({"port": port, "process": Mock(), "active": True})
+        st.store.register_worker(st._endpoint_for_port(port), st.WORKER_TTL_S)
+
 
 @pytest.fixture(autouse=True)
 def reset_state():
     """Reset supervisor global state before each test."""
     st.workers.clear()
-    st.session_map.clear()
-    st.worker_index = 0
+    st.store = st._create_store()
     yield
     st.workers.clear()
-    st.session_map.clear()
-    st.worker_index = 0
+    st.store = st._create_store()
 
 
 class TestSupervisorConfig:
@@ -76,7 +83,7 @@ class TestWorkerManagement:
     @patch("supervisor_tool.time.sleep")
     @patch("supervisor_tool.start_worker_process")
     def test_start_workers(self, mock_start, _mock_sleep):
-        """Test starting worker processes."""
+        """Started workers appear in the local pool and the store registry."""
         st.config.num_workers = 2
         st.config.base_port = 9000
         mock_start.side_effect = lambda port, log_path=None: (Mock(), None)
@@ -87,11 +94,15 @@ class TestWorkerManagement:
         assert st.workers[0]["port"] == 9000
         assert st.workers[1]["port"] == 9001
         assert all(w["active"] for w in st.workers)
+        assert st.store.list_live_workers() == [
+            "http://127.0.0.1:9000",
+            "http://127.0.0.1:9001",
+        ]
 
     @patch("supervisor_tool.time.sleep")
     @patch("supervisor_tool.start_worker_process")
     def test_start_workers_partial_failure(self, mock_start, _mock_sleep):
-        """A worker that fails to start is not added to the pool."""
+        """A worker that fails to start is registered nowhere."""
         st.config.num_workers = 2
         st.config.base_port = 9000
         mock_start.side_effect = [(Mock(), None), (None, None)]
@@ -99,20 +110,32 @@ class TestWorkerManagement:
         st.start_workers()
 
         assert len(st.workers) == 1
-        assert st.workers[0]["port"] == 9000
+        assert st.store.list_live_workers() == ["http://127.0.0.1:9000"]
 
     @patch("supervisor_tool._kill_worker")
     def test_stop_workers(self, mock_kill):
-        """Test stopping worker processes clears state and tears down each worker."""
-        st.workers.append({"port": 9000, "process": Mock(), "active": True})
-        st.workers.append({"port": 9001, "process": Mock(), "active": True})
-        st.session_map["some-session"] = 9000
+        """Stopping tears down each worker and clears its registry entries and routes."""
+        _register_pool(9000, 9001)
+        st.store.put_route("some-session", "http://127.0.0.1:9000")
 
         st.stop_workers()
 
         assert mock_kill.call_count == 2
         assert len(st.workers) == 0
-        assert len(st.session_map) == 0
+        assert st.store.list_live_workers() == []
+        assert st.store.get_route("some-session") is None
+
+    @patch("supervisor_tool._kill_worker")
+    def test_stop_workers_leaves_foreign_routes(self, mock_kill):
+        """A supervisor only cleans up routes that point at its own workers."""
+        _register_pool(9000)
+        st.store.put_route("mine", "http://127.0.0.1:9000")
+        st.store.put_route("someone-elses", "http://10.0.0.9:9000")
+
+        st.stop_workers()
+
+        assert st.store.get_route("mine") is None
+        assert st.store.get_route("someone-elses") == "http://10.0.0.9:9000"
 
     @patch("supervisor_tool._kill_orphans_on_port")
     def test_kill_worker_graceful(self, mock_orphans):
@@ -131,24 +154,28 @@ class TestWorkerManagement:
         log_fh.close.assert_called_once()
         mock_orphans.assert_called_once_with(9000)
 
-    def test_get_next_worker_port_round_robin(self):
-        """Test round-robin worker selection."""
-        st.workers.append({"port": 9000, "active": True})
-        st.workers.append({"port": 9001, "active": True})
-        st.workers.append({"port": 9002, "active": False})  # Inactive worker
+    def test_round_robin_over_live_workers(self):
+        """next_worker rotates over live store registrations."""
+        _register_pool(9000, 9001)
 
-        assert st.get_next_worker_port() == 9000
-        assert st.get_next_worker_port() == 9001
-        assert st.get_next_worker_port() == 9000
+        assert st.store.next_worker() == "http://127.0.0.1:9000"
+        assert st.store.next_worker() == "http://127.0.0.1:9001"
+        assert st.store.next_worker() == "http://127.0.0.1:9000"
 
-    def test_get_next_worker_port_no_active(self):
-        """Test behavior when no workers are active."""
-        st.workers.append({"port": 9000, "active": False})
+    def test_next_worker_none_when_empty(self):
+        """No registered workers means no pick."""
+        assert st.store.next_worker() is None
 
-        assert st.get_next_worker_port() is None
+    def test_heartbeat_keeps_worker_alive(self):
+        """Workers expire from the registry without heartbeats."""
+        st.store.register_worker("http://127.0.0.1:9000", ttl_s=0.0)
+        assert st.store.list_live_workers() == []
+
+        st.store.register_worker("http://127.0.0.1:9000", ttl_s=10.0)
+        assert st.store.list_live_workers() == ["http://127.0.0.1:9000"]
 
 
-class TestWorkerRestart:
+class TestWorkerCrashHandling:
     """Test crash detection and restart handling."""
 
     def _crashed_worker(self):
@@ -162,17 +189,19 @@ class TestWorkerRestart:
             "log_fh": Mock(),
         }
 
-    def test_crash_cleans_up_sessions(self):
-        """Sessions mapped to a crashed worker are removed."""
+    def test_crash_cleans_up_registry_and_routes(self):
+        """A crashed worker is deregistered and its sessions' routes removed."""
         st.workers.append(self._crashed_worker())
-        st.session_map["dead-session"] = 9000
-        st.session_map["other-session"] = 9001
+        st.store.register_worker("http://127.0.0.1:9000", st.WORKER_TTL_S)
+        st.store.put_route("dead-session", "http://127.0.0.1:9000")
+        st.store.put_route("other-session", "http://127.0.0.1:9001")
 
         st.check_worker_health()
 
         assert st.workers[0]["active"] is False
-        assert "dead-session" not in st.session_map
-        assert "other-session" in st.session_map
+        assert st.store.list_live_workers() == []
+        assert st.store.get_route("dead-session") is None
+        assert st.store.get_route("other-session") == "http://127.0.0.1:9001"
 
     @patch("supervisor_tool.time.sleep")
     @patch("supervisor_tool.start_worker_process")
@@ -192,31 +221,32 @@ class TestWorkerRestart:
         assert worker["process"] is new_proc
         assert worker["log_fh"] is new_fh
         assert worker["active"] is True
+        assert st.store.list_live_workers() == ["http://127.0.0.1:9000"]
 
 
-class TestSessionMapping:
-    """Test session mapping functions."""
+class TestSessionRouting:
+    """Test session routing decisions."""
 
     @pytest.fixture(autouse=True)
     def two_workers(self):
-        st.workers.append({"port": 9000, "active": True})
-        st.workers.append({"port": 9001, "active": True})
+        _register_pool(9000, 9001)
 
     def test_select_worker_for_existing_session(self):
-        """Test selecting worker for existing session."""
-        st.session_map["test-session-123"] = 9001
+        """An already-routed session keeps its worker."""
+        st.store.put_route("test-session-123", "http://127.0.0.1:9001")
 
-        assert st.select_worker_for_session("test-session-123") == 9001
+        assert st.select_worker_for_session("test-session-123") == "http://127.0.0.1:9001"
 
     def test_select_worker_for_new_session(self):
-        """Test selecting worker for new session."""
-        port = st.select_worker_for_session("new-session-456")
-        assert port in [9000, 9001]
-        assert st.session_map["new-session-456"] == port
+        """An unrouted session is assigned a live worker and remembered."""
+        endpoint = st.select_worker_for_session("new-session-456")
+        assert endpoint in ["http://127.0.0.1:9000", "http://127.0.0.1:9001"]
+        assert st.store.get_route("new-session-456") == endpoint
 
     def test_select_worker_no_workers(self):
-        """Test behavior when no workers are available."""
+        """No live workers means no route."""
         st.workers.clear()
+        st.store = st._create_store()
 
         assert st.select_worker_for_session("test-session") is None
 
@@ -227,9 +257,9 @@ class TestPathParsing:
     def test_extract_session_id_from_path_valid(self):
         """Test extracting session ID from valid paths."""
         test_cases = [
-            ("/v1/sessions/12345678-1234-5678-9012-123456789012/action", "12345678-1234-5678-9012-123456789012"),
-            ("/v1/session/12345678-1234-5678-9012-123456789012/screenshot", "12345678-1234-5678-9012-123456789012"),
-            ("/v1/sessions/12345678-1234-5678-9012-123456789012/events", "12345678-1234-5678-9012-123456789012"),
+            (f"/v1/sessions/{SESSION_ID}/action", SESSION_ID),
+            (f"/v1/session/{SESSION_ID}/screenshot", SESSION_ID),
+            (f"/v1/sessions/{SESSION_ID}/events", SESSION_ID),
         ]
 
         for path, expected in test_cases:
@@ -262,10 +292,24 @@ class TestAPIEndpoints:
             assert "active_workers" in data
             assert "total_sessions" in data
 
+    def test_health_reports_distribution(self):
+        """Health surfaces sessions per live worker."""
+        _register_pool(9000, 9001)
+        st.store.put_route("s1", "http://127.0.0.1:9000")
+        st.store.put_route("s2", "http://127.0.0.1:9000")
+
+        with TestClient(test_app) as client:
+            data = client.get("/health").json()
+
+        assert data["status"] == "healthy"
+        assert data["active_workers"] == 2
+        assert data["total_sessions"] == 2
+        assert data["session_distribution"] == {"9000": 2, "9001": 0}
+
     @patch("supervisor_tool.forward_request")
     def test_create_session_endpoint(self, mock_forward):
         """Test session creation endpoint."""
-        st.workers.append({"port": 9000, "active": True})
+        _register_pool(9000)
 
         # Mock successful response with session_id
         mock_response = Mock()
@@ -278,7 +322,7 @@ class TestAPIEndpoints:
             response = client.post("/v1/sessions/start", json={"driver_sources": []})
 
             assert response.status_code == 200
-            assert st.session_map["test-session-123"] == 9000
+            assert st.store.get_route("test-session-123") == "http://127.0.0.1:9000"
 
     def test_create_session_no_workers(self):
         """Session creation without workers returns 503."""
@@ -289,7 +333,7 @@ class TestAPIEndpoints:
     @patch("supervisor_tool.forward_request")
     def test_create_session_failure_does_not_map(self, mock_forward):
         """A non-200 from the worker must not create a route."""
-        st.workers.append({"port": 9000, "active": True})
+        _register_pool(9000)
 
         mock_response = Mock()
         mock_response.status_code = 500
@@ -301,14 +345,13 @@ class TestAPIEndpoints:
             response = client.post("/v1/sessions/start", json={"driver_sources": []})
 
             assert response.status_code == 500
-            assert len(st.session_map) == 0
+            assert st.store.list_routes() == {}
 
     @patch("supervisor_tool.forward_request")
     def test_forward_to_worker_with_session(self, mock_forward):
         """Test forwarding request with session ID."""
-        session_id = "12345678-1234-5678-9012-123456789012"
-        st.workers.append({"port": 9000, "active": True})
-        st.session_map[session_id] = 9000
+        _register_pool(9000)
+        st.store.put_route(SESSION_ID, "http://127.0.0.1:9000")
 
         mock_response = Mock()
         mock_response.status_code = 200
@@ -317,7 +360,7 @@ class TestAPIEndpoints:
         mock_forward.return_value = mock_response
 
         with TestClient(test_app) as client:
-            response = client.post(f"/v1/sessions/{session_id}/action", json={"keyword": "test"})
+            response = client.post(f"/v1/sessions/{SESSION_ID}/action", json={"keyword": "test"})
 
             assert response.status_code == 200
             mock_forward.assert_called_once()
@@ -327,7 +370,7 @@ class TestAPIEndpoints:
     @patch("supervisor_tool.forward_request")
     def test_forward_to_worker_no_session(self, mock_forward):
         """Test forwarding request without session ID."""
-        st.workers.append({"port": 9000, "active": True})
+        _register_pool(9000)
 
         mock_response = Mock()
         mock_response.status_code = 200
@@ -340,6 +383,42 @@ class TestAPIEndpoints:
 
             assert response.status_code == 200
             mock_forward.assert_called_once()
+
+    @patch("supervisor_tool.forward_request")
+    def test_stop_session_deletes_route(self, mock_forward):
+        """A successful stop removes the session's route."""
+        _register_pool(9000)
+        st.store.put_route(SESSION_ID, "http://127.0.0.1:9000")
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.content = b'{"status": "terminated"}'
+        mock_response.headers = {"content-type": "application/json"}
+        mock_forward.return_value = mock_response
+
+        with TestClient(test_app) as client:
+            response = client.delete(f"/v1/sessions/{SESSION_ID}/stop")
+
+            assert response.status_code == 200
+            assert st.store.get_route(SESSION_ID) is None
+
+    @patch("supervisor_tool.forward_request")
+    def test_failed_stop_keeps_route(self, mock_forward):
+        """A failed stop (worker error) must not drop the route."""
+        _register_pool(9000)
+        st.store.put_route(SESSION_ID, "http://127.0.0.1:9000")
+
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.content = b'{"detail": "boom"}'
+        mock_response.headers = {"content-type": "application/json"}
+        mock_forward.return_value = mock_response
+
+        with TestClient(test_app) as client:
+            response = client.delete(f"/v1/sessions/{SESSION_ID}/stop")
+
+            assert response.status_code == 500
+            assert st.store.get_route(SESSION_ID) == "http://127.0.0.1:9000"
 
 
 if __name__ == "__main__":
