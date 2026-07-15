@@ -21,6 +21,8 @@ repos:
       - id: end-of-file-fixer
         exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
       - id: check-yaml
+        # Kubernetes manifests (tools/supervisor_app/deploy/) are multi-doc
+        args: ["--allow-multiple-documents"]
         exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|mkdocs\.yml)'
       - id: check-json
         exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
