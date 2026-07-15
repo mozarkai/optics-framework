@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
-from selenium.common import WebDriverException
+from selenium.common import WebDriverException, NoSuchElementException
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
@@ -972,9 +972,15 @@ class Appium(DriverInterface):
         try:
             # path for android
             driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text})
-        except WebDriverException as e:
+        except WebDriverException:
             # path for ios because MOBILE_TYPE_COMMAND doesn't exist for ios which uses XCUITest
-            driver.switch_to.active_element.send_keys(text)
+            try:
+                driver.switch_to.active_element.send_keys(text)
+            except NoSuchElementException:
+                # this executes when no element is focussed on the ios device
+                internal_logger.error(
+                    "No element currently has keyboard focus; cannot enter text directly."
+                )
 
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
