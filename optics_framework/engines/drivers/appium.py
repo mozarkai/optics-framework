@@ -4,6 +4,7 @@ from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException, NoSuchElementException
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.options.ios import XCUITestOptions # type: ignore
@@ -77,6 +78,21 @@ class Appium(DriverInterface):
         SpecialKey.POWER: 26,
         SpecialKey.CAMERA: 27,
         SpecialKey.SEARCH: 84,
+    }
+    # ios fallback for the "Basic keys" subset of KEYCODE_MAP press_keycode is a
+    # uiautomator2 only android command with no XCUITest equivalent, so these keys
+    # are sent as W3C Keys codepoints to the focused element instead. The
+    # Mobile/System keys above are Android hardware buttons with no ios equivalent
+    #
+    # We can't use XCUITest's own `mobile: keys` execute method here either -
+    # per its docs it only works on iPad; calling it on iPhone has no effect:
+    # https://appium.github.io/appium-xcuitest-driver/11.17/reference/execute-methods/#mobile-keys
+    SELENIUM_KEY_MAP = {
+        SpecialKey.ENTER: Keys.ENTER,
+        SpecialKey.TAB: Keys.TAB,
+        SpecialKey.BACKSPACE: Keys.BACK_SPACE,
+        SpecialKey.SPACE: Keys.SPACE,
+        SpecialKey.ESCAPE: Keys.ESCAPE,
     }
 
 
@@ -982,6 +998,31 @@ class Appium(DriverInterface):
                     "No element currently has keyboard focus; cannot enter text directly."
                 )
 
+    def _press_special_key(self, driver: Any, key: SpecialKey, keycode: int) -> None:
+        # `press_keycode` is a UiAutomator2-only Android keyevent command; XCUITest has
+        # no equivalent, so fall back to sending the matching W3C Keys codepoint
+        # (https://appium.readthedocs.io/en/stable/en/commands/element/actions/send-keys/)
+        # to whichever element currently has keyboard focus.
+        try:
+            driver.press_keycode(keycode)
+        except WebDriverException:
+            selenium_key = self.SELENIUM_KEY_MAP.get(key)
+            if selenium_key is None:
+                raise OpticsError(
+                    Code.E0401,
+                    message=f"Special key '{key.value}' is not supported on this platform.",
+                )
+            try:
+                driver.switch_to.active_element.send_keys(selenium_key)
+            except NoSuchElementException:
+                internal_logger.error(
+                    "No element currently has keyboard focus; cannot send special key."
+                )
+                raise OpticsError(
+                    Code.E0401,
+                    message="No element currently has keyboard focus.",
+                )
+
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
@@ -994,7 +1035,7 @@ class Appium(DriverInterface):
                     f"Pressing Detected SpecialKey: {text}. Keycode: {keycode}"
                 )
                 internal_logger.debug(f"Pressing SpecialKey: {text}")
-                driver.press_keycode(keycode)
+                self._press_special_key(driver, text, keycode)
             else:
                 internal_logger.warning(f"Unknown special key: {text}")
                 internal_logger.debug(f"Unknown special key, treating as text: {text}")
@@ -1025,7 +1066,7 @@ class Appium(DriverInterface):
         if keycode is not None:
             internal_logger.debug(f"Pressing Detected SpecialKey: {text}. Keycode: {keycode}")
             internal_logger.debug(f"Pressing SpecialKey: {text}")
-            driver.press_keycode(keycode)
+            self._press_special_key(driver, text, keycode)
             return
         internal_logger.warning(f"Unknown special key: {text}")
         internal_logger.debug(f"Unknown special key, treating as text: {text}")
