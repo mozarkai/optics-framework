@@ -198,13 +198,13 @@ For an `execute` run, `config.execution_output_path` (default `<project>/executi
 - **`OPTICS_EVENT_DRAIN_TIMEOUT_S`** (`execution.py:266`, default `2.0`) caps shutdown-side event flushing. Truncated JUnit XML on long runs → raise this env before debugging logic.
 - **Robot Framework is optional.** `optics.py:53` provides no-op `keyword` / `library` decorators when `robotframework` isn't installed. Don't hard-import `robot.api`; mirror the try/except.
 - **`element_source.locate` stubs hide strategies.** `LocatorStrategy._is_method_implemented` (`strategies.py:66`) reads source to detect bodies that just `raise NotImplementedError` and excludes that source from the strategy. A poorly-stubbed new element source can silently disappear from the strategy list.
-- **Two test trees.** `tests/units/` and `tests/feature/` both run under one `pytest` invocation (`pyproject.toml:83`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
+- **Two test trees.** `tests/units/` and `tests/feature/` both run under one `pytest` invocation (`pytest.toml`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
 
 ## Commands
 
 ```bash
 poetry install --with dev,test,docs       # full setup
-poetry run pytest                          # tests + coverage (configured in pyproject.toml)
+poetry run pytest                          # tests + coverage (configured in pytest.toml)
 poetry run pytest -m white_box             # unit subset
 poetry run ruff check --fix .              # lint + autofix
 poetry run pre-commit run --files <paths>  # hook chain on touched files
