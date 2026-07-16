@@ -87,6 +87,7 @@ nav:
     - Contributing Guidelines: contribution/contributing_guidelines.md
     - Developer Guide: contribution/developer_guide.md
     - Help Wanted: contribution/help_wanted.md
+    - "Design: Stateless API Layer": contribution/stateless_api_design.md
     - Code of Conduct: contribution/code_of_conduct.md
 
 plugins:

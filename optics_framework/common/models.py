@@ -305,6 +305,54 @@ class TemplateData(BaseModel):
         return self.templates.get(name)
 
 
+class SessionStatus(str, Enum):
+    """Lifecycle of a session as recorded in the session store."""
+    CREATING = "creating"
+    ACTIVE = "active"
+    DETACHED = "detached"     # runtime dropped, backend driver session still alive
+    TERMINATED = "terminated"
+
+
+class DriverBinding(BaseModel):
+    """Pins a session to a concrete driver endpoint/device and carries the
+    driver-declared reattach information (stateless design §3/§6).
+    """
+    driver_type: str                                      # which optics driver (config key)
+    endpoint: str = ""                                    # driver-tier address — the Layer-3 device pin
+    reattach_handle: Optional[str] = None                 # opaque, driver-defined handle to reattach to
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
+    device_id: Optional[str] = None                       # device key — Layer-3 scheduling
+    migratable: bool = False                              # what the driver declared
+
+    def get_reattach_params(self) -> Dict[str, Any]:
+        """Shape the binding as the params dict fed into DriverInterface.reattach()."""
+        return {
+            "reattach_handle": self.reattach_handle,
+            "endpoint": self.endpoint,
+            "capabilities": self.capabilities,
+            "device_id": self.device_id,
+        }
+
+
+class SessionState(BaseModel):
+    """Fully serializable description of how to reconstruct and reattach a
+    session. The store holds this; live ``Session`` objects are a disposable
+    local cache over it (stateless design §2/§3).
+    """
+    session_id: str
+    config: Dict[str, Any]                                # normalized session Config recipe
+    apis: Optional[ApiData] = None
+    inline_templates: Dict[str, str] = Field(default_factory=dict)  # image bytes as base64 — NOT temp paths
+    driver_binding: DriverBinding
+    status: SessionStatus = SessionStatus.CREATING
+    owner_instance_id: Optional[str] = None               # which instance holds the live runtime
+    lease_expires_at: Optional[float] = None
+    busy: bool = False                                    # in-flight execution / open stream
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # workspace hash, execution cursor, etc.
+    created_at: float
+    updated_at: float
+
+
 class ErrorDefinitions(BaseModel):
     """Stores user-defined error strings for end-of-run screen detection.
 

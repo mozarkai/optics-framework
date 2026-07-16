@@ -12,6 +12,7 @@ import pkgutil
 import asyncio
 import warnings
 import hashlib
+from contextlib import asynccontextmanager
 from itertools import product
 from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
@@ -20,7 +21,7 @@ from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData
+from optics_framework.common.models import ApiData, SessionState
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
@@ -36,9 +37,6 @@ from optics_framework.helper.version import VERSION
 
 app = FastAPI(title="Optics Framework API", version="1.0")
 session_manager = SessionManager()
-
-# Store last workspace hash per session for change detection
-workspace_hashes: Dict[str, str] = {}
 
 # --- API / HTTP messages ---
 SESSION_NOT_FOUND = "Session not found"
@@ -88,7 +86,10 @@ KEY_DATA = "data"
 STATUS_CREATED = "created"
 STATUS_STARTED = "started"
 STATUS_TERMINATED = "terminated"
+STATUS_DETACHED = "detached"
+STATUS_IMPORTED = "imported"
 STATUS_OK = "ok"
+KEY_WORKSPACE_HASH = "workspace_hash"
 WORKSPACE_TYPE_HEARTBEAT = "heartbeat"
 WORKSPACE_TYPE_ERROR = "error"
 
@@ -170,6 +171,15 @@ class TerminationResponse(BaseModel):
     """
 
     status: str = STATUS_TERMINATED
+
+
+class MigrationResponse(BaseModel):
+    """
+    Response model for session detach/migrate.
+    """
+
+    session_id: str
+    status: str = STATUS_DETACHED
 
 
 class ExecutionEvent(BaseModel):
@@ -830,6 +840,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     engine = ExecutionEngine(session_manager)
     execution_id = str(uuid.uuid4())
     request_temp_dirs = await _setup_request_template_overrides(session, request.template_images)
+    session_manager.mark_busy(session_id, True)
 
     try:
         await session.event_queue.put(ExecutionEvent(
@@ -872,6 +883,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     except Exception as e:
         await _handle_execution_failure(e, session, execution_id, request.keyword)
     finally:
+        session_manager.mark_busy(session_id, False)
         session.request_template_overrides.clear()
         for dir_path in request_temp_dirs:
             try:
@@ -1114,6 +1126,20 @@ async def _gather_workspace_data(
         internal_logger.error(f"Error gathering workspace data: {e}")
         return _empty_workspace_data(include_source)
 
+@asynccontextmanager
+async def _open_stream_guard(session: Session):
+    """Track open SSE streams on the session runtime; streams are
+    instance-local, so detach/migrate refuses while one is open (design §9)."""
+    runtime = session.runtime
+    if runtime is not None:
+        runtime.open_streams += 1
+    try:
+        yield
+    finally:
+        if runtime is not None:
+            runtime.open_streams = max(0, runtime.open_streams - 1)
+
+
 def _compute_workspace_hash(workspace_data: Dict[str, Any]) -> str:
     """
     Compute a hash of workspace data for change detection.
@@ -1143,51 +1169,54 @@ async def workspace_generator(
     HEARTBEAT_INTERVAL = 15.0  # seconds
     last_heartbeat = asyncio.get_event_loop().time()
 
-    while True:
-        try:
-            # Check if session still exists
-            if not session_manager.get_session(session.session_id):
-                internal_logger.warning(f"Session {session.session_id} no longer exists, ending workspace stream")
-                break
+    async with _open_stream_guard(session):
+        while True:
+            try:
+                # Check if session still exists
+                if not session_manager.get_session(session.session_id):
+                    internal_logger.warning(f"Session {session.session_id} no longer exists, ending workspace stream")
+                    break
 
-            # Gather workspace data
-            workspace_data = await _gather_workspace_data(session, include_source, filter_config)
+                # Gather workspace data
+                workspace_data = await _gather_workspace_data(session, include_source, filter_config)
 
-            # Compute hash for change detection
-            current_hash = _compute_workspace_hash(workspace_data)
-            last_hash = workspace_hashes.get(session.session_id)
+                # Compute hash for change detection; kept in SessionState.metadata
+                # so change detection survives rehydration on another instance.
+                current_hash = _compute_workspace_hash(workspace_data)
+                last_hash = session.state.metadata.get(KEY_WORKSPACE_HASH)
 
-            # Only emit if data changed
-            if last_hash is None or current_hash != last_hash:
-                workspace_hashes[session.session_id] = current_hash
-                internal_logger.debug(f"Workspace data changed for session {session.session_id}, emitting update")
-                yield {KEY_DATA: json.dumps(workspace_data)}
-                last_heartbeat = asyncio.get_event_loop().time()
-            else:
-                # No change, check if we need to send heartbeat
-                now = asyncio.get_event_loop().time()
-                if now - last_heartbeat >= HEARTBEAT_INTERVAL:
-                    internal_logger.debug(f"Heartbeat for workspace stream session {session.session_id}")
-                    yield {KEY_DATA: json.dumps({KEY_TYPE: WORKSPACE_TYPE_HEARTBEAT, KEY_TIMESTAMP: now})}
-                    last_heartbeat = now
+                # Only emit if data changed
+                if last_hash is None or current_hash != last_hash:
+                    session.state.metadata[KEY_WORKSPACE_HASH] = current_hash
+                    session_manager.persist_state(session)
+                    internal_logger.debug(f"Workspace data changed for session {session.session_id}, emitting update")
+                    yield {KEY_DATA: json.dumps(workspace_data)}
+                    last_heartbeat = asyncio.get_event_loop().time()
+                else:
+                    # No change, check if we need to send heartbeat
+                    now = asyncio.get_event_loop().time()
+                    if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                        internal_logger.debug(f"Heartbeat for workspace stream session {session.session_id}")
+                        yield {KEY_DATA: json.dumps({KEY_TYPE: WORKSPACE_TYPE_HEARTBEAT, KEY_TIMESTAMP: now})}
+                        last_heartbeat = now
 
-            # Wait for next interval
-            await asyncio.sleep(interval_seconds)
+                # Wait for next interval
+                await asyncio.sleep(interval_seconds)
 
-        except asyncio.CancelledError:
-            internal_logger.warning(f"Workspace stream cancelled for session {session.session_id}")
-            raise
-        except Exception as e:
-            internal_logger.error(f"Error in workspace stream for session {session.session_id}: {e}")
-            yield {KEY_DATA: json.dumps({
-                KEY_TYPE: WORKSPACE_TYPE_ERROR,
-                KEY_MESSAGE: str(e),
-                KEY_SCREENSHOT: "",
-                KEY_ELEMENTS: [],
-                KEY_SCREENSHOT_FAILED: True
-            })}
-            # Wait before retrying to avoid tight error loops
-            await asyncio.sleep(interval_seconds)
+            except asyncio.CancelledError:
+                internal_logger.warning(f"Workspace stream cancelled for session {session.session_id}")
+                raise
+            except Exception as e:
+                internal_logger.error(f"Error in workspace stream for session {session.session_id}: {e}")
+                yield {KEY_DATA: json.dumps({
+                    KEY_TYPE: WORKSPACE_TYPE_ERROR,
+                    KEY_MESSAGE: str(e),
+                    KEY_SCREENSHOT: "",
+                    KEY_ELEMENTS: [],
+                    KEY_SCREENSHOT_FAILED: True
+                })}
+                # Wait before retrying to avoid tight error loops
+                await asyncio.sleep(interval_seconds)
 
 async def event_generator(session: Session):
     """
@@ -1195,52 +1224,53 @@ async def event_generator(session: Session):
     Yields events as SSE data.
     """
     HEARTBEAT_INTERVAL = 15  # seconds
-    while True:
-        try:
+    async with _open_stream_guard(session):
+        while True:
             try:
-                event = await asyncio.wait_for(session.event_queue.get(), timeout=HEARTBEAT_INTERVAL)
-                internal_logger.debug(f"Streaming event for session {session.session_id}: {event}")
-                yield {KEY_DATA: json.dumps(event)}
-            except asyncio.TimeoutError:
-                # Send heartbeat if no event in interval
-                internal_logger.debug(f"Heartbeat for session {session.session_id}")
-                yield {KEY_DATA: json.dumps(ExecutionEvent(
-                    execution_id=EXECUTION_ID_HEARTBEAT,
-                    status=STATUS_HEARTBEAT,
-                    message="No new event, sending heartbeat"
-                ).model_dump())}
-            except Exception as exc:
-                internal_logger.error(f"Unexpected error while waiting for event: {exc}")
+                try:
+                    event = await asyncio.wait_for(session.event_queue.get(), timeout=HEARTBEAT_INTERVAL)
+                    internal_logger.debug(f"Streaming event for session {session.session_id}: {event}")
+                    yield {KEY_DATA: json.dumps(event)}
+                except asyncio.TimeoutError:
+                    # Send heartbeat if no event in interval
+                    internal_logger.debug(f"Heartbeat for session {session.session_id}")
+                    yield {KEY_DATA: json.dumps(ExecutionEvent(
+                        execution_id=EXECUTION_ID_HEARTBEAT,
+                        status=STATUS_HEARTBEAT,
+                        message="No new event, sending heartbeat"
+                    ).model_dump())}
+                except Exception as exc:
+                    internal_logger.error(f"Unexpected error while waiting for event: {exc}")
+                    yield {KEY_DATA: json.dumps(ExecutionEvent(
+                        execution_id=EXECUTION_ID_UNKNOWN,
+                        status=STATUS_ERROR,
+                        message=f"Unexpected error while waiting for event: {exc}"
+                    ).model_dump())}
+                    break
+            except AttributeError as attr_err:
+                internal_logger.error(f"AttributeError in event streaming for session {session.session_id}: {attr_err}")
                 yield {KEY_DATA: json.dumps(ExecutionEvent(
                     execution_id=EXECUTION_ID_UNKNOWN,
                     status=STATUS_ERROR,
-                    message=f"Unexpected error while waiting for event: {exc}"
+                    message=f"AttributeError: {attr_err}"
                 ).model_dump())}
                 break
-        except AttributeError as attr_err:
-            internal_logger.error(f"AttributeError in event streaming for session {session.session_id}: {attr_err}")
-            yield {KEY_DATA: json.dumps(ExecutionEvent(
-                execution_id=EXECUTION_ID_UNKNOWN,
-                status=STATUS_ERROR,
-                message=f"AttributeError: {attr_err}"
-            ).model_dump())}
-            break
-        except asyncio.CancelledError as cancel_err:
-            internal_logger.warning(f"Event streaming cancelled for session {session.session_id}: {cancel_err}")
-            yield {KEY_DATA: json.dumps(ExecutionEvent(
-                execution_id=EXECUTION_ID_UNKNOWN,
-                status=STATUS_CANCELLED,
-                message=f"Event streaming cancelled: {cancel_err}"
-            ).model_dump())}
-            raise
-        except Exception as e:
-            internal_logger.error(f"General error in event streaming for session {session.session_id}: {e}")
-            yield {KEY_DATA: json.dumps(ExecutionEvent(
-                execution_id=EXECUTION_ID_UNKNOWN,
-                status=STATUS_ERROR,
-                message=f"Event streaming failed: {e}"
-            ).model_dump())}
-            break
+            except asyncio.CancelledError as cancel_err:
+                internal_logger.warning(f"Event streaming cancelled for session {session.session_id}: {cancel_err}")
+                yield {KEY_DATA: json.dumps(ExecutionEvent(
+                    execution_id=EXECUTION_ID_UNKNOWN,
+                    status=STATUS_CANCELLED,
+                    message=f"Event streaming cancelled: {cancel_err}"
+                ).model_dump())}
+                raise
+            except Exception as e:
+                internal_logger.error(f"General error in event streaming for session {session.session_id}: {e}")
+                yield {KEY_DATA: json.dumps(ExecutionEvent(
+                    execution_id=EXECUTION_ID_UNKNOWN,
+                    status=STATUS_ERROR,
+                    message=f"Event streaming failed: {e}"
+                ).model_dump())}
+                break
 
 @app.delete(
     "/v1/sessions/{session_id}/stop",
@@ -1268,7 +1298,74 @@ async def delete_session(session_id: str):
         internal_logger.error(f"Failed to terminate session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"{MSG_SESSION_TERMINATION_FAILED} {e}") from e
     session_manager.terminate_session(session_id)
-    # Clean up workspace hash entry to prevent memory leak
-    workspace_hashes.pop(session_id, None)
     internal_logger.info(f"Terminated session: {session_id}")
     return TerminationResponse()
+
+
+@app.post(
+    "/v1/sessions/{session_id}/export",
+    response_model=SessionState,
+    responses={
+        404: {"description": "Session not found"},
+    },
+)
+async def export_session(session_id: str):
+    """
+    Export the session's serializable state (config recipe, driver binding
+    with a fresh reattach handle, inline template bytes). The JSON can be fed
+    to /v1/sessions/import on another instance to resume the session.
+    """
+    try:
+        return session_manager.export_state(session_id)
+    except OpticsError as e:
+        internal_logger.error(f"Failed to export session {session_id}: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+
+
+@app.post(
+    "/v1/sessions/import",
+    response_model=SessionResponse,
+    responses={
+        400: {"description": "Session already live here or invalid state"},
+        500: {"description": "Rehydration or strict driver reattach failed"},
+    },
+)
+async def import_session(state: SessionState):
+    """
+    Import a previously exported SessionState: store it and rehydrate through
+    the same path a load balancer would exercise implicitly — rebuild the
+    runtime and strictly reattach the driver to the live backend session.
+    """
+    try:
+        session_id = session_manager.create_session_from_state(state)
+    except OpticsError as e:
+        internal_logger.error(f"Failed to import session {state.session_id}: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    except Exception as e:
+        internal_logger.error(f"Failed to import session {state.session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_CREATION_FAILED} {e}") from e
+    return SessionResponse(session_id=session_id, status=STATUS_IMPORTED)
+
+
+@app.post(
+    "/v1/sessions/{session_id}/migrate",
+    response_model=MigrationResponse,
+    responses={
+        400: {"description": "Session busy, has an open stream, or its driver is not migratable"},
+        404: {"description": "Session not found"},
+    },
+)
+async def migrate_session(session_id: str):
+    """
+    Detach the session from this instance: drop the local runtime while
+    keeping the backend driver session and stored state alive. The next
+    request for the session (routed anywhere) rehydrates it — in-cluster
+    migration is emergent, not a bespoke path. Refused for sticky
+    (non-migratable) drivers and for busy sessions.
+    """
+    try:
+        state = session_manager.detach_session(session_id)
+    except OpticsError as e:
+        internal_logger.error(f"Failed to detach session {session_id}: {e}")
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    return MigrationResponse(session_id=state.session_id, status=STATUS_DETACHED)

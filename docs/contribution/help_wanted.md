@@ -80,6 +80,7 @@ Make the API layer stateless so sessions can be migrated/moved from one instance
 
 ### Related Documentation
 
+- [Design: Stateless API Layer](stateless_api_design.md) — implementation design (Layer 1, anticipating multi-pod + device scheduling)
 - [Session Management](../architecture/components.md#sessionmanager)
 - [REST API Layer](../architecture/api_layer.md)
 
