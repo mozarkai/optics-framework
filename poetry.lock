@@ -1023,40 +1023,40 @@ standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[stand
 
 [[package]]
 name = "fastmcp"
-version = "3.4.2"
+version = "3.4.4"
 description = "The fast, Pythonic way to build MCP servers and clients."
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"mcp\""
 files = [
-    {file = "fastmcp-3.4.2-py3-none-any.whl", hash = "sha256:c87a62b029f0c5400ada85f683629345d2466c39169f0cb853e487b2f7308c08"},
-    {file = "fastmcp-3.4.2.tar.gz", hash = "sha256:b468722946fc467c3796a6572f7a14d93d48c014cf8fea12910245220cbbe4e1"},
+    {file = "fastmcp-3.4.4-py3-none-any.whl", hash = "sha256:f86f208713212260068cf55c32936839eee856fefc7808e18a032f31eb0f718e"},
+    {file = "fastmcp-3.4.4.tar.gz", hash = "sha256:378202e26ec15b23819d9a1c0d1b0ebda096bc712720532010a0b82a45c2b1df"},
 ]
 
 [package.dependencies]
-fastmcp-slim = {version = "3.4.2", extras = ["client", "server"]}
+fastmcp-slim = {version = "3.4.4", extras = ["client", "server"]}
 
 [package.extras]
-anthropic = ["fastmcp-slim[anthropic] (==3.4.2)"]
-apps = ["fastmcp-slim[apps] (==3.4.2)"]
-azure = ["fastmcp-slim[azure] (==3.4.2)"]
-code-mode = ["fastmcp-slim[code-mode] (==3.4.2)"]
-gemini = ["fastmcp-slim[gemini] (==3.4.2)"]
-openai = ["fastmcp-slim[openai] (==3.4.2)"]
-tasks = ["fastmcp-slim[tasks] (==3.4.2)"]
+anthropic = ["fastmcp-slim[anthropic] (==3.4.4)"]
+apps = ["fastmcp-slim[apps] (==3.4.4)"]
+azure = ["fastmcp-slim[azure] (==3.4.4)"]
+code-mode = ["fastmcp-slim[code-mode] (==3.4.4)"]
+gemini = ["fastmcp-slim[gemini] (==3.4.4)"]
+openai = ["fastmcp-slim[openai] (==3.4.4)"]
+tasks = ["fastmcp-slim[tasks] (==3.4.4)"]
 
 [[package]]
 name = "fastmcp-slim"
-version = "3.4.2"
+version = "3.4.4"
 description = "The dependency-slim FastMCP package."
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"mcp\""
 files = [
-    {file = "fastmcp_slim-3.4.2-py3-none-any.whl", hash = "sha256:bdc72492212681ca502755fa8acc0457f559295da1fc3dfc0599adc1c04b82f3"},
-    {file = "fastmcp_slim-3.4.2.tar.gz", hash = "sha256:290646e0955a516235a317151034559aa48336cb843d3f006131aedad8759bb4"},
+    {file = "fastmcp_slim-3.4.4-py3-none-any.whl", hash = "sha256:9d3a6327b9ee835188eb7323fc3b5d4cd061631b48da8ece56794bb538972505"},
+    {file = "fastmcp_slim-3.4.4.tar.gz", hash = "sha256:dcaa3e0be2127d7eacdce592c2ef0039204923dc0ec396454615cb4a3275b078"},
 ]
 
 [package.dependencies]
@@ -1251,7 +1251,7 @@ description = "A minimal low-level HTTP client."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"mcp\""
+markers = "extra == \"mcp\" or extra == \"llm\""
 files = [
     {file = "httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"},
     {file = "httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8"},
@@ -1274,7 +1274,7 @@ description = "The next generation HTTP client."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"mcp\""
+markers = "extra == \"mcp\" or extra == \"llm\""
 files = [
     {file = "httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"},
     {file = "httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc"},
@@ -4540,7 +4540,7 @@ description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"mcp\""
+markers = "extra == \"mcp\" or extra == \"llm\""
 files = [
     {file = "websockets-16.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:04cdd5d2d1dacbad0a7bf36ccbcd3ccd5a30ee188f2560b7a62a30d14107b31a"},
     {file = "websockets-16.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:8ff32bb86522a9e5e31439a58addbb0166f0204d64066fb955265c4e214160f0"},
