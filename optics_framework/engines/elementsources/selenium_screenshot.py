@@ -1,13 +1,9 @@
 from typing import Optional, Any, List
-import base64
-import time
 import cv2
 import numpy as np
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
-
-# Delay between screenshot retries (Selenium Grid nodes can be remote/flaky too).
-_SCREENSHOT_RETRY_BACKOFF_S = 0.5
+from optics_framework.common.utils import capture_base64_screenshot_bytes
 
 
 class SeleniumScreenshot(ElementSourceInterface):
@@ -47,21 +43,11 @@ class SeleniumScreenshot(ElementSourceInterface):
 
         Skips the ``base64 -> numpy -> cv2.imdecode`` decode that
         :meth:`capture_screenshot_as_numpy` does, for callers that only need encoded
-        bytes. The retry absorbs transient/truncated responses from remote Grid nodes.
+        bytes. The retry (shared with :class:`AppiumScreenshot`) absorbs
+        transient/truncated responses from remote Grid nodes.
         """
         driver = self._require_driver()
-        last_exc: Optional[Exception] = None
-        for attempt in range(2):
-            try:
-                return base64.b64decode(driver.get_screenshot_as_base64())
-            except Exception as e:
-                last_exc = e
-                internal_logger.warning(
-                    "Selenium native screenshot bytes attempt %d/2 failed: %s", attempt + 1, e
-                )
-                if attempt == 0:
-                    time.sleep(_SCREENSHOT_RETRY_BACKOFF_S)
-        raise RuntimeError(f"Error capturing Selenium screenshot bytes: {last_exc}") from last_exc
+        return capture_base64_screenshot_bytes(driver.get_screenshot_as_base64, "Selenium")
 
     def capture_screenshot_as_numpy(self) -> np.ndarray:
         """

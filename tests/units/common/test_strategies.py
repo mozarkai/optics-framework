@@ -4,6 +4,7 @@ import time
 import cv2
 import numpy as np
 import pytest
+from selenium.common.exceptions import WebDriverException
 from unittest.mock import MagicMock, patch
 
 from optics_framework.common import utils
@@ -273,7 +274,7 @@ class TestAppiumScreenshotBytes:
 
     def test_raises_after_exhausted_retries(self, _no_backoff):
         from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
-        drv = _FakeWD([ValueError("boom"), ValueError("boom")])
+        drv = _FakeWD([WebDriverException("boom"), WebDriverException("boom")])
         with pytest.raises(RuntimeError):
             AppiumScreenshot(driver=drv).capture_screenshot_bytes()
         assert drv.calls == 2

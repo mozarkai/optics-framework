@@ -1,14 +1,10 @@
-import base64
-import time
 from typing import Optional, Any, List
 import numpy as np
 import cv2
 from appium.webdriver.webdriver import WebDriver
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
-
-# Delay between screenshot retries; an immediate retry tends to hit the same transient failure.
-_SCREENSHOT_RETRY_BACKOFF_S = 0.5
+from optics_framework.common.utils import capture_base64_screenshot_bytes
 
 
 class AppiumScreenshot(ElementSourceInterface):
@@ -56,22 +52,12 @@ class AppiumScreenshot(ElementSourceInterface):
 
         Skips the ``base64 -> numpy -> cv2.imdecode`` decode that
         :meth:`capture_screenshot_as_numpy` does, for callers that only need encoded
-        bytes. The retry absorbs the truncated-response ("Incorrect padding") base64
-        failures occasionally seen against busy remote hubs.
+        bytes. The retry (shared with :class:`SeleniumScreenshot`) absorbs the
+        truncated-response ("Incorrect padding") base64 failures occasionally seen
+        against busy remote hubs.
         """
         driver = self._require_driver()
-        last_exc: Optional[Exception] = None
-        for attempt in range(2):
-            try:
-                return base64.b64decode(driver.get_screenshot_as_base64())
-            except Exception as e:
-                last_exc = e
-                internal_logger.warning(
-                    "Appium native screenshot bytes attempt %d/2 failed: %s", attempt + 1, e
-                )
-                if attempt == 0:
-                    time.sleep(_SCREENSHOT_RETRY_BACKOFF_S)
-        raise RuntimeError(f"Error capturing Appium screenshot bytes: {last_exc}") from last_exc
+        return capture_base64_screenshot_bytes(driver.get_screenshot_as_base64, "Appium")
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
         internal_logger.exception("AppiumScreenshot does not support getting interactive elements.")
