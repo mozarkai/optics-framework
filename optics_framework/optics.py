@@ -1028,14 +1028,16 @@ class Optics:
         self,
         element: fallback_str,
         option: fallback_str,
+        timeout: fallback_str = "30",
         event_name: Optional[fallback_str] = None,
     ) -> None:
-        """Open a dropdown and select one of its options."""
+        """Open a dropdown and select one of its options, scrolling to find it if needed."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.select_dropdown_option(
             element=cast(str, element),
             option=cast(str, option),
+            timeout=cast(str, timeout),
             event_name=cast(Optional[str], event_name),
         )
 
