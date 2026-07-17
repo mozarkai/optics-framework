@@ -92,7 +92,7 @@ class AppiumPageSource(ElementSourceInterface):
         except NoSuchElementException as e:
             raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
         except Exception as e:
-            internal_logger.debug("Error finding element by text: %s: %s", xpath, e)
+            internal_logger.exception("Error finding element by text: %s: %s", xpath, e)
             raise RuntimeError("Error finding element by text.") from e
 
     def _locate_by_xpath(self, driver: WebDriver, element: str, element_type: str) -> Any:
@@ -104,7 +104,7 @@ class AppiumPageSource(ElementSourceInterface):
             except NoSuchElementException as e:
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:
-                internal_logger.debug("Error finding element by xpath: %s: %s", xpath, e)
+                internal_logger.exception("Error finding element by xpath: %s: %s", xpath, e)
                 raise RuntimeError("Error finding element by xpath.") from e
         else:
             internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
@@ -178,7 +178,7 @@ class AppiumPageSource(ElementSourceInterface):
                 except NoSuchElementException:
                     return None
                 except Exception as e:
-                    internal_logger.debug("Error finding element by index: %s: %s", xpath, e)
+                    internal_logger.exception("Error finding element by index: %s: %s", xpath, e)
                     return None
                 return element_obj
             return None

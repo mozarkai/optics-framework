@@ -117,7 +117,7 @@ class AppiumFindElement(ElementSourceInterface):
             except NoSuchElementException as e:
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:
-                internal_logger.debug(f"Unexpected error finding element {element}: {e}")
+                internal_logger.exception(f"Unexpected error finding element {element}: {e}")
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
         elif element_type == 'Class':
             try:
@@ -137,7 +137,7 @@ class AppiumFindElement(ElementSourceInterface):
             except NoSuchElementException as e:
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:
-                internal_logger.debug(f"Unexpected error finding class element {element}: {e}")
+                internal_logger.exception(f"Unexpected error finding class element {element}: {e}")
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
         return None
 
