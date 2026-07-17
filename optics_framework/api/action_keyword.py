@@ -2,7 +2,7 @@ from functools import wraps
 import collections
 import time
 import json
-from typing import Callable, Optional, Any, Tuple
+from typing import Callable, Optional, Any, Tuple, List
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
@@ -12,6 +12,23 @@ from optics_framework.common.ai_self_heal import AISelfHealHandler, HealContext
 from optics_framework.common.error import OpticsError, Code
 from .verifier import Verifier
 
+# Class/tag substrings (case-insensitive) that identify a scrollable dropdown-list
+# container in a UI hierarchy dump, used by select_dropdown_option's scroll-to-find path.
+_DROPDOWN_LIST_CLASS_TOKENS = (
+    # Android
+    "listview", "recyclerview", "scrollview", "spinner", "gridview", "viewpager",
+    "dropdownlistview", "listpopupwindow", "menupopup",
+    # iOS
+    "pickerwheel", "table", "collectionview", "menu", "picker",
+)
+
+# Fraction of the dropdown container's height swiped per scroll step. Kept below 1.0 so
+# consecutive scans overlap and a fast/long swipe can't skip past an unscanned option row.
+_DROPDOWN_SWIPE_OVERLAP_FACTOR = 0.5
+
+# Per-check timeout for assert_presence while polling for the option, matching the budget
+# scroll_until_element_appears/swipe_until_element_appears use for the same purpose.
+_DROPDOWN_OPTION_CHECK_TIMEOUT = "3"
 
 def _parse_aoi_param(param: Any, default_value: float) -> float:
     if param is None or str(param).strip() in ('', 'None', 'none'):
@@ -128,6 +145,58 @@ def _try_results_until_success(
             cause=last_exception,
         )
     raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+
+
+def _bounds_area(bounds: Optional[dict]) -> int:
+    """
+    indirect helper for `select_dropdown_option()`
+
+    calculates bounded area for an element
+    """
+    if not bounds:
+        return 0
+    try:
+        return max(0, bounds["x2"] - bounds["x1"]) * max(0, bounds["y2"] - bounds["y1"])
+    except (KeyError, TypeError):
+        return 0
+
+
+def _find_dropdown_container(new_elements: List[dict]) -> Optional[dict]:
+    """
+    used with `select_dropdown_option()
+
+    pick the largest list like container from the newly appeared elements
+
+    a union bounding box of all new elements is intentionally not used because pressing the
+    dropdown trigger can also reveal unrelated elements, not just the option list
+    """
+    candidates = []
+    for el in new_elements:
+        if not isinstance(el, dict) or not el.get("bounds"):
+            continue
+        extra = el.get("extra") or {}
+        class_or_tag = (extra.get("class") or extra.get("tag") or "").lower()
+        if any(t in class_or_tag for t in _DROPDOWN_LIST_CLASS_TOKENS):
+            candidates.append(el)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda e: _bounds_area(e.get("bounds")))
+
+
+def _raise_option_not_found(dropdown_element: str, option: str, interactive: List[dict]) -> None:
+    """
+    helper for `select_dropdown_option()
+    """
+    available_texts = [
+        el.get("text") for el in interactive if isinstance(el, dict) and el.get("text")
+    ]
+    raise OpticsError(
+        Code.E0201,
+        message=(
+            f"Option '{option}' not found in dropdown '{dropdown_element}'. "
+            f"Available options: {available_texts}"
+        ),
+    )
 
 
 # Action Executor Decorator
@@ -405,42 +474,128 @@ class ActionKeyword:
         self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
                           aoi_height=aoi_height, event_name=event_name, located=located)
 
-    def select_dropdown_option(self, element: str, option: str, event_name: Optional[str] = None) -> None:
+    def select_dropdown_option(self, element: str, option: str, timeout: str = "30",
+                                event_name: Optional[str] = None) -> None:
         """
-        Open a dropdown and select one of its options.
+        Open a dropdown and select one of its options, scrolling through the list if needed.
 
-        Opens the dropdown by pressing ``element``, then validates that ``option`` is visible
-        in the page source before pressing it. Raises ``OpticsError`` (``E0201``) when the
-        option text is not found among the dropdown's visible items, preventing a silent
-        mis-selection. Falls back to pressing without validation when page source is unavailable.
+        Opens the dropdown by pressing `element`. If `option` isn't visible right away,
+        diffs the interactive elements captured before and after opening to find the
+        dropdown's list container, then scrolls within that container (never past the page
+        behind it) until `option` appears or the list stops changing. Raises `OpticsError`
+        (`E0201``) if `option` is never found within `timeout` seconds.
+
+        Falls back to a single-screen check (no scrolling) when page source, or a list-like
+        container, isn't available.
+
+        Assumption: opened dropdown list is opened in such a way that the topmost option is
+        visible on the screen
 
         :param element: The dropdown element (Image template, OCR template, or XPath).
         :param option: The option to select (visible label, OCR/Image template, or XPath).
+        :param timeout: Seconds to keep scrolling through the dropdown list before failing.
         :param event_name: The event triggering the selection.
         """
         internal_logger.info(f"Selecting '{option}' from dropdown '{element}'")
+        before = self._safe_get_interactive_elements()
         self.press_element(element, event_name=event_name)
-        self._assert_option_in_dropdown(element, option)
-        self.press_element(option, event_name=event_name)
 
-    def _assert_option_in_dropdown(self, dropdown_element: str, option: str) -> None:
-        """Validate that option text is present in the open dropdown via page source."""
-        try:
-            interactive = self.strategy_manager.get_interactive_elements()
-        except (OpticsError, NotImplementedError):
+        if self._find_option_element(option):
+            # if we find the option without scrolling i.e., its one of the top most options in the dropdown list and
+            # can be viewed without scrolling, then just click it and return
+            self.press_element(option, event_name=event_name)
             return
-        option_normalized = option.strip().lower()
-        available_texts = [
-            el.get("text") or "" for el in interactive if isinstance(el, dict)
+
+        after = self._safe_get_interactive_elements()
+        if after is None:
+            # page source is unsupported by this setup so we click blindly on the option without any checks
+            self.press_element(option, event_name=event_name)
+            return
+
+        before_xpaths = {el.get("xpath") for el in (before or []) if isinstance(el, dict)}
+        new_elements = [
+            el for el in after if isinstance(el, dict) and el.get("xpath") not in before_xpaths
         ]
-        if not any(option_normalized == t.strip().lower() for t in available_texts if t):
-            raise OpticsError(
-                Code.E0201,
-                message=(
-                    f"Option '{option}' not found in dropdown '{dropdown_element}'. "
-                    f"Available options: {[t for t in available_texts if t]}"
-                ),
+        container = _find_dropdown_container(new_elements)
+        if container is None:
+            _raise_option_not_found(element, option, after)
+
+        self._scroll_dropdown_until_found(element, option, container, float(timeout), event_name)
+
+    def _find_option_element(self, option: str) -> bool:
+        """
+        helper for `select_dropdown_option()`
+
+        check whether `option` is currently locatable via the normal strategy pipeline.
+        """
+        try:
+            return self.verifier.assert_presence(
+                option, timeout_str=_DROPDOWN_OPTION_CHECK_TIMEOUT, rule="any"
             )
+        except OpticsError as e:
+            if e.code != Code.E0201:
+                raise
+            return False
+
+    def _safe_get_interactive_elements(self) -> Optional[List[dict]]:
+        """
+        helper (direct and indirect) for `select_dropdown_option`.
+
+        returns `None` instead of raising when interactive elements aren't available at all,
+        so the caller can degrade to a single-screen check instead of crashing.
+        """
+        try:
+            return self.strategy_manager.get_interactive_elements()
+        except OpticsError:
+            return None
+
+    def _safe_pagesource_hash(self) -> Optional[str]:
+        """
+        indirect helper for `select_dropdown_option()`
+
+        returns `None` instead of raising when page source isn't available, so the scroll
+        loop's "list stopped changing" check can't itself crash `select_dropdown_option`.
+        """
+        try:
+            page_source, _ = self.strategy_manager.capture_pagesource()
+        except OpticsError:
+            return None
+        return utils.compute_hash(page_source) if page_source else None
+
+    def _scroll_dropdown_until_found(
+        self, dropdown_element: str, option: str, container: dict,
+        timeout: float, event_name: Optional[str],
+    ) -> None:
+        """
+        helper for `select_dropdown_option()`
+
+        Uses `self.driver.swipe(...)` on the already-known container bounds instead of
+        `scroll_from_element`: we already have the container, so re-locating it every
+        iteration (screenshot + full strategy pipeline) is wasted work and a new failure
+        mode (stale xpath). It would also swipe from the container's top edge, not its
+        center, risking the gesture landing outside the container.
+        """
+        bounds = container["bounds"]
+        center_x = (bounds["x1"] + bounds["x2"]) // 2
+        center_y = (bounds["y1"] + bounds["y2"]) // 2
+        height = max(1, bounds["y2"] - bounds["y1"])
+        swipe_length = max(1, int(height * _DROPDOWN_SWIPE_OVERLAP_FACTOR))
+
+        previous_hash = self._safe_pagesource_hash()
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            self.driver.swipe(center_x, center_y, "up", swipe_length, event_name)
+            time.sleep(1)
+
+            current_hash = self._safe_pagesource_hash()
+            if self._find_option_element(option):
+                self.press_element(option, event_name=event_name)
+                return
+            if previous_hash is not None and current_hash == previous_hash:
+                break  # list stopped scrolling; bottom of the list reached
+            previous_hash = current_hash
+
+        _raise_option_not_found(dropdown_element, option, self._safe_get_interactive_elements() or [])
 
     # Swipe and Scroll actions
     def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
