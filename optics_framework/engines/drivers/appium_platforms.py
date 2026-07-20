@@ -1,34 +1,10 @@
-"""
-Platform profiles for the Appium driver.
+"""Platform profiles for the Appium driver.
 
-The Appium driver (``engines/drivers/appium.py``) speaks to several device families
-through one Appium server: Android phones, iOS phones, and TV app runtimes
-(Samsung Tizen, LG webOS). They differ in only a few, well-contained ways:
+Each device family (Android, iOS, TV) differs in options class, app-id capability
+names, and keycode delivery. This module holds those differences as data
+(PlatformProfile) so the driver stays free of platform branching logic.
 
-* which Appium *options* object builds the session
-  (``UiAutomator2Options`` / ``XCUITestOptions`` / generic ``AppiumOptions``),
-* which capability carries the app identifier passed to ``launch_app``
-  (``appPackage`` vs ``bundleId`` vs ``appId``), and
-* how a "keycode" is delivered — an Android integer key event
-  (``driver.press_keycode(66)``) versus a TV's *named* remote button sent over the
-  vendor command (``driver.execute_script("tizen: pressKey", {"key": "KEY_ENTER"})``).
-
-Those differences live here as **data** (:class:`PlatformProfile`), so the driver
-stays free of ``if android / elif ios / elif tizen`` ladders and adding a new device
-family is "register a profile", not "edit the driver".
-
-*Which keywords* a family supports is declared on the driver methods themselves with
-the :func:`supported_on` decorator. Calling a method on a platform that does not
-support it raises a clear :class:`OpticsError` (``E0105``) up front, instead of a
-confusing backend failure deep inside Appium.
-
-To add a new remote-control TV (e.g. Roku, Fire TV):
-  1. Add a :class:`PlatformProfile` via :func:`register_profile` below, keyed by the
-     normalized ``platformName`` the Appium server expects.
-  2. Fill in its options factory, app-id caps, keycode strategy and (for TVs) the
-     remote command + key map.
-  3. Nothing else — session creation, element sources, self-healing, events, live
-     mode and the MCP server all work unchanged.
+Adding a new TV: register a PlatformProfile, update config defaults, ship a sample.
 """
 from __future__ import annotations
 
@@ -71,24 +47,20 @@ _MOBILE_DEFAULT_OPTIONS: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class PlatformProfile:
-    """Everything that differs between device families, as data."""
+    """Device family configuration: options class, app-id caps, keycode delivery."""
 
-    name: str                                   # canonical key == normalized platformName
-    label: str                                  # human-readable name for messages
-    options_factory: Callable[[], Any]          # builds the Appium options object
-    app_id_caps: tuple[str, ...]                # cap keys that receive launch_app's app id
-    keycode_strategy: str                       # KEYCODE_ANDROID_INT | KEYCODE_RC_NAMED
+    name: str
+    label: str
+    options_factory: Callable[[], Any]
+    app_id_caps: tuple[str, ...]
+    keycode_strategy: str
     default_options: dict[str, Any] = field(default_factory=dict)
-    # Remote-control specifics — only meaningful when keycode_strategy == KEYCODE_RC_NAMED.
-    rc_command: str | None = None               # e.g. "tizen: pressKey" / "webos: pressKey"
-    rc_key_map: dict[str, str] = field(default_factory=dict)   # canonical name -> vendor key
-    rc_extra_payload: dict[str, Any] = field(default_factory=dict)  # merged into {"key": ...}
-    # When True, an unmapped key name is passed through as-is (webOS accepts bare
-    # names like "ENTER"); when False, only mapped keys or explicit "KEY_*" pass.
-    rc_passthrough_unknown: bool = False
+    rc_command: str | None = None  # only meaningful when keycode_strategy == KEYCODE_RC_NAMED
+    rc_key_map: dict[str, str] = field(default_factory=dict)
+    rc_extra_payload: dict[str, Any] = field(default_factory=dict)
+    rc_passthrough_unknown: bool = False  # webOS accepts bare names like "ENTER"
 
     def resolve_rc_key(self, keycode: str) -> str:
-        """Map a canonical key name (UP/ENTER/BACK/...) to this platform's vendor key."""
         key = str(keycode).strip().upper()
         mapped = self.rc_key_map.get(key)
         if mapped is not None:
@@ -119,19 +91,12 @@ def get_profile(platform_name: Any) -> PlatformProfile | None:
 
 
 def supported_platforms() -> str:
-    """Comma-separated list of supported platforms, for error messages."""
     return ", ".join(p.label for p in PROFILES.values())
 
 
 # --- the capability decorator -----------------------------------------------
 def supported_on(*platforms: str) -> Callable:
-    """Declare which platforms a driver method supports.
-
-    On an unsupported platform the call raises ``OpticsError(E0105)`` with a clear
-    message rather than failing obscurely in the backend. Methods left undecorated
-    are assumed universal. The allowed set is also stored on the wrapper as
-    ``_supported_platforms`` so tooling/dry-run can introspect capabilities.
-    """
+    """Guard: raises E0105 if called on an unsupported platform."""
     allowed = frozenset(normalize_platform(p) for p in platforms)
 
     def decorator(fn: Callable) -> Callable:

@@ -118,12 +118,7 @@ class Appium(DriverInterface):
         return self.driver
 
     def _active_platform(self) -> str:
-        """Return the normalized ``platformName`` for the active session.
-
-        Reads the live session capabilities when connected, else the configured
-        capabilities. Empty string when no platform is declared (callers treat that
-        as "unknown", which keeps the ``@supported_on`` guard permissive).
-        """
+        """Normalized platformName from live or configured capabilities."""
         caps: Dict[str, Any] = {}
         if self.driver is not None:
             try:
@@ -141,7 +136,6 @@ class Appium(DriverInterface):
         return normalize_platform(platform)
 
     def _require_profile(self) -> PlatformProfile:
-        """Return the PlatformProfile for the active platform, or raise if unknown."""
         profile = get_profile(self._active_platform())
         if profile is None:
             raise OpticsError(
@@ -176,13 +170,9 @@ class Appium(DriverInterface):
             platform = caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)
             profile = get_profile(platform) if platform else None
             if profile is not None:
-                # Each platform declares which capability keys carry the app id
-                # (appPackage / bundleId / appId) — see appium_platforms.py.
                 for cap_key in profile.app_id_caps:
                     caps[cap_key] = app_package
             elif not platform:
-                # No platform declared yet — set the common mobile identifiers so a
-                # later Android/iOS session still picks one up (legacy behaviour).
                 caps[self.CAP_APP_PACKAGE_LEGACY] = caps[self.CAP_APP_PACKAGE] = app_package
                 caps[self.CAP_BUNDLE_ID] = caps[self.CAP_APPIUM_BUNDLE_ID] = app_package
             else:
@@ -495,9 +485,6 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
         internal_logger.debug(f"All capabilities from config: {all_caps}")
 
-        # The platform profile owns the options class (UiAutomator2 / XCUITest /
-        # generic AppiumOptions for TVs) and the per-platform default caps, so this
-        # method no longer branches on platformName. See appium_platforms.py.
         profile = get_profile(platform)
         if profile is None:
             raise OpticsError(
@@ -560,9 +547,6 @@ class Appium(DriverInterface):
             return self._get_android_app_version(app_package_override=app_package)
         if platform_lower == self.PLATFORM_IOS:
             return self._get_ios_app_version(bundle_id_override=app_package)
-
-        # TVs don't expose an installed-app version over Appium; fall back to a
-        # configured value so the keyword degrades gracefully instead of raising.
         return str(self.capabilities.get("appVersion", "unknown"))
 
     def _get_android_device_serial(self) -> Optional[str]:
@@ -1044,8 +1028,6 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Pressing keycode: {keycode}")
         profile = self._require_profile()
         if profile.keycode_strategy == KEYCODE_RC_NAMED:
-            # TV remote: a named button (UP/ENTER/BACK/...) sent over the vendor
-            # command instead of an Android integer key event.
             rc_key = profile.resolve_rc_key(utils.strip_sensitive_prefix(str(keycode)))
             payload = {"key": rc_key, **profile.rc_extra_payload}
             internal_logger.debug(f"{profile.rc_command} -> {payload}")
