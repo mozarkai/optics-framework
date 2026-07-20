@@ -1,10 +1,9 @@
 from typing import Optional, Any, List
-import base64
 import cv2
 import numpy as np
-from selenium.common.exceptions import ScreenshotException
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.utils import capture_base64_screenshot_bytes
 
 
 class SeleniumScreenshot(ElementSourceInterface):
@@ -38,25 +37,31 @@ class SeleniumScreenshot(ElementSourceInterface):
         internal_logger.exception("SeleniumScreenshot does not support getting interactive elements.")
         raise NotImplementedError("SeleniumScreenshot does not support getting interactive elements.")
 
+    def capture_screenshot_bytes(self) -> bytes:
+        """
+        Return the screen as native PNG bytes via Selenium's base64 endpoint.
+
+        Skips the ``base64 -> numpy -> cv2.imdecode`` decode that
+        :meth:`capture_screenshot_as_numpy` does, for callers that only need encoded
+        bytes. The retry (shared with :class:`AppiumScreenshot`) absorbs
+        transient/truncated responses from remote Grid nodes.
+        """
+        driver = self._require_driver()
+        return capture_base64_screenshot_bytes(driver.get_screenshot_as_base64, "Selenium")
+
     def capture_screenshot_as_numpy(self) -> np.ndarray:
         """
         Captures a screenshot using Selenium and returns it as a NumPy array.
+
+        Reuses :meth:`capture_screenshot_bytes` (shared fetch + retry) and only adds
+        the decode, so the numpy and bytes paths stay in sync.
+
         Returns:
             np.ndarray: The captured screenshot as a NumPy array.
         """
-        try:
-            driver = self._require_driver()
-            screenshot_base64 = driver.get_screenshot_as_base64()
-            screenshot_bytes = base64.b64decode(screenshot_base64)
-            numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
-            numpy_image = cv2.imdecode(numpy_image, cv2.IMREAD_COLOR)
-            return numpy_image
-        except ScreenshotException as se:
-            internal_logger.warning("ScreenshotException : %s. Using external camera.", se)
-            raise RuntimeError("ScreenshotException occurred.") from se
-        except Exception as e:
-            internal_logger.warning("Error capturing Selenium screenshot: %s. Using external camera.", e)
-            raise RuntimeError("Error capturing Selenium screenshot.") from e
+        screenshot_bytes = self.capture_screenshot_bytes()
+        numpy_image = np.frombuffer(screenshot_bytes, np.uint8)
+        return cv2.imdecode(numpy_image, cv2.IMREAD_COLOR)
 
     def assert_elements(self, elements, timeout=30, rule='any') -> None:
         internal_logger.exception("SeleniumScreenshot does not support asserting elements.")

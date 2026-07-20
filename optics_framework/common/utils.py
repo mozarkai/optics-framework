@@ -6,6 +6,7 @@ import os
 import cv2
 import json
 import base64
+import time
 import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
@@ -235,6 +236,43 @@ def encode_numpy_to_base64(image: np.ndarray) -> str:
     :return: Base64 encoded string.
     """
     return base64.b64encode(encode_numpy_to_png_bytes(image)).decode('utf-8')
+
+
+# Screenshot-bytes retry: backends whose driver exposes a base64-encoded screenshot
+# (Appium, Selenium) share this fetch-and-decode-with-retry helper.
+BASE64_SCREENSHOT_RETRY_ATTEMPTS = 2
+# Delay between retries; a busy remote hub/grid node occasionally returns a
+# truncated base64 payload, and an immediate retry tends to hit the same failure.
+BASE64_SCREENSHOT_RETRY_BACKOFF_S = 0.5
+
+
+def capture_base64_screenshot_bytes(get_base64: Callable[[], str], backend_name: str) -> bytes:
+    """
+    Fetch a base64-encoded screenshot via ``get_base64`` and decode it to PNG bytes,
+    retrying on transient driver/decode failures.
+
+    :param get_base64: Zero-arg callable returning the driver's base64 screenshot string
+        (e.g. ``driver.get_screenshot_as_base64``).
+    :param backend_name: Human-readable backend name for log/error messages (e.g. "Appium").
+    :raises RuntimeError: If every attempt fails.
+    """
+    import binascii
+    from selenium.common.exceptions import WebDriverException  # local: optional runtime dep
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(BASE64_SCREENSHOT_RETRY_ATTEMPTS):
+        try:
+            return base64.b64decode(get_base64())
+        except (WebDriverException, binascii.Error) as e:
+            last_exc = e
+            internal_logger.warning(
+                "%s native screenshot bytes attempt %d/%d failed: %s",
+                backend_name, attempt + 1, BASE64_SCREENSHOT_RETRY_ATTEMPTS, e,
+            )
+            if attempt < BASE64_SCREENSHOT_RETRY_ATTEMPTS - 1:
+                time.sleep(BASE64_SCREENSHOT_RETRY_BACKOFF_S)
+    raise RuntimeError(f"Error capturing {backend_name} screenshot bytes: {last_exc}") from last_exc
+
 
 def compute_hash(xml_string):
     """Computes the SHA-256 hash of the XML string."""

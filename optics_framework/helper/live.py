@@ -1096,13 +1096,15 @@ class LiveController:
         return os.path.join(output_dir, f"{timestamp}-{sanitized}.jpg")
 
     def screenshot_png_bytes(self) -> bytes:
-        """Capture the current screen as encoded PNG bytes (for the LLM); no file side-effect."""
+        """Capture the current screen as encoded PNG bytes (for the LLM); no file side-effect.
+
+        Delegates to ``StrategyManager.capture_screenshot_bytes()`` so the native
+        fast path (when a backend supports it) and the numpy fallback are chosen
+        driver-agnostically.
+        """
         if self._action_keyword is None:  # pragma: no cover - defensive
             raise OpticsError(Code.E0303, message="Screenshot capture unavailable")
-        try:
-            return self._action_keyword.strategy_manager.capture_screenshot_bytes()
-        except ValueError as exc:  # pragma: no cover - defensive
-            raise OpticsError(Code.E0303, message="Failed to encode screenshot") from exc
+        return self._action_keyword.strategy_manager.capture_screenshot_bytes()
 
     # -- Natural-language mode ----------------------------------------------------
 
