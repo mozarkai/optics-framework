@@ -1104,10 +1104,7 @@ class LiveController:
         """
         if self._action_keyword is None:  # pragma: no cover - defensive
             raise OpticsError(Code.E0303, message="Screenshot capture unavailable")
-        try:
-            return self._action_keyword.strategy_manager.capture_screenshot_bytes()
-        except ValueError as exc:  # pragma: no cover - defensive
-            raise OpticsError(Code.E0303, message="Failed to encode screenshot") from exc
+        return self._action_keyword.strategy_manager.capture_screenshot_bytes()
 
     # -- Natural-language mode ----------------------------------------------------
 
