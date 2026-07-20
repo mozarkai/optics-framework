@@ -5,7 +5,6 @@ from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
-from appium.options.ios import XCUITestOptions # type: ignore
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.webdriver.common.action_chains import ActionChains  # type: ignore
 from selenium.webdriver.common.actions.action_builder import ActionBuilder  # type: ignore
@@ -17,6 +16,15 @@ from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
+from optics_framework.engines.drivers.appium_platforms import (
+    PlatformProfile,
+    get_profile,
+    normalize_platform,
+    supported_platforms,
+    supported_on,
+    MOBILE,
+    KEYCODE_RC_NAMED,
+)
 from optics_framework.common.error import OpticsError, Code
 
 
@@ -109,6 +117,40 @@ class Appium(DriverInterface):
             raise OpticsError(Code.E0101, message=self.NOT_INITIALIZED)
         return self.driver
 
+    def _active_platform(self) -> str:
+        """Return the normalized ``platformName`` for the active session.
+
+        Reads the live session capabilities when connected, else the configured
+        capabilities. Empty string when no platform is declared (callers treat that
+        as "unknown", which keeps the ``@supported_on`` guard permissive).
+        """
+        caps: Dict[str, Any] = {}
+        if self.driver is not None:
+            try:
+                caps = self.driver.capabilities or {}
+            except Exception:
+                caps = {}
+        if not caps:
+            caps = self.capabilities or {}
+        platform = caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)
+        if not platform:
+            for key, value in caps.items():
+                if key.lower() == self.KEY_PLATFORMNAME:
+                    platform = value
+                    break
+        return normalize_platform(platform)
+
+    def _require_profile(self) -> PlatformProfile:
+        """Return the PlatformProfile for the active platform, or raise if unknown."""
+        profile = get_profile(self._active_platform())
+        if profile is None:
+            raise OpticsError(
+                Code.E0104,
+                message=f"No Appium platform profile matches the configured "
+                        f"'platformName'. Supported: {supported_platforms()}.",
+            )
+        return profile
+
     def _cleanup_existing_driver(self) -> None:
         """Quit and clear current driver if present."""
         if self.driver is None:
@@ -132,17 +174,19 @@ class Appium(DriverInterface):
         """Update caps with app_package/app_activity; mutate caps in place."""
         if app_package:
             platform = caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)
-            if platform:
-                pl = str(platform).lower()
-                if pl == self.PLATFORM_ANDROID:
-                    caps[self.CAP_APP_PACKAGE_LEGACY] = caps[self.CAP_APP_PACKAGE] = app_package
-                elif pl == self.PLATFORM_IOS:
-                    caps[self.CAP_BUNDLE_ID] = caps[self.CAP_APPIUM_BUNDLE_ID] = app_package
-                else:
-                    internal_logger.warning(f"Unknown platform '{platform}', cannot set app identifier.")
-            else:
+            profile = get_profile(platform) if platform else None
+            if profile is not None:
+                # Each platform declares which capability keys carry the app id
+                # (appPackage / bundleId / appId) — see appium_platforms.py.
+                for cap_key in profile.app_id_caps:
+                    caps[cap_key] = app_package
+            elif not platform:
+                # No platform declared yet — set the common mobile identifiers so a
+                # later Android/iOS session still picks one up (legacy behaviour).
                 caps[self.CAP_APP_PACKAGE_LEGACY] = caps[self.CAP_APP_PACKAGE] = app_package
                 caps[self.CAP_BUNDLE_ID] = caps[self.CAP_APPIUM_BUNDLE_ID] = app_package
+            else:
+                internal_logger.warning(f"Unknown platform '{platform}', cannot set app identifier.")
         if app_activity:
             caps[self.CAP_APP_ACTIVITY] = caps[self.CAP_APPIUM_APP_ACTIVITY] = app_activity
 
@@ -451,26 +495,17 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
         internal_logger.debug(f"All capabilities from config: {all_caps}")
 
-        # Set default options that can be overridden by user config
-        default_options = {
-            "newCommandTimeout": 3600,
-            "ensureWebviewsHavePages": True,
-            "nativeWebScreenshot": True,
-            "noReset": True,
-            "shouldTerminateApp": True,
-            "forceAppLaunch": True,
-            "connectHardwareKeyboard": True,
-        }
-
-        if platform.lower() == self.PLATFORM_ANDROID:
-            options = UiAutomator2Options()
-            # Add Android-specific defaults
-            default_options["ignoreHiddenApiPolicyError"] = True
-        elif platform.lower() == self.PLATFORM_IOS:
-            options = XCUITestOptions()
-        else:
-            raise OpticsError(Code.E0104, message=f"Unsupported platform: {platform}. Use 'Android' or 'iOS'.")
-        return options, default_options
+        # The platform profile owns the options class (UiAutomator2 / XCUITest /
+        # generic AppiumOptions for TVs) and the per-platform default caps, so this
+        # method no longer branches on platformName. See appium_platforms.py.
+        profile = get_profile(platform)
+        if profile is None:
+            raise OpticsError(
+                Code.E0104,
+                message=f"Unsupported platform: {platform}. Supported: {supported_platforms()}.",
+            )
+        options = profile.options_factory()
+        return options, dict(profile.default_options)
 
     def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
         """
@@ -526,10 +561,9 @@ class Appium(DriverInterface):
         if platform_lower == self.PLATFORM_IOS:
             return self._get_ios_app_version(bundle_id_override=app_package)
 
-        raise OpticsError(
-            Code.E0104,
-            message=f"get_app_version is not supported for platform: '{platform}'",
-        )
+        # TVs don't expose an installed-app version over Appium; fall back to a
+        # configured value so the keyword degrades gracefully instead of raising.
+        return str(self.capabilities.get("appVersion", "unknown"))
 
     def _get_android_device_serial(self) -> Optional[str]:
         # Prefer the serial set by UiAutomator2 in session capabilities after connection
@@ -725,6 +759,7 @@ class Appium(DriverInterface):
         return self.driver
 
     # APPIUM api wrappers
+    @supported_on(*MOBILE)
     def click_element(self, element: Any, event_name: Optional[str] = None) -> None:
         """
         Click on the specified element using Appium's click method.
@@ -738,6 +773,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.debug(e)
 
+    @supported_on(*MOBILE)
     def tap_at_coordinates(self, x: int, y: int, event_name: Optional[str] = None) -> None:
         """
         Simulates a tap gesture at the specified screen coordinates using Appium's `tap` method.
@@ -752,6 +788,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.debug(f"Failed to tap at ({x}, {y}): {e}")
 
+    @supported_on(*MOBILE)
     def swipe(
         self,
         x_coor: int,
@@ -820,6 +857,7 @@ class Appium(DriverInterface):
             )
 
 
+    @supported_on(*MOBILE)
     def swipe_percentage(
         self,
         x_percentage: int,
@@ -844,6 +882,7 @@ class Appium(DriverInterface):
             return
         self.swipe(start_x, start_y, direction, swipe_length, event_name)
 
+    @supported_on(*MOBILE)
     def swipe_element(
         self,
         element: Any,
@@ -901,6 +940,7 @@ class Appium(DriverInterface):
                 f"Failed to perform TouchAction swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}): {e}"
             )
 
+    @supported_on(*MOBILE)
     def scroll(
         self,
         direction: str,
@@ -936,6 +976,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.debug(f"Failed to scroll {direction}: {e}")
 
+    @supported_on(*MOBILE)
     def enter_text_element(self, element: Any, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
@@ -957,12 +998,14 @@ class Appium(DriverInterface):
             internal_logger.debug(f"Entering text '{text}' into element: {element}")
             element.send_keys(utils.strip_sensitive_prefix(str(text)))
 
+    @supported_on(*MOBILE)
     def clear_text_element(self, element: Any, event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
         internal_logger.debug(f"Clearing text in element: {element}")
         element.clear()
 
+    @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
@@ -986,6 +1029,7 @@ class Appium(DriverInterface):
             text_to_send = utils.strip_sensitive_prefix(str(text))
             driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
 
+    @supported_on(*MOBILE)
     def clear_text(self, event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
@@ -998,7 +1042,16 @@ class Appium(DriverInterface):
         if event_name:
             self.event_sdk.capture_event(event_name)
         internal_logger.debug(f"Pressing keycode: {keycode}")
-        driver.press_keycode(int(utils.strip_sensitive_prefix(keycode)))
+        profile = self._require_profile()
+        if profile.keycode_strategy == KEYCODE_RC_NAMED:
+            # TV remote: a named button (UP/ENTER/BACK/...) sent over the vendor
+            # command instead of an Android integer key event.
+            rc_key = profile.resolve_rc_key(utils.strip_sensitive_prefix(str(keycode)))
+            payload = {"key": rc_key, **profile.rc_extra_payload}
+            internal_logger.debug(f"{profile.rc_command} -> {payload}")
+            driver.execute_script(profile.rc_command, payload)
+        else:
+            driver.press_keycode(int(utils.strip_sensitive_prefix(keycode)))
 
     def _handle_special_key_keyboard_input(self, driver: WebDriver, text: SpecialKey) -> None:
         """Send a SpecialKey via keycode or mobile:type fallback."""
@@ -1053,6 +1106,7 @@ class Appium(DriverInterface):
                 self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(ch)}
             )
 
+    @supported_on(*MOBILE)
     def enter_text_using_keyboard(
         self,
         text: Union[str, SpecialKey],
@@ -1116,6 +1170,7 @@ class Appium(DriverInterface):
         # Handle lowercase input so uppercase letters map to correct keycodes
         return mapping.get(char.lower())
 
+    @supported_on(*MOBILE)
     def get_text_element(self, element: Any) -> str:
         text = element.get_attribute("text") or element.get_attribute("value")
         internal_logger.info(f"Text of element: {text}")
@@ -1141,6 +1196,7 @@ class Appium(DriverInterface):
 
     # action keywords
 
+    @supported_on(*MOBILE)
     def press_element(self, element: Any, repeat: int, event_name: Optional[str] = None) -> None:
         timestamp = None
         for _ in range(repeat):
@@ -1153,6 +1209,7 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug("Clicked on element: %s at %s", element, timestamp)
 
+    @supported_on(*MOBILE)
     def press_coordinates(self, coor_x: int, coor_y: int, event_name: Optional[str] = None) -> None:
         """
         Press an element by absolute coordinates.
@@ -1167,6 +1224,7 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Pressing at coordinates: ({coor_x}, {coor_y})")
         self.tap_at_coordinates(coor_x, coor_y, event_name)
 
+    @supported_on(*MOBILE)
     def press_percentage_coordinates(
         self,
         percentage_x: float,
@@ -1185,6 +1243,7 @@ class Appium(DriverInterface):
             )
             self.press_coordinates(x, y, event_name)
 
+    @supported_on(*MOBILE)
     def press_xpath_using_coordinates(self, xpath: str, event_name: Optional[str] = None) -> None:
         """
         Press an element by its XPath using the bounding box coordinates.
