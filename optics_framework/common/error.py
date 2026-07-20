@@ -38,6 +38,7 @@ class Code(str, Enum):
     E0102 = "E0102"
     E0103 = "E0103"
     E0104 = "E0104"
+    E0105 = "E0105"
     W0104 = "W0104"
 
     # Element location issue
@@ -131,6 +132,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
     "E0104": ErrorSpec(
         code=Code.E0104,
         default_message="Driver config incomplete",
+        category=Category.DRIVER,
+        default_status=400,
+    ),
+    "E0105": ErrorSpec(
+        code=Code.E0105,
+        default_message="Keyword not supported on this device platform",
         category=Category.DRIVER,
         default_status=400,
     ),
