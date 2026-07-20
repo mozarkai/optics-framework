@@ -24,6 +24,22 @@ class ElementSourceInterface(ABC):
         """
         pass
 
+    def capture_screenshot_bytes(self) -> bytes:
+        """
+        Return the current screen as encoded PNG bytes.
+
+        Combines the numpy and bytes screenshot paths into one call. Backends that can
+        return native encoded bytes (e.g. Appium, Playwright) should override this for
+        efficiency; the default implementation encodes the result of :meth:`capture`.
+
+        :return: PNG-encoded screenshot bytes.
+        :rtype: bytes
+        """
+        import cv2  # local import — cv2 is a runtime dep, not needed at module load
+        frame = self.capture()
+        _, buf = cv2.imencode(".png", frame)
+        return bytes(buf)
+
     @abstractmethod
     def locate(self, element: Any, index: int | None = None) -> tuple:
         """
