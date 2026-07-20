@@ -188,6 +188,27 @@ class PlaywrightFindElement(ElementSourceInterface):
     # Assertions
     # --------------------------------------------------
 
+    def _is_present(self, element: str) -> bool:
+        """
+        True if `element` exists in the page/DOM right now, regardless of visibility.
+
+        Deliberately does not use `locate()`: that method waits for `state="visible"`
+        (correct when you're about to interact with the element), which would make a
+        presence check silently behave like a visibility check -- reporting "not found"
+        for something that genuinely exists but merely isn't rendered/scrolled into view
+        yet. A pure presence check only needs to know the element is attached to the DOM.
+        """
+        page = self._require_page()
+        element_type = utils.determine_element_type(element)
+        try:
+            locator = self._build_locator(page, element, element_type)
+            if locator is None:
+                return False
+            return run_async(locator.count()) > 0
+        except Exception as e:
+            internal_logger.debug(f"Presence check failed for '{element}': {e}")
+            return False
+
     def _check_element_found(self, element: str, found: dict) -> bool:
         """
         Check if a single element is found and update found dict.
@@ -196,7 +217,7 @@ class PlaywrightFindElement(ElementSourceInterface):
         :param found: Dictionary tracking found elements
         :return: True if element was found (and not previously found)
         """
-        if not found[element] and self.locate(element):
+        if not found[element] and self._is_present(element):
             found[element] = True
             return True
         return False
@@ -220,7 +241,7 @@ class PlaywrightFindElement(ElementSourceInterface):
         rule: str = "any",
     ):
         """
-        Assert presence of elements
+        Assert presence of elements -- attached to the DOM, regardless of visibility.
 
         rule:
         - any: return True if any found
