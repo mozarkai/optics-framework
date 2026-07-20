@@ -617,7 +617,10 @@ def _build_named_param_context(
 ) -> _NamedParamsContext:
     """Normalize named params and build context for fallback combos."""
     sig = inspect.signature(method)
-    all_param_names = [p.name for p in sig.parameters.values() if p.name != "self"]
+    all_param_names = [
+        p.name for p in sig.parameters.values()
+        if p.name != "self" and p.kind != inspect.Parameter.KEYWORD_ONLY
+    ]
     normalized_param_lists: List[List[str]] = []
     provided_param_names: List[str] = []
     param_defaults: Dict[str, Any] = {}
