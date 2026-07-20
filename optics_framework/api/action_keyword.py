@@ -4,7 +4,7 @@ import inspect
 import shlex
 import time
 import json
-from typing import Callable, Optional, Any, Tuple, List
+from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
@@ -241,6 +241,17 @@ class ActionKeyword:
         self._ai_healer: Optional[AISelfHealHandler] = None
         # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
         self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
+        # The focused subset of keywords the self-healer is allowed to call, bound here
+        # (rather than looked up by name via getattr) so a rename shows up as a static
+        # attribute error instead of a silent "Unknown keyword" at runtime.
+        self._heal_dispatch: Dict[str, Callable] = {
+            "press_element": self.press_element,
+            "enter_text": self.enter_text,
+            "scroll": self.scroll,
+            "swipe_by_percentage": self.swipe_by_percentage,
+            "press_keycode": self.press_keycode,
+            "press_by_percentage": self.press_by_percentage,
+        }
 
     def _record_successful_step(self, func_name: str, element: Any, args: tuple) -> None:
         self._recent_steps.append((func_name, [str(element), *map(str, args)]))
@@ -302,17 +313,6 @@ class ActionKeyword:
 
     # -- Self-heal keyword executor and catalog --------------------------------
 
-    # The focused subset of keywords the self-healer is allowed to call.
-    # These are methods on this class (or simple enough to forward).
-    _HEAL_KEYWORDS: List[str] = [
-        "press_element",
-        "enter_text",
-        "scroll",
-        "swipe_by_percentage",
-        "press_keycode",
-        "press_by_percentage",
-    ]
-
     def _heal_execute(self, line: str) -> Any:
         """Keyword executor for self-heal: parse and run one keyword, returning an ExecResult-like.
 
@@ -338,12 +338,9 @@ class ActionKeyword:
         keyword_name = tokens[0]
         params = tokens[1:]
 
-        if keyword_name not in self._HEAL_KEYWORDS:
-            return _Result(ok=False, message=f"Unknown keyword: {keyword_name}")
-
-        method = getattr(self, keyword_name, None)
+        method = self._heal_dispatch.get(keyword_name)
         if method is None:
-            return _Result(ok=False, message=f"Method not found: {keyword_name}")
+            return _Result(ok=False, message=f"Unknown keyword: {keyword_name}")
 
         try:
             # Non-self-healing methods: call directly with params.
@@ -364,14 +361,10 @@ class ActionKeyword:
 
     def _heal_catalog(self) -> List[HealKeywordSpec]:
         """Return the keyword catalog for the self-healer (focused subset with signatures)."""
-        catalog = []
-        for name in self._HEAL_KEYWORDS:
-            method = getattr(self, name, None)
-            if method is None:
-                continue
-            sig = self._heal_keyword_signature(name, method)
-            catalog.append(HealKeywordSpec(name=name, signature=sig))
-        return catalog
+        return [
+            HealKeywordSpec(name=name, signature=self._heal_keyword_signature(name, method))
+            for name, method in self._heal_dispatch.items()
+        ]
 
     @staticmethod
     def _heal_keyword_signature(name: str, method: Callable) -> str:
