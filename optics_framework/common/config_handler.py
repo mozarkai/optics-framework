@@ -48,6 +48,8 @@ class Config(BaseModel):
                 {"appium": DependencyConfig(enabled=False, url=None, capabilities={})},
                 {"selenium": DependencyConfig(enabled=False, url=None, capabilities={})},
                 {"ble": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"tizen": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"webos": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
         if not self.elements_sources:
             self.elements_sources = [
