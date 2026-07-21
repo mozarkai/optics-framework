@@ -241,6 +241,11 @@ class ActionKeyword:
         self._ai_healer: Optional[AISelfHealHandler] = None
         # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
         self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
+        # Set by `_log_heal_outcome` when a heal succeeds; consumed (and cleared) by the
+        # caller right after the keyword call via `_pop_last_heal_info`, so reporting
+        # layers (TestRunner, LiveController) can attribute the heal to the right call
+        # without it leaking onto the next, unrelated keyword.
+        self._last_heal_info: Optional[Dict[str, str]] = None
         # The focused subset of keywords the self-healer is allowed to call, bound here
         # (rather than looked up by name via getattr) so a rename shows up as a static
         # attribute error instead of a silent "Unknown keyword" at runtime.
@@ -300,7 +305,7 @@ class ActionKeyword:
         return bool(getattr(self._llm, "instances", None))
 
     def _log_heal_outcome(self, result: Any, func_name: str, element: Any, args: tuple) -> None:
-        """Log the heal result; on success, record the step so the run stays /save-able."""
+        """Log the heal result; on success, record the step and expose it for reporting."""
         if not result.ok:
             internal_logger.info(
                 "AI self-heal: could not recover '%s': %s", func_name, result.message
@@ -310,6 +315,23 @@ class ActionKeyword:
         kw = action.keyword if action else "?"
         internal_logger.info("AI self-heal: recovered '%s' via keyword '%s'", func_name, kw)
         self._record_successful_step(func_name, element, args)
+        steps = result.steps_taken or [kw]
+        self._last_heal_info = {
+            "summary": (
+                f"AI self-heal recovered '{func_name}' after {len(steps)} "
+                f"step{'s' if len(steps) != 1 else ''}: {'; '.join(steps)}"
+            ),
+        }
+
+    def _pop_last_heal_info(self) -> Optional[Dict[str, str]]:
+        """Return and clear the self-heal info recorded for the most recently completed call.
+
+        Callers (``TestRunner``, ``LiveController``) must call this immediately after every
+        keyword invocation, self-healing or not, so a heal on one keyword never leaks onto
+        the reporting for the next.
+        """
+        info, self._last_heal_info = self._last_heal_info, None
+        return info
 
     # -- Self-heal keyword executor and catalog --------------------------------
 

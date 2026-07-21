@@ -83,6 +83,9 @@ class HealResult:
     ok: bool
     action: Optional[HealAction] = None
     message: str = ""
+    # Every keyword line attempted during this heal, in order (including the
+    # terminal one on success), for building a human-readable recovery summary.
+    steps_taken: List[str] = field(default_factory=list)
 
 
 # Structured-output schema. Mirrors the NL agent's schema pattern (flat, no anyOf).
@@ -225,13 +228,13 @@ class AISelfHealHandler:
         except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
             return HealResult(False, action=action, message=f"Keyword failed: {exc}")
 
+        # Record every dispatched line, including the terminal one, so a caller can
+        # build a "recovered via X after N steps: ..." summary regardless of outcome.
+        attempted.append(self._build_line(action.keyword, action.params))
         if done:
             return HealResult(True, action=action, message=action.reason or "Healed.")
 
-        # Intermediate step: record what was tried so a budget-exhausted message
-        # (the only case that reaches the caller without this action already
-        # attached) can still say what the model attempted.
-        attempted.append(self._build_line(action.keyword, action.params))
+        # Intermediate step: UI changed, loop to re-observe.
         return None
 
     def heal(
@@ -249,11 +252,16 @@ class AISelfHealHandler:
                 step, ctx, screenshot_provider, pagesource_provider, catalog, attempted
             )
             if result is not None:
+                result.steps_taken = list(attempted)
                 return result
             # Intermediate step: UI changed, loop to re-observe.
 
         tried = "; ".join(attempted) if attempted else "no actions attempted"
-        return HealResult(False, message=f"Self-heal step budget exhausted. Tried: {tried}")
+        return HealResult(
+            False,
+            message=f"Self-heal step budget exhausted. Tried: {tried}",
+            steps_taken=list(attempted),
+        )
 
     # -- internals -------------------------------------------------------------
 
