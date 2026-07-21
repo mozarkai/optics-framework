@@ -187,14 +187,29 @@ class KeywordExecutor(Executor):
                     extra={"session_id": session.session_id}
                 ))
                 raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
+            # Same read-and-clear side channel TestRunner/LiveController use: whichever
+            # ActionKeyword instance the bound method belongs to may have just recorded a
+            # successful self-heal, which is otherwise invisible here (the keyword call
+            # itself returns normally either way).
+            heal_owner = getattr(method, "__self__", None)
+            heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
+            extra = {"session_id": session.session_id}
+            if heal_info:
+                extra["healed"] = "true"
+                extra["heal_summary"] = heal_info["summary"]
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,
                 name=self.keyword,
                 status=EventStatus.PASS,
                 message="Keyword executed successfully",
-                extra={"session_id": session.session_id}
+                extra=extra,
             ))
+            if heal_info:
+                # "result" mirrors expose_api.KEY_RESULT; execution.py is a lower layer
+                # and shouldn't import the HTTP-facing module, so the literal is kept in
+                # sync by convention rather than a shared import.
+                return {"result": result, "healed": True, "heal_summary": heal_info["summary"]}
             return result
         else:
             await event_manager.publish_event(Event(
