@@ -187,6 +187,7 @@ class TestHandlerActions:
         assert res.ok is False
         assert llm.calls == 2
         assert executor.calls == ['scroll down', 'scroll down']
+        assert "scroll down" in res.message
 
     def test_keyword_failure_does_not_abort(self):
         """A failing keyword lets the LLM retry a different approach."""

@@ -188,6 +188,7 @@ class AISelfHealHandler:
         screenshot_provider: ScreenshotProvider,
         pagesource_provider: PagesourceProvider,
         catalog: List[HealKeywordSpec],
+        attempted: List[str],
     ) -> Optional[HealResult]:
         """Execute a single iteration of self-healing and return terminal result or None to continue."""
         png = self._safe_call(screenshot_provider)
@@ -227,6 +228,10 @@ class AISelfHealHandler:
         if done:
             return HealResult(True, action=action, message=action.reason or "Healed.")
 
+        # Intermediate step: record what was tried so a budget-exhausted message
+        # (the only case that reaches the caller without this action already
+        # attached) can still say what the model attempted.
+        attempted.append(self._build_line(action.keyword, action.params))
         return None
 
     def heal(
@@ -237,16 +242,18 @@ class AISelfHealHandler:
     ) -> HealResult:
         """Attempt to recover the failed keyword. Never raises — returns ok=False on any problem."""
         catalog = self.keyword_catalog()
+        attempted: List[str] = []
 
         for step in range(self.max_steps):
             result = self._execute_single_step(
-                step, ctx, screenshot_provider, pagesource_provider, catalog
+                step, ctx, screenshot_provider, pagesource_provider, catalog, attempted
             )
             if result is not None:
                 return result
             # Intermediate step: UI changed, loop to re-observe.
 
-        return HealResult(False, message="Self-heal step budget exhausted.")
+        tried = "; ".join(attempted) if attempted else "no actions attempted"
+        return HealResult(False, message=f"Self-heal step budget exhausted. Tried: {tried}")
 
     # -- internals -------------------------------------------------------------
 
