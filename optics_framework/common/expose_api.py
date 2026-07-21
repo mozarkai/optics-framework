@@ -12,6 +12,7 @@ import pkgutil
 import asyncio
 import warnings
 import hashlib
+import yaml
 from itertools import product
 from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
@@ -253,6 +254,12 @@ class SessionConfig(BaseModel):
     elements_sources: List[Union[str, Dict[str, Any]]] = []
     text_detection: List[Union[str, Dict[str, Any]]] = []
     image_detection: List[Union[str, Dict[str, Any]]] = []
+    # AI self-heal. Both default to "unspecified" (None / empty) rather than off, so an
+    # explicit value here always wins, and when neither is given we fall back to
+    # project_path's own config.yaml (see _resolve_self_heal_settings) instead of
+    # silently forcing self-heal off for a project that already has it configured.
+    ai_self_heal: Optional[bool] = None
+    llm_models: List[Union[str, Dict[str, Any]]] = []
     project_path: Optional[str] = None
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
@@ -386,6 +393,48 @@ async def health_check():
     """
     return HealthCheckResponse(status=HEALTH_STATUS_RUNNING, version=VERSION)
 
+def _load_project_self_heal_settings(project_path: str) -> Tuple[Optional[bool], List[Any]]:
+    """Best-effort read of ai_self_heal/llm_models straight from a project's config.yaml.
+
+    Returns (ai_self_heal_or_None, raw_llm_models_list). Never raises: a missing or
+    unparsable config.yaml just means there is nothing to fall back to, not a session
+    creation failure — same tolerance as the rest of session creation gives a bad project.
+    """
+    path = os.path.join(project_path, "config.yaml")
+    if not os.path.isfile(path):
+        return None, []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as e:
+        internal_logger.warning("Could not read project config.yaml for self-heal fallback: %s", e)
+        return None, []
+    ai_self_heal = raw.get("ai_self_heal")
+    return (
+        bool(ai_self_heal) if ai_self_heal is not None else None,
+        raw.get("llm_models") or [],
+    )
+
+
+def _resolve_self_heal_settings(
+    config: SessionConfig,
+) -> Tuple[bool, List[Dict[str, DependencyConfig]]]:
+    """Explicit SessionConfig fields win; otherwise fall back to project_path's config.yaml.
+
+    This lets a serve/mcp session either opt in without a project folder (explicit
+    ai_self_heal + llm_models in the request) or simply inherit whatever a project's own
+    config.yaml already has configured for `optics execute`/`optics live` on the same
+    project — self-heal shouldn't behave differently depending on which frontend loads it.
+    """
+    project_ai_self_heal, project_llm_models_raw = (
+        _load_project_self_heal_settings(config.project_path) if config.project_path else (None, [])
+    )
+    ai_self_heal = config.ai_self_heal if config.ai_self_heal is not None else bool(project_ai_self_heal)
+    llm_models_raw = config.llm_models if config.llm_models else project_llm_models_raw
+    llm_models = [config._normalize_item(i) for i in llm_models_raw]
+    return ai_self_heal, llm_models
+
+
 @app.post(
     "/v1/sessions/start",
     response_model=SessionResponse,
@@ -425,12 +474,15 @@ async def create_session(config: SessionConfig):
         elements_sources = normalized.get(KEY_ELEMENTS_SOURCES, [])
         text_detection = normalized.get(KEY_TEXT_DETECTION, [])
         image_detection = normalized.get(KEY_IMAGE_DETECTION, [])
+        ai_self_heal, llm_models = _resolve_self_heal_settings(config)
 
         session_config = Config(
             driver_sources=driver_sources,
             elements_sources=elements_sources,
             text_detection=text_detection,
             image_detection=image_detection,
+            llm_models=llm_models,
+            ai_self_heal=ai_self_heal,
             project_path=config.project_path,
             log_level=LOG_LEVEL_DEBUG,
             save_captures=False  # do not save screenshots or pagesource when using `optics serve`
