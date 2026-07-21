@@ -399,8 +399,19 @@ def _load_project_self_heal_settings(project_path: str) -> Tuple[Optional[bool],
     Returns (ai_self_heal_or_None, raw_llm_models_list). Never raises: a missing or
     unparsable config.yaml just means there is nothing to fall back to, not a session
     creation failure — same tolerance as the rest of session creation gives a bad project.
+
+    project_path is caller-supplied (SessionConfig.project_path, the same field already
+    used elsewhere in this module for template discovery and the output directory).
+    realpath() resolves it before it ever reaches a filesystem call, so a relative
+    value or symlink can't resolve somewhere other than what the caller pointed at.
     """
-    path = os.path.join(project_path, "config.yaml")
+    try:
+        resolved_dir = os.path.realpath(project_path)
+    except (OSError, ValueError):
+        return None, []
+    if not os.path.isdir(resolved_dir):
+        return None, []
+    path = os.path.join(resolved_dir, "config.yaml")
     if not os.path.isfile(path):
         return None, []
     try:
