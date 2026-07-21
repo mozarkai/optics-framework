@@ -79,7 +79,13 @@ class UIHelper:
 
     def find_xpath(self, xpath):
         """
-        Process the given XPath and return the exact path from the UI tree after applying various matching strategies.
+        Process the given XPath and return the exact path from the UI tree, requiring
+        a genuine match (exact, or a simplified/relative form of the same predicate).
+
+        Deliberately does not fall back to partial/fuzzy attribute matching: those
+        strategies could report an element as present when a *different* element merely
+        had a similar resource-id/content-desc/text, which silently overrides correct
+        "not found" results from other element sources for absence assertions.
         """
         internal_logger.debug(f"Finding Xpath {xpath}...")
         _, time_stamp = (
@@ -108,28 +114,6 @@ class UIHelper:
             except Exception as e:
                 internal_logger.debug(
                     f"Error in relative match for XPath '{xpath}': {str(e)}"
-                )
-
-            # 3. Partial Match
-            try:
-                found_xpath = self.find_partial(xpath)
-                if found_xpath:
-                    internal_logger.debug("Xpath found using partial match")
-                    return found_xpath, time_stamp
-            except Exception as e:
-                internal_logger.debug(
-                    f"Error in partial match for XPath '{xpath}': {str(e)}"
-                )
-
-            # 4. Attribute Match with Fuzzy Prefix and Suffix Handling
-            try:
-                found_xpath = self.find_attribute_match(xpath)
-                if found_xpath:
-                    internal_logger.debug("Xpath found using attribute match")
-                    return found_xpath, time_stamp
-            except Exception as e:
-                internal_logger.debug(
-                    f"Error in attribute match for XPath '{xpath}': {str(e)}"
                 )
 
             # If no match is found
@@ -194,147 +178,6 @@ class UIHelper:
 
         # Join the parts back into a single simplified XPath
         return "/".join(simplified)
-
-    def make_partial_match(self, xpath):
-        """
-        Converts the XPath for partial matching using `contains()` for specified attributes,
-        while ignoring common stop words.
-        """
-        # List of attributes to support for partial matching
-        attributes = ["content-desc", "resource-id", "name", "value", "label", "text"]
-
-        # List of common stop words to ignore
-        stop_words = {"a", "an", "the", "for", "in", "on", "with", "of", "and", "or"}
-
-        # Loop through each supported attribute and process it
-        for attribute in attributes:
-            attr_placeholder = f"@{attribute}="
-            if attr_placeholder in xpath:
-                # Extract the attribute value
-                attr_value = self.extract_attribute(xpath, attribute)
-                if attr_value:
-                    # Split the attribute value into terms
-                    terms = attr_value.split()
-                    # Filter out stop words
-                    filtered_terms = [
-                        term for term in terms if term.lower() not in stop_words
-                    ]
-                    if filtered_terms:
-                        # Construct conditions using `contains()` for each filtered term
-                        conditions = " or ".join(
-                            [
-                                f'contains(@{attribute}, "{term}")'
-                                for term in filtered_terms
-                            ]
-                        )
-                        # Replace the exact match in the XPath with the partial match conditions
-                        xpath = xpath.replace(
-                            f'@{attribute}="{attr_value}"', conditions
-                        )
-
-        return xpath
-
-    def find_partial(self, xpath):
-        """Attempts partial matching using `contains()` in XPath."""
-        partial_xpath = self.make_partial_match(xpath)
-        internal_logger.debug(f"Partial XPath: {partial_xpath}")
-        try:
-            elements = self.root.xpath(partial_xpath)
-            if elements:
-                internal_logger.debug(
-                    f"Partial match found, element type: {type(elements[0])}"
-                )
-                # Use ElementTree.getpath()
-                return self.simplify_xpath(elements[0])
-        except Exception as e:
-            internal_logger.debug(f"Partial match error: {e}")
-        return None
-
-    def fuzzy_match_prefix(self, prefix1, prefix2):
-        """Performs a fuzzy comparison of two prefixes."""
-        return fuzz.ratio(prefix1, prefix2) >= 80
-
-    def find_attribute_match(self, xpath):
-        """Attempts matching by focusing on resource-id (fuzzy for prefix, exact or fuzzy for suffix)."""
-        input_attributes = {
-            "resource-id": self.extract_attribute(xpath, "resource-id"),
-            "content-desc": self.extract_attribute(xpath, "content-desc"),
-            "text": self.extract_attribute(xpath, "text"),
-            "value": self.extract_attribute(xpath, "value"),
-            "name": self.extract_attribute(xpath, "name"),
-            "label": self.extract_attribute(xpath, "label"),
-        }
-        # If no attributes are found, return None
-        if not any(input_attributes.values()):
-            return None
-
-        best_match = None
-        best_fuzzy_score = 0
-
-        # Ensure self.root is valid
-        if not hasattr(self, "root") or self.root is None:
-            internal_logger.error("Root element is not initialized.")
-            return None
-
-        for element in self.root.findall(".//*"):
-            if element is None:  # Safeguard against invalid elements
-                continue
-
-            for attr, input_value in input_attributes.items():
-                if not input_value:
-                    continue
-
-                elem_value = element.get(attr)
-                if not elem_value:
-                    continue
-
-                # Handle splitting logic for attributes with `/`
-                input_prefix, input_suffix = self.split_element(input_value)
-                elem_prefix, elem_suffix = self.split_element(elem_value)
-
-                # Check exact match first
-                if input_value == elem_value:
-                    internal_logger.debug(f"Exact match found for {attr}: {elem_value}")
-                    return self.simplify_xpath(element)
-
-                # Fuzzy match logic
-                if self.fuzzy_match_prefix(input_prefix, elem_prefix):
-                    if input_suffix == elem_suffix:
-                        internal_logger.debug(
-                            f"Attribute match found for {attr} with exact suffix match: {elem_value}"
-                        )
-                        return self.simplify_xpath(element)
-
-                    # Fuzzy match on suffix if exact match fails
-                    suffix_score = fuzz.ratio(input_suffix or "", elem_suffix or "")
-                    if suffix_score > best_fuzzy_score:
-                        best_fuzzy_score = suffix_score
-                        best_match = element
-
-        # Handle best fuzzy match
-        if best_fuzzy_score >= 70:  # Threshold for fuzzy match acceptance
-            internal_logger.debug(
-                f"Fuzzy match found with score {best_fuzzy_score}, element: {best_match}"
-            )
-            return self.simplify_xpath(best_match)
-
-        # No match found
-        internal_logger.debug("No match found using attribute matching.")
-        return None
-
-    def split_element(self, element):
-        """Splits an element into prefix and suffix."""
-        return element.rsplit(":", 1) if ":" in element else (element, "")
-
-    def extract_attribute(self, xpath, attribute):
-        """Extracts the value of a given attribute from the XPath."""
-        marker = f"@{attribute}="
-        try:
-            start = xpath.index(marker) + len(marker) + 1
-            end = xpath.index('"', start)
-            return xpath[start:end]
-        except ValueError:
-            return None
 
     def simplify_xpath(self, element):
         """
