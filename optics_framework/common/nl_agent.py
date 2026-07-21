@@ -57,10 +57,7 @@ class AgentResult:
     status: str  # "done" | "failed" | "exhausted" | "aborted"
     steps: List[AgentStep] = field(default_factory=list)
     message: Optional[str] = None
-    # The keyword steps to commit to the /save buffer. Normally every step that succeeded,
-    # in order. On a "done" run with curation enabled (see NaturalLanguageAgent
-    # curate_on_done) this is the minimal pruned subset that reproduces the goal, not
-    # literally every step that passed.
+    # Steps to commit to /save: every successful step, or the curated subset if pruned.
     successful_steps: List[Tuple[str, List[str]]] = field(default_factory=list)
 
 
@@ -220,9 +217,7 @@ coordinate guessing has already failed).
 _MAX_THOUGHT_CHARS = 160
 
 
-# Curation schema. After an instruction is fulfilled, the model is asked to reduce the
-# steps it ran to the minimal subset that reproduces the goal. Flat (no anyOf) for the same
-# Gemini-compatibility reasons as ACTION_SCHEMA.
+# Flat (no anyOf) for the same Gemini-compatibility reasons as ACTION_SCHEMA.
 CURATION_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -287,10 +282,7 @@ class NaturalLanguageAgent:
         self.max_consecutive_failures = max_consecutive_failures
         self.max_blind_repeats = max_blind_repeats
         self.non_verifying_keywords = non_verifying_keywords
-        # When True, a successful ("done") run gets an extra LLM pass that prunes the
-        # recorded steps to the minimal set reproducing the goal (see
-        # _curate_successful_steps). Off by default so the agent stays a pure primitive;
-        # LiveController enables it because /save wants a minimal replayable script.
+        # Off by default; LiveController enables it so /save gets a minimal script.
         self.curate_on_done = curate_on_done
 
     def run(
