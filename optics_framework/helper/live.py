@@ -768,30 +768,17 @@ class LiveController:
     ) -> SaveResult:
         """Persist the recorded actions to the project's standard CSV files.
 
-        Everything is written to three fixed-name files, appending when they already
-        exist so a session can build up a test suite one module at a time:
+        Appends to three fixed-name files so a session can build up a test suite one
+        module at a time: ``modules/modules.csv`` (the recorded keywords as one module
+        named ``module_name``), ``test_cases/test_cases.csv`` (a ``(test_case,
+        module_name)`` row), and ``elements/elements.csv`` (a header-only stub for
+        manual editing).
 
-        * ``modules/modules.csv`` — the recorded keywords as one module named
-          ``module_name`` (Title Case ``module_step`` + ``param_N`` columns, matching
-          :class:`CSVDataReader`).
-        * ``test_cases/test_cases.csv`` — a ``(test_case, module_name)`` row linking the
-          test case to the module it should run.
-        * ``elements/elements.csv`` — a header-only stub (``Element_Name,Element_ID``)
-          created once so the standard file exists for manual editing (live recording
-          captures inline locators, not named elements).
+        Session artifacts are copied to ``execution_output/<module_name>/``.
 
-        Session artifacts are snapshotted to ``execution_output/<module_name>/`` — the
-        auto pre-/post-action screenshots written by ``@with_self_healing``, AOI
-        captures, annotated detections, per-session logs. They are **copied** (not
-        moved) so further keyword runs keep accumulating in the tempdir.
-
-        If ``module_name`` (in modules.csv) or ``test_case`` (in test_cases.csv) already
-        exists and ``allow_append`` is ``False``, raises :class:`SaveConflictError` so
-        the caller can ask the user whether to append or choose a new name. With
-        ``allow_append=True`` the new rows are merged into the existing files.
-
-        On success the in-memory recording buffer is cleared, so subsequent keywords
-        form the next module.
+        Raises :class:`SaveConflictError` if ``module_name`` or ``test_case`` already
+        exists and ``allow_append`` is ``False``; with ``allow_append=True`` the new
+        rows are merged in. On success the recording buffer is cleared.
         """
         if not self.recorded:
             raise OpticsError(Code.E0501, message="Nothing recorded to save")
@@ -835,8 +822,7 @@ class LiveController:
             shutil.copytree(self._artifacts_dir, destination)
             artifacts_path = destination
 
-        # Clear the buffer so the next keywords form a fresh module (one module per
-        # /save), and mark the (now empty) recording as saved.
+        # One module per /save; clear the buffer for the next one.
         self.recorded = []
         self.saved = True
         return SaveResult(
@@ -1110,12 +1096,7 @@ class LiveController:
         return os.path.join(output_dir, f"{timestamp}-{sanitized}.jpg")
 
     def screenshot_png_bytes(self) -> bytes:
-        """Capture the current screen as encoded PNG bytes (for the LLM); no file side-effect.
-
-        Delegates to ``StrategyManager.capture_screenshot_bytes()`` so the native
-        fast path (when a backend supports it) and the numpy fallback are chosen
-        driver-agnostically.
-        """
+        """Capture the current screen as encoded PNG bytes (for the LLM); no file side-effect."""
         if self._action_keyword is None:  # pragma: no cover - defensive
             raise OpticsError(Code.E0303, message="Screenshot capture unavailable")
         try:
@@ -1187,8 +1168,6 @@ class LiveController:
             keyword_catalog=self._nl_catalog,
             element_names=self.element_names,
             pagesource_provider=self.page_source,
-            # Prune a completed run to the minimal replayable script before it reaches
-            # the /save buffer — dead-ends and backtracks that "passed" are dropped.
             curate_on_done=True,
         )
         return self._nl_agent
