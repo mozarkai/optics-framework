@@ -1,6 +1,6 @@
 # Stateless API Layer — Design
 
-**Status**: Layer 1 implemented (`SessionState`/`SessionStore` split, driver capability gate, `/export` · `/import` · `/migrate`) | **Tracks**: [Help Wanted §1 — Stateless API Layer](help_wanted.md#1-stateless-api-layer)
+**Status**: Layers 1–2 implemented — Layer 1 (`SessionState`/`SessionStore` split, driver capability gate, `/export` · `/import` · `/migrate`) and Layer 2 (`RedisSessionStore` with distributed leases + orphan reclaim, env-selected store via `OPTICS_SESSION_STORE`, enforced cross-instance lookup) | **Tracks**: [Help Wanted §1 — Stateless API Layer](help_wanted.md#1-stateless-api-layer)
 
 This document is the implementation design for making `optics serve` stateless. It is deliberately scoped to **Layer 1** (a stateless session layer) but designs Layer 1's *seams* so **Layer 2** (multi-worker / multi-pod deployment) and **Layer 3** (device/session scheduling across a driver/device fleet) drop in behind interfaces that already exist — no call-site rework, no schema migration.
 
@@ -242,6 +242,19 @@ That collapse is the strongest signal the design is right: migration is not a fe
 4. **`resolve_driver_binding` seam + fully-populated `DriverBinding`** — the Layer-3 anchor, cheap to add now.
 
 Layer 2 (`RedisSessionStore` + enforced leases + cross-pod rehydrate) and Layer 3 (`DeviceRegistry` + placement) then land as new implementations behind these interfaces.
+
+### Layer 2 — enabling the shared store (implemented)
+
+`RedisSessionStore` (`common/session_store_redis.py`) implements the `SessionStore` interface with a real distributed lease, so it drops in with no call-site changes. It is selected from the environment when constructing the server's `SessionManager`:
+
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `OPTICS_SESSION_STORE` | `memory` | `memory` → `InMemorySessionStore` (single process); `redis` → `RedisSessionStore`. |
+| `OPTICS_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL (used only when the backend is `redis`). |
+
+Install the optional dependency with `pip install optics-framework[stateless]` (adds `redis`).
+
+Redis layout: the durable `SessionState` lives at `optics:session:{sid}` (JSON); a TTL'd `optics:lease:{sid}` holds the owning `instance_id`. Mutual exclusion rests on atomic `SET NX PX`; **orphan reclaim is automatic** — a pod that dies stops renewing, the lease key expires, and any other pod may then acquire it and rehydrate the session. When a request lands on an instance while another holds a live lease, `get_or_rehydrate` raises `SessionOwnedElsewhere`, surfaced by the API as **HTTP 409** so the caller retries against the owning pod (or after the current owner detaches). This is the cross-pod path the load balancer exercises implicitly; `/migrate` (detach) is how an owner voluntarily hands a migratable session off.
 
 ---
 
