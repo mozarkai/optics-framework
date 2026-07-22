@@ -19,8 +19,11 @@ from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.session_manager import (
     InMemorySessionStore,
     SessionManager,
+    SessionOwnedElsewhere,
+    build_session_store_from_env,
     resolve_driver_binding,
 )
+from optics_framework.common.session_store_redis import RedisSessionStore
 
 FAKE_BACKEND_SESSION = "backend-123"
 FAKE_ENDPOINT = "http://fake-driver:4723"
@@ -391,3 +394,178 @@ def test_migrate_endpoint_refuses_sticky_driver(monkeypatch, tmp_path):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(expose_api.migrate_session(sid))
     assert exc.value.status_code == 400
+
+
+# --- Layer 2: RedisSessionStore --------------------------------------------------
+#
+# A minimal in-memory double for the small Redis command surface the store uses
+# (get / set with nx|xx|px / delete / scan_iter). Expiry is driven by a logical
+# clock the test advances, so lease-timeout behavior is deterministic without
+# sleeping.
+
+class FakeRedis:
+    def __init__(self):
+        self._data = {}          # name -> (value, expiry_or_None)
+        self._clock = 0.0
+
+    def advance(self, seconds):
+        self._clock += seconds
+
+    def _expired(self, name):
+        entry = self._data.get(name)
+        if entry is None:
+            return True
+        _, expiry = entry
+        if expiry is not None and expiry <= self._clock:
+            del self._data[name]
+            return True
+        return False
+
+    def set(self, name, value, nx=False, xx=False, px=None, ex=None):
+        exists = not self._expired(name)
+        if nx and exists:
+            return None
+        if xx and not exists:
+            return None
+        expiry = None
+        if px is not None:
+            expiry = self._clock + px / 1000.0
+        elif ex is not None:
+            expiry = self._clock + ex
+        self._data[name] = (str(value), expiry)
+        return True
+
+    def get(self, name):
+        if self._expired(name):
+            return None
+        return self._data[name][0]
+
+    def delete(self, *names):
+        removed = 0
+        for name in names:
+            if name in self._data:
+                del self._data[name]
+                removed += 1
+        return removed
+
+    def scan_iter(self, match=None):
+        import fnmatch
+        for name in list(self._data.keys()):
+            if self._expired(name):
+                continue
+            if match is None or fnmatch.fnmatch(name, match):
+                yield name
+
+
+def _redis_state(sid="rs-1") -> SessionState:
+    return SessionState(
+        session_id=sid,
+        config={},
+        driver_binding=DriverBinding(driver_type="fakedrv"),
+        created_at=1.0,
+        updated_at=1.0,
+    )
+
+
+def test_redis_store_crud_round_trip():
+    store = RedisSessionStore(FakeRedis())
+    store.put_state(_redis_state())
+    got = store.get_state("rs-1")
+    assert got is not None and got.session_id == "rs-1"
+    assert [s.session_id for s in store.list_states()] == ["rs-1"]
+    store.delete_state("rs-1")
+    assert store.get_state("rs-1") is None
+    assert list(store.list_states()) == []
+
+
+def test_redis_store_namespacing_and_json_fidelity():
+    store = RedisSessionStore(FakeRedis(), key_prefix="opt:")
+    state = _redis_state("rs-2")
+    state.driver_binding.reattach_handle = "backend-xyz"
+    state.metadata["workspace_hash"] = "abc123"
+    store.put_state(state)
+    got = store.get_state("rs-2")
+    assert got.driver_binding.reattach_handle == "backend-xyz"
+    assert got.metadata["workspace_hash"] == "abc123"
+
+
+def test_redis_lease_mutual_exclusion():
+    store = RedisSessionStore(FakeRedis())
+    assert store.acquire_lease("s", "A", 10) is True
+    assert store.acquire_lease("s", "B", 10) is False      # A holds it
+    assert store.renew_lease("s", "B", 10) is False        # B cannot renew A's lease
+    assert store.renew_lease("s", "A", 10) is True         # A can
+    store.release_lease("s", "B")                          # non-owner release is a no-op
+    assert store.renew_lease("s", "A", 10) is True
+    store.release_lease("s", "A")
+    assert store.acquire_lease("s", "B", 10) is True       # now free
+
+
+def test_redis_lease_orphan_reclaim_on_expiry():
+    redis = FakeRedis()
+    store = RedisSessionStore(redis)
+    assert store.acquire_lease("s", "A", ttl=5) is True
+    assert store.acquire_lease("s", "B", ttl=5) is False
+    redis.advance(6)                                        # A stopped renewing (died)
+    assert store.acquire_lease("s", "B", ttl=5) is True     # lease reclaimed
+
+
+def test_redis_lease_reacquire_by_owner_extends():
+    redis = FakeRedis()
+    store = RedisSessionStore(redis)
+    assert store.acquire_lease("s", "A", ttl=5) is True
+    redis.advance(3)
+    assert store.acquire_lease("s", "A", ttl=5) is True     # extend, still ours
+    redis.advance(3)                                        # would have expired at t=5 without extend
+    assert store.renew_lease("s", "A", ttl=5) is True
+
+
+def test_build_store_from_env_defaults_to_memory(monkeypatch):
+    monkeypatch.delenv("OPTICS_SESSION_STORE", raising=False)
+    assert isinstance(build_session_store_from_env(), InMemorySessionStore)
+
+
+def test_build_store_from_env_unknown_falls_back_to_memory(monkeypatch):
+    monkeypatch.setenv("OPTICS_SESSION_STORE", "bogus")
+    assert isinstance(build_session_store_from_env(), InMemorySessionStore)
+
+
+def test_redis_cross_instance_rehydrate_and_conflict(monkeypatch, tmp_path):
+    """Two SessionManagers share one Redis-backed store: while instance A holds
+    a live lease, B is refused; after A detaches, B rehydrates and reattaches."""
+    fake = FakeMigratableDriver()
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
+    store = RedisSessionStore(FakeRedis())
+    manager_a = SessionManager(store=store)
+    manager_b = SessionManager(store=store)
+
+    sid = _create(manager_a, tmp_path)
+
+    with pytest.raises(SessionOwnedElsewhere):
+        manager_b.get_or_rehydrate(sid)
+
+    manager_a.detach_session(sid)                           # releases the lease
+
+    session_b = manager_b.get_or_rehydrate(sid)
+    assert session_b is not None
+    assert fake.attached_handle == FAKE_BACKEND_SESSION
+    reclaimed = store.get_state(sid)
+    assert reclaimed.status == SessionStatus.ACTIVE
+    assert reclaimed.owner_instance_id == manager_b.instance_id
+
+
+def test_redis_local_hit_conflict_when_lease_lost(monkeypatch, tmp_path):
+    """A session live locally whose lease expires and is reclaimed elsewhere
+    must surface a conflict on the next lookup, not serve a stale runtime."""
+    fake = FakeMigratableDriver()
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
+    redis = FakeRedis()
+    store = RedisSessionStore(redis)
+    manager = SessionManager(store=store, lease_ttl_s=10)
+
+    sid = _create(manager, tmp_path)
+    redis.advance(11)                                       # our lease expires
+    assert store.acquire_lease(sid, "other-instance", ttl=10) is True
+
+    with pytest.raises(SessionOwnedElsewhere):
+        manager.get_session(sid)
