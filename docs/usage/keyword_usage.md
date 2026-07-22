@@ -532,6 +532,8 @@ Asserts that elements are actually rendered/visible on screen right now — dist
 
 **Driver support:** Appium (Android and iOS). Selenium and Playwright do not yet implement this keyword and raise an error if used — support is pending fixes to unrelated pre-existing bugs in those drivers.
 
+**Android note:** elements scrolled out of view are omitted entirely from the page source by default on Android, so this keyword can't tell "off-screen" from "doesn't exist" for them unless `allowInvisibleElements: true` is set under `appium:settings` — see [Appium configuration](../configuration.md#driver-sources).
+
 **Parameters:**
 
 | Parameter | Type | Description | Default |
