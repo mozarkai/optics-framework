@@ -228,6 +228,22 @@ Driver sources define the automation frameworks used to control devices or brows
     | `appActivity` | Activity name | - | Android activity |
     | `udid` | Device UDID | Device UDID | Unique device ID |
 
+    !!! warning "Android: elements off-screen may be missing from Capture Pagesource"
+        On Android (UiAutomator2), elements not currently rendered on screen (e.g. scrolled
+        out of view) are omitted entirely from `Capture Pagesource` and the page
+        source-backed element sources by default -- so `Assert Visibility` can't distinguish
+        "off-screen" from "doesn't exist" for them, since they never show up in the tree at
+        all. Set `allowInvisibleElements: true` under `appium:settings` to include them:
+
+        ```yaml
+        capabilities:
+          appium:settings:
+            allowInvisibleElements: true
+        ```
+
+        iOS (XCUITest) includes such elements by default (with a `visible="false"`
+        attribute) -- no equivalent setting needed.
+
 === "Selenium"
 
     **Purpose:** Web browser automation.
