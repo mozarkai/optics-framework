@@ -51,6 +51,19 @@ class LocatorStrategy(ABC):
         """Returns (result, timestamp, annotated_frame). Timestamp and annotated_frame may be None."""
         pass
 
+    def assert_elements_visible(
+        self, elements: list, timeout: int = 30, rule: str = 'any'
+    ) -> Tuple[bool, Optional[str], Optional[Any]]:
+        """Assert elements are actually rendered/visible on screen, not merely present.
+
+        Default falls back to :meth:`assert_elements` Correct as-is for vision-based
+        strategies (OCR/image detection), where anything found is inherently on-screen.
+        Native locator strategies (XPath/Text) override this to layer in a real
+        visibility check via the element source.
+        """
+        return self.assert_elements(elements, timeout, rule)
+
+
     @staticmethod
     @abstractmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -100,11 +113,15 @@ class LocatorStrategy(ABC):
             return True
 
     def _assert_elements_locator_style(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
+        self, elements: list, timeout: int = 30, rule: str = 'any', method_name: str = 'assert_elements'
     ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        """Shared implementation for locator strategies that delegate to element_source.assert_elements and optionally attach a screenshot."""
+        """Shared implementation delegating to element_source.assert_elements or
+        assert_elements_visible (picked via method_name), optionally attaching an annotated
+        screenshot. Visibility calls are only routed to sources that genuinely implement it --
+        see StrategyManager._can_strategy_assert_elements.
+        """
         try:
-            self.element_source.assert_elements(elements, timeout, rule)
+            getattr(self.element_source, method_name)(elements, timeout, rule)
             timestamp = utils.get_timestamp()
             frame = None
             strategy_manager = getattr(self, '_strategy_manager', None)
@@ -112,7 +129,7 @@ class LocatorStrategy(ABC):
                 try:
                     frame = strategy_manager.capture_screenshot()
                 except Exception as e:
-                    internal_logger.exception("Failed to capture screenshot for assert_elements: %s", e)
+                    internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
                     frame = None
             bboxes = []
             if hasattr(self.element_source, 'get_element_bboxes'):
@@ -153,6 +170,11 @@ class XPathStrategy(LocatorStrategy):
     ) -> Tuple[bool, Optional[str], Optional[Any]]:
         return self._assert_elements_locator_style(elements, timeout, rule)
 
+    def assert_elements_visible(
+        self, elements: list, timeout: int = 30, rule: str = 'any'
+    ) -> Tuple[bool, Optional[str], Optional[Any]]:
+        return self._assert_elements_locator_style(elements, timeout, rule, method_name='assert_elements_visible')
+
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "XPath" and LocatorStrategy._is_method_implemented(element_source, "locate")
@@ -176,6 +198,11 @@ class TextElementStrategy(LocatorStrategy):
         self, elements: list, timeout: int = 30, rule: str = 'any'
     ) -> Tuple[bool, Optional[str], Optional[Any]]:
         return self._assert_elements_locator_style(elements, timeout, rule)
+
+    def assert_elements_visible(
+        self, elements: list, timeout: int = 30, rule: str = 'any'
+    ) -> Tuple[bool, Optional[str], Optional[Any]]:
+        return self._assert_elements_locator_style(elements, timeout, rule, method_name='assert_elements_visible')
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -646,9 +673,17 @@ class StrategyManager:
         return (alloc, remaining_total, remaining_strategies)
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
+        """Assert elements are present -- possibly off-screen, anywhere in the page/DOM."""
+        return self._assert(elements, element_type, timeout, rule, method_name="assert_elements")
+
+    def assert_visibility(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
+        """Assert elements are actually rendered/visible on screen right now, not merely present."""
+        return self._assert(elements, element_type, timeout, rule, method_name="assert_elements_visible")
+
+    def _assert(self, elements: list, element_type: str, timeout: int, rule: str, method_name: str):
         self._validate_rule(rule)
         execution_logger.info(
-            f"Asserting presence of elements: {elements} with rule: {rule} and timeout: {timeout}s")
+            f"Asserting ({method_name}) elements: {elements} with rule: {rule} and timeout: {timeout}s")
 
         effective_elements = [utils.parse_text_only_prefix(el)[0] for el in elements]
         has_text_only = any(utils.parse_text_only_prefix(el)[1] for el in elements)
@@ -657,7 +692,7 @@ class StrategyManager:
         last_exception = None
         applicable_strategies = [
             s for s in self.locator_strategies
-            if self._can_strategy_assert_elements(s, element_type)
+            if self._can_strategy_assert_elements(s, element_type, method_name)
         ]
         if has_text_only:
             applicable_strategies = [
@@ -679,7 +714,7 @@ class StrategyManager:
             )
             try:
                 result, timestamp, annotated_frame = self._try_assert_with_strategy(
-                    strategy, effective_elements, alloc, rule
+                    strategy, effective_elements, alloc, rule, method_name
                 )
                 if result:
                     return result, timestamp, annotated_frame
@@ -687,7 +722,7 @@ class StrategyManager:
                 last_exception = e
 
         if last_exception:
-            internal_logger.debug(f"assert_presence ended with last exception: {last_exception}")
+            internal_logger.debug(f"{method_name} ended with last exception: {last_exception}")
         raise OpticsError(Code.E0201, message=f"{elements} not found based on rule '{rule}'.")
 
     def _validate_rule(self, rule: str):
@@ -696,18 +731,26 @@ class StrategyManager:
         if rule not in ("any", "all"):
             raise OpticsError(Code.E0205, message="Invalid rule. Use 'any' or 'all'.")
 
-    def _can_strategy_assert_elements(self, strategy, element_type: str) -> bool:
+    def _can_strategy_assert_elements(self, strategy, element_type: str, method_name: str = "assert_elements") -> bool:
         """Check if strategy can assert elements for the given element type."""
-        return (hasattr(strategy, 'assert_elements') and
-                strategy.supports(element_type, strategy.element_source))
+        if not (hasattr(strategy, method_name) and
+                strategy.supports(element_type, strategy.element_source)):
+            return False
+        delegates_to_source = (
+            method_name == "assert_elements_visible"
+            and type(strategy).assert_elements_visible is not LocatorStrategy.assert_elements_visible
+        )
+        if delegates_to_source:
+            return LocatorStrategy._is_method_implemented(strategy.element_source, "assert_elements_visible")
+        return True
 
-    def _try_assert_with_strategy(self, strategy, elements: list, timeout: int, rule: str):
+    def _try_assert_with_strategy(self, strategy, elements: list, timeout: int, rule: str, method_name: str = "assert_elements"):
         """Try to assert elements using a specific strategy.
 
         Strategies are required to return (result, timestamp, annotated_frame).
         """
         try:
-            result, timestamp, annotated_frame = strategy.assert_elements(elements, timeout, rule)
+            result, timestamp, annotated_frame = getattr(strategy, method_name)(elements, timeout, rule)
 
             if result:
                 execution_tracer.log_attempt(strategy, str(elements), "success")
