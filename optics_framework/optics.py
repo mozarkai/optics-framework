@@ -1111,6 +1111,25 @@ class Optics:
             event_name=cast(Optional[str], event_name),
         )
 
+    @keyword("Assert Visibility")
+    @fallback_params
+    def assert_visibility(
+        self,
+        elements: fallback_str,
+        timeout: fallback_str = "60",
+        rule: fallback_str = "any",
+        event_name: Optional[fallback_str] = None,
+    ) -> bool:
+        """Assert that elements are actually rendered/visible on screen right now."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.assert_visibility(
+            elements=cast(str, elements),
+            timeout_str=cast(str, timeout),
+            rule=cast(str, rule),
+            event_name=cast(Optional[str], event_name),
+        )
+
     @keyword("Validate Screen")
     @fallback_params
     def validate_screen(
