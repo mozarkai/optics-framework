@@ -388,7 +388,7 @@ class TestSelectDropdownOption:
     def test_opens_dropdown_then_selects_option(self, action_keyword, mock_dependencies):
         with patch.object(action_keyword, "press_element") as mock_press, \
              patch.object(action_keyword.strategy_manager, "get_interactive_elements", return_value=[]), \
-             patch.object(action_keyword.verifier, "assert_visibility", return_value=True):
+             patch.object(action_keyword.verifier, "assert_presence", return_value=True):
             action_keyword.select_dropdown_option("Country", "India", event_name="evt")
 
         assert mock_press.call_count == 2
@@ -415,7 +415,7 @@ class TestSelectDropdownOption:
             action_keyword.strategy_manager, "get_interactive_elements",
             side_effect=OpticsError(Code.E0202, message="no strategies"),
         ), patch.object(
-            action_keyword.verifier, "assert_visibility",
+            action_keyword.verifier, "assert_presence",
             side_effect=OpticsError(Code.E0201, message="not found"),
         ), patch.object(action_keyword, "press_element") as mock_press:
             action_keyword.select_dropdown_option("Country", "India", event_name="evt")
@@ -437,7 +437,7 @@ class TestSelectDropdownOption:
             action_keyword.strategy_manager, "get_interactive_elements",
             side_effect=[baseline, after_open],
         ), patch.object(
-            action_keyword.verifier, "assert_visibility",
+            action_keyword.verifier, "assert_presence",
             side_effect=OpticsError(Code.E0201, message="not found"),
         ), patch.object(action_keyword, "press_element") as mock_press:
             with pytest.raises(OpticsError) as exc_info:
@@ -472,7 +472,7 @@ class TestSelectDropdownOption:
             action_keyword.strategy_manager, "capture_pagesource",
             side_effect=[("<xml>v1</xml>", "t1"), ("<xml>v2</xml>", "t2"), ("<xml>v3</xml>", "t3")],
         ), patch.object(
-            action_keyword.verifier, "assert_visibility",
+            action_keyword.verifier, "assert_presence",
             side_effect=[
                 OpticsError(Code.E0201, message="not found"),  # initial check, right after opening
                 OpticsError(Code.E0201, message="not found"),  # after 1st swipe
@@ -513,7 +513,7 @@ class TestSelectDropdownOption:
             action_keyword.strategy_manager, "capture_pagesource",
             side_effect=[("<xml>same</xml>", "t1"), ("<xml>same</xml>", "t2")],
         ), patch.object(
-            action_keyword.verifier, "assert_visibility",
+            action_keyword.verifier, "assert_presence",
             side_effect=OpticsError(Code.E0201, message="not found"),
         ), patch.object(action_keyword, "press_element") as mock_press, \
                 patch("optics_framework.api.action_keyword.time.sleep", return_value=None):
@@ -543,7 +543,7 @@ class TestSelectDropdownOption:
             action_keyword.strategy_manager, "get_interactive_elements",
             return_value=before,
         ), patch.object(
-            action_keyword.verifier, "assert_visibility", return_value=True,
+            action_keyword.verifier, "assert_presence", return_value=True,
         ), patch.object(action_keyword, "press_element") as mock_press:
             action_keyword.select_dropdown_option("c22-dropdown", "Option 3", event_name="evt")
 
