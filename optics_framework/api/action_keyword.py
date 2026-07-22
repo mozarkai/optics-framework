@@ -26,9 +26,10 @@ _DROPDOWN_LIST_CLASS_TOKENS = (
 # consecutive scans overlap and a fast/long swipe can't skip past an unscanned option row.
 _DROPDOWN_SWIPE_OVERLAP_FACTOR = 0.5
 
-# Per-check timeout for assert_presence while polling for the option, matching the budget
+# Per-check timeout for assert_visibility while polling for the option, matching the budget
 # scroll_until_element_appears/swipe_until_element_appears use for the same purpose.
 _DROPDOWN_OPTION_CHECK_TIMEOUT = "3"
+
 
 def _parse_aoi_param(param: Any, default_value: float) -> float:
     if param is None or str(param).strip() in ('', 'None', 'none'):
@@ -526,10 +527,10 @@ class ActionKeyword:
         """
         helper for `select_dropdown_option()`
 
-        check whether `option` is currently locatable via the normal strategy pipeline.
+        Check whether `option` is currently visible on screen
         """
         try:
-            return self.verifier.assert_presence(
+            return self.verifier.assert_visibility(
                 option, timeout_str=_DROPDOWN_OPTION_CHECK_TIMEOUT, rule="any"
             )
         except OpticsError as e:
