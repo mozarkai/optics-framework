@@ -14,6 +14,7 @@ from optics_framework.common.strategies import (
     LocateResult,
 )
 from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.elementsource_interface import ElementSourceInterface
 
 
 # --- parse_text_only_prefix and determine_element_type (utils) ---
@@ -63,6 +64,10 @@ def mock_element_source():
     source.locate.return_value = None
     # Real numpy array so TextDetectionStrategy.locate() can call utils.annotate(screenshot.copy(), [bbox])
     source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+    # Explicit assignment: MagicMock reserves bare `assert_*` attribute access for its own
+    # assertion methods (raises AttributeError instead of auto-vivifying), so this must be
+    # set directly for hasattr()/_is_method_implemented() to see it as implemented.
+    source.assert_elements_visible = MagicMock()
     return source
 
 
@@ -320,3 +325,119 @@ class TestPlaywrightScreenshotBytes:
         page.screenshot.return_value = png
         src = pw.PlaywrightScreenshot(driver=_types.SimpleNamespace(page=page))
         assert src.capture_screenshot_bytes() == png
+
+
+# --- StrategyManager.assert_visibility() vs assert_presence() (shared _assert helper) ---
+
+
+class TestStrategyManagerAssertVisibility:
+    """assert_visibility must call assert_elements_visible, not assert_elements, per strategy."""
+
+    def test_assert_visibility_calls_assert_elements_visible(self, strategy_manager):
+        seen_method_names = []
+
+        def capture_and_succeed(strategy, elements, timeout, rule, method_name="assert_elements"):
+            seen_method_names.append(method_name)
+            return (True, "ts", None)
+
+        with patch.object(strategy_manager, "_try_assert_with_strategy", side_effect=capture_and_succeed):
+            result, timestamp, _ = strategy_manager.assert_visibility(["Submit"], "Text", timeout=3, rule="any")
+
+        assert result is True
+        assert timestamp == "ts"
+        assert seen_method_names == ["assert_elements_visible"]
+
+    def test_assert_presence_still_uses_assert_elements(self, strategy_manager):
+        """The DRY refactor must not regress assert_presence's existing behavior."""
+        seen_method_names = []
+
+        def capture_and_succeed(strategy, elements, timeout, rule, method_name="assert_elements"):
+            seen_method_names.append(method_name)
+            return (True, "ts", None)
+
+        with patch.object(strategy_manager, "_try_assert_with_strategy", side_effect=capture_and_succeed):
+            result, _, _ = strategy_manager.assert_presence(["Submit"], "Text", timeout=3, rule="any")
+
+        assert result is True
+        assert seen_method_names == ["assert_elements"]
+
+    def test_assert_elements_visible_default_falls_back_to_assert_elements(self, strategy_manager):
+        """Strategies that don't override assert_elements_visible (e.g. vision-based ones)
+        default to assert_elements, since anything they find is inherently on-screen."""
+        td_strategy = next(
+            s for s in strategy_manager.locator_strategies if isinstance(s, TextDetectionStrategy)
+        )
+        with patch.object(TextDetectionStrategy, "assert_elements", return_value=(True, "ts", None)) as mock_presence:
+            result, timestamp, _ = td_strategy.assert_elements_visible(["Submit"], timeout=1, rule="any")
+        assert result is True
+        assert timestamp == "ts"
+        mock_presence.assert_called_once()
+
+
+class _PresenceOnlySource(ElementSourceInterface):
+    """Mirrors AppiumPageSource: implements assert_elements (presence) but not
+    assert_elements_visible -- inherits the base's raise-NotImplementedError stub."""
+
+    def capture(self):
+        raise NotImplementedError
+
+    def get_interactive_elements(self, filter_config=None):
+        raise NotImplementedError
+
+    def locate(self, element, index=None):
+        return "located"
+
+    def assert_elements(self, elements, timeout=30, rule='any'):
+        return True
+
+
+class _VisibilityAwareSource(ElementSourceInterface):
+    """Mirrors AppiumFindElement: implements a real assert_elements_visible that can
+    correctly disagree with assert_elements (present but off-screen)."""
+
+    def capture(self):
+        raise NotImplementedError
+
+    def get_interactive_elements(self, filter_config=None):
+        raise NotImplementedError
+
+    def locate(self, element, index=None):
+        return "located"
+
+    def assert_elements(self, elements, timeout=30, rule='any'):
+        return True
+
+    def assert_elements_visible(self, elements, timeout=30, rule='any'):
+        raise TimeoutError(f"Elements not visible: {elements}")
+
+
+class TestVisibilityExcludesPresenceOnlySources:
+    """Regression test for the false-positive where a presence-only source (e.g.
+    AppiumPageSource) masked a correct "not visible" from a real visibility-aware
+    source (e.g. AppiumFindElement), because both back an XPathStrategy and the
+    presence-only one silently fell back to a presence check for "visibility"."""
+
+    def test_presence_only_source_excluded_from_visibility_assertions(self):
+        presence_only = _PresenceOnlySource()
+        manager = StrategyManager(
+            element_source=InstanceFallback([presence_only]),
+            text_detection=None,
+            image_detection=None,
+        )
+        xpath_strategy = next(
+            s for s in manager.locator_strategies if type(s).__name__ == "XPathStrategy"
+        )
+        assert manager._can_strategy_assert_elements(xpath_strategy, "XPath", "assert_elements") is True
+        assert manager._can_strategy_assert_elements(xpath_strategy, "XPath", "assert_elements_visible") is False
+
+    def test_presence_only_source_does_not_mask_visibility_aware_source(self):
+        """Two sources present at once: the presence-only one must not report an
+        element "visible" (via presence) when the real visibility-aware source
+        correctly says it isn't."""
+        manager = StrategyManager(
+            element_source=InstanceFallback([_PresenceOnlySource(), _VisibilityAwareSource()]),
+            text_detection=None,
+            image_detection=None,
+        )
+        with pytest.raises(Exception):
+            manager.assert_visibility(["//*[@id=\"offscreen\"]"], "XPath", timeout=1, rule="any")
