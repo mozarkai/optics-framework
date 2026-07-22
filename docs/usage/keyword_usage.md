@@ -526,6 +526,27 @@ Asserts the presence of elements. Can check multiple elements with pipe separato
 Assert Presence,login_button.png|signup_button.png,30,any,check_buttons
 ```
 
+### Assert Visibility
+
+Asserts that elements are actually rendered/visible on screen right now — distinct from `Assert Presence`, which reports found even for elements that exist in the page/DOM but are off-screen (e.g. not yet scrolled into view). Can check multiple elements with pipe separator (`|`).
+
+**Driver support:** Appium (Android and iOS). Selenium and Playwright do not yet implement this keyword and raise an error if used — support is pending fixes to unrelated pre-existing bugs in those drivers.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `elements` | Required | Comma-separated or pipe-separated string of elements to check (e.g., "button1.png\|button2.png") | - |
+| `timeout_str` | Optional | The time to wait for the elements to become visible, in seconds (integer) | `30` |
+| `rule` | Optional | The rule for verification: `any` (at least one) or `all` (all must be present) | `any` |
+| `event_name` | Optional | The name of the event associated with the assertion | - |
+
+**Example:**
+
+```csv
+Assert Visibility,login_button.png|signup_button.png,30,any,check_buttons_visible
+```
+
 ### Validate Screen
 
 Verifies the specified screen by checking element presence. Similar to `Assert Presence` but does not fail if elements are not found.
