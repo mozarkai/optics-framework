@@ -1,7 +1,8 @@
 import time
-from typing import Optional, Any, List, Tuple
+from typing import Optional, Any, List, Tuple, Callable
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import WebDriverException
 from lxml import etree # type: ignore
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
@@ -158,17 +159,43 @@ class AppiumFindElement(ElementSourceInterface):
         return utils.bbox_from_appium_attribute_fallback(element)
 
     def _assert_elements_one_pass(
-        self, elements: List[str], found: dict, rule: str
+        self, elements: List[str], found: dict, rule: str, check_fn: Callable[[str], bool]
     ) -> Optional[Tuple[bool, Any]]:
-        """Run one pass over elements; return (True, timestamp) if rule is satisfied, else None."""
+        """Run one pass over elements using check_fn; return (True, timestamp) if rule is satisfied, else None."""
         for el in elements:
-            if not found[el] and self.locate(el):
+            if not found[el] and check_fn(el):
                 found[el] = True
                 if rule == "any":
                     return (True, utils.get_timestamp())
         if rule == "all" and all(found.values()):
             return (True, utils.get_timestamp())
         return None
+
+    def _assert_elements_common(
+        self, elements: List[str], timeout: int, rule: str,
+        check_fn: Callable[[str], bool], error_desc: str, not_found_desc: str,
+    ):
+        """Shared polling loop backing assert_elements/assert_elements_visible.
+
+        Only the per-element check (presence vs. visibility) and error text differ.
+        """
+        if rule not in ["any", "all"]:
+            raise OpticsError(Code.E0403, message="Invalid rule. Use 'any' or 'all'.")
+
+        start_time = time.time()
+        found = dict.fromkeys(elements, False)
+
+        while time.time() - start_time < timeout:
+            try:
+                result = self._assert_elements_one_pass(elements, found, rule, check_fn)
+                if result is not None:
+                    return result
+            except Exception as e:
+                raise OpticsError(Code.E0401, message=f"Error during {error_desc}: {e}") from e
+        internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
+        raise TimeoutError(
+            f"Timeout reached: {not_found_desc} based on rule '{rule}': {elements}"
+        )
 
     def assert_elements(self, elements: List[str], timeout: int = 10, rule: str = "any"):
         """
@@ -186,20 +213,63 @@ class AppiumFindElement(ElementSourceInterface):
         Raises:
             Exception: If elements are not found based on the rule within the timeout.
         """
-        if rule not in ["any", "all"]:
-            raise OpticsError(Code.E0403, message="Invalid rule. Use 'any' or 'all'.")
+        return self._assert_elements_common(
+            elements, timeout, rule, self.locate,
+            error_desc="element assertion", not_found_desc="Elements not found",
+        )
 
-        start_time = time.time()
-        found = dict.fromkeys(elements, False)
+    def _is_within_screen_bounds(self, located: Any) -> bool:
+        """True if `located`'s bounding box intersects the current screen/window bounds.
 
-        while time.time() - start_time < timeout:
-            try:
-                result = self._assert_elements_one_pass(elements, found, rule)
-                if result is not None:
-                    return result
-            except Exception as e:
-                raise OpticsError(Code.E0401, message=f"Error during element assertion: {e}") from e
-        internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
-        raise TimeoutError(
-            f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
+        `.is_displayed()` alone doesn't check this on Appium (confirmed on both Android and
+        iOS: an element scrolled well off-screen still reports displayed=True), the same class
+        of gap Selenium's `is_displayed()` has -- closed there via a getBoundingClientRect() vs.
+        viewport check. This is the Appium equivalent, using bounds/window-size instead of JS.
+        """
+        try:
+            bbox = self.get_bbox_for_element(located)
+            if bbox is None:
+                return False
+            (x1, y1), (x2, y2) = bbox
+            window_size = self._require_driver().get_window_size()
+            win_w, win_h = window_size["width"], window_size["height"]
+            return x1 < win_w and x2 > 0 and y1 < win_h and y2 > 0
+        except (OpticsError, WebDriverException):
+            return False
+
+    def _is_located_and_displayed(self, element: str) -> bool:
+        """True only if `element` both locates, is currently displayed, and is within the
+        current screen bounds.
+
+        `locate()` alone only proves the element exists in the accessibility tree --
+        Appium's find_element does not filter on visibility, so an element scrolled
+        off-screen (but still present in the hierarchy dump) locates successfully too.
+        `.is_displayed()` alone isn't enough either -- it doesn't account for scroll position,
+        so it's paired with `_is_within_screen_bounds` below.
+        """
+        try:
+            located = self.locate(element)
+            return bool(
+                located is not None
+                and located.is_displayed()
+                and self._is_within_screen_bounds(located)
+            )
+        except (OpticsError, WebDriverException):
+            return False
+
+    def assert_elements_visible(self, elements: List[str], timeout: int = 10, rule: str = "any"):
+        """
+        Assert that elements are currently displayed on screen (not merely present in the
+        accessibility tree) based on the specified rule.
+
+        Works identically for Android (UiAutomator2) and iOS (WebDriverAgent) -- both pair
+        WebElement.is_displayed() with a bounding-box-vs-window-size intersection check, since
+        is_displayed() alone doesn't account for scroll position on either platform.
+
+        Raises:
+            TimeoutError: If elements are not visible based on the rule within the timeout.
+        """
+        return self._assert_elements_common(
+            elements, timeout, rule, self._is_located_and_displayed,
+            error_desc="element visibility assertion", not_found_desc="Elements not visible",
         )

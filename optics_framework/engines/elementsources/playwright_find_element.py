@@ -263,3 +263,21 @@ class PlaywrightFindElement(ElementSourceInterface):
         raise TimeoutError(
             f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
         )
+
+    def assert_elements_visible(
+        self,
+        elements: List[str],
+        timeout: int = 10,
+        rule: str = "any",
+    ):
+        """
+        Not yet enabled pending live verification. In principle presence here already
+        implies visibility -- locate() (used by assert_elements) waits for state="visible"
+        before returning, so no separate on-screen check should be needed -- but that
+        assumption hasn't been confirmed live yet. The call below is kept in place,
+        unreachable, to switch back to once verified.
+        """
+        raise NotImplementedError(
+            "PlaywrightFindElement does not support assert_elements_visible yet."
+        )
+        return self.assert_elements(elements, timeout, rule)
