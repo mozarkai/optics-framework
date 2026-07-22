@@ -15,12 +15,18 @@ import hashlib
 from contextlib import asynccontextmanager
 from itertools import product
 from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
-from optics_framework.common.session_manager import SessionManager, Session
+from optics_framework.common.session_manager import (
+    SessionManager,
+    Session,
+    SessionOwnedElsewhere,
+    build_session_store_from_env,
+)
 from optics_framework.common.models import ApiData, SessionState
 from optics_framework.common.execution import (
     ExecutionEngine,
@@ -36,7 +42,10 @@ from optics_framework.helper.execute import discover_templates
 from optics_framework.helper.version import VERSION
 
 app = FastAPI(title="Optics Framework API", version="1.0")
-session_manager = SessionManager()
+# Store backend is selected from the environment (in-memory by default, Redis
+# for multi-worker/multi-pod deployment). Every endpoint reaches session state
+# through this one manager, so the API layer is stateless behind a shared store.
+session_manager = SessionManager(store=build_session_store_from_env())
 
 # --- API / HTTP messages ---
 SESSION_NOT_FOUND = "Session not found"
@@ -110,6 +119,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(SessionOwnedElsewhere)
+async def _session_owned_elsewhere_handler(_request: Request, exc: SessionOwnedElsewhere):
+    """A live lease is held by another instance (Layer 2). Signal a conflict so
+    the caller retries against the owning pod rather than seeing a 500."""
+    internal_logger.warning("Session %s is owned by another instance", exc.session_id)
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
 
 
 class AppiumUpdateRequest(BaseModel):

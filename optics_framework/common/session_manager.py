@@ -127,6 +127,28 @@ class SessionStore(ABC):
     def release_lease(self, session_id: str, instance_id: str) -> None: ...
 
 
+def build_session_store_from_env() -> SessionStore:
+    """Select the session store from ``OPTICS_SESSION_STORE`` (design §233).
+
+    ``memory`` (default) → :class:`InMemorySessionStore` (single process).
+    ``redis`` → :class:`RedisSessionStore` from ``OPTICS_REDIS_URL`` — the
+    Layer-2 multi-worker/multi-pod backend. The Redis store is imported lazily
+    so the default path never requires the optional ``redis`` package.
+    """
+    backend = os.getenv("OPTICS_SESSION_STORE", "memory").strip().lower()
+    if backend in ("redis", "rediss"):
+        from optics_framework.common.session_store_redis import RedisSessionStore
+
+        url = os.getenv("OPTICS_REDIS_URL", "redis://localhost:6379/0")
+        internal_logger.info("Using RedisSessionStore for session state (url=%s)", url)
+        return RedisSessionStore.from_url(url)
+    if backend not in ("memory", "inmemory", "in_memory", ""):
+        internal_logger.warning(
+            "Unknown OPTICS_SESSION_STORE=%r; falling back to in-memory store", backend
+        )
+    return InMemorySessionStore()
+
+
 class InMemorySessionStore(SessionStore):
     """Layer-1 store: a process-local dict; leases are always granted."""
 
@@ -378,7 +400,12 @@ class SessionManager(SessionHandler):
         the runtime from stored SessionState and reattach the driver."""
         session = self.sessions.get(session_id)
         if session is not None:
-            self.store.renew_lease(session_id, self.instance_id, self.lease_ttl_s)
+            # Renewing on every lookup keeps our lease alive; if renewal fails
+            # the lease expired and another instance reclaimed it (Layer 2), so
+            # our local runtime is stale — surface the conflict rather than
+            # serving it. Always True under the in-memory store (Layer 1).
+            if not self.store.renew_lease(session_id, self.instance_id, self.lease_ttl_s):
+                raise SessionOwnedElsewhere(session_id)
             return session
         state = self.store.get_state(session_id)
         if state is None or state.status == SessionStatus.TERMINATED:
