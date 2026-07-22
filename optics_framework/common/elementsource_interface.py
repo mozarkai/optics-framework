@@ -87,6 +87,24 @@ class ElementSourceInterface(ABC):
             f"{self.__class__.__name__} does not support get_page_source"
         )
 
+    def assert_elements_visible(self, elements: Any, timeout: int = 30, rule: str = 'any') -> Any:
+        """
+        Assert that elements are currently rendered/visible on screen -- distinct from
+        :meth:`assert_elements`, which only checks presence in the underlying page
+        source/DOM (visible or not).
+        Optional: raise NotImplementedError if this element source cannot distinguish
+        visibility from presence (e.g. vision-based sources, where anything found is
+        inherently on-screen already).
+
+        :param elements: The elements to check for visibility (e.g. list of XPaths/text).
+        :param timeout: Time in seconds to wait for elements to become visible.
+        :param rule: Assertion rule ('any' for at least one, 'all' for all).
+        :raises TimeoutError: If the assertion fails based on the rule within the timeout.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support assert_elements_visible"
+        )
+
     @abstractmethod
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> list:
         """
