@@ -166,7 +166,7 @@ class Verifier:
             return False
 
         result = self._evaluate_rule(result_parts, rule)
-        self._handle_result(result, timestamps, event_name, fail, rule)
+        self._handle_result(result, timestamps, event_name, fail, rule, method_name)
         return result
 
     def _group_elements_by_type(self, elements_list: list) -> dict:
@@ -208,12 +208,13 @@ class Verifier:
         """Evaluate the rule against the result parts."""
         return any(result_parts) if rule == 'any' else all(result_parts)
 
-    def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str):
+    def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str, method_name: str):
         """Handle the final result, including event capture and error raising."""
         if result:
             self._capture_success_event(timestamps, event_name)
         elif fail:
-            raise AssertionError(f"Presence assertion failed based on rule: {rule}")
+            assertion_label = method_name.replace("assert_", "").capitalize()
+            raise AssertionError(f"{assertion_label} assertion failed based on rule: {rule}")
 
     def _capture_success_event(self, timestamps: list, event_name: Optional[str]):
         """Capture success event with the earliest timestamp."""
