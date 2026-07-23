@@ -68,6 +68,7 @@ pylint = ">=3.3.7,<5.0.0"
 pytest = "^9.0.0"
 pytest-cov = ">=6.0,<7.1"
 pytest-mock = ">=3.14,<3.16"
+pytest-asyncio = ">=1.0,<2.0"
 
 [tool.poetry.group.docs.dependencies]
 mkdocs-material = "^9.6.11"
