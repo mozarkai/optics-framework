@@ -13,6 +13,9 @@ from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.session_manager import _get_enabled_config_list
 from optics_framework.common.nl_agent import AgentStep, AgentResult, ExecResult
 from optics_framework.helper.live import LiveController, NLStep
+from optics_framework.helper.live import NLRunStatus
+from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.error import OpticsError, Code
 
 pytestmark = pytest.mark.white_box
 
@@ -37,8 +40,6 @@ class TestConfigWiring:
         assert enabled[0]["gemini"]["capabilities"] == {"model": "gemini-2.5-flash"}
 
     def test_builder_returns_none_without_llm(self):
-        from optics_framework.common.optics_builder import OpticsBuilder
-
         session = types.SimpleNamespace(
             event_sdk=None,
             config=types.SimpleNamespace(project_path=None),
@@ -91,7 +92,6 @@ class TestControllerPageSource:
         assert "EditText" in out and 'text="gullak"' in out
 
     def test_returns_none_when_unavailable(self):
-        from optics_framework.common.error import OpticsError, Code
         ctrl = _ps_controller(OpticsError(Code.E0403, message="No pagesource"))
         assert ctrl.page_source() is None
 
@@ -177,8 +177,6 @@ class TestRunNaturalLanguage:
         # An unexpected (non-Optics) exception from agent.run must not crash the
         # controller and must return a genuine NLRunStatus enum, not a raw "FAIL"
         # string (regression: the field is typed NLRunStatus).
-        from optics_framework.helper.live import NLRunStatus
-
         class _BoomAgent:
             def run(self, *a, **k):
                 raise RuntimeError("kaboom")
@@ -194,7 +192,6 @@ class TestRunNaturalLanguage:
         ctrl = _bare_controller()
 
         def _raise():
-            from optics_framework.common.error import OpticsError, Code
             raise OpticsError(Code.E0501, message="No LLM engine enabled. Enable a 'gemini' entry under llm_models in config.yaml.")
 
         monkeypatch.setattr(ctrl, "_get_nl_agent", _raise)

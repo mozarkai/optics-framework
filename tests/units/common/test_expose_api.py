@@ -13,6 +13,7 @@ Template/base64 basics and ``_safe_template_filename`` are already covered by
 Source under test: optics_framework/common/expose_api.py
 """
 import asyncio
+import base64
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -786,13 +787,11 @@ def test_upload_template_invalid_base64_returns_400(client):
 
 
 def test_upload_template_success_writes_file_and_registers(client, tmp_path):
-    import base64 as _b64
-
     session = MagicMock()
     session._inline_templates_dir = str(tmp_path / "inline")
     session.inline_templates = {}
     raw = b"\x89PNG\r\n\x1a\nfake"
-    payload = {"name": "my_btn", "image_base64": _b64.b64encode(raw).decode("ascii")}
+    payload = {"name": "my_btn", "image_base64": base64.b64encode(raw).decode("ascii")}
     with patch.object(expose_api.session_manager, "get_session", return_value=session):
         resp = client.post("/v1/sessions/s1/templates", json=payload)
     assert resp.status_code == 200
