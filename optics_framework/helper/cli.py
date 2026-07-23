@@ -211,7 +211,9 @@ class InitCommand(Command):
             "--force", action="store_true", help="Override if the project exists"
         )
         parser.add_argument(
-            "--template", help="Select a project template (e.g., 'sample1')"
+            "--template",
+            help="Start from a sample template: contact, clock, calendar, "
+                 "youtube, gmail_web, or playwright",
         )
         parser.add_argument(
             "--git-init",
