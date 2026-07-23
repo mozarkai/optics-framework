@@ -6,16 +6,6 @@ file_log: true
 json_log: false
 log_level: DEBUG
 
-# Optional (recommended)
-log_path: /Users/samyadav/Documents/Mozark/optics-framework/execution_output/logs
-json_path: /Users/samyadav/Documents/Mozark/optics-framework/execution_output/logs/json
-
-# --------------------------------------------------
-# Project paths
-# --------------------------------------------------
-project_path: /Users/samyadav/Documents/Mozark/optics-framework
-execution_output_path: /Users/samyadav/Documents/Mozark/optics-framework/execution_output
-
 # --------------------------------------------------
 # Runtime behavior
 # --------------------------------------------------

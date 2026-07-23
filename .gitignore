@@ -181,6 +181,15 @@ cython_debug/
 *.log
 .DS_Store
 
+# Sample projects and packaged assets are source, not runtime artifacts —
+# keep them tracked despite the broad globs above.
+!optics_framework/samples/**/*.csv
+!optics_framework/samples/**/*.yaml
+!optics_framework/samples/**/*.jpg
+!optics_framework/samples/**/*.jpeg
+!optics_framework/samples/**/*.json
+!optics_framework/samples/metadata.json
+
 # Runtime execution artifacts (never commit)
 execution_output/
 MagicMock/
