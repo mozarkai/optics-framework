@@ -3,6 +3,7 @@
 Kept deliberately small: only the collaborators that more than one test file needs
 live here. Test-file-specific fakes stay in their own module.
 """
+import json
 import tempfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -49,7 +50,6 @@ class _FakeResponse:
 
     def json(self):
         if self._json_data is None:
-            import json
             raise json.JSONDecodeError("Expecting value", self.text, 0)
         return self._json_data
 
