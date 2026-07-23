@@ -243,6 +243,11 @@ class ActionKeyword:
         self._ai_healer: Optional[AISelfHealHandler] = None
         # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
         self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
+        # Set by `_log_heal_outcome` when a heal succeeds; consumed (and cleared) by the
+        # caller right after the keyword call via `_pop_last_heal_info`, so reporting
+        # layers (TestRunner, LiveController) can attribute the heal to the right call
+        # without it leaking onto the next, unrelated keyword.
+        self._last_heal_info: Optional[Dict[str, Any]] = None
         # The focused subset of keywords the self-healer is allowed to call, bound here
         # (rather than looked up by name via getattr) so a rename shows up as a static
         # attribute error instead of a silent "Unknown keyword" at runtime.
@@ -289,6 +294,7 @@ class ActionKeyword:
                 self._llm,
                 keyword_executor=self._heal_execute,
                 keyword_catalog=self._heal_catalog,
+                curate=True,
             )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
         result = self._ai_healer.heal(ctx, providers.screenshot, providers.pagesource)
@@ -302,7 +308,7 @@ class ActionKeyword:
         return bool(getattr(self._llm, "instances", None))
 
     def _log_heal_outcome(self, result: Any, func_name: str, element: Any, args: tuple) -> None:
-        """Log the heal result; on success, record the step so the run stays /save-able."""
+        """Log the heal result; on success, record the step and expose it for reporting."""
         if not result.ok:
             internal_logger.info(
                 "AI self-heal: could not recover '%s': %s", func_name, result.message
@@ -312,6 +318,40 @@ class ActionKeyword:
         kw = action.keyword if action else "?"
         internal_logger.info("AI self-heal: recovered '%s' via keyword '%s'", func_name, kw)
         self._record_successful_step(func_name, element, args)
+        # Report the clean, replayable recovery (suggested_steps), not the noisy
+        # attempted list. Fall back to the terminal keyword when the goal was reached
+        # with no dispatched steps (e.g. the model signalled "done" immediately).
+        steps = result.suggested_steps or ([(action.keyword, list(action.params))] if action and action.keyword else [])
+        rendered = [self._render_heal_step(name, params) for name, params in steps]
+        summary = (
+            f"AI self-heal recovered '{func_name}' after {len(rendered)} "
+            f"step{'s' if len(rendered) != 1 else ''}: {'; '.join(rendered)}"
+            if rendered
+            else f"AI self-heal recovered '{func_name}' (goal already satisfied)"
+        )
+        self._last_heal_info = {
+            "summary": summary,
+            # Structured so reporting layers (HTTP/MCP) can surface a machine-consumable
+            # list a platform can persist as replacement test steps.
+            "suggested_steps": [
+                {"keyword": name, "params": list(params)} for name, params in steps
+            ],
+        }
+
+    @staticmethod
+    def _render_heal_step(keyword: str, params: List[str]) -> str:
+        """Human-readable 'keyword param1 param2' line for the summary string."""
+        return keyword if not params else f"{keyword} {' '.join(str(p) for p in params)}"
+
+    def _pop_last_heal_info(self) -> Optional[Dict[str, Any]]:
+        """Return and clear the self-heal info recorded for the most recently completed call.
+
+        Callers (``TestRunner``, ``LiveController``) must call this immediately after every
+        keyword invocation, self-healing or not, so a heal on one keyword never leaks onto
+        the reporting for the next.
+        """
+        info, self._last_heal_info = self._last_heal_info, None
+        return info
 
     # -- Self-heal keyword executor and catalog --------------------------------
 
