@@ -1,9 +1,24 @@
 {
   "samples": [
     {
+      "displayName": "Contacts",
+      "folderName": "contact",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#4caf50'><path d='M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8V22h19.2v-2.8c0-3.2-6.4-4.8-9.6-4.8z'/></svg>"
+    },
+    {
+      "displayName": "Clock",
+      "folderName": "clock",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#ff9800'><path d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm.5-13h-1v6l5.2 3.1.5-.9-4.7-2.8z'/></svg>"
+    },
+    {
       "displayName": "Calendar",
       "folderName": "calendar",
       "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#1976d2'><path d='M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z'/></svg>"
+    },
+    {
+      "displayName": "YouTube",
+      "folderName": "youtube",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#f00'><path d='M23 12s0-3.2-.4-4.7a2.5 2.5 0 0 0-1.8-1.8C19.3 5 12 5 12 5s-7.3 0-8.8.5A2.5 2.5 0 0 0 1.4 7.3C1 8.8 1 12 1 12s0 3.2.4 4.7a2.5 2.5 0 0 0 1.8 1.8C4.7 19 12 19 12 19s7.3 0 8.8-.5a2.5 2.5 0 0 0 1.8-1.8C23 15.2 23 12 23 12zM9.8 15.3V8.7l6.2 3.3z'/></svg>"
     },
     {
       "displayName": "Gmail Web",
@@ -11,9 +26,9 @@
       "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#D44638'><path d='M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z'/></svg>"
     },
     {
-      "displayName": "Contacts",
-      "folderName": "contact",
-      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#4caf50'><path d='M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8V22h19.2v-2.8c0-3.2-6.4-4.8-9.6-4.8z'/></svg>"
+      "displayName": "Playwright Web",
+      "folderName": "playwright",
+      "iconSvg": "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='#2ead33'><path d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3c1.7 0 3.2.7 4.3 1.8l-1.4 1.4A4.9 4.9 0 0 0 12 7a5 5 0 0 0-5 5H5a7 7 0 0 1 7-7zm0 14a7 7 0 0 1-7-7h2a5 5 0 0 0 5 5z'/></svg>"
     }
   ]
 }

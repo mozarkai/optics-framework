@@ -1,0 +1,4 @@
+module_name,module_step,param_1,param_2
+Open Example Page,Launch App,https://example.com
+Verify Example Page,Validate Element,${Heading}
+Close Browser,Close And Terminate App

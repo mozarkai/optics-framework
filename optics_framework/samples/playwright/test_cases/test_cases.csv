@@ -1,0 +1,4 @@
+test_case,test_step
+Playwright Suite Setup,Open Example Page
+TC1 Verify Landing,Verify Example Page
+Playwright Suite Teardown,Close Browser
