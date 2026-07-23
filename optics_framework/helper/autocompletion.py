@@ -9,18 +9,20 @@ local -a _optics_subcommands=(
     'dry_run: Run tests in dry-run mode'
     'init: Initialize a new project'
     'execute: Execute tests'
-    'version: Show version'
+    'live: Interactive session against a live target'
     'generate: Generate framework code'
-    'setup: Install drivers'
-    'serve: Start the optics server'
+    'setup: Install optional engine backends'
+    'serve: Start the optics REST server'
+    'mcp: Start the MCP server'
     'completion: Enable shell completion'
 )
 
 # Static or dynamic values
-local -a templates=("calendar" "clock" "contact" "gmail_web" "youtube")
+local -a templates=("contact" "clock" "calendar" "youtube" "gmail_web" "playwright")
 local -a runners=("test_runner" "pytest")
 local -a frameworks=("pytest" "robot")
-local -a drivers=("${(f)$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')}")
+local -a transports=("stdio" "http")
+local -a drivers=("${(f)$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Text|LLM)$')}")
 
 _optics_completions() {
     local state
@@ -35,8 +37,22 @@ _optics_completions() {
             ;;
         args)
             case $words[2] in
-                list|config|version|completion)
+                list|config|completion)
                     _arguments '--help[-h]'
+                    ;;
+
+                live)
+                    _arguments \
+                        '*:project_path:_files -/' \
+                        '--help[-h]'
+                    ;;
+
+                mcp)
+                    _arguments \
+                        '--transport=[Transport]:transport:(${transports[@]})' \
+                        '--host=[Host address]' \
+                        '--port=[Port number]' \
+                        '--help[-h]'
                     ;;
 
                 dry_run|execute)
@@ -92,11 +108,11 @@ _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute version generate setup serve completion"
+  local subcommands="list config dry_run init execute live generate setup serve mcp completion"
 
-  local template_options="calendar clock contact gmail_web youtube"
+  local template_options="contact clock calendar youtube gmail_web playwright"
   local runner_options="test_runner pytest"
-  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')
+  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Text|LLM)$')
 
   case ${COMP_CWORD} in
     1)
@@ -106,8 +122,20 @@ _optics_completions() {
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|version|completion)
+    list|config|completion)
       COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
+      ;;
+
+    live)
+      COMPREPLY=( $(compgen -d -- "$cur") )
+      ;;
+
+    mcp)
+      if [[ $prev == "--transport" ]]; then
+        COMPREPLY=( $(compgen -W "stdio http" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -W "--transport --host --port -h --help" -- "$cur") )
+      fi
       ;;
 
     dry_run|execute)
