@@ -168,7 +168,17 @@ class KeywordExecutor(Executor):
         self.params = params
         self.event_manager = event_manager
 
-    async def execute(self, session: Session, runner: Runner) -> None:
+    async def execute(self, session: Session, runner: Runner) -> Any:
+        """Run one keyword and return its result.
+
+        The bound method's ActionKeyword may have recorded an AI self-heal (invisible
+        here — the call returns normally either way), so it is popped read-and-clear
+        after the call. On a heal the return is a dict {result, healed, heal_summary,
+        suggested_steps} instead of the bare result: the event ``extra`` carries only the
+        string summary, while the structured suggested_steps ride on the return value.
+        The ``"result"`` key mirrors ``expose_api.KEY_RESULT``, kept in sync by convention
+        since this lower layer shouldn't import the HTTP module.
+        """
         event_manager = self.event_manager
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
         result = None
@@ -187,14 +197,27 @@ class KeywordExecutor(Executor):
                     extra={"session_id": session.session_id}
                 ))
                 raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
+            heal_owner = getattr(method, "__self__", None)
+            heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
+            extra = {"session_id": session.session_id}
+            if heal_info:
+                extra["healed"] = "true"
+                extra["heal_summary"] = heal_info["summary"]
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,
                 name=self.keyword,
                 status=EventStatus.PASS,
                 message="Keyword executed successfully",
-                extra={"session_id": session.session_id}
+                extra=extra,
             ))
+            if heal_info:
+                return {
+                    "result": result,
+                    "healed": True,
+                    "heal_summary": heal_info["summary"],
+                    "suggested_steps": heal_info.get("suggested_steps", []),
+                }
             return result
         else:
             await event_manager.publish_event(Event(
