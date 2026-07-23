@@ -77,6 +77,14 @@ class TestScaleBboxesForScreenshot:
         result = utils.scale_bboxes_for_screenshot([self.BBOX], src, _pixel_screenshot())
         assert result == [self.BBOX]
 
+    def test_malformed_bbox_preserved_unchanged(self):
+        # A bbox that isn't ((x1,y1),(x2,y2)) shaped can't be unpacked; _scale_bbox
+        # returns it unchanged rather than raising.
+        src = _DirectSource(_FakeWebDriver(375, 812))
+        malformed = (1, 2, 3, 4)
+        result = utils.scale_bboxes_for_screenshot([malformed], src, _pixel_screenshot())
+        assert result == [malformed]
+
     def test_none_bbox_entries_preserved(self):
         src = _DirectSource(_FakeWebDriver(375, 812))
         result = utils.scale_bboxes_for_screenshot([None, self.BBOX], src, _pixel_screenshot())
