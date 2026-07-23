@@ -2,9 +2,10 @@
 minversion = "9.0.0"
 addopts = ["-ra", "-q", "--cov=optics_framework"]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 markers = [
-    "generate: marks tests as generate-related (deselect with '-m \"not generate\"')",
-    "white_box: marks tests as white-box unit tests",
-    "black_box: marks tests as black-box integration tests",
-    "hybrid: marks tests as hybrid (both unit and integration testing)",
+    "generate: marks tests exercising the code-generation helper (deselect with '-m \"not generate\"')",
+    "white_box: unit tests that exercise a single unit with its collaborators mocked",
+    "black_box: integration tests that drive real collaborators (e.g. an in-process HTTP server)",
+    "hybrid: tests that span both unit and integration concerns",
 ]

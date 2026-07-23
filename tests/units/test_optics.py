@@ -1,9 +1,7 @@
 import os
 import yaml
 import csv
-import pytest
 from optics_framework.optics import Optics
-from tests.mock_servers.single_server import run_single_server
 
 
 CONTACT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/config.yaml')
@@ -22,12 +20,15 @@ def load_elements(elements_path):
             elements[row['Element_Name']] = row['Element_ID']
     return elements
 
-@pytest.fixture(scope="module")
-def live_servers():
-    server_instance, thread = run_single_server()
-    yield
-    server_instance.should_exit = True
-    thread.join()
+MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
+
+
+def _load_api_yaml_pointed_at(base_url):
+    """Load the mock API collection and repoint its base_url at the live server."""
+    with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
+        api_yaml_dict = yaml.safe_load(f)
+    api_yaml_dict['api']['collections']['mock']['base_url'] = base_url
+    return api_yaml_dict
 
 
 def test_extract_config_data_forwards_save_captures():
@@ -63,13 +64,10 @@ def test_setup_from_file():
     optics.setup_from_file(CONTACT_CONFIG_PATH)
     optics.quit()
 
-def test_add_api_and_invoke(live_servers):
-    MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
+def test_add_api_and_invoke(mock_api_server):
     optics = Optics()
     optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
-        api_yaml_dict = yaml.safe_load(f)
-    optics.add_api(api_yaml_dict)
+    optics.add_api(_load_api_yaml_pointed_at(mock_api_server))
     optics.invoke_api("mock.token")
     access_token = optics.get_element_value("access_token")[0]
     user_id = optics.get_element_value("userId")[0]
@@ -116,13 +114,10 @@ def test_context_manager():
         optics.add_element('foo', 'bar')
         assert optics.get_element_value('foo')[0] == 'bar'
 
-def test_mock_api(live_servers):
-    MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
+def test_mock_api(mock_api_server):
     optics = Optics()
     optics.setup(config=load_config(CONTACT_CONFIG_PATH))  # Minimal setup for API-only test
-    with open(MOCK_API_YAML_PATH, 'r', encoding='utf-8') as f:
-        api_yaml_dict = yaml.safe_load(f)
-    optics.add_api(api_yaml_dict)
+    optics.add_api(_load_api_yaml_pointed_at(mock_api_server))
     optics.invoke_api("mock.token")
     access_token = optics.get_element_value("access_token")[0]
     user_id = optics.get_element_value("userId")[0]
