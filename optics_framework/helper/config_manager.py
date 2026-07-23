@@ -1,5 +1,5 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, ListView, ListItem, Label, Input, Button
+from textual.widgets import Header, Footer, ListView, ListItem, Label, Input, Button, Static
 from textual.containers import Vertical, Horizontal, Container
 from textual.screen import ModalScreen
 from optics_framework.common.config_handler import ConfigHandler, Config, DependencyConfig
@@ -113,6 +113,12 @@ class LoggerTUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static(
+            f"Editing GLOBAL config: {self.config_handler.global_config_path}\n"
+            "Note: `optics execute <folder>` reads that folder's own config.yaml, "
+            "not this global file.",
+            classes="option-label",
+        )
         yield ListView(*[ListItem(Label(f"{key}: {self.get_value(key)}", classes="option-label"))
                        for key in self.options], id="config-list")
         yield Footer()
@@ -175,8 +181,11 @@ class LoggerTUI(App):
                 parsed = ast.literal_eval(new_value)
                 if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
                     raise ValueError("Must be a list of strings")
+                # Each entry must be keyed by the actual source name (e.g. "appium"),
+                # not the literal "name" — otherwise every source collapses to one
+                # unresolvable key.
                 setattr(self.config_handler.config, key,
-                        [{"name": DependencyConfig(enabled=True)} for _ in parsed])
+                        [{source: DependencyConfig(enabled=True)} for source in parsed])
             else:
                 parsed = type(current_value)(new_value)
                 setattr(self.config_handler.config, key, parsed)
