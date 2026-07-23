@@ -243,10 +243,12 @@ class ActionKeyword:
         self._ai_healer: Optional[AISelfHealHandler] = None
         # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
         self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
-        # Set by `_log_heal_outcome` when a heal succeeds; consumed (and cleared) by the
-        # caller right after the keyword call via `_pop_last_heal_info`, so reporting
-        # layers (TestRunner, LiveController) can attribute the heal to the right call
-        # without it leaking onto the next, unrelated keyword.
+        # Set by `_log_heal_outcome` when a heal succeeds; consumed (and cleared) by
+        # `KeywordExecutor.execute` (the `optics serve`/`optics mcp` keyword path) right
+        # after the keyword call via `_pop_last_heal_info`, so it can attribute the heal
+        # to the right call without leaking onto the next, unrelated keyword. Other paths
+        # (TestRunner batch runs, LiveController) don't read it — the live path folds a
+        # recovery into `_recent_steps` instead — so it just stays unset there.
         self._last_heal_info: Optional[Dict[str, Any]] = None
         # The focused subset of keywords the self-healer is allowed to call, bound here
         # (rather than looked up by name via getattr) so a rename shows up as a static
@@ -346,9 +348,10 @@ class ActionKeyword:
     def _pop_last_heal_info(self) -> Optional[Dict[str, Any]]:
         """Return and clear the self-heal info recorded for the most recently completed call.
 
-        Callers (``TestRunner``, ``LiveController``) must call this immediately after every
-        keyword invocation, self-healing or not, so a heal on one keyword never leaks onto
-        the reporting for the next.
+        ``KeywordExecutor.execute`` (the sole consumer today) must call this immediately
+        after every keyword invocation, self-healing or not, so a heal on one keyword never
+        leaks onto the reporting for the next. Any future reporting layer that reads this
+        field must uphold the same read-and-clear discipline.
         """
         info, self._last_heal_info = self._last_heal_info, None
         return info

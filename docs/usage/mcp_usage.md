@@ -216,8 +216,8 @@ the recovery so a client can learn *how* it was fixed:
 `suggested_steps` is the clean, replayable recovery sequence — only the steps that
 actually worked, curated to the minimal set that reproduces the goal. A platform can
 persist these to replace the failing step, so the next run passes without needing
-self-heal. `optics serve`'s `POST /session/{id}/action` returns the same shape under
-`data`. Un-healed calls return the bare result, unchanged.
+self-heal. `optics serve`'s `POST /v1/sessions/{session_id}/action` returns the same
+shape under `data`. Un-healed calls return the bare result, unchanged.
 
 ### Keyword parameters are strings
 
