@@ -72,7 +72,9 @@ api:
         get_current_time:
           name: "Get Current Date and Time"
           description: "Fetch current date and time for a timezone"
-          endpoint: "/v2/timezone?apiKey=bb5c255f300b47c9b58b7dde81a6ebfe&tz=America/Los_Angeles"
+          # Sign up at https://ipgeolocation.io to get a free API key, then replace
+          # the placeholder below. Never commit a real key.
+          endpoint: "/v2/timezone?apiKey=YOUR_IPGEOLOCATION_API_KEY&tz=America/Los_Angeles"
           request:
             method: GET
             timeout: 30
