@@ -98,6 +98,37 @@ class SessionOwnedElsewhere(Exception):
         super().__init__(f"Session {session_id} is owned by another instance")
 
 
+class SessionStoreUnavailable(Exception):
+    """The shared session store is unreachable after bounded retries (Layer 2).
+
+    Raised by a distributed store when its backend (e.g. Redis) errors out even
+    after retrying; the API layer maps it to HTTP 503 so the caller retries.
+    Never fires with the in-memory store."""
+
+
+def lease_ttl_from_env(default: float = DEFAULT_LEASE_TTL_S) -> float:
+    """Read the lease TTL (seconds) from ``OPTICS_LEASE_TTL_S``, else default.
+
+    The lease TTL bounds how long an orphaned session is held before another
+    instance may reclaim it; the keepalive heartbeat renews well within it."""
+    raw = os.getenv("OPTICS_LEASE_TTL_S")
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        internal_logger.warning(
+            "Invalid OPTICS_LEASE_TTL_S=%r; using default %.1fs", raw, default
+        )
+        return default
+    if value <= 0:
+        internal_logger.warning(
+            "Non-positive OPTICS_LEASE_TTL_S=%r; using default %.1fs", raw, default
+        )
+        return default
+    return value
+
+
 class SessionStore(ABC):
     """Durable-truth store for SessionState, keyed by session_id (design §4).
 
@@ -371,6 +402,7 @@ class SessionManager(SessionHandler):
         self.store: SessionStore = store or InMemorySessionStore()
         self.lease_ttl_s = lease_ttl_s
         self.sessions: Dict[str, Session] = {}
+        self._heartbeat_task: Optional["asyncio.Task"] = None
 
     def create_session(self, config: Config,
                        test_cases: Optional[TestCaseNode],
@@ -415,6 +447,56 @@ class SessionManager(SessionHandler):
         session = self._reconstruct_runtime(state)
         self.sessions[session_id] = session
         return session
+
+    def _renew_owned_leases(self) -> None:
+        """Renew the lease of every live local session (Layer-2 keepalive).
+
+        Renewing only on request activity (``get_or_rehydrate``) would let a
+        live-but-idle session's lease expire, allowing another instance to
+        reclaim and reattach it while this instance still holds the runtime —
+        a two-owner window on the same backend/device. This heartbeat keeps the
+        lease alive for as long as the runtime exists, independent of traffic.
+        A no-op in practice under the in-memory store (leases always granted)."""
+        for session_id in list(self.sessions.keys()):
+            try:
+                if not self.store.renew_lease(session_id, self.instance_id, self.lease_ttl_s):
+                    internal_logger.warning(
+                        "Heartbeat: lease for session %s lost; another instance may have reclaimed it",
+                        session_id,
+                    )
+            except Exception as e:  # keepalive must never die on a transient store error
+                internal_logger.warning(
+                    "Heartbeat: lease renewal failed for session %s: %s", session_id, e
+                )
+
+    async def _heartbeat_loop(self, interval: float) -> None:
+        while True:
+            await asyncio.sleep(interval)
+            self._renew_owned_leases()
+
+    def start_heartbeat(self) -> None:
+        """Start the background lease-keepalive loop (idempotent). Call from the
+        server's async lifespan; not needed for one-shot CLI/in-memory use."""
+        if self._heartbeat_task is not None:
+            return
+        interval = max(1.0, self.lease_ttl_s / 3.0)
+        self._heartbeat_task = asyncio.ensure_future(self._heartbeat_loop(interval))
+        internal_logger.info(
+            "Session lease heartbeat started (interval=%.1fs, ttl=%.1fs)",
+            interval, self.lease_ttl_s,
+        )
+
+    async def stop_heartbeat(self) -> None:
+        """Cancel the keepalive loop; safe to call when it was never started."""
+        task = self._heartbeat_task
+        if task is None:
+            return
+        self._heartbeat_task = None
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     def export_state(self, session_id: str) -> SessionState:
         """Serializable snapshot of the session, with a fresh reattach handle

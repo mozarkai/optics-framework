@@ -7,8 +7,11 @@ strict reattach — per docs/contribution/stateless_api_design.md.
 import asyncio
 import base64
 import os
+import time
 
 import pytest
+import redis
+import fakeredis
 from fastapi import HTTPException
 
 from optics_framework.common.base_factory import InstanceFallback
@@ -17,10 +20,13 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import DriverBinding, SessionState, SessionStatus
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.session_manager import (
+    DEFAULT_LEASE_TTL_S,
     InMemorySessionStore,
     SessionManager,
     SessionOwnedElsewhere,
+    SessionStoreUnavailable,
     build_session_store_from_env,
+    lease_ttl_from_env,
     resolve_driver_binding,
 )
 from optics_framework.common.session_store_redis import RedisSessionStore
@@ -398,63 +404,13 @@ def test_migrate_endpoint_refuses_sticky_driver(monkeypatch, tmp_path):
 
 # --- Layer 2: RedisSessionStore --------------------------------------------------
 #
-# A minimal in-memory double for the small Redis command surface the store uses
-# (get / set with nx|xx|px / delete / scan_iter). Expiry is driven by a logical
-# clock the test advances, so lease-timeout behavior is deterministic without
-# sleeping.
+# Exercised against `fakeredis` (an in-process Redis emulator, including Lua) so
+# the store's real lease CAS + TTL semantics run without a live Redis. TTL-expiry
+# tests use short PX values + a tiny sleep; the lease-CAS race tests force the
+# key directly (no timing) to prove renew/release never touch another owner's lease.
 
-class FakeRedis:
-    def __init__(self):
-        self._data = {}          # name -> (value, expiry_or_None)
-        self._clock = 0.0
-
-    def advance(self, seconds):
-        self._clock += seconds
-
-    def _expired(self, name):
-        entry = self._data.get(name)
-        if entry is None:
-            return True
-        _, expiry = entry
-        if expiry is not None and expiry <= self._clock:
-            del self._data[name]
-            return True
-        return False
-
-    def set(self, name, value, nx=False, xx=False, px=None, ex=None):
-        exists = not self._expired(name)
-        if nx and exists:
-            return None
-        if xx and not exists:
-            return None
-        expiry = None
-        if px is not None:
-            expiry = self._clock + px / 1000.0
-        elif ex is not None:
-            expiry = self._clock + ex
-        self._data[name] = (str(value), expiry)
-        return True
-
-    def get(self, name):
-        if self._expired(name):
-            return None
-        return self._data[name][0]
-
-    def delete(self, *names):
-        removed = 0
-        for name in names:
-            if name in self._data:
-                del self._data[name]
-                removed += 1
-        return removed
-
-    def scan_iter(self, match=None):
-        import fnmatch
-        for name in list(self._data.keys()):
-            if self._expired(name):
-                continue
-            if match is None or fnmatch.fnmatch(name, match):
-                yield name
+def _fake_redis():
+    return fakeredis.FakeStrictRedis(decode_responses=True)
 
 
 def _redis_state(sid="rs-1") -> SessionState:
@@ -468,7 +424,7 @@ def _redis_state(sid="rs-1") -> SessionState:
 
 
 def test_redis_store_crud_round_trip():
-    store = RedisSessionStore(FakeRedis())
+    store = RedisSessionStore(_fake_redis())
     store.put_state(_redis_state())
     got = store.get_state("rs-1")
     assert got is not None and got.session_id == "rs-1"
@@ -479,7 +435,7 @@ def test_redis_store_crud_round_trip():
 
 
 def test_redis_store_namespacing_and_json_fidelity():
-    store = RedisSessionStore(FakeRedis(), key_prefix="opt:")
+    store = RedisSessionStore(_fake_redis(), key_prefix="opt:")
     state = _redis_state("rs-2")
     state.driver_binding.reattach_handle = "backend-xyz"
     state.metadata["workspace_hash"] = "abc123"
@@ -490,7 +446,7 @@ def test_redis_store_namespacing_and_json_fidelity():
 
 
 def test_redis_lease_mutual_exclusion():
-    store = RedisSessionStore(FakeRedis())
+    store = RedisSessionStore(_fake_redis())
     assert store.acquire_lease("s", "A", 10) is True
     assert store.acquire_lease("s", "B", 10) is False      # A holds it
     assert store.renew_lease("s", "B", 10) is False        # B cannot renew A's lease
@@ -502,22 +458,59 @@ def test_redis_lease_mutual_exclusion():
 
 
 def test_redis_lease_orphan_reclaim_on_expiry():
-    redis = FakeRedis()
-    store = RedisSessionStore(redis)
-    assert store.acquire_lease("s", "A", ttl=5) is True
-    assert store.acquire_lease("s", "B", ttl=5) is False
-    redis.advance(6)                                        # A stopped renewing (died)
+    store = RedisSessionStore(_fake_redis())
+    assert store.acquire_lease("s", "A", ttl=0.05) is True
+    assert store.acquire_lease("s", "B", ttl=0.05) is False
+    time.sleep(0.08)                                        # A stopped renewing (died); lease expires
     assert store.acquire_lease("s", "B", ttl=5) is True     # lease reclaimed
 
 
 def test_redis_lease_reacquire_by_owner_extends():
-    redis = FakeRedis()
-    store = RedisSessionStore(redis)
-    assert store.acquire_lease("s", "A", ttl=5) is True
-    redis.advance(3)
+    store = RedisSessionStore(_fake_redis())
+    assert store.acquire_lease("s", "A", ttl=0.1) is True
     assert store.acquire_lease("s", "A", ttl=5) is True     # extend, still ours
-    redis.advance(3)                                        # would have expired at t=5 without extend
-    assert store.renew_lease("s", "A", ttl=5) is True
+    time.sleep(0.15)                                        # would have expired at ttl=0.1 without the extend
+    assert store.renew_lease("s", "A", ttl=5) is True       # still ours
+
+
+def test_redis_renew_cas_does_not_steal_reassigned_lease():
+    """Ownership contract: once the lease reads as another instance's, renew must
+    NOT overwrite it. (The Lua CAS also makes this hold atomically under a
+    concurrent expiry+reacquire — a race a single-threaded test can't reproduce,
+    but the sequential ownership check guards the contract the CAS enforces.)"""
+    client = _fake_redis()
+    store = RedisSessionStore(client)
+    assert store.acquire_lease("s", "A", ttl=5) is True
+    client.set(store._lkey("s"), "B")                       # simulate B reclaiming after expiry
+    assert store.renew_lease("s", "A", ttl=5) is False
+    assert client.get(store._lkey("s")) == "B"              # B's lease is intact
+
+
+def test_redis_release_cas_does_not_delete_others_lease():
+    client = _fake_redis()
+    store = RedisSessionStore(client)
+    assert store.acquire_lease("s", "A", ttl=5) is True
+    client.set(store._lkey("s"), "B")                       # B now owns it
+    store.release_lease("s", "A")                           # A releasing must be a no-op
+    assert client.get(store._lkey("s")) == "B"
+
+
+def test_redis_store_translates_backend_errors():
+    """After bounded retries a Redis error becomes SessionStoreUnavailable so the
+    API layer can map it to a 503 without importing redis."""
+    class _Down:
+        def register_script(self, _script):
+            return lambda **_kw: 0
+        def get(self, *_a, **_k):
+            raise redis.exceptions.ConnectionError("redis down")
+        def set(self, *_a, **_k):
+            raise redis.exceptions.ConnectionError("redis down")
+
+    store = RedisSessionStore(_Down(), error_types=(redis.exceptions.RedisError,))
+    with pytest.raises(SessionStoreUnavailable):
+        store.get_state("x")
+    with pytest.raises(SessionStoreUnavailable):
+        store.acquire_lease("x", "A", 5)
 
 
 def test_build_store_from_env_defaults_to_memory(monkeypatch):
@@ -530,12 +523,40 @@ def test_build_store_from_env_unknown_falls_back_to_memory(monkeypatch):
     assert isinstance(build_session_store_from_env(), InMemorySessionStore)
 
 
+def test_lease_ttl_from_env(monkeypatch):
+    monkeypatch.delenv("OPTICS_LEASE_TTL_S", raising=False)
+    assert lease_ttl_from_env() == DEFAULT_LEASE_TTL_S
+    monkeypatch.setenv("OPTICS_LEASE_TTL_S", "42.5")
+    assert lease_ttl_from_env() == 42.5
+    monkeypatch.setenv("OPTICS_LEASE_TTL_S", "-1")          # non-positive → default
+    assert lease_ttl_from_env() == DEFAULT_LEASE_TTL_S
+    monkeypatch.setenv("OPTICS_LEASE_TTL_S", "notanumber")  # invalid → default
+    assert lease_ttl_from_env() == DEFAULT_LEASE_TTL_S
+
+
+def test_heartbeat_renews_owned_leases(monkeypatch, tmp_path):
+    """The keepalive extends the lease TTL of a live-but-idle session so it is
+    not reclaimed by another instance without any request traffic."""
+    fake = FakeMigratableDriver()
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
+    client = _fake_redis()
+    manager = SessionManager(store=RedisSessionStore(client), lease_ttl_s=2)
+    sid = _create(manager, tmp_path)
+
+    lkey = manager.store._lkey(sid)
+    time.sleep(0.05)
+    before = client.pttl(lkey)
+    manager._renew_owned_leases()
+    after = client.pttl(lkey)
+    assert after > before                                   # TTL bumped back toward full
+
+
 def test_redis_cross_instance_rehydrate_and_conflict(monkeypatch, tmp_path):
     """Two SessionManagers share one Redis-backed store: while instance A holds
     a live lease, B is refused; after A detaches, B rehydrates and reattaches."""
     fake = FakeMigratableDriver()
     monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
-    store = RedisSessionStore(FakeRedis())
+    store = RedisSessionStore(_fake_redis())
     manager_a = SessionManager(store=store)
     manager_b = SessionManager(store=store)
 
@@ -555,16 +576,16 @@ def test_redis_cross_instance_rehydrate_and_conflict(monkeypatch, tmp_path):
 
 
 def test_redis_local_hit_conflict_when_lease_lost(monkeypatch, tmp_path):
-    """A session live locally whose lease expires and is reclaimed elsewhere
-    must surface a conflict on the next lookup, not serve a stale runtime."""
+    """A session live locally whose lease is lost and reclaimed elsewhere must
+    surface a conflict on the next lookup, not serve a stale runtime."""
     fake = FakeMigratableDriver()
     monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
-    redis = FakeRedis()
-    store = RedisSessionStore(redis)
+    client = _fake_redis()
+    store = RedisSessionStore(client)
     manager = SessionManager(store=store, lease_ttl_s=10)
 
     sid = _create(manager, tmp_path)
-    redis.advance(11)                                       # our lease expires
+    client.delete(store._lkey(sid))                         # simulate our lease expiring
     assert store.acquire_lease(sid, "other-instance", ttl=10) is True
 
     with pytest.raises(SessionOwnedElsewhere):

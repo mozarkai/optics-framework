@@ -25,7 +25,9 @@ from optics_framework.common.session_manager import (
     SessionManager,
     Session,
     SessionOwnedElsewhere,
+    SessionStoreUnavailable,
     build_session_store_from_env,
+    lease_ttl_from_env,
 )
 from optics_framework.common.models import ApiData, SessionState
 from optics_framework.common.execution import (
@@ -41,11 +43,26 @@ from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Veri
 from optics_framework.helper.execute import discover_templates
 from optics_framework.helper.version import VERSION
 
-app = FastAPI(title="Optics Framework API", version="1.0")
+@asynccontextmanager
+async def _lifespan(_app: "FastAPI"):
+    """Run the session lease keepalive for the server's lifetime. The heartbeat
+    renews leases of live-but-idle sessions so they are not reclaimed by another
+    pod while this one still holds the runtime (a no-op under the in-memory
+    store)."""
+    session_manager.start_heartbeat()
+    try:
+        yield
+    finally:
+        await session_manager.stop_heartbeat()
+
+
+app = FastAPI(title="Optics Framework API", version="1.0", lifespan=_lifespan)
 # Store backend is selected from the environment (in-memory by default, Redis
 # for multi-worker/multi-pod deployment). Every endpoint reaches session state
 # through this one manager, so the API layer is stateless behind a shared store.
-session_manager = SessionManager(store=build_session_store_from_env())
+session_manager = SessionManager(
+    store=build_session_store_from_env(), lease_ttl_s=lease_ttl_from_env()
+)
 
 # --- API / HTTP messages ---
 SESSION_NOT_FOUND = "Session not found"
@@ -127,6 +144,17 @@ async def _session_owned_elsewhere_handler(_request: Request, exc: SessionOwnedE
     the caller retries against the owning pod rather than seeing a 500."""
     internal_logger.warning("Session %s is owned by another instance", exc.session_id)
     return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+
+@app.exception_handler(SessionStoreUnavailable)
+async def _session_store_unavailable_handler(_request: Request, exc: SessionStoreUnavailable):
+    """The shared session store is unreachable after bounded retries (Layer 2).
+    Signal a retryable 503 rather than a 500 so the caller/LB backs off."""
+    internal_logger.error("Session store unavailable: %s", exc)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Session store temporarily unavailable"},
+    )
 
 
 class AppiumUpdateRequest(BaseModel):
