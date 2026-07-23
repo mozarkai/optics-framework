@@ -180,3 +180,7 @@ cython_debug/
 *.json
 *.log
 .DS_Store
+
+# Runtime execution artifacts (never commit)
+execution_output/
+MagicMock/
