@@ -1,135 +1,216 @@
-"""Unit tests for common.runner.data_reader CSVDataReader (escape handling for XPath in CSV)."""
-import os
-import tempfile
+"""Tests for common/runner/data_reader.py — the CSV and YAML data readers.
 
+Covers CSV escape/unescape (element IDs and module params), the CSV and YAML
+readers for test cases / modules / elements, error-definition parsing, YAML API
+data parsing + merge, and the merge_dicts duplicate-key helper.
+"""
 import pytest
 
-from optics_framework.common.runner.data_reader import CSVDataReader
+from optics_framework.common.models import ApiData
+from optics_framework.common.runner.data_reader import (
+    CSVDataReader,
+    YAMLDataReader,
+    merge_dicts,
+)
 from optics_framework.common.utils import escape_csv_value, unescape_csv_value
 
 
-class TestCSVDataReaderUnescape:
-    """Tests that CSVDataReader unescapes \\n, \\t, \\r, \\\\ in element IDs and module params."""
+def _write(tmp_path, name, content):
+    path = tmp_path / name
+    path.write_text(content, encoding="utf-8")
+    return str(path)
 
-    def setup_method(self):
-        self.reader = CSVDataReader()
 
-    def test_read_elements_unescapes_newline_in_element_id(self):
-        """read_elements turns \\n in Element_ID* columns into a real newline."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False, newline=""
-        ) as f:
-            f.write(
-                "Element_Name,Element_ID_xpath,Element_ID\n"
-                '"icici","//android.widget.ImageView[@content-desc=""I\\nIcici Bank Limited""]","img.png"\n'
-            )
-            path = f.name
-        try:
-            result = self.reader.read_elements(path)
-            assert "icici" in result
-            # element_ids are lists; first value is from Element_ID_xpath (or order depends on dict)
-            ids = result["icici"]
-            assert isinstance(ids, list)
-            xpath_val = next(v for v in ids if "ImageView" in v)
-            assert "\n" in xpath_val
-            assert xpath_val == '//android.widget.ImageView[@content-desc="I\nIcici Bank Limited"]'
-        finally:
-            os.unlink(path)
+# --------------------------------------------------------------------------- #
+# CSVDataReader                                                                #
+# --------------------------------------------------------------------------- #
 
-    def test_read_modules_unescapes_newline_in_param(self):
-        """read_modules turns \\n in param_* values into a real newline."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False, newline=""
-        ) as f:
-            f.write(
-                "module_name,module_step,param_1,param_2\n"
-                'm1,Get Text,"//*[@desc=""A\\nB""]",\n'
-            )
-            path = f.name
-        try:
-            result = self.reader.read_modules(path)
-            assert "m1" in result
-            steps = result["m1"]
-            assert len(steps) == 1
-            kw, params = steps[0]
-            assert kw == "Get Text"
-            assert len(params) >= 1
-            assert "\n" in params[0]
-            assert params[0] == '//*[@desc="A\nB"]'
-        finally:
-            os.unlink(path)
+class TestCSVDataReader:
+    reader = CSVDataReader()
 
+    def test_read_test_cases_groups_and_skips_blank(self, tmp_path):
+        path = _write(tmp_path, "tc.csv", "test_case,test_step\nT1,M1\nT1,M2\n,skip\nT2,\n")
+        assert self.reader.read_test_cases(path) == {"T1": ["M1", "M2"]}
+
+    def test_read_modules_collects_params(self, tmp_path):
+        path = _write(tmp_path, "m.csv", "module_name,module_step,param_1,param_2\nM,Enter Text,${f},hi\n")
+        assert self.reader.read_modules(path) == {"M": [("Enter Text", ["${f}", "hi"])]}
+
+    def test_read_modules_skips_rows_missing_name_or_step(self, tmp_path):
+        path = _write(tmp_path, "m.csv", "module_name,module_step,param_1\nM,Launch App,\n,Sleep,1\nM,,2\n")
+        assert self.reader.read_modules(path) == {"M": [("Launch App", [])]}
+
+    def test_read_elements_supports_multiple_ids_for_fallback(self, tmp_path):
+        path = _write(
+            tmp_path, "e.csv",
+            "Element_Name,Element_ID_xpath,Element_ID\nlogin,//button,loginBtn\n",
+        )
+        assert self.reader.read_elements(path) == {"login": ["//button", "loginBtn"]}
+
+    def test_read_elements_none_path_returns_empty(self):
+        assert self.reader.read_elements(None) == {}
+
+    def test_read_elements_unescapes_newline_in_id(self, tmp_path):
+        path = _write(
+            tmp_path, "e.csv",
+            'Element_Name,Element_ID\n"icici","//node[@desc=""I\\nBank""]"\n',
+        )
+        assert self.reader.read_elements(path)["icici"] == ['//node[@desc="I\nBank"]']
+
+    def test_read_modules_unescapes_newline_in_param(self, tmp_path):
+        path = _write(tmp_path, "m.csv", 'module_name,module_step,param_1\nm1,Get Text,"//*[@d=""A\\nB""]"\n')
+        assert self.reader.read_modules(path)["m1"] == [("Get Text", ['//*[@d="A\nB"]'])]
+
+    def test_read_error_definitions_parses_and_skips_incomplete(self, tmp_path):
+        path = _write(
+            tmp_path, "err.csv",
+            "error_code,match_string,description,severity\n"
+            "E1,Session expired,Auth error,high\n"
+            ",no code,skipped,low\n"
+            "E2,,skipped too,low\n",
+        )
+        result = self.reader.read_error_definitions(path)
+        assert result == {
+            "E1": {"match_string": "Session expired", "description": "Auth error", "severity": "high"}
+        }
+
+
+# --------------------------------------------------------------------------- #
+# YAMLDataReader                                                               #
+# --------------------------------------------------------------------------- #
+
+class TestYAMLDataReader:
+    reader = YAMLDataReader()
+
+    def test_read_file_swallows_malformed_yaml(self, tmp_path):
+        path = _write(tmp_path, "bad.yaml", "key: [unclosed\n  : :\n")
+        assert self.reader.read_file(path) == {}
+
+    def test_read_test_cases(self, tmp_path):
+        path = _write(tmp_path, "tc.yaml", "Test Cases:\n  - Login:\n      - M1\n      - M2\n")
+        assert self.reader.read_test_cases(path) == {"Login": ["M1", "M2"]}
+
+    def test_read_modules_splits_on_variable(self, tmp_path):
+        path = _write(tmp_path, "m.yaml", "Modules:\n  - M:\n      - Press Element ${btn}\n      - Sleep\n")
+        assert self.reader.read_modules(path) == {
+            "M": [("Press Element", ["${btn}"]), ("Sleep", [])]
+        }
+
+    @pytest.mark.parametrize(
+        "step, expected",
+        [
+            ("Press Element ${btn}", ("Press Element", ["${btn}"])),
+            ("Enter Text ${f} hello", ("Enter Text", ["${f}", "hello"])),
+            ("Sleep", ("Sleep", [])),
+            ("", ("", [])),
+        ],
+    )
+    def test_parse_module_step(self, step, expected):
+        assert self.reader._parse_module_step(step) == expected
+
+    def test_read_elements_single_and_list_values(self, tmp_path):
+        path = _write(
+            tmp_path, "e.yaml",
+            "Elements:\n  single: loginBtn\n  fallback:\n    - //a\n    - //b\n",
+        )
+        assert self.reader.read_elements(path) == {
+            "single": ["loginBtn"],
+            "fallback": ["//a", "//b"],
+        }
+
+    def test_read_elements_none_path_returns_empty(self):
+        assert self.reader.read_elements(None) == {}
+
+    def test_read_api_data_parses_collection(self, tmp_path):
+        path = _write(
+            tmp_path, "api.yaml",
+            "api:\n"
+            "  collections:\n"
+            "    col1:\n"
+            "      name: C1\n"
+            "      base_url: http://x\n"
+            "      apis:\n"
+            "        a1:\n"
+            "          name: A1\n"
+            "          endpoint: /a\n"
+            "          request:\n"
+            "            method: GET\n",
+        )
+        api_data = self.reader.read_api_data(path)
+        assert isinstance(api_data, ApiData)
+        assert api_data.collections["col1"].base_url == "http://x"
+
+    def test_read_api_data_invalid_structure_raises(self, tmp_path):
+        path = _write(tmp_path, "api.yaml", "api:\n  collections:\n    col1:\n      missing: required\n")
+        with pytest.raises(ValueError, match="Invalid API data structure"):
+            self.reader.read_api_data(path)
+
+    def test_read_api_data_merges_into_existing(self, tmp_path):
+        first = _write(
+            tmp_path, "a.yaml",
+            "api:\n  collections:\n    c1:\n      name: C1\n      base_url: http://x\n"
+            "      apis:\n        a1:\n          name: A1\n          endpoint: /a\n          request:\n            method: GET\n",
+        )
+        second = _write(
+            tmp_path, "b.yaml",
+            "api:\n  collections:\n    c2:\n      name: C2\n      base_url: http://y\n"
+            "      apis:\n        a2:\n          name: A2\n          endpoint: /b\n          request:\n            method: POST\n",
+        )
+        existing = self.reader.read_api_data(first)
+        merged = self.reader.read_api_data(second, existing_api_data=existing)
+        assert set(merged.collections) == {"c1", "c2"}
+
+
+# --------------------------------------------------------------------------- #
+# escape/unescape helpers (used by the readers and by output round-trips)      #
+# --------------------------------------------------------------------------- #
 
 class TestEscapeCsvValue:
-    """Direct unit tests for escape_csv_value (used by get_interactive_elements in verifier)."""
+    @pytest.mark.parametrize(
+        "raw, escaped",
+        [
+            ("a\nb", "a\\nb"),
+            ("a\tb", "a\\tb"),
+            ("a\rb", "a\\rb"),
+            ("a\\b", "a\\\\b"),
+            ("a\\nc", "a\\\\nc"),  # backslash escaped first, so backslash+n != newline
+            ("", ""),
+        ],
+    )
+    def test_escape(self, raw, escaped):
+        assert escape_csv_value(raw) == escaped
 
-    def test_escape_csv_value_newline(self):
-        """escape_csv_value turns newline into \\n."""
-        assert escape_csv_value("a\nb") == "a\\nb"
-
-    def test_escape_csv_value_tab(self):
-        """escape_csv_value turns tab into \\t."""
-        assert escape_csv_value("a\tb") == "a\\tb"
-
-    def test_escape_csv_value_carriage_return(self):
-        """escape_csv_value turns carriage return into \\r."""
-        assert escape_csv_value("a\rb") == "a\\rb"
-
-    def test_escape_csv_value_backslash(self):
-        """escape_csv_value turns backslash into \\\\."""
-        assert escape_csv_value("a\\b") == "a\\\\b"
-
-    def test_escape_csv_value_backslash_then_n(self):
-        """escape_csv_value escapes backslash first so backslash+n becomes \\\\n (not newline)."""
-        assert escape_csv_value("a\\nc") == "a\\\\nc"
-
-    def test_escape_csv_value_empty_string(self):
-        """escape_csv_value returns empty string for empty input."""
-        assert escape_csv_value("") == ""
-
-    def test_escape_csv_value_raises_on_non_string(self):
-        """escape_csv_value requires str and raises TypeError otherwise."""
+    @pytest.mark.parametrize("bad", [None, 123])
+    def test_escape_rejects_non_string(self, bad):
         with pytest.raises(TypeError, match="expects str, got"):
-            escape_csv_value(None)
-        with pytest.raises(TypeError, match="expects str, got"):
-            escape_csv_value(123)
+            escape_csv_value(bad)
 
-
-class TestUnescapeCsvValueTypeContract:
-    """unescape_csv_value(s: str) -> str raises TypeError for non-str."""
-
-    def test_unescape_csv_value_raises_on_non_string(self):
-        """unescape_csv_value requires str and raises TypeError otherwise."""
+    @pytest.mark.parametrize("bad", [None, 123])
+    def test_unescape_rejects_non_string(self, bad):
         with pytest.raises(TypeError, match="expects str, got"):
-            unescape_csv_value(None)
-        with pytest.raises(TypeError, match="expects str, got"):
-            unescape_csv_value(123)
+            unescape_csv_value(bad)
 
 
 class TestEscapeUnescapeInverses:
-    """escape_csv_value and unescape_csv_value must be true inverses for verifier/output round-trip."""
+    @pytest.mark.parametrize(
+        "escaped",
+        ['//*[@desc="A\\nB"]', "a\\\\nc", "I\\nIcici Bank Limited", "a\\tb\\rc", "plain"],
+    )
+    def test_escape_of_unescape_is_identity(self, escaped):
+        assert escape_csv_value(unescape_csv_value(escaped)) == escaped
 
-    def test_unescape_then_escape_round_trip(self):
-        """For CSV-escaped strings, escape(unescape(s)) == s."""
-        cases = [
-            "//*[@desc=\"A\\nB\"]",
-            "a\\\\nc",
-            "I\\nIcici Bank Limited",
-            "a\\tb\\rc",
-            "plain",
-        ]
-        for escaped in cases:
-            assert escape_csv_value(unescape_csv_value(escaped)) == escaped, escaped
+    @pytest.mark.parametrize("raw", ["a\nb", "a\tb", "a\rb", "a\\nc", '//*[@d="A\nB"]', ""])
+    def test_unescape_of_escape_is_identity(self, raw):
+        assert unescape_csv_value(escape_csv_value(raw)) == raw
 
-    def test_escape_then_unescape_round_trip(self):
-        """For raw strings, unescape(escape(s)) == s."""
-        cases = [
-            "a\nb",
-            "a\tb",
-            "a\rb",
-            "a\\nc",
-            "//*[@desc=\"A\nB\"]",
-            "",
-        ]
-        for raw in cases:
-            assert unescape_csv_value(escape_csv_value(raw)) == raw, repr(raw)
+
+# --------------------------------------------------------------------------- #
+# merge_dicts                                                                  #
+# --------------------------------------------------------------------------- #
+
+class TestMergeDicts:
+    def test_merges_disjoint_keys(self):
+        assert merge_dicts({"a": 1}, {"b": 2}, "modules") == {"a": 1, "b": 2}
+
+    def test_second_source_wins_on_duplicate(self):
+        assert merge_dicts({"a": 1}, {"a": 2}, "modules") == {"a": 2}
