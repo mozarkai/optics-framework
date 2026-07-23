@@ -1,6 +1,6 @@
 # Stateless API Layer — Design
 
-**Status**: Layers 1–2 implemented — Layer 1 (`SessionState`/`SessionStore` split, driver capability gate, `/export` · `/import` · `/migrate`) and Layer 2 (`RedisSessionStore` with distributed leases + orphan reclaim, env-selected store via `OPTICS_SESSION_STORE`, enforced cross-instance lookup) | **Tracks**: [Help Wanted §1 — Stateless API Layer](help_wanted.md#1-stateless-api-layer)
+**Status**: Layers 1–2 implemented — Layer 1 (`SessionState`/`SessionStore` split, driver capability gate, `/export` · `/import` · `/migrate`) and Layer 2 (`RedisSessionStore` with distributed leases + orphan reclaim, env-selected store via `OPTICS_SESSION_STORE`, enforced cross-instance lookup, hardened with atomic lease CAS + keepalive heartbeat + bounded-retry→503) | **Tracks**: [Help Wanted §1 — Stateless API Layer](help_wanted.md#1-stateless-api-layer)
 
 This document is the implementation design for making `optics serve` stateless. It is deliberately scoped to **Layer 1** (a stateless session layer) but designs Layer 1's *seams* so **Layer 2** (multi-worker / multi-pod deployment) and **Layer 3** (device/session scheduling across a driver/device fleet) drop in behind interfaces that already exist — no call-site rework, no schema migration.
 
@@ -251,10 +251,19 @@ Layer 2 (`RedisSessionStore` + enforced leases + cross-pod rehydrate) and Layer 
 |---------|---------|---------|
 | `OPTICS_SESSION_STORE` | `memory` | `memory` → `InMemorySessionStore` (single process); `redis` → `RedisSessionStore`. |
 | `OPTICS_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL (used only when the backend is `redis`). |
+| `OPTICS_LEASE_TTL_S` | `300` | Lease TTL in seconds — how long an orphaned session is held before another instance may reclaim it. The keepalive renews well within it. |
 
 Install the optional dependency with `pip install optics-framework[stateless]` (adds `redis`).
 
 Redis layout: the durable `SessionState` lives at `optics:session:{sid}` (JSON); a TTL'd `optics:lease:{sid}` holds the owning `instance_id`. Mutual exclusion rests on atomic `SET NX PX`; **orphan reclaim is automatic** — a pod that dies stops renewing, the lease key expires, and any other pod may then acquire it and rehydrate the session. When a request lands on an instance while another holds a live lease, `get_or_rehydrate` raises `SessionOwnedElsewhere`, surfaced by the API as **HTTP 409** so the caller retries against the owning pod (or after the current owner detaches). This is the cross-pod path the load balancer exercises implicitly; `/migrate` (detach) is how an owner voluntarily hands a migratable session off.
+
+#### Layer-2 lease hardening (implemented)
+
+Three robustness fixes once leases are enforced across pods:
+
+- **Atomic lease CAS.** `renew`/`release` (and acquire's extend-if-ours branch) are single Lua scripts that compare the owner and mutate in one atomic step. A GET-then-conditional-SET/DEL leaves a window where a lease can expire and be re-acquired by another pod between the two calls — a renew would then *steal* the new holder's lease and a release would *delete* it. A fresh acquire stays a single `SET NX PX`.
+- **Keepalive heartbeat.** Renewing only inside `get_or_rehydrate` ties lease-holding to request traffic: a live-but-idle session loses its lease at TTL and is reclaimed/reattached elsewhere while this pod still holds the runtime (the same backend session/device driven from two places). `SessionManager` runs a background loop that renews all live local sessions' leases every ~`TTL/3`, started/stopped from the FastAPI lifespan and a no-op under the in-memory store.
+- **Store-outage handling.** `from_url` configures `redis-py`'s bounded `Retry` so a brief blip is ridden out transparently; once retries are exhausted a `RedisError` is translated to `SessionStoreUnavailable` and mapped to **HTTP 503** (retryable), without the API layer importing `redis`.
 
 ---
 
