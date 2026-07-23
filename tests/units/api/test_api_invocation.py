@@ -2,16 +2,15 @@ import pytest
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.models import ApiData, ApiCollection, ApiDefinition, RequestDefinition, ExpectedResultDefinition
 from optics_framework.common.error import OpticsError
-from tests.mock_servers.single_server import run_single_server
 
 
-@pytest.fixture(scope="module")
-def api_test_data():
+@pytest.fixture
+def api_test_data(mock_api_server):
     return ApiData(
         collections={
             "authentication_apis": ApiCollection(
                 name="Authentication and OTP APIs",
-                base_url="http://127.0.0.1:8001",
+                base_url=mock_api_server,
                 global_headers={},
                 apis={
                     "post_token": ApiDefinition(
@@ -41,13 +40,6 @@ def api_test_data():
         }
     )
 
-@pytest.fixture(scope="module")
-def live_servers():
-    server_instance, thread = run_single_server()
-    yield
-    server_instance.should_exit = True
-    thread.join()
-
 @pytest.fixture
 def flow_control(mock_runner, api_test_data):
     mock_runner.apis = api_test_data
@@ -57,7 +49,7 @@ def flow_control(mock_runner, api_test_data):
     flow_control.session = mock_runner
     return flow_control
 
-def test_invoke_api_success(flow_control, live_servers):
+def test_invoke_api_success(flow_control):
     # 1. Invoke the first API (post_token)
     flow_control.invoke_api("authentication_apis.post_token")
 
@@ -83,13 +75,10 @@ def test_invoke_api_invalid_identifier(flow_control):
     with pytest.raises(OpticsError, match="Invalid API identifier format: 'invalid_identifier'. Expected 'collection.api_name'."):
         flow_control.invoke_api("invalid_identifier")
 
-def test_invoke_api_request_failure(flow_control, live_servers):
-    # Temporarily change the base_url to a non-existent one to force a failure
-    original_base_url = flow_control.session.apis.collections["authentication_apis"].base_url
-    flow_control.session.apis.collections["authentication_apis"].base_url = "http://localhost:9999"
+def test_invoke_api_request_failure(flow_control):
+    # Point the collection at a closed port to force a connection failure.
+    # api_test_data is function-scoped, so this mutation cannot leak to other tests.
+    flow_control.session.apis.collections["authentication_apis"].base_url = "http://127.0.0.1:9"
 
-    with pytest.raises(OpticsError, match="API request to http://localhost:9999/token failed:"):
+    with pytest.raises(OpticsError, match="API request to http://127.0.0.1:9/token failed:"):
         flow_control.invoke_api("authentication_apis.post_token")
-
-    # Restore the original_base_url
-    flow_control.session.apis.collections["authentication_apis"].base_url = original_base_url
