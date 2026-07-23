@@ -20,6 +20,7 @@ pytest.importorskip("fastmcp")
 
 from fastmcp import Client  # noqa: E402
 from fastmcp.exceptions import ToolError  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 from optics_framework.common import expose_api  # noqa: E402
 from optics_framework.helper import mcp_server  # noqa: E402
@@ -149,7 +150,6 @@ def test_stringify_params_helper():
 
 
 def test_http_error_translates_to_tool_error():
-    from fastapi import HTTPException
 
     server = mcp_server.build_server()
     mock = AsyncMock(side_effect=HTTPException(status_code=404, detail="session not found"))

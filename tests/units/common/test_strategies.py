@@ -7,20 +7,25 @@ assert_presence time-allocation math, and the native screenshot-bytes fast path.
 """
 import base64
 import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 import cv2
 import numpy as np
 import pytest
 from selenium.common.exceptions import WebDriverException
-from unittest.mock import MagicMock, patch
 
 from optics_framework.common import utils
+from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
     StrategyManager,
     TextDetectionStrategy,
     LocateResult,
 )
-from optics_framework.common.base_factory import InstanceFallback
-from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
+from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
 
 
 # --- parse_text_only_prefix and determine_element_type (utils) ---
@@ -222,7 +227,6 @@ class TestCaptureScreenshotBytes:
         source.capture.assert_not_called()  # native path => no numpy capture/encode
 
     def test_raises_optics_error_when_all_sources_fail(self):
-        from optics_framework.common.error import OpticsError
         source = MagicMock()
         source.capture_screenshot_bytes.side_effect = RuntimeError("hub timeout")
         sm = _sm_with_source(source)
@@ -231,7 +235,6 @@ class TestCaptureScreenshotBytes:
 
     def test_interface_default_encodes_numpy_via_capture(self):
         """ElementSourceInterface.capture_screenshot_bytes() default encodes capture() result."""
-        from optics_framework.common.elementsource_interface import ElementSourceInterface
 
         class _MinimalSource(ElementSourceInterface):
             def capture(self) -> np.ndarray:
@@ -270,21 +273,18 @@ class TestAppiumScreenshotBytes:
     """AppiumScreenshot.capture_screenshot_bytes() decodes base64 with a single retry."""
 
     def test_returns_decoded_base64(self):
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         png = b"\x89PNG\r\n\x1a\nDATA"
         drv = _FakeWD([base64.b64encode(png).decode("ascii")])
         assert AppiumScreenshot(driver=drv).capture_screenshot_bytes() == png
         assert drv.calls == 1
 
     def test_retries_then_succeeds(self, _no_backoff):
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         png = b"\x89PNGok"
         drv = _FakeWD(["not-valid-base64!!!", base64.b64encode(png).decode("ascii")])
         assert AppiumScreenshot(driver=drv).capture_screenshot_bytes() == png
         assert drv.calls == 2
 
     def test_raises_after_exhausted_retries(self, _no_backoff):
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         drv = _FakeWD([WebDriverException("boom"), WebDriverException("boom")])
         with pytest.raises(RuntimeError):
             AppiumScreenshot(driver=drv).capture_screenshot_bytes()
@@ -292,7 +292,6 @@ class TestAppiumScreenshotBytes:
 
     def test_numpy_path_reuses_bytes(self, _no_backoff):
         """capture_screenshot_as_numpy delegates to the bytes path (shared retry)."""
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         # A real 2x2 PNG so cv2.imdecode succeeds; corrupt first to exercise the shared retry.
         ok_png = cv2.imencode(".png", np.full((2, 2, 3), 255, np.uint8))[1].tobytes()
         drv = _FakeWD(["bad!!!", base64.b64encode(ok_png).decode("ascii")])
@@ -305,13 +304,11 @@ class TestSeleniumScreenshotBytes:
     """SeleniumScreenshot mirrors the Appium native base64 path."""
 
     def test_returns_decoded_base64(self):
-        from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
         png = b"\x89PNG\r\n\x1a\nDATA"
         drv = _FakeWD([base64.b64encode(png).decode("ascii")])
         assert SeleniumScreenshot(driver=drv).capture_screenshot_bytes() == png
 
     def test_retries_then_succeeds(self, _no_backoff):
-        from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
         png = b"\x89PNGok"
         drv = _FakeWD(["bad!!!", base64.b64encode(png).decode("ascii")])
         assert SeleniumScreenshot(driver=drv).capture_screenshot_bytes() == png
@@ -323,13 +320,12 @@ class TestPlaywrightScreenshotBytes:
 
     def test_returns_page_screenshot_bytes(self, monkeypatch):
         pytest.importorskip("playwright")
-        import types as _types
         import optics_framework.engines.elementsources.playwright_screenshot as pw
         monkeypatch.setattr(pw, "run_async", lambda coro: coro)
         png = b"\x89PNG\r\n\x1a\nPLAYWRIGHT"
         page = MagicMock()
         page.screenshot.return_value = png
-        src = pw.PlaywrightScreenshot(driver=_types.SimpleNamespace(page=page))
+        src = pw.PlaywrightScreenshot(driver=SimpleNamespace(page=page))
         assert src.capture_screenshot_bytes() == png
 
 
@@ -479,7 +475,6 @@ class TestLocateRealStrategies:
         assert any(type(r.strategy).__name__ == "TextElementStrategy" for r in results)
 
     def test_locate_raises_e0201_when_no_strategy_yields(self):
-        from optics_framework.common.error import Code, OpticsError
         source = MagicMock()
         source.locate.return_value = None  # element source finds nothing
         with pytest.raises(OpticsError) as exc_info:
@@ -502,7 +497,6 @@ class TestImageDetectionStrategy:
         )
 
     def test_no_match_contributes_nothing(self):
-        from optics_framework.common.error import Code, OpticsError
         source = MagicMock()
         source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
         image_detection = MagicMock()
@@ -517,7 +511,6 @@ class TestAssertPresenceContract:
 
     @pytest.mark.parametrize("rule", ["maybe", "none", ""])
     def test_invalid_rule_raises_e0205(self, rule):
-        from optics_framework.common.error import Code, OpticsError
         with pytest.raises(OpticsError) as exc_info:
             _sm(MagicMock()).assert_presence(["Submit"], "Text", timeout=1, rule=rule)
         assert exc_info.value.code == Code.E0205
@@ -527,21 +520,18 @@ class TestAllocTimeForStrategy:
     """_alloc_time_for_strategy splits the remaining budget across strategies."""
 
     def test_even_division_rounds_up(self, monkeypatch):
-        import optics_framework.common.strategies as strat
-        monkeypatch.setattr(strat.time, "time", lambda: 1000.0)
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
         alloc, remaining, n = _sm(MagicMock())._alloc_time_for_strategy(1010.0, 0, [1, 2, 3])
         assert alloc == 4  # ceil(10 / 3)
         assert n == 3
 
     def test_no_time_left_returns_none(self, monkeypatch):
-        import optics_framework.common.strategies as strat
-        monkeypatch.setattr(strat.time, "time", lambda: 1000.0)
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
         # deadline already passed
         assert _sm(MagicMock())._alloc_time_for_strategy(999.0, 0, [1, 2]) is None
 
     def test_last_strategy_gets_remainder_even_if_sub_second(self, monkeypatch):
-        import optics_framework.common.strategies as strat
-        monkeypatch.setattr(strat.time, "time", lambda: 1000.0)
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
         # 0.4s left, last strategy (idx 1 of 2): alloc rounds to 0 but the last one still runs.
         result = _sm(MagicMock())._alloc_time_for_strategy(1000.4, 1, [1, 2])
         assert result is not None

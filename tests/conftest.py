@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.mock_servers.single_server import start_server
+
 _BOX_MARKERS = {"white_box", "black_box", "hybrid"}
 
 
@@ -33,8 +35,6 @@ def mock_api_server():
     Yields the base URL (``http://127.0.0.1:<port>``); tears the server down
     afterwards. Session scope keeps startup cost to a single bind per run.
     """
-    from tests.mock_servers.single_server import start_server
-
     server = start_server()
     try:
         yield server.base_url
