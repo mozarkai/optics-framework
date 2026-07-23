@@ -45,14 +45,43 @@ scikit-image = "^0.25.2"
 uvicorn = ">=0.35,<0.43"
 jsonpath-ng = "^1.7.0"
 beautifulsoup4 = "^4.12"
+# Optional engine backends. These are imported by the drivers / element sources /
+# vision models under optics_framework/engines/, but the core framework runs
+# without them — install the matching extra (or run `optics setup`) to enable an
+# engine. Version bounds are the minimum-tested floors with a next-major ceiling.
+appium-python-client = { version = ">=3.1,<5.0", optional = true }
+selenium = { version = ">=4.10,<5.0", optional = true }
+playwright = { version = ">=1.40,<2.0", optional = true }
+pyserial = { version = ">=3.5,<4.0", optional = true }
+easyocr = { version = ">=1.7,<2.0", optional = true }
+pytesseract = { version = ">=0.3.10,<0.4.0", optional = true }
+pillow = { version = ">=10.0,<12.0", optional = true }
+google-cloud-vision = { version = ">=3.4,<4.0", optional = true }
 google-genai = { version = ">=2.0.0,<3.0.0", optional = true }
 # >=3.4.2: earlier 3.4.x omit the starlette>=1.0 pin, letting the resolver keep
 # starlette 0.48 (a combo fastmcp's own code is incompatible with at runtime).
 fastmcp = { version = ">=3.4.2,<4.0.0", optional = true }
 
 [tool.poetry.extras]
+# Extra names match the config.yaml source keys so `optics setup --install <key>`
+# and the config key you enable are the same word.
+appium = ["appium-python-client"]
+selenium = ["selenium"]
+playwright = ["playwright"]
+ble = ["pyserial"]
+easyocr = ["easyocr"]
+pytesseract = ["pytesseract", "pillow"]
+google-vision = ["google-cloud-vision"]
 llm = ["google-genai"]
 mcp = ["fastmcp"]
+# Convenience bundles.
+mobile = ["appium-python-client"]
+web = ["selenium", "playwright"]
+vision = ["easyocr", "pytesseract", "pillow", "google-cloud-vision"]
+all = [
+	"appium-python-client", "selenium", "playwright", "pyserial",
+	"easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-genai",
+]
 
 [tool.poetry.group.dev.dependencies]
 tox = ">=4.24.1,<4.31.0"
