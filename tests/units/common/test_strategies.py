@@ -1,4 +1,10 @@
-"""Unit tests for TEXT_ONLY prefix feature and strategy selection."""
+"""Unit tests for the element-location layer (common/strategies.py).
+
+Covers the TEXT_ONLY prefix + strategy selection, the real strategy classes driven
+through the public ``locate`` / ``assert_presence`` API (XPath, Text, Image
+detection), the not-found (E0201) and invalid-rule (E0205) contracts, the
+assert_presence time-allocation math, and the native screenshot-bytes fast path.
+"""
 import base64
 import time
 import cv2
@@ -441,3 +447,102 @@ class TestVisibilityExcludesPresenceOnlySources:
         )
         with pytest.raises(Exception):
             manager.assert_visibility(["//*[@id=\"offscreen\"]"], "XPath", timeout=1, rule="any")
+
+
+# --- Real strategy classes driven through the public locate() API ---
+
+
+def _sm(source, *, text_detection=None, image_detection=None):
+    return StrategyManager(
+        element_source=InstanceFallback([source]),
+        text_detection=text_detection,
+        image_detection=image_detection,
+    )
+
+
+class TestLocateRealStrategies:
+    """Drive the actual strategy ladder (no patching of private methods)."""
+
+    def test_xpath_yields_element_source_handle(self):
+        handle = object()
+        source = MagicMock()
+        source.locate.return_value = handle
+        results = list(_sm(source).locate("//div[@id='x']"))
+        assert any(r.value is handle for r in results)
+        assert any(type(r.strategy).__name__ == "XPathStrategy" for r in results)
+
+    def test_text_element_yields_from_element_source(self):
+        handle = object()
+        source = MagicMock()
+        source.locate.return_value = handle
+        results = list(_sm(source).locate("Submit"))
+        assert any(type(r.strategy).__name__ == "TextElementStrategy" for r in results)
+
+    def test_locate_raises_e0201_when_no_strategy_yields(self):
+        from optics_framework.common.error import Code, OpticsError
+        source = MagicMock()
+        source.locate.return_value = None  # element source finds nothing
+        with pytest.raises(OpticsError) as exc_info:
+            list(_sm(source).locate("Submit"))
+        assert exc_info.value.code == Code.E0201
+
+
+class TestImageDetectionStrategy:
+    """ImageDetectionStrategy locates an image element via image_detection."""
+
+    def test_yields_centre_coordinates(self):
+        source = MagicMock()
+        source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+        image_detection = MagicMock()
+        image_detection.find_element.return_value = (True, (50, 60), ((0, 0), (100, 20)))
+        results = list(_sm(source, image_detection=image_detection).locate("button.png"))
+        assert any(
+            type(r.strategy).__name__ == "ImageDetectionStrategy" and r.value == (50, 60)
+            for r in results
+        )
+
+    def test_no_match_contributes_nothing(self):
+        from optics_framework.common.error import Code, OpticsError
+        source = MagicMock()
+        source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+        image_detection = MagicMock()
+        image_detection.find_element.return_value = None
+        with pytest.raises(OpticsError) as exc_info:
+            list(_sm(source, image_detection=image_detection).locate("button.png"))
+        assert exc_info.value.code == Code.E0201
+
+
+class TestAssertPresenceContract:
+    """assert_presence input validation."""
+
+    @pytest.mark.parametrize("rule", ["maybe", "none", ""])
+    def test_invalid_rule_raises_e0205(self, rule):
+        from optics_framework.common.error import Code, OpticsError
+        with pytest.raises(OpticsError) as exc_info:
+            _sm(MagicMock()).assert_presence(["Submit"], "Text", timeout=1, rule=rule)
+        assert exc_info.value.code == Code.E0205
+
+
+class TestAllocTimeForStrategy:
+    """_alloc_time_for_strategy splits the remaining budget across strategies."""
+
+    def test_even_division_rounds_up(self, monkeypatch):
+        import optics_framework.common.strategies as strat
+        monkeypatch.setattr(strat.time, "time", lambda: 1000.0)
+        alloc, remaining, n = _sm(MagicMock())._alloc_time_for_strategy(1010.0, 0, [1, 2, 3])
+        assert alloc == 4  # ceil(10 / 3)
+        assert n == 3
+
+    def test_no_time_left_returns_none(self, monkeypatch):
+        import optics_framework.common.strategies as strat
+        monkeypatch.setattr(strat.time, "time", lambda: 1000.0)
+        # deadline already passed
+        assert _sm(MagicMock())._alloc_time_for_strategy(999.0, 0, [1, 2]) is None
+
+    def test_last_strategy_gets_remainder_even_if_sub_second(self, monkeypatch):
+        import optics_framework.common.strategies as strat
+        monkeypatch.setattr(strat.time, "time", lambda: 1000.0)
+        # 0.4s left, last strategy (idx 1 of 2): alloc rounds to 0 but the last one still runs.
+        result = _sm(MagicMock())._alloc_time_for_strategy(1000.4, 1, [1, 2])
+        assert result is not None
+        assert result[0] == 0
