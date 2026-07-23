@@ -1,150 +1,67 @@
-import pytest
+"""Shared fixtures for the unit suite.
+
+Kept deliberately small: only the collaborators that more than one test file needs
+live here. Test-file-specific fakes stay in their own module.
+"""
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+import pytest
+
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.models import ElementData, ApiData, ApiCollection, ApiDefinition, RequestDefinition, ExpectedResultDefinition
+from optics_framework.common.models import ElementData
 from optics_framework.common.runner.test_runnner import Runner
-
-
-
-
-class MockApiDefinition:
-    """Shared mock API definition for testing."""
-
-    def __init__(self, endpoint, method='GET', headers=None, body=None, extract=None, jsonpath_assertions=None):
-        self.endpoint = endpoint
-        self.request = type('Req', (), {'method': method, 'headers': headers or {}, 'body': body})()
-        self.expected_result = type('Exp', (), {'extract': extract or {}, 'jsonpath_assertions': jsonpath_assertions or []})()
-
-
-class MockApiCollection:
-    """Shared mock API collection for testing."""
-
-    def __init__(self, name, base_url, apis, global_headers=None):
-        self.name = name
-        self.base_url = base_url
-        self.apis = apis
-        self.global_headers = global_headers or {}
-
-
-class MockSession:
-    """Shared mock session for testing."""
-
-    def __init__(self):
-        self.elements = ElementData()
-        self.modules = type('M', (), {'modules': {}, 'get_module_definition': lambda self, x: []})()
-        self.apis = ApiData()
-        self.apis.collections = {}
-        self.config_handler = MagicMock()
 
 
 @pytest.fixture
 def mock_driver():
-    """Fixture providing a mock driver interface."""
-    # Create a MagicMock that specs to DriverInterface for call tracking
+    """A DriverInterface-spec'd mock for verifying keyword→driver delegation."""
     mock = MagicMock(spec=DriverInterface)
-
-    # Set up return values for methods that return strings
     mock.get_app_version.return_value = ""
     mock.get_text_element.return_value = ""
-
-    # Set up validation for launch_app
-    def launch_app_side_effect(app_identifier=None, app_activity=None, event_name=None):
-        if event_name == "":
-            raise ValueError("Event name cannot be empty.")
-
-    mock.launch_app.side_effect = launch_app_side_effect
     return mock
 
 
 @pytest.fixture
-def mock_session():
-    """Fixture providing a mock session."""
-    return MockSession()
-
-
-@pytest.fixture
 def mock_runner():
-    """Fixture providing a mock runner with temporary directories."""
-    session = MagicMock(spec=Runner)
-    session.elements = ElementData()
-    session.config_handler = MagicMock()
+    """A Runner-spec'd mock carrying real ElementData and a temp output path."""
+    runner = MagicMock(spec=Runner)
+    runner.elements = ElementData()
+    runner.config_handler = MagicMock()
     temp_dir = tempfile.mkdtemp()
-
-    class Config:
-        pass
-
-    config = Config()
-    config.execution_output_path = temp_dir
-    config.project_path = temp_dir
-    session.config_handler.config = config
-    return session
+    runner.config_handler.config = SimpleNamespace(
+        execution_output_path=temp_dir, project_path=temp_dir
+    )
+    return runner
 
 
-@pytest.fixture
-def mock_api_data():
-    """Fixture providing mock API data structure."""
-    return {
-        "collections": {
-            "authentication_apis": ApiCollection(
-                name="Authentication and OTP APIs",
-                base_url="http://127.0.0.1:8001",
-                global_headers={},
-                apis={
-                    "post_token": ApiDefinition(
-                        name="Token Generation",
-                        description="Generate OAuth token",
-                        endpoint="/token",
-                        request=RequestDefinition(
-                            method="POST",
-                            headers={"Content-Type": "application/json"},
-                            body={"username": "test", "password": "password"}
-                        ),
-                        expected_result=ExpectedResultDefinition(extract={"auth_token": "access_token", "user_id": "user.userId"})
-                    ),
-                    "send_otp": ApiDefinition(
-                        name="Send OTP",
-                        description="Send OTP to user",
-                        endpoint="/sendotp",
-                        request=RequestDefinition(
-                            method="POST",
-                            headers={"Authorization": "${auth_token}", "Content-Type": "application/json"},
-                            body={"userId": "${user_id}", "txnType": "GEN"}
-                        ),
-                        expected_result={"expected_status": 200}
-                    )
-                }
-            )
-        }
-    }
+class _FakeResponse:
+    """A minimal stand-in for a ``requests.Response`` used by invoke_api tests."""
 
-
-class MockResponse:
-    """Shared mock HTTP response for testing."""
-
-    def __init__(self, json_data=None, status_code=200, text=None):
-        self.json_data = json_data or {}
+    def __init__(self, json_data=None, status_code=200, text=None, content_type="application/json"):
+        self._json_data = json_data
         self.status_code = status_code
-        self.reason = 'OK' if status_code == 200 else 'Error'
-        self.headers = {'Content-Type': 'application/json'}
-        self.text = text or str(json_data)
-        self.content = (text or str(json_data)).encode() if text or json_data else b''
+        self.reason = "OK" if status_code == 200 else "Error"
+        self.headers = {"Content-Type": content_type}
+        self.text = text if text is not None else (str(json_data) if json_data is not None else "")
+        self.content = self.text.encode()
 
     def json(self):
-        if self.json_data:
-            return self.json_data
-        import json
-        raise json.JSONDecodeError('Expecting value', self.text, 0)
+        if self._json_data is None:
+            import json
+            raise json.JSONDecodeError("Expecting value", self.text, 0)
+        return self._json_data
 
     @property
     def elapsed(self):
-        class E:
-            def total_seconds(self):
-                return 0.01
-        return E()
+        return SimpleNamespace(total_seconds=lambda: 0.01)
 
 
 @pytest.fixture
-def mock_response():
-    """Fixture providing a mock HTTP response."""
-    return MockResponse
+def fake_response():
+    """Factory building a fake ``requests`` response.
+
+    Usage: ``monkeypatch.setattr('requests.request', lambda *a, **k: fake_response(json_data=...))``.
+    """
+    return _FakeResponse

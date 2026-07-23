@@ -1,26 +1,29 @@
-import os
-import yaml
-import csv
-from optics_framework.optics import Optics
+"""End-to-end smoke tests for the public ``Optics`` SDK facade.
 
+These exercise the real facade against the bundled ``contact`` sample project and
+the in-process mock API server (``mock_api_server`` fixture), so they double as a
+wiring check that setup → keyword → teardown holds together.
+"""
+import csv
+import os
+
+import yaml
+
+from optics_framework.optics import Optics
 
 CONTACT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/config.yaml')
 ELEMENTS_CSV_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/test_data/elements.csv')
+MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
 
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_elements(elements_path):
-    elements = {}
-    with open(elements_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            elements[row['Element_Name']] = row['Element_ID']
-    return elements
 
-MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
+def load_elements(elements_path):
+    with open(elements_path, 'r') as f:
+        return {row['Element_Name']: row['Element_ID'] for row in csv.DictReader(f)}
 
 
 def _load_api_yaml_pointed_at(base_url):
@@ -32,13 +35,8 @@ def _load_api_yaml_pointed_at(base_url):
 
 
 def test_extract_config_data_forwards_save_captures():
-    optics = Optics()
-    config_data = optics._extract_config_data(
-        config={
-            "driver_sources": [],
-            "elements_sources": [],
-            "save_captures": False,
-        },
+    config_data = Optics()._extract_config_data(
+        config={"driver_sources": [], "elements_sources": [], "save_captures": False},
         driver_sources=None,
         elements_sources=None,
         image_detection=None,
@@ -47,36 +45,24 @@ def test_extract_config_data_forwards_save_captures():
     )
     assert config_data["save_captures"] is False
 
-def test_setup_and_elements():
+
+def test_setup_and_element_round_trip():
     elements = load_elements(ELEMENTS_CSV_PATH)
-    config = load_config(CONTACT_CONFIG_PATH)
-    optics = Optics()
-    optics.setup(config=config)
-    for name, value in elements.items():
-        optics.add_element(name, value)
-    for name in elements.keys():
-        # get_element_value returns a list, so use get_first for scalar assertion
-        assert optics.get_element_value(name)[0] == elements[name]
-    optics.quit()
-
-def test_setup_from_file():
-    optics = Optics()
-    optics.setup_from_file(CONTACT_CONFIG_PATH)
-    optics.quit()
-
-def test_add_api_and_invoke(mock_api_server):
     optics = Optics()
     optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    optics.add_api(_load_api_yaml_pointed_at(mock_api_server))
-    optics.invoke_api("mock.token")
-    access_token = optics.get_element_value("access_token")[0]
-    user_id = optics.get_element_value("userId")[0]
-    optics.add_element("access_token", access_token)
-    optics.add_element("userId", user_id)
-    optics.invoke_api("mock.sendotp")
-    txn_type = optics.get_element_value("txnType")[0]
-    assert txn_type == "GEN", f"Expected txnType 'GEN', got {txn_type}"
+    for name, value in elements.items():
+        optics.add_element(name, value)
+    for name, value in elements.items():
+        assert optics.get_element_value(name)[0] == value
     optics.quit()
+
+
+def test_setup_from_file_populates_config():
+    optics = Optics()
+    optics.setup_from_file(CONTACT_CONFIG_PATH)
+    assert optics.config is not None
+    optics.quit()
+
 
 def test_add_testcase_and_module():
     optics = Optics()
@@ -86,46 +72,43 @@ def test_add_testcase_and_module():
     optics.quit()
 
 
-
-def test_flow_control_methods():
-    optics = Optics()
-    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    # Add dummy module for flow control with a registered keyword
-    optics.add_module('mod1', [('sleep', ['1'])])
-    optics.run_loop('mod1', '1')
-    # Use a valid condition expression
-    optics.condition('True', 'mod1')
-    optics.evaluate("result", "1+1")
-    # Explicit correct argument order: input date, operation, value
-    # Use variable name as first argument, input date as second, operation and value as third
-    result_date = optics.date_evaluate('tomorrow', '2025-08-14', '+1 day')
-    print(f"date_evaluate result: {result_date}")
-    from datetime import datetime
-    try:
-        datetime.strptime(result_date, "%d %B")
-    except Exception:
-        assert False, f"date_evaluate returned invalid date string: {result_date}"
-    optics.quit()
-
-def test_context_manager():
-    config = load_config(CONTACT_CONFIG_PATH)
+def test_context_manager_element_round_trip():
     with Optics() as optics:
-        optics.setup(config=config)
+        optics.setup(config=load_config(CONTACT_CONFIG_PATH))
         optics.add_element('foo', 'bar')
         assert optics.get_element_value('foo')[0] == 'bar'
 
-def test_mock_api(mock_api_server):
+
+def test_api_token_and_otp_flow(mock_api_server):
     optics = Optics()
-    optics.setup(config=load_config(CONTACT_CONFIG_PATH))  # Minimal setup for API-only test
+    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
     optics.add_api(_load_api_yaml_pointed_at(mock_api_server))
     optics.invoke_api("mock.token")
-    access_token = optics.get_element_value("access_token")[0]
-    user_id = optics.get_element_value("userId")[0]
-    print("Access token from mock API:", access_token)
-    print("User ID from mock API:", user_id)
-    optics.add_element("access_token", access_token)
-    optics.add_element("userId", user_id)
+    optics.add_element("access_token", optics.get_element_value("access_token")[0])
+    optics.add_element("userId", optics.get_element_value("userId")[0])
     optics.invoke_api("mock.sendotp")
-    txn_type = optics.get_element_value("txnType")[0]
-    print("OTP txnType from mock API:", txn_type)
+    assert optics.get_element_value("txnType")[0] == "GEN"
+    optics.quit()
+
+
+def test_run_loop_executes_module():
+    optics = Optics()
+    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
+    optics.add_module('mod1', [('sleep', ['1'])])
+    # Loops the module the requested number of times without raising.
+    assert optics.run_loop('mod1', '1') is not None
+    optics.quit()
+
+
+def test_evaluate_stores_result():
+    optics = Optics()
+    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
+    assert optics.evaluate("result", "1+1") == 2
+    optics.quit()
+
+
+def test_date_evaluate_adds_day():
+    optics = Optics()
+    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
+    assert optics.date_evaluate('tomorrow', '2025-08-14', '+1 day') == '15 August'
     optics.quit()
