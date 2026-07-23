@@ -19,13 +19,6 @@ methods; a full ``ExecutionEngine`` is deliberately not constructed. The runner 
 built via ``__new__`` and wired with the minimal collaborators (real ``ElementData``,
 a real ``NullResultPrinter``, and a tiny fake event manager) so the assertions stay
 behaviour-focused rather than call-order-focused.
-
-BUG PINNED HERE (see ``TestFallbackAdvanceRule``): the advance predicate at
-``test_runnner.py:451`` reads ``str(oe.code).startswith("E02")``, but ``str`` of a
-``(str, Enum)`` member yields ``"Code.E0201"`` (not ``"E0201"``), so only ``X0201``
-ever advances the ladder — an ``E0201`` (the most common element-not-found code) is
-treated as fatal, contrary to the documented contract. The current (buggy) behaviour
-is pinned green; the intended behaviour is captured as ``xfail(strict=True)``.
 """
 import time
 from types import SimpleNamespace
@@ -49,14 +42,6 @@ from optics_framework.common.runner.printers import (
 # classes and emit PytestCollectionWarning.
 from optics_framework.common.runner.printers import TestCaseResult as _TestCaseResult
 from optics_framework.common.runner.test_runnner import TestRunner as _TestRunner
-
-
-_E0201_BUG = (
-    "Fallback-advance predicate uses str(oe.code) which is 'Code.E0201', not "
-    "'E0201', so .startswith('E02') is always False and E0201 never advances the "
-    "param ladder (test_runnner.py:451; mozarkai/optics-framework#386). Only X0201 "
-    "advances. Remove this marker when the predicate is fixed to compare oe.code.value."
-)
 
 
 # --------------------------------------------------------------------------- #
@@ -351,20 +336,9 @@ class TestFallbackAdvanceRule:
         assert len(method.calls) == 1
         assert kw_node.state == State.COMPLETED_FAILED
 
-    async def test_e0201_does_not_advance_current_buggy_behaviour(self):
-        """PINS THE BUG: an E0201 on the first candidate is treated as fatal, so the
-        second (potentially working) candidate is never tried. See ``_E0201_BUG``.
-        """
-        runner = _make_runner()
-        method = _Recorder(fail_until=("good",), raise_code=Code.E0201)
-        result = await _run_fallback(runner, method, [["bad", "good"]])
-        assert result is False              # bug: should have advanced to "good"
-        assert [c[0] for c in method.calls] == [("bad",)]  # never reached "good"
-
-    @pytest.mark.xfail(reason=_E0201_BUG, strict=True)
-    async def test_e0201_should_advance_the_ladder(self):
-        """INTENDED behaviour per CLAUDE.md 'fallback level 1': an E0201
-        (element-not-found family) should advance to the next candidate.
+    async def test_e0201_advances_the_ladder(self):
+        """An E0201 (element-not-found family) advances to the next candidate,
+        per CLAUDE.md 'fallback level 1' (mozarkai/optics-framework#386).
         """
         runner = _make_runner()
         method = _Recorder(fail_until=("good",), raise_code=Code.E0201)
