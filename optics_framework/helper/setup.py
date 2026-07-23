@@ -1,53 +1,97 @@
 import subprocess  # nosec B404
-from typing import Dict, List
-import os
+from importlib.metadata import PackageNotFoundError, version
+from typing import Dict, List, Optional
 import sys
 from textual.app import App, ComposeResult
 from textual.widgets import Checkbox, Button, Header, Footer, Static
 from pydantic import BaseModel
 
 
-class DriverPackage(BaseModel):
-    name: str
-    packages: List[str]
+DISTRIBUTION_NAME = "optics-framework"
+
+
+class Driver(BaseModel):
+    """A selectable engine backend, installed via an `optics-framework` extra."""
+    name: str          # human-friendly display name, e.g. "Google Vision"
+    extra: str         # pyproject extra name, e.g. "google-vision"
+    packages: List[str]  # concrete packages the extra pulls in (shown to the user)
+    aliases: List[str] = []  # extra tokens accepted on the CLI
 
 
 class DriverCategory(BaseModel):
     name: str
-    drivers: Dict[str, DriverPackage]
+    drivers: Dict[str, Driver]
 
 
-# Driver definitions
+# Driver definitions. The `extra` matches the pyproject extra name, which in turn
+# matches the config.yaml source key, so the word a user installs is the word they
+# enable in config.
 ACTION_DRIVERS = DriverCategory(
     name="Action Driver",
     drivers={
-        "Appium": DriverPackage(name="Appium", packages=["appium-python-client"]),
-        "BLE": DriverPackage(name="BLE", packages=["pyserial"]),
-        "Selenium": DriverPackage(name="Selenium", packages=["selenium", "beautifulsoup4"]),
-        "Playwright": DriverPackage(name="Playwright", packages=["playwright"]),
+        "Appium": Driver(name="Appium", extra="appium", packages=["appium-python-client"]),
+        "BLE": Driver(name="BLE", extra="ble", packages=["pyserial"]),
+        "Selenium": Driver(name="Selenium", extra="selenium", packages=["selenium"]),
+        "Playwright": Driver(name="Playwright", extra="playwright", packages=["playwright"]),
     }
 )
 
 TEXT_DRIVERS = DriverCategory(
     name="Text Driver",
     drivers={
-        "EasyOCR": DriverPackage(name="EasyOCR", packages=["easyocr"]),
-        "Pytesseract": DriverPackage(name="Pytesseract", packages=["pytesseract", "pillow"]),
-        "Google Vision": DriverPackage(name="Google Vision", packages=["google-cloud-vision"])
+        "EasyOCR": Driver(name="EasyOCR", extra="easyocr", packages=["easyocr"]),
+        "Pytesseract": Driver(name="Pytesseract", extra="pytesseract", packages=["pytesseract", "pillow"]),
+        "Google Vision": Driver(
+            name="Google Vision", extra="google-vision", packages=["google-cloud-vision"],
+            aliases=["google_vision", "googlevision"],
+        ),
     }
 )
 
 LLM_DRIVERS = DriverCategory(
     name="LLM Driver",
     drivers={
-        "Gemini": DriverPackage(name="Gemini", packages=["google-genai"])
+        "Gemini": Driver(name="Gemini", extra="llm", packages=["google-genai"], aliases=["llm"]),
     }
 )
 
-ALL_DRIVERS = {**ACTION_DRIVERS.drivers, **TEXT_DRIVERS.drivers, **LLM_DRIVERS.drivers}
+ALL_DRIVERS: Dict[str, Driver] = {
+    **ACTION_DRIVERS.drivers, **TEXT_DRIVERS.drivers, **LLM_DRIVERS.drivers
+}
 
 # Maps a checkbox-id prefix to its driver category.
 _CATEGORY_BY_PREFIX = {"action": ACTION_DRIVERS, "text": TEXT_DRIVERS, "llm": LLM_DRIVERS}
+
+
+def _norm(token: str) -> str:
+    return token.strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _alias_index() -> Dict[str, Driver]:
+    """Build a lookup from every accepted token (display name, extra, config key,
+    explicit aliases) — all normalised to lowercase/underscore — to its Driver."""
+    index: Dict[str, Driver] = {}
+    for driver in ALL_DRIVERS.values():
+        for token in [driver.name, driver.extra, *driver.aliases]:
+            index[_norm(token)] = driver
+    return index
+
+
+def resolve_drivers(tokens: List[str]) -> tuple[List[Driver], List[str]]:
+    """Resolve user-supplied tokens to Drivers. Returns (resolved, invalid).
+
+    Accepts display names ("Appium", "Google Vision") and config/extra keys
+    ("appium", "google-vision", "google_vision"), case-insensitively."""
+    index = _alias_index()
+    resolved: List[Driver] = []
+    invalid: List[str] = []
+    for token in tokens:
+        driver = index.get(_norm(token))
+        if driver is None:
+            invalid.append(token)
+        elif driver not in resolved:
+            resolved.append(driver)
+    return resolved, invalid
 
 
 class DriverInstallerApp(App):
@@ -66,7 +110,7 @@ class DriverInstallerApp(App):
 
     def __init__(self):
         super().__init__()
-        self.selected_drivers: Dict[str, List[str]] = {}
+        self.selected_drivers: Dict[str, Driver] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -97,10 +141,10 @@ class DriverInstallerApp(App):
             name for name in drivers_source.drivers.keys()
             if name.lower().replace(' ', '_') == driver_key
         )
-        packages = drivers_source.drivers[driver_name].packages
+        driver = drivers_source.drivers[driver_name]
 
         if event.checkbox.value:
-            self.selected_drivers[driver_name] = packages
+            self.selected_drivers[driver_name] = driver
         elif driver_name in self.selected_drivers:
             del self.selected_drivers[driver_name]
 
@@ -114,56 +158,53 @@ class DriverInstallerApp(App):
         if not self.selected_drivers:
             self.notify("No drivers selected!", severity="warning")
             return
-
-        requirements = []
-        for packages in self.selected_drivers.values():
-            requirements.extend(packages)
-        install_packages(requirements)
+        install_extras(list(self.selected_drivers.values()))
 
 
-def install_packages(requirements: List[str]) -> None:
-    if not all(isinstance(pkg, str) and pkg.strip() and not pkg.startswith('-') for pkg in requirements):
-        print("Error: Invalid package specifications detected!")
+def _installed_version() -> Optional[str]:
+    try:
+        return version(DISTRIBUTION_NAME)
+    except PackageNotFoundError:
+        return None
+
+
+def install_extras(drivers: List[Driver]) -> None:
+    """Install the selected engine backends by pulling the matching
+    `optics-framework` extras, pinned to the installed version so the CLI is
+    never upgraded out from under the user."""
+    if not drivers:
+        print("No drivers selected.")
         return
 
-    req_file = "requirements.txt"
+    extras = sorted({driver.extra for driver in drivers})
+    installed = _installed_version()
+    spec = f"{DISTRIBUTION_NAME}[{','.join(extras)}]"
+    if installed:
+        spec = f"{spec}=={installed}"
+
     try:
-        with open(req_file, "w") as f:
-            f.write("\n".join(requirements))
-
         subprocess.run(  # nosec B603
-            [sys.executable, "-m", "pip", "install", "-r", req_file],
-            capture_output=True, text=True, check=True, shell=False)
+            [sys.executable, "-m", "pip", "install", spec],
+            check=True, shell=False)
 
-        if "playwright" in requirements:
-            print("Installing Playwright Chromium driver along with system dependencies...")
-            # have to run this command because as per docs
-            # https://playwright.dev/python/docs/browsers#install-system-dependencies
-            # this separate command has to be run after installing playwright via pip
-            #
-            # used chromium because it is the most popular browser
-            # not specifying "--with-deps chromium" would install all browsers without system
-            # dependencies
+        if any(driver.extra == "playwright" for driver in drivers):
+            print("Installing Playwright Chromium browser and system dependencies...")
+            # Per https://playwright.dev/python/docs/browsers this must run after
+            # the pip install. Chromium is the most common target; --with-deps
+            # pulls the required OS libraries.
             subprocess.run(  # nosec B603
                 [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
                 check=True, shell=False)
 
         print("Drivers installed successfully!")
     except subprocess.CalledProcessError as e:
-        print(f"Installation failed: {e.stderr or e}")
-    finally:
-        if os.path.exists(req_file):
-            os.remove(req_file)
+        print(f"Installation failed: {e}")
 
 
 def list_drivers() -> None:
-    print("Available Drivers:")
-    print("\nAction Drivers:")
-    for name in ACTION_DRIVERS.drivers:
-        print(f"  {name}")
-    print("\nText Drivers:")
-    for name in TEXT_DRIVERS.drivers:
-        print(f"  {name}")
-    print("\nLLM Drivers:")
-    for name in LLM_DRIVERS.drivers:
-        print(f"  {name}")
+    print("Available drivers (install with `optics setup --install <name>`):\n")
+    for category in (ACTION_DRIVERS, TEXT_DRIVERS, LLM_DRIVERS):
+        print(f"{category.name}s:")
+        for driver in category.drivers.values():
+            print(f"  {driver.extra:<15} ({', '.join(driver.packages)})")
+        print()

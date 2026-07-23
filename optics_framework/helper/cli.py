@@ -9,7 +9,7 @@ from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.live import live_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
-from optics_framework.helper.setup  import DriverInstallerApp, list_drivers, install_packages, ALL_DRIVERS
+from optics_framework.helper.setup import DriverInstallerApp, list_drivers, install_extras, resolve_drivers
 from optics_framework.helper.serve import run_uvicorn_server
 from optics_framework.helper.autocompletion import update_shell_rc
 
@@ -361,28 +361,24 @@ class LiveCommand(Command):
 class DriverInstaller(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "setup", help="Install driver for the project")
-        parser.add_argument("--install", nargs="+",
-                            help="Install specified drivers")
+            "setup", help="Install optional engine backends (drivers/OCR/LLM)")
+        parser.add_argument(
+            "--install", nargs="+", metavar="NAME",
+            help="Install the given engines, e.g. --install appium easyocr")
         parser.add_argument("--list", action="store_true",
-                        help="List all available drivers")
+                        help="List all available engines")
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
         if args.list:
             list_drivers()
         elif args.install:
-            driver_to_install = args.install
-            invalid_drivers = [
-                d for d in driver_to_install if d not in ALL_DRIVERS]
-            if invalid_drivers:
-                print(f"Error: Invalid driver(s): {', '.join(invalid_drivers)}")
-                print("Use --list to see available drivers")
+            drivers, invalid = resolve_drivers(args.install)
+            if invalid:
+                print(f"Error: Invalid driver(s): {', '.join(invalid)}")
+                print("Use `optics setup --list` to see available drivers")
                 return
-            requirements = []
-            for driver in driver_to_install:
-                requirements.extend(ALL_DRIVERS[driver].packages)
-            install_packages(requirements)
+            install_extras(drivers)
         else:
             DriverInstallerApp().run()
 
