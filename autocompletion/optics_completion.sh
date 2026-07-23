@@ -1,27 +1,37 @@
 #!/bin/bash
 
 _optics_completions() {
-  local cur prev
+  local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute version generate setup serve completion"
+  local subcommands="list config dry_run init execute live generate setup serve mcp completion"
 
-  local template_options="calender contact gmail_web youtube"
+  local template_options="contact clock calendar youtube gmail_web playwright"
   local runner_options="test_runner pytest"
-  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')
+  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Text|LLM)$')
 
   case ${COMP_CWORD} in
     1)
       COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
       return 0
       ;;
-    *)
-      ;;
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|version|completion)
+    list|config|completion)
       COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
+      ;;
+
+    live)
+      COMPREPLY=( $(compgen -d -- "$cur") )
+      ;;
+
+    mcp)
+      if [[ $prev == "--transport" ]]; then
+        COMPREPLY=( $(compgen -W "stdio http" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -W "--transport --host --port -h --help" -- "$cur") )
+      fi
       ;;
 
     dry_run|execute)
@@ -45,13 +55,13 @@ _optics_completions() {
 
     generate)
       COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
-      if [[ $prev == "--framework" ]]; then
-        COMPREPLY=( $(compgen -W "pytest robot" -- "$cur") )
-      elif [[ $prev == "--output" ]]; then
-        COMPREPLY=( $(compgen -f -- "$cur") )
-      elif [[ $prev == "--project_path" ]]; then
-        COMPREPLY=( $(compgen -d -- "$cur") )
-      fi
+        if [[ $prev == "--framework" ]]; then
+            COMPREPLY=( $(compgen -W "pytest robot" -- "$cur") )
+        elif [[ $prev == "--output" ]]; then
+            COMPREPLY=( $(compgen -f -- "$cur") )
+        elif [[ $prev == "--project_path" ]]; then
+            COMPREPLY=( $(compgen -d -- "$cur") )
+        fi
       ;;
 
     setup)
@@ -67,10 +77,6 @@ _optics_completions() {
 
     serve)
       COMPREPLY=( $(compgen -W "--host --port -h --help" -- "$cur") )
-      ;;
-
-    *)
-      COMPREPLY=()
       ;;
   esac
 }
