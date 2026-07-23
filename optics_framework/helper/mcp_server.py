@@ -155,6 +155,11 @@ def _make_keyword_tool(slug: str, params: list[inspect.Parameter]) -> Callable[.
         except OpticsError as exc:  # pragma: no cover - defensive
             raise ToolError(str(exc)) from exc
         data = getattr(response, "data", None) or {}
+        # When a self-heal recovered this call, execute_keyword returns {"result": ...,
+        # "healed": True, "heal_summary": ...} instead of the bare result — return the
+        # whole dict so the MCP client sees the heal, not just the unwrapped result.
+        if "healed" in data:
+            return data
         return data.get(_RESULT_KEY, data)
 
     synth: list[inspect.Parameter] = [
@@ -246,6 +251,9 @@ def build_server() -> "FastMCP":
         text_detection: Optional[list[str]] = None,
         image_detection: Optional[list[str]] = None,
         project_path: Optional[str] = None,
+        ai_self_heal: Optional[bool] = None,
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
     ) -> dict[str, Any]:
         """Start a new optics session and launch the target app.
 
@@ -253,6 +261,16 @@ def build_server() -> "FastMCP":
         keyword tool and state resource. The app is auto-launched on start.
         Sessions are NOT shared with `optics serve`/`optics live` (separate
         process); start one here before using any keyword tool.
+
+        ai_self_heal / llm_provider / llm_model: per-session overrides for AI self-heal.
+        Each falls back to the matching service-level env var the operator set at
+        start-up (OPTICS_AI_SELF_HEAL / OPTICS_LLM_PROVIDER / OPTICS_LLM_MODEL) when left
+        unset, so an already-configured server needs none of them. Because the process
+        is multi-tenant, pass them to opt in/out or pick your own model for just this
+        session instead of being locked to the operator's choice. Note that
+        ai_self_heal=True with no provider configured anywhere still degrades to inert
+        (no LLM to drive it); LLM credentials always come from the provider's own env
+        vars (e.g. GOOGLE_API_KEY), never this tool.
         """
         if url or capabilities:
             driver_sources: list[Any] = [
@@ -266,6 +284,9 @@ def build_server() -> "FastMCP":
             text_detection=text_detection or [],
             image_detection=image_detection or [],
             project_path=project_path,
+            ai_self_heal=ai_self_heal,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
         )
         try:
             response = await expose_api.create_session(config)

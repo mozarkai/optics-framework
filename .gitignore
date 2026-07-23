@@ -180,3 +180,6 @@ cython_debug/
 *.json
 *.log
 .DS_Store
+
+# Runtime execution artefacts (JUnit XML, logs, screenshots, HAR captures)
+execution_output/
