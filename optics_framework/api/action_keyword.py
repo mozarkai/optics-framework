@@ -1,14 +1,18 @@
 from functools import wraps
 import collections
+import inspect
+import shlex
 import time
 import json
-from typing import Callable, Optional, Any, Tuple
+from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
-from optics_framework.common.ai_self_heal import AISelfHealHandler, HealContext
+from optics_framework.common.ai_self_heal import (
+    AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
+)
 from optics_framework.common.error import OpticsError, Code
 from .verifier import Verifier
 
@@ -101,7 +105,19 @@ def _try_results_until_success(
 ):
     last_exception = None
     result_count = 0
-    for result in results:
+    locate_error: Optional[OpticsError] = None
+
+    try:
+        results_list = list(results)
+    except OpticsError as e:
+        # The locate generator raises when no strategy yields a result; treat that
+        # as "no results" so self-heal below gets a chance, but keep the original
+        # error as the cause instead of losing it.
+        internal_logger.debug(f"Locate generator raised for '{element}' in '{func_name}': {e}")
+        results_list = []
+        locate_error = e
+
+    for result in results_list:
         result_count += 1
         _save_annotated_for_result(result, screenshot_np, execution_dir, func_name)
         try:
@@ -118,7 +134,11 @@ def _try_results_until_success(
     if result_count == 0:
         if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
             return None
-        raise OpticsError(Code.E0201, message=f"No valid strategies found for '{element}' in '{func_name}'")
+        raise OpticsError(
+            Code.E0201,
+            message=f"No valid strategies found for '{element}' in '{func_name}'",
+            cause=locate_error,
+        ) from locate_error
     if last_exception:
         if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
             return None
@@ -223,6 +243,17 @@ class ActionKeyword:
         self._ai_healer: Optional[AISelfHealHandler] = None
         # Breadcrumbs of recently-succeeded keywords, fed to the LLM as context on heal.
         self._recent_steps: "collections.deque[Tuple[str, list]]" = collections.deque(maxlen=10)
+        # The focused subset of keywords the self-healer is allowed to call, bound here
+        # (rather than looked up by name via getattr) so a rename shows up as a static
+        # attribute error instead of a silent "Unknown keyword" at runtime.
+        self._heal_dispatch: Dict[str, Callable] = {
+            "press_element": self.press_element,
+            "enter_text": self.enter_text,
+            "scroll": self.scroll,
+            "swipe_by_percentage": self.swipe_by_percentage,
+            "press_keycode": self.press_keycode,
+            "press_by_percentage": self.press_by_percentage,
+        }
 
     def _record_successful_step(self, func_name: str, element: Any, args: tuple) -> None:
         self._recent_steps.append((func_name, [str(element), *map(str, args)]))
@@ -254,7 +285,11 @@ class ActionKeyword:
             ),
         )
         if self._ai_healer is None:
-            self._ai_healer = AISelfHealHandler(self._llm, self.driver)
+            self._ai_healer = AISelfHealHandler(
+                self._llm,
+                keyword_executor=self._heal_execute,
+                keyword_catalog=self._heal_catalog,
+            )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
         result = self._ai_healer.heal(ctx, providers.screenshot, providers.pagesource)
         self._log_heal_outcome(result, func_name, element, args)
@@ -273,9 +308,78 @@ class ActionKeyword:
                 "AI self-heal: could not recover '%s': %s", func_name, result.message
             )
             return
-        action = result.action.action if result.action else "?"
-        internal_logger.info("AI self-heal: recovered '%s' via '%s'", func_name, action)
+        action = result.action
+        kw = action.keyword if action else "?"
+        internal_logger.info("AI self-heal: recovered '%s' via keyword '%s'", func_name, kw)
         self._record_successful_step(func_name, element, args)
+
+    # -- Self-heal keyword executor and catalog --------------------------------
+
+    def _heal_execute(self, line: str) -> KeywordExecResult:
+        """Keyword executor for self-heal: parse and run one keyword, returning a KeywordExecResult.
+
+        Calls the ActionKeyword methods directly but avoids re-triggering self-heal by
+        passing ``located=`` for self-healing-decorated methods or calling non-decorated ones.
+        """
+        try:
+            tokens = shlex.split(line, posix=True)
+        except ValueError as exc:
+            return KeywordExecResult(ok=False, message=f"Parse error: {exc}")
+        if not tokens:
+            return KeywordExecResult(ok=False, message="Empty keyword line")
+
+        keyword_name = tokens[0]
+        params = tokens[1:]
+
+        method = self._heal_dispatch.get(keyword_name)
+        if method is None:
+            return KeywordExecResult(ok=False, message=f"Unknown keyword: {keyword_name}")
+
+        try:
+            # Non-self-healing methods: call directly with params.
+            # Self-healing methods (press_element, enter_text): they will go through
+            # `with_self_healing` decorator, but self-heal is already running, so
+            # we need to temporarily disable it to avoid recursion.
+            original_enabled = self.ai_self_heal_enabled
+            self.ai_self_heal_enabled = False
+            try:
+                method(*params)
+            finally:
+                self.ai_self_heal_enabled = original_enabled
+            return KeywordExecResult(ok=True)
+        except OpticsError as exc:
+            return KeywordExecResult(ok=False, message=str(exc.message))
+        except Exception as exc:  # noqa: BLE001 - never crash the heal loop
+            return KeywordExecResult(ok=False, message=str(exc))
+
+    def _heal_catalog(self) -> List[HealKeywordSpec]:
+        """Return the keyword catalog for the self-healer (focused subset with signatures)."""
+        return [
+            HealKeywordSpec(name=name, signature=self._heal_keyword_signature(name, method))
+            for name, method in self._heal_dispatch.items()
+        ]
+
+    @staticmethod
+    def _heal_keyword_signature(name: str, method: Callable) -> str:
+        """Build a ghost-text signature like ``press_element <element> [repeat] [offset_x]``."""
+        try:
+            sig = inspect.signature(method)
+        except (TypeError, ValueError):
+            return name
+        parts: List[str] = [name]
+        for pname, param in sig.parameters.items():
+            if pname == "self":
+                continue
+            # Skip internal keyword-only params (located, event_name, aoi_*)
+            if param.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.VAR_KEYWORD):
+                continue
+            if pname in ("event_name", "aoi_x", "aoi_y", "aoi_width", "aoi_height"):
+                continue
+            if param.default is inspect.Parameter.empty:
+                parts.append(f"<{pname}>")
+            else:
+                parts.append(f"[{pname}]")
+        return " ".join(parts)
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""

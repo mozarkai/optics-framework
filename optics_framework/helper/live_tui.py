@@ -8,6 +8,7 @@ accumulate in a scrollable history pane above that auto-scrolls to the newest en
 
 import asyncio
 import functools
+import os
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from prompt_toolkit.application import Application, get_app
@@ -713,14 +714,13 @@ class LiveTUI:
             self._info(f"Save failed: {exc}")
             return
         self._save_armed = None
-        import os as _os  # local: avoid widening module imports for one count
         verb = "Appended" if (result.appended_module or result.appended_test_case) else "Saved"
         self._info(
             f"{verb} {result.step_count} step(s) → module '{result.module_name}' in "
             f"{result.modules_path}, test case '{result.test_case}' in {result.test_cases_path}"
         )
         if result.artifacts_path:
-            count = len(_os.listdir(result.artifacts_path))
+            count = len(os.listdir(result.artifacts_path))
             self._info(f"Snapshotted {count} artifact(s) → {result.artifacts_path}")
 
     def _cmd_device(self, arg: str) -> None:
