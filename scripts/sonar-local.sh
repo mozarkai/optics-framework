@@ -13,7 +13,7 @@ cd "$REPO_ROOT"
 SONAR_URL="http://localhost:9000"
 TOKEN_FILE="$REPO_ROOT/.sonar-local/token"
 
-if [ ! -f "$TOKEN_FILE" ]; then
+if [[ ! -f "$TOKEN_FILE" ]]; then
   echo "Missing $TOKEN_FILE — run the one-time setup first (see conversation history / README)." >&2
   exit 1
 fi
@@ -31,7 +31,7 @@ if ! docker inspect -f '{{.State.Running}}' sonarqube >/dev/null 2>&1; then
     -v sonarqube_extensions:/opt/sonarqube/extensions \
     -v sonarqube_logs:/opt/sonarqube/logs \
     sonarqube:community
-elif [ "$(docker inspect -f '{{.State.Running}}' sonarqube)" != "true" ]; then
+elif [[ "$(docker inspect -f '{{.State.Running}}' sonarqube)" != "true" ]]; then
   echo "Starting existing 'sonarqube' container..."
   docker start sonarqube >/dev/null
 fi
@@ -65,7 +65,7 @@ echo "Waiting for server-side report processing..."
 for _ in $(seq 1 30); do
   task_resp="$(curl -s -u "$TOKEN:" "$CE_TASK_URL")"
   task_status="$(echo "$task_resp" | python3 -c "import json,sys; print(json.load(sys.stdin)['task']['status'])")"
-  if [ "$task_status" = "SUCCESS" ] || [ "$task_status" = "FAILED" ] || [ "$task_status" = "CANCELED" ]; then
+  if [[ "$task_status" = "SUCCESS" || "$task_status" = "FAILED" || "$task_status" = "CANCELED" ]]; then
     break
   fi
   sleep 2
