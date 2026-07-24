@@ -8,7 +8,9 @@ _optics_completions() {
 
   local template_options="contact clock calendar youtube gmail_web playwright"
   local runner_options="test_runner pytest"
-  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Text|LLM)$')
+  # Only the two-space-indented lines are engine keys; category headers are not
+  # indented, so this needs no per-header filter.
+  local engine_options=$(optics setup --list 2>/dev/null | awk '/^  / {print $1}')
 
   case ${COMP_CWORD} in
     1)
@@ -72,7 +74,7 @@ _optics_completions() {
     setup)
       case $prev in
         --install)
-          COMPREPLY=( $(compgen -W "$driver_options" -- "$cur") )
+          COMPREPLY=( $(compgen -W "$engine_options" -- "$cur") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "--install --list -h --help" -- "$cur") )

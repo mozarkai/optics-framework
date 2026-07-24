@@ -18,7 +18,10 @@ local -a templates=("contact" "clock" "calendar" "youtube" "gmail_web" "playwrig
 local -a runners=("test_runner" "pytest")
 local -a frameworks=("pytest" "robot")
 local -a transports=("stdio" "http")
-local -a drivers=("${(f)$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Text|LLM)$')}")
+# `optics setup --list` indents each installable engine key by two spaces under a
+# category header; take only those indented lines so this stays correct no matter
+# what the category headers are named.
+local -a engines=("${(f)$(optics setup --list 2>/dev/null | awk '/^  / {print $1}')}")
 
 _optics_completions() {
     local state
@@ -56,7 +59,7 @@ _optics_completions() {
                     ;;
 
                 setup)
-                    _arguments                         "--install=[Drivers]:drivers:(${drivers[@]})"                         '--list[List all drivers]'                         '--help[-h]'
+                    _arguments                         "--install=[Engines]:engines:(${engines[@]})"                         '--list[List all engines]'                         '--help[-h]'
                     ;;
 
                 serve)
