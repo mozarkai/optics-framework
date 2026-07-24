@@ -13,6 +13,23 @@ def _is_junk(name: str) -> bool:
     return name.startswith(".") or name in _SKIP_NAMES
 
 
+def _samples_dir() -> pathlib.Path:
+    return pathlib.Path(__file__).parent.parent / "samples"
+
+
+def available_templates() -> list[str]:
+    """Sample project names shippable via ``optics init --template``, discovered
+    from the packaged ``samples/`` directory. Single source of truth for the
+    ``--template`` help text and the shell-completion candidate lists."""
+    samples = _samples_dir()
+    if not samples.is_dir():
+        return []
+    return sorted(
+        p.name for p in samples.iterdir()
+        if p.is_dir() and not _is_junk(p.name)
+    )
+
+
 # A commented starter config for `optics init` without a template. It mirrors the
 # framework defaults (every source present but disabled) and tells the user how to
 # turn one on. Enable exactly one driver and at least one matching elements_source.
@@ -125,13 +142,9 @@ def _scaffold_project(project_path: str) -> None:
 
 def _copy_template(project_path: str, template: str) -> bool:
     """Copy a sample template into the project. Returns True on success."""
-    package_root = pathlib.Path(__file__).parent.parent
-    template_path = package_root / "samples" / template
+    template_path = _samples_dir() / template
     if not os.path.exists(template_path):
-        available = sorted(
-            p.name for p in (package_root / "samples").iterdir()
-            if p.is_dir() and not _is_junk(p.name)
-        )
+        available = available_templates()
         print(f"Template '{template}' not found. Available templates: {', '.join(available)}")
         return False
 
