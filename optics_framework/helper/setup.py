@@ -68,6 +68,16 @@ ALL_ENGINES: Dict[str, EngineBackend] = {
     **ACTION_DRIVERS.engines, **TEXT_ENGINES.engines, **LLM_ENGINES.engines
 }
 
+# Convenience bundles — mirror the aggregate extras in pyproject.toml so a token
+# like "all" or "web" resolves to the same set of engines the matching extra
+# installs. Keys are already in normalised (`_norm`) form.
+_BUNDLES: Dict[str, List[EngineBackend]] = {
+    "mobile": [ACTION_DRIVERS.engines["Appium"]],
+    "web": [ACTION_DRIVERS.engines["Selenium"], ACTION_DRIVERS.engines["Playwright"]],
+    "vision": list(TEXT_ENGINES.engines.values()),
+    "all": list(ALL_ENGINES.values()),
+}
+
 # Maps a checkbox-id prefix to its engine category.
 _CATEGORY_BY_PREFIX = {"action": ACTION_DRIVERS, "text": TEXT_ENGINES, "llm": LLM_ENGINES}
 
@@ -90,17 +100,29 @@ def _alias_index() -> Dict[str, EngineBackend]:
 def resolve_engines(tokens: List[str]) -> tuple[List[EngineBackend], List[str]]:
     """Resolve user-supplied tokens to EngineBackends. Returns (resolved, invalid).
 
-    Accepts display names ("Appium", "Google Vision") and config/extra keys
-    ("appium", "google-vision", "google_vision"), case-insensitively."""
+    Accepts display names ("Appium", "Google Vision"), config/extra keys
+    ("appium", "google-vision", "google_vision"), and convenience bundles
+    ("mobile", "web", "vision", "all") — all case-insensitively. Bundles expand
+    to their member engines, deduplicated while preserving first-seen order."""
     index = _alias_index()
     resolved: List[EngineBackend] = []
     invalid: List[str] = []
+
+    def _add(engine: EngineBackend) -> None:
+        if engine not in resolved:
+            resolved.append(engine)
+
     for token in tokens:
-        engine = index.get(_norm(token))
+        norm = _norm(token)
+        if norm in _BUNDLES:
+            for engine in _BUNDLES[norm]:
+                _add(engine)
+            continue
+        engine = index.get(norm)
         if engine is None:
             invalid.append(token)
-        elif engine not in resolved:
-            resolved.append(engine)
+        else:
+            _add(engine)
     return resolved, invalid
 
 
@@ -195,7 +217,7 @@ def install_extras(engines: List[EngineBackend]) -> None:
     try:
         subprocess.run(  # nosec B603
             [sys.executable, "-m", "pip", "install", spec],
-            check=True, shell=False)
+            capture_output=True, text=True, check=True, shell=False)
 
         if any(engine.extra == "playwright" for engine in engines):
             print("Installing Playwright Chromium browser and system dependencies...")
@@ -204,11 +226,16 @@ def install_extras(engines: List[EngineBackend]) -> None:
             # pulls the required OS libraries.
             subprocess.run(  # nosec B603
                 [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
-                check=True, shell=False)
+                capture_output=True, text=True, check=True, shell=False)
 
         print("Engines installed successfully!")
     except subprocess.CalledProcessError as e:
+        # capture_output routes the command's diagnostics to e.stderr/e.stdout
+        # rather than the console, so surface them here for a debuggable failure.
         print(f"Installation failed: {e}")
+        detail = (e.stderr or "").strip() or (e.stdout or "").strip()
+        if detail:
+            print(detail)
 
 
 def list_engines() -> None:
@@ -218,3 +245,7 @@ def list_engines() -> None:
         for engine in category.engines.values():
             print(f"  {engine.extra:<15} ({', '.join(engine.packages)})")
         print()
+    print("Bundles (install several at once):")
+    for name, engines in _BUNDLES.items():
+        print(f"  {name:<15} ({', '.join(engine.extra for engine in engines)})")
+    print()
