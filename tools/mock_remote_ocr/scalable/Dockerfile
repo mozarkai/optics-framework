@@ -17,17 +17,20 @@ RUN apt-get update \
      libxrender1 \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy poetry/pyproject if present to cache deps
-COPY pyproject.toml /app/
+# Copy the full source: pip needs it to build a real optics-framework wheel
+# below, not just resolve metadata from pyproject.toml.
+COPY optics_framework /app/optics_framework
+COPY pyproject.toml README.md /app/
 
 # Install pip and build dependencies
 RUN pip install --upgrade --only-binary=:all: pip==26.1.2 setuptools==83.0.0 wheel==0.47.0
 
-# Install production dependencies into a wheelhouse. --only-binary=:all: still
-# allows building this local, unpublished project itself (pip always builds
-# local directories/sdists you point it at directly) while forbidding any of
-# its third-party dependencies from building from source.
-RUN pip wheel --only-binary=:all: --wheel-dir=/wheels . || true
+# Build this local, unpublished project into a wheel, plus a wheelhouse of
+# every third-party dependency it needs. --only-binary=:all: still allows
+# building the local project itself (pip always builds local directories
+# you point it at directly) while forbidding any of its third-party
+# dependencies from building from source.
+RUN pip wheel --only-binary=:all: --wheel-dir=/wheels .
 
 # ---- Final stage ----
 FROM python:3.12-slim
@@ -56,13 +59,13 @@ COPY optics_framework /app/optics_framework
 COPY tools/mock_remote_ocr /app/tools/mock_remote_ocr
 COPY pyproject.toml /app/
 
-# Install runtime deps from wheelhouse if present, otherwise fallback to pip install
+# Install optics-framework from the wheel just built, pinned to the exact
+# version that wheel actually is, resolving its dependencies only from the
+# wheelhouse built alongside it (--no-index) - never from PyPI.
 COPY --from=build /wheels /wheels
-RUN if [ -d /wheels ] && [ "$(ls -A /wheels)" ]; then \
-        pip install --no-cache-dir --only-binary=:all: /wheels/*; \
-    else \
-        pip install --no-cache-dir --only-binary=:all: .; \
-    fi && \
+RUN WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
+    pip install --no-cache-dir --only-binary=:all: --no-index --find-links=/wheels \
+        "optics-framework==${WHEEL_VERSION}" && \
     pip install --no-cache-dir --only-binary=:all: \
         easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
     mkdir -p /home/optics && \

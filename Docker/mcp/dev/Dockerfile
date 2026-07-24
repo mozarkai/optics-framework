@@ -41,7 +41,9 @@ RUN pip install --no-cache-dir --only-binary=:all: \
         echo "ERROR: No wheel in dist/. Run 'poetry build' first or set WHL_FILE to the .whl filename."; \
         exit 1; \
       fi \
-   && pip install --no-cache-dir --only-binary=:all: "${WHEEL}[mcp]" \
+   && WHEEL_VERSION=$(basename "$WHEEL" .whl | cut -d- -f2) \
+   && pip install --no-cache-dir --only-binary=:all: --find-links="$(dirname "$WHEEL")" \
+        "optics-framework[mcp]==${WHEEL_VERSION}" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
       pip install --no-cache-dir --only-binary=:all: easyocr==1.7.2; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \
