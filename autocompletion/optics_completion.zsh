@@ -62,7 +62,16 @@ _optics_completions() {
                 serve)
                     _arguments                         '--host=[Host address]'                         '--port=[Port number]'                         '--help[-h]'
                     ;;
+
+                *)
+                    # Unknown subcommand: offer only --help.
+                    _arguments '--help[-h]'
+                    ;;
             esac
+            ;;
+
+        *)
+            # Unexpected state: nothing to complete.
             ;;
     esac
 }
