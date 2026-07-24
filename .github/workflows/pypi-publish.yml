@@ -18,7 +18,12 @@ jobs:
 
       - name: Install Poetry
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+          # pinned to poetry 2.4.1 so bump the URL and hash together from
+          # file and sha256 sourced from pypi
+          curl -sSL -o /tmp/poetry.whl \
+            https://files.pythonhosted.org/packages/48/3f/4799a3cfbc7b1731468c446daec8b13939d539bfe06b5a68c3ee73a8835d/poetry-2.4.1-py3-none-any.whl
+          echo "a91f13279a3c9add0d12c5ca5c7cb173622930a5c8272fee68c751cb5c72f951  /tmp/poetry.whl" | sha256sum -c -
+          pipx install /tmp/poetry.whl
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Configure Poetry
