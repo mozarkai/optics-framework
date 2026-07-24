@@ -94,7 +94,16 @@ _optics_completions() {
                         '--port=[Port number]' \
                         '--help[-h]'
                     ;;
+
+                *)
+                    # Unknown subcommand: offer only --help.
+                    _arguments '--help[-h]'
+                    ;;
             esac
+            ;;
+
+        *)
+            # Unexpected state: nothing to complete.
             ;;
     esac
 }
@@ -118,6 +127,9 @@ _optics_completions() {
     1)
       COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
       return 0
+      ;;
+    *)
+      # Beyond the subcommand: handled per-subcommand below.
       ;;
   esac
 
@@ -165,6 +177,8 @@ _optics_completions() {
             COMPREPLY=( $(compgen -f -- "$cur") )
         elif [[ $prev == "--project_path" ]]; then
             COMPREPLY=( $(compgen -d -- "$cur") )
+        else
+            : # keep the default --help completion set above
         fi
       ;;
 
@@ -181,6 +195,11 @@ _optics_completions() {
 
     serve)
       COMPREPLY=( $(compgen -W "--host --port -h --help" -- "$cur") )
+      ;;
+
+    *)
+      # Unknown subcommand: offer only --help.
+      COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
       ;;
   esac
 }

@@ -15,6 +15,9 @@ _optics_completions() {
       COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
       return 0
       ;;
+    *)
+      # Beyond the subcommand: handled per-subcommand below.
+      ;;
   esac
 
   case ${COMP_WORDS[1]} in
@@ -61,6 +64,8 @@ _optics_completions() {
             COMPREPLY=( $(compgen -f -- "$cur") )
         elif [[ $prev == "--project_path" ]]; then
             COMPREPLY=( $(compgen -d -- "$cur") )
+        else
+            : # keep the default --help completion set above
         fi
       ;;
 
@@ -77,6 +82,11 @@ _optics_completions() {
 
     serve)
       COMPREPLY=( $(compgen -W "--host --port -h --help" -- "$cur") )
+      ;;
+
+    *)
+      # Unknown subcommand: offer only --help.
+      COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
       ;;
   esac
 }
