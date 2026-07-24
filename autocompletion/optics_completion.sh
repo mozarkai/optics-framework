@@ -6,7 +6,7 @@ _optics_completions() {
 
   local subcommands="list config dry_run init execute live generate setup serve mcp completion"
 
-  local template_options="contact clock calendar youtube gmail_web playwright"
+  local template_options="calendar clock contact gmail_web playwright youtube"
   local runner_options="test_runner pytest"
   # Only the two-space-indented lines are engine keys; category headers are not
   # indented, so this needs no per-header filter.
