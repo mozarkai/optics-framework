@@ -25,25 +25,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-pip \
   python3-venv \
  && rm -rf /var/lib/apt/lists/* \
- && python3 -m pip install --upgrade pip setuptools wheel
+ && python3 -m pip install --upgrade --only-binary=:all: pip==26.1.2 setuptools==83.0.0 wheel==0.47.0
 
-# Copy dependency files and build wheels if present
-COPY pyproject.toml /app/
-RUN python3 -m pip wheel --wheel-dir=/wheels . || true
+# Build this local, unpublished project into a wheel, plus a wheelhouse of
+# every third-party dependency it needs. --only-binary=:all: still allows
+# building the local project itself (pip always builds local directories
+# you point it at directly) while forbidding any of its third-party
+# dependencies from building from source.
+COPY optics_framework /app/optics_framework
+COPY pyproject.toml README.md /app/
+RUN python3 -m pip wheel --only-binary=:all: --wheel-dir=/wheels .
 
 # Copy application
-COPY optics_framework /app/optics_framework
 COPY tools/mock_remote_ocr /app/tools/mock_remote_ocr
-COPY pyproject.toml /app/
 
-# Install runtime deps
-COPY --from=0 /wheels /wheels
-RUN if [ -d /wheels ] && [ "$(ls -A /wheels)" ]; then \
-      python3 -m pip install --no-cache-dir /wheels/*; \
-    else \
-      python3 -m pip install --no-cache-dir .; \
-    fi && \
-    python3 -m pip install --no-cache-dir "easyocr" "gunicorn>=20.0" "uvicorn[standard]" && \
+# Install optics-framework from the wheel just built, pinned to the exact
+# version that wheel actually is, resolving its dependencies only from the
+# wheelhouse built alongside it (--no-index) - never from PyPI.
+RUN WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
+    python3 -m pip install --no-cache-dir --only-binary=:all: --no-index --find-links=/wheels \
+        "optics-framework==${WHEEL_VERSION}" && \
+    python3 -m pip install --no-cache-dir --only-binary=:all: \
+        easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
     mkdir -p /home/optics && \
     python3 - <<'PY'
 import os

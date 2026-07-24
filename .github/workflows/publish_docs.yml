@@ -24,7 +24,15 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material mkdocstrings[python] mkdocs-minify-plugin
+      # Pinned to the exact versions resolved in poetry.lock's docs group, and
+      # restricted to prebuilt wheels so no dependency's setup.py/build backend
+      # runs during install. jsmin/csscompressor (mkdocs-minify-plugin's own
+      # deps) ship sdist-only on PyPI - they're small, dependency-free, pure
+      # stdlib-only modules with no native build step, so the residual risk of
+      # letting just those two build from source is accepted.
+      - run: |
+          pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
+            mkdocs-material==9.7.6 "mkdocstrings[python]==1.0.4" mkdocs-minify-plugin==0.8.0
       - run: mkdocs build
 
   deploy:
@@ -51,5 +59,8 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material mkdocstrings[python] mkdocs-minify-plugin
+      # See the build job above for why these versions/flags are pinned.
+      - run: |
+          pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
+            mkdocs-material==9.7.6 "mkdocstrings[python]==1.0.4" mkdocs-minify-plugin==0.8.0
       - run: mkdocs gh-deploy --force

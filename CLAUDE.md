@@ -181,6 +181,15 @@ For an `execute` run, `config.execution_output_path` (default `<project>/executi
 - screenshots — saved by `ActionKeyword._save_screenshot_if_available` (`:288`), AOI overlays by `_maybe_save_aoi_screenshot` (`:32`), strategy-annotated frames by `_save_annotated_for_result` (`:54`). Element bboxes come back in the driver's **window coordinate space**, so they are scaled to the screenshot's **pixel space** via `utils.scale_bboxes_for_screenshot` (`common/utils.py:978`) before drawing (call site in `strategies.py`); skipping this skews annotations on high-DPI / scaled displays. Persistence to disk is gated by `Config.save_captures` (`config_handler.py:32`, default `True`) via `Verifier.capture_output_dir` — `optics serve` sessions explicitly disable it since HTTP callers get the bytes/XML in the response and don't need a disk copy.
 - an end-of-run screenshot + pagesource, captured once per batch run by `TestRunner._capture_end_of_run_artifacts` (`test_runnner.py:492`) and fed into on-screen error detection (see that section above).
 
+## Local SonarQube analysis
+
+CI runs static analysis on every push to `main` via `.github/workflows/mozarksonar.yml` (`sonarqube-scan-action` against a company-hosted SonarQube, using `sonar-project.properties` for the project key). To catch the same findings before pushing, `scripts/sonar-local.sh` runs an equivalent scan against a **local** SonarQube instance instead of the shared server:
+
+- One-time setup: `colima` + `docker` + `sonar-scanner` (Homebrew), a `sonarqube:community` Docker container, and a generated scanner token stored in `.sonar-local/token` (gitignored, never committed).
+- `./scripts/sonar-local.sh` is idempotent — it starts `colima` and the `sonarqube` container only if they aren't already running, waits for `/api/system/status` to report `UP`, runs `sonar-scanner`, then polls the compute-engine task (`ceTaskUrl` from `.scannerwork/report-task.txt`) before querying `/api/qualitygates/project_status` — querying the quality gate before the server finishes processing the report returns a stale/empty `NONE` status, so the poll step is load-bearing.
+- Dashboard: `http://localhost:9000/dashboard?id=optics-framework` (login `admin`, password in `.sonar-local/admin-password`).
+- The colima VM and container persist across runs (not auto-stopped) so repeat scans are fast; stop them with `docker stop sonarqube` / `colima stop` if you want to reclaim the ~2-4GB they hold.
+
 ## Working agreement (how to collaborate here)
 
 - **Never co-author commits with your name.** Do not add `Co-Authored-By: Claude ...` (or any AI attribution) trailer to commit messages or PR bodies. Commits are authored solely by the human committer.
@@ -232,4 +241,5 @@ optics generate <folder>                   # emit pytest/robot code from CSV/YAM
 optics serve                               # FastAPI server exposing keyword endpoints
 optics live [folder]                       # interactive REPL/TUI: run keywords (or NL) against a live target
 optics mcp [--transport http]              # MCP server exposing keywords as tools/resources (needs [mcp] extra)
+./scripts/sonar-local.sh                   # local SonarQube scan before pushing (see "Local SonarQube analysis" above)
 ```
