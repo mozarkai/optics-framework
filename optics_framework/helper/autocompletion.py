@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from optics_framework.helper.initialize import available_templates
+
 ZSH_COMPLETION_CONTENT = """# Description: Zsh completion script for the Optics CLI tool
 local -a _optics_subcommands=(
     'list: List available API methods'
@@ -18,7 +20,7 @@ local -a _optics_subcommands=(
 )
 
 # Static or dynamic values
-local -a templates=("contact" "clock" "calendar" "youtube" "gmail_web" "playwright")
+local -a templates=(__OPTICS_TEMPLATES_ZSH__)
 local -a runners=("test_runner" "pytest")
 local -a frameworks=("pytest" "robot")
 local -a transports=("stdio" "http")
@@ -122,7 +124,7 @@ _optics_completions() {
 
   local subcommands="list config dry_run init execute live generate setup serve mcp completion"
 
-  local template_options="contact clock calendar youtube gmail_web playwright"
+  local template_options="__OPTICS_TEMPLATES_BASH__"
   local runner_options="test_runner pytest"
   # Only the two-space-indented lines are engine keys; category headers are not
   # indented, so this needs no per-header filter.
@@ -212,13 +214,25 @@ _optics_completions() {
 complete -F _optics_completions optics
 """
 
+def _render(content: str) -> str:
+    """Fill the sample-template placeholders from the single source of truth in
+    ``initialize.available_templates()`` so the completion candidates never drift
+    from the templates that actually ship."""
+    templates = available_templates()
+    zsh_arr = " ".join(f'"{t}"' for t in templates)
+    bash_list = " ".join(templates)
+    return (content
+            .replace("__OPTICS_TEMPLATES_ZSH__", zsh_arr)
+            .replace("__OPTICS_TEMPLATES_BASH__", bash_list))
+
+
 def write_completion_scripts():
     optics_dir = Path.home() / ".optics"
     optics_dir.mkdir(exist_ok=True)
     zsh_path = optics_dir / "optics_completion.zsh"
     bash_path = optics_dir / "optics_completion.sh"
-    zsh_path.write_text(ZSH_COMPLETION_CONTENT)
-    bash_path.write_text(BASH_COMPLETION_CONTENT)
+    zsh_path.write_text(_render(ZSH_COMPLETION_CONTENT))
+    bash_path.write_text(_render(BASH_COMPLETION_CONTENT))
     return zsh_path, bash_path
 
 def update_shell_rc(shell: Optional[str] = None):

@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel
 from optics_framework.helper.list_keyword import main as list_main
 from optics_framework.helper.config_manager import main as config_main
-from optics_framework.helper.initialize import create_project
+from optics_framework.helper.initialize import create_project, available_templates
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.live import live_main
@@ -212,8 +212,7 @@ class InitCommand(Command):
         )
         parser.add_argument(
             "--template",
-            help="Start from a sample template: contact, clock, calendar, "
-                 "youtube, gmail_web, or playwright",
+            help="Start from a sample template: " + ", ".join(available_templates()),
         )
         parser.add_argument(
             "--git-init",
