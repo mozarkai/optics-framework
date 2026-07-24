@@ -627,7 +627,7 @@ class ActionKeyword:
 
         self._scroll_dropdown_until_found(element, option, container, float(timeout), event_name)
 
-    def _find_option_element(self, option: str) -> bool:
+    def _find_option_element(self, option: str, timeout_str: str = _DROPDOWN_OPTION_CHECK_TIMEOUT) -> bool:
         """
         helper for `select_dropdown_option()`
 
@@ -635,7 +635,7 @@ class ActionKeyword:
         """
         try:
             return self.verifier.assert_visibility(
-                option, timeout_str=_DROPDOWN_OPTION_CHECK_TIMEOUT, rule="any"
+                option, timeout_str=timeout_str, rule="any"
             )
         except OpticsError as e:
             if e.code != Code.E0201:
@@ -679,6 +679,10 @@ class ActionKeyword:
         iteration (screenshot + full strategy pipeline) is wasted work and a new failure
         mode (stale xpath). It would also swipe from the container's top edge, not its
         center, risking the gesture landing outside the container.
+
+        Each per-swipe visibility check is clamped to the remaining time budget: left
+        unclamped, `_find_option_element`'s own (fixed) polling window could by itself
+        push a single iteration well past the caller-specified `timeout`.
         """
         bounds = container["bounds"]
         center_x = (bounds["x1"] + bounds["x2"]) // 2
@@ -693,7 +697,9 @@ class ActionKeyword:
             time.sleep(1)
 
             current_hash = self._safe_pagesource_hash()
-            if self._find_option_element(option):
+            remaining = timeout - (time.time() - start_time)
+            check_timeout = max(1, min(int(_DROPDOWN_OPTION_CHECK_TIMEOUT), int(remaining)))
+            if self._find_option_element(option, timeout_str=str(check_timeout)):
                 self.press_element(option, event_name=event_name)
                 return
             if previous_hash is not None and current_hash == previous_hash:
