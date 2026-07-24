@@ -55,7 +55,7 @@ llm = ["google-genai"]
 mcp = ["fastmcp"]
 
 [tool.poetry.group.dev.dependencies]
-tox = ">=4.24.1,<4.31.0"
+tox = ">=4.24.1,<4.59.0"
 pytest = "^9.0.0"
 pytest-cov = ">=6.0,<7.1"
 commitizen = "^4.4.1"
