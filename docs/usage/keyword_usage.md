@@ -94,9 +94,9 @@ Detect And Press,login_button.png,30,detect_login
 
 ### Select Dropdown Option
 
-Opens a dropdown and selects one of its options.
+Opens a dropdown and selects one of its options, scrolling through the list if needed.
 
-Presses the dropdown element to open it, validates that the option text is visible in the resulting page source, then presses it. Raises an error (`E0201`) when the specified option is not found among the dropdown's visible items, preventing a silent mis-selection.
+Presses the dropdown element to open it. If `option` is already visible, presses it directly. Otherwise, diffs the interactive elements captured before and after opening to find the dropdown's scrollable list container, then scrolls within that container until `option` appears or the list stops changing. Raises an error (`E0201`) if `option` is never found within `timeout` seconds, preventing a silent mis-selection. Falls back to a single-screen check (no scrolling) when page source, or a list-like container, isn't available.
 
 **Parameters:**
 
@@ -104,12 +104,13 @@ Presses the dropdown element to open it, validates that the option text is visib
 |-----------|------|-------------|---------|
 | `element` | Required | The dropdown element (Image template, OCR template, or XPath) | - |
 | `option` | Required | The option to select (visible label text, OCR template, or XPath) | - |
+| `timeout` | Optional | Seconds to keep scrolling through the dropdown list before failing | `30` |
 | `event_name` | Optional | A string identifier for the selection event | - |
 
 **Example:**
 
 ```csv
-Select Dropdown Option,${country_dropdown},India,country_selected
+Select Dropdown Option,${country_dropdown},India,30,country_selected
 ```
 
 ### Swipe
