@@ -11,6 +11,9 @@ WORKDIR /app
 ARG VISION_BACKEND=easyocr
 ENV VISION_BACKEND=${VISION_BACKEND}
 
+# Pinned to the latest published release; override with
+# --build-arg OPTICS_FRAMEWORK_VERSION=X.Y.Z to pick up a newer one.
+ARG OPTICS_FRAMEWORK_VERSION=1.8.6
 
 # Install system dependencies (first layer for cache)
 RUN apt-get update && apt-get install --no-install-recommends -y \
@@ -23,18 +26,22 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv \
-    && uv pip install --system appium-python-client playwright \
+# uv itself, and every package it installs below, is pinned to an exact
+# version and restricted to prebuilt wheels (--only-binary=:all:, uv's
+# equivalent of pip's flag) so no dependency's setup.py/build backend runs at
+# image build time.
+RUN pip install --no-cache-dir --only-binary=:all: uv==0.11.32 \
+    && uv pip install --system --only-binary=:all: appium-python-client==5.3.1 playwright==1.61.0 \
     && playwright install-deps chromium firefox
 
 # Install optics-framework with MCP extra and vision backend (late layer for cache efficiency)
-RUN uv pip install --system "optics-framework[mcp]" \
+RUN uv pip install --system --only-binary=:all: "optics-framework[mcp]==${OPTICS_FRAMEWORK_VERSION}" \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-        uv pip install --system easyocr; \
+        uv pip install --system --only-binary=:all: easyocr==1.7.2; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \
-        uv pip install --system google-cloud-vision; \
+        uv pip install --system --only-binary=:all: google-cloud-vision==3.15.0; \
     elif [ "$VISION_BACKEND" = "pytesseract" ]; then \
-        uv pip install --system pytesseract; \
+        uv pip install --system --only-binary=:all: pytesseract==0.3.13; \
     fi
 
 # If using google-vision, user must mount service account json and set GOOGLE_APPLICATION_CREDENTIALS

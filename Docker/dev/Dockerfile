@@ -30,22 +30,25 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
    tesseract-ocr \
    && rm -rf /var/lib/apt/lists/*
 
-# Install common Python packages and optics-framework wheel and vision backend
-RUN pip install --no-cache-dir \
-   appium-python-client playwright \
+# Install common Python packages and optics-framework wheel and vision backend.
+# All pip installs are pinned to exact versions and restricted to prebuilt
+# wheels (--only-binary=:all:) so no dependency's setup.py/build backend runs
+# at image build time.
+RUN pip install --no-cache-dir --only-binary=:all: \
+   appium-python-client==5.3.1 playwright==1.61.0 \
    && playwright install-deps chromium firefox \
    && WHEEL=$(if [ -n "$WHL_FILE" ]; then echo "/app/${WHL_FILE}"; else ls /app/*.whl 2>/dev/null | head -1; fi) \
    && if [ -z "$WHEEL" ] || [ ! -f "$WHEEL" ]; then \
         echo "ERROR: No wheel in dist/. Run 'poetry build' first or set WHL_FILE to the .whl filename."; \
         exit 1; \
       fi \
-   && pip install --no-cache-dir "$WHEEL" \
+   && pip install --no-cache-dir --only-binary=:all: "$WHEEL" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-      pip install --no-cache-dir easyocr; \
+      pip install --no-cache-dir --only-binary=:all: easyocr==1.7.2; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \
-      pip install --no-cache-dir google-cloud-vision; \
+      pip install --no-cache-dir --only-binary=:all: google-cloud-vision==3.15.0; \
    elif [ "$VISION_BACKEND" = "pytesseract" ]; then \
-      pip install --no-cache-dir pytesseract; \
+      pip install --no-cache-dir --only-binary=:all: pytesseract==0.3.13; \
    fi
 
 # If using google-vision, user must mount service account json and set GOOGLE_APPLICATION_CREDENTIALS
