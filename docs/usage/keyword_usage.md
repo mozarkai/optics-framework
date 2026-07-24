@@ -1,6 +1,6 @@
 # Keyword Usage
 
-This document outlines the available keywords for the Optics Framework, which can be used in the `test_modules.csv` file to define test steps. Keywords are derived from the framework's Python API, with method names converted to a space-separated format (e.g., `press_element` becomes `Press Element`). Each keyword corresponds to a specific action, verification, or control flow operation. Below, each keyword includes detailed parameter explanations to guide their usage.
+This document outlines the available keywords for the Optics Framework, which can be used in the `modules.csv` file to define test steps. Keywords are derived from the framework's Python API, with method names converted to a space-separated format (e.g., `press_element` becomes `Press Element`). Each keyword corresponds to a specific action, verification, or control flow operation. Below, each keyword includes detailed parameter explanations to guide their usage.
 
 ### Keyword data sources
 
