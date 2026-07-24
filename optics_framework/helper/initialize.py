@@ -59,6 +59,13 @@ elements_sources:
       enabled: false
   - appium_screenshot:
       enabled: false
+  # Selenium locators / page source / screenshots:
+  - selenium_find_element:
+      enabled: false
+  - selenium_page_source:
+      enabled: false
+  - selenium_screenshot:
+      enabled: false
   # Playwright locators / page source / screenshots:
   - playwright_find_element:
       enabled: false
