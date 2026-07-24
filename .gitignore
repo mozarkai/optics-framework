@@ -184,3 +184,7 @@ cython_debug/
 # Runtime execution artifacts (never commit)
 execution_output/
 MagicMock/
+
+# Local SonarQube scan (colima/docker) — credentials and scanner workdir
+.sonar-local/
+.scannerwork/
