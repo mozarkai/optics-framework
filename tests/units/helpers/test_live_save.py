@@ -8,12 +8,12 @@ stays compatible with the batch runner.
 """
 import csv
 import os
-import tempfile
 
 import pytest
 
-from optics_framework.helper.live import LiveController, SaveConflictError, SaveResult
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.runner.data_reader import CSVDataReader
+from optics_framework.helper.live import LiveController, SaveConflictError, SaveResult
 
 pytestmark = pytest.mark.white_box
 
@@ -33,8 +33,10 @@ class _Controller(LiveController):
         self.saved = False
 
 
-def _ctl() -> _Controller:
-    return _Controller(tempfile.mkdtemp(prefix="optics_live_save_"))
+@pytest.fixture
+def c(tmp_path):
+    """A save-only LiveController rooted at an auto-cleaned temp dir."""
+    return _Controller(str(tmp_path))
 
 
 def _rows(path: str) -> list[dict]:
@@ -42,8 +44,7 @@ def _rows(path: str) -> list[dict]:
         return list(csv.DictReader(fh))
 
 
-def test_first_save_writes_standard_files_and_clears_buffer():
-    c = _ctl()
+def test_first_save_writes_standard_files_and_clears_buffer(c):
     c.recorded = [("launch_app", []), ("press_element", ["${login_btn}", "index=0"])]
 
     result = c.save("Login Test", "login_module")
@@ -71,8 +72,7 @@ def test_first_save_writes_standard_files_and_clears_buffer():
     assert _rows(result.elements_path) == []
 
 
-def test_second_module_appends_and_reconciles_param_columns():
-    c = _ctl()
+def test_second_module_appends_and_reconciles_param_columns(c):
     c.recorded = [("enter_text", ["${user}", "bob"])]
     first = c.save("TC one", "mod_a")
 
@@ -92,8 +92,7 @@ def test_second_module_appends_and_reconciles_param_columns():
     ]
 
 
-def test_duplicate_module_name_raises_conflict():
-    c = _ctl()
+def test_duplicate_module_name_raises_conflict(c):
     c.recorded = [("launch_app", [])]
     c.save("TC", "dup_module")
 
@@ -105,8 +104,7 @@ def test_duplicate_module_name_raises_conflict():
     assert c.recorded == [("scroll", [])]
 
 
-def test_duplicate_test_case_name_raises_conflict():
-    c = _ctl()
+def test_duplicate_test_case_name_raises_conflict(c):
     c.recorded = [("launch_app", [])]
     c.save("Shared TC", "mod_a")
 
@@ -116,8 +114,7 @@ def test_duplicate_test_case_name_raises_conflict():
     assert ("test case", "Shared TC") in exc.value.conflicts
 
 
-def test_allow_append_merges_into_existing_module():
-    c = _ctl()
+def test_allow_append_merges_into_existing_module(c):
     c.recorded = [("launch_app", [])]
     c.save("TC", "mod_a")
 
@@ -129,8 +126,7 @@ def test_allow_append_merges_into_existing_module():
     assert [m["module_step"] for m in mod_rows] == ["Launch App", "Scroll"]
 
 
-def test_exact_duplicate_test_case_row_is_not_repeated():
-    c = _ctl()
+def test_exact_duplicate_test_case_row_is_not_repeated(c):
     c.recorded = [("launch_app", [])]
     c.save("TC", "mod_a")
 
@@ -141,25 +137,26 @@ def test_exact_duplicate_test_case_row_is_not_repeated():
     assert pairs.count(("TC", "mod_a")) == 1
 
 
-def test_empty_buffer_is_refused():
-    c = _ctl()
-    with pytest.raises(Exception, match="Nothing recorded"):
+def test_empty_buffer_is_refused(c):
+    with pytest.raises(OpticsError) as exc:
         c.save("TC", "mod")
+    assert exc.value.code == Code.E0501
+    assert "Nothing recorded" in str(exc.value)
 
 
 @pytest.mark.parametrize(
     "test_case,module,message",
     [("!!!", "mod", "Invalid test case"), ("TC", "@@@", "Invalid module")],
 )
-def test_invalid_names_are_refused(test_case, module, message):
-    c = _ctl()
+def test_invalid_names_are_refused(c, test_case, module, message):
     c.recorded = [("launch_app", [])]
-    with pytest.raises(Exception, match=message):
+    with pytest.raises(OpticsError) as exc:
         c.save(test_case, module)
+    assert exc.value.code == Code.E0501
+    assert message in str(exc.value)
 
 
-def test_saved_files_round_trip_through_csv_reader():
-    c = _ctl()
+def test_saved_files_round_trip_through_csv_reader(c):
     c.recorded = [("launch_app", []), ("enter_text", ["${user}", "hello, world"])]
     first = c.save("TC one", "mod_a")
     c.recorded = [("scroll", [])]

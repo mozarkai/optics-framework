@@ -126,7 +126,7 @@ class Verifier:
 
     def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
         """
-        Asserts the presence of elements.
+        Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
         :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
         :param timeout: The time to wait for the elements in seconds.
@@ -134,19 +134,39 @@ class Verifier:
         :param event_name: The name of the event associated with the assertion, if any.
         :return: True if the rule is satisfied, False otherwise.
         """
+        return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_presence")
+
+    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
+        """
+        Asserts that elements are actually rendered/visible on screen right now -- distinct
+        from :meth:`assert_presence`, which reports found even for elements that exist in
+        the page/DOM but are off-screen (e.g. not yet scrolled into view).
+
+        :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
+        :param timeout_str: The time to wait for the elements to become visible, in seconds.
+        :param rule: The rule for verification ("any" or "all").
+        :param event_name: The name of the event associated with the assertion, if any.
+        :return: True if the rule is satisfied, False otherwise.
+        """
+        return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_visibility")
+
+    def _assert_common(
+        self, elements: str, timeout_str: str, rule: str,
+        event_name: Optional[str], fail: bool, method_name: str,
+    ) -> bool:
         rule = rule.lower()
         timeout = int(timeout_str)
         elements_list = elements.split('|')
 
         grouped_elements = self._group_elements_by_type(elements_list)
-        result_parts, timestamps = self._process_element_groups(grouped_elements, timeout, rule)
+        result_parts, timestamps = self._process_element_groups(grouped_elements, timeout, rule, method_name)
 
         if not result_parts:
             internal_logger.warning("No valid elements provided for assertion.")
             return False
 
         result = self._evaluate_rule(result_parts, rule)
-        self._handle_result(result, timestamps, event_name, fail, rule)
+        self._handle_result(result, timestamps, event_name, fail, rule, method_name)
         return result
 
     def _group_elements_by_type(self, elements_list: list) -> dict:
@@ -157,14 +177,14 @@ class Verifier:
             'Image': [el for el in elements_list if utils.determine_element_type(el) == 'Image']
         }
 
-    def _process_element_groups(self, grouped_elements: dict, timeout: int, rule: str) -> tuple:
+    def _process_element_groups(self, grouped_elements: dict, timeout: int, rule: str, method_name: str = "assert_presence") -> tuple:
         """Process each group of elements and collect results."""
         result_parts = []
         timestamps = []
 
         for elem_type, elem_group in grouped_elements.items():
             if elem_group:
-                status, timestamp, annotated_frame = self.strategy_manager.assert_presence(elem_group, elem_type, timeout, rule)
+                status, timestamp, annotated_frame = getattr(self.strategy_manager, method_name)(elem_group, elem_type, timeout, rule)
                 result_parts.append(status)
 
                 if timestamp:
@@ -188,12 +208,13 @@ class Verifier:
         """Evaluate the rule against the result parts."""
         return any(result_parts) if rule == 'any' else all(result_parts)
 
-    def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str):
+    def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str, method_name: str):
         """Handle the final result, including event capture and error raising."""
         if result:
             self._capture_success_event(timestamps, event_name)
         elif fail:
-            raise AssertionError(f"Presence assertion failed based on rule: {rule}")
+            assertion_label = method_name.replace("assert_", "").capitalize()
+            raise AssertionError(f"{assertion_label} assertion failed based on rule: {rule}")
 
     def _capture_success_event(self, timestamps: list, event_name: Optional[str]):
         """Capture success event with the earliest timestamp."""

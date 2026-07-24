@@ -94,9 +94,9 @@ Detect And Press,login_button.png,30,detect_login
 
 ### Select Dropdown Option
 
-Opens a dropdown and selects one of its options.
+Opens a dropdown and selects one of its options, scrolling through the list if needed.
 
-Presses the dropdown element to open it, validates that the option text is visible in the resulting page source, then presses it. Raises an error (`E0201`) when the specified option is not found among the dropdown's visible items, preventing a silent mis-selection.
+Presses the dropdown element to open it. If `option` is already visible, presses it directly. Otherwise, diffs the interactive elements captured before and after opening to find the dropdown's scrollable list container, then scrolls within that container until `option` appears or the list stops changing. Raises an error (`E0201`) if `option` is never found within `timeout` seconds, preventing a silent mis-selection. Falls back to a single-screen check (no scrolling) when page source, or a list-like container, isn't available.
 
 **Parameters:**
 
@@ -104,12 +104,13 @@ Presses the dropdown element to open it, validates that the option text is visib
 |-----------|------|-------------|---------|
 | `element` | Required | The dropdown element (Image template, OCR template, or XPath) | - |
 | `option` | Required | The option to select (visible label text, OCR template, or XPath) | - |
+| `timeout` | Optional | Seconds to keep scrolling through the dropdown list before failing | `30` |
 | `event_name` | Optional | A string identifier for the selection event | - |
 
 **Example:**
 
 ```csv
-Select Dropdown Option,${country_dropdown},India,country_selected
+Select Dropdown Option,${country_dropdown},India,30,country_selected
 ```
 
 ### Swipe
@@ -524,6 +525,29 @@ Asserts the presence of elements. Can check multiple elements with pipe separato
 
 ```csv
 Assert Presence,login_button.png|signup_button.png,30,any,check_buttons
+```
+
+### Assert Visibility
+
+Asserts that elements are actually rendered/visible on screen right now — distinct from `Assert Presence`, which reports found even for elements that exist in the page/DOM but are off-screen (e.g. not yet scrolled into view). Can check multiple elements with pipe separator (`|`).
+
+**Driver support:** Appium (Android and iOS). Selenium and Playwright do not yet implement this keyword and raise an error if used — support is pending fixes to unrelated pre-existing bugs in those drivers.
+
+**Android note:** elements scrolled out of view are omitted entirely from the page source by default on Android, so this keyword can't tell "off-screen" from "doesn't exist" for them unless `allowInvisibleElements: true` is set under `appium:settings` — see [Appium configuration](../configuration.md#driver-sources).
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `elements` | Required | Comma-separated or pipe-separated string of elements to check (e.g., "button1.png\|button2.png") | - |
+| `timeout_str` | Optional | The time to wait for the elements to become visible, in seconds (integer) | `30` |
+| `rule` | Optional | The rule for verification: `any` (at least one) or `all` (all must be present) | `any` |
+| `event_name` | Optional | The name of the event associated with the assertion | - |
+
+**Example:**
+
+```csv
+Assert Visibility,login_button.png|signup_button.png,30,any,check_buttons_visible
 ```
 
 ### Validate Screen

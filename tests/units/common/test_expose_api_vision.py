@@ -4,6 +4,14 @@ import os
 import tempfile
 
 from optics_framework.common.models import TemplateData
+import pytest
+from optics_framework.common.expose_api import (
+    ExecuteRequest,
+    TemplateUploadRequest,
+    _decode_template_base64,
+    _safe_template_filename,
+)
+from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.session_manager import SessionTemplateResolver
 
 
@@ -75,7 +83,6 @@ def test_session_template_resolver_none_when_no_templates():
 
 def test_decode_template_base64_raw():
     """_decode_template_base64 accepts raw base64."""
-    from optics_framework.common.expose_api import _decode_template_base64
 
     raw = b"\x89PNG\r\n\x1a\n"
     b64 = base64.b64encode(raw).decode("ascii")
@@ -84,7 +91,6 @@ def test_decode_template_base64_raw():
 
 def test_decode_template_base64_data_url():
     """_decode_template_base64 accepts data URL."""
-    from optics_framework.common.expose_api import _decode_template_base64
 
     raw = b"\x89PNG\r\n\x1a\n"
     b64 = base64.b64encode(raw).decode("ascii")
@@ -94,7 +100,6 @@ def test_decode_template_base64_data_url():
 
 def test_execute_request_accepts_template_images():
     """ExecuteRequest accepts optional template_images."""
-    from optics_framework.common.expose_api import ExecuteRequest
 
     r = ExecuteRequest(
         mode="keyword",
@@ -109,7 +114,6 @@ def test_execute_request_accepts_template_images():
 
 def test_upload_template_request_model():
     """TemplateUploadRequest accepts name and image_base64."""
-    from optics_framework.common.expose_api import TemplateUploadRequest
 
     body = TemplateUploadRequest(name="btn1", image_base64="abc123")
     assert body.name == "btn1"
@@ -118,8 +122,6 @@ def test_upload_template_request_model():
 
 def test_safe_template_filename_name_png_for_safe_names():
     """_safe_template_filename yields name.png-style stems for safe names; rejects path-like ones."""
-    import pytest
-    from optics_framework.common.expose_api import _safe_template_filename
 
     assert _safe_template_filename("my_btn") == "my_btn"
     assert _safe_template_filename("btn1") == "btn1"
@@ -136,7 +138,6 @@ def test_safe_template_filename_name_png_for_safe_names():
 
 def test_terminate_cleans_inline_templates_dir():
     """terminate_session removes the session's inline-templates dir (server-created, not from user input)."""
-    from optics_framework.common.session_manager import SessionManager
 
     session_id = "test-session-terminate-cleanup"
     # Session's _inline_templates_dir is created by the server (mkdtemp); simulate it for this test

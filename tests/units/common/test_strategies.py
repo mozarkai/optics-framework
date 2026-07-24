@@ -1,19 +1,31 @@
-"""Unit tests for TEXT_ONLY prefix feature and strategy selection."""
+"""Unit tests for the element-location layer (common/strategies.py).
+
+Covers the TEXT_ONLY prefix + strategy selection, the real strategy classes driven
+through the public ``locate`` / ``assert_presence`` API (XPath, Text, Image
+detection), the not-found (E0201) and invalid-rule (E0205) contracts, the
+assert_presence time-allocation math, and the native screenshot-bytes fast path.
+"""
 import base64
 import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 import cv2
 import numpy as np
 import pytest
 from selenium.common.exceptions import WebDriverException
-from unittest.mock import MagicMock, patch
 
 from optics_framework.common import utils
+from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
     StrategyManager,
     TextDetectionStrategy,
     LocateResult,
 )
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
+from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
 
 
 # --- parse_text_only_prefix and determine_element_type (utils) ---
@@ -63,6 +75,10 @@ def mock_element_source():
     source.locate.return_value = None
     # Real numpy array so TextDetectionStrategy.locate() can call utils.annotate(screenshot.copy(), [bbox])
     source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+    # Explicit assignment: MagicMock reserves bare `assert_*` attribute access for its own
+    # assertion methods (raises AttributeError instead of auto-vivifying), so this must be
+    # set directly for hasattr()/_is_method_implemented() to see it as implemented.
+    source.assert_elements_visible = MagicMock()
     return source
 
 
@@ -211,7 +227,6 @@ class TestCaptureScreenshotBytes:
         source.capture.assert_not_called()  # native path => no numpy capture/encode
 
     def test_raises_optics_error_when_all_sources_fail(self):
-        from optics_framework.common.error import OpticsError
         source = MagicMock()
         source.capture_screenshot_bytes.side_effect = RuntimeError("hub timeout")
         sm = _sm_with_source(source)
@@ -220,7 +235,6 @@ class TestCaptureScreenshotBytes:
 
     def test_interface_default_encodes_numpy_via_capture(self):
         """ElementSourceInterface.capture_screenshot_bytes() default encodes capture() result."""
-        from optics_framework.common.elementsource_interface import ElementSourceInterface
 
         class _MinimalSource(ElementSourceInterface):
             def capture(self) -> np.ndarray:
@@ -259,21 +273,18 @@ class TestAppiumScreenshotBytes:
     """AppiumScreenshot.capture_screenshot_bytes() decodes base64 with a single retry."""
 
     def test_returns_decoded_base64(self):
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         png = b"\x89PNG\r\n\x1a\nDATA"
         drv = _FakeWD([base64.b64encode(png).decode("ascii")])
         assert AppiumScreenshot(driver=drv).capture_screenshot_bytes() == png
         assert drv.calls == 1
 
     def test_retries_then_succeeds(self, _no_backoff):
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         png = b"\x89PNGok"
         drv = _FakeWD(["not-valid-base64!!!", base64.b64encode(png).decode("ascii")])
         assert AppiumScreenshot(driver=drv).capture_screenshot_bytes() == png
         assert drv.calls == 2
 
     def test_raises_after_exhausted_retries(self, _no_backoff):
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         drv = _FakeWD([WebDriverException("boom"), WebDriverException("boom")])
         with pytest.raises(RuntimeError):
             AppiumScreenshot(driver=drv).capture_screenshot_bytes()
@@ -281,7 +292,6 @@ class TestAppiumScreenshotBytes:
 
     def test_numpy_path_reuses_bytes(self, _no_backoff):
         """capture_screenshot_as_numpy delegates to the bytes path (shared retry)."""
-        from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
         # A real 2x2 PNG so cv2.imdecode succeeds; corrupt first to exercise the shared retry.
         ok_png = cv2.imencode(".png", np.full((2, 2, 3), 255, np.uint8))[1].tobytes()
         drv = _FakeWD(["bad!!!", base64.b64encode(ok_png).decode("ascii")])
@@ -294,13 +304,11 @@ class TestSeleniumScreenshotBytes:
     """SeleniumScreenshot mirrors the Appium native base64 path."""
 
     def test_returns_decoded_base64(self):
-        from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
         png = b"\x89PNG\r\n\x1a\nDATA"
         drv = _FakeWD([base64.b64encode(png).decode("ascii")])
         assert SeleniumScreenshot(driver=drv).capture_screenshot_bytes() == png
 
     def test_retries_then_succeeds(self, _no_backoff):
-        from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
         png = b"\x89PNGok"
         drv = _FakeWD(["bad!!!", base64.b64encode(png).decode("ascii")])
         assert SeleniumScreenshot(driver=drv).capture_screenshot_bytes() == png
@@ -312,11 +320,219 @@ class TestPlaywrightScreenshotBytes:
 
     def test_returns_page_screenshot_bytes(self, monkeypatch):
         pytest.importorskip("playwright")
-        import types as _types
         import optics_framework.engines.elementsources.playwright_screenshot as pw
         monkeypatch.setattr(pw, "run_async", lambda coro: coro)
         png = b"\x89PNG\r\n\x1a\nPLAYWRIGHT"
         page = MagicMock()
         page.screenshot.return_value = png
-        src = pw.PlaywrightScreenshot(driver=_types.SimpleNamespace(page=page))
+        src = pw.PlaywrightScreenshot(driver=SimpleNamespace(page=page))
         assert src.capture_screenshot_bytes() == png
+
+
+# --- StrategyManager.assert_visibility() vs assert_presence() (shared _assert helper) ---
+
+
+class TestStrategyManagerAssertVisibility:
+    """assert_visibility must call assert_elements_visible, not assert_elements, per strategy."""
+
+    def test_assert_visibility_calls_assert_elements_visible(self, strategy_manager):
+        seen_method_names = []
+
+        def capture_and_succeed(strategy, elements, timeout, rule, method_name="assert_elements"):
+            seen_method_names.append(method_name)
+            return (True, "ts", None)
+
+        with patch.object(strategy_manager, "_try_assert_with_strategy", side_effect=capture_and_succeed):
+            result, timestamp, _ = strategy_manager.assert_visibility(["Submit"], "Text", timeout=3, rule="any")
+
+        assert result is True
+        assert timestamp == "ts"
+        assert seen_method_names == ["assert_elements_visible"]
+
+    def test_assert_presence_still_uses_assert_elements(self, strategy_manager):
+        """The DRY refactor must not regress assert_presence's existing behavior."""
+        seen_method_names = []
+
+        def capture_and_succeed(strategy, elements, timeout, rule, method_name="assert_elements"):
+            seen_method_names.append(method_name)
+            return (True, "ts", None)
+
+        with patch.object(strategy_manager, "_try_assert_with_strategy", side_effect=capture_and_succeed):
+            result, _, _ = strategy_manager.assert_presence(["Submit"], "Text", timeout=3, rule="any")
+
+        assert result is True
+        assert seen_method_names == ["assert_elements"]
+
+    def test_assert_elements_visible_default_falls_back_to_assert_elements(self, strategy_manager):
+        """Strategies that don't override assert_elements_visible (e.g. vision-based ones)
+        default to assert_elements, since anything they find is inherently on-screen."""
+        td_strategy = next(
+            s for s in strategy_manager.locator_strategies if isinstance(s, TextDetectionStrategy)
+        )
+        with patch.object(TextDetectionStrategy, "assert_elements", return_value=(True, "ts", None)) as mock_presence:
+            result, timestamp, _ = td_strategy.assert_elements_visible(["Submit"], timeout=1, rule="any")
+        assert result is True
+        assert timestamp == "ts"
+        mock_presence.assert_called_once()
+
+
+class _PresenceOnlySource(ElementSourceInterface):
+    """Mirrors AppiumPageSource: implements assert_elements (presence) but not
+    assert_elements_visible -- inherits the base's raise-NotImplementedError stub."""
+
+    def capture(self):
+        raise NotImplementedError
+
+    def get_interactive_elements(self, filter_config=None):
+        raise NotImplementedError
+
+    def locate(self, element, index=None):
+        return "located"
+
+    def assert_elements(self, elements, timeout=30, rule='any'):
+        return True
+
+
+class _VisibilityAwareSource(ElementSourceInterface):
+    """Mirrors AppiumFindElement: implements a real assert_elements_visible that can
+    correctly disagree with assert_elements (present but off-screen)."""
+
+    def capture(self):
+        raise NotImplementedError
+
+    def get_interactive_elements(self, filter_config=None):
+        raise NotImplementedError
+
+    def locate(self, element, index=None):
+        return "located"
+
+    def assert_elements(self, elements, timeout=30, rule='any'):
+        return True
+
+    def assert_elements_visible(self, elements, timeout=30, rule='any'):
+        raise TimeoutError(f"Elements not visible: {elements}")
+
+
+class TestVisibilityExcludesPresenceOnlySources:
+    """Regression test for the false-positive where a presence-only source (e.g.
+    AppiumPageSource) masked a correct "not visible" from a real visibility-aware
+    source (e.g. AppiumFindElement), because both back an XPathStrategy and the
+    presence-only one silently fell back to a presence check for "visibility"."""
+
+    def test_presence_only_source_excluded_from_visibility_assertions(self):
+        presence_only = _PresenceOnlySource()
+        manager = StrategyManager(
+            element_source=InstanceFallback([presence_only]),
+            text_detection=None,
+            image_detection=None,
+        )
+        xpath_strategy = next(
+            s for s in manager.locator_strategies if type(s).__name__ == "XPathStrategy"
+        )
+        assert manager._can_strategy_assert_elements(xpath_strategy, "XPath", "assert_elements") is True
+        assert manager._can_strategy_assert_elements(xpath_strategy, "XPath", "assert_elements_visible") is False
+
+    def test_presence_only_source_does_not_mask_visibility_aware_source(self):
+        """Two sources present at once: the presence-only one must not report an
+        element "visible" (via presence) when the real visibility-aware source
+        correctly says it isn't."""
+        manager = StrategyManager(
+            element_source=InstanceFallback([_PresenceOnlySource(), _VisibilityAwareSource()]),
+            text_detection=None,
+            image_detection=None,
+        )
+        with pytest.raises(Exception):
+            manager.assert_visibility(["//*[@id=\"offscreen\"]"], "XPath", timeout=1, rule="any")
+
+
+# --- Real strategy classes driven through the public locate() API ---
+
+
+def _sm(source, *, text_detection=None, image_detection=None):
+    return StrategyManager(
+        element_source=InstanceFallback([source]),
+        text_detection=text_detection,
+        image_detection=image_detection,
+    )
+
+
+class TestLocateRealStrategies:
+    """Drive the actual strategy ladder (no patching of private methods)."""
+
+    def test_xpath_yields_element_source_handle(self):
+        handle = object()
+        source = MagicMock()
+        source.locate.return_value = handle
+        results = list(_sm(source).locate("//div[@id='x']"))
+        assert any(r.value is handle for r in results)
+        assert any(type(r.strategy).__name__ == "XPathStrategy" for r in results)
+
+    def test_text_element_yields_from_element_source(self):
+        handle = object()
+        source = MagicMock()
+        source.locate.return_value = handle
+        results = list(_sm(source).locate("Submit"))
+        assert any(type(r.strategy).__name__ == "TextElementStrategy" for r in results)
+
+    def test_locate_raises_e0201_when_no_strategy_yields(self):
+        source = MagicMock()
+        source.locate.return_value = None  # element source finds nothing
+        with pytest.raises(OpticsError) as exc_info:
+            list(_sm(source).locate("Submit"))
+        assert exc_info.value.code == Code.E0201
+
+
+class TestImageDetectionStrategy:
+    """ImageDetectionStrategy locates an image element via image_detection."""
+
+    def test_yields_centre_coordinates(self):
+        source = MagicMock()
+        source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+        image_detection = MagicMock()
+        image_detection.find_element.return_value = (True, (50, 60), ((0, 0), (100, 20)))
+        results = list(_sm(source, image_detection=image_detection).locate("button.png"))
+        assert any(
+            type(r.strategy).__name__ == "ImageDetectionStrategy" and r.value == (50, 60)
+            for r in results
+        )
+
+    def test_no_match_contributes_nothing(self):
+        source = MagicMock()
+        source.capture.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+        image_detection = MagicMock()
+        image_detection.find_element.return_value = None
+        with pytest.raises(OpticsError) as exc_info:
+            list(_sm(source, image_detection=image_detection).locate("button.png"))
+        assert exc_info.value.code == Code.E0201
+
+
+class TestAssertPresenceContract:
+    """assert_presence input validation."""
+
+    @pytest.mark.parametrize("rule", ["maybe", "none", ""])
+    def test_invalid_rule_raises_e0205(self, rule):
+        with pytest.raises(OpticsError) as exc_info:
+            _sm(MagicMock()).assert_presence(["Submit"], "Text", timeout=1, rule=rule)
+        assert exc_info.value.code == Code.E0205
+
+
+class TestAllocTimeForStrategy:
+    """_alloc_time_for_strategy splits the remaining budget across strategies."""
+
+    def test_even_division_rounds_up(self, monkeypatch):
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
+        alloc, remaining, n = _sm(MagicMock())._alloc_time_for_strategy(1010.0, 0, [1, 2, 3])
+        assert alloc == 4  # ceil(10 / 3)
+        assert n == 3
+
+    def test_no_time_left_returns_none(self, monkeypatch):
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
+        # deadline already passed
+        assert _sm(MagicMock())._alloc_time_for_strategy(999.0, 0, [1, 2]) is None
+
+    def test_last_strategy_gets_remainder_even_if_sub_second(self, monkeypatch):
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
+        # 0.4s left, last strategy (idx 1 of 2): alloc rounds to 0 but the last one still runs.
+        result = _sm(MagicMock())._alloc_time_for_strategy(1000.4, 1, [1, 2])
+        assert result is not None
+        assert result[0] == 0

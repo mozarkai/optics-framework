@@ -12,6 +12,7 @@ import pytest
 
 from optics_framework.helper import live as live_mod
 from optics_framework.helper.live import LiveController
+from optics_framework.helper.live_tui import LiveTUI
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.error import OpticsError, Code
 
@@ -298,7 +299,6 @@ class _DeviceStubController:
 
 class TestDevicePicker:
     def test_cmd_device_lists_android_and_ios(self):
-        from optics_framework.helper.live_tui import LiveTUI
 
         devices = [("emulator-5554", "android"), ("00008030-ABCD", "ios")]
         tui = LiveTUI(_DeviceStubController(devices))

@@ -92,3 +92,30 @@ class TestStripPageSource:
         assert "XCUIElementTypeTextField" in out
         assert "rect=(10,20,200,44)" in out
         assert 'value="Welcome"' in out
+
+    def test_secure_and_password_fields_are_interactive(self):
+        # A SecureTextField (by class suffix) and a password="true" node are kept
+        # even without any clickable flag.
+        xml = (
+            "<hierarchy>"
+            "<XCUIElementTypeSecureTextField class='XCUIElementTypeSecureTextField' "
+            "name='pin' x='0' y='0' width='10' height='10'/>"
+            "<android.widget.EditText class='android.widget.EditText' "
+            "resource-id='pkg:id/pwd' password='true' bounds='[0,0][5,5]'/>"
+            "</hierarchy>"
+        )
+        out = utils.strip_page_source(xml)
+        assert "XCUIElementTypeSecureTextField" in out
+        assert "id=pwd" in out
+
+    def test_extra_state_flags_are_shown(self):
+        # Beyond clickable, the descriptor surfaces scrollable/selected/checked.
+        xml = (
+            "<hierarchy>"
+            "<android.widget.ScrollView class='android.widget.ScrollView' "
+            "text='List' scrollable='true' selected='true' bounds='[0,0][9,9]'/>"
+            "</hierarchy>"
+        )
+        out = utils.strip_page_source(xml)
+        assert "scrollable" in out
+        assert "selected" in out
