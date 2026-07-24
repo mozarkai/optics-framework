@@ -25,11 +25,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-pip \
   python3-venv \
  && rm -rf /var/lib/apt/lists/* \
- && python3 -m pip install --upgrade pip setuptools wheel
+ && python3 -m pip install --upgrade --only-binary=:all: pip==26.1.2 setuptools==83.0.0 wheel==0.47.0
 
-# Copy dependency files and build wheels if present
+# Copy dependency files and build wheels if present. --only-binary=:all:
+# still allows building this local, unpublished project itself (pip always
+# builds local directories/sdists you point it at directly) while forbidding
+# any of its third-party dependencies from building from source.
 COPY pyproject.toml /app/
-RUN python3 -m pip wheel --wheel-dir=/wheels . || true
+RUN python3 -m pip wheel --only-binary=:all: --wheel-dir=/wheels . || true
 
 # Copy application
 COPY optics_framework /app/optics_framework
@@ -39,11 +42,12 @@ COPY pyproject.toml /app/
 # Install runtime deps
 COPY --from=0 /wheels /wheels
 RUN if [ -d /wheels ] && [ "$(ls -A /wheels)" ]; then \
-      python3 -m pip install --no-cache-dir /wheels/*; \
+      python3 -m pip install --no-cache-dir --only-binary=:all: /wheels/*; \
     else \
-      python3 -m pip install --no-cache-dir .; \
+      python3 -m pip install --no-cache-dir --only-binary=:all: .; \
     fi && \
-    python3 -m pip install --no-cache-dir "easyocr" "gunicorn>=20.0" "uvicorn[standard]" && \
+    python3 -m pip install --no-cache-dir --only-binary=:all: \
+        easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
     mkdir -p /home/optics && \
     python3 - <<'PY'
 import os

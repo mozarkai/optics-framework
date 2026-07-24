@@ -21,10 +21,13 @@ RUN apt-get update \
 COPY pyproject.toml /app/
 
 # Install pip and build dependencies
-RUN pip install --upgrade pip setuptools wheel
+RUN pip install --upgrade --only-binary=:all: pip==26.1.2 setuptools==83.0.0 wheel==0.47.0
 
-# Install production dependencies into a wheelhouse
-RUN pip wheel --wheel-dir=/wheels . || true
+# Install production dependencies into a wheelhouse. --only-binary=:all: still
+# allows building this local, unpublished project itself (pip always builds
+# local directories/sdists you point it at directly) while forbidding any of
+# its third-party dependencies from building from source.
+RUN pip wheel --only-binary=:all: --wheel-dir=/wheels . || true
 
 # ---- Final stage ----
 FROM python:3.12-slim
@@ -56,11 +59,12 @@ COPY pyproject.toml /app/
 # Install runtime deps from wheelhouse if present, otherwise fallback to pip install
 COPY --from=build /wheels /wheels
 RUN if [ -d /wheels ] && [ "$(ls -A /wheels)" ]; then \
-        pip install --no-cache-dir /wheels/*; \
+        pip install --no-cache-dir --only-binary=:all: /wheels/*; \
     else \
-        pip install --no-cache-dir .; \
+        pip install --no-cache-dir --only-binary=:all: .; \
     fi && \
-    pip install --no-cache-dir "easyocr" "gunicorn>=20.0" "uvicorn[standard]" && \
+    pip install --no-cache-dir --only-binary=:all: \
+        easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
     mkdir -p /home/optics && \
     python - <<'PY'
 import os
