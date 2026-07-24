@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel
 from optics_framework.helper.list_keyword import main as list_main
 from optics_framework.helper.config_manager import main as config_main
-from optics_framework.helper.initialize import create_project
+from optics_framework.helper.initialize import create_project, available_templates
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.live import live_main
@@ -211,7 +211,8 @@ class InitCommand(Command):
             "--force", action="store_true", help="Override if the project exists"
         )
         parser.add_argument(
-            "--template", help="Select a project template (e.g., 'sample1')"
+            "--template",
+            help="Start from a sample template: " + ", ".join(available_templates()),
         )
         parser.add_argument(
             "--git-init",
