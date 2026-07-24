@@ -49,10 +49,13 @@ google-genai = { version = ">=2.0.0,<3.0.0", optional = true }
 # >=3.4.2: earlier 3.4.x omit the starlette>=1.0 pin, letting the resolver keep
 # starlette 0.48 (a combo fastmcp's own code is incompatible with at runtime).
 fastmcp = { version = ">=3.4.2,<4.0.0", optional = true }
+# Layer-2 stateless deployment: shared session store across workers/pods.
+redis = { version = ">=5.0,<9.0", optional = true }
 
 [tool.poetry.extras]
 llm = ["google-genai"]
 mcp = ["fastmcp"]
+stateless = ["redis"]
 
 [tool.poetry.group.dev.dependencies]
 tox = ">=4.24.1,<4.31.0"
@@ -68,6 +71,9 @@ pylint = ">=3.3.7,<5.0.0"
 pytest = "^9.0.0"
 pytest-cov = ">=6.0,<7.1"
 pytest-mock = ">=3.14,<3.16"
+# In-process Redis emulator (incl. Lua) for exercising RedisSessionStore's
+# lease CAS + TTL semantics without a live Redis.
+fakeredis = { version = ">=2.21,<3.0", extras = ["lua"] }
 
 [tool.poetry.group.docs.dependencies]
 mkdocs-material = "^9.6.11"

@@ -32,6 +32,9 @@ from optics_framework.common.error import OpticsError, Code
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
+    # The Appium server owns the backend session and accepts a fresh client
+    # attaching to it (see attach_to_session), so live sessions can migrate.
+    supports_session_migration = True
     NOT_INITIALIZED = "Appium driver is not initialized. Please start the session first."
     MOBILE_TYPE_COMMAND = "mobile: type"
     MOBILE_PREFIX = "mobile:"
@@ -469,6 +472,54 @@ class Appium(DriverInterface):
                 cause=e,
             ) from e
 
+
+    def get_reattach_params(self) -> Dict[str, Any]:
+        """Session-migration contract: describe how to reattach to the live session."""
+        caps = self.capabilities or {}
+        return {
+            "reattach_handle": self.get_session_id(),
+            "endpoint": self.appium_server_url,
+            "capabilities": dict(caps),
+            "device_id": caps.get(self.CAP_UDID) or caps.get(self.CAP_APPIUM_UDID),
+        }
+
+    def reattach(self, reattach_params: Dict[str, Any], strict: bool = True) -> None:
+        """
+        Session-migration contract: attach to the backend session described by
+        ``reattach_params``. With ``strict`` (the reconstruction path) a failed
+        reattach raises instead of falling back to a new session.
+        """
+        params = reattach_params or {}
+        handle = params.get("reattach_handle")
+        if not handle:
+            raise OpticsError(
+                Code.E0104,
+                message="reattach_params must include a non-empty 'reattach_handle'",
+            )
+        try:
+            self.attach_to_session(
+                str(handle), executor_url=params.get("endpoint") or self.appium_server_url
+            )
+        except OpticsError:
+            if strict:
+                raise
+            internal_logger.warning(
+                f"Non-strict reattach to Appium session {handle} failed; driver left unattached."
+            )
+
+    def detach(self) -> None:
+        """
+        Session-migration contract: drop the local client handle while leaving
+        the backend Appium session running so another instance can reattach.
+        """
+        if self.driver is None:
+            return
+        internal_logger.info(
+            f"Detaching from Appium session {self.get_session_id()} without terminating it"
+        )
+        self.driver = None
+        self.ui_helper = None
+        self.event_sdk.send_all_events()
 
     def _get_platform_and_options(self, all_caps: Dict[str, Any]) -> tuple[Any, Dict[str, Any]]:
         """Helper to determine platform, create options, and set defaults."""

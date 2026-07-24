@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 class DriverInterface(ABC):
     """
@@ -8,6 +8,50 @@ class DriverInterface(ABC):
     This interface enforces the implementation of essential methods
     for interacting with applications.
     """
+
+    #: Session-migration capability gate (stateless design §6). A driver that
+    #: keeps its backend session alive server-side and can attach a fresh
+    #: client to it declares True and implements ``get_reattach_params()``,
+    #: ``reattach()`` and a non-terminating ``detach()``. Drivers that hold
+    #: in-process state (subprocess, BLE/USB handle, in-memory object) keep
+    #: the default: their live sessions are sticky and never migrated.
+    supports_session_migration: bool = False
+
+    def get_reattach_params(self) -> Dict[str, Any]:
+        """
+        Return driver-defined parameters another instance needs to reattach to
+        the live backend session (e.g. ``reattach_handle``, ``endpoint``,
+        ``capabilities``, ``device_id``).
+
+        Only meaningful when ``supports_session_migration`` is True.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support session migration"
+        )
+
+    def reattach(self, reattach_params: Dict[str, Any], strict: bool = True) -> None:
+        """
+        Attach this driver to an existing backend session described by
+        ``reattach_params`` instead of launching a fresh one.
+
+        :param reattach_params: The dict produced by ``get_reattach_params()``.
+        :param strict: When True (the reconstruction path), a failed reattach
+            must raise — never silently fall back to creating a new session.
+            The lenient mode is reserved for genuine first-launch flows.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support session migration"
+        )
+
+    def detach(self) -> None:
+        """
+        Drop the local client handle while keeping the backend session alive.
+
+        Conservative default for drivers that cannot separate the two:
+        detaching terminates, which is the correct behavior for a sticky
+        (non-migratable) session.
+        """
+        self.terminate()
 
     @abstractmethod
     def launch_app(
