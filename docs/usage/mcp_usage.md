@@ -152,6 +152,9 @@ the client at the URL:
 | `text_detection` | list[str] | optional OCR sources (e.g. `["googlevision"]`) |
 | `image_detection` | list[str] | optional template sources (e.g. `["templatematch"]`) |
 | `project_path` | str | optional project folder (loads bundled templates) |
+| `ai_self_heal` | bool | optional per-session override of the server's `OPTICS_AI_SELF_HEAL` default (see below) |
+| `llm_provider` | str | optional per-session override of the server's `OPTICS_LLM_PROVIDER` default (see below) |
+| `llm_model` | str | optional per-session override of the server's `OPTICS_LLM_MODEL` default (see below) |
 
 **Example — local Appium + Android emulator:**
 
@@ -173,6 +176,48 @@ the client at the URL:
 Omit `appPackage`/`appActivity` to attach to whatever is already on screen. For
 a remote/managed hub, set `url` to the hub and include any hub-specific
 capabilities (auth token, device id) just as you would in `config.yaml`.
+
+### AI self-heal
+
+Self-heal has two layers. Whoever starts `optics mcp` (or `optics serve`) can
+set a **server-level default** once via environment variables, so a client
+that's already integrated inherits it with no `start_session` changes:
+
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `OPTICS_AI_SELF_HEAL` | off | `true`/`1`/`yes`/`on` (case-insensitive) enables it |
+| `OPTICS_LLM_PROVIDER` | `gemini` | which `llm_models` entry to enable |
+| `OPTICS_LLM_MODEL` | provider default | optional model name override |
+
+Because a single `serve`/`mcp` process is multi-tenant, each of these is also a
+**per-session override** on `start_session`: `ai_self_heal`, `llm_provider`, and
+`llm_model`. A per-session value always wins over the matching env-var default,
+so a caller can opt in/out and pick its own model without being locked to the
+operator's choice; anything left unset falls back to the env default (and then to
+`gemini`). LLM credentials (e.g. `GOOGLE_API_KEY`/`GEMINI_API_KEY` for Gemini)
+always come from the provider's own environment variables — never through
+`start_session` — so choosing a provider/model per session exposes no secrets.
+
+When self-heal recovers a keyword, the call still succeeds, and the result carries
+the recovery so a client can learn *how* it was fixed:
+
+```json
+{
+  "result": null,
+  "healed": true,
+  "heal_summary": "AI self-heal recovered 'press_element' after 2 steps: scroll down; press_element Login",
+  "suggested_steps": [
+    { "keyword": "scroll", "params": ["down"] },
+    { "keyword": "press_element", "params": ["Login"] }
+  ]
+}
+```
+
+`suggested_steps` is the clean, replayable recovery sequence — only the steps that
+actually worked, curated to the minimal set that reproduces the goal. A platform can
+persist these to replace the failing step, so the next run passes without needing
+self-heal. `optics serve`'s `POST /session/{id}/action` returns the same shape under
+`data`. Un-healed calls return the bare result, unchanged.
 
 ### Keyword parameters are strings
 

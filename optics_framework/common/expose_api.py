@@ -157,6 +157,12 @@ class SessionResponse(BaseModel):
 class ExecutionResponse(BaseModel):
     """
     Response model for execution results.
+
+    ``data`` normally carries ``{"result": <value>}``. When AI self-heal recovered the
+    keyword, it instead carries ``{"result": <value>, "healed": true, "heal_summary":
+    <str>, "suggested_steps": [{"keyword": <str>, "params": [<str>, ...]}, ...]}``.
+    ``suggested_steps`` is the clean, replayable recovery sequence — the steps a caller
+    can persist to reproduce the recovery without relying on self-heal next time.
     """
 
     execution_id: str
@@ -253,6 +259,19 @@ class SessionConfig(BaseModel):
     elements_sources: List[Union[str, Dict[str, Any]]] = []
     text_detection: List[Union[str, Dict[str, Any]]] = []
     image_detection: List[Union[str, Dict[str, Any]]] = []
+    # AI self-heal settings (resolved by _resolve_self_heal_settings). A single
+    # `optics serve`/`optics mcp` process is multi-tenant, so these are per-session:
+    # each one takes precedence over the matching service-level env-var default
+    # (OPTICS_AI_SELF_HEAL / OPTICS_LLM_PROVIDER / OPTICS_LLM_MODEL) the operator set
+    # at start-up, and falls back to it when left unset. A caller can therefore opt in
+    # or out and pick its own LLM provider/model without being locked to the admin's
+    # choice. These stay flat scalars (not a nested llm_models block) on purpose:
+    # provider/model is all a caller needs to pick, and LLM credentials never flow
+    # through the request body — the provider reads its own env vars (e.g. GeminiLLM
+    # reads GOOGLE_API_KEY/GEMINI_API_KEY) — so there is no credential shape to leak.
+    ai_self_heal: Optional[bool] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
     project_path: Optional[str] = None
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
@@ -386,6 +405,51 @@ async def health_check():
     """
     return HealthCheckResponse(status=HEALTH_STATUS_RUNNING, version=VERSION)
 
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+ENV_AI_SELF_HEAL = "OPTICS_AI_SELF_HEAL"
+ENV_LLM_PROVIDER = "OPTICS_LLM_PROVIDER"
+ENV_LLM_MODEL = "OPTICS_LLM_MODEL"
+DEFAULT_LLM_PROVIDER = "gemini"
+
+
+def _env_self_heal_defaults() -> Tuple[bool, Optional[str], Optional[str]]:
+    """Service-level self-heal defaults read from the process environment.
+
+    The operator of a running `optics serve`/`optics mcp` process sets these once at
+    start-up so an already-integrated platform (its own session creation, driver
+    credentials, keyword calls) gets self-heal with no per-request changes. They are
+    only defaults, though — a session can override any of them (see
+    _resolve_self_heal_settings). Returns (enabled, provider, model) with unset
+    provider/model as None so the resolver can layer per-session values on top.
+    """
+    enabled = os.getenv(ENV_AI_SELF_HEAL, "").strip().lower() in _TRUE_STRINGS
+    provider = os.getenv(ENV_LLM_PROVIDER, "").strip() or None
+    model = os.getenv(ENV_LLM_MODEL, "").strip() or None
+    return enabled, provider, model
+
+
+def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[str, DependencyConfig]]]:
+    """Resolve a session's effective self-heal enablement and llm_models config.
+
+    Precedence, per field: explicit per-session request value > service-level env-var
+    default > built-in default. A single serve/mcp process is multi-tenant, so a
+    caller can enable/disable self-heal and choose its own LLM provider/model per
+    session rather than being locked to the operator's choice. LLM credentials never
+    flow through here — the provider reads its own environment variables (e.g.
+    GeminiLLM reads GOOGLE_API_KEY/GEMINI_API_KEY) — so exposing provider/model per
+    session adds no credential surface.
+    """
+    env_enabled, env_provider, env_model = _env_self_heal_defaults()
+    enabled = config.ai_self_heal if config.ai_self_heal is not None else env_enabled
+    if not enabled:
+        return False, []
+    provider = config.llm_provider or env_provider or DEFAULT_LLM_PROVIDER
+    model = config.llm_model or env_model
+    capabilities = {"model": model} if model else {}
+    llm_models = [{provider: DependencyConfig(enabled=True, capabilities=capabilities)}]
+    return True, llm_models
+
+
 @app.post(
     "/v1/sessions/start",
     response_model=SessionResponse,
@@ -425,12 +489,15 @@ async def create_session(config: SessionConfig):
         elements_sources = normalized.get(KEY_ELEMENTS_SOURCES, [])
         text_detection = normalized.get(KEY_TEXT_DETECTION, [])
         image_detection = normalized.get(KEY_IMAGE_DETECTION, [])
+        ai_self_heal, llm_models = _resolve_self_heal_settings(config)
 
         session_config = Config(
             driver_sources=driver_sources,
             elements_sources=elements_sources,
             text_detection=text_detection,
             image_detection=image_detection,
+            llm_models=llm_models,
+            ai_self_heal=ai_self_heal,
             project_path=config.project_path,
             log_level=LOG_LEVEL_DEBUG,
             save_captures=False  # do not save screenshots or pagesource when using `optics serve`

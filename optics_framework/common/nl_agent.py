@@ -17,6 +17,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.error import OpticsError
 from optics_framework.common.logging_config import internal_logger
+# CURATION_SCHEMA / CURATION_SYSTEM_PROMPT are re-exported here: callers and tests
+# import them from this module, but the single definition lives in ``step_curation``
+# so the NL agent and AI self-heal share identical curation.
+from optics_framework.common.step_curation import (  # noqa: F401 - re-exported
+    CURATION_SCHEMA,
+    CURATION_SYSTEM_PROMPT,
+    curate_steps,
+)
 
 
 @dataclass
@@ -215,43 +223,6 @@ coordinate guessing has already failed).
 """
 
 _MAX_THOUGHT_CHARS = 160
-
-
-# Flat (no anyOf) for the same Gemini-compatibility reasons as ACTION_SCHEMA.
-CURATION_SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "keep": {
-            "type": "array",
-            "items": {"type": "integer"},
-            "description": "1-based indices of the CANDIDATE steps to keep, in any order.",
-        },
-        "reason": {
-            "type": "string",
-            "description": "Brief justification for which steps were dropped.",
-        },
-    },
-    "required": ["keep", "reason"],
-    "propertyOrdering": ["keep", "reason"],
-}
-
-
-CURATION_SYSTEM_PROMPT = """\
-You are cleaning up a UI-automation recording. An instruction was just fulfilled by running a \
-sequence of keywords, one at a time. Some of those keywords were dead-ends, backtracks (e.g. \
-navigating somewhere then pressing back), overshoot-then-correct gestures, or no-op actions that \
-did not contribute to the final result.
-
-Your job: return the MINIMAL ordered subset of the CANDIDATE steps that a fresh run must execute, \
-top to bottom, to reproduce the goal deterministically. Drop steps that do not contribute.
-
-RULES:
-- `keep` is a list of the 1-based CANDIDATE step numbers to keep. Only CANDIDATE numbers are valid.
-- Never reference the FAILED context steps — they already failed and are excluded.
-- Order in `keep` does not matter; it will be re-sorted into execution order.
-- When in doubt, KEEP the step. Never drop a step that might be needed — a broken script is far \
-worse than a slightly long one. If every step contributed, keep them all.
-"""
 
 
 class NaturalLanguageAgent:
@@ -527,42 +498,10 @@ class NaturalLanguageAgent:
             return None  # nothing to prune
 
         prompt = self._build_curation_prompt(instruction, state)
-        try:
-            raw = self.llm.generate_json(
-                prompt, CURATION_SCHEMA, images=None,
-                system=CURATION_SYSTEM_PROMPT, temperature=0.0,
-            )
-        except OpticsError as exc:
-            internal_logger.debug("NL curation: LLM error, keeping all steps: %s", exc.message)
-            return None
-        except Exception as exc:  # noqa: BLE001 - curation must never break a working recording
-            internal_logger.debug("NL curation: unexpected error, keeping all steps: %s", exc)
-            return None
-
-        if not isinstance(raw, dict):
-            return None
-        keep_raw = raw.get("keep")
-        if not isinstance(keep_raw, list):
-            return None
-
-        # Coerce to 0-based indices: reject bools/non-ints, range-check, dedup, sort.
-        seen: set[int] = set()
-        indices: List[int] = []
-        for value in keep_raw:
-            if isinstance(value, bool) or not isinstance(value, int):
-                continue
-            zero = value - 1  # prompt uses 1-based candidate numbering
-            if 0 <= zero < n and zero not in seen:
-                seen.add(zero)
-                indices.append(zero)
-        if not indices or len(indices) == n:
-            return None  # dropped everything, or kept everything -> keep all
-        indices.sort()
-        curated = [state.successful[i] for i in indices]
-        internal_logger.debug(
-            "NL curation: kept %d of %d steps (%s)", len(curated), n, raw.get("reason", "")
-        )
-        return curated
+        indices = curate_steps(self.llm, prompt, n)
+        if indices is None:
+            return None  # keep all (too few steps, LLM error, or model kept/dropped everything)
+        return [state.successful[i] for i in indices]
 
     def _build_curation_prompt(self, instruction: str, state: "_RunState") -> str:
         """Text-only prompt for the curation pass.
