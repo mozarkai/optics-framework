@@ -2,20 +2,14 @@
 
 This guide will walk you through creating automated tests using Optics Framework.
 
-## :material-package: Installation & Setup
-
-### Install Optics Framework
-
-```bash
-pip install optics-framework
-```
+!!! warning "Prerequisites"
+    This guide assumes you have already installed Optics and the platform tooling
+    for your target (for Android: the Appium server, an emulator/device, adb).
+    If not, do the [Installation & Prerequisites](prerequisites.md) guide first.
 
 ## :material-rocket: Quick Start
 
 ### Step 1: Create Python Virtual Environment
-
-!!! warning "Prerequisites"
-    Ensure Appium server is running and a virtual Android device is enabled before proceeding.
 
 ```bash
 mkdir ~/test-code
@@ -28,34 +22,44 @@ pip install optics-framework
 !!! danger "Important"
     Conda environments are not supported for `easyocr` and `optics-framework` together, due to conflicting requirements for `numpy` (version 1.x vs 2.x). Please use a standard Python virtual environment instead.
 
-### Step 2: Create a New Test Project
+### Step 2: Install the Engines You Need
+
+The core install has no drivers. Add the ones your test needs — either as pip
+extras or via `optics setup` (the names match the `config.yaml` source keys):
 
 ```bash
-optics setup --install Appium EasyOCR
-optics init --name my_test_project --path . --template contact
+optics setup --install appium easyocr
+# equivalent to: pip install "optics-framework[appium,easyocr]"
 ```
 
-This creates a project structure with sample templates to help you get started.
-
 !!! warning "Note"
-    Intel based Macs cannot download easyocr.
+    Intel-based Macs cannot download easyocr.
+
+### Step 3: Create a New Test Project
+
+```bash
+optics init --name my_test_project --template contact
+```
+
+This copies the `contact` sample — a complete, runnable project — into
+`./my_test_project`. Omit `--template` to scaffold an empty project you fill in
+yourself. Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`,
+`playwright`.
 
 ## :material-file-tree: Project Structure
 
 Your test project uses four main components that work together:
 
 ```text
-optics_framework/
-└── samples/
-    └── my_test_project/
-        ├── config.yaml
-        ├── modules/
-        |   └── modules.csv
-        ├── test_data/
-        |   ├── elements.csv
-        |   └── input_templates/
-        └── test_cases/
-            └── test_cases.csv
+my_test_project/          # created in your current directory
+├── config.yaml
+├── modules/
+|   └── modules.csv
+├── test_data/
+|   ├── elements.csv
+|   └── input_templates/
+└── test_cases/
+    └── test_cases.csv
 ```
 
 *`my_test_project/` - Your specific project name (you choose this)*
@@ -244,6 +248,9 @@ Test cases define **what** to test, modules define **how** to do it. This separa
 - Appium server running: `appium`
 - Android virtual device or physical device connected and verified: `adb devices`
 
+See [Installation & Prerequisites](prerequisites.md) for how to install the
+Appium server, Android SDK/adb, and a JDK.
+
 ### Always Dry Run Test Cases Before Executing
 
 ```bash
@@ -311,19 +318,17 @@ optics execute my_test_project
 ### 6. File Organization
 
 ```text
-optics_framework/
-    └── samples/
-        └── my_test_project/
-                ├── config.yaml
-                ├── modules/
-                |   └── modules.csv
-                ├── test_data/
-                |   ├── elements.csv
-                |   └── input_templates/
-                |       ├── button_login.png
-                |       └── field_username.png
-                └── test_cases/
-                    └── test_cases.csv
+my_test_project/
+├── config.yaml
+├── modules/
+|   └── modules.csv
+├── test_data/
+|   ├── elements.csv
+|   └── input_templates/
+|       ├── button_login.png
+|       └── field_username.png
+└── test_cases/
+    └── test_cases.csv
 ```
 
 ### 7. Debugging

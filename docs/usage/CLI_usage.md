@@ -2,27 +2,34 @@
 
 This section describes the available commands for the Optics Framework CLI. The command you run is **`optics`**; the package you install is **`optics-framework`** (e.g. `pip install optics-framework`).
 
-## Setup Optics Framework
+## Setup: install engine backends
 
-To set up the Optics Framework, use the following command:
+The core install ships without drivers, OCR, or LLM backends — they are optional
+extras. `optics setup` installs them by name (the names match the `config.yaml`
+source keys, e.g. `appium`, `easyocr`, `google-vision`), pinned to your installed
+Optics version.
 
-To list all possible drivers:
+List installable engines:
 
 ```bash
 optics setup --list
 ```
 
-TUI way:
+Interactive picker (TUI):
 
 ```bash
 optics setup
 ```
 
-CLI way:
+Install by name:
 
 ```bash
-optics setup --install <driver_name1> <driver_name2> ...
+optics setup --install appium easyocr
 ```
+
+This is equivalent to `pip install "optics-framework[appium,easyocr]"`. See
+[Installation & Prerequisites](../prerequisites.md) for the full extras table and
+the external tooling (Appium server, adb, browsers) each engine needs.
 
 ## Executing Test Cases
 
@@ -34,7 +41,7 @@ optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 
 **Options:**
 
-- `<folder_path>`: Path to the project directory (contains `test_cases.csv`, `test_modules.csv`, `config.yaml`, etc.).
+- `<folder_path>`: Path to the project directory. The runner discovers test cases, modules, elements, and `config.yaml` by content, so either the sample subdir layout (`test_cases/`, `modules/`, `test_data/`) or flat CSVs work.
 - `--runner <runner_name>`: Test runner to use. Supported: `test_runner` (default), `pytest`.
 - `--use-printer` (default): Enable live result printer.
 - `--no-use-printer`: Disable live result printer.
@@ -59,11 +66,12 @@ optics init --name <project_name> --path <directory> --template <sample_name> --
 
 Use `--template <name>` to copy a sample layout and assets from `optics_framework/samples/`. Available template names include:
 
-- `contact` — Contact/sample layout
-- `clock` — Clock app sample
-- `youtube` — YouTube sample
-- `gmail_web` — Gmail web sample
-- `calendar` — Calendar sample
+- `contact` — Android Contacts sample (Appium)
+- `clock` — Android Clock sample (Appium)
+- `calendar` — Android Calendar sample (Appium; also shows an API collection)
+- `youtube` — YouTube sample (Appium; uses image templates)
+- `gmail_web` — Gmail web sample (Selenium)
+- `playwright` — Minimal web sample (Playwright)
 
 Exact values depend on the directories under `optics_framework/samples/`. Use only names that exist as subdirectories there.
 
@@ -140,17 +148,19 @@ optics --help
 
 ## Managing Configuration
 
-Manage framework configuration:
-
 ```bash
-optics config [--set <key> <value>] [--reset] [--list]
+optics config
 ```
 
-**Options:**
+This opens an interactive TUI for editing the **global** config at
+`~/.optics/global_config.yaml` (arrow keys to move, space to edit, `s` to save,
+`q` to quit). It takes no flags.
 
-- `--set <key> <value>`: Set a configuration key-value pair.
-- `--reset`: Reset all configurations to default.
-- `--list`: Display current configuration values.
+!!! warning "Global vs per-project config"
+    `optics config` edits the **global** file. `optics execute <folder>` reads
+    that folder's **own** `config.yaml`, which does **not** merge the global
+    file. For a specific project, edit its `config.yaml` directly — that is the
+    config the runner uses.
 
 ## Checking Version
 
@@ -169,7 +179,4 @@ optics --version
     Options such as `--runner`, `--force`, and `--git-init` are optional. Omit them to use defaults (e.g. `test_runner` for `--runner`).
 
 !!! note "Driver installation"
-    When using `optics setup --install`, use driver names listed by `optics setup --list`.
-
-!!! info "Configuration persistence"
-    Configuration changed with `optics config --set` persists until you run `optics config --reset`.
+    When using `optics setup --install`, use engine names listed by `optics setup --list` (e.g. `appium`, `easyocr`).

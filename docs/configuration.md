@@ -4,14 +4,20 @@ This document provides comprehensive documentation for all configuration options
 
 ## Overview
 
-The Optics Framework uses a hierarchical configuration system that merges configurations in the following order (with later configurations taking priority):
+There are two configuration files:
 
-1. **Default Configuration** - Built-in defaults
-2. **Global Configuration** - `~/.optics/global_config.yaml` (user-wide settings)
-3. **Project Configuration** - `config.yaml` in your project directory (project-specific settings)
+1. **Project Configuration** — `config.yaml` in your project directory. This is
+   the config `optics execute <folder>` / `optics dry_run <folder>` actually read.
+   Built-in defaults fill in any field you omit.
+2. **Global Configuration** — `~/.optics/global_config.yaml`, edited by the
+   interactive `optics config` command.
 
-!!! tip "Configuration Priority"
-    Project configuration overrides global configuration, which overrides default configuration. This allows you to set common settings globally and override them per-project.
+!!! warning "The runner reads the project config only"
+    `optics execute`/`optics dry_run` load the target folder's own `config.yaml`
+    and do **not** merge the global file into it. Treat `config.yaml` in each
+    project as the source of truth for that run. The global config is a
+    convenience surface edited via `optics config`; to affect a specific run,
+    edit that project's `config.yaml`.
 
 ## Quick Reference
 
@@ -117,7 +123,10 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     **Type:** `Optional[str]` | **Default:** `null`
 
-    Root directory for test project files. This path should contain your CSV files (`test_cases.csv`, `test_modules.csv`, `elements.csv`) and `input_templates/` directory.
+    Root directory for test project files. This folder holds your test cases,
+    modules, and elements (either the sample subdir layout — `test_cases/`,
+    `modules/`, `test_data/` — or flat CSVs; the runner discovers them by
+    content) plus any `input_templates/` images.
 
     ```yaml
     project_path: "./my_test_project"
@@ -823,46 +832,20 @@ driver_sources:
 
 ---
 
-## Configuration Priority and Merging
+## How configuration is loaded
 
-The Optics Framework merges configurations in the following order (later configurations override earlier ones):
+**What `optics execute` / `optics dry_run` do:** they read the target folder's
+own `config.yaml`. Any top-level field you omit falls back to the built-in
+`Config` defaults (for example, all sources default to `enabled: false`). The
+global `~/.optics/global_config.yaml` is **not** merged into the run — so a
+project's `config.yaml` is the single source of truth for that run.
 
-1. **Default Configuration** - Built-in defaults from the `Config` class
-2. **Global Configuration** - `~/.optics/global_config.yaml` (user-wide settings)
-3. **Project Configuration** - `config.yaml` in your project directory
-
-### Merging Behavior
-
-- **Simple fields** (strings, numbers, booleans): Later values completely replace earlier values
-- **Lists** (driver_sources, elements_sources, etc.): Items are merged, with later items taking precedence for duplicates
-- **Dictionaries** (capabilities): Deep merged, with later values overriding earlier values
-
-### Example Merging
-
-**Global Config (`~/.optics/global_config.yaml`):**
-```yaml
-log_level: INFO
-driver_sources:
-  - appium:
-      enabled: true
-      url: "http://localhost:4723/wd/hub"
-      capabilities:
-        platformName: "Android"
-```
-
-**Project Config (`config.yaml`):**
-```yaml
-log_level: DEBUG
-driver_sources:
-  - appium:
-      enabled: true
-      url: "http://localhost:4723/wd/hub"
-      capabilities:
-        platformName: "Android"
-        deviceName: "emulator-5554"
-```
-
-**Result:** The merged configuration will have `log_level: DEBUG` and the Appium capabilities will include both `platformName: "Android"` and `deviceName: "emulator-5554"`.
+!!! note "Where the global config is used"
+    The default → global → project deep-merge is performed by `ConfigHandler.load()`,
+    which the interactive `optics config` command uses to edit the **global**
+    file. The batch runner does not call it, so editing the global config has no
+    effect on `optics execute`. To change a specific run, edit that project's
+    `config.yaml`.
 
 ---
 
@@ -872,6 +855,5 @@ driver_sources:
 2. **Use Appropriate OCR**: Choose EasyOCR for accuracy, Pytesseract for speed
 3. **Set Log Level Appropriately**: Use DEBUG during development, INFO or WARNING in production
 4. **Configure Execution Paths**: Set `project_path` and `execution_output_path` for organized output
-5. **Use Global Config for Common Settings**: Store frequently used settings in `~/.optics/global_config.yaml`
-6. **Leverage Configuration Priority**: Override global settings in project-specific configs when needed
-7. **Test Configuration Changes**: Verify configurations work correctly before running large test suites
+5. **Keep Each Project's `config.yaml` Self-Contained**: It is the config the runner reads — don't rely on the global config to supply values at run time
+6. **Test Configuration Changes**: Verify configurations work correctly before running large test suites
