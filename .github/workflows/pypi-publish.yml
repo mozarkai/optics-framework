@@ -17,14 +17,23 @@ jobs:
           python-version: "3.x"
 
       - name: Install Poetry
+        # Installed as a pinned, wheel-only package from PyPI (TLS-verified,
+        # hash-checked by pip) instead of piping the upstream installer script
+        # into python3, so no unreviewed remote script ever executes here.
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          pip install --no-cache-dir --only-binary=:all: poetry==2.4.1
 
       - name: Configure Poetry
         run: poetry config virtualenvs.create false
 
       - name: Install dependencies
+        # poetry.lock pins every dependency (including transitive ones) to an
+        # exact, hash-verified version, so --sync only ever installs the
+        # audited set below. Poetry's own installer builds sdist-only
+        # packages via their declared PEP 517 backend rather than pip - there
+        # is no --only-binary equivalent to force wheel-only installs here;
+        # residual setup-script risk is accepted for this ephemeral,
+        # single-purpose CI runner.
         run: poetry install --no-interaction --sync
 
       - name: Build package
