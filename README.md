@@ -31,48 +31,59 @@ This framework was designed primarily for the following use cases:
 
 ## 📦 Installation
 
-### Install via `pip`
+Optics needs **Python 3.12+**. Install the core CLI with `pip`:
 
 ```bash
 pip install optics-framework
 ```
+
+The core install is deliberately light — the drivers, OCR engines and LLM
+backends are **optional extras** you add per project. Install only what you need:
+
+```bash
+pip install "optics-framework[appium]"       # native Android/iOS via Appium
+pip install "optics-framework[playwright]"   # browser automation via Playwright
+pip install "optics-framework[easyocr]"      # on-screen text detection (OCR)
+```
+
+Available extras: `appium`, `selenium`, `playwright`, `ble`, `easyocr`,
+`pytesseract`, `google-vision`, `llm`, `mcp`, plus bundles `mobile`, `web`,
+`vision`, and `all`. You can also install them interactively with
+`optics setup` (see below).
+
+> A driver extra installs only the **Python client**. For mobile testing you
+> also need the **Appium server**, a device/emulator, and platform tooling
+> (Node.js, Android SDK/adb, JDK). See the
+> [Installation & Prerequisites guide](https://mozarkai.github.io/optics-framework/prerequisites/).
+
+> **⚠️ Conda note:** `easyocr` and `optics-framework` conflict under Conda
+> (numpy 1.x vs 2.x). Use a standard `venv` instead.
 
 ---
 
 ## 🚀 Quick Start
 
-### 1 Install Optics Framework
-
-**Note**: Ensure Appium server is running and a virtual Android device is enabled before proceeding.
-
 ```bash
-mkdir ~/test-code
-cd ~/test-code
-python3 -m venv venv
-source venv/bin/activate
+# 1. Create an isolated environment and install Optics
+python3 -m venv venv && source venv/bin/activate
 pip install optics-framework
+
+# 2. Install the engines you need (equivalent to the [appium]/[easyocr] extras)
+optics setup --install appium easyocr
+
+# 3. Scaffold a project from a ready-made sample
+optics init --name my_test_project --template contact
+
+# 4. Point config.yaml at your device/app (see the sample's config.yaml),
+#    make sure the Appium server + emulator are running, then:
+optics dry_run my_test_project      # validate the suite without a device
+optics execute my_test_project      # run it for real
 ```
 
-> **⚠️ Important:** Conda environments are not supported for `easyocr` and `optics-framework` together, due to conflicting requirements for `numpy` (version 1.x vs 2.x). Please use a standard Python virtual environment instead.
-
-### 2 Create a New Test Project
-
-```bash
-optics setup --install Appium EasyOCR
-optics init --name my_test_project --path . --template contact
-```
-
-### 📌 Dry Run Test Cases
-
-```bash
-optics dry_run my_test_project
-```
-
-### 📌 Execute Test Cases
-
-```bash
-optics execute my_test_project
-```
+`optics init` without `--template` scaffolds an empty project
+(`test_cases/`, `modules/`, `test_data/`, and a commented `config.yaml`) for you
+to fill in. Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`,
+`playwright`.
 
 ---
 
@@ -87,7 +98,7 @@ optics execute <project_name>
 ### Initialize a New Project
 
 ```bash
-optics init --name <project_name> --path <directory> --template <contact/youtube> --force
+optics init --name <project_name> --path <directory> --template <contact|youtube|...> --force
 ```
 
 ### List Available Keywords
@@ -105,7 +116,7 @@ optics --help
 ### Check Version
 
 ```bash
-optics version
+optics --version
 ```
 
 ---
@@ -115,26 +126,22 @@ optics version
 ### Project Structure
 
 ```bash
-Optics_Framework/
+optics-framework/
 ├── LICENSE
 ├── README.md
-├── dev_requirements.txt
-├── samples/            # Sample test cases and configurations
-|   ├── contact/
-|   ├── youtube/
 ├── pyproject.toml
+├── mkdocs.yml
 ├── tox.ini
-├── docs/               # Documentation using Sphinx
-├── optics_framework/   # Main package
-│   ├── api/            # Core API modules
-│   ├── common/         # Factories, interfaces, and utilities
-│   ├── engines/        # Engine implementations (drivers, vision models, screenshot tools)
-│   ├── helper/         # Configuration management
-├── tests/              # Unit tests and test assets
-│   ├── assets/         # Sample images for testing
-│   ├── units/          # Unit tests organized by module
-│   ├── functional/     # Functional tests organized by module
-
+├── docs/                   # Documentation (MkDocs Material)
+├── optics_framework/       # Main package
+│   ├── api/                # Keyword classes (ActionKeyword, Verifier, ...)
+│   ├── common/             # Factories, interfaces, execution engine, utilities
+│   ├── engines/            # Drivers, element sources, vision models, LLMs
+│   ├── helper/             # CLI, project/init/setup/config helpers
+│   └── samples/            # Sample projects used by `optics init --template`
+└── tests/                  # Unit + feature tests
+    ├── units/
+    └── feature/
 ```
 
 ### Available Keywords
@@ -326,15 +333,17 @@ The following keywords are available and organized by category. These keywords c
 
 ```bash
 git clone git@github.com:mozarkai/optics-framework.git
-cd Optics_Framework
+cd optics-framework
 pipx install poetry
-poetry install --with dev
+poetry install --with dev,test
+poetry run pre-commit install
 ```
+
+To work on an engine backend, add its extra, e.g. `poetry install -E appium -E easyocr`.
 
 ### Running Tests
 
 ```bash
-poetry install --with tests
 poetry run pytest
 ```
 
@@ -362,7 +371,8 @@ We welcome contributions! Please follow these steps:
 3. Commit your changes.
 4. Open a pull request.
 
-Ensure your code follows **PEP8** standards and is formatted with **Black**.
+Ensure your code passes the pre-commit hooks (ruff lint + format, bandit,
+commitizen). Run `poetry run pre-commit run --all-files` before pushing.
 
 ---
 
