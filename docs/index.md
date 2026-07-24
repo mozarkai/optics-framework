@@ -53,12 +53,16 @@ Get started with Optics Framework in minutes:
 
 ```bash
 pip install optics-framework
-optics setup --install Appium EasyOCR
-optics init --name my_test_project --path . --template contact
-optics execute my_test_project
+optics setup --install appium easyocr        # install the engines you need
+optics init --name my_test_project --template contact
+# edit my_test_project/config.yaml for your device, start Appium + emulator, then:
+optics dry_run my_test_project               # validate without a device
+optics execute my_test_project               # run it
 ```
 
-[:material-arrow-right: Read the Quick Start Guide →](quickstart.md)
+New to Optics? Start with
+[:material-arrow-right: Installation & Prerequisites →](prerequisites.md), then the
+[:material-arrow-right: Quick Start Guide →](quickstart.md).
 
 ## :material-book-open: Explore Documentation
 

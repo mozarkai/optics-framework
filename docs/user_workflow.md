@@ -4,21 +4,23 @@ This guide walks you through the workflow for using the Optics Framework to crea
 
 ## Initial Setup
 
-To begin, the Optics Framework requires at least one YAML configuration file (`config.yaml`) and CSV files to define your tests. You can bootstrap a project using the `optics init` command:
+To begin, the Optics Framework requires a YAML configuration file (`config.yaml`) and CSV files to define your tests. You can bootstrap a project using the `optics init` command:
 
 ```bash
-optics init --name youtube --path ./youtube
+optics init --name my_project --template contact
 ```
 
-- **--name**: Specifies the project name (e.g., `youtube`).
-- **--path**: Defines where the project folder will be created.
-- **--template**: (Optional) Uses a predefined sample template to populate initial files.
+- **--name**: Specifies the project name (required).
+- **--path**: Directory where the project folder is created (default: current directory).
+- **--template**: (Optional) Copy a complete sample project (`contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`).
 
-This command generates a project directory with a default structure, including a `config.yaml` and placeholder CSV files.
+With `--template`, the project is a ready-to-run copy of that sample. Without it,
+`optics init` scaffolds the subdirectory layout (`test_cases/`, `modules/`,
+`test_data/`) plus a commented starter `config.yaml` for you to fill in.
 
 ## CSV Use Cases
 
-The framework uses three primary CSV files to organize test logic: `test_cases.csv`, `test_modules.csv`, and `elements.csv`. Below are their purposes and examples.
+The framework uses three primary CSV files to organize test logic: `test_cases.csv`, `modules.csv`, and `elements.csv`. Below are their purposes and examples.
 
 ### test_cases.csv
 
@@ -49,7 +51,7 @@ Running youtube unknown,Repeat Test
 
 You can define setup and teardown steps in the test_cases.csv to ensure proper initialization and cleanup for both the entire test suite and individual test cases.
 
-### test_modules.csv
+### modules.csv
 
 This file lists all modules, their steps, and associated parameters. Columns include `module_name`, `module_step`, and optional `param_1` to `param_n` (as many parameters as needed).
 
@@ -96,7 +98,7 @@ METHOD,None
 List,"[""xpath"",""text"",""images""]"
 ```
 
-- **Element_Name**: The variable name used in `test_modules.csv`.
+- **Element_Name**: The variable name used in `modules.csv`.
 - **Element_ID**: The actual identifier (e.g., XPath, text value, or image filename). To include newlines in XPath or locator values, use `\n` in the CSV; use `\t` for tab and `\\` for a literal backslash.
 
 ## Configuration File (config.yaml)
@@ -160,25 +162,33 @@ exclude:
 Your project folder should look like this:
 
 ```
-/youtube
+youtube/
 ├── config.yaml
-├── elements.csv
-├── execution_output
-│   └── logs.log
-├── input_templates
-│   ├── home.png
-│   ├── sub.jpeg
-│   └── youtube.jpeg
-├── test_cases.csv
-└── test_modules.csv
+├── test_cases/
+│   └── test_cases.csv
+├── modules/
+│   └── modules.csv
+├── test_data/
+│   ├── elements.csv
+│   └── input_templates/
+│       ├── home.png
+│       ├── sub.jpeg
+│       └── youtube.jpeg
+└── execution_output/        # generated at run time
+    └── ...
 ```
 
-- **input_templates/**: Store any input images (e.g., `home.png`) referenced in `elements.csv`.
+- **test_data/input_templates/**: Store any input images (e.g., `home.png`) referenced in `elements.csv`.
 - **execution_output/**: Contains logs and other output generated during test runs.
+
+!!! note "File discovery is content-based"
+    The runner identifies each file by its contents, not its name or location, so
+    a flat layout (all CSVs in the project root) also works. The subdirectory
+    layout above is what the samples and `optics init` use.
 
 ## Using Keywords in Modules
 
-Modules in `test_modules.csv` use a predefined set of keywords (e.g., `Launch App`, `Press Element`, `Assert Presence`). For a complete list, refer to the [Keywords Reference](usage/keyword_usage.md).
+Modules in `modules.csv` use a predefined set of keywords (e.g., `Launch App`, `Press Element`, `Assert Presence`). For a complete list, refer to the [Keywords Reference](usage/keyword_usage.md).
 
 ## Samples For Your Reference
 Sample test scripts are provided to demonstrate the framework’s capabilities and guide users in writing their own. These examples show how texts, XPaths, and images can be used interchangeably, and how test data can be structured using CSV files.
@@ -207,13 +217,9 @@ To check for syntactical errors in your CSV files and configuration, run a dry r
 optics dry_run ./contact
 ```
 
-For a specific test case:
-
-```bash
-optics dry_run ./contact
-```
-
-This command simulates the test execution without interacting with the device, helping you catch issues early.
+`dry_run` takes a project folder (not a single test case). It simulates
+execution without interacting with the device — validating that every keyword
+exists and every `${element}` resolves — helping you catch issues early.
 
 ## Executing Tests
 
