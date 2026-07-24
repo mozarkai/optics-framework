@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Any
+from typing import TYPE_CHECKING, Optional, Tuple, Any
 from fuzzywuzzy import fuzz
 from bs4 import BeautifulSoup
 from lxml import html
@@ -6,11 +6,14 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
-from optics_framework.engines.drivers.selenium import SeleniumDriver
+
+if TYPE_CHECKING:
+    # unconditional import here would circular-import with selenium.py
+    from optics_framework.engines.drivers.selenium import SeleniumDriver
 
 
 class UIHelper:
-    def __init__(self, driver: SeleniumDriver):
+    def __init__(self, driver: "SeleniumDriver"):
         """
         Initialize UIHelper with explicit driver instance.
         """

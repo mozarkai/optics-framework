@@ -448,7 +448,7 @@ class TestRunner(Runner):
                 self._update_status(keyword_result, "PASS", time.time() - start_time, test_case_result.name)
                 return True
             except OpticsError as oe:
-                if str(oe.code).startswith("E02") or oe.code == Code.X0201:
+                if oe.code.value.startswith("E02") or oe.code == Code.X0201:
                     internal_logger.debug(f"Keyword fallback: tried {candidate_args}, error: {oe}")
                     continue
                 else:
@@ -993,7 +993,7 @@ class PytestRunner(Runner):
                 self._queue_keyword_pass_event(keyword, keyword_id, module_id)
                 return True
             except OpticsError as oe:
-                if str(oe.code).startswith("E02") or oe.code == Code.X0201:
+                if oe.code.value.startswith("E02") or oe.code == Code.X0201:
                     last_exc = oe
                     continue
                 else:

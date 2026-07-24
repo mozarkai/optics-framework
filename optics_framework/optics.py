@@ -1028,14 +1028,16 @@ class Optics:
         self,
         element: fallback_str,
         option: fallback_str,
+        timeout: fallback_str = "30",
         event_name: Optional[fallback_str] = None,
     ) -> None:
-        """Open a dropdown and select one of its options."""
+        """Open a dropdown and select one of its options, scrolling to find it if needed."""
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.select_dropdown_option(
             element=cast(str, element),
             option=cast(str, option),
+            timeout=cast(str, timeout),
             event_name=cast(Optional[str], event_name),
         )
 
@@ -1105,6 +1107,25 @@ class Optics:
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
         return self.verifier.assert_presence(
+            elements=cast(str, elements),
+            timeout_str=cast(str, timeout),
+            rule=cast(str, rule),
+            event_name=cast(Optional[str], event_name),
+        )
+
+    @keyword("Assert Visibility")
+    @fallback_params
+    def assert_visibility(
+        self,
+        elements: fallback_str,
+        timeout: fallback_str = "60",
+        rule: fallback_str = "any",
+        event_name: Optional[fallback_str] = None,
+    ) -> bool:
+        """Assert that elements are actually rendered/visible on screen right now."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        return self.verifier.assert_visibility(
             elements=cast(str, elements),
             timeout_str=cast(str, timeout),
             rule=cast(str, rule),

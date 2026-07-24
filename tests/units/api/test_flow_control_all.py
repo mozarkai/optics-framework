@@ -1,405 +1,357 @@
+"""Tests for FlowControl keywords: evaluate, read_data, invoke_api, condition,
+run_loop, and date_evaluate.
+
+The condition suite is written against the *documented* module-condition contract
+(a module condition is true iff the module runs and returns a non-empty result).
+The current implementation decides truth by whether the module *raised* instead —
+tracked as a deferred behaviour fix — so the cases that expose it are marked
+``xfail(strict=True)``: they fail today and will flip to XPASS (failing the run,
+prompting removal of the marker) once the fix lands.
+"""
 import json
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from optics_framework.api.flow_control import FlowControl
-from optics_framework.common.models import ElementData, ApiData
 from optics_framework.common.error import OpticsError
+from optics_framework.common.models import (
+    ApiCollection,
+    ApiData,
+    ApiDefinition,
+    ElementData,
+    ExpectedResultDefinition,
+    RequestDefinition,
+)
 
-
-# ---- Dummy Classes for All Test Types ----
-class DummyApiDef:
-    def __init__(self, endpoint, method='GET', headers=None, body=None, extract=None, jsonpath_assertions=None):
-        self.endpoint = endpoint
-        self.request = type('Req', (), {'method': method, 'headers': headers or {}, 'body': body})()
-        self.expected_result = type('Exp', (), {'extract': extract or {}, 'jsonpath_assertions': jsonpath_assertions or []})()
-
-class DummyApiCollection:
-    def __init__(self, name, base_url, apis, global_headers=None):
-        self.name = name
-        self.base_url = base_url
-        self.apis = apis
-        self.global_headers = global_headers or {}
-
-class DummySession:
-    def __init__(self):
-        self.elements = ElementData()
-        self.modules = type('M', (), {'modules': {}, 'get_module_definition': lambda self, x: self.modules.get(x)})()
-        self.apis = ApiData()
-        self.apis.collections = {}
-
-        self.config_handler = MagicMock() # Add config_handler attribute
-
-# ---- Fixtures ----
-@pytest.fixture
-def flow_control():
-    session = DummySession()
-    return FlowControl(session, {
-        'dummy_keyword': lambda x=None: f"called:{x}",
-        'add': lambda a, b: int(a) + int(b),
-        'concat': lambda a, b: f"{a}{b}",
-    })
-
-# ---- evaluate Tests ----
-def test_evaluate_bare_name_resolves_to_scalar_not_list_repr(flow_control):
-    flow_control.session.elements.add_element("count", "15")
-    result = flow_control.evaluate("${result}", "count")
-    assert result == "15"
-    assert flow_control.session.elements.get_first("result") == "15"
-
-def test_evaluate_ignores_elements_with_empty_value_list(flow_control):
-    flow_control.session.elements.elements["empty"] = []
-    flow_control.session.elements.add_element("a", "5")
-    result = flow_control.evaluate("${result}", "${a}")
-    assert result == 5
-
-# ---- read_data Tests ----
-def test_read_data_csv_relative(tmp_path, flow_control, monkeypatch):
-    csv_content = 'a,b\n1,2\n3,4\n5,6'
-    project_path = tmp_path
-    csv_file = tmp_path / 'test.csv'
-    csv_file.write_text(csv_content)
-    flow_control.session.config_handler.config.project_path = str(project_path)
-    result = flow_control.read_data('my_elem', 'test.csv', "a == '3';select=b")
-    assert result == ['4']
-    assert flow_control.session.elements.get_first('my_elem') == '4'
-
-def test_read_data_json_relative(tmp_path, flow_control, monkeypatch):
-    json_content = json.dumps([
-        {"foo": "bar", "num": 1},
-        {"foo": "baz", "num": 2}
-    ])
-    project_path = tmp_path
-    json_file = tmp_path / 'test.json'
-    json_file.write_text(json_content)
-    flow_control.session.config_handler.config.project_path = str(project_path)
-    result = flow_control.read_data('my_elem', 'test.json', "foo == 'baz';select=num")
-    assert result == ['2']
-    assert flow_control.session.elements.get_first('my_elem') == '2'
-
-def test_read_data_env_csv(flow_control, monkeypatch):
-    csv_content = 'x,y\n7,8\n9,10'
-    monkeypatch.setenv('MYCSV', csv_content)
-    result = flow_control.read_data('my_elem', 'ENV:MYCSV', "x == '9';select=y")
-    assert result == ['10']
-    assert flow_control.session.elements.get_first('my_elem') == '10'
-
-def test_read_data_env_json(flow_control, monkeypatch):
-    json_content = json.dumps([
-        {"alpha": "beta", "val": 42},
-        {"alpha": "gamma", "val": 99}
-    ])
-    monkeypatch.setenv('MYJSON', json_content)
-    result = flow_control.read_data('my_elem', 'ENV:MYJSON', "alpha == 'gamma';select=val")
-    assert result == ['99']
-    assert flow_control.session.elements.get_first('my_elem') == '99'
-
-def test_read_data_2d_list(flow_control):
-    data = [
-        ['col1', 'col2'],
-        ['a', 'b'],
-        ['c', 'd']
-    ]
-    result = flow_control.read_data('my_elem', data, "col1 == 'c';select=col2")
-    assert result == ['d']
-    assert flow_control.session.elements.get_first('my_elem') == 'd'
-
-def test_read_data_json_single_object(flow_control, tmp_path, monkeypatch):
-    json_content = json.dumps({"serialId": "123", "foo": "bar"})
-    project_path = tmp_path
-    json_file = tmp_path / 'single.json'
-    json_file.write_text(json_content)
-    flow_control.session.config_handler.config.project_path = str(project_path)
-    result = flow_control.read_data('my_elem', 'single.json', "select=serialId")
-    assert result == ['123']
-    assert flow_control.session.elements.get_first('my_elem') == '123'
-
-def test_read_data_env_scalar_string(flow_control, monkeypatch):
-    monkeypatch.setenv('SCALAR_STR', 'simplevalue')
-    result = flow_control.read_data('elem_scalar', 'ENV:SCALAR_STR')
-    assert result == ['simplevalue']
-    assert flow_control.session.elements.get_first('elem_scalar') == 'simplevalue'
-
-def test_read_data_env_scalar_int(flow_control, monkeypatch):
-    monkeypatch.setenv('SCALAR_INT', '12345')
-    result = flow_control.read_data('elem_scalar_int', 'ENV:SCALAR_INT')
-    assert result == ['12345']
-    assert flow_control.session.elements.get_first('elem_scalar_int') == '12345'
-
-def test_read_data_env_scalar_float(flow_control, monkeypatch):
-    monkeypatch.setenv('SCALAR_FLOAT', '3.14159')
-    result = flow_control.read_data('elem_scalar_float', 'ENV:SCALAR_FLOAT')
-    assert result == ['3.14159']
-    assert flow_control.session.elements.get_first('elem_scalar_float') == '3.14159'
-
-def test_read_data_csv_with_variable_in_query(tmp_path, flow_control, monkeypatch):
-    csv_content = 'device_serial,app_package,app_activity\nRZ8RC1KK88R,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE\nRZ8T10TADVR,com.csam.icici.bank.imobileuat,com.csam.icici.bank.imobile.IMOBILE'
-    project_path = tmp_path
-    csv_file = tmp_path / 'devices.csv'
-    csv_file.write_text(csv_content)
-    flow_control.session.config_handler.config.project_path = str(project_path)
-    # Set element_1 in session elements
-    flow_control.session.elements.add_element('element_1', 'RZ8RC1KK88R')
-    # Use variable in query
-    result = flow_control.read_data('result_elem', 'devices.csv', "device_serial == '${element_1}';select=app_package")
-    assert result == ['com.csam.icici.bank.imobileuat']
-    assert flow_control.session.elements.get_first('result_elem') == 'com.csam.icici.bank.imobileuat'
-
-# ---- invoke_api Tests ----
-def test_invoke_api_extract(monkeypatch, flow_control):
-    api_def = DummyApiDef(endpoint='/foo', extract={'result': 'data.value'})
-    api_collection = DummyApiCollection('testcol', 'http://dummy', {'bar': api_def})
-    flow_control.session.apis.collections['testcol'] = api_collection
-    class DummyResp:
-        status_code = 200
-        reason = 'OK'
-        headers = {'Content-Type': 'application/json'}
-        content = b'{"data": {"value": "42"}}'
-        text = '{"data": {"value": "42"}}'
-        def json(self):
-            return {"data": {"value": "42"}}
-        @property
-        def elapsed(self):
-            class E:
-                def total_seconds(self):
-                    return 0.01
-            return E()
-    monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
-    flow_control.invoke_api('testcol.bar')
-    assert flow_control.session.elements.get_first('result') == '42'
-
-def test_invoke_api_jsonpath_assertion_pass(monkeypatch, flow_control):
-    api_def = DummyApiDef(endpoint='/foo', extract={'result': 'data.value'},
-                         jsonpath_assertions=[{'path': '$.data.value', 'condition': '$ == "42"'}])
-    api_collection = DummyApiCollection('testcol', 'http://dummy', {'bar': api_def})
-    flow_control.session.apis.collections['testcol'] = api_collection
-    class DummyResp:
-        status_code = 200
-        reason = 'OK'
-        headers = {'Content-Type': 'application/json'}
-        content = b'{"data": {"value": "42"}}'
-        text = '{"data": {"value": "42"}}'
-        def json(self):
-            return {"data": {"value": "42"}}
-        @property
-        def elapsed(self):
-            class E:
-                def total_seconds(self):
-                    return 0.01
-            return E()
-    monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
-    flow_control.invoke_api('testcol.bar')
-    assert flow_control.session.elements.get_first('result') == '42'
-
-def test_invoke_api_jsonpath_assertion_fail(monkeypatch, flow_control):
-    api_def = DummyApiDef(endpoint='/foo', extract={'result': 'data.value'},
-                         jsonpath_assertions=[{'path': '$.data.value', 'condition': '$ == "99"'}])
-    api_collection = DummyApiCollection('testcol', 'http://dummy', {'bar': api_def})
-    flow_control.session.apis.collections['testcol'] = api_collection
-    class DummyResp:
-        status_code = 200
-        reason = 'OK'
-        headers = {'Content-Type': 'application/json'}
-        content = b'{"data": {"value": "42"}}'
-        text = '{"data": {"value": "42"}}'
-        def json(self):
-            return {"data": {"value": "42"}}
-        @property
-        def elapsed(self):
-            class E:
-                def total_seconds(self):
-                    return 0.01
-            return E()
-    monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
-    with pytest.raises(AssertionError):
-        flow_control.invoke_api('testcol.bar')
-
-def test_invoke_api_no_extract(monkeypatch, flow_control):
-    api_def = DummyApiDef(endpoint='/foo')
-    api_collection = DummyApiCollection('testcol', 'http://dummy', {'bar': api_def})
-    flow_control.session.apis.collections['testcol'] = api_collection
-    class DummyResp:
-        status_code = 200
-        reason = 'OK'
-        headers = {'Content-Type': 'application/json'}
-        content = b'{"foo": "bar"}'
-        text = '{"foo": "bar"}'
-        def json(self):
-            return {"foo": "bar"}
-        @property
-        def elapsed(self):
-            class E:
-                def total_seconds(self):
-                    return 0.01
-            return E()
-    monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
-    flow_control.invoke_api('testcol.bar')
-    # Should not raise, nothing extracted
-
-def test_invoke_api_non_json_response(monkeypatch, flow_control):
-    api_def = DummyApiDef(endpoint='/foo', extract={'foo': 'foo'})
-    api_collection = DummyApiCollection('testcol', 'http://dummy', {'bar': api_def})
-    flow_control.session.apis.collections['testcol'] = api_collection
-    class DummyResp:
-        status_code = 200
-        reason = 'OK'
-        headers = {'Content-Type': 'text/plain'}
-        content = b'not json'
-        text = 'not json'
-        def json(self):
-            raise json.JSONDecodeError('Expecting value', 'not json', 0)
-        @property
-        def elapsed(self):
-            class E:
-                def total_seconds(self):
-                    return 0.01
-            return E()
-    monkeypatch.setattr('requests.request', lambda *a, **kw: DummyResp())
-    with pytest.raises(OpticsError) as excinfo:
-        flow_control.invoke_api('testcol.bar')
-    assert "API response is not valid JSON" in str(excinfo.value)
-
-# ---- run_loop and condition Tests ----
-def test_condition_module_true(flow_control, monkeypatch):
-    # Setup dummy module that returns non-empty result
-    def fake_execute_module(target):
-        if target == 'modTrue':
-            return ['success']
-        if target == 'modA':
-            return ['success']
-        return []
-    flow_control.execute_module = fake_execute_module
-    # Add dummy module to session.modules.modules
-    flow_control.session.modules.modules['modTrue'] = True
-    result = flow_control.condition('modTrue', 'modA', 'modElse')
-    assert result == ['success']
-
-def test_condition_module_false(flow_control, monkeypatch):
-    # Setup dummy module that returns empty result
-    def fake_execute_module(target):
-        if target == 'modFalse':
-            return []
-        if target == 'modA':
-            return ['ran:modA']
-        if target == 'modElse':
-            return ['ran:modA']
-        return []
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.modules.modules['modFalse'] = True
-    flow_control.session.modules.modules['modA'] = True
-    result = flow_control.condition('modFalse', 'modA', 'modElse')
-    assert result == ['ran:modA']
-
-def test_condition_module_true_else(flow_control, monkeypatch):
-    # Only else should be executed if module condition is false
-    def fake_execute_module(target):
-        if target == 'modFalse':
-            return []
-        if target == 'modElse':
-            return ['ran:modElse']
-        return []
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.modules.modules['modFalse'] = True
-    result = flow_control.condition('modFalse', 'modElse')
-    assert result == ['ran:modElse']
-
-# NOTE: these two encode the documented module-condition contract, which the current
-# implementation does not satisfy. Fixing it is a behavior change to a shipped keyword and
-# is deferred to a dedicated PR (with deprecation/migration), out of scope for optics-live.
-_MODULE_CONDITION_FIX_DEFERRED = (
-    "Pre-existing module-condition semantics bug; the fix is a behavior change deferred to "
-    "a dedicated PR with deprecation/migration (out of scope for optics-live)."
+_MODULE_CONDITION_BUG = (
+    "Module-condition truth is decided by exception-presence, not bool(result) "
+    "(mozarkai/optics-framework#385). Remove this marker when the fix lands."
 )
 
 
-@pytest.mark.xfail(reason=_MODULE_CONDITION_FIX_DEFERRED, strict=False)
-def test_condition_module_true_no_else(flow_control, monkeypatch):
-    # Should return result if module condition is true and no else
-    def fake_execute_module(target):
-        if target == 'modTrue':
-            return ['success']
-        return []
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.modules.modules['modTrue'] = True
-    result = flow_control.condition('modTrue', 'modA')
-    assert result == ['success']
+class _Modules:
+    """Minimal stand-in for the session's module registry."""
 
-@pytest.mark.xfail(reason=_MODULE_CONDITION_FIX_DEFERRED, strict=False)
-def test_condition_module_false_no_else(flow_control, monkeypatch):
-    # Should return None if module condition is false and no else
-    def fake_execute_module(target):
-        if target == 'modFalse':
-            return []
-        return []
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.modules.modules['modFalse'] = True
-    result = flow_control.condition('modFalse', 'modA')
-    assert result is None
-def test_run_loop_by_count(flow_control, monkeypatch):
+    def __init__(self):
+        self.modules = {}
+
+    def get_module_definition(self, name):
+        return self.modules.get(name)
+
+
+class _Session:
+    def __init__(self):
+        self.elements = ElementData()
+        self.modules = _Modules()
+        self.apis = ApiData()
+        self.apis.collections = {}
+        self.config_handler = MagicMock()
+
+
+@pytest.fixture
+def flow_control():
+    session = _Session()
+    return FlowControl(session, {
+        "add": lambda a, b: int(a) + int(b),
+        "concat": lambda a, b: f"{a}{b}",
+    })
+
+
+def _module_runner(behaviors):
+    """Build a fake execute_module from {name: result-list | Exception} and record calls."""
     calls = []
-    def fake_execute_module(target):
-        calls.append(target)
-        return [f"ran:{target}"]
-    flow_control.execute_module = fake_execute_module
-    result = flow_control.run_loop('mod1', '3')
-    assert result == [["ran:mod1"]] * 3
-    assert calls == ['mod1', 'mod1', 'mod1']
 
-def test_run_loop_with_variables(flow_control, monkeypatch):
-    results = []
-    def fake_execute_module(target):
-        val1 = flow_control.session.elements.get_first('foo')
-        val2 = flow_control.session.elements.get_first('bar')
-        results.append((val1, val2))
-        return [f"{val1}-{val2}"]
-    flow_control.execute_module = fake_execute_module
-    out = flow_control.run_loop('mod2', '${foo}', '["1","2"]', '${bar}', '["3","4"]')
-    assert results == [("1", "3"), ("2", "4")]
-    assert out == [["1-3"], ["2-4"]]
+    def run(name):
+        calls.append(name)
+        outcome = behaviors[name]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
-def test_condition_first_true(flow_control, monkeypatch):
-    called = []
-    def fake_execute_module(target):
-        called.append(target)
-        return [f"ran:{target}"]
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.elements.add_element('x', 'yes')
-    flow_control.session.elements.add_element('y', 'no')
-    result = flow_control.condition('${x} == "yes"', 'modA', '${y} == "yes"', 'modB', 'modElse')
-    assert result == ["ran:modA"]
-    assert called == ['modA']
+    run.calls = calls
+    return run
 
-def test_condition_else_taken(flow_control, monkeypatch):
-    called = []
-    def fake_execute_module(target):
-        called.append(target)
-        return [f"ran:{target}"]
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.elements.add_element('x', 'no')
-    flow_control.session.elements.add_element('y', 'no')
-    result = flow_control.condition('${x} == "yes"', 'modA', '${y} == "yes"', 'modB', 'modElse')
-    assert result == ["ran:modElse"]
-    assert called == ['modElse']
 
-def test_condition_no_else(flow_control, monkeypatch):
-    called = []
-    def fake_execute_module(target):
-        called.append(target)
-        return [f"ran:{target}"]
-    flow_control.execute_module = fake_execute_module
-    flow_control.session.elements.add_element('x', 'no')
-    flow_control.session.elements.add_element('y', 'no')
-    result = flow_control.condition('${x} == "yes"', 'modA', '${y} == "yes"', 'modB')
-    assert result is None
-    assert called == []
+def _register(flow_control, run, *module_names):
+    flow_control.execute_module = run
+    for name in module_names:
+        flow_control.session.modules.modules[name] = object()
 
-def test_condition_invalid(flow_control):
+
+# --------------------------------------------------------------------------- #
+# evaluate                                                                     #
+# --------------------------------------------------------------------------- #
+
+class TestEvaluate:
+    def test_bare_name_resolves_to_scalar(self, flow_control):
+        flow_control.session.elements.add_element("count", "15")
+        assert flow_control.evaluate("${result}", "count") == "15"
+        assert flow_control.session.elements.get_first("result") == "15"
+
+    def test_arithmetic_expression(self, flow_control):
+        flow_control.session.elements.add_element("a", "5")
+        assert flow_control.evaluate("${result}", "${a} + 3") == 8
+        assert flow_control.session.elements.get_first("result") == "8"
+
+    def test_ignores_element_with_empty_value_list(self, flow_control):
+        flow_control.session.elements.elements["empty"] = []
+        flow_control.session.elements.add_element("a", "5")
+        assert flow_control.evaluate("${result}", "${a}") == 5
+
+    def test_missing_variable_raises(self, flow_control):
+        with pytest.raises(OpticsError):
+            flow_control.evaluate("${result}", "${nope}")
+
+    @pytest.mark.parametrize("expr", ['__import__("os")', "open('x')", "(1).__class__"])
+    def test_rejects_unsafe_expression(self, flow_control, expr):
+        with pytest.raises(OpticsError):
+            flow_control.evaluate("${result}", expr)
+
+
+# --------------------------------------------------------------------------- #
+# read_data                                                                    #
+# --------------------------------------------------------------------------- #
+
+class TestReadData:
+    def test_csv_file_with_filter(self, tmp_path, flow_control):
+        (tmp_path / "test.csv").write_text("a,b\n1,2\n3,4\n5,6")
+        flow_control.session.config_handler.config.project_path = str(tmp_path)
+        result = flow_control.read_data("my_elem", "test.csv", "a == '3';select=b")
+        assert result == ["4"]
+        assert flow_control.session.elements.get_first("my_elem") == "4"
+
+    def test_json_file_with_filter(self, tmp_path, flow_control):
+        (tmp_path / "test.json").write_text(
+            json.dumps([{"foo": "bar", "num": 1}, {"foo": "baz", "num": 2}])
+        )
+        flow_control.session.config_handler.config.project_path = str(tmp_path)
+        assert flow_control.read_data("e", "test.json", "foo == 'baz';select=num") == ["2"]
+
+    def test_json_single_object(self, tmp_path, flow_control):
+        (tmp_path / "s.json").write_text(json.dumps({"serialId": "123", "foo": "bar"}))
+        flow_control.session.config_handler.config.project_path = str(tmp_path)
+        assert flow_control.read_data("e", "s.json", "select=serialId") == ["123"]
+
+    def test_2d_list(self, flow_control):
+        data = [["col1", "col2"], ["a", "b"], ["c", "d"]]
+        assert flow_control.read_data("e", data, "col1 == 'c';select=col2") == ["d"]
+
+    def test_variable_resolved_in_query(self, tmp_path, flow_control):
+        (tmp_path / "d.csv").write_text("serial,pkg\nAAA,com.a\nBBB,com.b")
+        flow_control.session.config_handler.config.project_path = str(tmp_path)
+        flow_control.session.elements.add_element("target", "BBB")
+        assert flow_control.read_data("e", "d.csv", "serial == '${target}';select=pkg") == ["com.b"]
+
+    @pytest.mark.parametrize(
+        "env_value, expected",
+        [
+            ("simplevalue", ["simplevalue"]),
+            ("12345", ["12345"]),
+            ("3.14159", ["3.14159"]),
+        ],
+    )
+    def test_env_scalar(self, flow_control, monkeypatch, env_value, expected):
+        monkeypatch.setenv("SCALAR", env_value)
+        assert flow_control.read_data("e", "ENV:SCALAR") == expected
+
+    def test_env_csv_with_filter(self, flow_control, monkeypatch):
+        monkeypatch.setenv("MYCSV", "x,y\n7,8\n9,10")
+        assert flow_control.read_data("e", "ENV:MYCSV", "x == '9';select=y") == ["10"]
+
+
+# --------------------------------------------------------------------------- #
+# invoke_api                                                                   #
+# --------------------------------------------------------------------------- #
+
+def _api(flow_control, monkeypatch, fake_response, *, extract=None, jsonpath=None, resp):
+    api_def = ApiDefinition(
+        name="bar",
+        endpoint="/foo",
+        request=RequestDefinition(method="GET"),
+        expected_result=ExpectedResultDefinition(extract=extract, jsonpath_assertions=jsonpath),
+    )
+    collection = ApiCollection(name="testcol", base_url="http://dummy", apis={"bar": api_def})
+    flow_control.session.apis.collections["testcol"] = collection
+    monkeypatch.setattr("requests.request", lambda *a, **kw: resp)
+
+
+class TestInvokeApi:
+    def test_extracts_value(self, flow_control, monkeypatch, fake_response):
+        _api(flow_control, monkeypatch, fake_response,
+             extract={"result": "data.value"},
+             resp=fake_response(json_data={"data": {"value": "42"}}))
+        flow_control.invoke_api("testcol.bar")
+        assert flow_control.session.elements.get_first("result") == "42"
+
+    def test_jsonpath_assertion_passes(self, flow_control, monkeypatch, fake_response):
+        _api(flow_control, monkeypatch, fake_response,
+             extract={"result": "data.value"},
+             jsonpath=[{"path": "$.data.value", "condition": '$ == "42"'}],
+             resp=fake_response(json_data={"data": {"value": "42"}}))
+        flow_control.invoke_api("testcol.bar")
+        assert flow_control.session.elements.get_first("result") == "42"
+
+    def test_jsonpath_assertion_fails(self, flow_control, monkeypatch, fake_response):
+        _api(flow_control, monkeypatch, fake_response,
+             jsonpath=[{"path": "$.data.value", "condition": '$ == "99"'}],
+             resp=fake_response(json_data={"data": {"value": "42"}}))
+        with pytest.raises(AssertionError):
+            flow_control.invoke_api("testcol.bar")
+
+    def test_no_extract_is_noop(self, flow_control, monkeypatch, fake_response):
+        _api(flow_control, monkeypatch, fake_response,
+             resp=fake_response(json_data={"foo": "bar"}))
+        flow_control.invoke_api("testcol.bar")  # must not raise
+
+    def test_non_json_response_raises(self, flow_control, monkeypatch, fake_response):
+        _api(flow_control, monkeypatch, fake_response,
+             extract={"foo": "foo"},
+             resp=fake_response(json_data=None, text="not json", content_type="text/plain"))
+        with pytest.raises(OpticsError, match="API response is not valid JSON"):
+            flow_control.invoke_api("testcol.bar")
+
+
+# --------------------------------------------------------------------------- #
+# condition — expression path (fully correct today)                           #
+# --------------------------------------------------------------------------- #
+
+class TestExpressionCondition:
+    def test_first_true_runs_its_target(self, flow_control):
+        run = _module_runner({"modA": ["ran:modA"], "modB": ["ran:modB"], "modElse": ["ran:modElse"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "yes")
+        result = flow_control.condition('${x} == "yes"', "modA", '${x} == "no"', "modB", "modElse")
+        assert result == ["ran:modA"]
+        assert run.calls == ["modA"]
+
+    def test_else_taken_when_all_false(self, flow_control):
+        run = _module_runner({"modA": ["a"], "modElse": ["ran:modElse"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "no")
+        result = flow_control.condition('${x} == "yes"', "modA", "modElse")
+        assert result == ["ran:modElse"]
+        assert run.calls == ["modElse"]
+
+    def test_no_else_returns_none(self, flow_control):
+        run = _module_runner({"modA": ["a"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "no")
+        assert flow_control.condition('${x} == "yes"', "modA") is None
+        assert run.calls == []
+
+    def test_invert_prefix_flips_expression(self, flow_control):
+        run = _module_runner({"modA": ["ran:modA"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "no")
+        # `!(x == yes)` is true when x != yes, so modA runs.
+        assert flow_control.condition('!${x} == "yes"', "modA") == ["ran:modA"]
+
+
+# --------------------------------------------------------------------------- #
+# condition — module path (behaviour partly buggy; see module docstring)       #
+# --------------------------------------------------------------------------- #
+
+class TestModuleCondition:
+    def test_truthy_module_runs_target(self, flow_control):
+        run = _module_runner({"cond": ["c"], "target": ["T"], "els": ["E"]})
+        _register(flow_control, run, "cond", "target", "els")
+        assert flow_control.condition("cond", "target", "els") == ["T"]
+        assert run.calls == ["cond", "target"]
+
+    def test_raising_module_runs_else(self, flow_control):
+        run = _module_runner({"cond": RuntimeError("boom"), "target": ["T"], "els": ["E"]})
+        _register(flow_control, run, "cond", "target", "els")
+        assert flow_control.condition("cond", "target", "els") == ["E"]
+        assert "target" not in run.calls
+
+    @pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)
+    def test_falsy_module_skips_target_runs_else(self, flow_control):
+        run = _module_runner({"cond": [], "target": ["T"], "els": ["E"]})
+        _register(flow_control, run, "cond", "target", "els")
+        assert flow_control.condition("cond", "target", "els") == ["E"]
+        assert "target" not in run.calls
+
+    @pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)
+    def test_falsy_module_no_else_returns_none(self, flow_control):
+        run = _module_runner({"cond": [], "target": ["T"]})
+        _register(flow_control, run, "cond", "target")
+        assert flow_control.condition("cond", "target") is None
+        assert "target" not in run.calls
+
+
+# --------------------------------------------------------------------------- #
+# run_loop                                                                     #
+# --------------------------------------------------------------------------- #
+
+class TestRunLoop:
+    def test_by_count(self, flow_control):
+        run = _module_runner({"mod1": ["ran:mod1"]})
+        flow_control.execute_module = run
+        assert flow_control.run_loop("mod1", "3") == [["ran:mod1"]] * 3
+        assert run.calls == ["mod1", "mod1", "mod1"]
+
+    def test_with_variables(self, flow_control):
+        seen = []
+
+        def run(target):
+            seen.append((
+                flow_control.session.elements.get_first("foo"),
+                flow_control.session.elements.get_first("bar"),
+            ))
+            return [f"{seen[-1][0]}-{seen[-1][1]}"]
+
+        flow_control.execute_module = run
+        out = flow_control.run_loop("mod2", "${foo}", '["1","2"]', "${bar}", '["3","4"]')
+        assert seen == [("1", "3"), ("2", "4")]
+        assert out == [["1-3"], ["2-4"]]
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("mod", "${foo}", "[1,2]", "${bar}"),  # dangling variable, no iterable
+            ("mod", "${foo}", "notalist"),          # iterable is not a list
+        ],
+    )
+    def test_invalid_args_raise(self, flow_control, args):
+        with pytest.raises(OpticsError):
+            flow_control.run_loop(*args)
+
+
+def test_condition_requires_at_least_one_pair(flow_control):
     with pytest.raises(OpticsError):
         flow_control.condition()
     with pytest.raises(OpticsError):
-        flow_control.condition('only_one')
+        flow_control.condition("only_one")
 
-def test_run_loop_invalid_args(flow_control):
-    with pytest.raises(OpticsError):
-        flow_control.run_loop('mod', '${foo}', '[1,2]', '${bar}')
-    with pytest.raises(OpticsError):
-        flow_control.run_loop('mod', '${foo}', 'notalist')
+
+# --------------------------------------------------------------------------- #
+# date_evaluate                                                                #
+# --------------------------------------------------------------------------- #
+
+class TestDateEvaluate:
+    @pytest.mark.parametrize(
+        "input_date, expression, out_fmt, expected",
+        [
+            ("2025-08-14", "+1 day", "%d %B", "15 August"),
+            ("2025-08-14", "-2 days", "%d %B", "12 August"),
+            ("2025-08-14", "today", "%Y-%m-%d", "2025-08-14"),
+            ("08/14/2025", "+1 day", "%Y-%m-%d", "2025-08-15"),
+        ],
+    )
+    def test_valid_expressions(self, flow_control, input_date, expression, out_fmt, expected):
+        result = flow_control.date_evaluate("${d}", input_date, expression, out_fmt)
+        assert result == expected
+        assert flow_control.session.elements.get_first("d") == expected
+
+    @pytest.mark.parametrize(
+        "input_date, expression",
+        [
+            ("not-a-date", "+1 day"),   # undetectable input format
+            ("2025-08-14", "+1 week"),  # unsupported unit
+            ("2025-08-14", "sideways"),  # unsupported expression
+        ],
+    )
+    def test_invalid_inputs_raise(self, flow_control, input_date, expression):
+        with pytest.raises(OpticsError):
+            flow_control.date_evaluate("${d}", input_date, expression)

@@ -6,6 +6,9 @@ coercion, shlex-correct keyword lines, the Gemini missing-dependency error, the
 commit-on-done recording in LiveController.run_natural_language, and config round-tripping.
 """
 import pytest
+import json
+
+from optics_framework.engines.llm_models import gemini
 
 from optics_framework.common.nl_agent import (
     NaturalLanguageAgent,
@@ -292,7 +295,6 @@ class TestActionSchema:
 
     def test_no_anyof_in_schema(self):
         # Gemini structured-output anyOf support is unreliable; the schema must avoid it.
-        import json
 
         assert "anyOf" not in json.dumps(ACTION_SCHEMA)
 
@@ -345,8 +347,6 @@ class TestPageSourceInPrompt:
 
 class TestGeminiMissingDependency:
     def test_instantiation_without_extra_raises_e0601(self, monkeypatch):
-        from optics_framework.engines.llm_models import gemini
-
         monkeypatch.setattr(gemini, "genai", None)
         monkeypatch.setattr(gemini, "_IMPORT_ERROR", ImportError("No module named 'google'"))
         with pytest.raises(OpticsError) as exc_info:
@@ -357,7 +357,6 @@ class TestGeminiMissingDependency:
 
 class TestCurationSchema:
     def test_no_anyof_in_schema(self):
-        import json
 
         assert "anyOf" not in json.dumps(CURATION_SCHEMA)
 

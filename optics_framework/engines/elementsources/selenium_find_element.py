@@ -1,6 +1,6 @@
 import time
-from typing import Any, Optional, List, Tuple
-from selenium.common.exceptions import NoSuchElementException
+from typing import Any, Optional, List, Tuple, Callable
+from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.common.by import By
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
@@ -142,18 +142,13 @@ class SeleniumFindElement(ElementSourceInterface):
         """Return bounding box for an already-located WebElement."""
         return utils.bbox_from_webelement_like(element)
 
-    def assert_elements(self, elements: list, timeout: int = 10, rule: str = "any") -> None:
-        """
-        Assert that elements are present based on the specified rule using Selenium.
+    def _assert_elements_common(
+        self, elements: list, timeout: int, rule: str,
+        check_fn: Callable[[str], bool], not_found_desc: str,
+    ) -> None:
+        """Shared polling loop backing assert_elements/assert_elements_visible.
 
-        Args:
-            elements (list): List of element identifiers to locate (e.g., XPath strings).
-            timeout (int): Maximum time to wait for elements in seconds (default: 10).
-            rule (str): Rule to apply ("any" or "all").
-
-        Returns:
-            Tuple (bool, timestamp) if elements are found before timeout.
-
+        Only the per-element check (presence vs. visibility) and the timeout message differ.
         """
         if rule not in ["any", "all"]:
             msg = "Invalid rule. Use 'any' or 'all'."
@@ -166,22 +161,77 @@ class SeleniumFindElement(ElementSourceInterface):
             raise RuntimeError(msg)
 
         start_time = time.time()
-        found_elements = []
 
         while time.time() - start_time < timeout:
-            found_elements = [self.locate(element) is not None for element in elements]
+            results = [check_fn(element) for element in elements]
 
-            if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
-                timestamp = utils.get_timestamp()
-                if timestamp is None:
-                    timestamp = ""
+            if (rule == "all" and all(results)) or (rule == "any" and any(results)):
                 internal_logger.debug(f"Assertion passed with rule '{rule}' for elements: {elements}")
                 return
 
             time.sleep(0.3)
-        msg = "Timeout reached: None of the specified elements were found."
+        msg = f"Timeout reached: None of the specified elements were {not_found_desc}."
         internal_logger.error(msg)
         raise TimeoutError(msg)
+
+    def assert_elements(self, elements: list, timeout: int = 10, rule: str = "any") -> None:
+        """
+        Assert that elements are present based on the specified rule using Selenium.
+
+        Args:
+            elements (list): List of element identifiers to locate (e.g., XPath strings).
+            timeout (int): Maximum time to wait for elements in seconds (default: 10).
+            rule (str): Rule to apply ("any" or "all").
+
+        Raises:
+            TimeoutError: If elements are not found based on the rule within the timeout.
+        """
+        self._assert_elements_common(
+            elements, timeout, rule,
+            check_fn=lambda element: self.locate(element) is not None,
+            not_found_desc="found",
+        )
+
+    def _is_located_and_visible(self, element: str) -> bool:
+        """True only if `element` both locates, is not CSS-hidden, and is within the viewport.
+
+        `.is_displayed()` alone only checks CSS (display/visibility/opacity) -- an element
+        that is `display:block` but scrolled out of the current viewport still reports
+        True, so it's paired here with a bounding-rect-vs-viewport intersection check.
+        """
+        try:
+            located = self.locate(element)
+            if located is None or not located.is_displayed():
+                # something which doesn't exist cannot be visible
+                # is_displayed() checks css of that element
+                return False
+            # check the bounding box of the screen vs the element
+            return bool(self.driver.execute_script(
+                "var r = arguments[0].getBoundingClientRect();"
+                "return (r.top < window.innerHeight && r.bottom > 0 &&"
+                " r.left < window.innerWidth && r.right > 0);",
+                located,
+            ))
+        except WebDriverException:
+            return False
+
+    def assert_elements_visible(self, elements: list, timeout: int = 10, rule: str = "any") -> None:
+        """
+        Not yet enabled: SeleniumFindElement.locate()/execute_script() currently raise
+        AttributeError because the injected driver is the SeleniumDriver wrapper, not the
+        raw webdriver.Remote it wraps (a separate, pre-existing bug). _is_located_and_visible
+        above has the real bounds-check logic ready to wire back in once that's fixed and
+        this has been verified.
+        """
+        raise NotImplementedError(
+            "SeleniumFindElement does not support assert_elements_visible yet."
+        )
+        # TODO: once fixed and verified, replace the raise above with:
+        #   self._assert_elements_common(
+        #       elements, timeout, rule,
+        #       check_fn=self._is_located_and_visible,
+        #       not_found_desc="visible",
+        #   )
 
 
     def locate_using_index(self) -> None:
