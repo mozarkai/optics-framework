@@ -39,7 +39,7 @@ RUN pip install --no-cache-dir \
         echo "ERROR: No wheel in dist/. Run 'poetry build' first or set WHL_FILE to the .whl filename."; \
         exit 1; \
       fi \
-   && pip install --no-cache-dir "$WHEEL" \
+   && pip install --no-cache-dir "${WHEEL}[stateless]" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
       pip install --no-cache-dir easyocr; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \

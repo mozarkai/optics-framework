@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir uv \
     && playwright install-deps chromium firefox
 
 # Install optics-framework and vision backend (late layer for cache efficiency)
-RUN uv pip install --system optics-framework \
+RUN uv pip install --system "optics-framework[stateless]" \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
         uv pip install --system easyocr; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \
