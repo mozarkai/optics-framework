@@ -402,6 +402,33 @@ def test_migrate_endpoint_refuses_sticky_driver(monkeypatch, tmp_path):
     assert exc.value.status_code == 400
 
 
+def test_delete_endpoint_preserves_conflict_and_not_found_status(monkeypatch):
+    """DELETE .../stop must surface a routing miss with its real status: 404 for
+    an unknown session and 409 (via the SessionOwnedElsewhere handler) when the
+    session lives on another instance. It previously flattened both into 500 by
+    catching them in a blanket ``except Exception``."""
+    from optics_framework.common import expose_api
+
+    manager = SessionManager()
+    monkeypatch.setattr(expose_api, "session_manager", manager)
+
+    # Unknown session: execute_keyword raises HTTPException(404); delete_session
+    # must let it through unchanged rather than rewrap it as 500.
+    monkeypatch.setattr(manager, "get_session", lambda sid: None)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(expose_api.delete_session("missing"))
+    assert exc.value.status_code == 404
+
+    # Owned elsewhere: SessionOwnedElsewhere must propagate to its app-level
+    # handler (which returns 409), not be swallowed into a 500.
+    def _raise_owned(sid):
+        raise SessionOwnedElsewhere(sid)
+
+    monkeypatch.setattr(manager, "get_session", _raise_owned)
+    with pytest.raises(SessionOwnedElsewhere):
+        asyncio.run(expose_api.delete_session("elsewhere"))
+
+
 # --- Layer 2: RedisSessionStore --------------------------------------------------
 #
 # Exercised against `fakeredis` (an in-process Redis emulator, including Lua) so
@@ -590,3 +617,70 @@ def test_redis_local_hit_conflict_when_lease_lost(monkeypatch, tmp_path):
 
     with pytest.raises(SessionOwnedElsewhere):
         manager.get_session(sid)
+
+
+def test_get_session_relinquishes_stale_runtime_on_lost_lease(monkeypatch, tmp_path):
+    """Discovering a lost lease on the request path must also drop the stale
+    runtime — dropping our local client but leaving the backend session and
+    stored state to the reclaiming instance — so it is not resurfaced later."""
+    fake = FakeMigratableDriver()
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
+    client = _fake_redis()
+    store = RedisSessionStore(client)
+    manager = SessionManager(store=store, lease_ttl_s=10)
+
+    sid = _create(manager, tmp_path)
+    client.delete(store._lkey(sid))
+    assert store.acquire_lease(sid, "other-instance", ttl=10) is True
+
+    with pytest.raises(SessionOwnedElsewhere):
+        manager.get_session(sid)
+
+    assert sid not in manager.sessions                      # stale runtime dropped
+    assert fake.detach_calls == 1                           # local client released...
+    assert fake.terminate_calls == 0                        # ...backend left running
+    assert store.get_state(sid) is not None                 # state left for the new owner
+
+
+def test_heartbeat_relinquishes_reclaimed_lease(monkeypatch, tmp_path):
+    """A clean False from renew_lease (the store's definitive answer that the
+    lease was reclaimed) makes the heartbeat drop the runtime, so it stops
+    warning on every tick — without killing the backend or deleting state."""
+    fake = FakeMigratableDriver()
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
+    client = _fake_redis()
+    store = RedisSessionStore(client)
+    manager = SessionManager(store=store, lease_ttl_s=10)
+
+    sid = _create(manager, tmp_path)
+    client.delete(store._lkey(sid))
+    assert store.acquire_lease(sid, "other-instance", ttl=10) is True
+
+    manager._renew_owned_leases()
+
+    assert sid not in manager.sessions
+    assert fake.detach_calls == 1
+    assert fake.terminate_calls == 0
+    stored = store.get_state(sid)
+    assert stored is not None and stored.status == SessionStatus.ACTIVE
+
+
+def test_heartbeat_keeps_runtime_on_transient_store_error(monkeypatch, tmp_path):
+    """A raised store error during renew is ambiguous — the lease may still be
+    ours — so the heartbeat keeps the runtime and retries next tick rather than
+    dropping a session that is still live here."""
+    fake = FakeMigratableDriver()
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([fake]))
+    manager = SessionManager(store=RedisSessionStore(_fake_redis()), lease_ttl_s=10)
+
+    sid = _create(manager, tmp_path)
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("redis blip")
+
+    monkeypatch.setattr(manager.store, "renew_lease", _boom)
+
+    manager._renew_owned_leases()
+
+    assert sid in manager.sessions                          # kept, not relinquished
+    assert fake.detach_calls == 0

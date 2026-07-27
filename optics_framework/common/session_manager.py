@@ -434,9 +434,12 @@ class SessionManager(SessionHandler):
         if session is not None:
             # Renewing on every lookup keeps our lease alive; if renewal fails
             # the lease expired and another instance reclaimed it (Layer 2), so
-            # our local runtime is stale — surface the conflict rather than
-            # serving it. Always True under the in-memory store (Layer 1).
+            # our local runtime is stale. Drop it (without touching the backend
+            # session or stored state, both now the new owner's) so we neither
+            # serve it nor keep warning on it, then surface the conflict.
+            # Always True under the in-memory store (Layer 1).
             if not self.store.renew_lease(session_id, self.instance_id, self.lease_ttl_s):
+                self._relinquish_local_runtime(session_id)
                 raise SessionOwnedElsewhere(session_id)
             return session
         state = self.store.get_state(session_id)
@@ -459,15 +462,26 @@ class SessionManager(SessionHandler):
         A no-op in practice under the in-memory store (leases always granted)."""
         for session_id in list(self.sessions.keys()):
             try:
-                if not self.store.renew_lease(session_id, self.instance_id, self.lease_ttl_s):
-                    internal_logger.warning(
-                        "Heartbeat: lease for session %s lost; another instance may have reclaimed it",
-                        session_id,
-                    )
+                renewed = self.store.renew_lease(session_id, self.instance_id, self.lease_ttl_s)
             except Exception as e:  # keepalive must never die on a transient store error
+                # The store call itself failed (e.g. a Redis blip). We cannot
+                # tell whether the lease is still ours, so keep the runtime and
+                # retry on the next heartbeat rather than relinquishing.
                 internal_logger.warning(
                     "Heartbeat: lease renewal failed for session %s: %s", session_id, e
                 )
+                continue
+            if not renewed:
+                # A clean False (not an exception) is a definitive answer from
+                # the store: the lease expired and another instance reclaimed
+                # and reattached the backend. Our runtime is stale, so drop it
+                # instead of warning forever on every heartbeat.
+                internal_logger.warning(
+                    "Heartbeat: lease for session %s lost; another instance reclaimed it. "
+                    "Relinquishing the stale local runtime.",
+                    session_id,
+                )
+                self._relinquish_local_runtime(session_id)
 
     async def _heartbeat_loop(self, interval: float) -> None:
         while True:
@@ -718,6 +732,30 @@ class SessionManager(SessionHandler):
             with open(path, "wb") as f:
                 f.write(raw)
             session.inline_templates[name] = path
+
+    def _relinquish_local_runtime(self, session_id: str) -> None:
+        """Drop the local runtime for a session whose lease we lost to another
+        instance (Layer 2). Mirrors the instance-local teardown of detach —
+        driver client dropped, temp dir / JUnit / event manager cleared — but
+        performs **no store writes**: the reclaiming instance now owns the
+        stored state, the lease, and the live backend session, so terminating
+        the driver, releasing the lease, or deleting state here would corrupt
+        its session. Best-effort and idempotent; safe to call from the
+        heartbeat or a request path."""
+        session = self.sessions.pop(session_id, None)
+        if session is None:
+            return
+        instance = self._find_driver_instance(session, session.state.driver_binding.driver_type)
+        if instance is not None:
+            try:
+                instance.detach()  # drop our client handle; leaves the backend session running
+            except Exception as e:  # never let cleanup of a lost session raise
+                internal_logger.debug(
+                    "Best-effort detach of relinquished session %s failed: %s", session_id, e
+                )
+        self._teardown_local_runtime(session)
+        cleanup_junit(session_id)
+        get_event_manager_registry().remove_session(session_id)
 
     def _teardown_local_runtime(self, session: Session) -> None:
         """Release instance-local resources without touching the backend

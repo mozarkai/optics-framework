@@ -1336,6 +1336,12 @@ async def delete_session(session_id: str):
     )
     try:
         await execute_keyword(session_id, kill_request)
+    except (HTTPException, SessionOwnedElsewhere, SessionStoreUnavailable):
+        # These already carry the right HTTP semantics — HTTPException was
+        # shaped by execute_keyword (e.g. 404 unknown session), and the lease/
+        # store exceptions map to 409/503 via their app-level handlers. Let
+        # them through so a routing miss isn't flattened into a blanket 500.
+        raise
     except OpticsError as e:
         internal_logger.error(f"Failed to terminate session {session_id}: {e}")
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
