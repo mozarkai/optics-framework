@@ -464,6 +464,23 @@ class ActionKeyword:
         if screenshot_np is not None:
             utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
 
+    @staticmethod
+    def _element_centre(element: Any) -> Optional[Tuple[int, int]]:
+        """Centre (x, y) of a located WebElement in the driver's coordinate space.
+
+        Reads location/size (available on both Appium and Selenium WebElements);
+        returns None if either is unavailable, so callers can fall back.
+        """
+        try:
+            loc = element.location
+            size = element.size
+            return (
+                int(loc["x"] + size["width"] / 2),
+                int(loc["y"] + size["height"] / 2),
+            )
+        except (AttributeError, KeyError, TypeError):
+            return None
+
     # Click actions
     @with_self_healing
     def press_element(
@@ -485,12 +502,28 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         """
+        offset_x_i, offset_y_i = int(offset_x), int(offset_y)
         if isinstance(located, tuple):
             x, y = located
             internal_logger.info(
-                f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
+                f"Pressing at coordinates ({x + offset_x_i}, {y + offset_y_i}) with offset ({offset_x_i}, {offset_y_i})")
             self.driver.press_coordinates(
-                x + int(offset_x), y + int(offset_y), event_name)
+                x + offset_x_i, y + offset_y_i, event_name)
+        elif offset_x_i or offset_y_i:
+            # located is a WebElement (accessibility/XPath). Clicking it directly would
+            # ignore offset_x/offset_y, so derive its centre and press by coordinates
+            # with the offset applied.
+            centre = self._element_centre(located)
+            if centre is not None:
+                cx, cy = centre
+                internal_logger.info(
+                    f"Pressing at coordinates ({cx + offset_x_i}, {cy + offset_y_i}) with offset ({offset_x_i}, {offset_y_i})")
+                for _ in range(int(repeat)):
+                    self.driver.press_coordinates(cx + offset_x_i, cy + offset_y_i, event_name)
+            else:
+                internal_logger.warning(
+                    f"Could not determine element centre for '{element}'; pressing element directly (offset ignored).")
+                self.driver.press_element(located, int(repeat), event_name)
         else:
             internal_logger.info(f"Pressing element '{element}'")
             self.driver.press_element(located, int(repeat), event_name)
