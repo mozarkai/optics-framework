@@ -14,7 +14,7 @@ _optics_completions() {
 
   case ${COMP_CWORD} in
     1)
-      COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
+      COMPREPLY=( $(compgen -W "$subcommands --version --help -h" -- "$cur") )
       return 0
       ;;
     *)
