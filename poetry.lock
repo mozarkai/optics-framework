@@ -61,18 +61,20 @@ trio = ["trio (>=0.32.0)"]
 
 [[package]]
 name = "appium-python-client"
-version = "4.5.1"
+version = "5.3.1"
 description = "Python client for Appium"
 optional = true
-python-versions = "*"
+python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\""
 files = [
-    {file = "appium_python_client-4.5.1.tar.gz", hash = "sha256:9222218a162e480427fda9aebad5250c1bfe77ae04f95f42376a4d983b850656"},
+    {file = "appium_python_client-5.3.1-py3-none-any.whl", hash = "sha256:da0d3227ee059c31908a16f30a131424713ea96998fcd48e255d2cf9d107b557"},
+    {file = "appium_python_client-5.3.1.tar.gz", hash = "sha256:30800f9a53a585814138e7c8f569fd295273f933c9b34ad1a9580f3bf923fc63"},
 ]
 
 [package.dependencies]
 selenium = ">=4.26,<5.0"
+typing-extensions = ">=4.13,<5.0"
 
 [[package]]
 name = "argcomplete"
@@ -6275,4 +6277,4 @@ web = ["playwright", "selenium"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "4c6883f2782122ad0f64bbe46a8dbc7799fdc0f220835f837f5e107d2479888d"
+content-hash = "3d3850e4ad6385b56067d77a94fdb270c734115f5889dc72953e90103fa8777c"
