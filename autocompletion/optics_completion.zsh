@@ -27,6 +27,8 @@ _optics_completions() {
   local state
 
   _arguments -C \
+    '(-)--version[Show the Optics Framework version]' \
+    '(-)--help[-h]' \
     '1:command:->cmds' \
     '*::arg:->args'
 
