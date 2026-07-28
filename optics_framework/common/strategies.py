@@ -598,6 +598,45 @@ class StrategyManager:
             execution_logger.info(f"Using AOI: x={aoi_x}%, y={aoi_y}%, width={aoi_width}%, height={aoi_height}%")
         return use_aoi
 
+    def _within_aoi(
+        self, strategy: "LocatorStrategy", value: Any,
+        aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float,
+    ) -> bool:
+        """True if a located WebElement's centre lies inside the AOI rectangle.
+
+        AOI is applied natively by strategies implementing ``locate_with_aoi`` (OCR /
+        image). Accessibility / XPath strategies return a WebElement and would otherwise
+        ignore the AOI, so this filters them by bounding box. The element centre is
+        compared as a percentage of the driver window against the AOI percentages
+        (percentages are resolution-independent, so no screenshot scaling is needed).
+
+        Fails open (returns True) when the bbox or window size can't be determined, so
+        behaviour is unchanged when the check can't run.
+        """
+        element_source = getattr(strategy, "element_source", None)
+        if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
+            return True
+        try:
+            bbox = element_source.get_bbox_for_element(value)
+        except Exception:  # noqa: BLE001 - best-effort; fall back to not filtering
+            return True
+        window = utils._window_size_from_source(element_source)
+        if bbox is None or window is None:
+            return True
+        (x1, y1), (x2, y2) = bbox
+        win_w, win_h = window
+        if win_w <= 0 or win_h <= 0:
+            return True
+        cx = (x1 + x2) / 2 / win_w * 100
+        cy = (y1 + y2) / 2 / win_h * 100
+        inside = aoi_x <= cx <= aoi_x + aoi_width and aoi_y <= cy <= aoi_y + aoi_height
+        if not inside:
+            internal_logger.debug(
+                f"Element centre ({cx:.1f}%, {cy:.1f}%) outside AOI "
+                f"[{aoi_x},{aoi_y},{aoi_width},{aoi_height}]; skipping match."
+            )
+        return inside
+
     def _try_strategy_locate(
         self,
         strategy: "LocatorStrategy",
@@ -627,6 +666,12 @@ class StrategyManager:
                 value, annotated_frame = result[0], result[1]
             else:
                 value, annotated_frame = result, None
+            if use_aoi and locate_with_aoi is None and not isinstance(value, tuple):
+                # Strategy can't scope to the AOI itself (accessibility/XPath) — enforce
+                # it here so an out-of-AOI match falls through to an AOI-capable strategy.
+                if not self._within_aoi(strategy, value, aoi_x, aoi_y, aoi_width, aoi_height):
+                    execution_tracer.log_attempt(strategy, element, "fail", error="match outside AOI")
+                    return None
             execution_tracer.log_attempt(strategy, element, "success")
             return LocateResult(value, strategy, annotated_frame=annotated_frame)
         except Exception as e:
