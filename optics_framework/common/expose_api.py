@@ -29,7 +29,7 @@ from optics_framework.common.logging_config import internal_logger, reconfigure_
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
-from optics_framework.common.utils import _is_list_type
+from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.helper.execute import discover_templates
 from optics_framework.helper.version import VERSION
@@ -1095,10 +1095,17 @@ async def _gather_workspace_data(
     try:
         verifier = session.optics.build(Verifier)
 
-        screenshot_task = asyncio.create_task(asyncio.to_thread(verifier.capture_screenshot))
-        elements_task = asyncio.create_task(asyncio.to_thread(verifier.get_interactive_elements, filter_config))
-
-        screenshot, elements = await asyncio.gather(screenshot_task, elements_task)
+        # Capture one frame and derive both the returned image and the element bounds
+        # from it, so bounds are scaled to the exact screenshot pixel space the client
+        # renders (see Verifier._collect_interactive_elements).
+        screenshot_np = await asyncio.to_thread(verifier._safe_capture_screenshot_np)
+        elements = await asyncio.to_thread(
+            verifier._collect_interactive_elements, filter_config, screenshot_np
+        )
+        screenshot = (
+            await asyncio.to_thread(encode_numpy_to_base64, screenshot_np)
+            if screenshot_np is not None else ""
+        )
 
         workspace_data: Dict[str, Any] = {
             KEY_SCREENSHOT: screenshot or "",
