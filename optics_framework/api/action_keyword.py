@@ -466,13 +466,13 @@ class ActionKeyword:
 
     @staticmethod
     def _element_centre(element: Any) -> Optional[Tuple[int, int]]:
-        """Centre (x, y) of a located WebElement in the driver's coordinate space.
+        """Centre (x, y) of a located WebElement, or None if geometry is unavailable.
 
-        Reads location/size (available on both Appium and Selenium WebElements);
-        returns None if either is unavailable, so callers can fall back.
+        Uses ``location_once_scrolled_into_view`` (scrolls it on-screen first, so an
+        offset lands even on a partly off-screen element); falls back to ``location``.
         """
         try:
-            loc = element.location
+            loc = getattr(element, "location_once_scrolled_into_view", None) or element.location
             size = element.size
             return (
                 int(loc["x"] + size["width"] / 2),
@@ -510,9 +510,8 @@ class ActionKeyword:
             self.driver.press_coordinates(
                 x + offset_x_i, y + offset_y_i, event_name)
         elif offset_x_i or offset_y_i:
-            # located is a WebElement (accessibility/XPath). Clicking it directly would
-            # ignore offset_x/offset_y, so derive its centre and press by coordinates
-            # with the offset applied.
+            # located is a WebElement: clicking it would ignore the offset, so press by
+            # its centre + offset instead. _element_centre scrolls it into view first.
             centre = self._element_centre(located)
             if centre is not None:
                 cx, cy = centre
