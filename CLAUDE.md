@@ -181,6 +181,10 @@ For an `execute` run, `config.execution_output_path` (default `<project>/executi
 - screenshots — saved by `ActionKeyword._save_screenshot_if_available` (`:288`), AOI overlays by `_maybe_save_aoi_screenshot` (`:32`), strategy-annotated frames by `_save_annotated_for_result` (`:54`). Element bboxes come back in the driver's **window coordinate space**, so they are scaled to the screenshot's **pixel space** via `utils.scale_bboxes_for_screenshot` (`common/utils.py:978`) before drawing (call site in `strategies.py`); skipping this skews annotations on high-DPI / scaled displays. Persistence to disk is gated by `Config.save_captures` (`config_handler.py:32`, default `True`) via `Verifier.capture_output_dir` — `optics serve` sessions explicitly disable it since HTTP callers get the bytes/XML in the response and don't need a disk copy.
 - an end-of-run screenshot + pagesource, captured once per batch run by `TestRunner._capture_end_of_run_artifacts` (`test_runnner.py:492`) and fed into on-screen error detection (see that section above).
 
+## Local SonarQube analysis
+
+CI runs static analysis on every push to `main` via `.github/workflows/mozarksonar.yml` (`sonarqube-scan-action` against a company-hosted SonarQube, project key from `sonar-project.properties`). To catch the same findings before pushing, run the `sonarsource/sonar-scanner-cli` container against a local `sonarqube:community` container — see [Local Static Analysis](docs/contribution/developer_guide.md#5-local-static-analysis-sonarqube-optional) in the developer guide.
+
 ## Working agreement (how to collaborate here)
 
 - **Never co-author commits with your name.** Do not add `Co-Authored-By: Claude ...` (or any AI attribution) trailer to commit messages or PR bodies. Commits are authored solely by the human committer.
