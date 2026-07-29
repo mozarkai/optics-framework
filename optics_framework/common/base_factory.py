@@ -216,6 +216,18 @@ class InstanceFallback(BaseModel, Generic[T]):
         super().__init__(instances=instances, **data)
         self.current_instance = instances[0] if instances else None
 
+    @property
+    def active_instance(self) -> Optional[T]:
+        """The concrete instance currently in play.
+
+        Prefers ``current_instance`` (the one the last fallback call selected), falling
+        back to the first configured instance, or ``None`` when there are none. Callers
+        that need a real attribute off the wrapped source (e.g. ``REQUIRED_DRIVER_TYPE``
+        or ``driver``) must go through this -- reading such an attribute off the wrapper
+        directly would be intercepted by ``__getattr__`` and returned as a callable.
+        """
+        return self.current_instance or (self.instances[0] if self.instances else None)
+
     def __getattr__(self, attr):
         def fallback_method(*args, **kwargs):
             if not self.instances:

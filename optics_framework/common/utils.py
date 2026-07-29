@@ -942,31 +942,61 @@ def _window_size_from_source(element_source: Any) -> Optional[Tuple[int, int]]:
     return None
 
 
-def _scale_bbox(
+def _pixel_scale_for_source(
+    element_source: Any,
+    screenshot: Optional[np.ndarray],
+) -> Optional[Tuple[float, float]]:
+    """
+    Compute the per-axis scale that maps the driver's window coordinate space onto
+    the screenshot's pixel space, or ``None`` when scaling should not be applied.
+
+    * Gated to **Appium** sources. Their page-source/WebElement coordinates and the
+      driver's window size share one coordinate system (points on iOS, pixels on
+      Android), so ``screenshot / window`` is a meaningful ratio. Web sources
+      (Selenium/Playwright) report element coordinates (CSS pixels, scroll-relative)
+      and window size in unrelated spaces, so the ratio is not correct there and we
+      return ``None`` to leave their coordinates untouched.
+    * Best-effort and non-failing: returns ``None`` when no screenshot is available,
+      the window size can't be determined, or its shape can't be read — callers then
+      leave coordinates unscaled rather than raising.
+
+    :param element_source: Element source (possibly an ``InstanceFallback`` wrapper).
+    :param screenshot: The captured frame whose pixel space is the target.
+    :return: ``(scale_x, scale_y)``, or ``None`` when scaling must not be applied.
+    """
+    if screenshot is None:
+        return None
+    source = getattr(element_source, "active_instance", None) or element_source
+    if getattr(source, "REQUIRED_DRIVER_TYPE", None) != "appium":
+        return None
+    window_size = _window_size_from_source(source)
+    if window_size is None:
+        return None
+    window_width, window_height = window_size
+    try:
+        screenshot_height, screenshot_width = screenshot.shape[:2]
+    except (AttributeError, TypeError):
+        return None
+    if window_width <= 0 or window_height <= 0:
+        return None
+    return screenshot_width / window_width, screenshot_height / window_height
+
+
+def _apply_scale_to_bbox(
     bbox: Optional[Tuple[Tuple[int, int], Tuple[int, int]]],
-    window_size: Tuple[int, int],
-    screenshot: np.ndarray,
+    scale_x: float,
+    scale_y: float,
 ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
     """
-    Scale a single bbox from window-coordinate space into the screenshot's
-    pixel space.
+    Multiply a single ``((x1,y1),(x2,y2))`` bbox by the given per-axis scale.
 
-    A bbox is reported in the driver's window coordinate space, while the
-    screenshot may be captured at a different resolution. Multiply each corner by
-    the per-axis scale (screenshot size / window size) to map it onto the image.
-    When the window size equals the screenshot size the scale is 1.0 and this is a
-    no-op (``int(x * 1.0) == x``). Returns the bbox unchanged on any failure.
+    When the scale is 1.0 this is a no-op (``int(x * 1.0) == x``). Returns the bbox
+    unchanged on any structural failure.
     """
     if bbox is None:
         return bbox
     try:
         (x1, y1), (x2, y2) = bbox
-        win_w, win_h = window_size
-        sh_h, sh_w = screenshot.shape[:2]
-        if win_w <= 0 or win_h <= 0:
-            return bbox
-        scale_x = sh_w / win_w
-        scale_y = sh_h / win_h
         return (
             (int(x1 * scale_x), int(y1 * scale_y)),
             (int(x2 * scale_x), int(y2 * scale_y)),
@@ -991,10 +1021,10 @@ def scale_bboxes_for_screenshot(
     maps them correctly. When the two sizes match, the scale is 1.0 and the boxes
     are left unchanged.
 
-    Best-effort and non-failing: if the window size can't be determined (e.g. the
-    source has no driver, or the driver errors) or no screenshot is available, the
-    bboxes are returned unchanged so annotation falls back to drawing them as-is.
-    Window size is fetched once for the whole list. Do not use this for OCR /
+    Best-effort and non-failing: scaling is applied only when ``_pixel_scale_for_source``
+    yields a ratio (Appium source, determinable window size, screenshot available);
+    otherwise the bboxes are returned unchanged so annotation falls back to drawing
+    them as-is. The scale is computed once for the whole list. Do not use this for OCR /
     image-detection bboxes — those are already computed in the screenshot's pixel
     space and need no conversion.
 
@@ -1003,12 +1033,63 @@ def scale_bboxes_for_screenshot(
     :param screenshot: The captured frame the bboxes will be drawn onto.
     :return: bboxes scaled to the screenshot's pixel space, or unchanged on any failure.
     """
-    if screenshot is None or not bboxes:
+    if not bboxes:
         return bboxes
-    window_size = _window_size_from_source(element_source)
-    if window_size is None:
+    scale = _pixel_scale_for_source(element_source, screenshot)
+    if scale is None:
         return bboxes
-    return [_scale_bbox(b, window_size, screenshot) for b in bboxes]
+    scale_x, scale_y = scale
+    return [_apply_scale_to_bbox(b, scale_x, scale_y) for b in bboxes]
+
+
+def scale_interactive_element_bounds(
+    elements: List[Any],
+    element_source: Any,
+    screenshot: Optional[np.ndarray],
+) -> None:
+    """
+    Scale the ``bounds`` of interactive-element dicts from the driver's window
+    coordinate space into the screenshot's pixel space, mutating ``elements`` in place.
+
+    Interactive elements returned by ``get_interactive_elements`` carry ``bounds``
+    ({"x1","y1","x2","y2"}) sourced from the page source, expressed in the driver's
+    window coordinate space. When that differs in resolution from the captured
+    screenshot (e.g. Retina iOS, where the page source reports points and the
+    screenshot is in pixels), a client drawing the bounds over the screenshot would
+    mis-place them. Rewriting each ``bounds`` in place leaves them already aligned to
+    the screenshot's pixels, so API/workspace consumers need no scaling of their own.
+
+    Shares ``_pixel_scale_for_source`` with ``scale_bboxes_for_screenshot`` — the same
+    Appium gate and window-size logic — so the two paths can never disagree. No-op on
+    Android (window == screenshot), on non-Appium sources, or when no screenshot /
+    window size is available. (Dicts are mutable, so this mutates in place; the tuple
+    variant returns a new list because its bboxes are immutable.)
+
+    :param elements: List of element dicts; each may carry a ``bounds`` dict. Modified in place.
+    :param element_source: Element source (possibly an ``InstanceFallback`` wrapper).
+    :param screenshot: The captured frame whose pixel space bounds are mapped into.
+    """
+    if not elements:
+        return
+    scale = _pixel_scale_for_source(element_source, screenshot)
+    if scale is None:
+        return
+    scale_x, scale_y = scale
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        bounds = el.get("bounds")
+        if not isinstance(bounds, dict):
+            continue
+        try:
+            el["bounds"] = {
+                "x1": int(bounds["x1"] * scale_x),
+                "y1": int(bounds["y1"] * scale_y),
+                "x2": int(bounds["x2"] * scale_x),
+                "y2": int(bounds["y2"] * scale_y),
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
 
 
 def bboxes_from_webelements(
