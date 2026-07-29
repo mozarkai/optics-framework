@@ -604,14 +604,11 @@ class StrategyManager:
     ) -> bool:
         """True if a located WebElement's centre lies inside the AOI rectangle.
 
-        AOI is applied natively by strategies implementing ``locate_with_aoi`` (OCR /
-        image). Accessibility / XPath strategies return a WebElement and would otherwise
-        ignore the AOI, so this filters them by bounding box. The element centre is
-        compared as a percentage of the driver window against the AOI percentages
-        (percentages are resolution-independent, so no screenshot scaling is needed).
+        Filters accessibility/XPath matches (which return a WebElement and ignore the
+        AOI, unlike ``locate_with_aoi`` OCR/image strategies), comparing the centre as a
+        window percentage against the AOI. Fails open when bbox/window is unknown.
 
-        Fails open (returns True) when the bbox or window size can't be determined, so
-        behaviour is unchanged when the check can't run.
+        Centre-point test, so it can disagree with an OCR/image crop at the AOI edge.
         """
         element_source = getattr(strategy, "element_source", None)
         if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
