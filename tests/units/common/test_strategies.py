@@ -482,6 +482,39 @@ class TestLocateRealStrategies:
         assert exc_info.value.code == Code.E0201
 
 
+class TestTryStrategyLocateAoiFallthrough:
+    """AOI enforcement for strategies that can't scope natively (accessibility/XPath):
+    a WebElement match whose centre is outside the AOI is skipped, so locate() falls
+    through to an AOI-capable strategy; one inside is returned."""
+
+    def _stub_strategy(self, bbox):
+        source = MagicMock()
+        source.get_bbox_for_element.return_value = bbox
+        # spec omits locate_with_aoi, so the manager takes the non-native-AOI path.
+        strategy = MagicMock(spec=["supports", "locate", "element_source"])
+        strategy.supports.return_value = True
+        strategy.locate.return_value = MagicMock(name="webelement")  # a WebElement, not a tuple
+        strategy.element_source = source
+        return strategy
+
+    def _locate(self, bbox, aoi):
+        strategy = self._stub_strategy(bbox)
+        with patch.object(utils, "_window_size_from_source", return_value=(100, 100)):
+            return _sm(MagicMock())._try_strategy_locate(
+                strategy, "//div", "XPath", True, *aoi, index=0
+            )
+
+    def test_match_inside_aoi_is_returned(self):
+        # centre (50%,50%) inside AOI x25 y25 w50 h50
+        result = self._locate(((40, 40), (60, 60)), (25, 25, 50, 50))
+        assert result is not None and isinstance(result, LocateResult)
+
+    def test_match_outside_aoi_is_skipped(self):
+        # centre (5%,5%) outside the same AOI -> falls through (None)
+        result = self._locate(((0, 0), (10, 10)), (25, 25, 50, 50))
+        assert result is None
+
+
 class TestImageDetectionStrategy:
     """ImageDetectionStrategy locates an image element via image_detection."""
 
