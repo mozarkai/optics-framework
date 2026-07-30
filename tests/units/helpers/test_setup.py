@@ -18,9 +18,11 @@ import pytest
 from optics_framework.helper.setup import (
     ALL_ENGINES,
     DISTRIBUTION_NAME,
+    InstallRequest,
     _BUNDLES,
     _alias_index,
     _norm,
+    _split_token,
     install_extras,
     resolve_engines,
 )
@@ -28,6 +30,11 @@ from optics_framework.helper.setup import (
 pytestmark = pytest.mark.white_box
 
 MODULE = "optics_framework.helper.setup"
+
+
+def _reqs(*names: str) -> list[InstallRequest]:
+    """InstallRequests (no version) for the named engines, as the TUI builds them."""
+    return [InstallRequest(engine=ALL_ENGINES[name]) for name in names]
 
 
 # --------------------------------------------------------------------------- #
@@ -84,22 +91,22 @@ class TestAliasIndex:
 class TestResolveEngines:
     def test_resolves_display_name(self):
         resolved, invalid = resolve_engines(["Appium"])
-        assert [e.extra for e in resolved] == ["appium"]
+        assert [r.engine.extra for r in resolved] == ["appium"]
         assert invalid == []
 
     def test_resolves_extra_and_config_key_case_insensitively(self):
         resolved, invalid = resolve_engines(["APPIUM", "google-vision"])
-        assert [e.extra for e in resolved] == ["appium", "google-vision"]
+        assert [r.engine.extra for r in resolved] == ["appium", "google-vision"]
         assert invalid == []
 
     def test_reports_unknown_tokens_as_invalid(self):
         resolved, invalid = resolve_engines(["appium", "not-a-driver"])
-        assert [e.extra for e in resolved] == ["appium"]
+        assert [r.engine.extra for r in resolved] == ["appium"]
         assert invalid == ["not-a-driver"]
 
     def test_deduplicates_across_alias_forms(self):
         resolved, invalid = resolve_engines(["Appium", "appium"])
-        assert [e.extra for e in resolved] == ["appium"]
+        assert [r.engine.extra for r in resolved] == ["appium"]
         assert invalid == []
 
     @pytest.mark.parametrize(
@@ -112,26 +119,65 @@ class TestResolveEngines:
     )
     def test_bundle_expands_to_member_engines(self, bundle, expected_extras):
         resolved, invalid = resolve_engines([bundle])
-        assert [e.extra for e in resolved] == expected_extras
+        assert [r.engine.extra for r in resolved] == expected_extras
         assert invalid == []
 
     def test_all_bundle_expands_to_every_engine(self):
         resolved, invalid = resolve_engines(["all"])
-        assert {e.extra for e in resolved} == {e.extra for e in ALL_ENGINES.values()}
+        assert {r.engine.extra for r in resolved} == {e.extra for e in ALL_ENGINES.values()}
         assert invalid == []
 
     def test_bundle_is_case_insensitive(self):
         resolved, _ = resolve_engines(["WEB"])
-        assert [e.extra for e in resolved] == ["selenium", "playwright"]
+        assert [r.engine.extra for r in resolved] == ["selenium", "playwright"]
 
     def test_bundle_and_member_dedupe(self):
         # "web" pulls selenium+playwright; the explicit "selenium" must not repeat.
         resolved, invalid = resolve_engines(["web", "selenium"])
-        assert [e.extra for e in resolved] == ["selenium", "playwright"]
+        assert [r.engine.extra for r in resolved] == ["selenium", "playwright"]
         assert invalid == []
 
     def test_empty_input(self):
         assert resolve_engines([]) == ([], [])
+
+    def test_version_specifier_is_parsed_onto_request(self):
+        resolved, invalid = resolve_engines(["appium==4.2.0"])
+        assert [(r.engine.extra, r.version) for r in resolved] == [("appium", "==4.2.0")]
+        assert invalid == []
+
+    def test_range_specifier_preserved_verbatim(self):
+        resolved, _ = resolve_engines(["easyocr>=1.7,<2.0"])
+        assert resolved[0].version == ">=1.7,<2.0"
+
+    def test_version_on_bundle_is_invalid(self):
+        resolved, invalid = resolve_engines(["all==1.0"])
+        assert resolved == []
+        assert invalid == ["all==1.0"]
+
+    def test_explicit_version_wins_over_bare_duplicate(self):
+        # bundle brings selenium bare; explicit token then pins it.
+        resolved, _ = resolve_engines(["web", "selenium==4.20"])
+        selenium = next(r for r in resolved if r.engine.extra == "selenium")
+        assert selenium.version == "==4.20"
+
+
+# --------------------------------------------------------------------------- #
+# _split_token                                                                 #
+# --------------------------------------------------------------------------- #
+
+class TestSplitToken:
+    @pytest.mark.parametrize(
+        "token, name, spec",
+        [
+            ("appium", "appium", None),
+            ("appium==4.2.0", "appium", "==4.2.0"),
+            ("google-vision==3.5", "google-vision", "==3.5"),
+            ("easyocr>=1.7,<2.0", "easyocr", ">=1.7,<2.0"),
+            ("appium ~= 4.2", "appium", "~= 4.2"),
+        ],
+    )
+    def test_splits_name_from_specifier(self, token, name, spec):
+        assert _split_token(token) == (name, spec)
 
 
 # --------------------------------------------------------------------------- #
@@ -146,7 +192,7 @@ class TestInstallExtras:
         assert "No engines selected" in capsys.readouterr().out
 
     def test_installs_version_pinned_spec(self):
-        engines = [ALL_ENGINES["Appium"]]
+        engines = _reqs("Appium")
         with patch(f"{MODULE}._installed_version", return_value="1.2.3"), \
                 patch(f"{MODULE}.subprocess.run") as run:
             install_extras(engines)
@@ -158,22 +204,39 @@ class TestInstallExtras:
     def test_unpinned_when_version_unknown(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras([ALL_ENGINES["Appium"]])
+            install_extras(_reqs("Appium"))
         args = run.call_args.args[0]
         assert args[-1] == f"{DISTRIBUTION_NAME}[appium]"
 
     def test_extras_sorted_and_deduped_in_spec(self):
-        engines = [ALL_ENGINES["Selenium"], ALL_ENGINES["Appium"], ALL_ENGINES["Selenium"]]
+        engines = _reqs("Selenium", "Appium", "Selenium")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
             install_extras(engines)
         spec = run.call_args.args[0][-1]
         assert spec == f"{DISTRIBUTION_NAME}[appium,selenium]"
 
+    def test_version_override_appends_pinned_package(self):
+        reqs = [InstallRequest(engine=ALL_ENGINES["Appium"], version="==4.2.0")]
+        with patch(f"{MODULE}._installed_version", return_value="1.2.3"), \
+                patch(f"{MODULE}.subprocess.run") as run:
+            install_extras(reqs)
+        assert run.call_args.args[0] == [
+            sys.executable, "-m", "pip", "install",
+            f"{DISTRIBUTION_NAME}[appium]==1.2.3", "appium-python-client==4.2.0",
+        ]
+
+    def test_no_version_appends_nothing(self):
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.run") as run:
+            install_extras(_reqs("Appium"))
+        # extras spec only, no trailing concrete package.
+        assert run.call_args.args[0][-1] == f"{DISTRIBUTION_NAME}[appium]"
+
     def test_playwright_triggers_browser_install(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras([ALL_ENGINES["Playwright"]])
+            install_extras(_reqs("Playwright"))
         assert run.call_count == 2
         assert run.call_args_list[1] == call(
             [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
@@ -183,14 +246,14 @@ class TestInstallExtras:
     def test_non_playwright_skips_browser_install(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras([ALL_ENGINES["Appium"]])
+            install_extras(_reqs("Appium"))
         assert run.call_count == 1
 
     def test_failure_prints_captured_stderr(self, capsys):
         err = subprocess.CalledProcessError(1, "pip", stderr="boom: could not resolve")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run", side_effect=err):
-            install_extras([ALL_ENGINES["Appium"]])
+            install_extras(_reqs("Appium"))
         out = capsys.readouterr().out
         assert "Installation failed" in out
         assert "boom: could not resolve" in out
@@ -199,7 +262,7 @@ class TestInstallExtras:
         err = subprocess.CalledProcessError(1, "pip", output="stdout detail", stderr="")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run", side_effect=err):
-            install_extras([ALL_ENGINES["Appium"]])
+            install_extras(_reqs("Appium"))
         assert "stdout detail" in capsys.readouterr().out
 
 

@@ -1,3 +1,4 @@
+import re
 import subprocess  # nosec B404
 from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, List, Optional
@@ -26,6 +27,15 @@ class EngineBackend(BaseModel):
 class EngineCategory(BaseModel):
     name: str
     engines: Dict[str, EngineBackend]
+
+
+class InstallRequest(BaseModel):
+    """One engine to install, optionally with a user-supplied version specifier.
+
+    ``version`` is the raw PEP 508 tail (e.g. ``"==4.2.0"``, ``">=4.0,<4.3"``)
+    parsed off the CLI token; ``None`` means "let the extra's own bound decide"."""
+    engine: EngineBackend
+    version: Optional[str] = None
 
 
 # Engine-backend definitions. The `extra` matches the pyproject extra name, which
@@ -86,6 +96,22 @@ def _norm(token: str) -> str:
     return token.strip().lower().replace(" ", "_").replace("-", "_")
 
 
+# First char that starts a PEP 508 version specifier ( ==, >=, ~=, !=, <, > ).
+_SPEC_START = re.compile(r"[=<>!~]")
+
+
+def _split_token(token: str) -> tuple[str, Optional[str]]:
+    """Split a CLI token into its engine name and optional version specifier.
+
+    ``"appium==4.2.0"`` → ``("appium", "==4.2.0")``; ``"easyocr"`` → ``("easyocr",
+    None)``. The specifier tail is passed through to pip verbatim (pip validates
+    it), so any PEP 508 form is accepted, not just ``==``."""
+    match = _SPEC_START.search(token)
+    if match is None:
+        return token.strip(), None
+    return token[:match.start()].strip(), token[match.start():].strip()
+
+
 def _alias_index() -> Dict[str, EngineBackend]:
     """Build a lookup from every accepted token (display name, extra, config key,
     explicit aliases) — all normalised to lowercase/underscore — to its
@@ -97,32 +123,60 @@ def _alias_index() -> Dict[str, EngineBackend]:
     return index
 
 
-def resolve_engines(tokens: List[str]) -> tuple[List[EngineBackend], List[str]]:
-    """Resolve user-supplied tokens to EngineBackends. Returns (resolved, invalid).
+def _add_request(resolved: List[InstallRequest], engine: EngineBackend, version: Optional[str]) -> None:
+    """Add `engine` to `resolved`, or merge `version` onto its existing entry —
+    an explicit version wins over a bare one already recorded for that engine."""
+    existing = next((r for r in resolved if r.engine is engine), None)
+    if existing is None:
+        resolved.append(InstallRequest(engine=engine, version=version))
+    elif version and not existing.version:
+        existing.version = version
+
+
+def _resolve_token(
+    token: str,
+    index: Dict[str, EngineBackend],
+    resolved: List[InstallRequest],
+    invalid: List[str],
+) -> None:
+    """Resolve one CLI token, appending to `resolved` or `invalid` in place.
+
+    A bundle token expands to its member engines (bare, no version); a
+    specifier on a bundle token is rejected since one version can't apply to
+    many packages. Anything else resolves through the alias index."""
+    name, spec = _split_token(token)
+    norm = _norm(name)
+    bundle = _BUNDLES.get(norm)
+    if bundle is not None:
+        if spec is not None:
+            invalid.append(token)
+            return
+        for engine in bundle:
+            _add_request(resolved, engine, None)
+        return
+    engine = index.get(norm)
+    if engine is None:
+        invalid.append(token)
+    else:
+        _add_request(resolved, engine, spec)
+
+
+def resolve_engines(tokens: List[str]) -> tuple[List[InstallRequest], List[str]]:
+    """Resolve user-supplied tokens to InstallRequests. Returns (resolved, invalid).
 
     Accepts display names ("Appium", "Google Vision"), config/extra keys
     ("appium", "google-vision", "google_vision"), and convenience bundles
-    ("mobile", "web", "vision", "all") — all case-insensitively. Bundles expand
-    to their member engines, deduplicated while preserving first-seen order."""
+    ("mobile", "web", "vision", "all") — all case-insensitively. Any token may
+    carry a PEP 508 version specifier ("appium==4.2.0", "easyocr>=1.7,<2.0") to
+    override the extra's default bound; a specifier on a bundle is rejected as
+    invalid since one version can't apply to many packages. Bundles expand to
+    their member engines, deduplicated while preserving first-seen order; when
+    the same engine is named twice, an explicit version wins over a bare one."""
     index = _alias_index()
-    resolved: List[EngineBackend] = []
+    resolved: List[InstallRequest] = []
     invalid: List[str] = []
-
-    def _add(engine: EngineBackend) -> None:
-        if engine not in resolved:
-            resolved.append(engine)
-
     for token in tokens:
-        norm = _norm(token)
-        if norm in _BUNDLES:
-            for engine in _BUNDLES[norm]:
-                _add(engine)
-            continue
-        engine = index.get(norm)
-        if engine is None:
-            invalid.append(token)
-        else:
-            _add(engine)
+        _resolve_token(token, index, resolved, invalid)
     return resolved, invalid
 
 
@@ -187,10 +241,12 @@ class EngineInstallerApp(App):
             self.exit()
 
     def install_engines(self) -> None:
+        """Install every checked engine. The checkbox UI has no version field,
+        so each selection installs at its extra's default bound."""
         if not self.selected_engines:
             self.notify("No engines selected!", severity="warning")
             return
-        install_extras(list(self.selected_engines.values()))
+        install_extras([InstallRequest(engine=e) for e in self.selected_engines.values()])
 
 
 def _installed_version() -> Optional[str]:
@@ -200,26 +256,36 @@ def _installed_version() -> Optional[str]:
         return None
 
 
-def install_extras(engines: List[EngineBackend]) -> None:
+def install_extras(requests: List[InstallRequest]) -> None:
     """Install the selected engine backends by pulling the matching
     `optics-framework` extras, pinned to the installed version so the CLI is
-    never upgraded out from under the user."""
-    if not engines:
+    never upgraded out from under the user.
+
+    A request carrying an explicit ``version`` also adds its primary package as a
+    concrete pinned requirement (e.g. ``appium-python-client==4.2.0``); pip
+    intersects that with the extra's own bound, so an override outside the
+    supported range fails loudly rather than silently downgrading it.
+    ``packages[0]`` is each engine's primary package — the one a version
+    override targets. Extra packages, like pytesseract's pillow, stay on the
+    extra's bound."""
+    if not requests:
         print("No engines selected.")
         return
 
-    extras = sorted({engine.extra for engine in engines})
+    extras = sorted({req.engine.extra for req in requests})
     installed = _installed_version()
     spec = f"{DISTRIBUTION_NAME}[{','.join(extras)}]"
     if installed:
         spec = f"{spec}=={installed}"
 
+    pinned = [f"{req.engine.packages[0]}{req.version}" for req in requests if req.version]
+
     try:
         subprocess.run(  # nosec B603
-            [sys.executable, "-m", "pip", "install", spec],
+            [sys.executable, "-m", "pip", "install", spec, *pinned],
             capture_output=True, text=True, check=True, shell=False)
 
-        if any(engine.extra == "playwright" for engine in engines):
+        if any(req.engine.extra == "playwright" for req in requests):
             print("Installing Playwright Chromium browser and system dependencies...")
             # Per https://playwright.dev/python/docs/browsers this must run after
             # the pip install. Chromium is the most common target; --with-deps
@@ -248,4 +314,7 @@ def list_engines() -> None:
     print("Bundles (install several at once):")
     for name, engines in _BUNDLES.items():
         print(f"  {name:<15} ({', '.join(engine.extra for engine in engines)})")
+    print()
+    print("Pin a version by appending a specifier, e.g. "
+          "`optics setup --install appium==4.2.0`.")
     print()
