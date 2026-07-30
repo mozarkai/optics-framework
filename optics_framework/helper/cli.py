@@ -365,7 +365,8 @@ class EngineInstaller(Command):
             "setup", help="Install optional engine backends (drivers/OCR/LLM)")
         parser.add_argument(
             "--install", nargs="+", metavar="NAME",
-            help="Install the given engines, e.g. --install appium easyocr")
+            help="Install the given engines, e.g. --install appium easyocr. "
+                 "Append a version to pin it, e.g. --install appium==4.2.0")
         parser.add_argument("--list", action="store_true",
                         help="List all available engines")
         parser.set_defaults(func=self.execute)
