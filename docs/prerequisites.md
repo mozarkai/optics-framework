@@ -45,7 +45,7 @@ optics setup --list                # list installable engines
 optics setup --install appium easyocr
 ```
 
-Convenience bundles also exist: `mobile`, `web`, `vision`, `all`.
+Convenience bundles also exist: `mobile`, `web`, `vision`, `all`. Append a version specifier to pin an engine (e.g. `optics setup --install appium==4.2.0`).
 
 ---
 

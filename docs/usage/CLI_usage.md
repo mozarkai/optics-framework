@@ -26,6 +26,14 @@ optics setup --install appium easyocr
 
 This is equivalent to `pip install "optics-framework[appium,easyocr]"`. See [Installation & Prerequisites](../prerequisites.md) for the full extras table and the external tooling (Appium server, adb, browsers) each engine needs.
 
+Pin a specific version by appending a specifier to any engine (handy for reproducible CI):
+
+```bash
+optics setup --install appium==4.2.0 "easyocr>=1.7,<2.0"
+```
+
+The version applies to the engine's main package and is intersected with the extra's supported range, so an out-of-range pin fails loudly instead of silently downgrading. A specifier on a bundle (e.g. `all==1.0`) is rejected.
+
 ## Executing Test Cases
 
 Run test cases from a project folder. The runner discovers test cases (and modules, elements, config) from that folder:
