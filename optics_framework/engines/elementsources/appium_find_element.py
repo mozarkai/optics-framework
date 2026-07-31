@@ -113,8 +113,16 @@ class AppiumFindElement(ElementSourceInterface):
         elif element_type == 'Text':
             locator = element[len("text="):] if element.lower().startswith("text=") else element
             try:
-                found_element = driver.find_element(AppiumBy.ACCESSIBILITY_ID, locator)
-                return found_element
+                found_elements = driver.find_elements(AppiumBy.ACCESSIBILITY_ID, locator)
+                index_to_use = 0 if index is None else index
+                if not found_elements or index_to_use < 0 or index_to_use >= len(found_elements):
+                    raise OpticsError(
+                        Code.E0201,
+                        message=f"Element of type {element_type} and index {index_to_use} not found using: {element}",
+                    )
+                return found_elements[index_to_use]
+            except OpticsError:
+                raise
             except NoSuchElementException as e:
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:

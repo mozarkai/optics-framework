@@ -153,3 +153,29 @@ poetry run cz commit
 This will interactively guide you through creating a commit message that follows the Conventional Commits format.
 
 **NOTE:** If you installed the pre-commit hooks (step 1.3), they will automatically run on each commit to check code quality and validate commit messages.
+
+## 5. Local Static Analysis (SonarQube, Optional)
+
+CI runs SonarQube static analysis on every push to `main` (`.github/workflows/mozarksonar.yml`). To catch the same findings before you push, run the scanner locally against a throwaway SonarQube container instead of the shared server.
+
+Start a local SonarQube server once:
+
+```bash
+docker run -d --name sonarqube -p 9000:9000 sonarqube:community
+```
+
+Open `http://localhost:9000` (default login `admin`/`admin`), wait for it to finish starting, and generate a token under **My Account → Security**.
+
+Then run the scanner from the repo root, pointing it at that server:
+
+```bash
+docker run --rm \
+    -v "$(pwd):/usr/src" \
+    --network=host \
+    -e SONAR_HOST_URL="http://localhost:9000" \
+    -e SONAR_SCANNER_OPTS="-Dsonar.projectKey=optics-framework" \
+    -e SONAR_TOKEN="<your-token>" \
+    sonarsource/sonar-scanner-cli
+```
+
+Findings are printed by the scanner and shown on the dashboard at `http://localhost:9000/dashboard?id=optics-framework`. The scanner writes a `.scannerwork/` directory into the repo; it's gitignored.

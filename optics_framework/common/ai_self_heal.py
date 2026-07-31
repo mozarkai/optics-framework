@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from optics_framework.common.error import OpticsError
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.step_curation import curate_steps
 
 
 # Provider callables (best-effort; may return None when unavailable).
@@ -92,11 +93,30 @@ class HealAction:
 
 @dataclass
 class HealResult:
-    """Terminal outcome of :meth:`AISelfHealHandler.heal`."""
+    """Terminal outcome of :meth:`AISelfHealHandler.heal`.
+
+    ``steps_taken`` is every attempted keyword line, in order, for the
+    budget-exhausted diagnostic. ``suggested_steps`` is the clean replayable
+    recovery: only the steps that PASSED, curated on success.
+    """
 
     ok: bool
     action: Optional[HealAction] = None
     message: str = ""
+    steps_taken: List[str] = field(default_factory=list)
+    suggested_steps: List[Tuple[str, List[str]]] = field(default_factory=list)
+
+
+@dataclass
+class _DispatchOutcome:
+    """Outcome of dispatching one keyword during a heal.
+
+    ``ok`` is True when the keyword executed successfully; ``done`` is True when it
+    also completes the original keyword's goal.
+    """
+
+    ok: bool
+    done: bool
 
 
 # Structured-output schema. Mirrors the NL agent's schema pattern (flat, no anyOf).
@@ -189,11 +209,16 @@ class AISelfHealHandler:
         keyword_catalog: KeywordCatalog,
         *,
         max_steps: int = 5,
+        curate: bool = False,
     ) -> None:
+        """``curate`` is off by default (each curation is an extra LLM call);
+        ActionKeyword enables it to keep the surfaced suggested_steps minimal.
+        """
         self.llm = llm
         self.keyword_executor = keyword_executor
         self.keyword_catalog = keyword_catalog
         self.max_steps = max_steps
+        self.curate = curate
 
     def _execute_single_step(
         self,
@@ -203,8 +228,14 @@ class AISelfHealHandler:
         pagesource_provider: PagesourceProvider,
         catalog: List[HealKeywordSpec],
         attempted: List[str],
+        succeeded: List[Tuple[str, List[str]]],
     ) -> Optional[HealResult]:
-        """Execute a single iteration of self-healing and return terminal result or None to continue."""
+        """Execute one self-heal iteration; return a terminal HealResult or None to continue.
+
+        Each dispatched line is recorded in ``attempted`` for the diagnostic; only the
+        ones that passed are recorded in ``succeeded`` as the clean recovery. Returning
+        None means an intermediate or failed step changed the UI, so the loop re-observes.
+        """
         png = self._safe_call(screenshot_provider)
         if not png:
             return HealResult(False, message="No screenshot available for self-heal.")
@@ -235,17 +266,15 @@ class AISelfHealHandler:
 
         # action.action == "keyword"
         try:
-            done = self._dispatch(action)
+            outcome = self._dispatch(action)
         except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
             return HealResult(False, action=action, message=f"Keyword failed: {exc}")
 
-        if done:
-            return HealResult(True, action=action, message=action.reason or "Healed.")
-
-        # Intermediate step: record what was tried so a budget-exhausted message
-        # (the only case that reaches the caller without this action already
-        # attached) can still say what the model attempted.
         attempted.append(self._build_line(action.keyword, action.params))
+        if outcome.ok:
+            succeeded.append((action.keyword, list(action.params)))
+        if outcome.done:
+            return HealResult(True, action=action, message=action.reason or "Healed.")
         return None
 
     def heal(
@@ -257,17 +286,68 @@ class AISelfHealHandler:
         """Attempt to recover the failed keyword. Never raises — returns ok=False on any problem."""
         catalog = self.keyword_catalog()
         attempted: List[str] = []
+        succeeded: List[Tuple[str, List[str]]] = []
 
         for step in range(self.max_steps):
             result = self._execute_single_step(
-                step, ctx, screenshot_provider, pagesource_provider, catalog, attempted
+                step, ctx, screenshot_provider, pagesource_provider, catalog, attempted, succeeded
             )
             if result is not None:
+                result.steps_taken = list(attempted)
+                result.suggested_steps = self._finalize_suggested(ctx, result, succeeded)
                 return result
-            # Intermediate step: UI changed, loop to re-observe.
 
         tried = "; ".join(attempted) if attempted else "no actions attempted"
-        return HealResult(False, message=f"Self-heal step budget exhausted. Tried: {tried}")
+        return HealResult(
+            False,
+            message=f"Self-heal step budget exhausted. Tried: {tried}",
+            steps_taken=list(attempted),
+            suggested_steps=list(succeeded),
+        )
+
+    def _finalize_suggested(
+        self, ctx: HealContext, result: HealResult, succeeded: List[Tuple[str, List[str]]],
+    ) -> List[Tuple[str, List[str]]]:
+        """The clean recovery sequence to report: the passed steps, curated on success.
+
+        On a failed heal we return the raw passed steps (partial progress, no goal to
+        curate against). On success, when curation is enabled and there is more than one
+        step, prune to the minimal reproducing subset; a failed/degenerate curation keeps
+        all steps (``curate_steps`` returns ``None``), so a working recovery is never lost.
+        """
+        if not result.ok or not self.curate or len(succeeded) <= 1:
+            return list(succeeded)
+        prompt = self._build_curation_prompt(ctx, succeeded)
+        indices = curate_steps(self.llm, prompt, len(succeeded))
+        if indices is None:
+            return list(succeeded)
+        return [succeeded[i] for i in indices]
+
+    @staticmethod
+    def _build_curation_prompt(
+        ctx: HealContext, succeeded: List[Tuple[str, List[str]]],
+    ) -> str:
+        """Text-only curation prompt. Candidate steps are the passed heal steps, 1-based.
+
+        The goal is the original keyword the normal locators failed on; only the
+        successful steps are selectable, so no FAILED context section is needed here.
+        """
+        params = " ".join(str(p) for p in ctx.intent_params)
+        goal = f"{ctx.intent_keyword} {params}".rstrip()
+        lines = [
+            f"INSTRUCTION (goal that was achieved by self-heal): {goal}",
+            "",
+            "CANDIDATE STEPS (selectable — put these numbers in `keep`):",
+        ]
+        for idx, (kw, kw_params) in enumerate(succeeded, 1):
+            lines.append(f"  {idx}. {kw} {kw_params}")
+        lines.append("")
+        lines.append(
+            "Return `keep` = the 1-based CANDIDATE numbers to run, in any order, that reproduce "
+            "the goal. Drop dead-ends, backtracks, overshoot-then-correct, and no-op steps. When "
+            "unsure, KEEP."
+        )
+        return "\n".join(lines)
 
     # -- internals -------------------------------------------------------------
 
@@ -281,10 +361,14 @@ class AISelfHealHandler:
             internal_logger.debug("AI self-heal: provider unavailable: %s", exc)
             return None
 
-    def _dispatch(self, action: HealAction) -> bool:
-        """Execute one keyword via the injected executor. Returns True when the goal is complete."""
+    def _dispatch(self, action: HealAction) -> _DispatchOutcome:
+        """Execute one keyword via the injected executor.
+
+        Returns ``_DispatchOutcome(ok, done)``: ``ok`` is whether the keyword executed
+        successfully, ``done`` whether that success also completes the original goal.
+        """
         if not action.keyword:
-            return False
+            return _DispatchOutcome(ok=False, done=False)
 
         line = self._build_line(action.keyword, action.params)
         result = self.keyword_executor(line)
@@ -294,16 +378,16 @@ class AISelfHealHandler:
             # Don't abort the whole heal on a single keyword failure — the LLM can
             # try a different approach on the next step, so let the UI settle first.
             time.sleep(_SETTLE_SECONDS)
-            return False
+            return _DispatchOutcome(ok=False, done=False)
 
         # A completing keyword with completed=True means the goal is done — return
         # immediately without waiting, since there's no next screenshot to settle for.
         if action.keyword not in _NON_COMPLETING_KEYWORDS and action.completed:
-            return True
+            return _DispatchOutcome(ok=True, done=True)
 
         # Intermediate/navigation step: let the UI settle before the next screenshot.
         time.sleep(_SETTLE_SECONDS)
-        return False
+        return _DispatchOutcome(ok=True, done=False)
 
     @staticmethod
     def _validate(raw: Dict[str, Any]) -> HealAction:

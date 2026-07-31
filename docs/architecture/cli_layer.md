@@ -148,7 +148,7 @@ optics dry_run ./my_project --runner test_runner
 
 **Usage:**
 ```bash
-optics setup --install Appium EasyOCR
+optics setup --install appium easyocr
 optics setup --list
 ```
 

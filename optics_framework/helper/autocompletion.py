@@ -2,85 +2,120 @@ import os
 from pathlib import Path
 from typing import Optional
 
-ZSH_COMPLETION_CONTENT = """# Description: Zsh completion script for the Optics CLI tool
+from optics_framework.helper.initialize import available_templates
+
+# Raw string: the `\` line-continuations below must reach the generated script
+# verbatim. A normal string would let Python collapse each `\`+newline, emitting
+# the `_arguments` calls as one unreadable line.
+ZSH_COMPLETION_CONTENT = r"""# Description: Zsh completion script for the Optics CLI tool
 local -a _optics_subcommands=(
-    'list: List available API methods'
-    'config: Manage configuration'
-    'dry_run: Run tests in dry-run mode'
-    'init: Initialize a new project'
-    'execute: Execute tests'
-    'version: Show version'
-    'generate: Generate framework code'
-    'setup: Install drivers'
-    'serve: Start the optics server'
-    'completion: Enable shell completion'
+  'list: List available API methods'
+  'config: Manage configuration'
+  'dry_run: Run tests in dry-run mode'
+  'init: Initialize a new project'
+  'execute: Execute tests'
+  'live: Interactive session against a live target'
+  'generate: Generate framework code'
+  'setup: Install optional engine backends'
+  'serve: Start the optics REST server'
+  'mcp: Start the MCP server'
+  'completion: Enable shell completion'
 )
 
 # Static or dynamic values
-local -a templates=("calendar" "clock" "contact" "gmail_web" "youtube")
+local -a templates=(__OPTICS_TEMPLATES_ZSH__)
 local -a runners=("test_runner" "pytest")
 local -a frameworks=("pytest" "robot")
-local -a drivers=("${(f)$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')}")
+local -a transports=("stdio" "http")
+# `optics setup --list` indents each installable engine key by two spaces under a
+# category header; take only those indented lines so this stays correct no matter
+# what the category headers are named.
+local -a engines=("${(f)$(optics setup --list 2>/dev/null | awk '/^  / {print $1}')}")
 
 _optics_completions() {
-    local state
+  local state
 
-    _arguments -C \
-        '1:command:->cmds' \
-        '*::arg:->args'
+  _arguments -C \
+    '(-)--version[Show the Optics Framework version]' \
+    '(-)--help[-h]' \
+    '1:command:->cmds' \
+    '*::arg:->args'
 
-    case $state in
-        cmds)
-            _describe 'command' _optics_subcommands
-            ;;
-        args)
-            case $words[2] in
-                list|config|version|completion)
-                    _arguments '--help[-h]'
-                    ;;
+  case $state in
+    cmds)
+      _describe 'command' _optics_subcommands
+      ;;
+    args)
+      case $words[2] in
+        list|config|completion)
+          _arguments '--help[-h]'
+          ;;
 
-                dry_run|execute)
-                    _arguments \
-                        '--runner=[Runner]:runner:(${runners[@]})' \
-                        '--use-printer[Enable printer]' \
-                        '--no-use-printer[Disable printer]' \
-                        '--help[-h]'
-                    ;;
+        live)
+          _arguments \
+            '*:project_path:_files -/' \
+            '--help[-h]'
+          ;;
 
-                init)
-                    _arguments \
-                        '--name=[Project name]' \
-                        '--path=[Project path]' \
-                        '--force[Override existing]' \
-                        "--template=[Template name]:template:(${templates[@]})" \
-                        '--git-init[Initialize Git]' \
-                        '--help[-h]'
-                    ;;
+        mcp)
+          _arguments \
+            '--transport=[Transport]:transport:(${transports[@]})' \
+            '--host=[Host address]' \
+            '--port=[Port number]' \
+            '--help[-h]'
+          ;;
 
-                generate)
-                    _arguments \
-                        '*:project_path:_files' \
-                        '*:output:_files' \
-                        '--framework=[Framework]:framework:(${frameworks[@]})' \
-                        '--help[-h]'
-                    ;;
+        dry_run|execute)
+          _arguments \
+            '--runner=[Runner]:runner:(${runners[@]})' \
+            '--use-printer[Enable printer]' \
+            '--no-use-printer[Disable printer]' \
+            '--help[-h]'
+          ;;
 
-                setup)
-                    _arguments \
-                        "--install=[Drivers]:drivers:(${drivers[@]})" \
-                        '--list[List all drivers]' \
-                        '--help[-h]'
-                    ;;
+        init)
+          _arguments \
+            '--name=[Project name]' \
+            '--path=[Project path]' \
+            '--force[Override existing]' \
+            "--template=[Template name]:template:(${templates[@]})" \
+            '--git-init[Initialize Git]' \
+            '--help[-h]'
+          ;;
 
-                serve)
-                    _arguments \
-                        '--host=[Host address]' \
-                        '--port=[Port number]' \
-                        '--help[-h]'
-                    ;;
-            esac
-            ;;
-    esac
+        generate)
+          _arguments \
+            '*:project_path:_files' \
+            '*:output_file:_files' \
+            '--framework=[Framework]:framework:(${frameworks[@]})' \
+            '--help[-h]'
+          ;;
+
+        setup)
+          _arguments \
+            "--install=[Engines]:engines:(${engines[@]})" \
+            '--list[List all engines]' \
+            '--help[-h]'
+          ;;
+
+        serve)
+          _arguments \
+            '--host=[Host address]' \
+            '--port=[Port number]' \
+            '--help[-h]'
+          ;;
+
+        *)
+          # Unknown subcommand: offer only --help.
+          _arguments '--help[-h]'
+          ;;
+      esac
+      ;;
+
+    *)
+      # Unexpected state: nothing to complete.
+      ;;
+  esac
 }
 
 compdef _optics_completions optics
@@ -92,22 +127,39 @@ _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute version generate setup serve completion"
+  local subcommands="list config dry_run init execute live generate setup serve mcp completion"
 
-  local template_options="calendar clock contact gmail_web youtube"
+  local template_options="__OPTICS_TEMPLATES_BASH__"
   local runner_options="test_runner pytest"
-  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')
+  # Only the two-space-indented lines are engine keys; category headers are not
+  # indented, so this needs no per-header filter.
+  local engine_options=$(optics setup --list 2>/dev/null | awk '/^  / {print $1}')
 
   case ${COMP_CWORD} in
     1)
-      COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
+      COMPREPLY=( $(compgen -W "$subcommands --version --help -h" -- "$cur") )
       return 0
+      ;;
+    *)
+      # Beyond the subcommand: handled per-subcommand below.
       ;;
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|version|completion)
+    list|config|completion)
       COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
+      ;;
+
+    live)
+      COMPREPLY=( $(compgen -d -- "$cur") )
+      ;;
+
+    mcp)
+      if [[ $prev == "--transport" ]]; then
+        COMPREPLY=( $(compgen -W "stdio http" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -W "--transport --host --port -h --help" -- "$cur") )
+      fi
       ;;
 
     dry_run|execute)
@@ -131,19 +183,21 @@ _optics_completions() {
 
     generate)
       COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
-        if [[ $prev == "--framework" ]]; then
-            COMPREPLY=( $(compgen -W "pytest robot" -- "$cur") )
-        elif [[ $prev == "--output" ]]; then
-            COMPREPLY=( $(compgen -f -- "$cur") )
-        elif [[ $prev == "--project_path" ]]; then
-            COMPREPLY=( $(compgen -d -- "$cur") )
-        fi
+      if [[ $prev == "--framework" ]]; then
+        COMPREPLY=( $(compgen -W "pytest robot" -- "$cur") )
+      elif [[ $prev == "--output" ]]; then
+        COMPREPLY=( $(compgen -f -- "$cur") )
+      elif [[ $prev == "--project_path" ]]; then
+        COMPREPLY=( $(compgen -d -- "$cur") )
+      else
+        : # keep the default --help completion set above
+      fi
       ;;
 
     setup)
       case $prev in
         --install)
-          COMPREPLY=( $(compgen -W "$driver_options" -- "$cur") )
+          COMPREPLY=( $(compgen -W "$engine_options" -- "$cur") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "--install --list -h --help" -- "$cur") )
@@ -154,19 +208,36 @@ _optics_completions() {
     serve)
       COMPREPLY=( $(compgen -W "--host --port -h --help" -- "$cur") )
       ;;
+
+    *)
+      # Unknown subcommand: offer only --help.
+      COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
+      ;;
   esac
 }
 
 complete -F _optics_completions optics
 """
 
+def _render(content: str) -> str:
+    """Fill the sample-template placeholders from the single source of truth in
+    ``initialize.available_templates()`` so the completion candidates never drift
+    from the templates that actually ship."""
+    templates = available_templates()
+    zsh_arr = " ".join(f'"{t}"' for t in templates)
+    bash_list = " ".join(templates)
+    return (content
+            .replace("__OPTICS_TEMPLATES_ZSH__", zsh_arr)
+            .replace("__OPTICS_TEMPLATES_BASH__", bash_list))
+
+
 def write_completion_scripts():
     optics_dir = Path.home() / ".optics"
     optics_dir.mkdir(exist_ok=True)
     zsh_path = optics_dir / "optics_completion.zsh"
     bash_path = optics_dir / "optics_completion.sh"
-    zsh_path.write_text(ZSH_COMPLETION_CONTENT)
-    bash_path.write_text(BASH_COMPLETION_CONTENT)
+    zsh_path.write_text(_render(ZSH_COMPLETION_CONTENT))
+    bash_path.write_text(_render(BASH_COMPLETION_CONTENT))
     return zsh_path, bash_path
 
 def update_shell_rc(shell: Optional[str] = None):

@@ -1,27 +1,42 @@
 #!/bin/bash
 
 _optics_completions() {
-  local cur prev
+  local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute version generate setup serve completion"
+  local subcommands="list config dry_run init execute live generate setup serve mcp completion"
 
-  local template_options="calender contact gmail_web youtube"
+  local template_options="calendar clock contact gmail_web playwright youtube"
   local runner_options="test_runner pytest"
-  local driver_options=$(optics setup --list 2>/dev/null | awk '{print $1}' | grep -vE '^(Action|Available|Drivers:|Text)$')
+  # Only the two-space-indented lines are engine keys; category headers are not
+  # indented, so this needs no per-header filter.
+  local engine_options=$(optics setup --list 2>/dev/null | awk '/^  / {print $1}')
 
   case ${COMP_CWORD} in
     1)
-      COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
+      COMPREPLY=( $(compgen -W "$subcommands --version --help -h" -- "$cur") )
       return 0
       ;;
     *)
+      # Beyond the subcommand: handled per-subcommand below.
       ;;
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|version|completion)
+    list|config|completion)
       COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
+      ;;
+
+    live)
+      COMPREPLY=( $(compgen -d -- "$cur") )
+      ;;
+
+    mcp)
+      if [[ $prev == "--transport" ]]; then
+        COMPREPLY=( $(compgen -W "stdio http" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -W "--transport --host --port -h --help" -- "$cur") )
+      fi
       ;;
 
     dry_run|execute)
@@ -51,13 +66,15 @@ _optics_completions() {
         COMPREPLY=( $(compgen -f -- "$cur") )
       elif [[ $prev == "--project_path" ]]; then
         COMPREPLY=( $(compgen -d -- "$cur") )
+      else
+        : # keep the default --help completion set above
       fi
       ;;
 
     setup)
       case $prev in
         --install)
-          COMPREPLY=( $(compgen -W "$driver_options" -- "$cur") )
+          COMPREPLY=( $(compgen -W "$engine_options" -- "$cur") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "--install --list -h --help" -- "$cur") )
@@ -70,7 +87,8 @@ _optics_completions() {
       ;;
 
     *)
-      COMPREPLY=()
+      # Unknown subcommand: offer only --help.
+      COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
       ;;
   esac
 }

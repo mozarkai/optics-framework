@@ -193,3 +193,7 @@ cython_debug/
 # Runtime execution artifacts (never commit)
 execution_output/
 MagicMock/
+
+# Local SonarQube scan — scanner workdir and any local token
+.sonar-local/
+.scannerwork/

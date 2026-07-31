@@ -20,6 +20,7 @@ from optics_framework.common.ai_self_heal import (
     HEAL_ACTION_SCHEMA,
 )
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.step_curation import CURATION_SCHEMA
 
 pytestmark = pytest.mark.white_box
 
@@ -227,6 +228,146 @@ class TestHandlerActions:
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is False
         assert executor.calls == ['swipe_by_percentage 50 80 up 30']
+
+
+class _FailByParamExecutor:
+    """Executor that fails when a substring appears in the keyword line."""
+
+    def __init__(self, fail_substring: str):
+        self.calls = []
+        self._fail_substring = fail_substring
+
+    def __call__(self, line: str) -> ExecResult:
+        self.calls.append(line)
+        if self._fail_substring in line:
+            return ExecResult(ok=False, message="not found")
+        return ExecResult(ok=True)
+
+
+class CuratingFakeLLM:
+    """FakeLLM that also serves the post-heal curation turn.
+
+    HEAL_ACTION_SCHEMA turns come from ``scripted``; the single CURATION_SCHEMA turn
+    returns ``curation_reply``. Curation is text-only, so ``images`` must be None.
+    """
+
+    def __init__(self, scripted, curation_reply):
+        self.scripted = list(scripted)
+        self.curation_reply = curation_reply
+        self.calls = 0
+        self.curation_calls = 0
+        self.last_curation_prompt = None
+
+    def generate(self, *a, **k):  # pragma: no cover - handler uses generate_json
+        raise RuntimeError("unexpected generate() call")
+
+    def generate_json(self, prompt, response_schema, images=None, system=None, temperature=None):
+        if response_schema is CURATION_SCHEMA:
+            self.curation_calls += 1
+            self.last_curation_prompt = prompt
+            assert images is None
+            return self.curation_reply
+        self.calls += 1
+        assert response_schema is HEAL_ACTION_SCHEMA
+        return self.scripted.pop(0)
+
+
+class TestSuggestedSteps:
+    def test_suggested_steps_are_the_passing_steps(self):
+        """A navigation step then a completing step: both passed -> both suggested."""
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "scroll", "params": ["down"],
+             "completed": False, "reason": "reveal"},
+            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
+             "completed": True, "reason": "press"},
+        ])
+        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog(), max_steps=2).heal(
+            _ctx(), _shots, _no_ps
+        )
+        assert res.ok is True
+        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
+
+    def test_failed_attempts_excluded_from_suggested_but_kept_in_steps_taken(self):
+        """A failed intermediate attempt pollutes steps_taken but not suggested_steps."""
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "params": ["Wrong"],
+             "completed": True, "reason": "try"},
+            {"action": "keyword", "keyword": "scroll", "params": ["down"],
+             "completed": False, "reason": "reveal"},
+            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
+             "completed": True, "reason": "press"},
+        ])
+        executor = _FailByParamExecutor("Wrong")
+        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=3).heal(
+            _ctx(), _shots, _no_ps
+        )
+        assert res.ok is True
+        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
+        # steps_taken keeps the noisy full history, including the failed attempt.
+        assert res.steps_taken == ["press_element Wrong", "scroll down", "press_element Login"]
+
+    def test_curation_off_by_default_makes_no_extra_llm_call(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "scroll", "params": ["down"],
+             "completed": False, "reason": "reveal"},
+            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
+             "completed": True, "reason": "press"},
+        ])
+        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog(), max_steps=2).heal(
+            _ctx(), _shots, _no_ps
+        )
+        assert res.ok is True
+        assert llm.calls == 2  # no curation round-trip
+        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
+
+    def test_curation_prunes_suggested_steps(self):
+        """With curate=True, the curation pass drops the overshoot/backtrack steps."""
+        llm = CuratingFakeLLM(
+            [
+                {"action": "keyword", "keyword": "scroll", "params": ["down"],
+                 "completed": False, "reason": "overshoot"},
+                {"action": "keyword", "keyword": "scroll", "params": ["up"],
+                 "completed": False, "reason": "backtrack"},
+                {"action": "keyword", "keyword": "press_element", "params": ["Login"],
+                 "completed": True, "reason": "press"},
+            ],
+            curation_reply={"keep": [3], "reason": "only the final press contributed"},
+        )
+        res = AISelfHealHandler(
+            llm, FakeExecutor(), lambda: _catalog(), max_steps=3, curate=True
+        ).heal(_ctx(), _shots, _no_ps)
+        assert res.ok is True
+        assert llm.curation_calls == 1
+        assert res.suggested_steps == [("press_element", ["Login"])]
+        # The goal (the original failed keyword) is named in the curation prompt.
+        assert "press_element Login" in llm.last_curation_prompt
+
+    def test_curation_keeps_all_on_degenerate_reply(self):
+        """A curation reply that keeps everything leaves suggested_steps unpruned."""
+        llm = CuratingFakeLLM(
+            [
+                {"action": "keyword", "keyword": "scroll", "params": ["down"],
+                 "completed": False, "reason": "reveal"},
+                {"action": "keyword", "keyword": "press_element", "params": ["Login"],
+                 "completed": True, "reason": "press"},
+            ],
+            curation_reply={"keep": [1, 2], "reason": "both needed"},
+        )
+        res = AISelfHealHandler(
+            llm, FakeExecutor(), lambda: _catalog(), max_steps=2, curate=True
+        ).heal(_ctx(), _shots, _no_ps)
+        assert res.ok is True
+        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
+
+    def test_budget_exhausted_reports_passed_steps_uncurated(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "scroll", "params": ["down"], "reason": "x"}
+        ] * 2)
+        res = AISelfHealHandler(
+            llm, FakeExecutor(), lambda: _catalog(), max_steps=2, curate=True
+        ).heal(_ctx(), _shots, _no_ps)
+        assert res.ok is False
+        assert res.suggested_steps == [("scroll", ["down"]), ("scroll", ["down"])]
 
 
 class TestHandlerErrorHandling:
@@ -464,3 +605,31 @@ class TestHealExecute:
         assert "device offline" in result.message
         assert seen_enabled == [False]
         assert ak.ai_self_heal_enabled is True
+
+
+class TestSuggestedStepsWiring:
+    def test_pop_last_heal_info_exposes_structured_suggested_steps(self, monkeypatch):
+        monkeypatch.setattr(ash.time, "sleep", lambda *_a, **_k: None)
+        # Single completing step: curation short-circuits (<=1 step), so no extra LLM turn.
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
+             "completed": True, "reason": "press it"},
+        ])
+        llm.instances = [object()]
+        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
+        shot = np.zeros((10, 10, 3), dtype=np.uint8)
+        ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
+        ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
+        mock_result = MagicMock()
+        mock_result.is_coordinates = False
+        mock_result.value = MagicMock()
+        mock_result.strategy = MagicMock()
+        ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
+
+        assert ak._ai_self_heal("Login", "press_element", (), {}, shot) is True
+        info = ak._pop_last_heal_info()
+        assert info is not None
+        assert info["suggested_steps"] == [{"keyword": "press_element", "params": ["Login"]}]
+        assert "press_element Login" in info["summary"]
+        # Read-and-clear: a second pop returns nothing so a heal never leaks onto the next call.
+        assert ak._pop_last_heal_info() is None

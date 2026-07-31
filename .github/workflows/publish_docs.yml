@@ -24,7 +24,10 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material mkdocstrings[python] mkdocs-minify-plugin
+      # jsmin/csscompressor are sdist-only on PyPI, hence --no-binary.
+      - run: |
+          pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
+            mkdocs-material==9.7.6 "mkdocstrings[python]==1.0.4" mkdocs-minify-plugin==0.8.0
       - run: mkdocs build
 
   deploy:
@@ -51,5 +54,7 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material mkdocstrings[python] mkdocs-minify-plugin
+      - run: |
+          pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
+            mkdocs-material==9.7.6 "mkdocstrings[python]==1.0.4" mkdocs-minify-plugin==0.8.0
       - run: mkdocs gh-deploy --force

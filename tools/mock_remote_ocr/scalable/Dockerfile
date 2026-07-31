@@ -17,14 +17,14 @@ RUN apt-get update \
      libxrender1 \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy poetry/pyproject if present to cache deps
-COPY pyproject.toml /app/
+COPY optics_framework /app/optics_framework
+COPY pyproject.toml README.md /app/
 
 # Install pip and build dependencies
-RUN pip install --upgrade pip setuptools wheel
+RUN pip install --upgrade --only-binary=:all: pip==26.1.2 setuptools==83.0.0 wheel==0.47.0
 
-# Install production dependencies into a wheelhouse
-RUN pip wheel --wheel-dir=/wheels . || true
+# --only-binary=:all: still builds this local project; only its deps must be wheels
+RUN pip wheel --only-binary=:all: --wheel-dir=/wheels .
 
 # ---- Final stage ----
 FROM python:3.12-slim
@@ -53,14 +53,12 @@ COPY optics_framework /app/optics_framework
 COPY tools/mock_remote_ocr /app/tools/mock_remote_ocr
 COPY pyproject.toml /app/
 
-# Install runtime deps from wheelhouse if present, otherwise fallback to pip install
 COPY --from=build /wheels /wheels
-RUN if [ -d /wheels ] && [ "$(ls -A /wheels)" ]; then \
-        pip install --no-cache-dir /wheels/*; \
-    else \
-        pip install --no-cache-dir .; \
-    fi && \
-    pip install --no-cache-dir "easyocr" "gunicorn>=20.0" "uvicorn[standard]" && \
+RUN WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
+    pip install --no-cache-dir --only-binary=:all: --no-index --find-links=/wheels \
+        "optics-framework==${WHEEL_VERSION}" && \
+    pip install --no-cache-dir --only-binary=:all: \
+        easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
     mkdir -p /home/optics && \
     python - <<'PY'
 import os
