@@ -66,7 +66,7 @@ description = "Python client for Appium"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\""
 files = [
     {file = "appium_python_client-5.3.1-py3-none-any.whl", hash = "sha256:da0d3227ee059c31908a16f30a131424713ea96998fcd48e255d2cf9d107b557"},
     {file = "appium_python_client-5.3.1.tar.gz", hash = "sha256:30800f9a53a585814138e7c8f569fd295273f933c9b34ad1a9580f3bf923fc63"},
@@ -110,7 +110,7 @@ description = "Classes Without Boilerplate"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\" or extra == \"mcp\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\" or extra == \"mcp\""
 files = [
     {file = "attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"},
     {file = "attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32"},
@@ -304,7 +304,7 @@ description = "Foreign Function Interface for Python calling C code."
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "os_name == \"nt\" and implementation_name != \"pypy\" and (extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\") or os_name == \"nt\" and implementation_name != \"pypy\" and platform_python_implementation != \"PyPy\" and (extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\" or extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\") or (extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"llm\") and platform_python_implementation != \"PyPy\""
+markers = "os_name == \"nt\" and implementation_name != \"pypy\" and (extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\") or os_name == \"nt\" and implementation_name != \"pypy\" and platform_python_implementation != \"PyPy\" and (extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\" or extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\") or (extra == \"mcp\" or extra == \"all\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\") and platform_python_implementation != \"PyPy\""
 files = [
     {file = "cffi-2.0.0-cp310-cp310-macosx_10_13_x86_64.whl", hash = "sha256:0cf2d91ecc3fcc0625c2c530fe004f82c110405f101548512cce44322fa8ac44"},
     {file = "cffi-2.0.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:f73b96c41e3b2adedc34a7356e64c8eb96e03a3782b535e043a986276ce12a49"},
@@ -405,52 +405,6 @@ groups = ["dev"]
 files = [
     {file = "cfgv-3.5.0-py2.py3-none-any.whl", hash = "sha256:a8dc6b26ad22ff227d2634a65cb388215ce6cc96bbcc5cfde7641ae87e8dacc0"},
     {file = "cfgv-3.5.0.tar.gz", hash = "sha256:d5b1034354820651caa73ede66a6294d6e95c1b00acc5e9b098e917404669132"},
-]
-
-[[package]]
-name = "chardet"
-version = "7.4.3"
-description = "Universal character encoding detector"
-optional = false
-python-versions = ">=3.10"
-groups = ["dev"]
-files = [
-    {file = "chardet-7.4.3-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c0c79b13c9908ac7dfe0a74116ebc9a0f28b2319d23c32f3dfcdfbe1279c7eaf"},
-    {file = "chardet-7.4.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:bba8bea1b28d927b3e99e47deafe53658d34497c0a891d95ff1ba8ff6663f01c"},
-    {file = "chardet-7.4.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:23163921dccf3103ce59540b0443c106d2c0a0ff2e0503e05196f5e6fdea453f"},
-    {file = "chardet-7.4.3-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:cfb54563fe5f130da17c44c6a4e2e8052ba628e5ab4eab7ef8190f736f0f8f72"},
-    {file = "chardet-7.4.3-cp310-cp310-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:3990fffcc6a6045f2234ab72752ad037e3b2d48c72037f244d42738db397eb75"},
-    {file = "chardet-7.4.3-cp310-cp310-win_amd64.whl", hash = "sha256:c7116b0452994734ccff35e154b44240090eb0f4f74b9106292668133557c175"},
-    {file = "chardet-7.4.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:25a862cddc6a9ac07023e808aedd297115345fbaabc2690479481ddc0f980e09"},
-    {file = "chardet-7.4.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7005c88da26fd95d8abb8acbe6281d833e9a9181b03cf49b4546c4555389bd97"},
-    {file = "chardet-7.4.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:dc50f28bad067393cce0af9091052c3b8df7a23115afd8ba7b2e0947f0cef1f8"},
-    {file = "chardet-7.4.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4c3da294de1a681097848ab58bd3f2771a674f8039d2d87a5538b28856b815e9"},
-    {file = "chardet-7.4.3-cp311-cp311-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:93c45e116dd51b66226a53ade3f9f635e870de5399b90e00ce45dcc311093bf4"},
-    {file = "chardet-7.4.3-cp311-cp311-win_amd64.whl", hash = "sha256:ccc1f83ab4bcfb901cf39e0c4ba6bc6e726fc6264735f10e24ceb5cb47387578"},
-    {file = "chardet-7.4.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:75d3c65cc16bddf40b8da1fd25ba84fca5f8070f2b14e86083653c1c85aee971"},
-    {file = "chardet-7.4.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:29af5999f654e8729d251f1724a62b538b1262d9292cccaefddf8a02aae1ef6a"},
-    {file = "chardet-7.4.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:626f00299ad62dfe937058a09572beed442ccc7b58f87aa667949b20fd3db235"},
-    {file = "chardet-7.4.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9a4904dd5f071b7a7d7f50b4a67a86db3c902d243bf31708f1d5cde2f68239cb"},
-    {file = "chardet-7.4.3-cp312-cp312-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:5d2879598bc220689e8ce509fe9c3f37ad2fca53a36be9c9bd91abdd91dd364f"},
-    {file = "chardet-7.4.3-cp312-cp312-win_amd64.whl", hash = "sha256:4b2799bd58e7245cfa8d4ab2e8ad1d76a5c3a5b1f32318eb6acca4c69a3e7101"},
-    {file = "chardet-7.4.3-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:a9e4486df251b8962e86ea9f139ca235aa6e0542a00f7844c9a04160afb99aa9"},
-    {file = "chardet-7.4.3-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:4fbff1907925b0c5a1064cffb5e040cd5e338585c9c552625f30de6bc2f3107a"},
-    {file = "chardet-7.4.3-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:365135eaf37ba65a828f8e668eb0a8c38c479dcbec724dc25f4dfd781049c357"},
-    {file = "chardet-7.4.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bfc134b70c846c21ead8e43ada3ae1a805fff732f6922f8abcf2ff27b8f6493d"},
-    {file = "chardet-7.4.3-cp313-cp313-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:9acd9988a93e09390f3cd231201ea7166c415eb8da1b735928990ffc05cb9fbb"},
-    {file = "chardet-7.4.3-cp313-cp313-win_amd64.whl", hash = "sha256:e1b98790c284ff813f18f7cf7de5f05ea2435a080030c7f1a8318f3a4f80b131"},
-    {file = "chardet-7.4.3-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:d892d3dcd652fdef53e3d6327d39b17c0df40a899dfc919abaeb64c974497531"},
-    {file = "chardet-7.4.3-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:acc46d1b8b7d5783216afe15db56d1c179b9a40e5a1558bc13164c4fd20674c4"},
-    {file = "chardet-7.4.3-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0ac3bf11c645734a1701a3804e43eabd98851838192267d08c353a834ab79fea"},
-    {file = "chardet-7.4.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6e3bd9f936e04bae89c254262af08d9e5b98f805175ba1e29d454e6cba3107b7"},
-    {file = "chardet-7.4.3-cp314-cp314-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:27cc23da03630cdecc9aa81a895aa86629c211f995cd57651f0fbc280717bf93"},
-    {file = "chardet-7.4.3-cp314-cp314-win_amd64.whl", hash = "sha256:b95c934b9ad59e2ba8abb9be49df70d3ad1b0d95d864b9fdb7588d4fa8bd921c"},
-    {file = "chardet-7.4.3-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:c77867f0c1cb8bd819502249fcdc500364aedb07881e11b743726fa2148e7b6e"},
-    {file = "chardet-7.4.3-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:cf1efeaf65a6ef2f5b9cc3a1df6f08ba2831b369ccaa4c7018eaf90aa757bb11"},
-    {file = "chardet-7.4.3-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9f3504c139a2ad544077dd2d9e412cd08b01786843d76997cd43bb6de311723c"},
-    {file = "chardet-7.4.3-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:457f619882ba66327d4d8d14c6c342269bdb1e4e1c38e8117df941d14d351b04"},
-    {file = "chardet-7.4.3-py3-none-any.whl", hash = "sha256:1173b74051570cf08099d7429d92e4882d375ad4217f92a6e5240ccfb26f231e"},
-    {file = "chardet-7.4.3.tar.gz", hash = "sha256:cc1d4eb92a4ec1c2df3b490836ffa46922e599d34ce0bb75cf41fd2bf6303d56"},
 ]
 
 [[package]]
@@ -772,7 +726,7 @@ description = "cryptography is a package which provides cryptographic recipes an
 optional = true
 python-versions = "!=3.9.0,!=3.9.1,>=3.9"
 groups = ["main"]
-markers = "extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"llm\""
+markers = "extra == \"mcp\" or extra == \"all\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\""
 files = [
     {file = "cryptography-49.0.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:966fe0e9c67490071f14c0d2b1cb2dfb3023c5ce39457343931415f08382f2db"},
     {file = "cryptography-49.0.0-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:36d1709f992593689b45bda411498d62c6e365f2ca00b84657d4dadd24de16db"},
@@ -846,7 +800,7 @@ description = "Python bindings for CUDA"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "platform_system == \"Linux\" and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and python_version <= \"3.14\""
+markers = "platform_system == \"Linux\" and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and python_version <= \"3.14\""
 files = [
     {file = "cuda_bindings-13.3.1-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:120fcc53d57903df529c3486962c56528cba5b7d6c57c99537320ed9922c8b86"},
     {file = "cuda_bindings-13.3.1-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9851b0caa8bfd3bc6fa054eaf57bea7c8e9c3a62db2d2621224677f49f3c53d0"},
@@ -881,7 +835,7 @@ description = "Pathfinder for CUDA components"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "platform_system == \"Linux\" and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and python_version <= \"3.14\""
+markers = "platform_system == \"Linux\" and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and python_version <= \"3.14\""
 files = [
     {file = "cuda_pathfinder-1.6.0-py3-none-any.whl", hash = "sha256:1503af579d8379c24bdd65528379bc57039b0455be9f5f9686cf8e473a1fce51"},
 ]
@@ -893,7 +847,7 @@ description = "CUDA Toolkit meta-package"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "(extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\""
+markers = "(extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\""
 files = [
     {file = "cuda_toolkit-13.0.3.0-py2.py3-none-any.whl", hash = "sha256:d693caaa261214ddd7dbb60d68e71cbed884e68c2be7509778f3051da0b91c3f"},
 ]
@@ -1032,7 +986,7 @@ description = "Distro - an OS platform information API"
 optional = true
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"llm\""
 files = [
     {file = "distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2"},
     {file = "distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed"},
@@ -1085,7 +1039,7 @@ description = "End-to-End Multi-Lingual Optical Character Recognition (OCR) Solu
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "easyocr-1.7.2-py3-none-any.whl", hash = "sha256:5be12f9b0e595d443c9c3d10b0542074b50f0ec2d98b141a109cd961fd1c177c"},
 ]
@@ -1254,7 +1208,7 @@ files = [
     {file = "filelock-3.29.0-py3-none-any.whl", hash = "sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258"},
     {file = "filelock-3.29.0.tar.gz", hash = "sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90"},
 ]
-markers = {main = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""}
+markers = {main = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""}
 
 [[package]]
 name = "fsspec"
@@ -1263,7 +1217,7 @@ description = "File-system specification"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "fsspec-2026.6.0-py3-none-any.whl", hash = "sha256:02e0b71817df9b2169dc30a16832045764def1191b43dcff5bb85bdee212d2a1"},
     {file = "fsspec-2026.6.0.tar.gz", hash = "sha256:f5bac145310fe30e16e1471bd6840b2d990d609e872251d7e674241822abf01a"},
@@ -1337,7 +1291,7 @@ description = "Google API client core library"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "google_api_core-2.33.0-py3-none-any.whl", hash = "sha256:a2e22a0c1d0f03eafff1858b38cf46f832d5902b0c052235bf0ab8402929fbdc"},
     {file = "google_api_core-2.33.0.tar.gz", hash = "sha256:3a36bcc3e319783f4c97da41f6f45ea6ffcaa55848e341de16e09cb70243c2bb"},
@@ -1372,7 +1326,7 @@ description = "Google Authentication Library"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"llm\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\""
 files = [
     {file = "google_auth-2.55.0-py3-none-any.whl", hash = "sha256:a17cef9dedf98c4ebae2fb0c48c8f75952c877cbc2efe09f329ef16c2783d88a"},
     {file = "google_auth-2.55.0.tar.gz", hash = "sha256:fcd3a130f575fa36403d38774af1c64a4fbfbca09215f0589d2372b5119697cb"},
@@ -1402,7 +1356,7 @@ description = "Google Cloud Vision API client library"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "google_cloud_vision-3.15.0-py3-none-any.whl", hash = "sha256:6293186bb824a986cdf73bcc83ad0e44a1ef26942347b7e01598061619bb66d4"},
     {file = "google_cloud_vision-3.15.0.tar.gz", hash = "sha256:ed2b79ca05a58a929ec112259a9caa698509f6348762a8eced3310e6572a6c70"},
@@ -1428,7 +1382,7 @@ description = "GenAI Python SDK"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"llm\""
 files = [
     {file = "google_genai-2.8.0-py3-none-any.whl", hash = "sha256:4da0a223a100f4b37f609a68b835e3326ab0fa313314dc0fd9d34e76ee293844"},
     {file = "google_genai-2.8.0.tar.gz", hash = "sha256:37a9b3cb127d763e7f4ca47452ae3562c87728773bd1b149f7b559c239da2bc1"},
@@ -1458,7 +1412,7 @@ description = "Common protobufs used in Google APIs"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "googleapis_common_protos-1.75.0-py3-none-any.whl", hash = "sha256:961ed60399c457ceb0ee8f285a84c870aabc9c6a832b9d37bb281b5bebde43ed"},
     {file = "googleapis_common_protos-1.75.0.tar.gz", hash = "sha256:53a062ff3c32552fbd62c11fe23768b78e4ddf0494d5e5fd97d3f4689c75fbbd"},
@@ -1477,7 +1431,7 @@ description = "Lightweight in-process concurrent programming"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"playwright\" or extra == \"web\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"playwright\" or extra == \"web\""
 files = [
     {file = "greenlet-3.5.4-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:ac5bf81d79d2c8eeb2ef6359b2e1687a1e9ebf46c2b1f970da9a9255df51d190"},
     {file = "greenlet-3.5.4-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:89f3738167bab8c1084b94e23023d41d247117ac149fa0fbcb5bd4cf6262b353"},
@@ -1587,7 +1541,7 @@ description = "HTTP/2-based RPC framework"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "grpcio-1.83.0-cp310-cp310-linux_armv7l.whl", hash = "sha256:fba099b716e73512d61b97f71ea3c31a72abb36904036e316bf4dd148ca8dcc8"},
     {file = "grpcio-1.83.0-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:6755ed67cc3e454d51ae9f6e1915b80d3942fa4de956ef48dacd45ab7f40b727"},
@@ -1655,7 +1609,7 @@ description = "Status proto mapping for gRPC"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "grpcio_status-1.83.0-py3-none-any.whl", hash = "sha256:f6a838a7c5fb84ae98833ec0ef81ed438c26e11e54b2ddb8e92ad328c861de69"},
     {file = "grpcio_status-1.83.0.tar.gz", hash = "sha256:837219c6de9afdccb6f6f72b34bc71e151a2011ef04040e3faaca746a57e54ae"},
@@ -1696,7 +1650,7 @@ description = "A minimal low-level HTTP client."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"all\" or extra == \"mcp\""
+markers = "extra == \"mcp\" or extra == \"all\" or extra == \"llm\""
 files = [
     {file = "httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"},
     {file = "httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8"},
@@ -1719,7 +1673,7 @@ description = "The next generation HTTP client."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"all\" or extra == \"mcp\""
+markers = "extra == \"mcp\" or extra == \"all\" or extra == \"llm\""
 files = [
     {file = "httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"},
     {file = "httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc"},
@@ -1936,7 +1890,7 @@ files = [
     {file = "jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"},
     {file = "jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d"},
 ]
-markers = {main = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""}
+markers = {main = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""}
 
 [package.dependencies]
 MarkupSafe = ">=2.0"
@@ -2516,7 +2470,7 @@ files = [
     {file = "markupsafe-3.0.3-cp39-cp39-win_arm64.whl", hash = "sha256:38664109c14ffc9e7437e86b4dceb442b0096dfe3541d7864d9cbe1da4cf36c8"},
     {file = "markupsafe-3.0.3.tar.gz", hash = "sha256:722695808f4b6457b320fdc131280796bdceb04ab50fe1795cd540799ebe1698"},
 ]
-markers = {main = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""}
+markers = {main = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""}
 
 [[package]]
 name = "mccabe"
@@ -2796,7 +2750,7 @@ description = "Python library for arbitrary-precision floating-point arithmetic"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "mpmath-1.3.0-py3-none-any.whl", hash = "sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c"},
     {file = "mpmath-1.3.0.tar.gz", hash = "sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f"},
@@ -2838,7 +2792,7 @@ description = "Ninja is a small build system with a focus on speed"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "ninja-1.13.0-py3-none-macosx_10_9_universal2.whl", hash = "sha256:fa2a8bfc62e31b08f83127d1613d10821775a0eb334197154c4d6067b7068ff1"},
     {file = "ninja-1.13.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:3d00c692fb717fd511abeb44b8c5d00340c36938c12d6538ba989fe764e79630"},
@@ -2962,7 +2916,7 @@ description = "CUBLAS native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:b7a210458267ac818974c53038fbec2e969d5c99f305ab15c72522fa9f001dd5"},
     {file = "nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:37936a16db8fe4ac1f065c2139360608a543a09275cb1a1af612e08cfa065436"},
@@ -2979,7 +2933,7 @@ description = "CUBLAS native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform != \"linux\" or platform_machine != \"aarch64\" and platform_machine != \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (sys_platform != \"linux\" and sys_platform != \"win32\" or platform_machine != \"x86_64\")"
+markers = "(sys_platform != \"linux\" or platform_machine != \"aarch64\" and platform_machine != \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (sys_platform != \"linux\" and sys_platform != \"win32\" or platform_machine != \"x86_64\")"
 files = [
     {file = "nvidia_cublas-13.6.0.2-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:946f6a252b1cc72d8de912c75975fd6d8ba44f67d4e5044fe764ddb909f4a688"},
     {file = "nvidia_cublas-13.6.0.2-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:b82c80c886cea6da6e149a5c3bdba274f12b7e4ec4b00a050b916b0446fb4153"},
@@ -2996,7 +2950,7 @@ description = "CUDA profiling tools runtime libs."
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_aarch64.whl", hash = "sha256:796bd679890ee55fb14a94629b698b6db54bcfd833d391d5e94017dd9d7d3151"},
     {file = "nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl", hash = "sha256:4eb01c08e859bf924d222250d2e8f8b8ff6d3db4721288cf35d14252a4d933c8"},
@@ -3010,7 +2964,7 @@ description = "NVRTC native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:ad9b6d2ead2435f11cbb6868809d2adeeee302e9bb94bcf0539c7a40d80e8575"},
     {file = "nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d27f20a0ca67a4bb34268a5e951033496c5b74870b868bacd046b1b8e0c3267b"},
@@ -3024,7 +2978,7 @@ description = "NVRTC native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform != \"linux\" or platform_machine != \"aarch64\" and platform_machine != \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (sys_platform != \"linux\" and sys_platform != \"win32\" or platform_machine != \"x86_64\")"
+markers = "(sys_platform != \"linux\" or platform_machine != \"aarch64\" and platform_machine != \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (sys_platform != \"linux\" and sys_platform != \"win32\" or platform_machine != \"x86_64\")"
 files = [
     {file = "nvidia_cuda_nvrtc-13.3.33-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:82530788b8c6164a54d3fd9ae8bcca8893d397c4aeb998861982a03bbe41e204"},
     {file = "nvidia_cuda_nvrtc-13.3.33-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:7b05ecda494c6dabc44231a608b060a71008a730d9dfda932cc508e6d29159e0"},
@@ -3038,7 +2992,7 @@ description = "CUDA Runtime native Libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ef9bcbe90493a2b9d810e43d249adb3d02e98dd30200d86607d8d02687c43f55"},
     {file = "nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:7f82250d7782aa23b6cfe765ecc7db554bd3c2870c43f3d1821f1d18aebf0548"},
@@ -3052,7 +3006,7 @@ description = "cuDNN runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\""
+markers = "(extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\""
 files = [
     {file = "nvidia_cudnn_cu13-9.20.0.48-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:e31454ae00094b0c55319d9d15b6fa2fc50a9e1c0f5c8c80fb75258234e731e1"},
     {file = "nvidia_cudnn_cu13-9.20.0.48-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:0c45dd8eeb50b603f07995b1b300c62ffe6a1980482b82b3bcf94a4ca9d49304"},
@@ -3069,7 +3023,7 @@ description = "CUFFT native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cufft-12.0.0.61-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:2708c852ef8cd89d1d2068bdbece0aa188813a0c934db3779b9b1faa8442e5f5"},
     {file = "nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:6c44f692dce8fd5ffd3e3df134b6cdb9c2f72d99cf40b62c32dde45eea9ddad3"},
@@ -3086,7 +3040,7 @@ description = "cuFile GPUDirect libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "sys_platform == \"linux\" and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "sys_platform == \"linux\" and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:08a3ecefae5a01c7f5117351c64f17c7c62efa5fffdbe24fc7d298da19cd0b44"},
     {file = "nvidia_cufile-1.15.1.6-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:bdc0deedc61f548bddf7733bdc216456c2fdb101d020e1ab4b88d232d5e2f6d1"},
@@ -3099,7 +3053,7 @@ description = "CURAND native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:133df5a7509c3e292aaa2b477afd0194f06ce4ea24d714d616ff36439cee349a"},
     {file = "nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:1aee33a5da6e1db083fe2b90082def8915f30f3248d5896bcec36a579d941bfc"},
@@ -3113,7 +3067,7 @@ description = "CUDA solver native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:02c2457eaa9e39de20f880f4bd8820e6a1cfb9f9a34f820eb12a155aa5bc92d2"},
     {file = "nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:0a759da5dea5c0ea10fd307de75cdeb59e7ea4fcb8add0924859b944babf1112"},
@@ -3132,7 +3086,7 @@ description = "CUSPARSE native runtime libraries"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:80bcc4662f23f1054ee334a15c72b8940402975e0eab63178fc7e670aa59472c"},
     {file = "nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2b3c89c88d01ee0e477cb7f82ef60a11a4bcd57b6b87c33f789350b59759360b"},
@@ -3166,7 +3120,7 @@ description = "NVIDIA cuSPARSELt"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "(extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\""
+markers = "(extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\""
 files = [
     {file = "nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4dca476c50bf4780d46cd0bfbd82e2bc10a08e4fef7950917ce8d7578d22a23f"},
     {file = "nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:786ce87568c303fadb5afcc7102d454cd3040d75f6f8626f5db460d1871f4dd0"},
@@ -3180,7 +3134,7 @@ description = "NVIDIA Collective Communication Library (NCCL) Runtime"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\""
+markers = "(extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\""
 files = [
     {file = "nvidia_nccl_cu13-2.29.7-py3-none-manylinux_2_18_aarch64.whl", hash = "sha256:674a12383e3c38a1bcccae7d4f3633b37852230b6047883cb2f4c2d1b36d9bf5"},
     {file = "nvidia_nccl_cu13-2.29.7-py3-none-manylinux_2_18_x86_64.whl", hash = "sha256:edd81538446786ec3b73972543e53bb43bcaf0bfc8ef76cb679fcc390ffe136d"},
@@ -3193,7 +3147,7 @@ description = "Nvidia JIT LTO Library"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_nvjitlink-13.3.33-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:26a6de7fb4c8fdaa7703d3dad720d6d427ddfea5c48a528fd97c11733ad830e5"},
     {file = "nvidia_nvjitlink-13.3.33-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ce48b37dfeb3cb1eae4cf85adacb47d7a6539ea2272870c9a3628ce275c2037e"},
@@ -3207,7 +3161,7 @@ description = "NVSHMEM creates a global address space that provides efficient an
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\""
+markers = "(extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\""
 files = [
     {file = "nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:6dc2a197f38e5d0376ad52cd1a2a3617d3cdc150fd5966f4aee9bcebb1d68fe9"},
     {file = "nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:290f0a2ee94c9f3687a02502f3b9299a9f9fe826e6d0287ee18482e78d495b80"},
@@ -3220,7 +3174,7 @@ description = "NVIDIA Tools Extension"
 optional = true
 python-versions = ">=3"
 groups = ["main"]
-markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
+markers = "(sys_platform == \"linux\" or sys_platform == \"win32\") and (sys_platform == \"linux\" or platform_machine == \"x86_64\") and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and platform_system == \"Linux\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\")"
 files = [
     {file = "nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:4936d1d6780fbe68db454f5e72a42ff64d1fd6397df9f363ae786930fd5c1cd4"},
     {file = "nvidia_nvtx-13.0.85-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:cb7780edb6b14107373c835bf8b72e7a178bac7367e23da7acb108f973f157a6"},
@@ -3271,7 +3225,7 @@ description = "Wrapper package for OpenCV python bindings."
 optional = true
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "opencv_python_headless-5.0.0.93-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:030ca5e0837a2963ab36ef896baa9767eb8d2b83353fb28af5a521e40dd8756f"},
     {file = "opencv_python_headless-5.0.0.93-cp37-abi3-macosx_14_0_x86_64.whl", hash = "sha256:1e55af3abfb462eeeabe5c775f12bdb36216d8a93a3583d69e6bd6e1d6ba7d00"},
@@ -3310,7 +3264,7 @@ description = "Capture the outcome of Python function calls."
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "outcome-1.3.0.post0-py2.py3-none-any.whl", hash = "sha256:e771c5ce06d1415e356078d3bdd68523f284b4ce5419828922b6871e65eda82b"},
     {file = "outcome-1.3.0.post0.tar.gz", hash = "sha256:9dcf02e65f2971b80047b377468e72a268e15c0af3cf1238e6ff14f7f91143b8"},
@@ -3617,7 +3571,7 @@ description = "A high-level API to automate web browsers"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"playwright\" or extra == \"web\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"playwright\" or extra == \"web\""
 files = [
     {file = "playwright-1.61.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:ff138c3a604f69911e9d42fd036e55c2a171e5616edf04c1e7f60a2a285540b0"},
     {file = "playwright-1.61.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:009588c2a7e499bc5a8b425b61fa65490968bbda9cd69e0cf2cff10f8304659a"},
@@ -3690,7 +3644,7 @@ description = "Beautiful, Pythonic protocol buffers"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "proto_plus-1.28.2-py3-none-any.whl", hash = "sha256:b874236fcac2358f601e4330bcb76cb8b89c851303ccf4078408b3d4774d1c52"},
     {file = "proto_plus-1.28.2.tar.gz", hash = "sha256:26d843eb99c1e32fdf1d20ff0faae56607f7748fe774acf9ecd5cfe6c6472501"},
@@ -3709,7 +3663,7 @@ description = ""
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\""
 files = [
     {file = "protobuf-7.35.1-cp310-abi3-macosx_10_9_universal2.whl", hash = "sha256:24f857477359a85c0c235261b8ba905fd51b2562f4a64ca1df5473f29850cbf6"},
     {file = "protobuf-7.35.1-cp310-abi3-manylinux2014_aarch64.whl", hash = "sha256:11d6b0ec246892d85215b0a13ca6e0233cf5284b68f0ac02646427f4ff88a799"},
@@ -3775,7 +3729,7 @@ description = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs 
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"llm\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\""
 files = [
     {file = "pyasn1-0.6.3-py3-none-any.whl", hash = "sha256:a80184d120f0864a52a073acc6fc642847d0be408e7c7252f31390c0f4eadcde"},
     {file = "pyasn1-0.6.3.tar.gz", hash = "sha256:697a8ecd6d98891189184ca1fa05d1bb00e2f84b5977c481452050549c8a72cf"},
@@ -3788,7 +3742,7 @@ description = "A collection of ASN.1-based protocols modules"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"llm\""
+markers = "extra == \"all\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\""
 files = [
     {file = "pyasn1_modules-0.4.2-py3-none-any.whl", hash = "sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a"},
     {file = "pyasn1_modules-0.4.2.tar.gz", hash = "sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6"},
@@ -3804,7 +3758,7 @@ description = "Cython wrapper for the C++ translation of the Angus Johnson's Cli
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "pyclipper-1.4.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:bafad70d2679c187120e8c44e1f9a8b06150bad8c0aecf612ad7dfbfa9510f73"},
     {file = "pyclipper-1.4.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:0b74a9dd44b22a7fd35d65fb1ceeba57f3817f34a97a28c3255556362e491447"},
@@ -3851,7 +3805,7 @@ description = "C parser in Python"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "os_name == \"nt\" and implementation_name != \"pypy\" and implementation_name != \"PyPy\" and (extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\") or os_name == \"nt\" and implementation_name != \"pypy\" and implementation_name != \"PyPy\" and platform_python_implementation != \"PyPy\" and (extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\" or extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\") or (extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"llm\") and platform_python_implementation != \"PyPy\" and implementation_name != \"PyPy\""
+markers = "os_name == \"nt\" and implementation_name != \"pypy\" and implementation_name != \"PyPy\" and (extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\") or os_name == \"nt\" and implementation_name != \"pypy\" and implementation_name != \"PyPy\" and platform_python_implementation != \"PyPy\" and (extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\" or extra == \"mcp\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\") or (extra == \"mcp\" or extra == \"all\" or extra == \"google-vision\" or extra == \"vision\" or extra == \"llm\") and platform_python_implementation != \"PyPy\" and implementation_name != \"PyPy\""
 files = [
     {file = "pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992"},
     {file = "pycparser-3.0.tar.gz", hash = "sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29"},
@@ -4045,7 +3999,7 @@ description = "A rough port of Node.js's EventEmitter to Python with a few trick
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"playwright\" or extra == \"web\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"playwright\" or extra == \"web\""
 files = [
     {file = "pyee-13.0.1-py3-none-any.whl", hash = "sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228"},
     {file = "pyee-13.0.1.tar.gz", hash = "sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8"},
@@ -4174,7 +4128,7 @@ description = "Python Serial Port Extension"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"ble\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"ble\""
 files = [
     {file = "pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0"},
     {file = "pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb"},
@@ -4190,7 +4144,7 @@ description = "A Python SOCKS client module. See https://github.com/Anorov/PySoc
 optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "PySocks-1.7.1-py27-none-any.whl", hash = "sha256:08e69f092cc6dbe92a0fdd16eeb9b9ffbc13cadfe5ca4c7bd92ffb078b293299"},
     {file = "PySocks-1.7.1-py3-none-any.whl", hash = "sha256:2725bd0a9925919b9b51739eea5f9e2bae91e83288108a9ad338b2e3a4435ee5"},
@@ -4204,7 +4158,7 @@ description = "Python-tesseract is a python wrapper for Google's Tesseract-OCR"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"pytesseract\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"pytesseract\" or extra == \"vision\""
 files = [
     {file = "pytesseract-0.3.13-py3-none-any.whl", hash = "sha256:7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34"},
     {file = "pytesseract-0.3.13.tar.gz", hash = "sha256:4bf5f880c99406f52a3cfc2633e42d9dc67615e69d8a509d74867d3baddb5db9"},
@@ -4301,7 +4255,7 @@ description = "Python Bidi layout wrapping the Rust crate unicode-bidi"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "python_bidi-0.6.11-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:a9aa2890661b238730e680ccd6eb06f4da625b2dbc1730052dae6f2d88957192"},
     {file = "python_bidi-0.6.11-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:41c7d1914c1f33954aa2ab0e2c309be5d1d4afc75ce524762eaab4dd825c5ab8"},
@@ -4450,23 +4404,19 @@ six = ">=1.5"
 
 [[package]]
 name = "python-discovery"
-version = "1.3.1"
+version = "1.5.0"
 description = "Python interpreter discovery"
 optional = false
 python-versions = ">=3.8"
 groups = ["dev"]
 files = [
-    {file = "python_discovery-1.3.1-py3-none-any.whl", hash = "sha256:ed188687ebb3b82c01a17cd5ac62fc94d9f6487a7f1a0f9dfe89753fec91039c"},
-    {file = "python_discovery-1.3.1.tar.gz", hash = "sha256:62f6db28064c9613e7ca76cb3f00c38c839a07c31c00dfe7ed0986493d2150a6"},
+    {file = "python_discovery-1.5.0-py3-none-any.whl", hash = "sha256:70c4fc61b4e7404e44f01d6fc44a715c4d685ca6cea83d295922f05891877c98"},
+    {file = "python_discovery-1.5.0.tar.gz", hash = "sha256:3e014c6327154d3dda27939a9a0dc9c5c000439f1906d3f303b48f984bd2ecef"},
 ]
 
 [package.dependencies]
 filelock = ">=3.15.4"
 platformdirs = ">=4.3.6,<5"
-
-[package.extras]
-docs = ["furo (>=2025.12.19)", "sphinx (>=9.1)", "sphinx-autodoc-typehints (>=3.6.3)", "sphinxcontrib-mermaid (>=2)", "sphinxcontrib-towncrier (>=0.4)", "towncrier (>=25.8)"]
-testing = ["covdefaults (>=2.3)", "coverage (>=7.5.4)", "pytest (>=8.3.5)", "pytest-mock (>=3.14)", "setuptools (>=75.1)"]
 
 [[package]]
 name = "python-dotenv"
@@ -5196,7 +5146,7 @@ description = "Official Python bindings for Selenium WebDriver"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "selenium-4.46.0-py3-none-any.whl", hash = "sha256:f03e864770a21ab32009961c9d015cb2c6275eba45c926c272e02d90af423aad"},
     {file = "selenium-4.46.0.tar.gz", hash = "sha256:54f7e1a4df5f7508ac8c38ce2ea584db1b27083dd79962b22524219219df5cbe"},
@@ -5217,7 +5167,7 @@ description = "Most extensible Python build backend with support for C/C++ exten
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "setuptools-83.0.0-py3-none-any.whl", hash = "sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3"},
     {file = "setuptools-83.0.0.tar.gz", hash = "sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef"},
@@ -5239,7 +5189,7 @@ description = "Manipulation and analysis of geometric objects"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "shapely-2.1.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7ae48c236c0324b4e139bea88a306a04ca630f49be66741b340729d380d8f52f"},
     {file = "shapely-2.1.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:eba6710407f1daa8e7602c347dfc94adc02205ec27ed956346190d66579eb9ea"},
@@ -5326,7 +5276,7 @@ description = "Sniff out which async library your code is running under"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\" or extra == \"llm\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\" or extra == \"llm\""
 files = [
     {file = "sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2"},
     {file = "sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc"},
@@ -5339,7 +5289,7 @@ description = "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0"},
     {file = "sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88"},
@@ -5416,7 +5366,7 @@ description = "Computer algebra system (CAS) in Python"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"},
     {file = "sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517"},
@@ -5435,7 +5385,7 @@ description = "Retry code until it succeeds"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"llm\""
 files = [
     {file = "tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55"},
     {file = "tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a"},
@@ -5507,6 +5457,18 @@ xml = ["lxml"]
 zarr = ["fsspec", "kerchunk", "zarr (>=3.2.0)"]
 
 [[package]]
+name = "tomli-w"
+version = "1.2.0"
+description = "A lil' TOML writer"
+optional = false
+python-versions = ">=3.9"
+groups = ["dev"]
+files = [
+    {file = "tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90"},
+    {file = "tomli_w-1.2.0.tar.gz", hash = "sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021"},
+]
+
+[[package]]
 name = "tomlkit"
 version = "0.15.0"
 description = "Style preserving TOML library"
@@ -5525,7 +5487,7 @@ description = "Tensors and Dynamic neural networks in Python with strong GPU acc
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"all\" or extra == \"easyocr\" or extra == \"vision\""
 files = [
     {file = "torch-2.13.0-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:94f0de129916f77b8dc2c7a8eff644cfeddfe59e39c9f55e9f6e17543410281d"},
     {file = "torch-2.13.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:0ab4b69f3ee03a62a002cfbf77b1ca5e88aceb4ea64cb4388bb28f638ddbb045"},
@@ -5581,7 +5543,7 @@ description = "image and video datasets and models for torch deep learning"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "python_version >= \"3.14\" and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\")"
+markers = "python_version >= \"3.14\" and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\")"
 files = [
     {file = "torchvision-0.12.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:693656e6790b6ab21e4a6e87e81c2982bad9e455b5eb24e14bb672382ec6130f"},
     {file = "torchvision-0.12.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a0be4501ca0ba1b195644c9243f49a1c49a26e52a7f37924c4239d0bf5ecbd8d"},
@@ -5621,7 +5583,7 @@ description = "image and video datasets and models for torch deep learning"
 optional = true
 python-versions = "!=3.14.1,>=3.10"
 groups = ["main"]
-markers = "(extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and python_version < \"3.14\""
+markers = "(extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and python_version < \"3.14\""
 files = [
     {file = "torchvision-0.28.0-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:2a1ef4b6f4bf5828b48cfad97372c8982db906830884b2868ba5c3df937a7d81"},
     {file = "torchvision-0.28.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:546fd85345cf8652f6cd099d4f9884b0ca5c2f3fae78689a21dd2f35ea6b622f"},
@@ -5660,26 +5622,31 @@ scipy = ["scipy"]
 
 [[package]]
 name = "tox"
-version = "4.30.3"
+version = "4.58.0"
 description = "tox is a generic virtualenv management and test command line tool"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "tox-4.30.3-py3-none-any.whl", hash = "sha256:a9f17b4b2d0f74fe0d76207236925a119095011e5c2e661a133115a8061178c9"},
-    {file = "tox-4.30.3.tar.gz", hash = "sha256:f3dd0735f1cd4e8fbea5a3661b77f517456b5f0031a6256432533900e34b90bf"},
+    {file = "tox-4.58.0-py3-none-any.whl", hash = "sha256:dcae21f5f015f3a67658e35644cce0d1aa0dedcd06f3927f95d84e1717f6cea5"},
+    {file = "tox-4.58.0.tar.gz", hash = "sha256:ab0b126a04dd56bc18e6d216386db09335247f2289b54cf534deb5c4ae3a8d2e"},
 ]
 
 [package.dependencies]
-cachetools = ">=6.1"
-chardet = ">=5.2"
+cachetools = ">=7.0.3"
 colorama = ">=0.4.6"
-filelock = ">=3.18"
-packaging = ">=25"
-platformdirs = ">=4.3.8"
+filelock = ">=3.25"
+packaging = ">=26"
+platformdirs = ">=4.9.4"
 pluggy = ">=1.6"
-pyproject-api = ">=1.9.1"
-virtualenv = ">=20.31.2"
+pyproject-api = ">=1.10"
+python-discovery = ">=1.4.4"
+tomli-w = ">=1.2"
+virtualenv = ">=21.1"
+
+[package.extras]
+completion = ["argcomplete (>=3.6.3)"]
+testing = ["devpi-process (>=1.1.1)", "pytest (>=9.0.2)", "pytest-mock (>=3.15.1)"]
 
 [[package]]
 name = "trio"
@@ -5688,7 +5655,7 @@ description = "A friendly Python library for async concurrency and I/O"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "trio-0.33.0-py3-none-any.whl", hash = "sha256:3bd5d87f781d9b0192d592aef28691f8951d6c2e41b7e1da4c25cde6c180ae9b"},
     {file = "trio-0.33.0.tar.gz", hash = "sha256:a29b92b73f09d4b48ed249acd91073281a7f1063f09caba5dc70465b5c7aa970"},
@@ -5709,7 +5676,7 @@ description = "WebSocket library for Trio"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "trio_websocket-0.12.2-py3-none-any.whl", hash = "sha256:df605665f1db533f4a386c94525870851096a223adcb97f72a07e8b4beba45b6"},
     {file = "trio_websocket-0.12.2.tar.gz", hash = "sha256:22c72c436f3d1e264d0910a3951934798dcc5b00ae56fc4ee079d46c7cf20fae"},
@@ -5727,7 +5694,7 @@ description = "A language and compiler for custom Deep Learning operations"
 optional = true
 python-versions = "<3.15,>=3.10"
 groups = ["main"]
-markers = "platform_system == \"Linux\" and (extra == \"easyocr\" or extra == \"vision\" or extra == \"all\") and python_version <= \"3.14\""
+markers = "platform_system == \"Linux\" and (extra == \"all\" or extra == \"easyocr\" or extra == \"vision\") and python_version <= \"3.14\""
 files = [
     {file = "triton-3.7.1-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:3daf64305d6cea88d3334c65ebc9bcd0c64c9564a977084366aa768d57cbcf64"},
     {file = "triton-3.7.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ee89fbf782ec2ad50391dd1cf26cbea4f4467154c37f4773026da8fc31c0f58e"},
@@ -6057,7 +6024,7 @@ description = "WebSocket client for Python with low level API options"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "websocket_client-1.9.0-py3-none-any.whl", hash = "sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef"},
     {file = "websocket_client-1.9.0.tar.gz", hash = "sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98"},
@@ -6075,7 +6042,7 @@ description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"llm\" or extra == \"all\" or extra == \"mcp\""
+markers = "extra == \"mcp\" or extra == \"all\" or extra == \"llm\""
 files = [
     {file = "websockets-16.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:04cdd5d2d1dacbad0a7bf36ccbcd3ccd5a30ee188f2560b7a62a30d14107b31a"},
     {file = "websockets-16.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:8ff32bb86522a9e5e31439a58addbb0166f0204d64066fb955265c4e214160f0"},
@@ -6250,7 +6217,7 @@ description = "Pure-Python WebSocket protocol implementation"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"appium\" or extra == \"mobile\" or extra == \"all\" or extra == \"selenium\" or extra == \"web\""
+markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\" or extra == \"selenium\" or extra == \"web\""
 files = [
     {file = "wsproto-1.3.2-py3-none-any.whl", hash = "sha256:61eea322cdf56e8cc904bd3ad7573359a242ba65688716b0710a5eb12beab584"},
     {file = "wsproto-1.3.2.tar.gz", hash = "sha256:b86885dcf294e15204919950f666e06ffc6c7c114ca900b060d6e16293528294"},
@@ -6277,4 +6244,4 @@ web = ["playwright", "selenium"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "ca5fac2a181c3254fd44bf98e8b05fcc29cf310f98fd27680413272f24422188"
+content-hash = "019e244763f5cdbf28f3e1c5e7c74ded4bb6a78c39a950d8e9c47fcbe88961a8"
