@@ -9,7 +9,7 @@ from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.live import live_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
-from optics_framework.helper.setup import EngineInstallerApp, list_engines, install_extras, resolve_engines
+from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines
 from optics_framework.helper.serve import run_uvicorn_server
 from optics_framework.helper.autocompletion import update_shell_rc
 
@@ -366,7 +366,7 @@ class EngineInstaller(Command):
         parser.add_argument(
             "--install", nargs="+", metavar="NAME",
             help="Install the given engines, e.g. --install appium easyocr. "
-                 "Append a version to pin it, e.g. --install appium==4.2.0")
+                 "Append a version to pin it, e.g. --install appium==5.0.0")
         parser.add_argument("--list", action="store_true",
                         help="List all available engines")
         parser.set_defaults(func=self.execute)
@@ -375,7 +375,11 @@ class EngineInstaller(Command):
         if args.list:
             list_engines()
         elif args.install:
-            engines, invalid = resolve_engines(args.install)
+            try:
+                engines, invalid = resolve_engines(args.install)
+            except SetupError as exc:
+                print(f"Error: {exc}")
+                return
             if invalid:
                 print(f"Error: Invalid engine(s): {', '.join(invalid)}")
                 print("Use `optics setup --list` to see available engines")

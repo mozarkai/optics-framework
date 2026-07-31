@@ -5,10 +5,17 @@ from typing import Dict, List, Optional
 import sys
 from textual.app import App, ComposeResult
 from textual.widgets import Checkbox, Button, Header, Footer, Static
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import BaseModel
 
 
 DISTRIBUTION_NAME = "optics-framework"
+
+
+class SetupError(Exception):
+    """A user-facing engine-setup error (bad version specifier, version
+    conflict). Raised by `resolve_engines` and surfaced by the CLI as a clean
+    message instead of a Python traceback."""
 
 
 class EngineBackend(BaseModel):
@@ -32,7 +39,7 @@ class EngineCategory(BaseModel):
 class InstallRequest(BaseModel):
     """One engine to install, optionally with a user-supplied version specifier.
 
-    ``version`` is the raw PEP 508 tail (e.g. ``"==4.2.0"``, ``">=4.0,<4.3"``)
+    ``version`` is the raw PEP 508 tail (e.g. ``"==5.0.0"``, ``">=5.0,<5.4"``)
     parsed off the CLI token; ``None`` means "let the extra's own bound decide"."""
     engine: EngineBackend
     version: Optional[str] = None
@@ -103,13 +110,26 @@ _SPEC_START = re.compile(r"[=<>!~]")
 def _split_token(token: str) -> tuple[str, Optional[str]]:
     """Split a CLI token into its engine name and optional version specifier.
 
-    ``"appium==4.2.0"`` → ``("appium", "==4.2.0")``; ``"easyocr"`` → ``("easyocr",
-    None)``. The specifier tail is passed through to pip verbatim (pip validates
-    it), so any PEP 508 form is accepted, not just ``==``."""
+    ``"appium==5.0.0"`` → ``("appium", "==5.0.0")``; ``"easyocr"`` → ``("easyocr",
+    None)``. The specifier is only sliced off here — `_validate_spec` checks it —
+    so any operator form is accepted, not just ``==``."""
     match = _SPEC_START.search(token)
     if match is None:
         return token.strip(), None
     return token[:match.start()].strip(), token[match.start():].strip()
+
+
+def _validate_spec(spec: str, token: str) -> None:
+    """Reject a malformed version specifier up front (PEP 440), so the user gets
+    a clear error from optics instead of a pip failure later. ``"=5.0.0"`` (a
+    single ``=``) and other typos raise `SetupError`."""
+    try:
+        SpecifierSet(spec)
+    except InvalidSpecifier as exc:
+        raise SetupError(
+            f"invalid version in '{token}': {exc}. "
+            "Use an operator like '==', e.g. 'appium==5.0.0'."
+        ) from exc
 
 
 def _alias_index() -> Dict[str, EngineBackend]:
@@ -124,13 +144,24 @@ def _alias_index() -> Dict[str, EngineBackend]:
 
 
 def _add_request(resolved: List[InstallRequest], engine: EngineBackend, version: Optional[str]) -> None:
-    """Add `engine` to `resolved`, or merge `version` onto its existing entry —
-    an explicit version wins over a bare one already recorded for that engine."""
+    """Add `engine` to `resolved`, or merge `version` onto its existing entry.
+
+    An explicit version wins over a bare one already recorded for that engine; a
+    bare token folds into an existing entry. Two *different* explicit versions
+    for one engine are a conflict — raise rather than silently pick one, matching
+    how pip rejects `pkg==a pkg==b`."""
     existing = next((r for r in resolved if r.engine is engine), None)
     if existing is None:
         resolved.append(InstallRequest(engine=engine, version=version))
-    elif version and not existing.version:
+    elif version is None or version == existing.version:
+        return
+    elif existing.version is None:
         existing.version = version
+    else:
+        raise SetupError(
+            f"conflicting versions for {engine.name}: "
+            f"'{existing.version}' and '{version}'."
+        )
 
 
 def _resolve_token(
@@ -157,8 +188,10 @@ def _resolve_token(
     engine = index.get(norm)
     if engine is None:
         invalid.append(token)
-    else:
-        _add_request(resolved, engine, spec)
+        return
+    if spec is not None:
+        _validate_spec(spec, token)
+    _add_request(resolved, engine, spec)
 
 
 def resolve_engines(tokens: List[str]) -> tuple[List[InstallRequest], List[str]]:
@@ -167,11 +200,14 @@ def resolve_engines(tokens: List[str]) -> tuple[List[InstallRequest], List[str]]
     Accepts display names ("Appium", "Google Vision"), config/extra keys
     ("appium", "google-vision", "google_vision"), and convenience bundles
     ("mobile", "web", "vision", "all") — all case-insensitively. Any token may
-    carry a PEP 508 version specifier ("appium==4.2.0", "easyocr>=1.7,<2.0") to
+    carry a PEP 508 version specifier ("appium==5.0.0", "easyocr>=1.7,<2.0") to
     override the extra's default bound; a specifier on a bundle is rejected as
     invalid since one version can't apply to many packages. Bundles expand to
     their member engines, deduplicated while preserving first-seen order; when
-    the same engine is named twice, an explicit version wins over a bare one."""
+    the same engine is named twice, an explicit version wins over a bare one.
+
+    Raises `SetupError` for a malformed version specifier or two conflicting
+    explicit versions of the same engine."""
     index = _alias_index()
     resolved: List[InstallRequest] = []
     invalid: List[str] = []
@@ -262,7 +298,7 @@ def install_extras(requests: List[InstallRequest]) -> None:
     never upgraded out from under the user.
 
     A request carrying an explicit ``version`` also adds its primary package as a
-    concrete pinned requirement (e.g. ``appium-python-client==4.2.0``); pip
+    concrete pinned requirement (e.g. ``appium-python-client==5.0.0``); pip
     intersects that with the extra's own bound, so an override outside the
     supported range fails loudly rather than silently downgrading it.
     ``packages[0]`` is each engine's primary package — the one a version
@@ -316,5 +352,5 @@ def list_engines() -> None:
         print(f"  {name:<15} ({', '.join(engine.extra for engine in engines)})")
     print()
     print("Pin a version by appending a specifier, e.g. "
-          "`optics setup --install appium==4.2.0`.")
+          "`optics setup --install appium==5.0.0`.")
     print()

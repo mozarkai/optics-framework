@@ -19,6 +19,7 @@ from optics_framework.helper.setup import (
     ALL_ENGINES,
     DISTRIBUTION_NAME,
     InstallRequest,
+    SetupError,
     _BUNDLES,
     _alias_index,
     _norm,
@@ -159,6 +160,20 @@ class TestResolveEngines:
         resolved, _ = resolve_engines(["web", "selenium==4.20"])
         selenium = next(r for r in resolved if r.engine.extra == "selenium")
         assert selenium.version == "==4.20"
+
+    def test_conflicting_versions_raise(self):
+        with pytest.raises(SetupError, match="conflicting versions"):
+            resolve_engines(["appium==4.2.0", "appium==5.0.0"])
+
+    def test_same_version_twice_is_deduped(self):
+        resolved, invalid = resolve_engines(["appium==5.0.0", "appium==5.0.0"])
+        assert [(r.engine.extra, r.version) for r in resolved] == [("appium", "==5.0.0")]
+        assert invalid == []
+
+    @pytest.mark.parametrize("token", ["appium=4.3.0", "appium=>4.3", "appium=="])
+    def test_malformed_specifier_raises(self, token):
+        with pytest.raises(SetupError, match="invalid version"):
+            resolve_engines([token])
 
 
 # --------------------------------------------------------------------------- #
