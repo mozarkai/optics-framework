@@ -20,12 +20,6 @@ jobs:
         run: |
           pip install --no-cache-dir --only-binary=:all: poetry==2.4.1
 
-      - name: Configure Poetry
-        run: poetry config virtualenvs.create false
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --sync
-
       - name: Build package
         run: poetry build
 
