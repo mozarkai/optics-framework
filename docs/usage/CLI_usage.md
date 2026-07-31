@@ -29,10 +29,10 @@ This is equivalent to `pip install "optics-framework[appium,easyocr]"`. See [Ins
 Pin a specific version by appending a specifier to any engine (handy for reproducible CI):
 
 ```bash
-optics setup --install appium==4.2.0 "easyocr>=1.7,<2.0"
+optics setup --install appium==5.0.0 "easyocr>=1.7,<2.0"
 ```
 
-The version applies to the engine's main package and is intersected with the extra's supported range, so an out-of-range pin fails loudly instead of silently downgrading. A specifier on a bundle (e.g. `all==1.0`) is rejected.
+The version applies to the engine's main package and is intersected with the extra's supported range, so an out-of-range pin fails loudly instead of silently downgrading. A malformed specifier (e.g. `appium=5.0.0` with a single `=`), two conflicting versions for the same engine, or a specifier on a bundle (e.g. `all==1.0`) are all rejected up front with a clear error.
 
 ## Executing Test Cases
 
