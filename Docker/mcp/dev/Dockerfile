@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 # Install common Python packages and optics-framework wheel with MCP extra and vision backend
 RUN pip install --no-cache-dir --only-binary=:all: \
-   appium-python-client==4.5.1 playwright==1.61.0 \
+   appium-python-client==5.3.1 playwright==1.61.0 \
    && playwright install-deps chromium firefox \
    && WHEEL=$(if [ -n "$WHL_FILE" ]; then echo "/app/${WHL_FILE}"; else ls /app/*.whl 2>/dev/null | head -1; fi) \
    && if [ -z "$WHEEL" ] || [ ! -f "$WHEEL" ]; then \

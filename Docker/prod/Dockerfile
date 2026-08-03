@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --only-binary=:all: uv==0.11.32 \
-    && uv pip install --system --only-binary=:all: appium-python-client==4.5.1 playwright==1.61.0 \
+    && uv pip install --system --only-binary=:all: appium-python-client==5.3.1 playwright==1.61.0 \
     && playwright install-deps chromium firefox
 
 # Install optics-framework and vision backend (late layer for cache efficiency)
