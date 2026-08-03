@@ -54,11 +54,16 @@ COPY tools/mock_remote_ocr /app/tools/mock_remote_ocr
 COPY pyproject.toml /app/
 
 COPY --from=build /wheels /wheels
-RUN WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
+COPY poetry.lock scripts/lock_pins.py /app/
+# easyocr / uvicorn versions come from poetry.lock (single source of truth); gunicorn isn't a
+# pyproject.toml dependency, so it has no lock entry to derive from and stays hardcoded.
+RUN eval "$(python3 lock_pins.py)" && \
+    rm -f poetry.lock lock_pins.py && \
+    WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
     pip install --no-cache-dir --only-binary=:all: --no-index --find-links=/wheels \
         "optics-framework==${WHEEL_VERSION}" && \
     pip install --no-cache-dir --only-binary=:all: \
-        easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
+        "easyocr==$EASYOCR_VERSION" gunicorn==26.0.0 "uvicorn[standard]==$UVICORN_VERSION" && \
     mkdir -p /home/optics && \
     python - <<'PY'
 import os
