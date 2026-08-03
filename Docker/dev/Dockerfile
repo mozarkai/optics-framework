@@ -15,8 +15,9 @@ ENV WHL_FILE=${WHL_FILE}
 ARG VISION_BACKEND=easyocr
 ENV VISION_BACKEND=${VISION_BACKEND}
 
-# Copy the wheel into the container
+# Copy the wheel and lockfile into the container
 COPY dist/${WHL_FILE} /app/
+COPY poetry.lock scripts/lock_pins.py /app/
 
 
 # Install system dependencies (first layer for cache)
@@ -31,8 +32,10 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
    && rm -rf /var/lib/apt/lists/*
 
 # Install common Python packages and optics-framework wheel and vision backend
-RUN pip install --no-cache-dir --only-binary=:all: \
-   appium-python-client==5.3.1 playwright==1.61.0 \
+RUN eval "$(python3 lock_pins.py)" \
+   && rm -f poetry.lock lock_pins.py \
+   && pip install --no-cache-dir --only-binary=:all: \
+   "appium-python-client==$APPIUM_VERSION" "playwright==$PLAYWRIGHT_VERSION" \
    && playwright install-deps chromium firefox \
    && WHEEL=$(if [ -n "$WHL_FILE" ]; then echo "/app/${WHL_FILE}"; else ls /app/*.whl 2>/dev/null | head -1; fi) \
    && if [ -z "$WHEEL" ] || [ ! -f "$WHEEL" ]; then \
@@ -43,11 +46,11 @@ RUN pip install --no-cache-dir --only-binary=:all: \
    && pip install --no-cache-dir --only-binary=:all: --find-links="$(dirname "$WHEEL")" \
         "optics-framework==${WHEEL_VERSION}" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-      pip install --no-cache-dir --only-binary=:all: easyocr==1.7.2; \
+      pip install --no-cache-dir --only-binary=:all: "easyocr==$EASYOCR_VERSION"; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \
-      pip install --no-cache-dir --only-binary=:all: google-cloud-vision==3.15.0; \
+      pip install --no-cache-dir --only-binary=:all: "google-cloud-vision==$GOOGLE_CLOUD_VISION_VERSION"; \
    elif [ "$VISION_BACKEND" = "pytesseract" ]; then \
-      pip install --no-cache-dir --only-binary=:all: pytesseract==0.3.13; \
+      pip install --no-cache-dir --only-binary=:all: "pytesseract==$PYTESSERACT_VERSION"; \
    fi
 
 # If using google-vision, user must mount service account json and set GOOGLE_APPLICATION_CREDENTIALS

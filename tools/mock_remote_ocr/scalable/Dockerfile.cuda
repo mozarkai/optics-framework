@@ -34,12 +34,19 @@ RUN python3 -m pip wheel --only-binary=:all: --wheel-dir=/wheels .
 
 # Copy application
 COPY tools/mock_remote_ocr /app/tools/mock_remote_ocr
+COPY poetry.lock scripts/lock_pins.py /app/
 
-RUN WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
+# easyocr / uvicorn versions come from poetry.lock (single source of truth); gunicorn isn't a
+# pyproject.toml dependency, so it has no lock entry to derive from and stays hardcoded.
+# tomli backports tomllib for this image's apt-installed Python 3.10 (tomllib is 3.11+ stdlib).
+RUN python3 -m pip install --no-cache-dir --only-binary=:all: tomli==2.4.1 && \
+    eval "$(python3 lock_pins.py)" && \
+    rm -f poetry.lock lock_pins.py && \
+    WHEEL_VERSION="$(basename "$(ls /wheels/optics_framework-*.whl)" .whl | cut -d- -f2)" && \
     python3 -m pip install --no-cache-dir --only-binary=:all: --no-index --find-links=/wheels \
         "optics-framework==${WHEEL_VERSION}" && \
     python3 -m pip install --no-cache-dir --only-binary=:all: \
-        easyocr==1.7.2 gunicorn==26.0.0 "uvicorn[standard]==0.37.0" && \
+        "easyocr==$EASYOCR_VERSION" gunicorn==26.0.0 "uvicorn[standard]==$UVICORN_VERSION" && \
     mkdir -p /home/optics && \
     python3 - <<'PY'
 import os

@@ -24,18 +24,24 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir --only-binary=:all: uv==0.11.32 \
-    && uv pip install --system --only-binary=:all: appium-python-client==5.3.1 playwright==1.61.0 \
+COPY poetry.lock scripts/lock_pins.py /app/
+
+RUN eval "$(python3 lock_pins.py)" \
+    && pip install --no-cache-dir --only-binary=:all: uv==0.11.32 \
+    && uv pip install --system --only-binary=:all: \
+        "appium-python-client==$APPIUM_VERSION" "playwright==$PLAYWRIGHT_VERSION" \
     && playwright install-deps chromium firefox
 
 # Install optics-framework with MCP extra and vision backend (late layer for cache efficiency)
-RUN uv pip install --system --only-binary=:all: "optics-framework[mcp]==${OPTICS_FRAMEWORK_VERSION}" \
+RUN eval "$(python3 lock_pins.py)" \
+    && rm -f poetry.lock lock_pins.py \
+    && uv pip install --system --only-binary=:all: "optics-framework[mcp]==${OPTICS_FRAMEWORK_VERSION}" \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-        uv pip install --system --only-binary=:all: easyocr==1.7.2; \
+        uv pip install --system --only-binary=:all: "easyocr==$EASYOCR_VERSION"; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \
-        uv pip install --system --only-binary=:all: google-cloud-vision==3.15.0; \
+        uv pip install --system --only-binary=:all: "google-cloud-vision==$GOOGLE_CLOUD_VISION_VERSION"; \
     elif [ "$VISION_BACKEND" = "pytesseract" ]; then \
-        uv pip install --system --only-binary=:all: pytesseract==0.3.13; \
+        uv pip install --system --only-binary=:all: "pytesseract==$PYTESSERACT_VERSION"; \
     fi
 
 # If using google-vision, user must mount service account json and set GOOGLE_APPLICATION_CREDENTIALS
