@@ -25,9 +25,12 @@ jobs:
           restore-keys: |
             mkdocs-material-
       # jsmin/csscompressor are sdist-only on PyPI, hence --no-binary.
+      # Versions come from poetry.lock (single source of truth) via scripts/lock_pins.py.
       - run: |
+          eval "$(python3 scripts/lock_pins.py)"
           pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
-            mkdocs-material==9.7.6 "mkdocstrings[python]==1.0.4" mkdocs-minify-plugin==0.8.0
+            mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
+            mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION
       - run: mkdocs build
 
   deploy:
@@ -54,7 +57,10 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
+      # Versions come from poetry.lock (single source of truth) via scripts/lock_pins.py.
       - run: |
+          eval "$(python3 scripts/lock_pins.py)"
           pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
-            mkdocs-material==9.7.6 "mkdocstrings[python]==1.0.4" mkdocs-minify-plugin==0.8.0
+            mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
+            mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION
       - run: mkdocs gh-deploy --force
