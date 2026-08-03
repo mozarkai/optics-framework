@@ -393,6 +393,7 @@ def discover_keywords() -> List[KeywordInfo]:
     return keywords
 
 @app.get("/", response_model=HealthCheckResponse, status_code=status.HTTP_200_OK)
+@app.get("/health", response_model=HealthCheckResponse, status_code=status.HTTP_200_OK)
 async def health_check():
     """
     Health check endpoint for Optics Framework API.
