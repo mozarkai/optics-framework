@@ -41,7 +41,8 @@ RUN pip install --no-cache-dir \
       fi \
    && pip install --no-cache-dir "$WHEEL" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-      pip install --no-cache-dir easyocr; \
+      pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+      && pip install --no-cache-dir easyocr; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \
       pip install --no-cache-dir google-cloud-vision; \
    elif [ "$VISION_BACKEND" = "pytesseract" ]; then \

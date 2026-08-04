@@ -28,9 +28,12 @@ RUN pip install --no-cache-dir uv \
     && playwright install-deps chromium firefox
 
 # Install optics-framework and vision backend (late layer for cache efficiency)
+# easyocr pulls in torch; installing the CPU-only wheel first keeps pip/uv from
+# resolving the CUDA build, which otherwise adds several GB of unused nvidia-* libs.
 RUN uv pip install --system optics-framework \
     && if [ "$VISION_BACKEND" = "easyocr" ]; then \
-        uv pip install --system easyocr; \
+        uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+        && uv pip install --system easyocr; \
     elif [ "$VISION_BACKEND" = "google-vision" ]; then \
         uv pip install --system google-cloud-vision; \
     elif [ "$VISION_BACKEND" = "pytesseract" ]; then \
