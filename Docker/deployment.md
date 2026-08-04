@@ -29,12 +29,12 @@ prod/
 ### Build
 ```sh
 cd prod/
-docker build -t optics-api-prod .
+docker build -t optics-api-prod:1.9.1-easyocr .
 ```
 
 ### Run
 ```sh
-docker run -d -p 8000:8000 --name optics-api-prod optics-api-prod
+docker run -d -p 8000:8000 --name optics-api-prod optics-api-prod:1.9.1-easyocr
 ```
 
 #### Vision Backend Selection
@@ -44,9 +44,14 @@ The production Dockerfile supports multiple vision backends via the `VISION_BACK
 - `google-vision`
 - `pytesseract`
 
+#### Tagging convention
+The Dockerfile always installs the latest `optics-framework` release from PyPI (no version pin), so **tag the image `<optics_version>-<vision_backend>`**, e.g. `1.9.1-easyocr`, using whatever version was actually latest at build time — check `pip index versions optics-framework` (or the [PyPI release history](https://pypi.org/project/optics-framework/#history)) right before building. That way the tag tells you both what OCR backend is baked in and which release it shipped with, instead of leaving both to guesswork later.
+
 Example (Google Vision):
 ```sh
-docker build --build-arg VISION_BACKEND=google-vision -t optics-api-prod .
+docker build \
+  --build-arg VISION_BACKEND=google-vision \
+  -t optics-api-prod:1.9.1-google-vision .
 ```
 
 If using Google Vision, mount your service account JSON and set the env variable:
@@ -54,7 +59,7 @@ If using Google Vision, mount your service account JSON and set the env variable
 docker run -d -p 8000:8000 \
   -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
   -v /path/to/service-account.json:/app/service-account.json \
-  --name optics-api-prod optics-api-prod
+  --name optics-api-prod optics-api-prod:1.9.1-google-vision
 ```
 
 
@@ -80,16 +85,18 @@ cp dist/*.whl /path/to/optics-framework/Docker/dev/dist/
 ```
 
 ### Build (specify the .whl filename)
+The wheel filename already pins the exact `optics-framework` version being installed — carry that version, plus the vision backend, into the image tag (same `<optics_version>-<vision_backend>` convention as production):
 ```sh
 cd dev/
 docker build \
-  --build-arg WHL_FILE=optics_framework-0.x.x-py3-none-any.whl \
-  -t optics-api-dev .
+  --build-arg WHL_FILE=optics_framework-1.9.1-py3-none-any.whl \
+  --build-arg VISION_BACKEND=google-vision \
+  -t optics-api-dev:1.9.1-google-vision .
 ```
 
 ### Run
 ```sh
-docker run -d -p 8000:8000 --name optics-api-dev optics-api-dev
+docker run -d -p 8000:8000 --name optics-api-dev optics-api-dev:1.9.1-google-vision
 ```
 
 #### Vision Backend Selection
@@ -122,22 +129,25 @@ mcp/
 #### Build
 ```sh
 cd /path/to/optics-framework
-docker build -f Docker/mcp/prod/Dockerfile -t optics-mcp-prod .
+docker build -f Docker/mcp/prod/Dockerfile \
+  -t optics-mcp-prod:1.9.1-easyocr .
 ```
 
 #### Run
 ```sh
-docker run -d -p 8090:8090 --name optics-mcp-prod optics-mcp-prod
+docker run -d -p 8090:8090 --name optics-mcp-prod optics-mcp-prod:1.9.1-easyocr
 ```
 
 #### Vision Backend Selection
 Same as the REST API images: use `--build-arg VISION_BACKEND=...` (`easyocr`, `google-vision`, or `pytesseract`).
 
+Same tagging convention as production: tag as `<optics_version>-<vision_backend>`, using whatever `optics-framework` release was latest on PyPI at build time.
+
 Example (Google Vision):
 ```sh
 docker build -f Docker/mcp/prod/Dockerfile \
   --build-arg VISION_BACKEND=google-vision \
-  -t optics-mcp-prod .
+  -t optics-mcp-prod:1.9.1-google-vision .
 ```
 
 If using Google Vision, mount your service account JSON and set the env variable:
@@ -145,21 +155,22 @@ If using Google Vision, mount your service account JSON and set the env variable
 docker run -d -p 8090:8090 \
   -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
   -v /path/to/service-account.json:/app/service-account.json \
-  --name optics-mcp-prod optics-mcp-prod
+  --name optics-mcp-prod optics-mcp-prod:1.9.1-google-vision
 ```
 
 ### Development MCP (Local .whl)
 
-Build the wheel first (`poetry build` from the repo root), then:
+Build the wheel first (`poetry build` from the repo root), then — same as dev REST API, carry the wheel's version and the vision backend into the tag:
 
 ```sh
 docker build -f Docker/mcp/dev/Dockerfile \
-  --build-arg WHL_FILE=optics_framework-0.x.x-py3-none-any.whl \
-  -t optics-mcp-dev .
+  --build-arg WHL_FILE=optics_framework-1.9.1-py3-none-any.whl \
+  --build-arg VISION_BACKEND=google-vision \
+  -t optics-mcp-dev:1.9.1-google-vision .
 ```
 
 ```sh
-docker run -d -p 8091:8090 --name optics-mcp-dev optics-mcp-dev
+docker run -d -p 8091:8090 --name optics-mcp-dev optics-mcp-dev:1.9.1-google-vision
 ```
 
 ### Docker Compose
