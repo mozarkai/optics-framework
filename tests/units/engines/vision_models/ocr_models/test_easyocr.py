@@ -3,7 +3,7 @@
 A low-confidence misread elsewhere on screen can still contain the target text as a
 substring; find_element must not let that noise outrank a genuine, high-confidence match.
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
