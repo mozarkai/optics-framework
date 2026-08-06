@@ -942,13 +942,20 @@ def _window_size_from_source(element_source: Any) -> Optional[Tuple[int, int]]:
     return None
 
 
+# Appium reports the window size as integers, so the two axis ratios can differ by
+# roughly 1/window_dim purely from that rounding (e.g. a 375x812 window on a 1080x2340
+# screenshot: 2.8800 vs 2.8818). Below this relative difference the window is treated as
+# filling the screenshot; above it, the mismatch is a real letterbox.
+LETTERBOX_RATIO_TOLERANCE = 0.01
+
+
 def _pixel_scale_for_source(
     element_source: Any,
     screenshot: Optional[np.ndarray],
-) -> Optional[Tuple[float, float]]:
+) -> Optional[Tuple[float, float, float, float]]:
     """
-    Compute the per-axis scale that maps the driver's window coordinate space onto
-    the screenshot's pixel space, or ``None`` when scaling should not be applied.
+    Compute the transform that maps the driver's window coordinate space onto the
+    screenshot's pixel space, or ``None`` when it should not be applied.
 
     * Gated to **Appium** sources. Their page-source/WebElement coordinates and the
       driver's window size share one coordinate system (points on iOS, pixels on
@@ -956,13 +963,25 @@ def _pixel_scale_for_source(
       (Selenium/Playwright) report element coordinates (CSS pixels, scroll-relative)
       and window size in unrelated spaces, so the ratio is not correct there and we
       return ``None`` to leave their coordinates untouched.
+    * The window does not always cover the whole screenshot. A legacy iOS app (one
+      built without a modern launch storyboard) runs in compatibility mode: iOS gives
+      it a smaller window — e.g. 320x568 points on a 390x844-point iPhone — scales it
+      uniformly to fit the screen width and centres it, leaving black bars top and
+      bottom that the screenshot still includes. Stretching each axis independently
+      there spreads the window's 568 points across the full 2532-pixel frame, which
+      places boxes above the middle too high and boxes below it too low, with the error
+      growing toward both edges. When the two axis ratios disagree by more than
+      ``LETTERBOX_RATIO_TOLERANCE`` the smaller (fitting) ratio is used on both axes and
+      the leftover is returned as a centring offset. A window that fills the screenshot
+      yields equal ratios and zero offsets, i.e. the previous behaviour.
     * Best-effort and non-failing: returns ``None`` when no screenshot is available,
       the window size can't be determined, or its shape can't be read — callers then
       leave coordinates unscaled rather than raising.
 
     :param element_source: Element source (possibly an ``InstanceFallback`` wrapper).
     :param screenshot: The captured frame whose pixel space is the target.
-    :return: ``(scale_x, scale_y)``, or ``None`` when scaling must not be applied.
+    :return: ``(scale_x, scale_y, offset_x, offset_y)``, or ``None`` when the transform
+        must not be applied.
     """
     if screenshot is None:
         return None
@@ -979,27 +998,36 @@ def _pixel_scale_for_source(
         return None
     if window_width <= 0 or window_height <= 0:
         return None
-    return screenshot_width / window_width, screenshot_height / window_height
+    scale_x = screenshot_width / window_width
+    scale_y = screenshot_height / window_height
+    if abs(scale_x - scale_y) <= LETTERBOX_RATIO_TOLERANCE * max(scale_x, scale_y):
+        return scale_x, scale_y, 0.0, 0.0
+    scale = min(scale_x, scale_y)
+    offset_x = (screenshot_width - window_width * scale) / 2
+    offset_y = (screenshot_height - window_height * scale) / 2
+    return scale, scale, offset_x, offset_y
 
 
 def _apply_scale_to_bbox(
     bbox: Optional[Tuple[Tuple[int, int], Tuple[int, int]]],
     scale_x: float,
     scale_y: float,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
 ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
     """
-    Multiply a single ``((x1,y1),(x2,y2))`` bbox by the given per-axis scale.
+    Map a single ``((x1,y1),(x2,y2))`` bbox through ``point * scale + offset`` per axis.
 
-    When the scale is 1.0 this is a no-op (``int(x * 1.0) == x``). Returns the bbox
-    unchanged on any structural failure.
+    With a scale of 1.0 and no offset this is a no-op (``int(x * 1.0) == x``). Returns
+    the bbox unchanged on any structural failure.
     """
     if bbox is None:
         return bbox
     try:
         (x1, y1), (x2, y2) = bbox
         return (
-            (int(x1 * scale_x), int(y1 * scale_y)),
-            (int(x2 * scale_x), int(y2 * scale_y)),
+            (int(x1 * scale_x + offset_x), int(y1 * scale_y + offset_y)),
+            (int(x2 * scale_x + offset_x), int(y2 * scale_y + offset_y)),
         )
     except (TypeError, ValueError, AttributeError):
         return bbox
@@ -1035,11 +1063,11 @@ def scale_bboxes_for_screenshot(
     """
     if not bboxes:
         return bboxes
-    scale = _pixel_scale_for_source(element_source, screenshot)
-    if scale is None:
+    transform = _pixel_scale_for_source(element_source, screenshot)
+    if transform is None:
         return bboxes
-    scale_x, scale_y = scale
-    return [_apply_scale_to_bbox(b, scale_x, scale_y) for b in bboxes]
+    scale_x, scale_y, offset_x, offset_y = transform
+    return [_apply_scale_to_bbox(b, scale_x, scale_y, offset_x, offset_y) for b in bboxes]
 
 
 def scale_interactive_element_bounds(
@@ -1071,10 +1099,10 @@ def scale_interactive_element_bounds(
     """
     if not elements:
         return
-    scale = _pixel_scale_for_source(element_source, screenshot)
-    if scale is None:
+    transform = _pixel_scale_for_source(element_source, screenshot)
+    if transform is None:
         return
-    scale_x, scale_y = scale
+    scale_x, scale_y, offset_x, offset_y = transform
     for el in elements:
         if not isinstance(el, dict):
             continue
@@ -1083,10 +1111,10 @@ def scale_interactive_element_bounds(
             continue
         try:
             el["bounds"] = {
-                "x1": int(bounds["x1"] * scale_x),
-                "y1": int(bounds["y1"] * scale_y),
-                "x2": int(bounds["x2"] * scale_x),
-                "y2": int(bounds["y2"] * scale_y),
+                "x1": int(bounds["x1"] * scale_x + offset_x),
+                "y1": int(bounds["y1"] * scale_y + offset_y),
+                "x2": int(bounds["x2"] * scale_x + offset_x),
+                "y2": int(bounds["y2"] * scale_y + offset_y),
             }
         except (KeyError, TypeError, ValueError):
             continue
