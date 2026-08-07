@@ -38,7 +38,7 @@ sse-starlette = ">=2.2.1,<4.0.0"
 # fastmcp pulls starlette>=1.0, which FastAPI only supports from 0.119 onward.
 fastapi = ">=0.115.12,<0.138.0"
 requests = "^2.32.3"
-textual = ">=3,<7"
+textual = ">=3,<9"
 pytest = "^9.0.0"
 pydantic = "^2.11.2"
 scikit-image = "^0.25.2"
