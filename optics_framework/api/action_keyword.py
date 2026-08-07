@@ -499,6 +499,29 @@ class ActionKeyword:
         if screenshot_np is not None:
             utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
 
+    def _element_centre(self, element: Any) -> Optional[Tuple[int, int]]:
+        """Centre (x, y) of a located element, or None if geometry is unavailable.
+
+        Prefers ``location_once_scrolled_into_view``: on web it scrolls the element
+        on-screen and returns viewport coords, which is what ``press_coordinates``
+        expects. It is JS-backed, so it raises in a native Appium context - fall back
+        to the source-agnostic bbox accessor there.
+        """
+        try:
+            loc = element.location_once_scrolled_into_view
+            size = element.size
+            return (
+                int(loc["x"] + size["width"] / 2),
+                int(loc["y"] + size["height"] / 2),
+            )
+        except Exception as exc:  # noqa: BLE001 - JS-backed, unsupported on native
+            internal_logger.debug(f"Scrolled-into-view geometry unavailable: {exc}")
+        bbox = self.element_source.get_bbox_for_element(element)
+        if bbox is None:
+            return None
+        (x1, y1), (x2, y2) = bbox
+        return ((x1 + x2) // 2, (y1 + y2) // 2)
+
     # Click actions
     @with_self_healing
     def press_element(
@@ -520,12 +543,27 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         """
+        offset_x_i, offset_y_i = int(offset_x), int(offset_y)
         if isinstance(located, tuple):
             x, y = located
             internal_logger.info(
-                f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
-            self.driver.press_coordinates(
-                x + int(offset_x), y + int(offset_y), event_name)
+                f"Pressing at coordinates ({x + offset_x_i}, {y + offset_y_i}) with offset ({offset_x_i}, {offset_y_i})")
+            for _ in range(int(repeat)):
+                self.driver.press_coordinates(x + offset_x_i, y + offset_y_i, event_name)
+        elif offset_x_i or offset_y_i:
+            # located is a WebElement: clicking it would ignore the offset, so press by
+            # its centre + offset instead. _element_centre scrolls it into view first.
+            centre = self._element_centre(located)
+            if centre is not None:
+                cx, cy = centre
+                internal_logger.info(
+                    f"Pressing at coordinates ({cx + offset_x_i}, {cy + offset_y_i}) with offset ({offset_x_i}, {offset_y_i})")
+                for _ in range(int(repeat)):
+                    self.driver.press_coordinates(cx + offset_x_i, cy + offset_y_i, event_name)
+            else:
+                internal_logger.warning(
+                    f"Could not determine element centre for '{element}'; pressing element directly (offset ignored).")
+                self.driver.press_element(located, int(repeat), event_name)
         else:
             internal_logger.info(f"Pressing element '{element}'")
             self.driver.press_element(located, int(repeat), event_name)
