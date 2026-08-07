@@ -190,13 +190,29 @@ class TestPressElementWithIndex:
     def test_offset_on_webelement_without_geometry_falls_back_to_press_element(
         self, action_keyword, mock_dependencies
     ):
-        """If centre can't be derived (no location/size at all), fall back to clicking
-        the element rather than pressing bogus coordinates."""
+        """If centre can't be derived (no location/size, and no bbox from the element
+        source either), fall back to clicking the element rather than pressing bogus
+        coordinates."""
         element = MagicMock(spec=[])  # no location / size attributes
+        mock_dependencies['element_source'].get_bbox_for_element.return_value = None
         with self._mock_locate(action_keyword, element):
             action_keyword.press_element("//zone", offset_x="10", offset_y="20")
         mock_dependencies['driver'].press_coordinates.assert_not_called()
         mock_dependencies['driver'].press_element.assert_called_once_with(element, 1, None)
+
+    def test_offset_falls_back_to_bbox_when_scrolled_into_view_unsupported(
+        self, action_keyword, mock_dependencies
+    ):
+        """location_once_scrolled_into_view is JS-backed and raises on native Appium
+        (UiAutomator2 doesn't implement it); centre must fall back to the
+        source-agnostic bbox accessor instead of failing the whole press.
+        Bbox ((100,200),(150,280)) -> centre (125,240); +offset (10,-20) -> (135,220)."""
+        element = MagicMock(spec=[])  # accessing location_once_scrolled_into_view raises
+        mock_dependencies['element_source'].get_bbox_for_element.return_value = ((100, 200), (150, 280))
+        with self._mock_locate(action_keyword, element):
+            action_keyword.press_element("//zone", offset_x="10", offset_y="-20")
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(135, 220, None)
+        mock_dependencies['driver'].press_element.assert_not_called()
 
 
 class TestScreenshotFailureFallback:
