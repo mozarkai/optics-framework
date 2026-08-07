@@ -214,6 +214,14 @@ class TestPressElementWithIndex:
         mock_dependencies['driver'].press_coordinates.assert_called_once_with(135, 220, None)
         mock_dependencies['driver'].press_element.assert_not_called()
 
+    def test_coordinate_result_with_repeat_repeats_press(self, action_keyword, mock_dependencies):
+        """A coordinate-located press (from an OCR/image match, not a WebElement) must
+        also honour `repeat`, not just the WebElement-offset branch."""
+        with self._mock_locate(action_keyword, (100, 150)):
+            action_keyword.press_element("button", offset_x="5", offset_y="5", repeat="3")
+        assert mock_dependencies['driver'].press_coordinates.call_count == 3
+        mock_dependencies['driver'].press_coordinates.assert_called_with(105, 155, None)
+
 
 class TestScreenshotFailureFallback:
     """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
