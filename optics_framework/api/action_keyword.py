@@ -513,8 +513,8 @@ class ActionKeyword:
             x, y = located
             internal_logger.info(
                 f"Pressing at coordinates ({x + offset_x_i}, {y + offset_y_i}) with offset ({offset_x_i}, {offset_y_i})")
-            self.driver.press_coordinates(
-                x + offset_x_i, y + offset_y_i, event_name)
+            for _ in range(int(repeat)):
+                self.driver.press_coordinates(x + offset_x_i, y + offset_y_i, event_name)
         elif offset_x_i or offset_y_i:
             # located is a WebElement: clicking it would ignore the offset, so press by
             # its centre + offset instead. _element_centre scrolls it into view first.
