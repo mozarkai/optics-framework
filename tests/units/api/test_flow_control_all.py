@@ -1,12 +1,9 @@
 """Tests for FlowControl keywords: evaluate, read_data, invoke_api, condition,
 run_loop, and date_evaluate.
 
-The condition suite is written against the *documented* module-condition contract
-(a module condition is true iff the module runs and returns a non-empty result).
-The current implementation decides truth by whether the module *raised* instead —
-tracked as a deferred behaviour fix — so the cases that expose it are marked
-``xfail(strict=True)``: they fail today and will flip to XPASS (failing the run,
-prompting removal of the marker) once the fix lands.
+The condition suite is written against the module-condition contract: a module
+condition is true iff the module runs and returns a non-empty (truthy) result
+(mozarkai/optics-framework#385).
 """
 import json
 from unittest.mock import MagicMock
@@ -23,12 +20,6 @@ from optics_framework.common.models import (
     ExpectedResultDefinition,
     RequestDefinition,
 )
-
-_MODULE_CONDITION_BUG = (
-    "Module-condition truth is decided by exception-presence, not bool(result) "
-    "(mozarkai/optics-framework#385). Remove this marker when the fix lands."
-)
-
 
 class _Modules:
     """Minimal stand-in for the session's module registry."""
@@ -265,14 +256,12 @@ class TestModuleCondition:
         assert flow_control.condition("cond", "target", "els") == ["E"]
         assert "target" not in run.calls
 
-    @pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)
     def test_falsy_module_skips_target_runs_else(self, flow_control):
         run = _module_runner({"cond": [], "target": ["T"], "els": ["E"]})
         _register(flow_control, run, "cond", "target", "els")
         assert flow_control.condition("cond", "target", "els") == ["E"]
         assert "target" not in run.calls
 
-    @pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)
     def test_falsy_module_no_else_returns_none(self, flow_control):
         run = _module_runner({"cond": [], "target": ["T"]})
         _register(flow_control, run, "cond", "target")
