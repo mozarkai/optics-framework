@@ -747,10 +747,24 @@ def press_element(
     - Error aggregation
     """
     # located parameter is provided by decorator
+    offset_x_i, offset_y_i = int(offset_x), int(offset_y)
     if isinstance(located, tuple):
+        # Coordinate match (OCR/image) -- press at it directly, offset applied.
         x, y = located
-        self.driver.press_coordinates(x + int(offset_x), y + int(offset_y))
+        for _ in range(int(repeat)):
+            self.driver.press_coordinates(x + offset_x_i, y + offset_y_i)
+    elif offset_x_i or offset_y_i:
+        # WebElement match with an offset: clicking it would ignore the offset,
+        # so press by its centre + offset instead (see _element_centre).
+        centre = self._element_centre(located)
+        if centre is not None:
+            cx, cy = centre
+            for _ in range(int(repeat)):
+                self.driver.press_coordinates(cx + offset_x_i, cy + offset_y_i)
+        else:
+            self.driver.press_element(located, int(repeat))
     else:
+        # WebElement match, no offset -- a plain click.
         self.driver.press_element(located, int(repeat))
 ```
 
