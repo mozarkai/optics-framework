@@ -464,22 +464,28 @@ class ActionKeyword:
         if screenshot_np is not None:
             utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
 
-    @staticmethod
-    def _element_centre(element: Any) -> Optional[Tuple[int, int]]:
-        """Centre (x, y) of a located WebElement, or None if geometry is unavailable.
+    def _element_centre(self, element: Any) -> Optional[Tuple[int, int]]:
+        """Centre (x, y) of a located element, or None if geometry is unavailable.
 
-        Uses ``location_once_scrolled_into_view`` (scrolls it on-screen first, so an
-        offset lands even on a partly off-screen element); falls back to ``location``.
+        Prefers ``location_once_scrolled_into_view``: on web it scrolls the element
+        on-screen and returns viewport coords, which is what ``press_coordinates``
+        expects. It is JS-backed, so it raises in a native Appium context - fall back
+        to the source-agnostic bbox accessor there.
         """
         try:
-            loc = getattr(element, "location_once_scrolled_into_view", None) or element.location
+            loc = element.location_once_scrolled_into_view
             size = element.size
             return (
                 int(loc["x"] + size["width"] / 2),
                 int(loc["y"] + size["height"] / 2),
             )
-        except (AttributeError, KeyError, TypeError):
+        except Exception as exc:  # noqa: BLE001 - JS-backed, unsupported on native
+            internal_logger.debug(f"Scrolled-into-view geometry unavailable: {exc}")
+        bbox = self.element_source.get_bbox_for_element(element)
+        if bbox is None:
             return None
+        (x1, y1), (x2, y2) = bbox
+        return ((x1 + x2) // 2, (y1 + y2) // 2)
 
     # Click actions
     @with_self_healing
