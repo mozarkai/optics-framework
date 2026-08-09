@@ -16,6 +16,15 @@ ELEMENTS_CSV_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framew
 MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
 
 
+def test_optics_is_reexported_from_package_root():
+    """The documented ``from optics_framework import Optics`` import must resolve."""
+    import optics_framework
+    from optics_framework import Optics as RootOptics
+
+    assert RootOptics is Optics
+    assert "Optics" in optics_framework.__all__
+
+
 def load_config(config_path):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
