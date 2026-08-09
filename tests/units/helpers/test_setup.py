@@ -15,9 +15,12 @@ from unittest.mock import call, patch
 
 import pytest
 
+from textual.widgets import Static
+
 from optics_framework.helper.setup import (
     ALL_ENGINES,
     DISTRIBUTION_NAME,
+    EngineInstallerApp,
     InstallRequest,
     SetupError,
     _BUNDLES,
@@ -200,11 +203,19 @@ class TestSplitToken:
 # --------------------------------------------------------------------------- #
 
 class TestInstallExtras:
-    def test_noop_on_empty(self, capsys):
+    def test_returns_false_on_empty(self):
         with patch(f"{MODULE}.subprocess.run") as run:
-            install_extras([])
+            ok, message = install_extras([])
         run.assert_not_called()
-        assert "No engines selected" in capsys.readouterr().out
+        assert ok is False
+        assert "No engines selected" in message
+
+    def test_success_returns_true_and_message(self):
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.run"):
+            ok, message = install_extras(_reqs("Appium"))
+        assert ok is True
+        assert "installed successfully" in message.lower()
 
     def test_installs_version_pinned_spec(self):
         engines = _reqs("Appium")
@@ -264,21 +275,22 @@ class TestInstallExtras:
             install_extras(_reqs("Appium"))
         assert run.call_count == 1
 
-    def test_failure_prints_captured_stderr(self, capsys):
+    def test_failure_returns_message_with_stderr(self):
         err = subprocess.CalledProcessError(1, "pip", stderr="boom: could not resolve")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run", side_effect=err):
-            install_extras(_reqs("Appium"))
-        out = capsys.readouterr().out
-        assert "Installation failed" in out
-        assert "boom: could not resolve" in out
+            ok, message = install_extras(_reqs("Appium"))
+        assert ok is False
+        assert "Installation failed" in message
+        assert "boom: could not resolve" in message
 
-    def test_failure_falls_back_to_stdout(self, capsys):
+    def test_failure_falls_back_to_stdout(self):
         err = subprocess.CalledProcessError(1, "pip", output="stdout detail", stderr="")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run", side_effect=err):
-            install_extras(_reqs("Appium"))
-        assert "stdout detail" in capsys.readouterr().out
+            ok, message = install_extras(_reqs("Appium"))
+        assert ok is False
+        assert "stdout detail" in message
 
 
 # --------------------------------------------------------------------------- #
@@ -311,3 +323,66 @@ class TestPyprojectParity:
                 f"bundle '{bundle}' expands to {expanded} "
                 f"but pyproject declares {declared}"
             )
+
+
+# --------------------------------------------------------------------------- #
+# EngineInstallerApp (TUI)                                                     #
+# --------------------------------------------------------------------------- #
+
+class TestEngineInstallerApp:
+    """The picker must give visible feedback and stay responsive.
+
+    install runs in a thread worker (not inline on the event loop), the outcome
+    is shown in a Static/notification (not a swallowed print), and the checkbox
+    list lives in a scroll container so the buttons stay reachable.
+    """
+
+    async def test_list_is_scrollable_and_status_present(self):
+        from textual.containers import VerticalScroll
+        app = EngineInstallerApp()
+        async with app.run_test():
+            # The engine list lives in a scroll container so the buttons below it
+            # stay reachable on a short terminal.
+            assert app.query(VerticalScroll)
+            assert app.query_one("#status", Static) is not None
+            assert app.query_one("#install") is not None
+
+    async def test_no_selection_notifies_and_skips_install(self):
+        app = EngineInstallerApp()
+        with patch(f"{MODULE}.install_extras") as inst:
+            async with app.run_test() as pilot:
+                await pilot.click("#install")
+                await pilot.pause()
+        inst.assert_not_called()
+
+    async def test_install_runs_in_worker_and_reports_result(self):
+        app = EngineInstallerApp()
+        with patch(
+            f"{MODULE}.install_extras",
+            return_value=(True, "Engines installed successfully!"),
+        ) as inst:
+            async with app.run_test() as pilot:
+                app.selected_engines = {"Appium": ALL_ENGINES["Appium"]}
+                await pilot.click("#install")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                status = app.query_one("#status", Static)
+                assert "installed successfully" in str(status.render()).lower()
+        inst.assert_called_once()
+
+    async def test_failure_result_shown_and_install_reenabled(self):
+        from textual.widgets import Button
+        app = EngineInstallerApp()
+        with patch(
+            f"{MODULE}.install_extras",
+            return_value=(False, "Installation failed: boom"),
+        ):
+            async with app.run_test() as pilot:
+                app.selected_engines = {"Appium": ALL_ENGINES["Appium"]}
+                await pilot.click("#install")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                status = app.query_one("#status", Static)
+                assert "failed" in str(status.render()).lower()
+                # Install re-enabled so the user can retry after a failure.
+                assert app.query_one("#install", Button).disabled is False

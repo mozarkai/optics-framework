@@ -3,7 +3,9 @@ import subprocess  # nosec B404
 from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, List, Optional
 import sys
+from textual import work
 from textual.app import App, ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Checkbox, Button, Header, Footer, Static
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import BaseModel
@@ -217,7 +219,12 @@ def resolve_engines(tokens: List[str]) -> tuple[List[InstallRequest], List[str]]
 
 
 class EngineInstallerApp(App):
+    TITLE = "optics setup"
+
     CSS = """
+    #engine-list {
+        height: 1fr;
+    }
     Checkbox {
         margin: 1;
     }
@@ -228,6 +235,9 @@ class EngineInstallerApp(App):
     Static {
         padding: 1;
     }
+    #status {
+        color: $text-muted;
+    }
     """
 
     def __init__(self):
@@ -236,20 +246,24 @@ class EngineInstallerApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("Select engines to install:", classes="title")
+        # Scroll the (potentially long) engine list so the action buttons below
+        # stay on-screen even on a short terminal.
+        with VerticalScroll(id="engine-list"):
+            yield Static("Select engines to install:", classes="title")
 
-        yield Static("Action Drivers:")
-        for name, engine in ACTION_DRIVERS.engines.items():
-            yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"action_{name.lower().replace(' ', '_')}")
+            yield Static("Action Drivers:")
+            for name, engine in ACTION_DRIVERS.engines.items():
+                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"action_{name.lower().replace(' ', '_')}")
 
-        yield Static("OCR Engines:")
-        for name, engine in TEXT_ENGINES.engines.items():
-            yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
+            yield Static("OCR Engines:")
+            for name, engine in TEXT_ENGINES.engines.items():
+                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
 
-        yield Static("LLM Engines:")
-        for name, engine in LLM_ENGINES.engines.items():
-            yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"llm_{name.lower().replace(' ', '_')}")
+            yield Static("LLM Engines:")
+            for name, engine in LLM_ENGINES.engines.items():
+                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"llm_{name.lower().replace(' ', '_')}")
 
+        yield Static("", id="status")
         yield Button("Install Selected", id="install", variant="primary")
         yield Button("Quit", id="quit", variant="error")
         yield Footer()
@@ -277,12 +291,37 @@ class EngineInstallerApp(App):
             self.exit()
 
     def install_engines(self) -> None:
-        """Install every checked engine. The checkbox UI has no version field,
-        so each selection installs at its extra's default bound."""
+        """Kick off installation of every checked engine in a worker thread.
+
+        The checkbox UI has no version field, so each selection installs at its
+        extra's default bound. The pip install (and any Playwright browser
+        download) runs off the UI thread so the TUI stays responsive instead of
+        freezing for the duration."""
         if not self.selected_engines:
             self.notify("No engines selected!", severity="warning")
             return
-        install_extras([InstallRequest(engine=e) for e in self.selected_engines.values()])
+        requests = [InstallRequest(engine=e) for e in self.selected_engines.values()]
+        self.query_one("#install", Button).disabled = True
+        self.query_one("#status", Static).update(
+            "Installing… this can take a while (browser/model downloads); the UI stays responsive."
+        )
+        self._install_worker(requests)
+
+    @work(thread=True)
+    def _install_worker(self, requests: List[InstallRequest]) -> None:
+        """Run the blocking install off the UI thread, then report back on it."""
+        success, message = install_extras(requests)
+        self.call_from_thread(self._on_install_finished, success, message)
+
+    def _on_install_finished(self, success: bool, message: str) -> None:
+        self.query_one("#status", Static).update(message)
+        self.notify(
+            message.splitlines()[0],
+            severity="information" if success else "error",
+            timeout=10,
+        )
+        # Re-enable Install so a failed run can be retried; harmless on success.
+        self.query_one("#install", Button).disabled = False
 
 
 def _installed_version() -> Optional[str]:
@@ -292,7 +331,7 @@ def _installed_version() -> Optional[str]:
         return None
 
 
-def install_extras(requests: List[InstallRequest]) -> None:
+def install_extras(requests: List[InstallRequest]) -> tuple[bool, str]:
     """Install the selected engine backends by pulling the matching
     `optics-framework` extras, pinned to the installed version so the CLI is
     never upgraded out from under the user.
@@ -303,10 +342,13 @@ def install_extras(requests: List[InstallRequest]) -> None:
     supported range fails loudly rather than silently downgrading it.
     ``packages[0]`` is each engine's primary package — the one a version
     override targets. Extra packages, like pytesseract's pillow, stay on the
-    extra's bound."""
+    extra's bound.
+
+    Returns ``(success, message)`` rather than printing, so both the CLI
+    (`optics setup --install`) and the TUI can surface the outcome — the TUI's
+    alternate screen swallows ``print``. Callers decide how to display it."""
     if not requests:
-        print("No engines selected.")
-        return
+        return False, "No engines selected."
 
     extras = sorted({req.engine.extra for req in requests})
     installed = _installed_version()
@@ -322,7 +364,6 @@ def install_extras(requests: List[InstallRequest]) -> None:
             capture_output=True, text=True, check=True, shell=False)
 
         if any(req.engine.extra == "playwright" for req in requests):
-            print("Installing Playwright Chromium browser and system dependencies...")
             # Per https://playwright.dev/python/docs/browsers this must run after
             # the pip install. Chromium is the most common target; --with-deps
             # pulls the required OS libraries.
@@ -330,14 +371,16 @@ def install_extras(requests: List[InstallRequest]) -> None:
                 [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
                 capture_output=True, text=True, check=True, shell=False)
 
-        print("Engines installed successfully!")
+        return True, "Engines installed successfully!"
     except subprocess.CalledProcessError as e:
         # capture_output routes the command's diagnostics to e.stderr/e.stdout
-        # rather than the console, so surface them here for a debuggable failure.
-        print(f"Installation failed: {e}")
+        # rather than the console, so fold them into the message for a debuggable
+        # failure.
         detail = (e.stderr or "").strip() or (e.stdout or "").strip()
+        message = f"Installation failed: {e}"
         if detail:
-            print(detail)
+            message = f"{message}\n{detail}"
+        return False, message
 
 
 def list_engines() -> None:
