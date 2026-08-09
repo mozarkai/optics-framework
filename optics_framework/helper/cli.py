@@ -384,7 +384,10 @@ class EngineInstaller(Command):
                 print(f"Error: Invalid engine(s): {', '.join(invalid)}")
                 print("Use `optics setup --list` to see available engines")
                 return
-            install_extras(engines)
+            success, message = install_extras(engines)
+            print(message)
+            if not success:
+                sys.exit(1)
         else:
             EngineInstallerApp().run()
 
