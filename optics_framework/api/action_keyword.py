@@ -580,12 +580,13 @@ class ActionKeyword:
         else:
             internal_logger.info(f'Element {element} not found. Press is not performed.')
 
-    @DeprecationWarning
     @with_self_healing
     def press_checkbox(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
                        aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Press a specified checkbox element.
+
+        .. deprecated:: Deprecated alias of :meth:`press_element` — use ``Press Element`` directly.
 
         :param element: The checkbox element (Image template, OCR template, or XPath).
         :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
@@ -594,15 +595,17 @@ class ActionKeyword:
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the press.
         """
+        internal_logger.warning("'Press Checkbox' is deprecated; use 'Press Element' instead.")
         self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
                           aoi_height=aoi_height, event_name=event_name, located=located)
 
-    @DeprecationWarning
     @with_self_healing
     def press_radio_button(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
                            aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
         """
         Press a specified radio button.
+
+        .. deprecated:: Deprecated alias of :meth:`press_element` — use ``Press Element`` directly.
 
         :param element: The radio button element (Image template, OCR template, or XPath).
         :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
@@ -611,6 +614,7 @@ class ActionKeyword:
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the press.
         """
+        internal_logger.warning("'Press Radio Button' is deprecated; use 'Press Element' instead.")
         self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
                           aoi_height=aoi_height, event_name=event_name, located=located)
 
@@ -774,13 +778,17 @@ class ActionKeyword:
         internal_logger.info(f'Swiping from ({percent_x}, {percent_y}) to the {direction} with length {swipe_length}')
         self.driver.swipe_percentage(int(percent_x), int(percent_y), direction, int(swipe_length), event_name)
 
-    @DeprecationWarning
     def swipe_seekbar_to_right_android(self, element: str, event_name: Optional[str] = None) -> None:
         """
         Swipe a seekbar to the right.
 
+        .. deprecated:: Deprecated; prefer :meth:`swipe_from_element` / :meth:`swipe`.
+
         :param element: The seekbar element (Image template, OCR template, or XPath).
         """
+        internal_logger.warning(
+            "'Swipe Seekbar To Right Android' is deprecated; use 'Swipe From Element' instead."
+        )
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe_seekbar_to_right_android")
         internal_logger.info(f'Swiping seekbar element: {element} to the right')
