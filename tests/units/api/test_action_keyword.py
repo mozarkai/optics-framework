@@ -474,3 +474,44 @@ class TestSwipeUntilElementAppears:
 
         assert exc_info.value.code == Code.E0201
         assert action_keyword.driver.swipe_percentage.call_count == 4
+
+
+class TestDeprecatedAliases:
+    """Deprecated keywords must stay callable, registered aliases.
+
+    A ``@DeprecationWarning`` decorator (an exception class, not a real decorator)
+    silently replaced these methods with exception *instances*, dropping them from
+    the keyword map so the runner no longer resolved them. Guard against that.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_disk_writes(self):
+        with patch('optics_framework.common.utils.save_screenshot'):
+            yield
+
+    @pytest.mark.parametrize(
+        "name", ["press_checkbox", "press_radio_button", "swipe_seekbar_to_right_android"]
+    )
+    def test_alias_is_callable_not_warning(self, name):
+        attr = getattr(ActionKeyword, name)
+        assert callable(attr)
+        assert not isinstance(attr, Warning)
+
+    @pytest.mark.parametrize("alias", ["press_checkbox", "press_radio_button"])
+    def test_alias_delegates_to_press_element_with_deprecation_log(self, action_keyword, alias):
+        located = MagicMock()
+        with patch.object(
+            action_keyword.strategy_manager, 'locate',
+            return_value=[LocateResult(located, MagicMock())],
+        ), patch.object(action_keyword, 'press_element') as mock_press, patch(
+            'optics_framework.api.action_keyword.internal_logger'
+        ) as mock_logger:
+            getattr(action_keyword, alias)("box")
+
+        mock_press.assert_called_once()
+        assert mock_press.call_args.args[0] == "box"
+        assert mock_press.call_args.kwargs.get("located") is located
+        assert any(
+            "deprecated" in str(call.args[0]).lower()
+            for call in mock_logger.warning.call_args_list
+        )
