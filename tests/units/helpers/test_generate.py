@@ -120,6 +120,18 @@ def yaml_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture
+def nested_csv_project(tmp_path: Path) -> Path:
+    """The CSV project in the subfolder layout ``optics init`` scaffolds."""
+    for sub in ("test_cases", "modules", "test_data"):
+        (tmp_path / sub).mkdir()
+    _write(tmp_path / "test_cases", "test_cases.csv", CSV_TEST_CASES)
+    _write(tmp_path / "modules", "modules.csv", CSV_MODULES)
+    _write(tmp_path / "test_data", "elements.csv", CSV_ELEMENTS)
+    _write(tmp_path, "config.yaml", CONFIG_YAML)
+    return tmp_path
+
+
 # --------------------------------------------------------------------------- #
 # Readers                                                                      #
 # --------------------------------------------------------------------------- #
@@ -411,6 +423,21 @@ class TestFindFiles:
         assert el.endswith(f"elements.{ext}")
         assert cfg.endswith("config.yaml")
 
+    def test_find_all_files_discovers_subfolder_layout(self, nested_csv_project):
+        """Files split across ``test_cases/``, ``modules/`` and ``test_data/`` are found."""
+        found = find_all_files(str(nested_csv_project))
+        assert found["test_cases"] == [str(nested_csv_project / "test_cases" / "test_cases.csv")]
+        assert found["modules"] == [str(nested_csv_project / "modules" / "modules.csv")]
+        assert found["elements"] == [str(nested_csv_project / "test_data" / "elements.csv")]
+        assert found["config"] == [str(nested_csv_project / "config.yaml")]
+
+    def test_find_files_discovers_subfolder_layout(self, nested_csv_project):
+        tc, mod, el, cfg = find_files(str(nested_csv_project))
+        assert tc is not None and tc.endswith("test_cases.csv")
+        assert mod is not None and mod.endswith("modules.csv")
+        assert el is not None and el.endswith("elements.csv")
+        assert cfg is not None and cfg.endswith("config.yaml")
+
 
 # --------------------------------------------------------------------------- #
 # read_mixed_data merge + conflict detection                                  #
@@ -474,6 +501,12 @@ class TestGenerateTestFile:
         generate_test_file(str(tmp_path), framework="pytest")
         code = _generated_output(tmp_path, "pytest")
         assert "def test_login_test(optics):" in code
+
+    def test_pipeline_from_scaffolded_subfolder_layout(self, nested_csv_project):
+        """`optics generate` works on a project laid out the way `optics init` scaffolds it."""
+        generate_test_file(str(nested_csv_project), framework="pytest")
+        code = _generated_output(nested_csv_project, "pytest")
+        assert "Login Module" in code or "login_module" in code
 
     def test_custom_output_filename(self, csv_project):
         generate_test_file(str(csv_project), framework="pytest", output_filename="my_suite.py")
