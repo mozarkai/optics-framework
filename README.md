@@ -53,7 +53,7 @@ python3 -m venv venv && source venv/bin/activate
 pip install "optics-framework[appium,easyocr]"
 ```
 
-Extra names match the `config.yaml` source keys, so the word you install is the word you enable:
+Most extra names match the `config.yaml` source keys, so the word you install is usually the word you enable (exceptions: `llm` enables the `gemini` engine, `google-vision` enables `google_vision`, and the bundles and `mcp` aren't config keys):
 
 | | |
 |---|---|
@@ -62,15 +62,18 @@ Extra names match the `config.yaml` source keys, so the word you install is the 
 | **AI** | `llm` (natural-language mode + self-heal) · `mcp` (MCP server) |
 | **Bundles** | `mobile` · `web` · `vision` · `all` |
 
-Or install them by name — `optics setup` pins to your installed Optics version, and bare `optics setup` opens a TUI picker:
+`optics setup` installs the drivers, OCR and LLM engines above (and the bundles) by name — pinned to your installed Optics version — and bare `optics setup` opens a TUI picker:
 
 ```bash
 optics setup --list
 optics setup --install appium easyocr
 ```
 
+> [!NOTE]
+> The `mcp` server extra is **pip-only** (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
+
 > [!IMPORTANT]
-> A driver extra installs only the **Python client**. Mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). See the [Installation & Prerequisites guide](https://mozarkai.github.io/optics-framework/prerequisites/).
+> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation & Prerequisites guide](https://mozarkai.github.io/optics-framework/prerequisites/).
 
 > [!WARNING]
 > Conda is not supported for `easyocr` + `optics-framework` together (conflicting NumPy 1.x/2.x requirements). Use a standard `venv`.
@@ -80,11 +83,18 @@ optics setup --install appium easyocr
 ```bash
 optics init --name my_test_project --template contact
 # point my_test_project/config.yaml at your device/app, start the Appium server, then:
-optics dry_run my_test_project    # validate keywords, elements and module refs — no device needed
+optics dry_run my_test_project    # validate keywords, elements and module refs — no device (but the config's engines must be installed)
 optics execute my_test_project
 ```
 
-`--template` scaffolds a working project from a bundled sample: `contact`, `calendar`, `youtube` (Appium/Android), `clock` (Android + image templates), `gmail_web` (Selenium), `playwright` (Playwright). Omit it for an empty scaffold with a commented starter `config.yaml`.
+`--template` scaffolds a working project from a bundled sample. Each needs the matching extras installed (see [Install](#install)); the headline `[appium,easyocr]` above covers the first three:
+
+- `contact` · `calendar` · `youtube` — Appium/Android, easyocr → `[appium,easyocr]`
+- `clock` — Appium/Android, image templates + Tesseract OCR → `[appium,pytesseract]` (plus the Tesseract binary)
+- `gmail_web` — Selenium → `[selenium,easyocr]`
+- `playwright` — Playwright → `[playwright]` (then `playwright install` for the browsers)
+
+Omit `--template` for an empty scaffold with a commented starter `config.yaml`.
 
 ## Write a test as data
 
@@ -98,6 +108,8 @@ my_test_project/
     ├── error_definitions.csv      # optional
     └── input_templates/*.png      # optional, for image matching
 ```
+
+Optics discovers these files by their **content** (CSV headers / YAML top-level keys), not their path — the folder names above are a convention, so `elements.csv` works equally under `test_data/` or `elements/` (the folder `optics live`'s `/save` writes to).
 
 **`test_data/elements.csv`** — names mapped to locators. Doubles as a general variable store; repeating a name builds a fallback list.
 
@@ -276,7 +288,7 @@ Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text 
 ## CLI reference
 
 ```text
-optics init        Scaffold a new project (--template, --path, --force, --git-init)
+optics init        Scaffold a new project (--name, --template, --path, --force, --git-init)
 optics setup       Install engine backends (--list, --install); bare command opens a TUI
 optics dry_run     Validate a project without touching a device
 optics execute     Run a project (--runner test_runner|pytest)
