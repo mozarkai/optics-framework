@@ -143,6 +143,7 @@ class Session:
 
         self.driver = self.optics.get_driver()
         self.event_queue = asyncio.Queue()
+        self.keyword_lock = asyncio.Lock()
 
 
 class SessionManager(SessionHandler):
