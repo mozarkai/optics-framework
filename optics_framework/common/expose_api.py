@@ -510,7 +510,8 @@ async def create_session(config: SessionConfig):
                     status_code=400,
                     detail=f"{MSG_INVALID_API_DATA} {e}",
                 ) from e
-        session_id = session_manager.create_session(
+        session_id = await asyncio.to_thread(
+            session_manager.create_session,
             session_config,
             test_cases=None,
             modules=None,

@@ -15,6 +15,7 @@ Source under test: optics_framework/common/expose_api.py
 import asyncio
 import base64
 import json
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -568,13 +569,24 @@ def test_execute_keyword_success(client):
 def test_create_session_success_and_deprecation(client):
     """create_session normalizes config, warns on legacy appium_* fields, and
     returns the driver id produced by the launch_app keyword call."""
+    create_thread_id: list[int] = []
+    event_loop_thread_id: list[int] = []
+
+    def create_session(*args, **kwargs):
+        create_thread_id.append(threading.get_ident())
+        return "sess-abc"
+
+    async def launch_app(*args, **kwargs):
+        event_loop_thread_id.append(threading.get_ident())
+        return launch_response
+
     launch_response = expose_api.ExecutionResponse(
         execution_id="e1",
         status=expose_api.STATUS_SUCCESS,
         data={expose_api.KEY_RESULT: "driver-123"},
     )
-    with patch.object(expose_api.session_manager, "create_session", return_value="sess-abc"), \
-            patch.object(expose_api, "execute_keyword", new=AsyncMock(return_value=launch_response)), \
+    with patch.object(expose_api.session_manager, "create_session", side_effect=create_session), \
+            patch.object(expose_api, "execute_keyword", side_effect=launch_app), \
             patch.object(expose_api, "reconfigure_logging"), \
             pytest.warns(DeprecationWarning):
         resp = client.post(
@@ -589,6 +601,7 @@ def test_create_session_success_and_deprecation(client):
     body = resp.json()
     assert body["session_id"] == "sess-abc"
     assert body["driver_id"] == "driver-123"
+    assert create_thread_id != event_loop_thread_id
 
 
 def test_delete_session_success_and_hash_cleanup(client):

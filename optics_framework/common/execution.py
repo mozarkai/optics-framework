@@ -186,7 +186,10 @@ class KeywordExecutor(Executor):
             try:
                 # Deserialize parameters based on method signature
                 deserialized_params = _deserialize_params(method, self.params)
-                result = method(*deserialized_params)
+                async with session.keyword_lock:
+                    result = await asyncio.to_thread(method, *deserialized_params)
+                    heal_owner = getattr(method, "__self__", None)
+                    heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
             except Exception as e:
                 await event_manager.publish_event(Event(
                     entity_type="keyword",
@@ -197,8 +200,6 @@ class KeywordExecutor(Executor):
                     extra={"session_id": session.session_id}
                 ))
                 raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
-            heal_owner = getattr(method, "__self__", None)
-            heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
             extra = {"session_id": session.session_id}
             if heal_info:
                 extra["healed"] = "true"
