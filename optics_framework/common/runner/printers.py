@@ -8,7 +8,8 @@ from rich.tree import Tree
 from rich.text import Text
 from rich.panel import Panel
 from rich.progress import Progress, TaskID
-from rich.console import Console, Group
+from rich.console import Group
+from rich import get_console
 
 
 class TestCaseResult(BaseModel):
@@ -233,8 +234,10 @@ class TreeResultPrinter(IResultPrinter):
 
     def start_live(self) -> None:
         if not self._live:
+            console = get_console()
+            console.force_terminal = True
             self._live = Live(self._render_tree(
-            ), refresh_per_second=10, console=Console(force_terminal=True) )
+            ), refresh_per_second=10, console=console)
             self._live.start()
 
     def stop_live(self) -> None:

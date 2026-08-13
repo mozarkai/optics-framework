@@ -14,7 +14,7 @@ import logging
 from enum import Enum
 from typing import Dict, Optional, Any
 from pydantic import BaseModel
-from rich.console import Console
+from rich import get_console
 from rich.panel import Panel
 from rich.text import Text
 from optics_framework.common.logging_config import internal_logger
@@ -429,7 +429,7 @@ class OpticsError(Exception):
 
     def _print_rich(self, log_msg, code_prefix):
         try:
-            console = Console()
+            console = get_console()
             payload = self.to_payload(include_status=True)
             code_color = "red" if code_prefix in ("E", "X") else "yellow"
             header = Text(f"❌ {payload['code']}", style=f"bold {code_color}")
