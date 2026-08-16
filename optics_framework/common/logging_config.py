@@ -110,12 +110,45 @@ class LoggingManager:
         self.execution_listener = None
         self.junit_handler = None
 
+# Bound the size of a single log message. Oversized payloads — a full page-source
+# XML dump, or a base64-encoded screenshot emitted by selenium/urllib3/appium at
+# DEBUG (these bubble through Optics' handlers once ``optics serve`` raises the root
+# logger to DEBUG) — otherwise flood the console and log files. We keep the head and
+# tail, which is enough to tell what was logged, and elide the middle.
+LOG_MESSAGE_HEAD_CHARS = 200
+LOG_MESSAGE_TAIL_CHARS = 200
+# Only truncate when doing so actually shortens the message; below this the elision
+# marker would cost more than it saves.
+LOG_MESSAGE_MAX_CHARS = LOG_MESSAGE_HEAD_CHARS + LOG_MESSAGE_TAIL_CHARS + 64
+
+
+def truncate_log_message(message: str) -> str:
+    """Trim an over-long log message to its head and tail, eliding the middle.
+
+    Messages at or under :data:`LOG_MESSAGE_MAX_CHARS` are returned unchanged.
+    """
+    if len(message) <= LOG_MESSAGE_MAX_CHARS:
+        return message
+    omitted = len(message) - LOG_MESSAGE_HEAD_CHARS - LOG_MESSAGE_TAIL_CHARS
+    head = message[:LOG_MESSAGE_HEAD_CHARS]
+    tail = message[-LOG_MESSAGE_TAIL_CHARS:]
+    return f"{head} … [{omitted} characters truncated] … {tail}"
+
+
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):
         if isinstance(record.msg, str):
             record.msg = self._sanitize(record.msg)
         elif hasattr(record, "args") and record.args:
             record.args = tuple(self._sanitize(str(arg)) for arg in record.args)
+        # Merge msg % args into the final message and bound its size. Reassigning
+        # the merged string (with args cleared) keeps any traceback appended by the
+        # base formatter intact — only the message body is trimmed, never the stack.
+        message = record.getMessage()
+        truncated = truncate_log_message(message)
+        if truncated != message:
+            record.msg = truncated
+            record.args = None
         return super().format(record)
 
     def _sanitize(self, message: str) -> str:
@@ -282,4 +315,5 @@ def reconfigure_logging(config):
 
 
 __all__ = ["internal_logger","execution_logger",
-           "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter"]
+           "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter",
+           "SensitiveDataFormatter", "truncate_log_message"]
