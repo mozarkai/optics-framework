@@ -110,13 +110,69 @@ class LoggingManager:
         self.execution_listener = None
         self.junit_handler = None
 
+# Loggers whose DEBUG records embed full HTTP payloads. Selenium's remote
+# connection logs the complete response body (``Remote response: ... data=...``)
+# and urllib3 logs request/response bodies, so a ``GET /source`` call dumps the
+# entire page-source XML tree and a ``GET /screenshot`` call dumps the whole
+# base64-encoded image. These bubble through Optics' handlers once
+# ``optics serve`` raises the root logger to DEBUG (``helper/serve.py``).
+# Only records from these loggers are trimmed; every other log line is left
+# byte-for-byte untouched.
+PAYLOAD_DUMPING_LOGGER_PREFIXES = (
+    "selenium.webdriver.remote.remote_connection",
+    "urllib3",
+)
+
+# Bound the size of a single log message for the payload-dumping loggers above:
+# keep the head and tail, which is enough to tell what was logged, and elide
+# the middle with a marker.
+LOG_MESSAGE_HEAD_CHARS = 200
+LOG_MESSAGE_TAIL_CHARS = 200
+# Only truncate when doing so actually shortens the message; below this the
+# elision marker would cost more than it saves.
+LOG_MESSAGE_MAX_CHARS = LOG_MESSAGE_HEAD_CHARS + LOG_MESSAGE_TAIL_CHARS + 64
+
+
+def truncate_log_message(message: str) -> str:
+    """Trim an over-long log message to its head and tail, eliding the middle.
+
+    Messages at or under :data:`LOG_MESSAGE_MAX_CHARS` are returned unchanged.
+    """
+    if len(message) <= LOG_MESSAGE_MAX_CHARS:
+        return message
+    omitted = len(message) - LOG_MESSAGE_HEAD_CHARS - LOG_MESSAGE_TAIL_CHARS
+    head = message[:LOG_MESSAGE_HEAD_CHARS]
+    tail = message[-LOG_MESSAGE_TAIL_CHARS:]
+    return f"{head} … [{omitted} characters truncated] … {tail}"
+
+
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):
         if isinstance(record.msg, str):
             record.msg = self._sanitize(record.msg)
         elif hasattr(record, "args") and record.args:
             record.args = tuple(self._sanitize(str(arg)) for arg in record.args)
+        if record.name.startswith(PAYLOAD_DUMPING_LOGGER_PREFIXES):
+            self._trim_payload_dump(record)
         return super().format(record)
+
+    @staticmethod
+    def _trim_payload_dump(record) -> None:
+        """Trim a record from a payload-dumping logger to its head and tail.
+
+        The trim runs on the merged ``msg % args`` string (the payload usually
+        arrives in ``args``, e.g. ``logger.debug("%s", blob)``). Reassigning the
+        merged string with args cleared keeps any traceback appended by the base
+        formatter intact — only the message body is bounded, never the stack.
+        """
+        try:
+            merged = record.getMessage()
+        except (TypeError, ValueError):
+            return
+        truncated = truncate_log_message(merged)
+        if truncated != merged:
+            record.msg = truncated
+            record.args = None
 
     def _sanitize(self, message: str) -> str:
         # Remove duplicate characters in regex character class
@@ -282,4 +338,5 @@ def reconfigure_logging(config):
 
 
 __all__ = ["internal_logger","execution_logger",
-           "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter"]
+           "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter",
+           "SensitiveDataFormatter", "truncate_log_message"]
