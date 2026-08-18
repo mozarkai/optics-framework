@@ -1,11 +1,11 @@
 """Concurrency contracts for the ``optics serve`` keyword executor."""
 import asyncio
 import threading
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from optics_framework.common.execution import KeywordExecutor
+from optics_framework.common.execution import ExecutionEngine, KeywordExecutor
 
 pytestmark = pytest.mark.white_box
 
@@ -60,3 +60,39 @@ def test_keyword_execution_uses_a_thread_and_serializes_per_session():
         assert all(thread_id != main_thread_id for thread_id in keyword.thread_ids)
 
     asyncio.run(run())
+
+
+def test_concurrent_keywords_on_one_session_keep_event_dispatch_alive():
+    """B3: one request completing must not cancel the shared dispatch task."""
+    from optics_framework.common.events import Event, EventManager, EventStatus
+
+    async def scenario():
+        mgr = EventManager()
+        mgr.start()
+        delivered: list[Event] = []
+
+        class _Sub:
+            async def on_event(self, event):
+                delivered.append(event)
+
+        mgr.subscribe("probe", _Sub())
+
+        engine = ExecutionEngine(MagicMock())
+        # Request A finishes and drains.
+        await engine._drain_events(mgr)
+        # Request B, still in flight, publishes afterwards.
+        late = Event(
+            entity_type="keyword", entity_id="B", name="block",
+            status=EventStatus.RUNNING,
+        )
+        await mgr.event_queue.put(late)
+        await asyncio.sleep(0.2)
+        running = mgr._running
+        mgr.shutdown()
+        return delivered, running
+
+    delivered, running = asyncio.run(asyncio.wait_for(scenario(), timeout=5))
+    assert running is True, "dispatch loop was stopped by a sibling request"
+    assert delivered and delivered[-1].entity_id == "B", (
+        "event published after a sibling drained was lost"
+    )
