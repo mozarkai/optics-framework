@@ -1031,7 +1031,8 @@ async def add_session_api(session_id: str, body: Annotated[Dict[str, Any], Body(
             status_code=400,
             detail=f"{MSG_INVALID_API_DATA} {e}",
         ) from e
-    session.apis = api_data
+    async with session.keyword_lock:
+        session.apis = api_data
 
 
 # Helper for DRY keyword execution endpoints
@@ -1302,6 +1303,11 @@ async def event_generator(session: Session):
     """
     HEARTBEAT_INTERVAL = 15  # seconds
     while True:
+        if not session_manager.get_session(session.session_id):
+            internal_logger.warning(
+                f"Session {session.session_id} no longer exists, ending event stream"
+            )
+            break
         try:
             try:
                 event = await asyncio.wait_for(session.event_queue.get(), timeout=HEARTBEAT_INTERVAL)
