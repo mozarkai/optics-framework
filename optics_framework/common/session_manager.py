@@ -1,3 +1,4 @@
+import contextvars
 import shutil
 import tempfile
 import uuid
@@ -72,6 +73,14 @@ class SessionHandler(ABC):
         pass
 
 
+# Template overrides supplied by a single in-flight request. A ContextVar rather
+# than a Session field because two concurrent requests share one Session, and a
+# session-level dict lets one request clear or overwrite another's entries.
+request_template_overrides: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
+    "request_template_overrides", default={}
+)
+
+
 class SessionTemplateResolver:
     """
     Resolves template names to filesystem paths using request overrides,
@@ -84,8 +93,7 @@ class SessionTemplateResolver:
 
     def get_template_path(self, name: str) -> Optional[str]:
         """Return path for a template name; checks request overrides, then inline, then project."""
-        overrides = getattr(self._session, "request_template_overrides", None) or {}
-        path = overrides.get(name)
+        path = request_template_overrides.get().get(name)
         if path is not None:
             return path
         inline = getattr(self._session, "inline_templates", None) or {}
@@ -116,7 +124,6 @@ class Session:
         self.apis = apis
         self.templates = templates
         self.error_definitions = error_definitions
-        self.request_template_overrides: Dict[str, str] = {}
         self.inline_templates: Dict[str, str] = {}
         self._inline_templates_dir: str = tempfile.mkdtemp(prefix="optics_session_")
         self._template_resolver = SessionTemplateResolver(self)

@@ -1,5 +1,6 @@
 import base64
 import binascii
+import contextvars
 import json
 import os
 import re
@@ -19,7 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
-from optics_framework.common.session_manager import SessionManager, Session
+from optics_framework.common.session_manager import (
+    SessionManager,
+    Session,
+    request_template_overrides,
+)
 from optics_framework.common.models import ApiData
 from optics_framework.common.execution import (
     ExecutionEngine,
@@ -848,12 +853,17 @@ async def _execute_keyword_with_fallback(
 
 
 async def _setup_request_template_overrides(
-    session: Session, template_images: Optional[Dict[str, str]]
-) -> List[str]:
-    """Write template images to a temp dir and update session.request_template_overrides. Returns temp dirs for cleanup."""
+    template_images: Optional[Dict[str, str]]
+) -> Tuple[List[str], Optional[contextvars.Token]]:
+    """Write template images to a temp dir and bind them to this request's context.
+
+    Returns the temp dirs to clean up and the ContextVar token to reset, so the
+    caller's ``finally`` can undo exactly what this request set and nothing else.
+    """
     if not template_images:
-        return []
+        return [], None
     temp_dir = tempfile.mkdtemp(prefix=TEMP_DIR_PREFIX)
+    overrides: Dict[str, str] = {}
     for name, b64_value in template_images.items():
         try:
             safe_stem = _safe_template_filename(name)
@@ -867,8 +877,9 @@ async def _setup_request_template_overrides(
             raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
         path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
         await asyncio.to_thread(_write_bytes_to_path, path, raw)
-        session.request_template_overrides[name] = path
-    return [temp_dir]
+        overrides[name] = path
+    token = request_template_overrides.set(overrides)
+    return [temp_dir], token
 
 
 async def _handle_execution_failure(
@@ -909,7 +920,9 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
 
     engine = ExecutionEngine(session_manager)
     execution_id = str(uuid.uuid4())
-    request_temp_dirs = await _setup_request_template_overrides(session, request.template_images)
+    request_temp_dirs, overrides_token = await _setup_request_template_overrides(
+        request.template_images
+    )
 
     try:
         await session.event_queue.put(ExecutionEvent(
@@ -952,7 +965,8 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     except Exception as e:
         await _handle_execution_failure(e, session, execution_id, request.keyword)
     finally:
-        session.request_template_overrides.clear()
+        if overrides_token is not None:
+            request_template_overrides.reset(overrides_token)
         for dir_path in request_temp_dirs:
             try:
                 shutil.rmtree(dir_path, ignore_errors=True)
