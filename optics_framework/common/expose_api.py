@@ -562,7 +562,12 @@ async def create_session(config: SessionConfig):
             # launch error unchanged so the handlers below classify it,
             # rather than reporting a generic 500 or the wrong error.
             try:
-                await asyncio.to_thread(session_manager.terminate_session, session_id)
+                # Shielded: an unshielded cleanup can itself be interrupted by
+                # a second cancellation, leaving exactly the leaked session
+                # this block exists to prevent.
+                await asyncio.shield(
+                    asyncio.to_thread(session_manager.terminate_session, session_id)
+                )
             except Exception as cleanup_error:
                 internal_logger.warning(
                     "Cleanup after failed session launch also failed for %s: %s",
@@ -881,21 +886,28 @@ async def _setup_request_template_overrides(
     if not template_images:
         return [], None
     temp_dir = tempfile.mkdtemp(prefix=TEMP_DIR_PREFIX)
-    overrides: Dict[str, str] = {}
-    for name, b64_value in template_images.items():
-        try:
-            safe_stem = _safe_template_filename(name)
-        except ValueError as e:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        try:
-            raw = _decode_template_base64(b64_value)
-        except (binascii.Error, ValueError) as e:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
-        path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
-        await asyncio.to_thread(_write_bytes_to_path, path, raw)
-        overrides[name] = path
+    # BaseException, not Exception: the await below is a cancellation point,
+    # and a client that disconnects mid-write must not strand the directory --
+    # it was never returned to the caller, so nothing else can remove it.
+    try:
+        overrides: Dict[str, str] = {}
+        for name, b64_value in template_images.items():
+            try:
+                safe_stem = _safe_template_filename(name)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+            try:
+                raw = _decode_template_base64(b64_value)
+            except (binascii.Error, ValueError) as e:
+                raise HTTPException(
+                    status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}"
+                ) from e
+            path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
+            await asyncio.to_thread(_write_bytes_to_path, path, raw)
+            overrides[name] = path
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
     token = request_template_overrides.set(overrides)
     return [temp_dir], token
 

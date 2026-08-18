@@ -156,3 +156,27 @@ def test_terminate_session_from_worker_thread_stops_event_manager():
     assert mgr._running is False
     assert task.cancelled() or task.done(), "dispatch task survived teardown"
     assert "sess-i1" not in get_event_manager_registry().get_active_sessions()
+
+
+def test_execute_against_missing_session_leaves_no_event_manager():
+    """M4: the registry creates on miss, so a request racing a DELETE would
+    otherwise register a never-started EventManager under a dead session id
+    that nothing ever removes."""
+    from optics_framework.common.error import OpticsError
+    from optics_framework.common.events import get_event_manager_registry
+    from optics_framework.common.execution import ExecutionParams
+
+    manager = MagicMock()
+    manager.get_session.return_value = None
+    engine = ExecutionEngine(manager)
+    params = ExecutionParams(
+        session_id="sess-gone", mode="keyword", keyword="noop",
+        params=[], runner_type="keyword_runner", use_printer=False,
+    )
+
+    async def scenario():
+        with pytest.raises(OpticsError):
+            await engine.execute(params)
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=5))
+    assert "sess-gone" not in get_event_manager_registry().get_active_sessions()

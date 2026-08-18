@@ -15,7 +15,13 @@ from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.utils import _is_list_type
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
+from optics_framework.common.events import (
+    Event,
+    EventManager,
+    EventStatus,
+    get_event_manager,
+    get_event_manager_registry,
+)
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
 
@@ -392,9 +398,18 @@ class ExecutionEngine:
             await asyncio.sleep(0.1)
 
     async def execute(self, params: ExecutionParams) -> Any:
+        # get_event_manager creates on miss, so a request racing a DELETE would
+        # otherwise register a fresh, never-started EventManager under a dead
+        # session id that nothing ever removes. Validation failure takes the
+        # entry back out.
         event_manager = get_event_manager(params.session_id)
         session = self.session_manager.get_session(params.session_id)
-        await self._validate_execution_params(session, params, event_manager)
+        try:
+            await self._validate_execution_params(session, params, event_manager)
+        except Exception:
+            if session is None:
+                get_event_manager_registry().remove_session(params.session_id)
+            raise
         if session is None:
             raise RuntimeError("session must not be None after _validate_execution_params")
 

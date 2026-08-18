@@ -17,6 +17,8 @@ import pytest
 from optics_framework.common import session_manager as session_manager_module
 from optics_framework.common.session_manager import SessionManager
 
+pytestmark = pytest.mark.white_box
+
 
 def _make_bare_session(driver=None):
     """Minimal stand-in for ``Session`` carrying only the attributes

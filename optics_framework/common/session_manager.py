@@ -76,8 +76,11 @@ class SessionHandler(ABC):
 # Template overrides supplied by a single in-flight request. A ContextVar rather
 # than a Session field because two concurrent requests share one Session, and a
 # session-level dict lets one request clear or overwrite another's entries.
-request_template_overrides: contextvars.ContextVar[Dict[str, str]] = contextvars.ContextVar(
-    "request_template_overrides", default={}
+# The default is None, not {}: a mutable default is shared by every context
+# that never calls set(), so a single in-place write would poison it process
+# wide and permanently. Read it through ``.get() or {}``.
+request_template_overrides: contextvars.ContextVar[Optional[Dict[str, str]]] = contextvars.ContextVar(
+    "request_template_overrides", default=None
 )
 
 
@@ -93,7 +96,7 @@ class SessionTemplateResolver:
 
     def get_template_path(self, name: str) -> Optional[str]:
         """Return path for a template name; checks request overrides, then inline, then project."""
-        path = request_template_overrides.get().get(name)
+        path = (request_template_overrides.get() or {}).get(name)
         if path is not None:
             return path
         inline = getattr(self._session, "inline_templates", None) or {}
