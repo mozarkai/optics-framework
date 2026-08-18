@@ -508,7 +508,6 @@ def test_execute_keyword_wrong_mode_returns_400(client):
 def _fake_action_session():
     session = MagicMock()
     session.event_queue.put = AsyncMock()
-    session.request_template_overrides = {}
     session.optics.build = MagicMock(return_value=MagicMock())
     return session
 
