@@ -6,7 +6,7 @@ import atexit
 from logging.handlers import QueueHandler, RotatingFileHandler
 from rich.logging import RichHandler
 from pydantic import BaseModel
-from typing import Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 from pathlib import Path
 
 class LoggingConfig(BaseModel):
@@ -121,6 +121,37 @@ class SensitiveDataFormatter(logging.Formatter):
     def _sanitize(self, message: str) -> str:
         # Remove duplicate characters in regex character class
         return re.sub(r"@:([^\s,\)\]]+)", "****", message)
+
+
+# Capability/config keys whose *values* are credentials. Matched as a
+# case-insensitive substring of the key, so ``browserstack.key``,
+# ``bstack:options.accessKey`` and ``LT:Options.accessToken`` all hit.
+SENSITIVE_KEY_PATTERN = re.compile(
+    r"key|token|secret|password|passwd|credential|auth|licen[cs]e",
+    re.IGNORECASE,
+)
+REDACTED = "***"
+
+
+def redact_sensitive_values(mapping: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *mapping* with credential-bearing values masked.
+
+    Driver capabilities routinely carry cloud-farm access keys, and
+    ``optics serve`` forces DEBUG on every session, so anything logged
+    verbatim lands in the server console. Keys are kept (they are what makes
+    a capability dump useful for debugging); only the values behind
+    sensitive-looking keys are replaced. Nested dicts -- ``bstack:options``
+    and friends -- are redacted recursively.
+    """
+    redacted: Dict[str, Any] = {}
+    for key, value in mapping.items():
+        if SENSITIVE_KEY_PATTERN.search(str(key)):
+            redacted[key] = REDACTED
+        elif isinstance(value, Mapping):
+            redacted[key] = redact_sensitive_values(value)
+        else:
+            redacted[key] = value
+    return redacted
 
 
 logging_manager = LoggingManager()
