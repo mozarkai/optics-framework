@@ -109,7 +109,10 @@ BASE64_SEPARATOR = ";base64,"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # allow_credentials must stay False while allow_origins is a wildcard:
+    # starlette would otherwise echo the request Origin, letting any site make
+    # credentialed calls against a locally-bound server.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -525,9 +528,14 @@ async def create_session(config: SessionConfig):
         )
         reconfigure_logging(session_config)
         internal_logger.info(
-            "Created session %s with config: %s",
+            "Created session %s with driver_sources=%s elements_sources=%s "
+            "text_detection=%s image_detection=%s project_path=%s",
             session_id,
-            config.model_dump()
+            [next(iter(s)) for s in driver_sources if s],
+            [next(iter(s)) for s in elements_sources if s],
+            [next(iter(s)) for s in text_detection if s],
+            [next(iter(s)) for s in image_detection if s],
+            config.project_path,
         )
 
         launch_request = ExecuteRequest(
