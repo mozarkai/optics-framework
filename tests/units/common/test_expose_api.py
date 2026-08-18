@@ -935,3 +935,55 @@ def test_gather_workspace_data_holds_the_keyword_lock():
         ))
 
     assert observed == [True], "driver work ran without holding session.keyword_lock"
+
+
+# ---------------------------------------------------------------------------
+# add_session_api / event_generator guards (Phase 0, task 5, H3 & G7)
+# ---------------------------------------------------------------------------
+
+
+def test_add_session_api_holds_the_keyword_lock():
+    """H3: swapping session.apis must not race an in-flight API keyword."""
+    observed: list[bool] = []
+
+    class _Session:
+        """Real object, not a MagicMock: the apis setter must actually fire."""
+        def __init__(self):
+            self.session_id = "sess-1"
+            self.keyword_lock = asyncio.Lock()
+            self._apis = None
+
+        @property
+        def apis(self):
+            return self._apis
+
+        @apis.setter
+        def apis(self, value):
+            observed.append(self.keyword_lock.locked())
+            self._apis = value
+
+    session = _Session()
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=session):
+        _run(asyncio.wait_for(
+            expose_api.add_session_api("sess-1", {"api": {"global_defaults": {"k": "v"}}}),
+            timeout=5,
+        ))
+
+    assert session.apis.global_defaults == {"k": "v"}, "the swap did not happen at all"
+    assert observed == [True], "session.apis was swapped without holding keyword_lock"
+
+
+def test_event_generator_stops_when_session_is_gone():
+    """G7: the event stream must not outlive its session."""
+    session = MagicMock()
+    session.session_id = "sess-1"
+    session.event_queue = asyncio.Queue()
+
+    async def drain():
+        return [chunk async for chunk in expose_api.event_generator(session)]
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=None):
+        chunks = _run(asyncio.wait_for(drain(), timeout=5))
+
+    assert chunks == [], "generator yielded after the session was terminated"
