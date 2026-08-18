@@ -125,7 +125,9 @@ class ServerCommand(Command):
             "--port", type=int, default=8000, help="Port to bind the server (default: 8000)"
         )
         parser.add_argument(
-            "--workers", type=int, default=1, help="Number of worker processes (default: 1)"
+            "--workers", type=int, default=1,
+            help="Number of worker processes (default: 1). Values >1 are currently "
+                 "rejected: sessions are held in per-process memory.",
         )
         parser.set_defaults(func=self.execute)
 
