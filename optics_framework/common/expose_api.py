@@ -532,12 +532,20 @@ async def create_session(config: SessionConfig):
         )
         try:
             driver_session = await execute_keyword(session_id, launch_request)
-        except BaseException:
+        except BaseException as launch_error:
             # The client never received this session id, so this is the only
-            # chance to reclaim the device. Re-raise unchanged so the handlers
-            # below classify it, rather than reporting a generic 500.
-            await asyncio.to_thread(session_manager.terminate_session, session_id)
-            raise
+            # chance to reclaim the device. If cleanup itself fails, don't let
+            # it mask the original launch failure -- log it and re-raise the
+            # launch error unchanged so the handlers below classify it,
+            # rather than reporting a generic 500 or the wrong error.
+            try:
+                await asyncio.to_thread(session_manager.terminate_session, session_id)
+            except Exception as cleanup_error:
+                internal_logger.warning(
+                    "Cleanup after failed session launch also failed for %s: %s",
+                    session_id, cleanup_error,
+                )
+            raise launch_error
         return SessionResponse(
             session_id=session_id,
             driver_id=(driver_session.data or {}).get(KEY_RESULT)
