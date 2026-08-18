@@ -77,6 +77,19 @@ nav:
     - Logging: architecture/logging.md
     - Architecture Decisions: architecture/decisions.md
     - Extending: architecture/extending.md
+  - Concurrency & Sessions:
+    - Overview: concurrency/index.md
+    - Parallel Session Limits: concurrency/parallel-session-limits.md
+    - Session Lifecycle: concurrency/session-lifecycle.md
+    - The Async Model: concurrency/async-model.md
+    - Logging & Session Isolation: concurrency/logging-and-isolation.md
+    - Resource Isolation: concurrency/resource-isolation.md
+    - Stateless Serve: concurrency/stateless-serve.md
+    - Roadmap: concurrency/roadmap.md
+    - Design Records:
+      - Parallel-Session Audit: superpowers/specs/2026-08-18-parallel-sessions-audit.md
+      - Stateless-Serve Design: superpowers/specs/2026-08-18-parallel-sessions-stateless-serve-design.md
+      - Phase 0 Plan: superpowers/plans/2026-08-18-phase0-session-leaks-and-races.md
   - API Reference:
     - API Reference Overview: api_reference.md
     - Optics Class: api_reference/optics.md

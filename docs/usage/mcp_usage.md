@@ -94,7 +94,7 @@ Connect your MCP client to the container:
 
 Use port **8091** for the `mcp-dev` compose service. When `start_session`
 targets Appium on the host, set `"url": "http://host.docker.internal:4723"`.
-See [`Docker/deployment.md`](../../Docker/deployment.md) for vision-backend
+See [`Docker/deployment.md`](https://github.com/mozarkai/optics-framework/blob/main/Docker/deployment.md) for vision-backend
 build args, Google Vision credential mounts, and dev-wheel builds.
 
 ## 4. Connect an MCP client
