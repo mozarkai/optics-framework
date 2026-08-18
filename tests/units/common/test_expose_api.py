@@ -905,3 +905,33 @@ def test_create_session_preserves_launch_error_when_cleanup_also_fails():
     assert "app not installed" in str(exc.value.detail)
     assert "teardown also broken" not in str(exc.value.detail)
     mgr.terminate_session.assert_called_once_with("sess-compound-failure")
+
+
+# ---------------------------------------------------------------------------
+# _gather_workspace_data: keyword_lock serialization (Phase 0, task 4, H1)
+# ---------------------------------------------------------------------------
+
+
+def test_gather_workspace_data_holds_the_keyword_lock():
+    """H1: the workspace poller must not issue driver commands concurrently with a keyword."""
+    session = MagicMock()
+    session.session_id = "sess-1"
+    session.keyword_lock = asyncio.Lock()
+
+    observed: list[bool] = []
+
+    def _capture_screenshot_np(*_a, **_kw):
+        observed.append(session.keyword_lock.locked())
+        return None
+
+    verifier = MagicMock()
+    verifier._safe_capture_screenshot_np = _capture_screenshot_np
+    verifier._collect_interactive_elements = MagicMock(return_value=[])
+    session.optics.build.return_value = verifier
+
+    with patch.object(expose_api, "Verifier", MagicMock()):
+        _run(asyncio.wait_for(
+            expose_api._gather_workspace_data(session, False, None), timeout=5
+        ))
+
+    assert observed == [True], "driver work ran without holding session.keyword_lock"

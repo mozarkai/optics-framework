@@ -1185,32 +1185,37 @@ async def _gather_workspace_data(
     """
     Gather workspace data (screenshot, elements, optionally source) from a session.
     Returns a dict with screenshot, elements, and optionally source.
+
+    Holds session.keyword_lock: a WebDriver session is not concurrency-safe, and
+    without this the poller's commands interleave with an in-flight keyword's,
+    producing spurious stale-element failures.
     """
     try:
-        verifier = session.optics.build(Verifier)
+        async with session.keyword_lock:
+            verifier = session.optics.build(Verifier)
 
-        # Capture one frame and derive both the returned image and the element bounds
-        # from it, so bounds are scaled to the exact screenshot pixel space the client
-        # renders (see Verifier._collect_interactive_elements).
-        screenshot_np = await asyncio.to_thread(verifier._safe_capture_screenshot_np)
-        elements = await asyncio.to_thread(
-            verifier._collect_interactive_elements, filter_config, screenshot_np
-        )
-        screenshot = (
-            await asyncio.to_thread(encode_numpy_to_base64, screenshot_np)
-            if screenshot_np is not None else ""
-        )
+            # Capture one frame and derive both the returned image and the element bounds
+            # from it, so bounds are scaled to the exact screenshot pixel space the client
+            # renders (see Verifier._collect_interactive_elements).
+            screenshot_np = await asyncio.to_thread(verifier._safe_capture_screenshot_np)
+            elements = await asyncio.to_thread(
+                verifier._collect_interactive_elements, filter_config, screenshot_np
+            )
+            screenshot = (
+                await asyncio.to_thread(encode_numpy_to_base64, screenshot_np)
+                if screenshot_np is not None else ""
+            )
 
-        workspace_data: Dict[str, Any] = {
-            KEY_SCREENSHOT: screenshot or "",
-            KEY_ELEMENTS: elements or [],
-            KEY_SCREENSHOT_FAILED: not screenshot,
-        }
+            workspace_data: Dict[str, Any] = {
+                KEY_SCREENSHOT: screenshot or "",
+                KEY_ELEMENTS: elements or [],
+                KEY_SCREENSHOT_FAILED: not screenshot,
+            }
 
-        if include_source:
-            workspace_data[KEY_SOURCE] = await _capture_source_safe(verifier)
+            if include_source:
+                workspace_data[KEY_SOURCE] = await _capture_source_safe(verifier)
 
-        return workspace_data
+            return workspace_data
     except Exception as e:
         internal_logger.error(f"Error gathering workspace data: {e}")
         return _empty_workspace_data(include_source)
