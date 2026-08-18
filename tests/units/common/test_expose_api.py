@@ -836,3 +836,51 @@ def test_delete_session_evicts_even_when_driver_teardown_fails():
     # ...but the session is gone regardless.
     mgr.terminate_session.assert_called_once_with("sess-broken")
     assert "sess-broken" not in expose_api.workspace_hashes
+
+
+def _minimal_session_config():
+    """Smallest SessionConfig that normalizes to one enabled driver source."""
+    return expose_api.SessionConfig(
+        driver_sources=[{"appium": {"enabled": True, "url": "http://127.0.0.1:4723"}}],
+        elements_sources=[],
+        text_detection=[],
+        image_detection=[],
+    )
+
+
+def test_create_session_terminates_when_app_launch_fails():
+    """G2: a failed auto-launch must not leave a registered session behind."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-half-built")
+    mgr.terminate_session = MagicMock()
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(
+             expose_api, "execute_keyword",
+             AsyncMock(side_effect=RuntimeError("app not installed")),
+         ), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()):
+        with pytest.raises(HTTPException):
+            _run(expose_api.create_session(_minimal_session_config()))
+
+    mgr.terminate_session.assert_called_once_with("sess-half-built")
+
+
+def test_create_session_preserves_http_status_from_launch():
+    """G2: an HTTPException from launch must not be flattened into a 500."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-1")
+    mgr.terminate_session = MagicMock()
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(
+             expose_api, "execute_keyword",
+             AsyncMock(side_effect=HTTPException(status_code=404, detail="no such keyword")),
+         ), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()):
+        with pytest.raises(HTTPException) as exc:
+            _run(expose_api.create_session(_minimal_session_config()))
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "no such keyword"
+    mgr.terminate_session.assert_called_once_with("sess-1")
