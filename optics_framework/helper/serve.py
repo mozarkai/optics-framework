@@ -1,6 +1,7 @@
 import logging
 import uvicorn
 
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 
 # Local console format for optics serve only (keeps global logging_config unchanged)
@@ -63,7 +64,23 @@ def run_uvicorn_server(host: str = "127.0.0.1", port: int = 8000, workers: int =
         host (str, optional): Host address. Defaults to "127.0.0.1".
         port (int, optional): Port number. Defaults to 8000.
         workers (int, optional): Number of worker processes. Defaults to 1.
+
+    Raises:
+        OpticsError: if ``workers > 1`` — each worker process would hold its
+            own in-memory session registry (see ``common/expose_api.py``),
+            so a session created on one worker is invisible to the others.
     """
+    if workers > 1:
+        raise OpticsError(
+            Code.E0501,
+            message=(
+                f"--workers={workers} is not supported: each worker process holds its own "
+                "in-memory session registry, so a session created on one worker is invisible "
+                "to the others and returns 404. Run a single worker, or scale by running "
+                "multiple single-worker instances."
+            ),
+        )
+
     # Apply Optics logging handlers to uvicorn so access/error logs match
     _apply_optics_logging_to_uvicorn()
 
