@@ -12,6 +12,8 @@ import pytest
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.helper import serve
 
+pytestmark = pytest.mark.white_box
+
 
 def test_multiple_workers_is_refused():
     """G8: each worker has its own in-memory SessionManager, so >1 worker breaks lookups."""
