@@ -15,7 +15,12 @@
 - Python `>=3.12,<4.0` (`pyproject.toml:25`). Use modern typing (`list[str]`, `X | None`, `Self`).
 - Conventional Commits enforced by the commitizen commit-msg hook: `feat:` / `fix:` / `refactor:` / `docs:` / `chore:` / `test:` / `perf:` / `style:` / `build:` / `ci:`.
 - **Never** add `Co-Authored-By: Claude` or any AI-attribution trailer to a commit message or PR body.
-- Run `poetry run pre-commit run --files <changed>` before each commit. Never `--no-verify`. **Known environment issue:** the `gitleaks` and `commitizen` hook environments currently fail to install with `SSL: CERTIFICATE_VERIFY_FAILED`. Run the installable hooks individually (`pre-commit run ruff --files ...`, `trailing-whitespace`, `end-of-file-fixer`, `bandit`) and state in the handoff which hooks were skipped and why. Do not silently skip verification.
+- Run pre-commit before each commit. Never `--no-verify`. **Two environment quirks, both verified:** (a) `pre-commit run` accepts **at most one hook id per invocation** — passing several fails with `unrecognized arguments`, and the hooks then do not run at all; loop instead. (b) the `gitleaks` and `commitizen` hook environments fail to install here with `SSL: CERTIFICATE_VERIFY_FAILED` (pre-existing local condition, reproduced in and out of the sandbox — do not debug it). So use:
+```bash
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files <changed files>; done
+```
+and state in your report which hooks ran and which were unavailable. Do not silently skip verification.
 - Tests live in two trees under one pytest invocation (`pytest.toml`, `testpaths = ["tests"]`). Server tests belong in `tests/units/common/test_expose_api.py` unless a new file is specified.
 - Server tests must stay **hermetic and device-less** — no driver or engine is ever instantiated. Follow the existing conventions in `tests/units/common/test_expose_api.py`: `fastapi.testclient.TestClient` with `session_manager` / `execute_keyword` / `ExecutionEngine` / `KeywordRegistry` mocked, and the local `_run(coro)` helper for driving coroutines directly.
 - Do not touch `__pycache__/`, `dist/`, `docs/build/`, `.tox/`, `htmlcov/`, `execution_output/`.
@@ -46,11 +51,12 @@ def test_delete_session_evicts_even_when_driver_teardown_fails():
     mgr.get_session.return_value = MagicMock()
     mgr.terminate_session = MagicMock()
 
-    with patch.object(expose_api, "session_manager", mgr), \
-         patch.object(
-             expose_api, "execute_keyword",
-             AsyncMock(side_effect=RuntimeError("device rebooted")),
-         ):
+    # Inject the failure into terminate_session, NOT execute_keyword: this fix
+    # deliberately removes the close_and_terminate_app pre-call, so execute_keyword
+    # is never invoked on this path and patching it would test nothing.
+    mgr.terminate_session = MagicMock(side_effect=RuntimeError("device rebooted"))
+
+    with patch.object(expose_api, "session_manager", mgr):
         expose_api.workspace_hashes["sess-broken"] = "deadbeef"
         with pytest.raises(HTTPException) as exc:
             _run(expose_api.delete_session("sess-broken"))
@@ -65,7 +71,7 @@ def test_delete_session_evicts_even_when_driver_teardown_fails():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `poetry run pytest tests/units/common/test_expose_api.py::test_delete_session_evicts_even_when_driver_teardown_fails -v`
-Expected: FAIL — `terminate_session.assert_called_once_with` raises `AssertionError: Expected 'terminate_session' to be called once. Called 0 times.` because the `raise HTTPException` on the failure path returns before line 1341.
+Expected: FAIL — `workspace_hashes` still contains `sess-broken`, because the pre-fix code raises `HTTPException` from the `close_and_terminate_app` path and never reaches the cleanup lines.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -118,8 +124,8 @@ Expected: PASS, including any pre-existing `delete_session` tests. If a pre-exis
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py; done
 git add optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
 git commit -m "fix(serve): always evict a session on delete, even if teardown fails"
 ```
@@ -243,8 +249,8 @@ Expected: PASS, including pre-existing `create_session` tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py; done
 git add optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
 git commit -m "fix(serve): reclaim the device when session auto-launch fails"
 ```
@@ -415,9 +421,9 @@ Expected: hits only in `session_manager.py` (the `ContextVar` and the resolver) 
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/session_manager.py optics_framework/common/expose_api.py \
-          tests/units/common/test_expose_api_vision.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/session_manager.py optics_framework/common/expose_api.py \
+          tests/units/common/test_expose_api_vision.py; done
 git add optics_framework/common/session_manager.py optics_framework/common/expose_api.py \
         tests/units/common/test_expose_api_vision.py
 git commit -m "fix(serve): scope request template overrides to the request, not the session"
@@ -503,8 +509,8 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py; done
 git add optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
 git commit -m "fix(serve): serialize workspace stream capture against keyword execution"
 ```
@@ -635,8 +641,8 @@ Expected: PASS (whole file, to catch any stream test that relied on the infinite
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/expose_api.py tests/units/common/test_expose_api.py; done
 git add optics_framework/common/expose_api.py tests/units/common/test_expose_api.py
 git commit -m "fix(serve): guard api-data swap and end event stream with its session"
 ```
@@ -763,9 +769,9 @@ Expected: PASS. If a test fails on a doubly-closed handler, make `JUnitEventHand
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/execution.py optics_framework/common/events.py \
-          optics_framework/common/Junit_eventhandler.py \
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/execution.py optics_framework/common/events.py \
+          optics_framework/common/Junit_eventhandler.py \; done
           tests/units/common/test_execution_threading.py
 git add optics_framework/common/execution.py optics_framework/common/events.py \
         optics_framework/common/Junit_eventhandler.py \
@@ -857,9 +863,9 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/helper/serve.py optics_framework/helper/cli.py \
-          tests/units/helper/test_serve.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/helper/serve.py optics_framework/helper/cli.py \
+          tests/units/helper/test_serve.py; done
 git add optics_framework/helper/serve.py optics_framework/helper/cli.py \
         tests/units/helper/test_serve.py
 git commit -m "fix(serve): reject --workers>1 instead of silently losing sessions"
@@ -996,9 +1002,9 @@ Expected: PASS. This is the last task in the phase, so the whole suite must be g
 - [ ] **Step 5: Commit**
 
 ```bash
-poetry run pre-commit run ruff bandit trailing-whitespace end-of-file-fixer \
-  --files optics_framework/common/expose_api.py optics_framework/common/async_utils.py \
-          tests/units/common/test_expose_api.py
+for h in ruff bandit trailing-whitespace end-of-file-fixer; do \
+  poetry run pre-commit run "$h" --files optics_framework/common/expose_api.py optics_framework/common/async_utils.py \
+          tests/units/common/test_expose_api.py; done
 git add optics_framework/common/expose_api.py optics_framework/common/async_utils.py \
         tests/units/common/test_expose_api.py
 git commit -m "fix(serve): stop logging raw capabilities and disallow credentialed wildcard CORS"
