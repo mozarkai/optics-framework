@@ -54,6 +54,16 @@ MSG_EXECUTION_FAILED = "Execution failed:"
 MSG_SESSION_TERMINATION_FAILED = "Session termination failed:"
 MSG_INVALID_BASE64_IMAGE = "Invalid base64 image data:"
 
+# How long teardown waits for an in-flight keyword to release ``keyword_lock``
+# before tearing the session down anyway. Sized to outlast the longest single
+# blocking call a keyword normally makes (Appium's 60 s connection timeout is
+# the worst case; a default ``Assert Presence`` is 30 s) so a healthy request
+# is never cut short, while still guaranteeing the endpoint returns: this is
+# the only eviction path, and a session that cannot be evicted holds a device
+# until the process dies, which is strictly worse than racing one abandoned
+# driver command.
+SESSION_TEARDOWN_LOCK_TIMEOUT_S = 60.0
+
 # --- Execution / request ---
 MODE_KEYWORD = "keyword"
 RUNNER_TYPE_KEYWORD = "keyword"
@@ -1367,10 +1377,67 @@ async def event_generator(session: Session):
             ).model_dump())}
             break
 
+async def _terminate_under_keyword_lock(session: Session) -> None:
+    """Run ``terminate_session`` serialized against any in-flight keyword.
+
+    Teardown quits the remote driver, clears ``inline_templates`` and
+    ``rmtree``s the session temp dir. Doing any of that while a keyword still
+    has a WebDriver command in flight (the keyword holds ``keyword_lock``
+    across an ``asyncio.to_thread`` call, which leaves the loop free to serve
+    this request) kills that command mid-flight, or pulls a template file out
+    from under a running matcher.
+
+    Only the *acquisition* is bounded -- ``asyncio.wait_for`` around the
+    teardown itself would be a lie, since cancelling an ``asyncio.to_thread``
+    call does not stop the thread. On timeout we tear down anyway and log:
+    see ``SESSION_TEARDOWN_LOCK_TIMEOUT_S`` for why an un-evictable session is
+    the worse failure. A cancellation while waiting for the lock is absorbed
+    the same way: this endpoint is the only eviction path, so the teardown
+    still runs (shielded against a second cancellation) before the request
+    dies. ``terminate_session`` never re-acquires the lock, so there is no
+    nesting risk.
+    """
+    lock_acquired = False
+    try:
+        await asyncio.wait_for(
+            session.keyword_lock.acquire(), timeout=SESSION_TEARDOWN_LOCK_TIMEOUT_S
+        )
+        lock_acquired = True
+    except asyncio.CancelledError:
+        internal_logger.warning(
+            "Session %s delete was cancelled while a keyword held the lock; evicting anyway",
+            session.session_id,
+        )
+        try:
+            # Shielded: an unshielded cleanup can itself be interrupted by a
+            # second cancellation, leaving exactly the leaked session this
+            # handler exists to prevent.
+            await asyncio.shield(
+                asyncio.to_thread(session_manager.terminate_session, session.session_id)
+            )
+        except Exception as rescue_error:  # noqa: BLE001 - logged; must not suppress the CancelledError
+            internal_logger.warning(
+                "Teardown of cancelled delete for session %s failed: %s",
+                session.session_id, rescue_error,
+            )
+        raise
+    except asyncio.TimeoutError:
+        internal_logger.warning(
+            "Session %s still had a keyword in flight after %.1fs; tearing down anyway",
+            session.session_id, SESSION_TEARDOWN_LOCK_TIMEOUT_S,
+        )
+    try:
+        await asyncio.to_thread(session_manager.terminate_session, session.session_id)
+    finally:
+        if lock_acquired:
+            session.keyword_lock.release()
+
+
 @app.delete(
     "/v1/sessions/{session_id}/stop",
     response_model=TerminationResponse,
     responses={
+        404: {"description": "Session not found"},
         500: {"description": "Session termination failed"},
     },
 )
@@ -1383,9 +1450,16 @@ async def delete_session(session_id: str):
     this endpoint is the only eviction path. The caller still receives the
     failure, but the server state is always consistent afterwards.
     """
+    session = session_manager.get_session(session_id)
+    if not session:
+        # terminate_session no-ops on an unknown id, so without this the
+        # endpoint would answer 200 TERMINATED to a typo or a double-delete
+        # and tell the caller a device was released when nothing happened.
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+
     teardown_error: Exception | None = None
     try:
-        await asyncio.to_thread(session_manager.terminate_session, session_id)
+        await _terminate_under_keyword_lock(session)
     except Exception as e:  # noqa: BLE001 - reported below, never suppressed
         teardown_error = e
         internal_logger.warning(
