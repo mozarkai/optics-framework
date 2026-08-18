@@ -102,8 +102,12 @@ class EventManager:
         while self._running:
             try:
                 event = await self.event_queue.get()
-                internal_logger.debug(
-                    f"Processing event: {event.model_dump()}")
+                try:
+                    internal_logger.debug("Processing event: %s", event.model_dump())
+                except AttributeError:
+                    # Non-Event payloads (e.g. in tests) must still be dispatched;
+                    # a debug-logging failure must never silently drop an event.
+                    internal_logger.debug("Processing event: %r", event)
                 for subscriber_id, subscriber in self.subscribers.items():
                     internal_logger.debug(
                         f"Dispatching to subscriber {subscriber_id}: {subscriber}")
@@ -192,7 +196,7 @@ class EventManagerRegistry:
         with self._lock:
             if session_id in self._managers:
                 manager = self._managers[session_id]
-                manager.stop()
+                manager.shutdown()  # closes subscribers, then stops the loop
                 internal_logger.debug(f"Removed EventManager for session {session_id}: {id(manager)}")
                 del self._managers[session_id]
 

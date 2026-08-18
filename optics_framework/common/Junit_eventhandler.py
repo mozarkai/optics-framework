@@ -118,6 +118,7 @@ class JUnitEventHandler(EventSubscriber):
         self.module_elements: Dict[str, ET.Element] = {}
         self.active_keyword_elements: Dict[str, ET.Element] = {}  # Per keyword_id for update during execution
         self.keyword_log_buffers: Dict[str, LogCaptureBuffer] = {}
+        self._closed = False
 
         internal_logger.debug(f"Initialized JUnitEventHandler with output: {self.output_path}")
 
@@ -285,4 +286,17 @@ class JUnitEventHandler(EventSubscriber):
             internal_logger.error(f"Failed to flush Robot-style XML: {str(e)}")
 
     def close(self):
+        """Flush the JUnit XML to disk.
+
+        Idempotent: session teardown closes this handler via both
+        ``cleanup_junit`` (JUnitHandlerRegistry bookkeeping) and, afterwards,
+        ``EventManagerRegistry.remove_session`` -> ``EventManager.shutdown()``
+        (subscriber cleanup) — the handler remains subscribed to the
+        EventManager after ``cleanup_junit`` removes it from the registry, so
+        a second ``close()`` call is expected and must be a no-op rather than
+        re-flushing.
+        """
+        if self._closed:
+            return
+        self._closed = True
         self.flush()
