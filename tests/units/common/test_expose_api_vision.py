@@ -189,6 +189,12 @@ def test_request_template_overrides_are_isolated_per_task():
         go.set()
         await asyncio.gather(task_a, task_b)
 
-    asyncio.run(scenario())
+    # Bound the whole scenario, not just the final gather: if
+    # request_template_overrides.set(...) ever regresses to something that
+    # raises before settle.set() (e.g. reverted to a plain dict/session
+    # field), a_ready/b_ready never fire and scenario() hangs forever on
+    # `await a_ready.wait()`. wait_for around scenario() turns that hang into
+    # a fast, legible TimeoutError instead of burning the whole CI job.
+    asyncio.run(asyncio.wait_for(scenario(), timeout=5))
 
     assert seen == {"login_btn": "/tmp/a.png", "cancel_btn": "/tmp/b.png"}
