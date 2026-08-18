@@ -59,7 +59,6 @@ STATUS_HEARTBEAT = "HEARTBEAT"
 STATUS_ERROR = "ERROR"
 STATUS_CANCELLED = "CANCELLED"
 KEYWORD_LAUNCH_APP = "launch_app"
-KEYWORD_CLOSE_AND_TERMINATE_APP = "close_and_terminate_app"
 KEY_RESULT = "result"
 EXECUTION_ID_HEARTBEAT = "heartbeat"
 EXECUTION_ID_UNKNOWN = "unknown"
@@ -1323,23 +1322,34 @@ async def event_generator(session: Session):
 async def delete_session(session_id: str):
     """
     Terminate the specified session and clean up resources.
-    Returns termination status.
+
+    Cleanup runs unconditionally: a driver that fails to quit (rebooted device,
+    restarted Appium server) must never leave the session un-evictable, since
+    this endpoint is the only eviction path. The caller still receives the
+    failure, but the server state is always consistent afterwards.
     """
-    kill_request = ExecuteRequest(
-        mode=MODE_KEYWORD,
-        keyword=KEYWORD_CLOSE_AND_TERMINATE_APP,
-        params=[]
-    )
+    teardown_error: Exception | None = None
     try:
-        await execute_keyword(session_id, kill_request)
-    except OpticsError as e:
-        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
-    except Exception as e:
-        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_TERMINATION_FAILED} {e}") from e
-    session_manager.terminate_session(session_id)
-    # Clean up workspace hash entry to prevent memory leak
-    workspace_hashes.pop(session_id, None)
-    internal_logger.info(f"Terminated session: {session_id}")
+        await asyncio.to_thread(session_manager.terminate_session, session_id)
+    except Exception as e:  # noqa: BLE001 - reported below, never suppressed
+        teardown_error = e
+        internal_logger.warning(
+            "Driver teardown failed for session %s; session evicted anyway: %s",
+            session_id, e,
+        )
+    finally:
+        workspace_hashes.pop(session_id, None)
+
+    if teardown_error is not None:
+        if isinstance(teardown_error, OpticsError):
+            raise HTTPException(
+                status_code=teardown_error.status_code,
+                detail=teardown_error.to_payload(include_status=True),
+            ) from teardown_error
+        raise HTTPException(
+            status_code=500,
+            detail=f"{MSG_SESSION_TERMINATION_FAILED} {teardown_error}",
+        ) from teardown_error
+
+    internal_logger.info("Terminated session: %s", session_id)
     return TerminationResponse()

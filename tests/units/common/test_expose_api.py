@@ -607,8 +607,7 @@ def test_create_session_success_and_deprecation(client):
 def test_delete_session_success_and_hash_cleanup(client):
     expose_api.workspace_hashes["sess-del"] = "somehash"
     terminate = MagicMock()
-    with patch.object(expose_api, "execute_keyword", new=AsyncMock(return_value=MagicMock())), \
-            patch.object(expose_api.session_manager, "terminate_session", terminate):
+    with patch.object(expose_api.session_manager, "terminate_session", terminate):
         resp = client.delete("/v1/sessions/sess-del/stop")
     assert resp.status_code == 200
     assert resp.json()["status"] == expose_api.STATUS_TERMINATED
@@ -618,8 +617,12 @@ def test_delete_session_success_and_hash_cleanup(client):
 
 
 def test_delete_session_optics_error_propagates_status(client):
+    # G1: delete_session no longer routes teardown through execute_keyword
+    # (that close_and_terminate_app pre-call was removed), so the failure is
+    # now injected directly into session_manager.terminate_session, the sole
+    # remaining teardown path.
     err = OpticsError(Code.E0402, message="boom")
-    with patch.object(expose_api, "execute_keyword", new=AsyncMock(side_effect=err)):
+    with patch.object(expose_api.session_manager, "terminate_session", side_effect=err):
         resp = client.delete("/v1/sessions/s1/stop")
     assert resp.status_code == 404
 
@@ -813,3 +816,23 @@ def test_upload_template_success_writes_file_and_registers(client, tmp_path):
     stored_path = session.inline_templates["my_btn"]
     with open(stored_path, "rb") as f:
         assert f.read() == raw
+
+
+def test_delete_session_evicts_even_when_driver_teardown_fails():
+    """G1: a driver that refuses to quit must not make a session un-evictable."""
+    mgr = MagicMock()
+    # terminate_session is the sole remaining teardown path (the
+    # close_and_terminate_app pre-call through execute_keyword was removed),
+    # so it's the mock that must simulate the misbehaving driver.
+    mgr.terminate_session = MagicMock(side_effect=RuntimeError("device rebooted"))
+
+    with patch.object(expose_api, "session_manager", mgr):
+        expose_api.workspace_hashes["sess-broken"] = "deadbeef"
+        with pytest.raises(HTTPException) as exc:
+            _run(expose_api.delete_session("sess-broken"))
+
+    # The caller still learns it failed...
+    assert exc.value.status_code == 500
+    # ...but the session is gone regardless.
+    mgr.terminate_session.assert_called_once_with("sess-broken")
+    assert "sess-broken" not in expose_api.workspace_hashes
