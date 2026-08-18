@@ -119,10 +119,10 @@ A pod dying mid-keyword leaves the client unable to distinguish "the tap happene
 
 ## `--workers`
 
-Today `--workers N` is advertised and **silently broken**: each worker process imports the module and gets its own in-memory registry, so a session created on worker 1 returns `404` from worker 3. Phase 0 makes it fail loudly. Once the Redis store lands, it becomes genuinely correct and is re-enabled under `OPTICS_SESSION_BACKEND=redis`.
+`--workers N` used to be advertised and **silently broken**: each worker process imports the module and gets its own in-memory registry, so a session created on worker 1 returned `404` from worker 3. Phase 0 made it fail loudly — `--workers > 1` now raises `E0501` before uvicorn starts. Once the Redis store lands, it becomes genuinely correct and is re-enabled under `OPTICS_SESSION_BACKEND=redis`.
 
 ## Deliberately out of scope
 
-- **Authentication.** The server is treated as cluster-internal. Note that statelessness makes `session_id` a *portable, cross-node* bearer capability with no ownership check — anyone who can reach the port can drive any session, including `DELETE`. Two cheap hardening fixes (no credentialed wildcard CORS; stop logging raw capabilities) land in Phase 0; the token/principal work is tracked separately.
+- **Authentication.** The server is treated as cluster-internal. Note that statelessness makes `session_id` a *portable, cross-node* bearer capability with no ownership check — anyone who can reach the port can drive any session, including `DELETE`. Two cheap hardening fixes (no credentialed wildcard CORS; stop logging raw capabilities) landed in Phase 0; the token/principal work is tracked separately.
 - **Backlog replay on SSE.** Pub/sub is fire-and-forget: a client reconnecting after a pod death gets events from that point forward, not the backlog. Redis Streams would fix it and is a follow-up.
 - **Cross-pod statelessness for non-Appium backends.** See the capability table above.

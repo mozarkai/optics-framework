@@ -49,11 +49,13 @@ internal_logger.debug(f"Processing event: {event.model_dump()}")
 
 An f-string is evaluated eagerly, so that full Pydantic serialization runs **before** the level check, for every event and every subscriber, whether or not DEBUG is enabled.
 
-### Secrets reach stdout
+### Secrets used to reach stdout
 
-`create_session` logs `config.model_dump()` verbatim, which includes driver capabilities. Cloud device-farm capabilities routinely carry access keys — `browserstack.user`, `browserstack.key`, vendor tokens.
+:material-check-circle: Fixed in Phase 0, in two steps. `create_session` used to log `config.model_dump()` verbatim, which includes driver capabilities; cloud device-farm capabilities routinely carry access keys — `browserstack.key`, `bstack:options.accessKey`, vendor tokens. That line is gone, and separately both drivers used to dump their whole capability dict at DEBUG on every launch, which the forced-DEBUG behaviour above guaranteed would be emitted.
 
-`SensitiveDataFormatter` exists and does redact, but it is attached **only to file handlers**, not to the console handler. In a container, stdout is exactly where logs are shipped. Fixed in Phase 0.
+Every capability log site now goes through `redact_sensitive_values` (`common/logging_config.py`): keys are kept — they are what makes a capability dump useful — and only values behind credential-shaped keys (`key`, `token`, `secret`, `password`, `credential`, `auth`, `licence`) are masked, recursing into nested option blocks.
+
+This is a redaction at the *call site*, not a formatter. `SensitiveDataFormatter` does exist, but it only masks `@:`-style URL credentials and is attached **only to file handlers**, not to the console handler — and in a container, stdout is exactly where logs are shipped. Attaching it to the console handler too is still Phase 2.
 
 ### One session's shutdown can kill logging process-wide
 
@@ -73,5 +75,5 @@ An f-string is evaluated eagerly, so that full Pydantic serialization runs **bef
 ## What this means for you today
 
 - **Do not trust a log file to contain one session's records** if more than one session ran in the process.
-- **Do not run `optics serve` with untrusted capabilities in a shared log environment** until the redaction fix lands — assume anything in `capabilities` reaches stdout.
+- **Capability values behind credential-shaped keys are redacted**, but a secret stored under a key that doesn't look like one (say, `appium:vendorBlob`) is not. Name your credential capabilities recognisably.
 - **Prefer `%`-style logging args** (`logger.debug("x: %s", value)`) over f-strings in any code that runs per event or per keyword. The formatting cost is real and it is paid whether or not the level is enabled.

@@ -127,7 +127,7 @@ optics serve [--host <host>] [--port <port>] [--workers <n>]
 
 - `--host`: Host to bind (default: `127.0.0.1`).
 - `--port`: Port to bind (default: `8000`).
-- `--workers`: Number of worker processes (default: `1`).
+- `--workers`: Number of worker processes (default: `1`). **Values greater than 1 are rejected**: sessions live in per-process memory, so a session created on one worker would return `404` from the others. Scale by running several single-worker instances instead.
 
 For endpoint details, request/response formats, and examples, see [REST API Usage](REST_API_usage.md).
 

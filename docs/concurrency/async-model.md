@@ -28,7 +28,7 @@ So the async boundary belongs *above* the engines, not inside them.
 
     Sync engines. One offload. A per-session lock, because a WebDriver session is not concurrency-safe.
 
-This pattern already exists at that location and is correct. The work in progress is making it the *only* seam — extracting it as `run_keyword_blocking(...)` and routing every other caller through it, so the invariant becomes greppable: `to_thread` and `run_in_executor` should appear in exactly one module.
+This pattern already exists at that location and is correct. `delete_session` takes the same lock around its teardown offload, bounded by a 60-second acquisition timeout — teardown must never be blocked forever by a wedged keyword, since it is the only eviction path. The work in progress is making it the *only* seam — extracting it as `run_keyword_blocking(...)` and routing every other caller through it, so the invariant becomes greppable: `to_thread` and `run_in_executor` should appear in exactly one module.
 
 ### Why a per-session executor, not bare `to_thread`
 
@@ -67,6 +67,8 @@ If you find yourself writing `asyncio.run(...)` inside code that might already b
 
 The correct bridges are `asyncio.run_coroutine_threadsafe(coro, loop)` from a non-loop thread, and `loop.call_soon_threadsafe(...)` for fire-and-forget. Capture the loop *before* leaving it.
 
+The same rule covers **cancelling** a task from another thread. `Task.cancel()` schedules through `loop.call_soon()`, and its `_check_thread()` guard only raises under `loop.set_debug(True)` — off-loop it silently appends to the ready queue without waking the selector and races the loop thread. `EventManager` captures its loop in `start()` and cancels through `call_soon_threadsafe` precisely because `stop()` is reachable from a worker thread (`terminate_session` runs under `asyncio.to_thread`).
+
 ### Locks
 
 - **`asyncio.Lock` is not reentrant.** A nested acquisition deadlocks. Before adding an acquisition, `grep -rn "keyword_lock"` and check no caller in your path already holds it.
@@ -84,7 +86,7 @@ Prefer `asyncio.get_running_loop()` over the deprecated `asyncio.get_event_loop(
 | Path | Problem |
 |---|---|
 | `runner/test_runnner.py:436` | The batch/dry-run keyword call runs directly on the loop. This is the big one. |
-| `expose_api.delete_session` | Driver teardown on the loop — including a retry loop with `time.sleep` around a 10-second HTTP post, worst case ~36 s of frozen loop. |
+| Every `to_thread` call site | `asyncio.to_thread` is not cancellable. On cancellation the `await` unwinds and `async with session.keyword_lock` releases the lock while the driver command is still running in the abandoned thread. Structural fix: the per-session single-worker executor. |
 | `runner/test_runnner.py` (pytest runner) | `pytest.main()` — the entire suite — runs on the loop. |
 | `runner/test_runnner.py:88` | `queue_event_sync` calls `asyncio.run` under a running loop and swallows the failure. |
 | `expose_api.execute_keyword` | Rebuilds the whole keyword registry per request on the loop, including `inspect.getsource` calls per strategy per element source. |

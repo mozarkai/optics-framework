@@ -41,7 +41,7 @@ Any one of these alone is sufficient to break concurrency. They are being fixed 
 
 It is worth being precise about this, because the list is longer than it looks and it defines what *not* to rewrite:
 
-- **The correct async pattern already exists**, in exactly one place — `KeywordExecutor.execute` holds a per-session lock and offloads to a thread. It is the template everything else should follow.
+- **The correct async pattern already exists**, in exactly one place — `KeywordExecutor.execute` holds a per-session lock and offloads to a thread. It is the template everything else should follow. (`asyncio.to_thread` is not cancellable, so the lock is released early when a request is cancelled; Phase 1's per-session executor makes the serialization structural.)
 - **Session-scoped registries with proper locking**: the event-manager registry and the JUnit handler registry are both keyed by session id and guarded by a `threading.Lock`. JUnit output is already written per session.
 - **Per-session temp directories** are correctly unique and correctly cleaned up.
 - **`OpticsBuilder`, `StrategyManager`, `KeywordRegistry`, `EventSDK`, and `InstanceFallback`** are all genuinely per-session with no shared state.

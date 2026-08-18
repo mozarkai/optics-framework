@@ -6,9 +6,9 @@
 
 | Surface | Verdict | Why |
 |---|---|---|
-| **`optics serve`** | :material-alert: **One at a time, in practice** | Sessions are created and looked up correctly, but a single keyword blocks the event loop for its whole duration, and several paths corrupt each other. See below. |
+| **`optics serve`** | :material-alert: **One at a time, in practice** | Sessions are created, looked up, and torn down correctly, and the cross-request corruption listed below is fixed — but a single keyword still blocks the event loop for its whole duration (Phase 1). See below. |
 | **`optics mcp`** | :material-alert: **Same as `serve`** | A thin in-process wrapper over the same code; it inherits every limitation and adds none. |
-| **`optics serve --workers N`** | :material-close-circle: **Broken — do not use** | Each worker process gets its own in-memory session registry, so a session created on one worker returns `404` from the others, roughly `(N-1)/N` of the time. |
+| **`optics serve --workers N`** | :material-close-circle: **Rejected at startup** | Each worker process gets its own in-memory session registry, so a session created on one worker returned `404` from the others. `--workers > 1` now fails immediately with `E0501` rather than starting a server that loses sessions. |
 | **`optics execute`** | :material-close-circle: **One per process** | The result printer is a process-wide singleton whose state is replaced per session; a second run silently freezes the first one's live tree. |
 | **`optics execute --runner pytest`** | :material-close-circle: **One per process, and events are lost** | The runner is a class-level singleton wired into a generated `conftest.py`. Separately, **100% of events are silently dropped in this mode** — see below. |
 | **`optics live`** | :material-alert: **One per host, practically** | Session directories and log files are stamped to second precision with no session id, so two sessions started in the same second share both. |
@@ -29,23 +29,31 @@ No `asyncio.to_thread`, no executor. The call chain reaching it is entirely `asy
 Underneath it, two element-source poll loops spin with no throttle at all (`appium_page_source.py:211`, `appium_find_element.py:203`), turning a 30-second assertion into thousands of Appium round-trips. The throttle exists in the source as a commented-out line.
 
 !!! note "Partially mitigated"
-    A previous fix wrapped `KeywordExecutor.execute` — the path used by `optics serve` in keyword mode — in `asyncio.to_thread` under a per-session lock. That path is correct. The batch and dry-run paths are not, and `optics serve` reaches the batch path in `mode="batch"`.
+    A previous fix wrapped `KeywordExecutor.execute` — the path used by `optics serve` in keyword mode — in `asyncio.to_thread` under a per-session lock. That path does not block the loop (though see the cancellation hole below). The batch and dry-run paths are not offloaded at all, and `optics serve` reaches the batch path in `mode="batch"`.
 
-### Two concurrent requests on one session corrupt each other
+### Two concurrent requests on one session — fixed, with one hole left
 
-Three separate mechanisms, all in `optics_framework/common/expose_api.py`:
+:material-check-circle: Three mechanisms in `optics_framework/common/expose_api.py` used to let two requests on one session corrupt each other. All three are closed:
 
-- **Template overrides are stored on the shared `Session` object**, written before the lock is taken and `.clear()`ed in a `finally` outside it. Request A's cleanup wipes request B's templates, and B then fails with a misleading element-not-found.
-- **The workspace SSE stream never takes the session lock.** `_gather_workspace_data` issues screenshot, element-collection, and page-source commands directly. A UI streaming a session while anything posts a keyword interleaves WebDriver commands on the same remote session, producing spurious stale-element failures.
-- **The per-session `EventManager` is started and shut down on every keyword request.** Request A's cleanup cancels the shared dispatch task; request B's events then go into a queue with no consumer and are lost, and B additionally burns the full 2-second drain timeout waiting for a queue nobody is reading.
+- **Template overrides** moved off the shared `Session` onto a `contextvars.ContextVar`, which is per-task and therefore per-request. Request A's cleanup can no longer wipe request B's templates.
+- **The workspace SSE stream** now takes `session.keyword_lock` before issuing its screenshot / element-collection / page-source commands, so it no longer interleaves WebDriver commands with an in-flight keyword.
+- **The per-session `EventManager`** is started once per session and shut down in `EventManagerRegistry.remove_session`, not per request. A finishing request drains the queue but no longer cancels the dispatch task a sibling is still using.
 
-### Sessions leak and cannot be evicted
+`delete_session` also takes `keyword_lock` before tearing the driver down, bounded by a 60-second acquisition timeout so a wedged keyword cannot make a session un-evictable.
 
-`delete_session` terminates the app first and only removes the session if that succeeds. If the device reboots or the Appium server restarts, `driver.quit()` raises, the endpoint returns `500`, and **the session is never removed** — not from the registry, not from the event-manager registry, and its temp directory is never cleaned. Retrying produces the identical `500`. This endpoint is the only eviction path, so the session and its device are held until the process dies.
+!!! danger "Remaining hole: cancellation does not stop the worker thread"
+    `asyncio.to_thread` is **not cancellable**. When an SSE client disconnects — or any request is cancelled — `CancelledError` is raised at the `await`, and `async with session.keyword_lock` releases the lock **while the driver command is still running in the abandoned thread**. A pending request then acquires the lock and issues a second command against the same remote session.
 
-The mirror bug exists on creation: if the automatic app launch fails, the half-built session stays registered, and its id was never returned to the caller.
+    Three of the four `keyword_lock` call sites are otherwise correct; this is a property of the offload primitive, not of any one call site. It is closed in Phase 1 by the per-session `ThreadPoolExecutor(max_workers=1)`, where serialization is structural: the second command cannot start until the thread is free, regardless of who holds what lock.
 
-There is also **no TTL, no reaper, no heartbeat, no session cap, and no shutdown handler**. A client that opens a session and disconnects holds a device indefinitely, and on `SIGTERM` every live driver session is orphaned.
+### Sessions no longer leak, but nothing reclaims an idle one
+
+:material-check-circle: Both guaranteed leaks are closed:
+
+- `delete_session` evicts unconditionally. A driver that refuses to quit still surfaces its failure to the caller, but the session, its temp directory, its JUnit handler, and its `EventManager` are cleaned up regardless. Deleting an unknown or already-deleted session returns `404` rather than falsely reporting success.
+- `create_session` reclaims the device when the automatic app launch fails, and no longer flattens the launch error into a generic `500`.
+
+:material-alert: What remains is everything that would reclaim a session **nobody asked to delete**: there is still **no TTL, no reaper, no heartbeat, no session cap, and no shutdown handler**. A client that opens a session and disconnects holds a device indefinitely, and on `SIGTERM` every live driver session is orphaned. That is Phase 4.
 
 ### Events are silently dropped in pytest-runner mode
 
@@ -83,8 +91,8 @@ Until the roadmap work lands, these are the configurations that actually work:
 - **Give every concurrent process its own `project_path`.** This is the single highest-value mitigation — it separates the output directory, which is where most of the file corruption lives.
 - **Set `systemPort` / `wdaLocalPort` explicitly per session** in your `config.yaml` capabilities if you run parallel Appium sessions against a local Appium server. Optics will pass them through; it just won't generate them for you.
 - **Avoid `--runner pytest`** if you need JUnit output.
-- **Avoid `--workers > 1`.**
+- **Don't reach for `--workers > 1`** — it is rejected at startup. Run several single-worker instances instead.
 
 ## Where this is going
 
-See the [Roadmap](roadmap.md). Phase 0 closes the leaks and the cross-request corruption; Phase 1 fixes the loop blocking, which is the change that actually unlocks concurrency.
+See the [Roadmap](roadmap.md). Phase 0 (landed) closed the leaks and the cross-request corruption, except for the cancellation hole above; Phase 1 fixes both that and the loop blocking, which is the change that actually unlocks concurrency.

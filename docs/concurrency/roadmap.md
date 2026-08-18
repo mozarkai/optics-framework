@@ -1,6 +1,6 @@
 # Roadmap
 
-:material-progress-clock: **Status: In progress** — Phase 0 is executing. Everything from Phase 1 onward is designed but not started.
+:material-progress-clock: **Status: In progress** — Phase 0 has landed (with one known hole, below). Everything from Phase 1 onward is designed but not started.
 
 Work is phased so that **each phase ships on its own merits**. Phases 0–3 are local-correctness fixes with no new dependencies; they improve `optics execute` and `optics live` regardless of whether the stateless work ever happens. Phases 4–6 deliver cross-pod statelessness and depend on 0–3 being done first.
 
@@ -8,9 +8,16 @@ Finding IDs (`A1`, `E2`, `G1`, …) refer to the [audit](../superpowers/specs/20
 
 ## Phase 0 — Leaks & races
 
-**Ships:** two guaranteed session leaks closed, cross-request corruption in `optics serve` eliminated, `--workers` made honest.
+:material-check-circle: **Landed.**
+
+**Ships:** two guaranteed session leaks closed, the three known cross-request corruption paths in `optics serve` closed, `--workers` made honest.
 **Closes:** `G1` `G2` `H1` `H2` `H3` `B3` `G8` `I2` `I4` (and `A2` as a side effect).
-**New dependencies:** none. **API change:** none.
+**New dependencies:** none. **API change:** `DELETE /v1/sessions/{id}/stop` now returns `404` for an unknown or already-deleted session instead of `200`.
+
+!!! warning "One race is deliberately left open"
+    Phase 0 does **not** eliminate cross-request corruption outright. Three of the four `keyword_lock` call sites are now correct, but `asyncio.to_thread` is **not cancellable**: when an SSE client disconnects, `CancelledError` propagates at the `await` and `async with session.keyword_lock` releases the lock **while the driver command is still running in the abandoned thread**. A pending request then acquires the lock and issues a second command on the same remote session.
+
+    This cannot be fixed by adding a lock — it is a property of the offload primitive. Phase 1's per-session `ThreadPoolExecutor(max_workers=1)` closes it structurally: the next command cannot start until the worker thread is free, whoever holds the lock.
 
 | Task | What |
 |---|---|
@@ -22,6 +29,8 @@ Finding IDs (`A1`, `E2`, `G1`, …) refer to the [audit](../superpowers/specs/20
 | 6 | `EventManager` lifecycle moves from per-request to per-session |
 | 7 | `--workers > 1` fails loudly instead of returning sporadic 404s |
 | 8 | Stop logging raw capabilities; drop credentialed wildcard CORS; delete dead code |
+
+Follow-ups from the final review, landed on top: teardown takes `keyword_lock` (Task 1 had dropped the serialization the removed `close_and_terminate_app` call used to provide); `EventManager.stop()` cancels its dispatch task through `call_soon_threadsafe` when called from a worker thread; capability *values* are redacted at every driver log site, not just in `create_session`.
 
 [Full plan](../superpowers/plans/2026-08-18-phase0-session-leaks-and-races.md)
 
@@ -36,6 +45,7 @@ Finding IDs (`A1`, `E2`, `G1`, …) refer to the [audit](../superpowers/specs/20
 - Move `pytest.main()` off the event loop.
 - Add the missing throttles to the two element-source poll loops that currently spin with no sleep.
 - Add the standing regression: `/health` stays responsive while a slow keyword runs.
+- Close the cancellation hole Phase 0 leaves open (see the warning above): with a single worker per session, a cancelled request cannot let a second command start while the first is still in flight.
 
 !!! warning "Carries a trap from Phase 0"
     `asyncio.to_thread` propagates `contextvars`; `loop.run_in_executor` does not. The template-override fix from Phase 0 Task 3 relies on that propagation. The executor swap must dispatch via `contextvars.copy_context().run(...)` or it regresses **silently**, surfacing as a spurious element-not-found.

@@ -47,8 +47,12 @@ Engines are **lazily instantiated** — `OpticsBuilder.get_*()` defers construct
 - `cleanup_junit(session_id)` finalizes the JUnit XML
 - removes the session's `EventManager` from the registry
 
-!!! danger "Termination can be skipped entirely"
-    Over HTTP, `delete_session` runs the app-terminate keyword *first* and only reaches `terminate_session` if it succeeds. A driver that fails to quit therefore makes the session permanently un-evictable — and this is the only eviction path. See [Parallel Session Limits](parallel-session-limits.md#sessions-leak-and-cannot-be-evicted). Fixed in Phase 0.
+Every one of those steps runs even if an earlier one raises, and the original driver error is re-raised at the end, so a driver that refuses to quit is reported to the caller without leaving anything behind.
+
+Over HTTP, `delete_session` first looks the session up — an unknown id is a `404`, not a false `200` — then acquires `session.keyword_lock` before offloading `terminate_session` to a thread, so teardown cannot quit the driver or `rmtree` the template directory out from under an in-flight keyword. Only the acquisition is bounded (60 s); on timeout it tears down anyway, because a session that cannot be evicted holds its device until the process dies.
+
+!!! warning "Nothing reclaims a session nobody deletes"
+    `DELETE` is still the only eviction path. There is no TTL, no reaper, no heartbeat, no session cap, and no shutdown handler: a client that opens a session and disconnects holds a device indefinitely. That is Phase 4.
 
 ## Per-session vs process-global
 
@@ -83,11 +87,13 @@ This is the table that matters for concurrency.
 
 ## Request-scoped vs session-scoped
 
-A distinction that `optics serve` currently gets wrong, and worth internalising: **data belonging to one HTTP request must not live on the `Session`.**
+A distinction worth internalising, because `optics serve` used to get it wrong: **data belonging to one HTTP request must not live on the `Session`.**
 
-Template overrides supplied with a single `POST /action` are stored in `session.request_template_overrides`, written before the session lock is taken and cleared in a `finally` outside it. With two concurrent requests, one clears the other's entries.
+Template overrides supplied with a single `POST /action` were stored in `session.request_template_overrides`, written before the session lock was taken and cleared in a `finally` outside it, so one of two concurrent requests cleared the other's entries. They now live in the module-level `request_template_overrides` `ContextVar` (`session_manager.py`), which is per-task and therefore per-request automatically, and which propagates into `asyncio.to_thread` workers where keywords actually read it. The request sets it, and its `finally` resets exactly its own token.
 
-The fix is a `contextvars.ContextVar`, which is per-task and therefore per-request automatically, and which propagates into `asyncio.to_thread` workers where keywords actually read it. See the [async model](async-model.md#why-a-per-session-executor-not-bare-to_thread) for the trap this introduces when the executor changes.
+Its default is `None`, read as `(request_template_overrides.get() or {})`: a mutable default would be shared by every context that never calls `set()`, so a single in-place write would poison it process-wide.
+
+See the [async model](async-model.md#why-a-per-session-executor-not-bare-to_thread) for the trap this introduces when the executor changes.
 
 ## Planned: the `SessionRecord`
 
