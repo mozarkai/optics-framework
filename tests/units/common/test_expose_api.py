@@ -987,3 +987,54 @@ def test_event_generator_stops_when_session_is_gone():
         chunks = _run(asyncio.wait_for(drain(), timeout=5))
 
     assert chunks == [], "generator yielded after the session was terminated"
+
+
+# ---------------------------------------------------------------------------
+# Task 8 hardening: CORS credentials, capability logging, dead executor
+# ---------------------------------------------------------------------------
+
+
+def test_cors_does_not_allow_credentials_with_wildcard_origin():
+    """I2: wildcard origin + credentials lets any site drive local sessions."""
+    cors = [
+        m for m in expose_api.app.user_middleware
+        if "CORSMiddleware" in str(m.cls)
+    ]
+    assert cors, "CORS middleware not found"
+    options = cors[0].kwargs
+    if "*" in options.get("allow_origins", []):
+        assert not options.get("allow_credentials", False), (
+            "allow_credentials must be False when allow_origins is a wildcard"
+        )
+
+
+def test_create_session_does_not_log_raw_capabilities():
+    """I4: capabilities carry cloud-farm access keys; never log them verbatim."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-1")
+
+    config = expose_api.SessionConfig(
+        driver_sources=[{
+            "appium": {
+                "enabled": True,
+                "url": "http://127.0.0.1:4723",
+                "capabilities": {"browserstack.key": "SUPERSECRET123"},
+            }
+        }],
+        elements_sources=[], text_detection=[], image_detection=[],
+    )
+
+    logged: list[str] = []
+
+    def _record(msg, *args, **kwargs):
+        logged.append(msg % args if args else str(msg))
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(expose_api, "execute_keyword", AsyncMock(return_value=MagicMock(data={}))), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()), \
+         patch.object(expose_api.internal_logger, "info", _record):
+        _run(asyncio.wait_for(expose_api.create_session(config), timeout=5))
+
+    assert not any("SUPERSECRET123" in line for line in logged), (
+        f"secret leaked into logs: {logged}"
+    )

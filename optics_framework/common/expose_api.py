@@ -109,7 +109,10 @@ BASE64_SEPARATOR = ";base64,"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # allow_credentials must stay False while allow_origins is a wildcard:
+    # starlette would otherwise echo the request Origin, letting any site make
+    # credentialed calls against a locally-bound server.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -450,6 +453,11 @@ def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[
     return True, llm_models
 
 
+def _enabled_source_names(sources: list[dict[str, Any]]) -> list[str]:
+    """First key of each non-empty source config, for concise session logging."""
+    return [next(iter(s)) for s in sources if s]
+
+
 @app.post(
     "/v1/sessions/start",
     response_model=SessionResponse,
@@ -525,9 +533,14 @@ async def create_session(config: SessionConfig):
         )
         reconfigure_logging(session_config)
         internal_logger.info(
-            "Created session %s with config: %s",
+            "Created session %s with driver_sources=%s elements_sources=%s "
+            "text_detection=%s image_detection=%s project_path=%s",
             session_id,
-            config.model_dump()
+            _enabled_source_names(driver_sources),
+            _enabled_source_names(elements_sources),
+            _enabled_source_names(text_detection),
+            _enabled_source_names(image_detection),
+            config.project_path,
         )
 
         launch_request = ExecuteRequest(
