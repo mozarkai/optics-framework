@@ -530,11 +530,20 @@ async def create_session(config: SessionConfig):
             keyword=KEYWORD_LAUNCH_APP,
             params=[]
         )
-        driver_session = await execute_keyword(session_id, launch_request)
+        try:
+            driver_session = await execute_keyword(session_id, launch_request)
+        except BaseException:
+            # The client never received this session id, so this is the only
+            # chance to reclaim the device. Re-raise unchanged so the handlers
+            # below classify it, rather than reporting a generic 500.
+            await asyncio.to_thread(session_manager.terminate_session, session_id)
+            raise
         return SessionResponse(
             session_id=session_id,
             driver_id=(driver_session.data or {}).get(KEY_RESULT)
         )
+    except HTTPException:
+        raise
     except OpticsError as e:
         internal_logger.error(f"Failed to create session: {e}")
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
