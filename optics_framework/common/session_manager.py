@@ -169,17 +169,36 @@ class SessionManager(SessionHandler):
         return self.sessions.get(session_id)
 
     def terminate_session(self, session_id: str) -> None:
-        """Terminates a session and cleans up resources."""
+        """Terminates a session and cleans up resources.
+
+        Every cleanup step below runs even if an earlier one raises: a driver
+        that fails to quit (rebooted device, restarted Appium server) must
+        not also leak the inline-templates temp dir, skip the JUnit handler
+        finalization, or leave the event-manager registry entry behind. The
+        original driver-teardown error, if any, is re-raised at the end so
+        callers (e.g. ``expose_api.delete_session``) still observe the
+        failure.
+        """
         session: Session | None = self.sessions.pop(session_id, None)
+        driver_error: Exception | None = None
         if session:
             if session.driver:
-                session.driver.terminate()
+                try:
+                    session.driver.terminate()
+                except Exception as e:  # noqa: BLE001 - captured and re-raised below, never suppressed
+                    driver_error = e
+                    internal_logger.warning(
+                        "Driver termination failed for session %s; continuing cleanup: %s",
+                        session_id, e,
+                    )
             session.inline_templates.clear()
             base_dir = getattr(session, "_inline_templates_dir", None)
             if base_dir:
                 try:
                     shutil.rmtree(base_dir)
-                except OSError as e:
+                except Exception as e:  # noqa: BLE001 - logged; the cleanup below must still run
                     internal_logger.warning("Failed to remove inline templates directory %s: %s", base_dir, e)
         cleanup_junit(session_id)
         get_event_manager_registry().remove_session(session_id)
+        if driver_error is not None:
+            raise driver_error
