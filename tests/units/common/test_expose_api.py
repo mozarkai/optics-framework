@@ -884,3 +884,25 @@ def test_create_session_preserves_http_status_from_launch():
     assert exc.value.status_code == 404
     assert exc.value.detail == "no such keyword"
     mgr.terminate_session.assert_called_once_with("sess-1")
+
+
+def test_create_session_preserves_launch_error_when_cleanup_also_fails():
+    """G2 fix-round-1: if terminate_session raises during cleanup, the caller
+    must still see the original launch failure, not the cleanup failure."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-compound-failure")
+    mgr.terminate_session = MagicMock(side_effect=RuntimeError("teardown also broken"))
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(
+             expose_api, "execute_keyword",
+             AsyncMock(side_effect=RuntimeError("app not installed")),
+         ), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()):
+        with pytest.raises(HTTPException) as exc:
+            _run(expose_api.create_session(_minimal_session_config()))
+
+    # The response must reflect the launch failure, not the cleanup failure.
+    assert "app not installed" in str(exc.value.detail)
+    assert "teardown also broken" not in str(exc.value.detail)
+    mgr.terminate_session.assert_called_once_with("sess-compound-failure")
