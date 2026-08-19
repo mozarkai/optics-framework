@@ -20,6 +20,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
+    LocatorStrategy,
     StrategyManager,
     TextDetectionStrategy,
     LocateResult,
@@ -569,3 +570,58 @@ class TestAllocTimeForStrategy:
         result = _sm(MagicMock())._alloc_time_for_strategy(1000.4, 1, [1, 2])
         assert result is not None
         assert result[0] == 0
+
+
+# --- StrategyManager.get_interactive_elements() strategy screening ---
+
+
+class TestGetInteractiveElementsStrategyScreening:
+    """Only sources that actually implement extraction should be tried.
+
+    A source qualifies as a pagesource strategy by returning a page source, which is a
+    weaker capability than extracting elements from one -- AppiumFindElement supports
+    the first and unconditionally raises on the second. Trying it anyway burned work
+    and logged a traceback on every call to a hot path (mozarkai/optics-framework#455).
+    """
+
+    @staticmethod
+    def _strategy(supports_extraction: bool, elements=None):
+        source = MagicMock()
+        if supports_extraction:
+            source.get_interactive_elements = MagicMock(return_value=elements or [])
+        else:
+            def _unsupported(filter_config=None):
+                raise NotImplementedError("does not support getting interactive elements")
+            source.get_interactive_elements = _unsupported
+
+        strategy = MagicMock()
+        strategy.element_source = source
+        strategy.get_interactive_elements = MagicMock(
+            side_effect=lambda fc=None: source.get_interactive_elements(fc)
+        )
+        return strategy
+
+    def test_unsupported_source_is_never_called(self, monkeypatch):
+        capable = self._strategy(True, [{"text": "OK"}])
+        incapable = self._strategy(False)
+        monkeypatch.setattr(
+            LocatorStrategy,
+            "_is_method_implemented",
+            staticmethod(lambda src, name: src is capable.element_source),
+        )
+        manager = _sm(MagicMock())
+        manager.pagesource_strategies = [incapable, capable]
+
+        assert manager.get_interactive_elements() == [{"text": "OK"}]
+        incapable.get_interactive_elements.assert_not_called()
+
+    def test_no_capable_strategy_raises_rather_than_returning_empty(self, monkeypatch):
+        monkeypatch.setattr(
+            LocatorStrategy, "_is_method_implemented", staticmethod(lambda src, name: False)
+        )
+        manager = _sm(MagicMock())
+        manager.pagesource_strategies = [self._strategy(False)]
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.get_interactive_elements()
+        assert exc_info.value.code == Code.E0202
