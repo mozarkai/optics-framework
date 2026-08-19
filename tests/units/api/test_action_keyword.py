@@ -154,6 +154,74 @@ class TestPressElementWithIndex:
                 action_keyword.press_element("ghost_button")
         assert exc_info.value.code in (Code.E0201, Code.X0201)
 
+    def test_offset_on_webelement_presses_centre_plus_offset(self, action_keyword, mock_dependencies):
+        """Offset on a WebElement presses centre+offset via coordinates, not click.
+        Centre of (100,200)+(50x80) is (125,240); +offset (10,-20) -> (135,220)."""
+        element = MagicMock()
+        element.location_once_scrolled_into_view = {"x": 100, "y": 200}
+        element.size = {"width": 50, "height": 80}
+        with self._mock_locate(action_keyword, element):
+            action_keyword.press_element("//zone", offset_x="10", offset_y="-20")
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(135, 220, None)
+        mock_dependencies['driver'].press_element.assert_not_called()
+
+    def test_offset_on_partly_offscreen_element_uses_scrolled_into_view_coords(
+        self, action_keyword, mock_dependencies
+    ):
+        """Partly off-screen element: centre must come from the scrolled-into-view
+        coords, not the raw off-viewport .location."""
+        element = MagicMock()
+        element.location = {"x": 0, "y": -500}            # off the top of the viewport
+        element.location_once_scrolled_into_view = {"x": 100, "y": 200}  # after scrolling in
+        element.size = {"width": 50, "height": 80}
+        with self._mock_locate(action_keyword, element):
+            action_keyword.press_element("//zone", offset_x="10", offset_y="-20")
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(135, 220, None)
+
+    def test_offset_on_webelement_repeats_coordinate_press(self, action_keyword, mock_dependencies):
+        element = MagicMock()
+        element.location_once_scrolled_into_view = {"x": 0, "y": 0}
+        element.size = {"width": 20, "height": 20}
+        with self._mock_locate(action_keyword, element):
+            action_keyword.press_element("//zone", offset_x="5", offset_y="5", repeat="3")
+        assert mock_dependencies['driver'].press_coordinates.call_count == 3
+        mock_dependencies['driver'].press_coordinates.assert_called_with(15, 15, None)
+
+    def test_offset_on_webelement_without_geometry_falls_back_to_press_element(
+        self, action_keyword, mock_dependencies
+    ):
+        """If centre can't be derived (no location/size, and no bbox from the element
+        source either), fall back to clicking the element rather than pressing bogus
+        coordinates."""
+        element = MagicMock(spec=[])  # no location / size attributes
+        mock_dependencies['element_source'].get_bbox_for_element.return_value = None
+        with self._mock_locate(action_keyword, element):
+            action_keyword.press_element("//zone", offset_x="10", offset_y="20")
+        mock_dependencies['driver'].press_coordinates.assert_not_called()
+        mock_dependencies['driver'].press_element.assert_called_once_with(element, 1, None)
+
+    def test_offset_falls_back_to_bbox_when_scrolled_into_view_unsupported(
+        self, action_keyword, mock_dependencies
+    ):
+        """location_once_scrolled_into_view is JS-backed and raises on native Appium
+        (UiAutomator2 doesn't implement it); centre must fall back to the
+        source-agnostic bbox accessor instead of failing the whole press.
+        Bbox ((100,200),(150,280)) -> centre (125,240); +offset (10,-20) -> (135,220)."""
+        element = MagicMock(spec=[])  # accessing location_once_scrolled_into_view raises
+        mock_dependencies['element_source'].get_bbox_for_element.return_value = ((100, 200), (150, 280))
+        with self._mock_locate(action_keyword, element):
+            action_keyword.press_element("//zone", offset_x="10", offset_y="-20")
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(135, 220, None)
+        mock_dependencies['driver'].press_element.assert_not_called()
+
+    def test_coordinate_result_with_repeat_repeats_press(self, action_keyword, mock_dependencies):
+        """A coordinate-located press (from an OCR/image match, not a WebElement) must
+        also honour `repeat`, not just the WebElement-offset branch."""
+        with self._mock_locate(action_keyword, (100, 150)):
+            action_keyword.press_element("button", offset_x="5", offset_y="5", repeat="3")
+        assert mock_dependencies['driver'].press_coordinates.call_count == 3
+        mock_dependencies['driver'].press_coordinates.assert_called_with(105, 155, None)
+
 
 class TestScreenshotFailureFallback:
     """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
