@@ -6,6 +6,8 @@ Work is phased so that **each phase ships on its own merits**. Phases 0–3 are 
 
 Finding IDs (`A1`, `E2`, `G1`, …) refer to the [audit](../superpowers/specs/2026-08-18-parallel-sessions-audit.md).
 
+For per-phase scope, task breakdown, exit criteria and risks, see [Phase Plans](phase-plans.md).
+
 ## Phase 0 — Leaks & races
 
 :material-check-circle: **Landed.**
