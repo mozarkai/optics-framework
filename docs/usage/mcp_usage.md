@@ -141,6 +141,22 @@ the client at the URL:
    `assert_presence`, …) with the `session_id`.
 4. **`terminate_session`** — release the driver when done.
 
+!!! warning "`terminate_session` raises on an unknown session id"
+    It used to return `{"status": "terminated"}` unconditionally, including for a
+    session id that did not exist or had already been released. It now raises
+    `ToolError("Session not found")`, mirroring the `404` the REST endpoint
+    returns.
+
+    This matters for agents that fire a defensive `terminate_session` during
+    cleanup: a second call after a successful one is now an error, not a no-op.
+    Track whether you have already released the session, or treat
+    `"Session not found"` as success in your cleanup path.
+
+    Teardown itself is unconditional — a driver that fails to quit still releases
+    the session, its temp directory, and its event manager, and the failure is
+    reported rather than swallowed. The call can block for up to 60 seconds while
+    it waits for an in-flight keyword on that session to finish.
+
 ### `start_session` arguments
 
 | Arg | Type | Notes |
