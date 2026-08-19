@@ -20,6 +20,7 @@ How Optics handles more than one thing at a time — what is isolated per sessio
 | Know why two sessions fight over files, ports, and devices | [Resource Isolation](resource-isolation.md) |
 | Deploy `optics serve` on Kubernetes | [Stateless Serve](stateless-serve.md) |
 | See what's shipping and when | [Roadmap](roadmap.md) |
+| Find a known bug, gap, or sharp edge before hitting it | [Known Issues & Follow-Ups](known-issues.md) |
 
 ## The one-paragraph summary
 
@@ -55,6 +56,7 @@ The full working documents behind this section. These are point-in-time records,
 - [Parallel-session audit](../superpowers/specs/2026-08-18-parallel-sessions-audit.md) — 62 findings with stable IDs (`A1`, `E2`, `G1`, …), each with a file:line anchor, a concrete two-session failure scenario, and a severity. The pages in this section cite these IDs.
 - [Stateless-serve design](../superpowers/specs/2026-08-18-parallel-sessions-stateless-serve-design.md) — the agreed architecture, including an honest table of what can and cannot be made stateless per driver backend.
 - [Phase 0 implementation plan](../superpowers/plans/2026-08-18-phase0-session-leaks-and-races.md) — the first tranche of work.
+- [Phase 0 execution record](../superpowers/records/2026-08-19-phase0-execution-record.md) — what actually happened: commits, decisions taken during execution, defects found in the plan itself, and what the reviews caught.
 
 ## Related architecture pages
 
