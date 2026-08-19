@@ -80,6 +80,7 @@ nav:
   - Concurrency & Sessions:
     - Overview: concurrency/index.md
     - Program Reference: concurrency/program-reference.md
+    - Phase Plans: concurrency/phase-plans.md
     - Parallel Session Limits: concurrency/parallel-session-limits.md
     - Session Lifecycle: concurrency/session-lifecycle.md
     - The Async Model: concurrency/async-model.md

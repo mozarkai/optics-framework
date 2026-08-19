@@ -21,6 +21,7 @@ How Optics handles more than one thing at a time — what is isolated per sessio
 | Know why two sessions fight over files, ports, and devices | [Resource Isolation](resource-isolation.md) |
 | Deploy `optics serve` on Kubernetes | [Stateless Serve](stateless-serve.md) |
 | See what's shipping and when | [Roadmap](roadmap.md) |
+| Read the plan for any phase — scope, exit criteria, risks | [Phase Plans](phase-plans.md) |
 | Find a known bug, gap, or sharp edge before hitting it | [Known Issues & Follow-Ups](known-issues.md) |
 
 ## The one-paragraph summary

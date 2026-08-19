@@ -280,6 +280,8 @@ Appium sets `supports_reattach = True`. Playwright, Selenium, BLE and camera inh
 
 Phases 0–3 are local-correctness work with no new dependency; each ships on its own merits and improves `optics execute` and `optics live` regardless. Phases 4–6 deliver statelessness and depend on 0–3.
 
+**Per-phase scope, task breakdown, exit criteria and risks: [Phase Plans](phase-plans.md).**
+
 | # | Phase | Delivers | Closes |
 |---|---|---|---|
 | **0** | **Leaks & races** ✅ landed | Two guaranteed session leaks closed; three cross-request corruption paths closed; `--workers` made honest | `G1` `G2` `H1` `H2` `H3` `B3` `G8` `I2` `I4` (+`A2`) |
