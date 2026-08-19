@@ -875,9 +875,27 @@ class StrategyManager:
         internal_logger.debug("No pagesource captured.")
         raise OpticsError(Code.E0403, message="No pagesource captured using available strategies.")
 
+    @staticmethod
+    def _can_strategy_get_interactive_elements(strategy: "PagesourceStrategy") -> bool:
+        """Whether this strategy's source implements interactive-element extraction.
+
+        A source belongs in ``pagesource_strategies`` if it can return a page source,
+        which is a weaker capability than extracting elements from one: AppiumFindElement
+        supports the former and unconditionally raises on the latter. Screening those out
+        up front keeps the extraction path from paying for -- and logging -- a failure
+        that is knowable from the source itself, rather than discovering it per call.
+        """
+        return LocatorStrategy._is_method_implemented(
+            strategy.element_source, "get_interactive_elements"
+        )
+
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[dict]:
         """Retrieve interactive elements from the element source."""
-        for strategy in self.pagesource_strategies:
+        applicable_strategies = [
+            s for s in self.pagesource_strategies
+            if self._can_strategy_get_interactive_elements(s)
+        ]
+        for strategy in applicable_strategies:
             try:
                 return strategy.get_interactive_elements(filter_config)
             except Exception as e:
