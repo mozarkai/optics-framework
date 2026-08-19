@@ -1,4 +1,5 @@
 import re
+from bisect import bisect_left
 from typing import Any, List, Dict, Tuple, Optional, Union, cast
 from fuzzywuzzy import fuzz
 from lxml import etree
@@ -12,6 +13,88 @@ XPATH_UNIQUE_ATTRIBUTES = [
     "name", "content-desc", "id", "resource-id", "accessibility-id",
 ]
 XPATH_MAYBE_UNIQUE_ATTRIBUTES = ["label", "text", "value"]
+
+# The only attributes get_xpath ever probes, so the only ones worth indexing.
+XPATH_INDEXED_ATTRIBUTES = (*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIBUTES)
+
+
+class XPathUniquenessIndex:
+    """Document-order posting lists answering "how many nodes match this probe?".
+
+    ``get_xpath`` decides between an attribute-based and a hierarchical XPath by
+    asking, for each candidate attribute, whether ``//tag[@attr=value]`` matches
+    exactly one node. Evaluating that with a real ``xpath()`` call rescans the whole
+    document once per probe, so labelling a whole hierarchy costs O(nodes x probes)
+    full-document scans -- seconds of CPU on a large iOS tree, which is enough to
+    trip an external health checker watching the same process. One indexing pass
+    answers every probe from a dict instead, keeping the walk linear in tree size.
+
+    Match sets are kept in document order because callers position a non-unique node
+    among its peers (``(xpath)[n]``), which must agree with what XPath itself would
+    have returned.
+    """
+
+    __slots__ = ("_by_tag", "_by_tag_attr", "_doc_pos", "_multi_cache", "xpath_cache")
+
+    def __init__(self, root: Any):
+        self._by_tag: Dict[str, List[Any]] = {}
+        self._by_tag_attr: Dict[Tuple[str, str, str], List[Any]] = {}
+        self._doc_pos: Dict[Any, int] = {}
+        self._multi_cache: Dict[Tuple[Any, ...], List[Any]] = {}
+        self.xpath_cache: Dict[Any, str] = {}
+        for position, node in enumerate(root.iter()):
+            tag = node.tag
+            if not isinstance(tag, str):
+                continue  # comments and processing instructions carry a callable tag
+            if "{" in tag:
+                # lxml reports a namespaced tag in Clark notation ("{uri}local"), which
+                # is not valid XPath: every probe built from one fails to parse. Leaving
+                # these nodes unindexed keeps their probes empty, so they fall through to
+                # the hierarchical builder -- where evaluating the probe always sent them.
+                continue
+            self._doc_pos[node] = position
+            self._by_tag.setdefault(tag, []).append(node)
+            attrib = node.attrib
+            for attr in XPATH_INDEXED_ATTRIBUTES:
+                val = attrib.get(attr)
+                if val:
+                    self._by_tag_attr.setdefault((tag, attr, val), []).append(node)
+
+    def matches(self, tag: str, conditions: Tuple[Tuple[str, str], ...]) -> List[Any]:
+        """Nodes matching ``//tag[@a=v and ...]``, in document order."""
+        if not conditions:
+            return self._by_tag.get(tag, [])
+        if len(conditions) == 1:
+            attr, val = conditions[0]
+            return self._by_tag_attr.get((tag, attr, val), [])
+        # Filtering the shortest posting list keeps a multi-attribute probe off a
+        # per-pair index, but costs that list's length. Sibling rows sharing a label
+        # issue byte-identical probes, so without this memo the same intersection is
+        # recomputed once per row -- the quadratic this index exists to remove. Trees
+        # with distinct values resolve on one attribute and never reach here.
+        cache_key = (tag, conditions)
+        cached = self._multi_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        postings = [self._by_tag_attr.get((tag, a, v), []) for a, v in conditions]
+        shortest = min(postings, key=len)
+        result = [n for n in shortest if all(n.attrib.get(a) == v for a, v in conditions)]
+        self._multi_cache[cache_key] = result
+        return result
+
+    def position_of(self, matches: List[Any], node: Any) -> int:
+        """0-based position of ``node`` within a document-ordered match list.
+
+        A list where every row repeats one label puts every row in the same match
+        list, so scanning it per node would reintroduce the quadratic cost this index
+        exists to remove. Both sequences are ordered by document position, so a binary
+        search answers it in log time.
+        """
+        pos = self._doc_pos.get(node)
+        if pos is None:
+            return 0
+        found = bisect_left(matches, pos, key=lambda n: self._doc_pos[n])
+        return found if found < len(matches) and matches[found] is node else 0
 
 
 class UIHelper:
@@ -823,6 +906,9 @@ class UIHelper:
             etree.fromstring(page_source.encode("utf-8"))
         ).getroot()
         elements = root.xpath(".//*")
+        # One index for the whole tree: every node's XPath is derived from the same
+        # document, so the uniqueness probes are shared rather than rescanned per node.
+        index = XPathUniquenessIndex(root)
         results = []
 
         for node in elements:
@@ -839,7 +925,7 @@ class UIHelper:
                 # If no text-like attribute, use tag name
                 text, used_key = node.tag, None
 
-            xpath = self.get_xpath(node)
+            xpath = self.get_xpath(node, index)
             extra = self._build_extra_metadata(node.attrib, used_key, node.tag)
 
             results.append(
@@ -935,45 +1021,32 @@ class UIHelper:
         extra["tag"] = tag  # e.g., XCUIElementTypeButton or android.widget.Button
         return extra
 
-    def _xpath_determine_uniqueness(
-        self, node: etree.Element, doc_tree: Any, xpath: str
-    ) -> Tuple[bool, Optional[int]]:
-        """Return (True, None) if xpath matches exactly one node, else (False, index or None)."""
-        try:
-            matches = doc_tree.xpath(xpath)
-        except (etree.XPathError, ValueError, TypeError):
-            return False, None
-        if not matches:
-            return False, None
-        if len(matches) > 1:
-            try:
-                idx = matches.index(node)
-            except ValueError:
-                idx = 0
-            return False, idx
-        return True, None
-
     def _xpath_from_single_attr(
         self, node: etree.Element, attr_name: str, tag_for_xpath: str
-    ) -> Optional[str]:
+    ) -> Optional[Tuple[str, Tuple[Tuple[str, str], ...]]]:
+        """Return the ``//tag[@attr=value]`` probe and the conditions it encodes."""
         val = node.attrib.get(attr_name)
         if not val:
             return None
         lit = self._escape_for_xpath_literal(val)
-        return f"//{tag_for_xpath}[@{attr_name}={lit}]"
+        return f"//{tag_for_xpath}[@{attr_name}={lit}]", ((attr_name, val),)
 
     def _xpath_from_attr_pair(
         self, node: etree.Element, attr_pair: Tuple[str, str], tag_for_xpath: str
-    ) -> Optional[str]:
+    ) -> Optional[Tuple[str, Tuple[Tuple[str, str], ...]]]:
+        """Return the two-attribute probe and the conditions it encodes."""
         a1, a2 = attr_pair
         v1, v2 = node.attrib.get(a1), node.attrib.get(a2)
         if not v1 or not v2:
             return None
         lit1, lit2 = self._escape_for_xpath_literal(v1), self._escape_for_xpath_literal(v2)
-        return f"//{tag_for_xpath}[@{a1}={lit1} and @{a2}={lit2}]"
+        return f"//{tag_for_xpath}[@{a1}={lit1} and @{a2}={lit2}]", ((a1, v1), (a2, v2))
 
     def _xpath_try_attributes_for_unique(
-        self, node: etree.Element, doc_tree: Any, attrs: List[Union[str, Tuple[str, str]]]
+        self,
+        node: etree.Element,
+        index: XPathUniquenessIndex,
+        attrs: List[Union[str, Tuple[str, str]]],
     ) -> Tuple[Optional[str], bool]:
         tag_for_xpath = node.tag or "*"
         is_pairs = bool(attrs and isinstance(attrs[0], tuple))
@@ -981,39 +1054,39 @@ class UIHelper:
 
         for entry in attrs:
             if is_pairs:
-                xpath = self._xpath_from_attr_pair(node, cast(Tuple[str, str], entry), tag_for_xpath)
+                probe = self._xpath_from_attr_pair(node, cast(Tuple[str, str], entry), tag_for_xpath)
             else:
-                xpath = self._xpath_from_single_attr(node, cast(str, entry), tag_for_xpath)
-            if not xpath:
+                probe = self._xpath_from_single_attr(node, cast(str, entry), tag_for_xpath)
+            if not probe:
                 continue
-            is_unique, idx = self._xpath_determine_uniqueness(node, doc_tree, xpath)
-            if is_unique:
+            xpath, conditions = probe
+            matches = index.matches(tag_for_xpath, conditions)
+            if len(matches) == 1:
                 return xpath, True
-            if semi_unique_xpath is None and idx is not None:
-                semi_unique_xpath = f"({xpath})[{idx + 1}]"
+            if semi_unique_xpath is None and matches:
+                # Position the node among its peers, as `(xpath)[n]` is 1-based.
+                semi_unique_xpath = f"({xpath})[{index.position_of(matches, node) + 1}]"
 
         if semi_unique_xpath:
             return semi_unique_xpath, False
         return None, False
 
     def _xpath_try_node_name(
-        self, node: etree.Element, doc_tree: Any
+        self, node: etree.Element, index: XPathUniquenessIndex
     ) -> Tuple[Optional[str], bool]:
         tag = node.tag or "*"
-        xpath = f"//{tag}"
-        is_unique, _ = self._xpath_determine_uniqueness(node, doc_tree, xpath)
-        if not is_unique:
+        if len(index.matches(tag, ())) != 1:
             return None, False
-        if node.getparent() is None:
-            xpath = f"/{tag}"
-        return xpath, True
+        return (f"/{tag}" if node.getparent() is None else f"//{tag}"), True
 
     def _xpath_attribute_pairs_permutations(
         self, attributes: List[str]
     ) -> List[Tuple[str, str]]:
         return [(v1, v2) for i, v1 in enumerate(attributes) for v2 in attributes[i + 1 :]]
 
-    def _xpath_try_cases_for_unique(self, node: etree.Element, doc_tree: Any) -> Optional[str]:
+    def _xpath_try_cases_for_unique(
+        self, node: etree.Element, index: XPathUniquenessIndex
+    ) -> Optional[str]:
         all_attrs = [*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIBUTES]
         cases: List[Any] = [
             XPATH_UNIQUE_ATTRIBUTES,
@@ -1024,16 +1097,18 @@ class UIHelper:
         semi_unique: Optional[str] = None
         for attrs in cases:
             if len(attrs) == 0:
-                xpath, is_unique = self._xpath_try_node_name(node, doc_tree)
+                xpath, is_unique = self._xpath_try_node_name(node, index)
             else:
-                xpath, is_unique = self._xpath_try_attributes_for_unique(node, doc_tree, attrs)
+                xpath, is_unique = self._xpath_try_attributes_for_unique(node, index, attrs)
             if is_unique and xpath:
                 return xpath
             if semi_unique is None and xpath:
                 semi_unique = xpath
         return semi_unique
 
-    def _xpath_build_hierarchical(self, node: etree.Element) -> str:
+    def _xpath_build_hierarchical(
+        self, node: etree.Element, index: XPathUniquenessIndex
+    ) -> str:
         tag = node.tag
         if not tag:
             return ""
@@ -1045,23 +1120,35 @@ class UIHelper:
                 idx = siblings_same_tag.index(node) + 1
                 segment += f"[{idx}]"
         if parent is not None and hasattr(parent, "tag"):
-            return f"{self.get_xpath(parent)}{segment}"
+            return f"{self.get_xpath(parent, index)}{segment}"
         return segment
 
-    def get_xpath(self, node: etree.Element) -> str:
+    def get_xpath(
+        self, node: etree.Element, index: Optional[XPathUniquenessIndex] = None
+    ) -> str:
         """
         Generate an optimal XPath for a given node using attribute-based
         uniqueness checks and semi-unique indexing, falling back to a
         hierarchical path when required. Mirrors the behavior of the
         provided getOptimalXPath logic.
+
+        ``index`` lets a caller labelling many nodes of one tree share a single
+        uniqueness index; it is built for this document when omitted. Results are
+        memoised on the index because the hierarchical fallback re-derives every
+        ancestor's XPath on the way up.
         """
         if node is None or not hasattr(node, "tag"):
             return ""
-        doc_tree = node.getroottree()
-        candidate = self._xpath_try_cases_for_unique(node, doc_tree)
-        if candidate:
-            return candidate
-        return self._xpath_build_hierarchical(node) or self._build_structural_xpath(node)
+        if index is None:
+            index = XPathUniquenessIndex(node.getroottree().getroot())
+        cached = index.xpath_cache.get(node)
+        if cached is not None:
+            return cached
+        candidate = self._xpath_try_cases_for_unique(node, index)
+        if not candidate:
+            candidate = self._xpath_build_hierarchical(node, index) or self._build_structural_xpath(node)
+        index.xpath_cache[node] = candidate
+        return candidate
 
     def _escape_for_xpath_literal(self, s: str) -> str:
         """
