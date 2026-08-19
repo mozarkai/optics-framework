@@ -13,6 +13,7 @@ How Optics handles more than one thing at a time — what is isolated per sessio
 
 | If you want to… | Read |
 |---|---|
+| **The whole story in one place** — problem, assumptions, decisions, design, phases | [Program Reference](program-reference.md) |
 | Know whether you can run N sessions at once **right now** | [Parallel Session Limits](parallel-session-limits.md) — the honest status table, per surface |
 | Understand what a `Session` owns and what it doesn't | [Session Lifecycle](session-lifecycle.md) |
 | Add a keyword, driver, or endpoint without blocking the event loop | [The Async Model](async-model.md) — contributor rules |
