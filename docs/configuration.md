@@ -612,11 +612,18 @@ Image detection engines provide template matching capabilities for locating UI e
       - templatematch:
           enabled: true
           url: null
-          capabilities: {}
+          capabilities:
+            sift_nfeatures: 2000
     ```
 
     !!! note "Local Processing"
         Template matching runs locally using OpenCV and does not require external services.
+
+    Matching is two-stage: a `cv2.matchTemplate` fast path handles exact
+    same-scale matches, and a SIFT + FLANN + RANSAC fallback covers scaled or
+    rotated instances. `capabilities.sift_nfeatures` (default `2000`) caps the
+    SIFT features extracted per frame in that fallback, bounding per-call
+    memory; raise it only if scaled matches fail on feature-poor screens.
 
 === "Remote OIR"
 
