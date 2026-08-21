@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Coroutine
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
@@ -8,9 +8,6 @@ from optics_framework.common.error import OpticsError, Code
 _persistent_loop: asyncio.AbstractEventLoop | None = None
 _loop_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
-
-# Shared executor to avoid thread churn
-_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def _start_loop(loop: asyncio.AbstractEventLoop):

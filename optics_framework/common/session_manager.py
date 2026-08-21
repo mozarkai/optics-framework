@@ -1,3 +1,4 @@
+import contextvars
 import shutil
 import tempfile
 import uuid
@@ -72,6 +73,17 @@ class SessionHandler(ABC):
         pass
 
 
+# Template overrides supplied by a single in-flight request. A ContextVar rather
+# than a Session field because two concurrent requests share one Session, and a
+# session-level dict lets one request clear or overwrite another's entries.
+# The default is None, not {}: a mutable default is shared by every context
+# that never calls set(), so a single in-place write would poison it process
+# wide and permanently. Read it through ``.get() or {}``.
+request_template_overrides: contextvars.ContextVar[Optional[Dict[str, str]]] = contextvars.ContextVar(
+    "request_template_overrides", default=None
+)
+
+
 class SessionTemplateResolver:
     """
     Resolves template names to filesystem paths using request overrides,
@@ -84,8 +96,7 @@ class SessionTemplateResolver:
 
     def get_template_path(self, name: str) -> Optional[str]:
         """Return path for a template name; checks request overrides, then inline, then project."""
-        overrides = getattr(self._session, "request_template_overrides", None) or {}
-        path = overrides.get(name)
+        path = (request_template_overrides.get() or {}).get(name)
         if path is not None:
             return path
         inline = getattr(self._session, "inline_templates", None) or {}
@@ -116,7 +127,6 @@ class Session:
         self.apis = apis
         self.templates = templates
         self.error_definitions = error_definitions
-        self.request_template_overrides: Dict[str, str] = {}
         self.inline_templates: Dict[str, str] = {}
         self._inline_templates_dir: str = tempfile.mkdtemp(prefix="optics_session_")
         self._template_resolver = SessionTemplateResolver(self)
@@ -169,11 +179,28 @@ class SessionManager(SessionHandler):
         return self.sessions.get(session_id)
 
     def terminate_session(self, session_id: str) -> None:
-        """Terminates a session and cleans up resources."""
+        """Terminates a session and cleans up resources.
+
+        Every cleanup step below runs even if an earlier one raises: a driver
+        that fails to quit (rebooted device, restarted Appium server) must
+        not also leak the inline-templates temp dir, skip the JUnit handler
+        finalization, or leave the event-manager registry entry behind. The
+        original driver-teardown error, if any, is re-raised at the end so
+        callers (e.g. ``expose_api.delete_session``) still observe the
+        failure.
+        """
         session: Session | None = self.sessions.pop(session_id, None)
+        driver_error: Exception | None = None
         if session:
             if session.driver:
-                session.driver.terminate()
+                try:
+                    session.driver.terminate()
+                except Exception as e:  # noqa: BLE001 - captured and re-raised below, never suppressed
+                    driver_error = e
+                    internal_logger.warning(
+                        "Driver termination failed for session %s; continuing cleanup: %s",
+                        session_id, e,
+                    )
             session.inline_templates.clear()
             base_dir = getattr(session, "_inline_templates_dir", None)
             if base_dir:
@@ -183,3 +210,5 @@ class SessionManager(SessionHandler):
                     internal_logger.warning("Failed to remove inline templates directory %s: %s", base_dir, e)
         cleanup_junit(session_id)
         get_event_manager_registry().remove_session(session_id)
+        if driver_error is not None:
+            raise driver_error

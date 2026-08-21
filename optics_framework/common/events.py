@@ -75,25 +75,59 @@ class EventManager:
         self.command_queue: asyncio.Queue[Command] = asyncio.Queue()
         self.subscribers: Dict[str, EventSubscriber] = {}
         self._running = False
-        self._process_task = None
+        self._process_task: Optional[asyncio.Task] = None
+        # Loop that owns _process_task. Captured in start() because stop() is
+        # reachable from a worker thread (terminate_session runs under
+        # asyncio.to_thread) and asyncio.Task is not thread-safe.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         internal_logger.debug(f"EventManager initialized: {id(self)}")
 
     def start(self):
         """Start the event processing loop."""
         if not self._running:
             self._running = True
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
+            self._loop = loop
             internal_logger.debug(f"Event loop running: {loop.is_running()}")
             self._process_task = asyncio.create_task(self._process_events())
             internal_logger.debug(
                 f"EventManager started, process_task: {self._process_task}")
 
+    @staticmethod
+    def _current_loop() -> Optional[asyncio.AbstractEventLoop]:
+        """Running loop on this thread, or None when there isn't one."""
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return None
+
+    def _cancel_process_task(self, task: asyncio.Task) -> None:
+        """Cancel the dispatch task on the loop that owns it.
+
+        Task.cancel() schedules via loop.call_soon(), which is not
+        thread-safe: from a worker thread it appends to the loop's ready
+        queue without waking the selector, and races the loop thread on the
+        same future. _check_thread() only catches this under debug mode, so
+        it fails silently in production. stop() is reached off-loop whenever
+        terminate_session runs under asyncio.to_thread.
+        """
+        owning_loop = self._loop
+        if owning_loop is None or self._current_loop() is owning_loop:
+            task.cancel()
+            return
+        try:
+            owning_loop.call_soon_threadsafe(task.cancel)
+        except RuntimeError as e:
+            # Loop already closed: the task died with it, nothing to cancel.
+            internal_logger.debug(f"Could not cancel event dispatch task: {e}")
+
     def stop(self):
         """Stop the event processing loop."""
         self._running = False
-        if self._process_task:
-            self._process_task.cancel()
-            self._process_task = None
+        task, self._process_task = self._process_task, None
+        if task is not None:
+            self._cancel_process_task(task)
+        self._loop = None
         internal_logger.debug("EventManager stopped")
 
     async def _process_events(self):
@@ -102,8 +136,12 @@ class EventManager:
         while self._running:
             try:
                 event = await self.event_queue.get()
-                internal_logger.debug(
-                    f"Processing event: {event.model_dump()}")
+                try:
+                    internal_logger.debug("Processing event: %s", event.model_dump())
+                except AttributeError:
+                    # Non-Event payloads (e.g. in tests) must still be dispatched;
+                    # a debug-logging failure must never silently drop an event.
+                    internal_logger.debug("Processing event: %r", event)
                 for subscriber_id, subscriber in self.subscribers.items():
                     internal_logger.debug(
                         f"Dispatching to subscriber {subscriber_id}: {subscriber}")
@@ -192,7 +230,7 @@ class EventManagerRegistry:
         with self._lock:
             if session_id in self._managers:
                 manager = self._managers[session_id]
-                manager.stop()
+                manager.shutdown()  # closes subscribers, then stops the loop
                 internal_logger.debug(f"Removed EventManager for session {session_id}: {id(manager)}")
                 del self._managers[session_id]
 

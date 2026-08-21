@@ -1,7 +1,9 @@
 """Tests for vision-based template resolution and execute/template APIs."""
+import asyncio
 import base64
 import os
 import tempfile
+from unittest.mock import MagicMock
 
 from optics_framework.common.models import TemplateData
 import pytest
@@ -16,7 +18,6 @@ from optics_framework.common.session_manager import SessionTemplateResolver
 
 
 def _make_mock_session(
-    request_overrides=None,
     inline_templates=None,
     project_templates=None,
 ):
@@ -25,23 +26,27 @@ def _make_mock_session(
         pass
 
     s = MockSession()
-    s.request_template_overrides = dict(request_overrides or {})
     s.inline_templates = dict(inline_templates or {})
     s.templates = project_templates
     return s
 
 
 def test_session_template_resolver_request_override_first():
-    """Resolver returns request_template_overrides before inline or project."""
+    """Resolver returns the request-scoped ContextVar override before inline or project."""
+    from optics_framework.common import session_manager as sm
+
     t = TemplateData()
     t.add_template("btn", "/project/btn.png")
     session = _make_mock_session(
-        request_overrides={"btn": "/request/btn.png"},
         inline_templates={"btn": "/inline/btn.png"},
         project_templates=t,
     )
     resolver = SessionTemplateResolver(session)
-    assert resolver.get_template_path("btn") == "/request/btn.png"
+    token = sm.request_template_overrides.set({"btn": "/request/btn.png"})
+    try:
+        assert resolver.get_template_path("btn") == "/request/btn.png"
+    finally:
+        sm.request_template_overrides.reset(token)
 
 
 def test_session_template_resolver_inline_then_project():
@@ -152,3 +157,44 @@ def test_terminate_cleans_inline_templates_dir():
     manager.sessions[session_id] = session
     manager.terminate_session(session_id)
     assert not os.path.isdir(session_dir)
+
+
+def test_request_template_overrides_are_isolated_per_task():
+    """H2: one request's overrides must be invisible to a concurrent request."""
+    from optics_framework.common import session_manager as sm
+
+    session = MagicMock()
+    session.inline_templates = {}
+    session.templates = None
+    resolver = sm.SessionTemplateResolver(session)
+
+    seen: dict = {}
+
+    async def one_request(name: str, path: str, settle: asyncio.Event, go: asyncio.Event):
+        token = sm.request_template_overrides.set({name: path})
+        try:
+            settle.set()
+            await go.wait()
+            # After the sibling request has set *its* overrides, ours must survive.
+            seen[name] = resolver.get_template_path(name)
+        finally:
+            sm.request_template_overrides.reset(token)
+
+    async def scenario():
+        a_ready, b_ready, go = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        task_a = asyncio.create_task(one_request("login_btn", "/tmp/a.png", a_ready, go))
+        task_b = asyncio.create_task(one_request("cancel_btn", "/tmp/b.png", b_ready, go))
+        await a_ready.wait()
+        await b_ready.wait()
+        go.set()
+        await asyncio.gather(task_a, task_b)
+
+    # Bound the whole scenario, not just the final gather: if
+    # request_template_overrides.set(...) ever regresses to something that
+    # raises before settle.set() (e.g. reverted to a plain dict/session
+    # field), a_ready/b_ready never fire and scenario() hangs forever on
+    # `await a_ready.wait()`. wait_for around scenario() turns that hang into
+    # a fast, legible TimeoutError instead of burning the whole CI job.
+    asyncio.run(asyncio.wait_for(scenario(), timeout=5))
+
+    assert seen == {"login_btn": "/tmp/a.png", "cancel_btn": "/tmp/b.png"}
