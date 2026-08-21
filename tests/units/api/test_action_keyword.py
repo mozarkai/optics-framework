@@ -1,3 +1,4 @@
+import inspect
 import json
 import pytest
 from pathlib import Path
@@ -6,7 +7,8 @@ import tempfile
 import numpy as np
 from optics_framework.common.error import OpticsError, Code
 
-from optics_framework.api.action_keyword import ActionKeyword, _find_dropdown_container
+from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.api.action_keyword import _find_dropdown_container
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import LocateResult
 
@@ -90,7 +92,7 @@ def action_keyword(mock_dependencies):
 
 
 class TestPressElementWithIndex:
-    """press_element param coercion and located-value dispatch.
+    """press_element param coercion and locate-result dispatch.
 
     ``locate`` is mocked to return a LocateResult, so ``determine_element_type``
     (which only runs *inside* the real locate) is never reached — no need to patch
@@ -159,7 +161,7 @@ class TestScreenshotFailureFallback:
     """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
 
     @patch('optics_framework.common.utils.save_screenshot')
-    def test_with_self_healing_proceeds_when_screenshot_raises(
+    def test_locate_and_act_proceeds_when_screenshot_raises(
         self, mock_save_screenshot, action_keyword, mock_dependencies
     ):
         """Action still executes when capture_screenshot raises (e.g. INTERNAL_SERVER_ERROR)."""
@@ -175,7 +177,7 @@ class TestScreenshotFailureFallback:
         mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, None)
 
     @patch('optics_framework.common.utils.save_screenshot')
-    def test_with_self_healing_skips_save_when_screenshot_raises(
+    def test_locate_and_act_skips_save_when_screenshot_raises(
         self, mock_save_screenshot, action_keyword, mock_dependencies
     ):
         """utils.save_screenshot is not called when capture_screenshot raises."""
@@ -192,7 +194,7 @@ class TestScreenshotFailureFallback:
 
     @patch('optics_framework.common.utils.annotate_aoi_region')
     @patch('optics_framework.common.utils.save_screenshot')
-    def test_with_self_healing_skips_aoi_save_when_screenshot_raises(
+    def test_locate_and_act_skips_aoi_save_when_screenshot_raises(
         self, mock_save_screenshot, mock_annotate_aoi, action_keyword, mock_dependencies
     ):
         """AOI annotation and save are skipped when capture_screenshot raises."""
@@ -214,7 +216,7 @@ class TestScreenshotFailureFallback:
     def test_direct_method_proceeds_when_screenshot_raises(
         self, mock_save_screenshot, action_keyword, mock_dependencies
     ):
-        """Direct methods (not via with_self_healing) still execute when capture_screenshot raises."""
+        """Direct methods (no locate step) still execute when capture_screenshot raises."""
         with patch.object(
             action_keyword.strategy_manager, 'capture_screenshot',
             side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
@@ -499,19 +501,81 @@ class TestDeprecatedAliases:
 
     @pytest.mark.parametrize("alias", ["press_checkbox", "press_radio_button"])
     def test_alias_delegates_to_press_element_with_deprecation_log(self, action_keyword, alias):
-        located = MagicMock()
-        with patch.object(
-            action_keyword.strategy_manager, 'locate',
-            return_value=[LocateResult(located, MagicMock())],
-        ), patch.object(action_keyword, 'press_element') as mock_press, patch(
+        with patch.object(action_keyword, 'press_element') as mock_press, patch(
             'optics_framework.api.action_keyword.internal_logger'
         ) as mock_logger:
-            getattr(action_keyword, alias)("box")
+            getattr(action_keyword, alias)("box", aoi_x="10", event_name="evt")
 
-        mock_press.assert_called_once()
-        assert mock_press.call_args.args[0] == "box"
-        assert mock_press.call_args.kwargs.get("located") is located
+        mock_press.assert_called_once_with(
+            "box", aoi_x="10", aoi_y="0", aoi_width="100",
+            aoi_height="100", event_name="evt", index="0",
+        )
         assert any(
             "deprecated" in str(call.args[0]).lower()
             for call in mock_logger.warning.call_args_list
         )
+
+
+class TestKeywordSignatureHygiene:
+    """Public API keywords must not declare keyword-only params.
+
+    Keyword-only (and ``**kwargs``-style) params can't be filled by the
+    string-only named-param dispatch shared by `optics serve` and `optics mcp`
+    (see mozarkai/optics-framework#454): the dispatcher reflects the signature
+    into positional slots, so a keyword-only slot either overflows the call or
+    is silently dropped. Keep this guard so injection-style params (the old
+    ``located`` kwarg) are never reintroduced into keyword signatures.
+    ``FlowControl``'s ``*args`` keywords (Condition, Run Loop) are deliberate
+    variadic contracts and stay allowed.
+    """
+
+    @pytest.mark.parametrize(
+        "cls", [ActionKeyword, AppManagement, Verifier, FlowControl]
+    )
+    def test_public_keywords_have_no_keyword_only_or_var_kwargs_params(self, cls):
+        offenders = []
+        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+            if name.startswith("_") or name.startswith("test"):
+                continue
+            for param in inspect.signature(method).parameters.values():
+                if param.kind in (
+                    inspect.Parameter.KEYWORD_ONLY,
+                    inspect.Parameter.VAR_KEYWORD,
+                ):
+                    offenders.append(f"{cls.__name__}.{name}:{param.name}")
+        assert offenders == []
+
+
+class TestLocateHonorsPositionalParams:
+    """AOI/index must be honored no matter how the keyword was called.
+
+    The MCP/serve dispatch invokes keywords with every parameter positional
+    (it rebuilds a flat positional list from the signature), so locate-tuning
+    values that arrive in positional slots must still reach the locator.
+    Regression for the pre-refactor behavior where only kwargs were read.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_disk_writes(self):
+        with patch('optics_framework.common.utils.save_screenshot'):
+            yield
+
+    def test_positional_aoi_and_index_reach_locate(self, action_keyword):
+        locate_result = LocateResult((7, 7), MagicMock())
+        with patch.object(
+            action_keyword.strategy_manager, 'locate', return_value=[locate_result]
+        ) as mock_locate:
+            # MCP-style all-positional call: repeat, offset_x, offset_y, index,
+            # aoi_x, aoi_y, aoi_width, aoi_height, event_name.
+            action_keyword.press_element("btn", "1", "0", "0", "2", "45", "45", "60", "60", None)
+
+        mock_locate.assert_called_once_with("btn", 45.0, 45.0, 60.0, 60.0, index=2)
+
+    def test_kwarg_aoi_and_index_reach_locate(self, action_keyword):
+        locate_result = LocateResult((7, 7), MagicMock())
+        with patch.object(
+            action_keyword.strategy_manager, 'locate', return_value=[locate_result]
+        ) as mock_locate:
+            action_keyword.enter_text("field", "hello", aoi_x="10", index="3")
+
+        mock_locate.assert_called_once_with("field", 10.0, 0.0, 100.0, 100.0, index=3)

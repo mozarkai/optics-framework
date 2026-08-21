@@ -78,10 +78,6 @@ _RESOURCE_ONLY_KEYWORDS = frozenset(
     {"capture_screenshot", "capture_pagesource", "get_screen_elements"}
 )
 
-# Internal params injected by decorators (e.g. `@with_self_healing` fills
-# `located`), never supplied by an MCP client — drop them from tool schemas.
-_EXCLUDED_PARAMS = frozenset({"located"})
-
 _RESULT_KEY = expose_api.KEY_RESULT
 
 
@@ -127,7 +123,6 @@ def _reflect_keyword_params(method: Callable[..., Any]) -> list[inspect.Paramete
         p
         for name, p in sig.parameters.items()
         if name != "self"
-        and name not in _EXCLUDED_PARAMS
         # *args / **kwargs can't be represented as discrete string tool params.
         and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     ]

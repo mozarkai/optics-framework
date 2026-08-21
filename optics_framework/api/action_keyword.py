@@ -1,4 +1,3 @@
-from functools import wraps
 import collections
 import inspect
 import shlex
@@ -39,16 +38,6 @@ def _parse_aoi_param(param: Any, default_value: float) -> float:
     if param is None or str(param).strip() in ('', 'None', 'none'):
         return default_value
     return float(param)
-
-
-def _parse_aoi_from_kwargs(kwargs: dict) -> Tuple[float, float, float, float, int, bool]:
-    aoi_x = _parse_aoi_param(kwargs.pop('aoi_x', '0'), 0)
-    aoi_y = _parse_aoi_param(kwargs.pop('aoi_y', '0'), 0)
-    aoi_width = _parse_aoi_param(kwargs.pop('aoi_width', '100'), 100)
-    aoi_height = _parse_aoi_param(kwargs.pop('aoi_height', '100'), 100)
-    index = int(kwargs.pop('index', 0))
-    is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
-    return aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used
 
 
 def _maybe_save_aoi_screenshot(
@@ -110,64 +99,6 @@ def _save_annotated_for_result(
     )
 
 
-def _try_results_until_success(
-    results,
-    func: Callable,
-    self: Any,
-    element: Any,
-    args: tuple,
-    kwargs: dict,
-    screenshot_np: Any,
-    execution_dir: str,
-    func_name: str,
-):
-    last_exception = None
-    result_count = 0
-    locate_error: Optional[OpticsError] = None
-
-    try:
-        results_list = list(results)
-    except OpticsError as e:
-        # The locate generator raises when no strategy yields a result; treat that
-        # as "no results" so self-heal below gets a chance, but keep the original
-        # error as the cause instead of losing it.
-        internal_logger.debug(f"Locate generator raised for '{element}' in '{func_name}': {e}")
-        results_list = []
-        locate_error = e
-
-    for result in results_list:
-        result_count += 1
-        _save_annotated_for_result(result, screenshot_np, execution_dir, func_name)
-        try:
-            ret = func(self, element, located=result.value, *args, **kwargs)
-        except Exception as e:
-            internal_logger.error(
-                f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
-            last_exception = e
-            continue
-        # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
-        # appending after a bare `return` would be unreachable).
-        self._record_successful_step(func_name, element, args)
-        return ret
-    if result_count == 0:
-        if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
-            return None
-        raise OpticsError(
-            Code.E0201,
-            message=f"No valid strategies found for '{element}' in '{func_name}'",
-            cause=locate_error,
-        ) from locate_error
-    if last_exception:
-        if self._ai_self_heal(element, func_name, args, kwargs, screenshot_np):
-            return None
-        raise OpticsError(
-            Code.X0201,
-            message=f"All strategies failed for '{element}' in '{func_name}': {last_exception}",
-            cause=last_exception,
-        )
-    raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
-
-
 def _bounds_area(bounds: Optional[dict]) -> int:
     """
     indirect helper for `select_dropdown_option()`
@@ -218,33 +149,6 @@ def _raise_option_not_found(dropdown_element: str, option: str, interactive: Lis
             f"Available options: {available_texts}"
         ),
     )
-
-
-# Action Executor Decorator
-def with_self_healing(func: Callable) -> Callable:
-    @wraps(func)
-    def wrapper(self, element, *args, **kwargs):
-        # Skip self-healing if 'located' is already provided (avoids double healing)
-        if kwargs.get('located') is not None:
-            return func(self, element, *args, **kwargs)
-
-        screenshot_np = self._capture_screenshot_safe()
-        aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used = _parse_aoi_from_kwargs(kwargs)
-        if is_aoi_used and screenshot_np is not None:
-            _maybe_save_aoi_screenshot(
-                screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
-                self.execution_dir, func.__name__,
-            )
-        self._save_screenshot_if_available(screenshot_np, f"pre-{func.__name__}")
-        results = _locate_element(
-            self.strategy_manager, element,
-            aoi_x, aoi_y, aoi_width, aoi_height, index, is_aoi_used,
-        )
-        return _try_results_until_success(
-            results, func, self, element, args, kwargs,
-            screenshot_np, self.execution_dir, func.__name__,
-        )
-    return wrapper
 
 
 class _HealProviders:
@@ -327,7 +231,7 @@ class ActionKeyword:
         self._recent_steps.append((func_name, [str(element), *map(str, args)]))
 
     def _ai_self_heal(
-        self, element: Any, func_name: str, args: tuple, kwargs: dict, screenshot_np: Any
+        self, element: Any, func_name: str, intent_args: tuple, screenshot_np: Any
     ) -> bool:
         """Last-resort AI recovery after every locate strategy failed. Returns True if healed.
 
@@ -345,7 +249,7 @@ class ActionKeyword:
         providers = _HealProviders(seed_png, self.strategy_manager)
         ctx = HealContext(
             intent_keyword=func_name,
-            intent_params=[str(a) for a in args],
+            intent_params=[str(a) for a in intent_args],
             element=str(element),
             recent_steps=list(self._recent_steps),
             failed_strategies=sorted(
@@ -361,7 +265,7 @@ class ActionKeyword:
             )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
         result = self._ai_healer.heal(ctx, providers.screenshot, providers.pagesource)
-        self._log_heal_outcome(result, func_name, element, args)
+        self._log_heal_outcome(result, func_name, element, intent_args)
         return result.ok
 
     def _ai_self_heal_ready(self, screenshot_np: Any) -> bool:
@@ -423,8 +327,8 @@ class ActionKeyword:
     def _heal_execute(self, line: str) -> KeywordExecResult:
         """Keyword executor for self-heal: parse and run one keyword, returning a KeywordExecResult.
 
-        Calls the ActionKeyword methods directly but avoids re-triggering self-heal by
-        passing ``located=`` for self-healing-decorated methods or calling non-decorated ones.
+        Dispatches through the same public keyword methods (and therefore the same
+        locate ladder), with self-heal temporarily disabled so a heal cannot recurse.
         """
         try:
             tokens = shlex.split(line, posix=True)
@@ -441,10 +345,8 @@ class ActionKeyword:
             return KeywordExecResult(ok=False, message=f"Unknown keyword: {keyword_name}")
 
         try:
-            # Non-self-healing methods: call directly with params.
-            # Self-healing methods (press_element, enter_text): they will go through
-            # `with_self_healing` decorator, but self-heal is already running, so
-            # we need to temporarily disable it to avoid recursion.
+            # Dispatched keywords go through the same locate ladder; self-heal is
+            # temporarily disabled so a heal cannot recurse into itself.
             original_enabled = self.ai_self_heal_enabled
             self.ai_self_heal_enabled = False
             try:
@@ -475,9 +377,7 @@ class ActionKeyword:
         for pname, param in sig.parameters.items():
             if pname == "self":
                 continue
-            # Skip internal keyword-only params (located, event_name, aoi_*)
-            if param.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.VAR_KEYWORD):
-                continue
+            # Skip locate-tuning params the healer never supplies (event_name, aoi_*)
             if pname in ("event_name", "aoi_x", "aoi_y", "aoi_width", "aoi_height"):
                 continue
             if param.default is inspect.Parameter.empty:
@@ -499,12 +399,106 @@ class ActionKeyword:
         if screenshot_np is not None:
             utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
 
+    def _locate_and_act(
+        self,
+        element: Any,
+        func_name: str,
+        act: Callable[[Any], Any],
+        intent_args: tuple = (),
+        index: str = "0",
+        aoi: Tuple[str, str, str, str] = ("0", "0", "100", "100"),
+    ) -> Any:
+        """Locate ``element`` through the strategy ladder and run ``act`` on it.
+
+        This is fallback level 2, shared by every locate-based keyword. ``act`` receives
+        each successful locate value in strategy-priority order (XPath -> text -> OCR ->
+        image); the first call that returns without raising wins. When no strategy yields
+        a result, or every ``act`` call raises, AI self-heal gets one chance before
+        E0201/X0201 is raised.
+
+        ``intent_args`` are the keyword's action parameters (everything after the
+        element, minus locate-tuning params); they feed the self-heal breadcrumbs.
+        """
+        screenshot_np = self._capture_screenshot_safe()
+        aoi_x = _parse_aoi_param(aoi[0], 0)
+        aoi_y = _parse_aoi_param(aoi[1], 0)
+        aoi_width = _parse_aoi_param(aoi[2], 100)
+        aoi_height = _parse_aoi_param(aoi[3], 100)
+        is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
+        if is_aoi_used and screenshot_np is not None:
+            _maybe_save_aoi_screenshot(
+                screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
+                self.execution_dir, func_name,
+            )
+        self._save_screenshot_if_available(screenshot_np, f"pre-{func_name}")
+        results = _locate_element(
+            self.strategy_manager, element,
+            aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
+        )
+        return self._act_until_success(
+            results, act, element, func_name, intent_args, screenshot_np
+        )
+
+    def _act_until_success(
+        self,
+        results: Any,
+        act: Callable[[Any], Any],
+        element: Any,
+        func_name: str,
+        intent_args: tuple,
+        screenshot_np: Any,
+    ) -> Any:
+        """Run ``act`` on each locate result until one succeeds; heal/wrap on failure."""
+        last_exception: Optional[Exception] = None
+        result_count = 0
+        locate_error: Optional[OpticsError] = None
+
+        try:
+            results_list = list(results)
+        except OpticsError as e:
+            # The locate generator raises when no strategy yields a result; treat that
+            # as "no results" so self-heal below gets a chance, but keep the original
+            # error as the cause instead of losing it.
+            internal_logger.debug(f"Locate generator raised for '{element}' in '{func_name}': {e}")
+            results_list = []
+            locate_error = e
+
+        for result in results_list:
+            result_count += 1
+            _save_annotated_for_result(result, screenshot_np, self.execution_dir, func_name)
+            try:
+                ret = act(result.value)
+            except Exception as e:  # noqa: BLE001 - try the next strategy's result
+                internal_logger.error(
+                    f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
+                last_exception = e
+                continue
+            # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
+            # appending after a bare `return` would be unreachable).
+            self._record_successful_step(func_name, element, intent_args)
+            return ret
+        if result_count == 0:
+            if self._ai_self_heal(element, func_name, intent_args, screenshot_np):
+                return None
+            raise OpticsError(
+                Code.E0201,
+                message=f"No valid strategies found for '{element}' in '{func_name}'",
+                cause=locate_error,
+            ) from locate_error
+        if last_exception:
+            if self._ai_self_heal(element, func_name, intent_args, screenshot_np):
+                return None
+            raise OpticsError(
+                Code.X0201,
+                message=f"All strategies failed for '{element}' in '{func_name}': {last_exception}",
+                cause=last_exception,
+            )
+        raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+
     # Click actions
-    @with_self_healing
     def press_element(
         self, element: str, repeat: str = "1", offset_x: str = "0", offset_y: str = "0", index: str = "0", aoi_x: str = "0",
-        aoi_y: str = "0", aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None,
-        *, located: Any = None
+        aoi_y: str = "0", aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None
         ) -> None:
         """
         Press a specified element.
@@ -520,15 +514,21 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         """
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.info(
-                f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
-            self.driver.press_coordinates(
-                x + int(offset_x), y + int(offset_y), event_name)
-        else:
-            internal_logger.info(f"Pressing element '{element}'")
-            self.driver.press_element(located, int(repeat), event_name)
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                x, y = located
+                internal_logger.info(
+                    f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
+                self.driver.press_coordinates(
+                    x + int(offset_x), y + int(offset_y), event_name)
+            else:
+                internal_logger.info(f"Pressing element '{element}'")
+                self.driver.press_element(located, int(repeat), event_name)
+
+        self._locate_and_act(
+            element, "press_element", act, (repeat, offset_x, offset_y),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
 
     def press_by_percentage(self, percent_x: str, percent_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
         """
@@ -580,9 +580,8 @@ class ActionKeyword:
         else:
             internal_logger.info(f'Element {element} not found. Press is not performed.')
 
-    @with_self_healing
     def press_checkbox(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
-                       aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                       aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
         """
         Press a specified checkbox element.
 
@@ -594,14 +593,14 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the press.
+        :param index: Index of the element if multiple matches are found.
         """
         internal_logger.warning("'Press Checkbox' is deprecated; use 'Press Element' instead.")
         self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
-                          aoi_height=aoi_height, event_name=event_name, located=located)
+                          aoi_height=aoi_height, event_name=event_name, index=index)
 
-    @with_self_healing
     def press_radio_button(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
-                           aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                           aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
         """
         Press a specified radio button.
 
@@ -613,10 +612,11 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the press.
+        :param index: Index of the element if multiple matches are found.
         """
         internal_logger.warning("'Press Radio Button' is deprecated; use 'Press Element' instead.")
         self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
-                          aoi_height=aoi_height, event_name=event_name, located=located)
+                          aoi_height=aoi_height, event_name=event_name, index=index)
 
     def select_dropdown_option(self, element: str, option: str, timeout: str = "30",
                                 event_name: Optional[str] = None) -> None:
@@ -822,9 +822,9 @@ class ActionKeyword:
         if not found:
             raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after swiping {direction} for {timeout}s.")
 
-    @with_self_healing
     def swipe_from_element(self, element: str, direction: str, swipe_length: str, aoi_x: str = "0", aoi_y: str = "0",
-                          aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                           aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None,
+                           index: str = "0") -> None:
         """
         Perform a swipe action starting from a specified element.
 
@@ -836,15 +836,22 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the swipe.
+        :param index: Index of the element if multiple matches are found.
         """
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
-            self.driver.swipe(x, y, direction, int(swipe_length), event_name)
-        else:
-            internal_logger.debug(f"Swiping from element '{element}'")
-            self.driver.swipe_element(
-                located, direction, int(swipe_length), event_name)
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                x, y = located
+                internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
+                self.driver.swipe(x, y, direction, int(swipe_length), event_name)
+            else:
+                internal_logger.debug(f"Swiping from element '{element}'")
+                self.driver.swipe_element(
+                    located, direction, int(swipe_length), event_name)
+
+        self._locate_and_act(
+            element, "swipe_from_element", act, (direction, swipe_length),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
 
     def scroll(self, direction: str, event_name: Optional[str] = None) -> None:
         """
@@ -889,9 +896,9 @@ class ActionKeyword:
         if not found:
             raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
 
-    @with_self_healing
     def scroll_from_element(self, element: str, direction: str, scroll_length: str, aoi_x: str = "0", aoi_y: str = "0",
-                           aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                            aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None,
+                            index: str = "0") -> None:
         """
         Perform a scroll action starting from a specified element.
 
@@ -903,20 +910,26 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the scroll.
+        :param index: Index of the element if multiple matches are found.
         """
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
-            self.driver.swipe(x, y, direction, int(scroll_length), event_name)
-        else:
-            internal_logger.debug(f"Swiping from element '{element}'")
-            self.driver.swipe_element(
-                located, direction, int(scroll_length), event_name)
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                x, y = located
+                internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
+                self.driver.swipe(x, y, direction, int(scroll_length), event_name)
+            else:
+                internal_logger.debug(f"Swiping from element '{element}'")
+                self.driver.swipe_element(
+                    located, direction, int(scroll_length), event_name)
+
+        self._locate_and_act(
+            element, "scroll_from_element", act, (direction, scroll_length),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
 
     # Text input actions
-    @with_self_healing
     def enter_text(self, element: str, text: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
-                   aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                   aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
         """
         Enter text into a specified element.
 
@@ -927,20 +940,26 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the input.
+        :param index: Index of the element if multiple matches are found.
         """
-
         parsed = utils.parse_special_key(text)
         if parsed is not None:
             text = parsed
 
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
-            self.driver.press_coordinates(x, y, event_name=event_name)
-            self.driver.enter_text(text, event_name)
-        else:
-            internal_logger.debug(f"Entering text '{text}' into element '{element}'")
-            self.driver.enter_text_element(located, text, event_name)
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                x, y = located
+                internal_logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
+                self.driver.press_coordinates(x, y, event_name=event_name)
+                self.driver.enter_text(text, event_name)
+            else:
+                internal_logger.debug(f"Entering text '{text}' into element '{element}'")
+                self.driver.enter_text_element(located, text, event_name)
+
+        self._locate_and_act(
+            element, "enter_text", act, (text,),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
 
     def enter_text_direct(self, text: str, event_name: Optional[str] = None) -> None:
         """
@@ -979,9 +998,8 @@ class ActionKeyword:
         internal_logger.info(f'Entering text using keyboard: {text_input}')
         self.driver.enter_text_using_keyboard(text_input, event_name)
 
-    @with_self_healing
     def enter_number(self, element: str, number: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
-                     aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                     aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
         """
         Enter a specified number into an element.
 
@@ -992,15 +1010,22 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the input.
+        :param index: Index of the element if multiple matches are found.
         """
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
-            self.driver.press_coordinates(x, y, event_name=event_name)
-            self.driver.enter_text(str(number), event_name)
-        else:
-            internal_logger.debug(f"Entering number '{number}' into element '{element}'")
-            self.driver.enter_text_element(located, str(number), event_name)
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                x, y = located
+                internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
+                self.driver.press_coordinates(x, y, event_name=event_name)
+                self.driver.enter_text(str(number), event_name)
+            else:
+                internal_logger.debug(f"Entering number '{number}' into element '{element}'")
+                self.driver.enter_text_element(located, str(number), event_name)
+
+        self._locate_and_act(
+            element, "enter_number", act, (number,),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
@@ -1019,9 +1044,8 @@ class ActionKeyword:
         self.driver.press_keycode(keycode, event_name)
 
 
-    @with_self_healing
     def clear_element_text(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
-                          aoi_height: str = "100", event_name: Optional[str] = None, *, located: Any=None) -> None:
+                           aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
         """
         Clear text from a specified element.
 
@@ -1031,32 +1055,50 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :param event_name: The event triggering the action.
+        :param index: Index of the element if multiple matches are found.
         """
-        if isinstance(located, tuple):
-            x, y = located
-            internal_logger.debug(f"Clearing text at coordinates ({x}, {y})")
-            self.driver.press_coordinates(
-                x, y, event_name=event_name)
-            self.driver.clear_text(event_name)
-        else:
-            internal_logger.debug(f"Clearing text from element '{element}'")
-            self.driver.clear_text_element(located, event_name)
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                x, y = located
+                internal_logger.debug(f"Clearing text at coordinates ({x}, {y})")
+                self.driver.press_coordinates(
+                    x, y, event_name=event_name)
+                self.driver.clear_text(event_name)
+            else:
+                internal_logger.debug(f"Clearing text from element '{element}'")
+                self.driver.clear_text_element(located, event_name)
 
-    @with_self_healing
-    def get_text(self, element: str, *, located=None) -> Optional[str]:
+        self._locate_and_act(
+            element, "clear_element_text", act,
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
+
+    def get_text(self, element: str, index: str = "0", aoi_x: str = "0", aoi_y: str = "0",
+                 aoi_width: str = "100", aoi_height: str = "100") -> Optional[str]:
         """
         Get the text from a specified element.
 
         :param element: The target element (Image template, OCR template, or XPath).
+        :param index: Index of the element if multiple matches are found.
+        :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
+        :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
+        :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         :return: The text from the element or None if not supported.
         """
-        if located is None:
-            internal_logger.error('get_text: located is None, element could not be found.')
-            return None
-        if isinstance(located, tuple):
-            internal_logger.error('Get Text is not supported for coordinate-based (vision) results.')
-            return None
-        return self.driver.get_text_element(located)
+        def act(located: Any) -> Optional[str]:
+            if located is None:
+                internal_logger.error('get_text: located is None, element could not be found.')
+                return None
+            if isinstance(located, tuple):
+                internal_logger.error('Get Text is not supported for coordinate-based (vision) results.')
+                return None
+            return self.driver.get_text_element(located)
+
+        return self._locate_and_act(
+            element, "get_text", act,
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+        )
 
     def sleep(self, duration: str) -> None:
         """

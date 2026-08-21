@@ -454,7 +454,8 @@ class LiveController:
         for name, param in sig.parameters.items():
             if name == "self":
                 continue
-            # Skip keyword-only sentinels like ``located`` used by self-healing.
+            # Keywords take plain positional/keyword params; skip variadic kinds
+            # that can't render as a discrete ghost-text token.
             if param.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.VAR_KEYWORD):
                 continue
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
