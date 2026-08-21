@@ -474,16 +474,16 @@ class TestActionKeywordWiring:
         assert ak.ai_self_heal_enabled is False
         assert ak._llm is None
         shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        assert ak._ai_self_heal("X", "press_element", (), {}, shot) is False
+        assert ak._ai_self_heal("X", "press_element", (), shot) is False
 
     def test_no_screenshot_inert(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        assert ak._ai_self_heal("X", "press_element", (), {}, None) is False
+        assert ak._ai_self_heal("X", "press_element", (), None) is False
 
     def test_llm_without_instances_inert(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[]))
         shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        assert ak._ai_self_heal("X", "press_element", (), {}, shot) is False
+        assert ak._ai_self_heal("X", "press_element", (), shot) is False
 
     def test_heal_catalog_returns_specs(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
@@ -511,20 +511,20 @@ class TestActionKeywordWiring:
         ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
         ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
 
-        # scroll is non-self-healing, so `_heal_execute` calls the real method; let it
+        # scroll is non-locating, so `_heal_execute` calls the real method; let it
         # run against the mocked `ak.driver` and assert the call reached the driver
         # with the parsed params (`_heal_dispatch` binds the real method at __init__,
         # so reassigning `ak.scroll` here would never be consulted — see press_element
-        # below for the correct way to intercept a self-healing-decorated method).
-        # press_element goes through `with_self_healing` decorator, which needs a
-        # working strategy_manager.locate; mock it to return a located result.
+        # below for the correct way to intercept a locating keyword).
+        # press_element runs `_locate_and_act`, which needs a working
+        # strategy_manager.locate; mock it to return a located result.
         mock_result = MagicMock()
         mock_result.is_coordinates = False
         mock_result.value = MagicMock()
         mock_result.strategy = MagicMock()
         ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
 
-        assert ak._ai_self_heal("Login", "press_element", (), {}, shot) is True
+        assert ak._ai_self_heal("Login", "press_element", (), shot) is True
         ak.driver.scroll.assert_called_once_with("down", 1000, None)
         # Healed keyword is recorded as a breadcrumb (may appear more than once —
         # the inner press_element records one, and _log_heal_outcome records another).
@@ -626,7 +626,7 @@ class TestSuggestedStepsWiring:
         mock_result.strategy = MagicMock()
         ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
 
-        assert ak._ai_self_heal("Login", "press_element", (), {}, shot) is True
+        assert ak._ai_self_heal("Login", "press_element", (), shot) is True
         info = ak._pop_last_heal_info()
         assert info is not None
         assert info["suggested_steps"] == [{"keyword": "press_element", "params": ["Login"]}]
