@@ -160,7 +160,7 @@ class UIHelper:
             return xpath
         return None
 
-    def find_xpath(self, xpath):
+    def find_xpath(self, xpath, strict: bool = False):
         """
         Process the given XPath and return the exact path from the UI tree after applying various matching strategies.
         """
@@ -193,27 +193,28 @@ class UIHelper:
                     f"Error in relative match for XPath '{xpath}': {str(e)}"
                 )
 
-            # 3. Partial Match
-            try:
-                found_xpath = self.find_partial(xpath)
-                if found_xpath:
-                    internal_logger.debug("Xpath found using partial match")
-                    return found_xpath, time_stamp
-            except Exception as e:
-                internal_logger.debug(
-                    f"Error in partial match for XPath '{xpath}': {str(e)}"
-                )
+            if not strict:
+                # 3. Partial Match
+                try:
+                    found_xpath = self.find_partial(xpath)
+                    if found_xpath:
+                        internal_logger.debug("Xpath found using partial match")
+                        return found_xpath, time_stamp
+                except Exception as e:
+                    internal_logger.debug(
+                        f"Error in partial match for XPath '{xpath}': {str(e)}"
+                    )
 
-            # 4. Attribute Match with Fuzzy Prefix and Suffix Handling
-            try:
-                found_xpath = self.find_attribute_match(xpath)
-                if found_xpath:
-                    internal_logger.debug("Xpath found using attribute match")
-                    return found_xpath, time_stamp
-            except Exception as e:
-                internal_logger.debug(
-                    f"Error in attribute match for XPath '{xpath}': {str(e)}"
-                )
+                # 4. Attribute Match with Fuzzy Prefix and Suffix Handling
+                try:
+                    found_xpath = self.find_attribute_match(xpath)
+                    if found_xpath:
+                        internal_logger.debug("Xpath found using attribute match")
+                        return found_xpath, time_stamp
+                except Exception as e:
+                    internal_logger.debug(
+                        f"Error in attribute match for XPath '{xpath}': {str(e)}"
+                    )
 
             # If no match is found
             internal_logger.debug(

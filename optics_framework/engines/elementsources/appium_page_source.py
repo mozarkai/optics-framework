@@ -217,7 +217,7 @@ class AppiumPageSource(ElementSourceInterface):
 
             # Check XPath-based elements
             if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None and xpaths:
-                xpath_results = [self.driver.ui_helper.find_xpath(xpath)[0] for xpath in xpaths]
+                xpath_results = [self.driver.ui_helper.find_xpath(xpath, strict=True)[0] for xpath in xpaths]
             else:
                 xpath_results = [rule == "all"]
             xpath_found = (all(xpath_results) if rule == "all" else any(xpath_results))
