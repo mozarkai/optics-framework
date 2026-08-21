@@ -580,8 +580,7 @@ def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param:
 
 
 def _resolve_named_to_positional(
-    method: Callable[..., Any],
-    named_params: Dict[str, Union[str, List[str]]]
+    method: Callable[..., Any], named_params: Dict[str, Union[str, List[str]]]
 ) -> List[List[str]]:
     """
     Convert named parameters to positional parameters based on method signature.
@@ -596,8 +595,11 @@ def _resolve_named_to_positional(
     sig = inspect.signature(method)
     param_names = []
     for p in sig.parameters.values():
-        if p.name != "self":
-            param_names.append(p.name)
+        if p.name == "self":
+            continue
+        if p.kind == inspect.Parameter.KEYWORD_ONLY:
+            continue
+        param_names.append(p.name)
 
     normalized_params = []
     for param_name in param_names:
@@ -681,7 +683,11 @@ def _build_named_param_context(
 ) -> _NamedParamsContext:
     """Normalize named params and build context for fallback combos."""
     sig = inspect.signature(method)
-    all_param_names = [p.name for p in sig.parameters.values() if p.name != "self"]
+    all_param_names = [
+        p.name
+        for p in sig.parameters.values()
+        if p.name != "self" and p.kind != inspect.Parameter.KEYWORD_ONLY
+    ]
     normalized_param_lists: List[List[str]] = []
     provided_param_names: List[str] = []
     param_defaults: Dict[str, Any] = {}
