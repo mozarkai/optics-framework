@@ -1,7 +1,11 @@
 import os
+import json
 import shutil
 import subprocess # nosec
 import pathlib
+import sys
+
+from optics_framework.helper.onboarding import print_next_steps
 
 
 # Files/directories that must never be copied out of a sample template.
@@ -28,6 +32,54 @@ def available_templates() -> list[str]:
         p.name for p in samples.iterdir()
         if p.is_dir() and not _is_junk(p.name)
     )
+
+
+def _template_choices() -> list[tuple[str, str]]:
+    """Ordered ``(display_name, folder_name)`` choices for the interactive picker.
+
+    Built from ``samples/metadata.json`` (the ``displayName`` field) so the
+    picker shows friendly names ("Contacts") while still mapping back to the
+    underlying sample folder ("contact"). A "Blank project" sentinel is prepended
+    so a user can opt out of a template interactively. Falls back to folder names
+    if the metadata file is missing or malformed."""
+    choices: list[tuple[str, str]] = [("(Blank project)", "")]
+    metadata_path = _samples_dir() / "metadata.json"
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+        for sample in metadata.get("samples", []):
+            display = sample.get("displayName")
+            folder = sample.get("folderName")
+            if display and folder:
+                choices.append((display, folder))
+    except (OSError, json.JSONDecodeError):
+        # Metadata missing/corrupt: fall back to bare folder names.
+        for folder in available_templates():
+            choices.append((folder, folder))
+    return choices
+
+
+def _pick_template() -> str | None:
+    """Prompt the user to choose a template interactively.
+
+    Returns the chosen ``folderName`` (or ``""`` for Blank) on a clean pick,
+    or ``None`` if the user backs out. Only called when stdin is a TTY."""
+    choices = _template_choices()
+    print("\nChoose a starting template:")
+    for idx, (display, _) in enumerate(choices, start=1):
+        print(f"  {idx}. {display}")
+    while True:
+        raw = input(f"Select [1-{len(choices)}] (blank to cancel): ").strip()
+        if not raw:
+            return None
+        try:
+            idx = int(raw)
+        except ValueError:
+            print("Please enter a number.")
+            continue
+        if 1 <= idx <= len(choices):
+            return choices[idx - 1][1]
+        print(f"Enter a number between 1 and {len(choices)}.")
 
 
 # A commented starter config for `optics init` without a template. It mirrors the
@@ -105,20 +157,22 @@ file_log: true
 """
 
 
-def _check_and_prepare_directory(project_path: str, force: bool) -> bool:
-    """Check if project directory exists and prepare it based on force flag."""
+def _check_and_prepare_directory(project_path: str, force: bool) -> None:
+    """Check if project directory exists and prepare it based on force flag.
+
+    Raises ``ValueError`` when the path exists and ``force`` is False, so the
+    CLI maps it to a non-zero exit instead of silently skipping creation."""
     if os.path.exists(project_path):
         if force:
             shutil.rmtree(project_path)
             print(
                 f"Existing project folder removed due to --force: {project_path}")
         else:
-            print(
-                f"Project '{project_path}' already exists. Use --force to override.")
-            return False
+            raise ValueError(
+                f"Project '{project_path}' already exists."
+                " Use --force to delete it and recreate the project.")
     os.makedirs(project_path)
     print(f"Created project directory: {project_path}")
-    return True
 
 
 def _scaffold_project(project_path: str) -> None:
@@ -164,9 +218,53 @@ def _copy_template(project_path: str, template: str) -> bool:
     return True
 
 
-def create_project(args):
+def _resolve_template(args, pick_template: bool) -> tuple[str | None, bool]:
+    """Resolve the template name (or ``None`` for a blank project) before any
+    directory is created.
+
+    Returns ``(template, cancelled)``: ``cancelled`` is True when the user backed
+    out of the interactive picker, so the caller creates nothing. Raises
+    ``ValueError`` for an unknown ``--template`` — again before anything is
+    written to disk.
+    """
+    template = args.template
+    if not template and pick_template and sys.stdin.isatty():
+        picked = _pick_template()
+        if picked is None:
+            return None, True
+        template = picked or None
+    if template and template not in available_templates():
+        raise ValueError(
+            f"Template '{template}' not found. "
+            f"Available templates: {', '.join(available_templates())}")
+    return template, False
+
+
+def _init_git_repo(project_path: str, enabled: bool) -> None:
+    """Best-effort ``git init`` inside the new project when requested."""
+    if not enabled:
+        return
+    try:
+        git_path = shutil.which("git")
+        if git_path:
+            subprocess.run([git_path, "init"], cwd=project_path,  # nosec B603
+                           check=True, shell=False)
+    except FileNotFoundError:
+        print("Error: Git not found!")
+    except subprocess.CalledProcessError as e:
+        print(f"Error initializing git repository: {e}")
+
+
+def create_project(args, *, show_next_steps: bool = True,
+                   pick_template: bool = True):
     """
     Creates a new project structure for the Optics Framework.
+
+    When no ``template`` was passed, stdin is a TTY and ``pick_template`` is
+    True, an interactive picker built from ``samples/metadata.json`` offers the
+    available samples plus a blank start. The template is resolved before any
+    directory is touched, so backing out of the picker leaves no empty project
+    folder behind.
 
     Parameters
     ----------
@@ -177,41 +275,52 @@ def create_project(args):
         - force (bool, optional): If True, overrides an existing project directory.
         - template (str, optional): Name of a template to copy from `optics_framework/samples/`.
         - git_init (bool, optional): If True, initializes a Git repository in the project.
+    show_next_steps : bool, keyword-only
+        Print the "Next steps" guidance block at the end. Callers that print
+        their own next steps afterwards (e.g. ``quickstart``) pass False to
+        avoid duplicate — and for blank projects contradictory — advice.
+    pick_template : bool, keyword-only
+        Allow the interactive template picker to run when no template was
+        given. Embedded callers (e.g. ``quickstart``, which asks its own
+        template question first) pass False so ``template=None`` deterministically
+        means "blank project" instead of re-prompting whenever stdin happens
+        to be a TTY.
 
     Returns
     -------
     None
+
+    Raises
+    ------
+    ValueError
+        If the project directory already exists without ``force``, or the
+        requested template is unknown. Neither case creates anything.
     """
     project_name = args.name
     base_path = args.path if args.path else os.getcwd()
     project_path = os.path.join(base_path, project_name)
 
-    if not _check_and_prepare_directory(project_path, args.force):
+    template, cancelled = _resolve_template(args, pick_template)
+    if cancelled:
+        print("Cancelled; no project created.")
         return
 
-    # A template is a complete, runnable sample — copy it verbatim. Otherwise
-    # scaffold an empty starter project. (Previously we always scaffolded AND
-    # then copied on top, producing a confusing hybrid layout.)
-    if args.template:
-        if not _copy_template(project_path, args.template):
+    _check_and_prepare_directory(project_path, args.force)
+
+    if template:
+        if not _copy_template(project_path, template):
             return
     else:
         _scaffold_project(project_path)
 
-    if args.git_init:
-        try:
-            git_path = shutil.which("git")  # Get the absolute path of Git
-            if git_path:
-                subprocess.run([git_path, "init"], cwd=project_path,               #nosec B603
-                            check=True, shell=False)
-        except FileNotFoundError:
-            print("Error: Git not found!")
-        except subprocess.CalledProcessError as e:
-            print(f"Error initializing git repository: {e}")
+    _init_git_repo(project_path, args.git_init)
 
     print(f"\nProject ready at: {project_path}")
-    if args.template:
-        print(f"Next: review {project_name}/config.yaml, then run:  optics dry_run {project_path}")
-    else:
-        print(f"Next: enable a driver in {project_name}/config.yaml and add your "
-              f"test cases, then run:  optics dry_run {project_path}")
+    # `configured=True` when a template was copied (a ready-to-tune config.yaml
+    # exists); the scaffolded blank project still has the commented starter so
+    # the user has work to do before running.
+    if show_next_steps:
+        print_next_steps(project_path, configured=bool(template))
+        if not template:
+            print("Test steps go in test_cases/test_cases.csv — run `optics list` "
+                  "to see every available step.")

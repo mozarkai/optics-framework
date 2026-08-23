@@ -1,17 +1,21 @@
 import argparse
+import os
 import sys
 from typing import Literal, Optional
 from pydantic import BaseModel
 from optics_framework.helper.list_keyword import main as list_main
-from optics_framework.helper.config_manager import main as config_main
 from optics_framework.helper.initialize import create_project, available_templates
 from optics_framework.helper.version import VERSION
 from optics_framework.helper.execute import execute_main, dryrun_main
 from optics_framework.helper.live import live_main
 from optics_framework.helper.generate import generate_test_file as generate_framework_code
-from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines
+from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines, print_install_next_steps
 from optics_framework.helper.serve import run_uvicorn_server
 from optics_framework.helper.autocompletion import update_shell_rc
+from optics_framework.helper.config_manager import configure as configure_project
+from optics_framework.helper.onboarding import welcome, is_first_run, mark_onboarded
+from optics_framework.helper.doctor import run_doctor
+from optics_framework.helper.quickstart import run_quickstart
 
 
 class Command:
@@ -181,13 +185,74 @@ class MCPCommand(Command):
             port=mcp_args.port
         )
 
-class ConfigCommand(Command):
+class ConfigureCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
-        parser = subparsers.add_parser("config", help="Manage configuration")
+        parser = subparsers.add_parser(
+            "configure", help="Edit a project's config.yaml (beginner prompts or --edit TUI)"
+        )
+        parser.add_argument(
+            "folder", nargs="?", default=None,
+            help="Project folder whose config.yaml to edit (default: current directory)",
+        )
+        parser.add_argument(
+            "--edit", action="store_true",
+            help="Launch the full-field Textual editor instead of the guided prompts",
+        )
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
-        config_main()
+        configure_project(folder=args.folder, edit=args.edit)
+
+
+class ConfigCommand(Command):
+    """Deprecated alias for ``optics configure``.
+
+    ``optics config`` used to edit a global file the runner never read. It now
+    forwards to the project-scoped guided configuration in the current directory
+    with a deprecation notice, so existing muscle memory keeps working."""
+
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "config", help="Manage configuration (deprecated; use `configure`)"
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        print(
+            "`optics config` is deprecated; use `optics configure [folder]` — "
+            "answering a few questions to configure the project in the current directory."
+        )
+        configure_project(folder=os.getcwd(), edit=False)
+
+
+class DoctorCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "doctor", help="Diagnose a project's setup (engines, config, tooling)"
+        )
+        parser.add_argument(
+            "folder", nargs="?", default=None,
+            help="Project folder to diagnose (default: current directory)",
+        )
+        parser.add_argument(
+            "--check", action="store_true",
+            help="Non-interactive: exit non-zero if any check fails",
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        raise SystemExit(run_doctor(folder=args.folder, check=args.check))
+
+
+class QuickstartCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser(
+            "quickstart", help="Guided walkthrough to create and configure a first project"
+        )
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        run_quickstart()
 
 
 class InitArgs(BaseModel):
@@ -202,8 +267,12 @@ class InitArgs(BaseModel):
 class InitCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser("init", help="Initialize a new project")
-        parser.add_argument("--name", required=True,
-                            help="Project name (required)")
+        parser.add_argument(
+            "name_positional", nargs="?", default=None,
+            help="Project name (positional, preferred)",
+        )
+        parser.add_argument("--name", dest="name_flag", default=None,
+                            help="Project name (deprecated; pass it as a positional instead)")
         parser.add_argument(
             "--path", help="Directory where the project will be created"
         )
@@ -222,8 +291,33 @@ class InitCommand(Command):
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
+        positional = args.name_positional
+        flag = args.name_flag
+        if positional is not None and flag is not None and positional != flag:
+            raise ValueError(
+                f"Conflicting project names: '{positional}' (positional) vs "
+                f"'{flag}' (--name). Pass the name once."
+            )
+        if positional is not None:
+            name = positional
+        elif flag is not None:
+            # Soft deprecation: keep --name working, nudge toward the positional.
+            print(
+                "Note: `--name` is deprecated; use a positional, e.g. "
+                "`optics init myproject`."
+            )
+            name = flag
+        elif sys.stdin.isatty():
+            name = input("Project name: ").strip()
+            if not name:
+                raise ValueError("A project name is required.")
+        else:
+            name = sys.stdin.readline().strip()
+            if not name:
+                raise ValueError("A project name is required (pass it as a positional).")
+
         init_args = InitArgs(
-            name=args.name,
+            name=name,
             path=args.path,
             force=args.force,
             template=args.template,
@@ -242,7 +336,7 @@ class DryRunArgs(BaseModel):
 class DryRunCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "dry_run", help="Execute test cases from CSV files"
+            "dry_run", help="Validate a project's test cases without running them"
         )
         parser.add_argument(
             "folder_path", type=str, help="Path to the folder containing CSV files"
@@ -379,15 +473,16 @@ class EngineInstaller(Command):
                 engines, invalid = resolve_engines(args.install)
             except SetupError as exc:
                 print(f"Error: {exc}")
-                return
+                sys.exit(1)
             if invalid:
                 print(f"Error: Invalid engine(s): {', '.join(invalid)}")
                 print("Use `optics setup --list` to see available engines")
-                return
+                sys.exit(1)
             success, message = install_extras(engines)
             print(message)
             if not success:
                 sys.exit(1)
+            print_install_next_steps()
         else:
             EngineInstallerApp().run()
 
@@ -414,7 +509,10 @@ def main():
     # Register all commands.
     commands = [
         ListCommand(),
+        ConfigureCommand(),
         ConfigCommand(),
+        DoctorCommand(),
+        QuickstartCommand(),
         DryRunCommand(),
         InitCommand(),
         ExecuteCommand(),
@@ -439,13 +537,26 @@ def main():
             print(f"Argument error: {e}", file=sys.stderr)
             sys.exit(2)
         except ValueError as e:
-            print(f"Value error: {e}", file=sys.stderr)
+            print(f"Error: {e}", file=sys.stderr)
             sys.exit(3)
         except Exception as e:
-            print(f"Unexpected error: {e}", file=sys.stderr)
+            print(f"Unexpected error ({type(e).__name__}): {e}", file=sys.stderr)
+            print(
+                "Run `optics doctor` to check your setup, "
+                "or `optics <command> --help` for usage.",
+                file=sys.stderr,
+            )
             sys.exit(1)
     elif len(sys.argv) == 1:
-        parser.print_help()
+        # Bare `optics`: greet first-timers with the full banner, then mark
+        # them onboarded. Returning users get a one-line hint instead — they
+        # already know the golden path. `optics --help` is handled by argparse
+        # above and is left untouched.
+        if is_first_run():
+            welcome(first_run=True)
+            mark_onboarded()
+        else:
+            print("Run `optics quickstart` to start a project, or `optics --help` for everything else.")
 
 
 if __name__ == "__main__":

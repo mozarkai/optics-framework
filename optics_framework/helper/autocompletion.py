@@ -1,6 +1,9 @@
 import os
+import sys
 from pathlib import Path
 from typing import Optional
+
+from rich.prompt import Confirm
 
 from optics_framework.helper.initialize import available_templates
 
@@ -10,7 +13,10 @@ from optics_framework.helper.initialize import available_templates
 ZSH_COMPLETION_CONTENT = r"""# Description: Zsh completion script for the Optics CLI tool
 local -a _optics_subcommands=(
   'list: List available API methods'
-  'config: Manage configuration'
+  'configure: Edit a project config.yaml (guided prompts or --edit TUI)'
+  'config: Deprecated alias for configure'
+  'doctor: Diagnose a project setup (engines, config, tooling)'
+  'quickstart: Guided walkthrough to create and configure a first project'
   'dry_run: Run tests in dry-run mode'
   'init: Initialize a new project'
   'execute: Execute tests'
@@ -47,8 +53,22 @@ _optics_completions() {
       ;;
     args)
       case $words[2] in
-        list|config|completion)
+        list|config|completion|quickstart)
           _arguments '--help[-h]'
+          ;;
+
+        configure)
+          _arguments \
+            '*:project_folder:_files -/' \
+            '--edit[Launch the full-field Textual editor]' \
+            '--help[-h]'
+          ;;
+
+        doctor)
+          _arguments \
+            '*:project_folder:_files -/' \
+            '--check[Exit non-zero if any check fails]' \
+            '--help[-h]'
           ;;
 
         live)
@@ -75,7 +95,8 @@ _optics_completions() {
 
         init)
           _arguments \
-            '--name=[Project name]' \
+            '1:project_name:' \
+            '--name=[Project name (deprecated; use the positional)]' \
             '--path=[Project path]' \
             '--force[Override existing]' \
             "--template=[Template name]:template:(${templates[@]})" \
@@ -127,7 +148,7 @@ _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute live generate setup serve mcp completion"
+  local subcommands="list configure config doctor quickstart dry_run init execute live generate setup serve mcp completion"
 
   local template_options="__OPTICS_TEMPLATES_BASH__"
   local runner_options="test_runner pytest"
@@ -146,8 +167,24 @@ _optics_completions() {
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|completion)
+    list|config|completion|quickstart)
       COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
+      ;;
+
+    configure)
+      if [[ $cur == -* ]]; then
+        COMPREPLY=( $(compgen -W "--edit -h --help" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -d -- "$cur") )
+      fi
+      ;;
+
+    doctor)
+      if [[ $cur == -* ]]; then
+        COMPREPLY=( $(compgen -W "--check -h --help" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -d -- "$cur") )
+      fi
       ;;
 
     live)
@@ -240,7 +277,20 @@ def write_completion_scripts():
     bash_path.write_text(_render(BASH_COMPLETION_CONTENT))
     return zsh_path, bash_path
 
+def _manual_instruction(rc_file: Path, source_line: str) -> str:
+    """The copy-pasteable fallback shown when the rc file is left untouched."""
+    return (f"To enable manually, add this line to {rc_file}:\n"
+            f"  {source_line.strip()}")
+
+
 def update_shell_rc(shell: Optional[str] = None):
+    """Enable shell autocompletion — with consent.
+
+    The ``~/.optics/optics_completion.*`` scripts are always generated. The
+    rc-file mutation itself is gated: with a TTY stdin the user is asked
+    before anything is appended, and a decline (or a non-TTY stdin, which
+    cannot answer prompts) leaves the rc file untouched and prints the manual
+    ``source`` line instead."""
     zsh_path, bash_path = write_completion_scripts()
     home = Path.home()
     if shell is None:
@@ -264,6 +314,12 @@ def update_shell_rc(shell: Optional[str] = None):
         if any(source_line.strip() in line.strip() for line in lines):
             print(f"Autocompletion already enabled in {rc_file}")
             return
+
+    if not sys.stdin.isatty() or not Confirm.ask(
+        f"Add autocompletion to {rc_file}?", default=True
+    ):
+        print(_manual_instruction(rc_file, source_line))
+        return
 
     with open(rc_file, "a", encoding="utf-8") as f:
         f.write(f"\n# Optics CLI autocompletion\n{source_line}")
