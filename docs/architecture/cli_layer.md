@@ -55,14 +55,14 @@ All commands follow a consistent pattern: registration, argument parsing, valida
 
 **Usage:**
 ```bash
-optics init --name my_project --path ./tests --template contact --git-init
+optics init my_project --path ./tests --template contact --git-init
 ```
 
 **Arguments:**
 
-- `--name` (required): Project name
+- `name` (positional, required unless interactive): Project name (`--name` still works but is deprecated)
 - `--path` (optional): Directory where project will be created
-- `--template` (optional): Project template to use
+- `--template` (optional): Project template to use; omitted interactively, a picker is offered
 - `--force` (flag): Override if project exists
 - `--git-init` (flag): Initialize git repository
 
@@ -75,13 +75,13 @@ sequenceDiagram
     participant InitHelper
     participant FileSystem
 
-    User->>CLI: optics init --name project
+    User->>CLI: optics init project
     CLI->>InitHelper: create_project(args)
     InitHelper->>FileSystem: Create project structure
     InitHelper->>FileSystem: Copy template files
     InitHelper->>FileSystem: Initialize git (if requested)
     InitHelper-->>CLI: Project created
-    CLI-->>User: Success message
+    CLI-->>User: Success message + next steps
 ```
 
 ### 2. Execute Command
@@ -115,11 +115,14 @@ sequenceDiagram
     CLI->>ExecuteHelper: execute_main(folder_path)
     ExecuteHelper->>ConfigHandler: Load configuration
     ExecuteHelper->>ExecuteHelper: Load test cases
+    ExecuteHelper->>ExecuteHelper: Driver preflight (server/device reachable)
     ExecuteHelper->>ExecutionEngine: Execute tests
     ExecutionEngine-->>ExecuteHelper: Results
     ExecuteHelper-->>CLI: Execution complete
-    CLI-->>User: Results displayed
+    CLI-->>User: Results displayed (+ failure details when steps failed)
 ```
+
+The preflight aborts with a non-zero exit and fix instructions when the enabled driver's backend is unreachable (Appium server / Android device, Selenium remote URL). `OPTICS_SKIP_PREFLIGHT=1` bypasses it.
 
 ### 3. Dry Run Command
 
@@ -158,7 +161,7 @@ optics setup --list
 - `--list` (flag): List available drivers
 
 **Modes:**
-- **Interactive Mode**: Launches a TUI (Text User Interface) for driver selection
+- **Interactive Mode**: Launches a TUI (Text User Interface) for driver selection (quit with `q`, `Ctrl+C`/`Ctrl+Q`, or the Quit button)
 - **List Mode**: Displays all available drivers
 - **Install Mode**: Installs specified drivers via package manager
 
@@ -224,20 +227,52 @@ optics list
 
 **Behavior:** Scans the framework API package and displays all available keywords that can be used in test cases, along with their parameters and descriptions.
 
-### 8. Config Command
+### 8. Configure Command
 
-**Command:** `optics config`
+**Command:** `optics configure [folder] [--edit]`
 
-**Purpose:** Manage framework configuration
+**Purpose:** Write or edit a project's `config.yaml` (configuration is project-specific; there is no global config)
 
 **Usage:**
 ```bash
-optics config
+optics configure myproject          # guided Q&A → rendered config.yaml
+optics configure myproject --edit   # full-field Textual editor
 ```
 
-**Behavior:** Launches an interactive configuration manager that allows users to view, edit, and validate framework configuration files.
+**Behavior:** The default path first confirms overwrite when a `config.yaml` already exists (declining aborts before any question is asked), then walks the user through platform questions and writes the rendered, commented `config.yaml`. `--edit` launches the interactive configuration manager over every config field of that project.
 
-### 9. Completion Command
+!!! note "Deprecated alias"
+    `optics config` prints a deprecation notice and forwards to the editor for the current directory.
+
+### 9. Doctor Command
+
+**Command:** `optics doctor [folder] [--check]`
+
+**Purpose:** Diagnose the environment (Python, engines, adb/Appium, browsers) and, when a folder is given, validate that project's `config.yaml`
+
+**Usage:**
+```bash
+optics doctor                     # environment only
+optics doctor myproject           # environment + project config
+optics doctor myproject --check   # exit non-zero if a project check fails (CI)
+```
+
+**Behavior:** Prints a ✅/⚠️/❌ table with a fix command for each row. Environment gaps are warnings; project-config problems are failures. Run without a project folder, it adds a ⚠️ row pointing you to `optics quickstart` instead of staying silent about the missing config. When the enabled driver's own requirements are unmet (e.g. Appium server unreachable or no device attached), the closing line lists exactly those blockers instead of the all-clear reassurance. Parses `config.yaml` with `yaml.safe_load` only — it never mutates the project it inspects. `--check` exits non-zero when any project-config row fails.
+
+### 10. Quickstart Command
+
+**Command:** `optics quickstart`
+
+**Purpose:** Guided, end-to-end walkthrough for a first project
+
+**Usage:**
+```bash
+optics quickstart
+```
+
+**Behavior:** Prints the welcome banner, asks what you want to automate, offers to install the matching engine, scaffolds a project, generates a platform-correct `config.yaml` from a short Q&A, runs `doctor` to verify, and prints the next steps. It never runs your tests itself.
+
+### 11. Completion Command
 
 **Command:** `optics completion`
 
@@ -248,7 +283,7 @@ optics config
 optics completion
 ```
 
-**Behavior:** Updates shell RC files (`.bashrc`, `.zshrc`) to enable command and argument autocompletion for the CLI.
+**Behavior:** Generates the completion scripts under `~/.optics/`, then asks for confirmation before appending the `source` line to the shell RC file (`.bashrc`, `.zshrc`). On decline — or without an interactive terminal — it prints the line to add manually and leaves RC files untouched.
 
 ## Helper Modules
 
@@ -351,7 +386,7 @@ Test execution commands use the `ExecutionEngine` to orchestrate test runs. The 
 
 ### Configuration Loading
 
-Commands load configuration through `ConfigHandler`, which supports hierarchical configuration (default, global, project) with proper precedence and merging.
+Commands load configuration from the project's own `config.yaml` through `ConfigHandler`. There is no global config layer — each project directory is self-contained.
 
 ## Command Execution Flow
 

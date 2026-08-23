@@ -1221,7 +1221,7 @@ sequenceDiagram
     participant Builder
 
     CLI->>Helper: execute(project)
-    Helper->>Helper: load_config()
+    Helper->>Helper: load_project_config()
     Helper->>Helper: load_test_cases()
     Helper->>SessionMgr: create_session()
     SessionMgr->>Session: new Session()

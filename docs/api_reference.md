@@ -1,4 +1,4 @@
-# :material-api: API Reference
+# API Reference
 
 This section provides comprehensive Python API documentation for the Optics Framework, automatically generated from code docstrings.
 

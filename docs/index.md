@@ -4,7 +4,7 @@ hide:
   - toc
 ---
 
-# :material-rocket-launch: Optics Framework
+# Optics Framework
 
 Welcome to the official documentation for the **Optics Framework**, an open-source test automation framework designed to simplify and streamline the creation and execution of automated tests across various platforms. Whether you're testing mobile apps (including DRM-enabled ones), Optics Framework provides a flexible, extensible, and user-friendly solution to meet your testing needs.
 
@@ -13,7 +13,7 @@ Welcome to the official documentation for the **Optics Framework**, an open-sour
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10842/badge)](https://www.bestpractices.dev/projects/10842)
 
-## :material-lightning-bolt: Key Features
+## Key Features
 
 <div class="grid cards" markdown>
 
@@ -45,24 +45,45 @@ Welcome to the official documentation for the **Optics Framework**, an open-sour
 
     Automatic fallback to alternative detection methods when primary fails
 
+-   :material-play-circle: **Live Sessions**
+
+    Drive a live target interactively and record sessions straight into modules. See [Live Usage](usage/live_usage.md).
+
+-   :material-connection: **MCP & Agents**
+
+    Expose every keyword as an MCP tool so AI clients drive a real target. See [MCP Usage](usage/mcp_usage.md).
+
 </div>
 
-## :material-rocket: Quick Start
+## Quick Start
 
-Get started with Optics Framework in minutes:
+From zero to a runnable test project with **one guided command**:
+
+!!! info "Requires Python 3.12 or newer"
+    Check first with `python3 --version`. On an older Python, install 3.12 — see [Installation](prerequisites.md) — then continue.
 
 ```bash
 pip install optics-framework
-optics setup --install appium easyocr        # install the engines you need
-optics init --name my_test_project --template contact
-# edit my_test_project/config.yaml for your device, start Appium + emulator, then:
-optics dry_run my_test_project               # validate without a device
-optics execute my_test_project               # run it
+optics quickstart
 ```
 
-[:material-arrow-right: Read the Quick Start Guide →](quickstart.md) &nbsp;·&nbsp; [Installation & Prerequisites →](prerequisites.md)
+The wizard asks what you want to automate (Android, iOS, web…), installs the matching engine, scaffolds the project, writes a platform-correct `config.yaml`, and runs an environment check before printing your next steps.
 
-## :material-book-open: Explore Documentation
+??? tip "Prefer to drive each step yourself?"
+    ```bash
+    pip install optics-framework
+    optics setup --install appium easyocr        # install the engines you need
+    optics init my_test_project --template contact
+    # edit my_test_project/config.yaml for your device, start Appium + emulator, then:
+    optics dry_run my_test_project               # validate without a device
+    optics execute my_test_project               # run it
+    ```
+
+    The [Getting Started Guide](getting-started.md) explains every step.
+
+[Getting Started Guide](getting-started.md){ .md-button .md-button--primary } &nbsp; [Installation](prerequisites.md){ .md-button }
+
+## Explore Documentation
 
 <div class="grid cards" markdown>
 
@@ -72,11 +93,11 @@ optics execute my_test_project               # run it
 
     [:material-arrow-right: Introduction →](introduction.md)
 
--   :material-speedometer: **Quick Start**
+-   :material-speedometer: **Getting Started**
 
-    Get up and running with your first test in minutes
+    Set up Optics and run your first test in minutes — guided or step by step
 
-    [:material-arrow-right: Quick Start →](quickstart.md)
+    [:material-arrow-right: Getting Started →](getting-started.md)
 
 -   :material-office-building: **Architecture**
 
@@ -128,10 +149,9 @@ optics execute my_test_project               # run it
 
 </div>
 
-## :material-help-circle: Need Help?
+## Need Help?
 
 -   :material-github: [GitHub Issues](https://github.com/mozarkai/optics-framework/issues) - Report bugs or request features
--   :material-book: [Documentation](https://mozarkai.github.io/optics-framework/) - Browse the full documentation
 -   :material-email: [Contact](mailto:lalit@mozark.ai) - Reach out for support
 
 ---

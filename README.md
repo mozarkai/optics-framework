@@ -15,7 +15,7 @@ One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Fr
 
 ![Optics demo](https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/optics-demo.gif)
 
-[Documentation](https://mozarkai.github.io/optics-framework/) · [Install](https://mozarkai.github.io/optics-framework/prerequisites/) · [Quick Start](https://mozarkai.github.io/optics-framework/quickstart/) · [Keywords](https://mozarkai.github.io/optics-framework/usage/keyword_usage/) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
+[Documentation](https://mozarkai.github.io/optics-framework/) · [Install](https://mozarkai.github.io/optics-framework/prerequisites/) · [Getting Started](https://mozarkai.github.io/optics-framework/getting-started/) · [Keywords](https://mozarkai.github.io/optics-framework/usage/keyword_usage/) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
 
 </div>
 
@@ -64,7 +64,7 @@ Most extra names match the `config.yaml` source keys, so the word you install is
 | **AI** | `llm` (natural-language mode + self-heal) · `mcp` (MCP server) |
 | **Bundles** | `mobile` · `web` · `vision` · `all` |
 
-`optics setup` installs the drivers, OCR and LLM engines above (and the bundles) by name — pinned to your installed Optics version — and bare `optics setup` opens a TUI picker:
+`optics setup` installs the drivers, OCR and LLM engines above (and the bundles) by name — pinned to your installed Optics version — and bare `optics setup` opens a TUI picker. `optics quickstart` goes one step further and offers the right extras for the platform you pick:
 
 ```bash
 optics setup --list
@@ -75,15 +75,26 @@ optics setup --install appium easyocr
 > The `mcp` server extra is **pip-only** (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
 
 > [!IMPORTANT]
-> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation & Prerequisites guide](https://mozarkai.github.io/optics-framework/prerequisites/).
+> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://mozarkai.github.io/optics-framework/prerequisites/).
 
 > [!WARNING]
 > Conda is not supported for `easyocr` + `optics-framework` together (conflicting NumPy 1.x/2.x requirements). Use a standard `venv`.
 
 ## Quickstart
 
+From a fresh install to a running test with **one guided command**:
+
 ```bash
-optics init --name my_test_project --template contact
+pip install optics-framework
+optics quickstart
+```
+
+`optics quickstart` asks what you want to automate, installs the matching engine, scaffolds the project, writes a platform-correct `config.yaml`, and runs an `optics doctor` check — then prints your next steps. Every prompt has a default, so pressing Enter throughout yields a runnable project.
+
+Prefer to drive each step yourself?
+
+```bash
+optics init my_test_project --template contact
 # point my_test_project/config.yaml at your device/app, start the Appium server, then:
 optics dry_run my_test_project    # validate keywords, elements and module refs — no device (but the config's engines must be installed)
 optics execute my_test_project
@@ -96,7 +107,7 @@ optics execute my_test_project
 - `gmail_web` — Selenium → `[selenium,easyocr]`
 - `playwright` — Playwright → `[playwright]` (then `playwright install` for the browsers)
 
-Omit `--template` for an empty scaffold with a commented starter `config.yaml`.
+Omit `--template` for an empty scaffold with a commented starter `config.yaml`. Need only a config for an existing folder? `optics configure <folder>` writes one from a few questions, and `optics doctor [folder] [--check]` verifies engines, tooling, and project config.
 
 ## Write a test as data
 
@@ -219,7 +230,7 @@ Run `optics list` for the live catalogue with signatures, or read the [Keyword U
 
 ## Configure once, in `config.yaml`
 
-Every section is a priority-ordered list and every entry has an `enabled` flag. Enable a second driver and it becomes a fallback.
+Every section is a priority-ordered list and every entry has an `enabled` flag. Enable a second driver and it becomes a fallback. Prefer not to hand-write it? `optics configure <folder>` writes one from a few questions, or `optics quickstart` builds the whole project including the config.
 
 ```yaml
 driver_sources:
@@ -290,7 +301,10 @@ Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text 
 ## CLI reference
 
 ```text
-optics init        Scaffold a new project (--name, --template, --path, --force, --git-init)
+optics init        Scaffold a new project (positional NAME; --template, --path, --force, --git-init)
+optics quickstart  Guided walkthrough: engines + project + config + doctor check
+optics configure   Write/edit a project's config.yaml (guided prompts; --edit opens a TUI)
+optics doctor      Diagnose engines, tooling and a project's config (--check for CI)
 optics setup       Install engine backends (--list, --install); bare command opens a TUI
 optics dry_run     Validate a project without touching a device
 optics execute     Run a project (--runner test_runner|pytest)
@@ -299,7 +313,6 @@ optics generate    Emit pytest or Robot Framework code from a project
 optics list        Print every discoverable keyword
 optics serve       Start the REST API server (--host, --port, --workers)
 optics mcp         Start the MCP server (--transport stdio|http)
-optics config      Manage global configuration (interactive)
 optics completion  Install shell autocompletion
 optics --version   Print the installed version
 ```
