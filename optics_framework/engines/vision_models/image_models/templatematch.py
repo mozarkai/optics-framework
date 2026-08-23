@@ -6,7 +6,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.engines.vision_models.base_methods import load_template
 from optics_framework.common import utils
 
-_MatchResult = tuple[bool, tuple[int, int], tuple[tuple[int, int], tuple[int, int]]]
+_MatchResult = tuple[Literal[True], tuple[int, int], tuple[tuple[int, int], tuple[int, int]]]
 
 
 class _IndexMiss:
@@ -58,12 +58,12 @@ class TemplateMatchingHelper(ImageInterface):
         self._sift: cv2.SIFT | None = None
         self._flann: cv2.FlannBasedMatcher | None = None
 
-    def _get_sift(self):
+    def _get_sift(self) -> cv2.SIFT:
         if self._sift is None:
             self._sift = cv2.SIFT_create(nfeatures=self._sift_nfeatures)
         return self._sift
 
-    def _get_flann(self):
+    def _get_flann(self) -> cv2.FlannBasedMatcher:
         if self._flann is None:
             flann_index_kdtree = 1
             index_params = {"algorithm": flann_index_kdtree, "trees": 5}
@@ -300,8 +300,19 @@ class TemplateMatchingHelper(ImageInterface):
         if match_rule:
             return True, annotated_frame
 
-        internal_logger.warning("SIFT assert_elements failed.")
-        raise RuntimeError("SIFT assert_elements failed.")
+        internal_logger.warning("assert_elements failed.")
+        raise RuntimeError("assert_elements failed.")
+
+    @staticmethod
+    def _apply_offset(
+        center: tuple[int, int], top_left: tuple[int, int],
+        bottom_right: tuple[int, int], offset: list[int],
+    ) -> tuple[Literal[True], tuple[int, int], list[tuple[int, int]]]:
+        """Apply a pixel ``offset`` (x right, y up) and build the success tuple."""
+        center_x, center_y = center
+        center_x += offset[0]
+        center_y -= offset[1]
+        return True, (center_x, center_y), [top_left, bottom_right]
 
     def element_exist(
         self,
@@ -324,14 +335,10 @@ class TemplateMatchingHelper(ImageInterface):
 
         fast = self._match_template_fast(input_data, reference_data, confidence_level, None)
         if fast is not None:
-            _, (center_x, center_y), (top_left, bottom_right) = fast
-            center_x += offset[0]
-            center_y -= offset[1]
-            return True, (center_x, center_y), [top_left, bottom_right]
+            _, center, (top_left, bottom_right) = fast
+            return self._apply_offset(center, top_left, bottom_right, offset)
 
         center_x, center_y, top_left, bottom_right = self._sift_match(
             input_data, reference_data, confidence_level, min_inliers
         )
-        center_x += offset[0]
-        center_y -= offset[1]
-        return True, (center_x, center_y), [top_left, bottom_right]
+        return self._apply_offset((center_x, center_y), top_left, bottom_right, offset)
