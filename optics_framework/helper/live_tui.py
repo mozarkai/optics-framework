@@ -42,7 +42,7 @@ from optics_framework.helper.live import (
 )
 
 
-_STATUS_HINT = "Tab complete · Ctrl-K keywords · Ctrl-N AI mode · /help · /quit"
+_STATUS_HINT = "/help · /quit · Tab complete · Ctrl-K keywords · Ctrl-N AI mode"
 
 # Style class for secondary / muted text, reused across history and overlays.
 _META = "class:meta"
@@ -548,6 +548,8 @@ class LiveTUI:
             return
         if text.startswith("/"):
             self._handle_command(text)
+        elif text.lower() in ("quit", "exit"):
+            self._handle_command("/quit")
         elif self._nl_mode:
             self._run_nl_async(text)
         else:
@@ -686,7 +688,7 @@ class LiveTUI:
         }
         handler = handlers.get(command)
         if handler is None:
-            self._info(f"Unknown command: {command}  (try /help)")
+            self._info(f"Unknown command: {command} — available: {' '.join(handlers)}")
             return
         handler(arg)
 

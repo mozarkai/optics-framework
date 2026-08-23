@@ -61,4 +61,4 @@ image_detection:
       capabilities: {}
 
 
-log_level: "DEBUG"
+log_level: "INFO"

@@ -90,9 +90,7 @@ class PlaywrightPageSource(ElementSourceInterface):
         Returns:
             Tuple[str, str]: (page_source, timestamp)
         """
-        internal_logger.error("trying get_page_source ..............")
         page = self._require_page()
-        internal_logger.error("trying get_page_source _require_page ..............")
         timestamp = utils.get_timestamp()
 
         html: str = run_async(page.content())

@@ -34,6 +34,7 @@ from optics_framework.api.verifier import Verifier
 from optics_framework.common import expose_api
 from optics_framework.common.error import OpticsError
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.helper.version import VERSION
 
 # fastmcp is optional (extra: mcp). Import lazily with a clear, actionable error.
 try:
@@ -235,7 +236,7 @@ def _decode_screenshot(result: Any) -> bytes:
 def build_server() -> "FastMCP":
     """Construct the FastMCP server with all keyword tools and state resources."""
     _require_fastmcp()
-    mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+    mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, version=VERSION)
 
     # --- Lifecycle tools -------------------------------------------------------
     async def start_session(
