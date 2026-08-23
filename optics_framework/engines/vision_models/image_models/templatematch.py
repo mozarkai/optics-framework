@@ -249,7 +249,7 @@ class TemplateMatchingHelper(ImageInterface):
         (higher = more lenient).
         """
         if input_data is None:
-            raise ValueError("Input data or template image is None.")
+            raise ValueError("Input data is None.")
         template = load_template(image, self.templates)
 
         fast = self._match_template_fast(input_data, template, confidence_level, index)
@@ -310,7 +310,7 @@ class TemplateMatchingHelper(ImageInterface):
         offset=[0, 0],
         confidence_level=0.85,
         min_inliers=10,
-    ) -> tuple[Literal[False], tuple[None, None], None] | tuple[Literal[True], tuple[int, int], list[tuple[int, int]]]:
+    ) -> tuple[Literal[True], tuple[int, int], list[tuple[int, int]]]:
         """Match ``reference_data`` in ``input_data``; apply pixel ``offset`` to the center.
 
         Returns ``(True, (x, y), [top_left, bottom_right])``; raises
