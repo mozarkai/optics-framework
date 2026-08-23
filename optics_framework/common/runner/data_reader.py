@@ -1,8 +1,9 @@
 import csv
 import yaml
 import re
+import inspect
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Union, List, Tuple, cast
+from typing import Callable, Optional, Dict, Union, List, Tuple, cast
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import (
     ApiData,
@@ -28,29 +29,6 @@ class DataReader(ABC):
         pass
 
     @staticmethod
-    def get_keyword_params(param_strings: List[str]) -> Dict[str, str]:
-        """
-        Parses a list of params (string) and filters only keyword params (i.e in format key=value) and returns them as a Dictionary
-        """
-        args = {}
-        for param in param_strings:
-            if DataReader.is_keyword_param(param):
-                arg_name, value = param.split("=", 1)
-                args[arg_name.strip()] = value.strip()
-        return args
-
-    @staticmethod
-    def get_positional_params(param_strings: List[str]) -> List[str]:
-        """
-        Parses a list of params (string) and returns a list of positional params (i.e not in key=value format)
-        """
-        args = []
-        for param in param_strings:
-            if not DataReader.is_keyword_param(param):
-                args.append(param.strip())
-        return args
-
-    @staticmethod
     def is_keyword_param(param: str) -> bool:
         """
         Checks if a parameter string is in key=value format.
@@ -64,6 +42,37 @@ class DataReader(ABC):
             return False
         # Must have a single = that is not part of ==, !=, <=, >=
         return bool(re.search(r'(?<![=!<>])=(?!=)', param))
+
+    @staticmethod
+    def split_params_by_signature(
+        method: Callable, param_strings: List[str]
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """Split params into (positional, keyword) using the target method's signature.
+
+        A ``key=value`` token is treated as a keyword argument only when ``key``
+        names an actual parameter of ``method``; otherwise the whole token stays
+        positional. This keeps locator strategies such as ``text=...``,
+        ``css=...`` or ``id=...`` as the keyword's positional ``element`` argument
+        (they merely happen to contain ``=``) while still honouring genuine
+        keyword arguments like ``event_name=...`` or ``timeout=...``. When the
+        signature cannot be read the historical behaviour is kept (every
+        ``key=value`` is a keyword argument).
+        """
+        try:
+            valid: Optional[set] = set(inspect.signature(method).parameters)
+        except (TypeError, ValueError):
+            valid = None
+        positional: List[str] = []
+        keywords: Dict[str, str] = {}
+        for param in param_strings:
+            if DataReader.is_keyword_param(param):
+                key, value = param.split("=", 1)
+                key = key.strip()
+                if valid is None or key in valid:
+                    keywords[key] = value.strip()
+                    continue
+            positional.append(param.strip())
+        return positional, keywords
 
     @abstractmethod
     def read_test_cases(self, file_path: str) -> dict:

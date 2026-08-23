@@ -281,5 +281,25 @@ def reconfigure_logging(config):
     initialize_handlers(config)
 
 
+def quiet_console_logs():
+    """
+    Raise the console handlers to WARNING so teardown records can no longer
+    reach the terminal once the result printer has rendered its final summary.
+    File handlers keep their configured levels and still record everything.
+    """
+    logging_manager.internal_console_handler.setLevel(logging.WARNING)
+    logging_manager.execution_console_handler.setLevel(logging.WARNING)
+
+
+def restore_console_logs():
+    """
+    Restore console handler levels (used when a new live render starts so
+    mid-run records are visible on the console again).
+    """
+    logging_manager.internal_console_handler.setLevel(internal_logger.level)
+    logging_manager.execution_console_handler.setLevel(execution_logger.level)
+
+
 __all__ = ["internal_logger","execution_logger",
-           "reconfigure_logging", "LoggerContext", "SessionLoggerAdapter"]
+           "reconfigure_logging", "quiet_console_logs", "restore_console_logs",
+           "LoggerContext", "SessionLoggerAdapter"]
