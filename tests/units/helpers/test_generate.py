@@ -16,6 +16,7 @@ explicit drift guard.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -512,6 +513,11 @@ class TestGenerateTestFile:
         generate_test_file(str(csv_project), framework="pytest", output_filename="my_suite.py")
         assert (csv_project / "generated" / "Tests" / "my_suite.py").exists()
 
+    def test_custom_output_nested_path(self, csv_project):
+        generate_test_file(
+            str(csv_project), framework="pytest", output_filename="sub/dir/my_suite.py")
+        assert (csv_project / "generated" / "Tests" / "sub" / "dir" / "my_suite.py").exists()
+
     def test_copies_input_templates(self, csv_project):
         templates = csv_project / "input_templates"
         templates.mkdir()
@@ -524,16 +530,16 @@ class TestGenerateTestFile:
     @pytest.mark.parametrize(
         "missing", ["config.yaml", "test_cases.csv", "modules.csv", "elements.csv"]
     )
-    def test_missing_required_file_aborts_without_output(self, csv_project, caplog, missing):
+    def test_missing_required_file_aborts_without_output(self, csv_project, missing):
         (csv_project / missing).unlink()
-        generate_test_file(str(csv_project), framework="pytest")
+        with pytest.raises(ValueError, match="missing"):
+            generate_test_file(str(csv_project), framework="pytest")
         assert not (csv_project / "generated").exists()
-        assert "Error" in caplog.text or "Missing" in caplog.text
 
-    def test_unsupported_framework_aborts(self, csv_project, caplog):
-        generate_test_file(str(csv_project), framework="junit")
+    def test_unsupported_framework_aborts(self, csv_project):
+        with pytest.raises(ValueError, match="Unsupported framework"):
+            generate_test_file(str(csv_project), framework="junit")
         assert not (csv_project / "generated" / "Tests").exists()
-        assert "Unsupported framework" in caplog.text
 
 
 # --------------------------------------------------------------------------- #
@@ -557,3 +563,11 @@ class TestFileWriter:
         (tmp_path / "generated").mkdir()
         FileWriter().copy_input_templates(str(tmp_path), str(tmp_path / "generated"))
         assert not (tmp_path / "generated" / "Tests" / "input_templates").exists()
+
+    def test_copy_input_templates_absent_is_quiet_at_info(self, tmp_path, caplog):
+        """A missing input_templates folder is normal for small projects — nothing
+        at INFO or above may reach the console (a debug-level note is fine)."""
+        with caplog.at_level(logging.INFO, logger="optics_framework.helper.generate"):
+            FileWriter().copy_input_templates(str(tmp_path), str(tmp_path / "generated"))
+
+        assert caplog.records == []

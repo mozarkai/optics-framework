@@ -11,6 +11,8 @@ from optics_framework.common.utils import unescape_csv_value
 
 TestCaseKey = "Test Cases"
 
+logger = logging.getLogger(__name__)
+
 # Type aliases for clarity
 TestCases = Dict[str, List[str]]
 Modules = Dict[str, List[Tuple[str, List[str]]]]
@@ -530,9 +532,10 @@ class FileWriter:
         tests_folder = os.path.join(folder_path, "Tests")
         os.makedirs(tests_folder, exist_ok=True)
         output_file = os.path.join(tests_folder, filename)
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(content)
-        logging.info(f"Generated test file: {output_file}")
+        logger.info(f"Generated test file: {output_file}")
 
         # Create requirements.txt in generated/ directory
         requirements = [
@@ -546,7 +549,7 @@ class FileWriter:
         requirements_file = os.path.join(folder_path, "requirements.txt")
         with open(requirements_file, "w", encoding="utf-8") as f:
             f.write("\n".join(requirements) + "\n")
-        logging.info(f"Generated requirements file: {requirements_file}")
+        logger.info(f"Generated requirements file: {requirements_file}")
 
     def copy_input_templates(self, source_folder: str, generated_folder: str) -> None:
         """
@@ -569,12 +572,12 @@ class FileWriter:
 
                 # Copy the entire input_templates folder
                 shutil.copytree(input_templates_path, destination_path)
-                logging.info(f"Copied input_templates folder to: {destination_path}")
+                logger.info(f"Copied input_templates folder to: {destination_path}")
 
             except Exception as e:
-                logging.error(f"Failed to copy input_templates folder: {e}")
+                logger.exception(f"Failed to copy input_templates folder: {e}")
         else:
-            logging.info("No input_templates folder found - skipping copy")
+            logger.debug("No input_templates folder found - skipping copy")
 
 
 def detect_file_type(file_path: str) -> Optional[Tuple[str, str]]:
@@ -601,7 +604,7 @@ def _detect_csv_type(file_path: str) -> Optional[Tuple[str, str]]:
         if "element_name" in headers and "element_id" in headers:
             return "csv", "elements"
     except Exception as e:
-        logging.error(f"Error reading CSV {file_path}: {e}")
+        logger.exception(f"Error reading CSV {file_path}: {e}")
     return None
 
 
@@ -618,7 +621,7 @@ def _detect_yaml_type(file_path: str) -> Optional[Tuple[str, str]]:
         if "Elements" in data:
             return "yaml", "elements"
     except Exception as e:
-        logging.error(f"Error reading YAML {file_path}: {e}")
+        logger.exception(f"Error reading YAML {file_path}: {e}")
     return None
 
 
@@ -778,24 +781,23 @@ def generate_test_file(
         framework (str): Target framework ('pytest' or 'robot').
         output_filename (str): Name of the output file (optional).
     """
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     # Find all files for mixed CSV/YAML support
     all_files = find_all_files(folder_path)
 
-    # Check for required files
-    if not all_files["config"]:
-        logging.error("Error: Missing config.yaml")
-        return
-    if not all_files["test_cases"]:
-        logging.error("Error: Missing test cases file")
-        return
-    if not all_files["modules"]:
-        logging.error("Error: Missing modules file")
-        return
-    if not all_files["elements"]:
-        logging.error("Error: Missing elements file")
-        return
+    required = {
+        "config.yaml": all_files["config"],
+        "test cases file": all_files["test_cases"],
+        "modules file": all_files["modules"],
+        "elements file": all_files["elements"],
+    }
+    missing = [label for label, found in required.items() if not found]
+    if missing:
+        raise ValueError(
+            f"Cannot generate: missing {', '.join(missing)} in {folder_path}. "
+            "Run `optics init <name>` to scaffold a complete project, or check the path."
+        )
 
     if framework == "pytest":
         generator = PytestGenerator()
@@ -804,8 +806,8 @@ def generate_test_file(
         generator = RobotGenerator()
         default_filename = f"test_{os.path.basename(folder_path)}.robot"
     else:
-        logging.error(f"Unsupported framework: {framework}")
-        return
+        raise ValueError(
+            f"Unsupported framework: {framework}. Use 'pytest' or 'robot'.")
 
     # Read and merge data from all files
     test_cases = read_mixed_data(all_files["test_cases"], "test_cases")
