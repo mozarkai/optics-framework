@@ -9,6 +9,7 @@ import pytest
 from optics_framework.common.models import ApiData
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
+    DataReader,
     YAMLDataReader,
     merge_dicts,
 )
@@ -19,6 +20,41 @@ def _write(tmp_path, name, content):
     path = tmp_path / name
     path.write_text(content, encoding="utf-8")
     return str(path)
+
+
+# --------------------------------------------------------------------------- #
+# split_params_by_signature — '=' locator vs genuine keyword-arg disambiguation #
+# --------------------------------------------------------------------------- #
+
+class TestSplitParamsBySignature:
+    @staticmethod
+    def _method(element, timeout="10", rule="all", event_name=None):
+        """Stand-in with a validate_element-like signature (no ``text`` param)."""
+
+    def test_equals_locators_stay_positional(self):
+        pos, kw = DataReader.split_params_by_signature(
+            self._method, ["text=Example Domain", "css=.btn", "xpath=//a[@id='x']"])
+        assert pos == ["text=Example Domain", "css=.btn", "xpath=//a[@id='x']"]
+        assert kw == {}
+
+    def test_real_keyword_args_are_split_off(self):
+        pos, kw = DataReader.split_params_by_signature(
+            self._method, ["text=OK", "event_name=tap", "5"])
+        assert pos == ["text=OK", "5"]
+        assert kw == {"event_name": "tap"}
+
+    def test_params_without_equals_are_untouched(self):
+        pos, kw = DataReader.split_params_by_signature(
+            self._method, ["${Heading}", "https://example.com"])
+        assert pos == ["${Heading}", "https://example.com"]
+        assert kw == {}
+
+    def test_unreadable_signature_falls_back_to_keyword(self):
+        # A non-introspectable target keeps the historical behaviour: a
+        # ``key=value`` token is treated as a keyword argument.
+        pos, kw = DataReader.split_params_by_signature(object(), ["text=x"])
+        assert pos == []
+        assert kw == {"text": "x"}
 
 
 # --------------------------------------------------------------------------- #

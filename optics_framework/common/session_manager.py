@@ -40,14 +40,15 @@ def _get_enabled_config_list(config: object, attr_name: str) -> list:
 def _maybe_setup_junit(
     config: Config, session_id: str, execution_output_path: Optional[str]
 ) -> None:
-    """Configure json_path and call setup_junit when json_log and output path are set."""
-    if not (config.json_log is True and execution_output_path is not None):
+    """Configure json_path when json_log is enabled and enable JUnit event logging for the session."""
+    if execution_output_path is None:
         return
-    config.json_path = (
-        str(Path(config.json_path).expanduser())
-        if config.json_path
-        else str((Path(execution_output_path) / "logs.json").expanduser())
-    )
+    if config.json_log is True:
+        config.json_path = (
+            str(Path(config.json_path).expanduser())
+            if config.json_path
+            else str((Path(execution_output_path) / "logs.json").expanduser())
+        )
     setup_junit(session_id, config)
 
 

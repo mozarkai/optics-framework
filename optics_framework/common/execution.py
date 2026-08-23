@@ -77,6 +77,7 @@ class BatchExecutor(Executor):
                 message=message,
                 extra={"session_id": session.session_id}
             ))
+            return runner.result_printer.test_state
         except Exception as e:
             await event_manager.publish_event(Event(
                 entity_type="execution",
@@ -127,6 +128,7 @@ class DryRunExecutor(Executor):
             message=message,
             extra={"session_id": session.session_id}
         ))
+        return runner.result_printer.test_state
 
 
 def _deserialize_single_param(param_value: str, param_type: Any) -> Any:
