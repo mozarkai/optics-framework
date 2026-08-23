@@ -23,7 +23,9 @@ jobs:
           python-version: '3.x'
 
       - name: Install Pre-Commit
-        run: pip install pre-commit
+        run: |
+          eval "$(python3 scripts/lock_pins.py)"
+          pip install --no-cache-dir --only-binary=:all: "pre-commit==$PRE_COMMIT_VERSION"
 
       - name: Determine Changed Files or Full Scan
         id: changed-files
