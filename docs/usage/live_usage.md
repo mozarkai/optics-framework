@@ -27,6 +27,10 @@ If no usable config is found, or the config has no enabled driver / more than on
 enabled driver / no enabled element source, `optics live` exits with a clear message.
 A malformed `config.yaml` reports the actual parse/validation error (not "no config").
 
+Don't have a project yet? `optics quickstart` scaffolds a complete one (config
+included), and `optics configure <folder>` generates a `config.yaml` for an existing
+folder.
+
 See `optics_framework/samples/` for ready-made configs: `contact` (Appium/Android),
 `gmail_web` (Selenium), `playwright` (Playwright). Named elements from the project are
 loaded lazily the first time they are needed.
@@ -80,12 +84,12 @@ sleep 5
 
 | Command          | Description |
 |------------------|-------------|
-| `/save <test_case> <module_name>` | Save the recorded actions as `<module_name>` in `modules/modules.csv` and add a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`. A header-only `elements/elements.csv` stub is created if missing. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `<module_name>` or `<test_case>` already exists, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/<module_name>/`. |
+| `/save <test_case> <module_name>` | Save the recorded actions as `<module_name>` in `modules/modules.csv` and add a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`. Elements are merged into your project's existing elements CSV when one is tracked anywhere (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second `elements/elements.csv` appears; with no elements file, a header-only `elements/elements.csv` stub is created. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `<module_name>` or `<test_case>` already exists, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/<module_name>/`. |
 | `/device [id]`   | **Appium sessions only.** List all connected **Android** (`adb`) and **iOS** (`idevice_id`) devices, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). |
 | `/elements`      | Open a read-only popup of named elements and their locators (Esc closes). |
 | `/screenshot`    | Capture the current device screen to a file and note the path in the history. |
 | `/help`          | Show the command reference (Esc closes). |
-| `/quit`          | End the session, run the normal driver teardown/cleanup, and exit. |
+| `/quit`, `/exit` | End the session, run the normal driver teardown/cleanup, and exit. Typing `quit` or `exit` without the slash does the same, so leaving is never a guessing game. An unknown `/command` prints the available commands instead of failing silently. |
 
 ## Keys
 

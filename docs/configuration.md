@@ -4,13 +4,163 @@ This document provides comprehensive documentation for all configuration options
 
 ## Overview
 
-There are two configuration files:
+Configuration is **project-specific**: the one file that matters is `config.yaml` in your project directory. It is what `optics execute <folder>` / `optics dry_run <folder>` actually read, and built-in defaults fill in any field you omit.
 
-1. **Project Configuration** — `config.yaml` in your project directory. This is the config `optics execute <folder>` / `optics dry_run <folder>` actually read. Built-in defaults fill in any field you omit.
-2. **Global Configuration** — `~/.optics/global_config.yaml`, edited by the interactive `optics config` command.
+!!! tip "Writing a project config"
+    Run `optics configure <folder>` to answer a few questions and generate the file, or `optics quickstart` for the full guided setup (project + config + environment check via `optics doctor`).
 
-!!! warning "The runner reads the project config only"
-    `optics execute`/`optics dry_run` load the target folder's own `config.yaml` and do **not** merge the global file into it. Treat `config.yaml` in each project as the source of truth for that run. The global config is a convenience surface edited via `optics config`; to affect a specific run, edit that project's `config.yaml`.
+## Configuration Examples
+
+=== "Android Mobile App"
+
+    Complete configuration for Android app testing with Appium:
+
+    ```yaml
+    # Core Settings
+    console: true
+    file_log: true
+    log_level: INFO
+    project_path: "./my_android_project"
+    halt_duration: 0.1
+    max_attempts: 3
+
+    # Driver Configuration
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://localhost:4723/wd/hub"
+          capabilities:
+            automationName: "UiAutomator2"
+            deviceName: "emulator-5554"
+            platformName: "Android"
+            platformVersion: "13.0"
+            appPackage: "com.example.app"
+            appActivity: "com.example.app.MainActivity"
+
+    # Element Sources
+    elements_sources:
+      - appium_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+      - appium_screenshot:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Text Detection
+    text_detection:
+      - easyocr:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Image Detection
+    image_detection:
+      - templatematch:
+          enabled: true
+          url: null
+          capabilities: {}
+    ```
+
+=== "Web Application (Playwright)"
+
+    Configuration for web testing using Playwright:
+
+    ```yaml
+    # Core Settings
+    console: true
+    file_log: true
+    json_log: true
+    log_level: INFO
+    project_path: "./web_test_project"
+    halt_duration: 0.2
+    max_attempts: 5
+
+    # Driver Configuration
+    driver_sources:
+      - playwright:
+          enabled: true
+          url: null
+          capabilities:
+            browser: "chromium"
+            headless: false
+            viewport:
+              width: 1920
+              height: 1080
+
+    # Element Sources
+    elements_sources:
+      - playwright_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+      - playwright_screenshot:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Text Detection
+    text_detection:
+      - pytesseract:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Image Detection
+    image_detection:
+      - templatematch:
+          enabled: true
+          url: null
+          capabilities: {}
+    ```
+
+=== "Mixed Driver Configuration"
+
+    Example with multiple drivers for fallback support:
+
+    ```yaml
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://localhost:4723/wd/hub"
+          capabilities:
+            automationName: "UiAutomator2"
+            deviceName: "emulator-5554"
+            platformName: "Android"
+      - selenium:
+          enabled: true
+          url: "http://localhost:4444/wd/hub"
+          capabilities:
+            browserName: "chrome"
+
+    elements_sources:
+      - appium_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+      - selenium_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+    ```
+
+=== "Full Logging Configuration"
+
+    Example with comprehensive logging setup:
+
+    ```yaml
+    console: true
+    file_log: true
+    json_log: true
+    log_level: DEBUG
+    log_path: "./logs/execution.log"
+    json_path: "./logs/execution.json"
+    project_path: "./test_project"
+    execution_output_path: "./outputs"
+    ```
+
+---
 
 ## Quick Reference
 
@@ -669,165 +819,9 @@ driver_sources:
 
 ---
 
-## Configuration Examples
-
-=== "Android Mobile App"
-
-    Complete configuration for Android app testing with Appium:
-
-    ```yaml
-    # Core Settings
-    console: true
-    file_log: true
-    log_level: INFO
-    project_path: "./my_android_project"
-    halt_duration: 0.1
-    max_attempts: 3
-
-    # Driver Configuration
-    driver_sources:
-      - appium:
-          enabled: true
-          url: "http://localhost:4723/wd/hub"
-          capabilities:
-            automationName: "UiAutomator2"
-            deviceName: "emulator-5554"
-            platformName: "Android"
-            platformVersion: "13.0"
-            appPackage: "com.example.app"
-            appActivity: "com.example.app.MainActivity"
-
-    # Element Sources
-    elements_sources:
-      - appium_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-      - appium_screenshot:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Text Detection
-    text_detection:
-      - easyocr:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Image Detection
-    image_detection:
-      - templatematch:
-          enabled: true
-          url: null
-          capabilities: {}
-    ```
-
-=== "Web Application (Playwright)"
-
-    Configuration for web testing using Playwright:
-
-    ```yaml
-    # Core Settings
-    console: true
-    file_log: true
-    json_log: true
-    log_level: INFO
-    project_path: "./web_test_project"
-    halt_duration: 0.2
-    max_attempts: 5
-
-    # Driver Configuration
-    driver_sources:
-      - playwright:
-          enabled: true
-          url: null
-          capabilities:
-            browser: "chromium"
-            headless: false
-            viewport:
-              width: 1920
-              height: 1080
-
-    # Element Sources
-    elements_sources:
-      - playwright_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-      - playwright_screenshot:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Text Detection
-    text_detection:
-      - pytesseract:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Image Detection
-    image_detection:
-      - templatematch:
-          enabled: true
-          url: null
-          capabilities: {}
-    ```
-
-=== "Mixed Driver Configuration"
-
-    Example with multiple drivers for fallback support:
-
-    ```yaml
-    driver_sources:
-      - appium:
-          enabled: true
-          url: "http://localhost:4723/wd/hub"
-          capabilities:
-            automationName: "UiAutomator2"
-            deviceName: "emulator-5554"
-            platformName: "Android"
-      - selenium:
-          enabled: true
-          url: "http://localhost:4444/wd/hub"
-          capabilities:
-            browserName: "chrome"
-
-    elements_sources:
-      - appium_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-      - selenium_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-    ```
-
-=== "Full Logging Configuration"
-
-    Example with comprehensive logging setup:
-
-    ```yaml
-    console: true
-    file_log: true
-    json_log: true
-    log_level: DEBUG
-    log_path: "./logs/execution.log"
-    json_path: "./logs/execution.json"
-    project_path: "./test_project"
-    execution_output_path: "./outputs"
-    ```
-
----
-
 ## How configuration is loaded
 
-When you run `optics execute` or `optics dry_run`, the framework reads the target folder's own `config.yaml`. Any field you leave out falls back to the built-in defaults (for example, every source defaults to `enabled: false`). The global `~/.optics/global_config.yaml` is **not** merged into the run, so a project's `config.yaml` is the single source of truth for that run.
-
-!!! note "Where the global config is used"
-    The global config is the file the interactive `optics config` command edits. It is a convenience for user-wide defaults and is not read by `optics execute`, so editing it has no effect on a run. To change how a specific project runs, edit that project's `config.yaml`.
+When you run `optics execute` or `optics dry_run`, the framework reads the target folder's own `config.yaml`. Any field you leave out falls back to the built-in defaults (for example, every source defaults to `enabled: false`). A project's `config.yaml` is the single source of truth for that run — there is no global config layer to merge.
 
 ---
 
@@ -837,5 +831,5 @@ When you run `optics execute` or `optics dry_run`, the framework reads the targe
 2. **Use Appropriate OCR**: Choose EasyOCR for accuracy, Pytesseract for speed
 3. **Set Log Level Appropriately**: Use DEBUG during development, INFO or WARNING in production
 4. **Configure Execution Paths**: Set `project_path` and `execution_output_path` for organized output
-5. **Keep Each Project's `config.yaml` Self-Contained**: It is the config the runner reads — don't rely on the global config to supply values at run time
+5. **Keep Each Project's `config.yaml` Self-Contained**: It is the only config the runner reads
 6. **Test Configuration Changes**: Verify configurations work correctly before running large test suites

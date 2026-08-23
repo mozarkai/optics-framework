@@ -12,9 +12,6 @@ It reuses the in-process keyword machinery from the REST server
 work here too. The driver is chosen at runtime via the `start_session` tool —
 nothing is hard-coded.
 
-> Verified end-to-end against a remote Appium hub on a physical Samsung A53:
-> `start_session` → `screenshot` (rendered PNG) → `swipe` → `terminate_session`.
-
 ---
 
 ## 1. Prerequisites

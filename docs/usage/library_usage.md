@@ -10,7 +10,7 @@ Install the Optics Framework:
 pip install optics-framework
 ```
 
-## Quick Start
+## Basic Example
 
 ### Basic Example
 

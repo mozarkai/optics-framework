@@ -49,8 +49,8 @@ theme:
 nav:
   - Home: index.md
   - Introduction: introduction.md
-  - Installation & Prerequisites: prerequisites.md
-  - Quick Start: quickstart.md
+  - Installation: prerequisites.md
+  - Getting Started: getting-started.md
   - Configuration: configuration.md
   - User Workflow: user_workflow.md
   - Usage:

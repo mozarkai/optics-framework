@@ -754,38 +754,22 @@ class DependencyConfig(BaseModel):
 
 #### Configuration Hierarchy
 
-Configuration is loaded from multiple sources with precedence:
+Configuration is project-specific: the runner loads a project's own
+`config.yaml` over the framework defaults.
 
 ```mermaid
 graph TB
-    A[Default Config] --> B[Global Config]
-    B --> C[Project Config]
+    A[Default Config] --> C[Project Config]
     C --> D[Final Config]
 
     A1[Hardcoded Defaults] --> A
-    B1[~/.optics/global_config.yaml] --> B
     C1[Project config.yaml] --> C
 ```
 
 **Precedence Order (highest to lowest):**
 
-1. **Project Config** - Project-specific configuration
-2. **Global Config** - User's global configuration (`~/.optics/global_config.yaml`)
-3. **Default Config** - Framework defaults
-
-#### Configuration Loading
-
-```python
-def load(self) -> Config:
-    default_config = Config()  # Framework defaults
-    global_config = self._load_yaml(self.global_config_path)  # Global config
-    project_config = self.config  # Project config
-
-    # Merge with precedence: project > global > default
-    merged = deep_merge(default_config, global_config)
-    self.config = deep_merge(merged, project_config)
-    return self.config
-```
+1. **Project Config** - Project-specific configuration (`config.yaml`)
+2. **Default Config** - Framework defaults
 
 #### Configuration Merging
 
@@ -796,6 +780,7 @@ def deep_merge(c1: Config, c2: Config) -> Config:
     """Merge c2 into c1, with c2 taking precedence."""
     # Recursively merge dictionaries
     # c2 values override c1 values
+    # List values are REPLACED wholesale, not merged item-by-item
 ```
 
 **Merge Rules:**
@@ -974,20 +959,11 @@ max_attempts: 5
 halt_duration: 0.2
 ```
 
-#### Environment-Specific Configuration
+#### Project-Specific Configuration
 
-Use global config for environment-specific settings:
-
-**Global Config (`~/.optics/global_config.yaml`):**
-```yaml
-# Development environment
-log_level: "DEBUG"
-file_log: true
-
-# Production environment
-# log_level: "INFO"
-# file_log: false
-```
+All configuration lives in the project's `config.yaml` — there is no global
+config layer. Per-environment or per-project differences are handled by giving
+each project its own file (scaffold one with `optics configure <folder>`).
 
 **Project Config:**
 ```yaml
@@ -996,6 +972,9 @@ driver_sources:
   - appium:
       enabled: true
       url: "http://localhost:4723"
+
+log_level: "DEBUG"
+file_log: true
 ```
 
 #### Configuration Precedence Examples
@@ -1003,23 +982,14 @@ driver_sources:
 **Example 1: Log Level**
 
 - Default: `INFO`
-- Global: `DEBUG`
 - Project: `WARNING`
 - **Result:** `WARNING` (project overrides)
 
 **Example 2: Driver URL**
 
 - Default: `None`
-- Global: `http://localhost:4723`
 - Project: `http://remote:4723`
-- **Result:** `http://remote:4723` (project overrides)
-
-**Example 3: Capabilities Merge**
-
-- Default: `{}`
-- Global: `{platformName: "Android"}`
-- Project: `{deviceName: "emulator"}`
-- **Result:** `{platformName: "Android", deviceName: "emulator"}` (merged)
+- **Result:** `http://remote:4723` (project supplies it)
 
 #### Configuration Validation Rules
 
@@ -1030,11 +1000,10 @@ driver_sources:
 
 #### Best Practices
 
-1. **Use Global Config for Environment Settings**: Store environment-specific settings in global config
-2. **Use Project Config for Project Settings**: Store project-specific settings in project config
-3. **Enable Only Needed Dependencies**: Disable unused dependencies for better performance
-4. **Use Capabilities for Driver Settings**: Store driver-specific settings in capabilities
-5. **Validate Configuration Early**: Check configuration during initialization
+1. **Keep Each Project Self-Contained**: Every setting a run needs belongs in that project's `config.yaml`
+2. **Enable Only Needed Dependencies**: Disable unused dependencies for better performance
+3. **Use Capabilities for Driver Settings**: Store driver-specific settings in capabilities
+4. **Validate Configuration Early**: Run `optics doctor <folder>` to check a project before executing
 
 #### Troubleshooting
 
@@ -1052,7 +1021,7 @@ driver_sources:
 
 **Configuration Not Applied:**
 
-- Check precedence order (project > global > default)
+- Check precedence order (project config.yaml > built-in defaults)
 - Verify configuration was saved
 - Check for merge conflicts
 

@@ -1,6 +1,6 @@
-# Installation & Prerequisites
+# Installation
 
-This page is the reference for what to install: the core CLI, the optional **engine extras**, and the **external tooling** each target platform needs. If you just want to try Optics, follow the [Quick Start](quickstart.md) — come back here when you need the full list of extras or the tooling for a specific platform.
+This page is the reference for what to install: the core CLI, the optional **engine extras**, and the **external tooling** each target platform needs. If you just want to try Optics, run `optics quickstart` instead — it picks and installs the right engine extra and verifies your environment for you (see [Getting Started](getting-started.md)). Come back here when you need the full list of extras or the tooling for a specific platform.
 
 ---
 
@@ -22,7 +22,7 @@ optics --version             # confirm the CLI is on your PATH
 
 ## Engine backends (extras)
 
-The core install has **no drivers, OCR, or LLM backends** — they are optional extras. Add them either as pip extras or with `optics setup` (the names match the `config.yaml` source keys):
+The core install has **no drivers, OCR, or LLM backends** — they are optional extras. Add them either as pip extras or with `optics setup` (the names match the `config.yaml` source keys). Not sure which you need? `optics quickstart` offers the right one based on your target platform, and plain `optics setup` opens an interactive picker:
 
 | Extra / `optics setup` name | Installs | Use for |
 |---|---|---|
@@ -66,4 +66,4 @@ Point your project `config.yaml` at the device/browser once the tooling is runni
 
 ## Next steps
 
-With the CLI and the extras you need installed, continue with the [Quick Start](quickstart.md) to create and run your first project.
+With the CLI and the extras you need installed, continue with the [Getting Started](getting-started.md) guide to create and run your first project — or let `optics quickstart` do those steps for you.

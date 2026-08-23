@@ -270,5 +270,5 @@ From here you can move from the C4 Level 1 and Level 2 views in this document in
 - [REST API Usage](usage/REST_API_usage.md) - Complete REST API endpoint reference
 - [API Reference](api_reference.md) - Python API documentation
 - [Configuration](configuration.md) - Configuration guide
-- [Quick Start](quickstart.md) - Getting started guide
+- [Getting Started](getting-started.md) - Install, first project, first run
 - [Usage Guide](usage/usage.md) - Usage examples and patterns

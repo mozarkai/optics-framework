@@ -6,19 +6,52 @@ Below are the primary usage guides, each tailored to a specific aspect of the fr
 
 <div class="grid cards" markdown>
 
-- [CLI Usage](CLI_usage.md)
-Learn how to use the Optics Framework's command-line interface (CLI) to set up the environment, execute test cases, initialize projects, and manage configurations.
+-   :material-console: **CLI Usage**
 
-- [Library Usage](library_usage.md)
-Learn how to use the Optics Framework as a Python library for programmatic test automation, including configuration, element interactions, and session management.
+    Set up the environment, execute test cases, initialize projects, and manage configurations.
 
-- [Robot Usage](robot_usage.md)
-Discover how to use the Optics Framework with Robot Framework, including library import, keyword usage, and test organization patterns.
+    [:material-arrow-right: CLI Usage →](CLI_usage.md)
 
-- [Keyword Usage](keyword_usage.md)
-Explore the available keywords for defining test steps in test modules, including actions, verifications, and flow control operations, with detailed parameter explanations.
+-   :material-play-circle: **Live Usage**
 
-- [REST API Usage](REST_API_usage.md)
-Learn how to use the Optics Framework's REST API for programmatic interaction, including session management, keyword execution, and real-time workspace monitoring.
+    Drive a live target keyword-by-keyword in an interactive session; record straight into modules.
+
+    [:material-arrow-right: Live Usage →](live_usage.md)
+
+-   :material-format-list-bulleted: **Keyword Usage**
+
+    The full keyword catalog: actions, verifications, and flow control for test modules.
+
+    [:material-arrow-right: Keyword Usage →](keyword_usage.md)
+
+-   :material-library: **Library Usage**
+
+    Use Optics as a Python library for programmatic test automation.
+
+    [:material-arrow-right: Library Usage →](library_usage.md)
+
+-   :material-robot: **Robot Framework Usage**
+
+    Use Optics with Robot Framework: library import, keyword usage, and test organization.
+
+    [:material-arrow-right: Robot Framework Usage →](robot_usage.md)
+
+-   :material-api: **REST API Usage**
+
+    Programmatic interaction via REST: session management and real-time monitoring.
+
+    [:material-arrow-right: REST API Usage →](REST_API_usage.md)
+
+-   :material-connection: **MCP Usage**
+
+    Expose every keyword as an MCP tool so an AI client drives a real target.
+
+    [:material-arrow-right: MCP Usage →](mcp_usage.md)
+
+-   :material-alert-circle: **Error Detection**
+
+    Define crash dialogs and network errors; Optics scans visible text and reports to JUnit.
+
+    [:material-arrow-right: Error Detection →](error_detection.md)
 
 </div>
