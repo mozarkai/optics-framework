@@ -21,6 +21,8 @@ class _IndexMiss:
 
 _INDEX_MISS = _IndexMiss()
 
+_PEAK_CANDIDATE_CAP = 4096
+
 
 class TemplateMatchingHelper(ImageInterface):
     """Detect a reference template inside a frame via a two-stage strategy.
@@ -119,10 +121,13 @@ class TemplateMatchingHelper(ImageInterface):
 
         ``matchTemplate`` correlates strongly across a neighbourhood of every
         true match, so the qualifying pixels are collapsed to one point per
-        instance: a vectorised local-maximum filter first, which bounds the
-        Python work however large the qualifying plateau grows, then greedy
+        instance: a vectorised local-maximum filter first, then greedy
         suppression of anything within half a template of an already-kept peak.
-        The radii are per-axis, so a wide-and-short template does not merge
+        Suppression consults a boolean map and only the highest-scoring
+        ``_PEAK_CANDIDATE_CAP`` local maxima enter the greedy pass, keeping the
+        cost linear in candidates when degenerate frames correlate into huge
+        plateaus of qualifying pixels. The radii are per-axis, so a
+        wide-and-short template does not merge
         instances stacked vertically. Survivors are ordered top-to-bottom,
         left-to-right so ``index`` selects the n-th match *on screen*, the same
         way the OCR engines interpret it. Instances closer than half a
@@ -133,11 +138,19 @@ class TemplateMatchingHelper(ImageInterface):
         local_max = (res >= cv2.dilate(res, neighbourhood)) & (res >= confidence_level)
         ys, xs = np.nonzero(local_max)
 
+        height, width = res.shape
+        suppressed = np.zeros((height, width), dtype=bool)
         kept: list[tuple[int, int]] = []
-        for idx in np.argsort(-res[ys, xs]):
+        order = np.argsort(-res[ys, xs], kind="stable")[:_PEAK_CANDIDATE_CAP]
+        for idx in order:
             x, y = int(xs[idx]), int(ys[idx])
-            if all(abs(x - kx) >= dx or abs(y - ky) >= dy for kx, ky in kept):
-                kept.append((x, y))
+            if suppressed[y, x]:
+                continue
+            kept.append((x, y))
+            suppressed[
+                max(0, y - dy + 1) : min(height, y + dy),
+                max(0, x - dx + 1) : min(width, x + dx),
+            ] = True
         return sorted(kept, key=lambda p: (p[1], p[0]))
 
     def _sift_match(
