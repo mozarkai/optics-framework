@@ -7,9 +7,16 @@ wiring check that setup → keyword → teardown holds together.
 import csv
 import os
 
+import pytest
 import yaml
 
 from optics_framework.optics import Optics
+
+# The bundled contact sample enables the easyocr text-detection engine in its
+# config.yaml, so every setup()-driven test below instantiates it. Skip the
+# module when easyocr isn't installed (mirrors the guarded skip in
+# test_mcp_server.py); avoids pulling the multi-GB torch stack into CI.
+pytest.importorskip("easyocr", reason="contact sample config enables the easyocr engine")
 
 CONTACT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/config.yaml')
 ELEMENTS_CSV_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/test_data/elements.csv')

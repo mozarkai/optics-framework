@@ -21,6 +21,7 @@ PINS = {
     "MKDOCSTRINGS_PYTHON_VERSION": "mkdocstrings-python",
     "MKDOCS_MINIFY_PLUGIN_VERSION": "mkdocs-minify-plugin",
     "UVICORN_VERSION": "uvicorn",
+    "PRE_COMMIT_VERSION": "pre-commit",
 }
 
 for var, pkg in PINS.items():
