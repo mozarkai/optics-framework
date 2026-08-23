@@ -1,5 +1,7 @@
 """Unit tests for TemplateMatchingHelper on synthetic frames (no device)."""
 
+import time
+
 import cv2
 import numpy as np
 import pytest
@@ -185,6 +187,49 @@ class TestDistinctPeaks:
         peaks = TemplateMatchingHelper._distinct_peaks(res, 0.85, tw=12, th=4)
 
         assert peaks == [(10, 10)]
+
+    def test_matches_naive_pairwise_suppression(self):
+        """Boolean-map NMS picks the same survivors as the naive greedy."""
+        rng = np.random.default_rng(99)
+        for _ in range(5):
+            res = np.zeros((60, 80), dtype=np.float32)
+            for _ in range(4):
+                y = int(rng.integers(0, 55))
+                x = int(rng.integers(0, 75))
+                h = int(rng.integers(1, 8))
+                w = int(rng.integers(1, 10))
+                res[y : y + h, x : x + w] = rng.uniform(0.86, 0.99)
+            dx, dy = max(1, 12 // 2), max(1, 9 // 2)
+            kernel = np.ones((2 * dy + 1, 2 * dx + 1), np.uint8)
+            local_max = (res >= cv2.dilate(res, kernel)) & (res >= 0.85)
+            ys, xs = np.nonzero(local_max)
+            naive: list[tuple[int, int]] = []
+            for i in np.argsort(-res[ys, xs], kind="stable"):
+                x, y = int(xs[i]), int(ys[i])
+                if all(abs(x - kx) >= dx or abs(y - ky) >= dy for kx, ky in naive):
+                    naive.append((x, y))
+
+            peaks = TemplateMatchingHelper._distinct_peaks(res, 0.85, tw=12, th=9)
+
+            assert peaks == sorted(naive, key=lambda p: (p[1], p[0]))
+
+    def test_degenerate_plateau_stays_bounded(self, helper):
+        """~2M tied qualifying pixels collapse quickly instead of stalling NMS.
+
+        Tied scores keep scan order under the stable sort, so the capped
+        greedy pass keeps one strip of survivors along the top of the map.
+        """
+        res = np.full((1080, 1920), 0.99, dtype=np.float32)
+
+        start = time.monotonic()
+        peaks = TemplateMatchingHelper._distinct_peaks(res, 0.85, tw=20, th=20)
+        elapsed = time.monotonic() - start
+
+        assert len(peaks) == 192
+        assert peaks[0] == (0, 0)
+        assert peaks[1] == (10, 0)
+        assert peaks[-1] == (1910, 0)
+        assert elapsed < 5.0
 
 
 class TestElementExist:
