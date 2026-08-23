@@ -1,11 +1,11 @@
 import os
 from collections.abc import Mapping
-import logging
-from typing import List, Dict, Any, Optional
-import yaml
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-from optics_framework.common.logging_config import initialize_handlers
+
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.logging_config import initialize_handlers
 
 
 class DependencyConfig(BaseModel):
@@ -86,9 +86,15 @@ class Config(BaseModel):
         """
         return getattr(self, key, default)
 
+
 def deep_merge(c1: Config, c2: Config) -> Config:
     """
     Recursively merge two Config objects, giving priority to c2.
+
+    Note on list-valued keys: a list in ``c2`` REPLACES the one in ``c1``
+    wholesale — it is not merged item-by-item. This matters for a project's
+    ``driver_sources``/``elements_sources`` etc.: a project that lists its
+    sources overrides the defaults' source list rather than appending to it.
     """
     d1 = c1.model_dump()
     d2 = c2.model_dump()
@@ -111,7 +117,14 @@ def deep_merge(c1: Config, c2: Config) -> Config:
 
 
 class ConfigHandler:
-    DEFAULT_GLOBAL_CONFIG_PATH = os.path.expanduser("~/.optics/global_config.yaml")
+    """Holds a project's resolved configuration.
+
+    Configuration is always project-specific: the runner loads a project's own
+    ``config.yaml`` directly (see ``optics execute``/``optics.py``). There is no
+    global config layer anymore — the old ``~/.optics/global_config.yaml`` was
+    edited by ``optics config`` but never read on the execution path, so it has
+    been removed."""
+
     DEPENDENCY_KEYS: List[str] = [
         "driver_sources",
         "elements_sources",
@@ -122,7 +135,6 @@ class ConfigHandler:
 
     def __init__(self, config: Config):
         self.project_name: Optional[str] = None
-        self.global_config_path: str = self.DEFAULT_GLOBAL_CONFIG_PATH
         if config.execution_output_path is None:
             if config.project_path is not None:
                 config.execution_output_path = os.path.join(
@@ -142,27 +154,6 @@ class ConfigHandler:
     def set_project(self, project_name: str) -> None:
         self.project_name = project_name
 
-
-    def _ensure_global_config(self) -> None:
-        if not os.path.exists(self.global_config_path):
-            os.makedirs(os.path.dirname(self.global_config_path), exist_ok=True)
-            with open(self.global_config_path, "w", encoding="utf-8") as f:
-                yaml.dump(self.config.model_dump(), f, default_flow_style=False)
-
-    def load(self) -> Config:
-        default_config = Config()
-        global_config = self._load_yaml(self.global_config_path)
-        if global_config is None:
-            global_config = Config()
-        project_config = self.config
-        merged = deep_merge(default_config, global_config)
-        self.config = deep_merge(merged, project_config)
-        self._precompute_enabled_configs()
-
-        if hasattr(merged, "execution_output_path"):
-            self.config.execution_output_path = merged.execution_output_path
-        return self.config
-
     def update_config(self, new_config: dict) -> None:
         """
         Update the current configuration with a new configuration dictionary or Config object.
@@ -178,18 +169,6 @@ class ConfigHandler:
         merged_config = deep_merge(current_config, new_config_obj)
         self.config = merged_config
         self._precompute_enabled_configs()
-
-
-    def _load_yaml(self, path: str) -> Optional[Config]:
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                    return Config(**data)
-            except (yaml.YAMLError, IOError) as e:
-                logging.error(f"Error parsing YAML file {path}: {e}")
-                return None
-        return None
 
     def _is_enabled(self, details: Any) -> bool:
         """Check if a configuration is enabled."""
@@ -218,8 +197,3 @@ class ConfigHandler:
         if key in self.DEPENDENCY_KEYS:
             return self._enabled_configs.get(key, default if default is not None else [])
         return getattr(self.config, key, default)
-
-    def save_config(self) -> None:
-        os.makedirs(os.path.dirname(self.global_config_path), exist_ok=True)
-        with open(self.global_config_path, "w", encoding="utf-8") as f:
-            yaml.dump(self.config.model_dump(), f, default_flow_style=False)

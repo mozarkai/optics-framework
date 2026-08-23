@@ -7,11 +7,15 @@ the extras declared in ``pyproject.toml``.
 """
 from __future__ import annotations
 
+import asyncio
+import io
+import re
 import subprocess
 import sys
+import threading
 import tomllib
 from pathlib import Path
-from unittest.mock import call, patch
+from unittest.mock import call, MagicMock, patch
 
 import pytest
 
@@ -24,6 +28,7 @@ from optics_framework.helper.setup import (
     InstallRequest,
     SetupError,
     _BUNDLES,
+    _TAIL_LINES,
     _alias_index,
     _norm,
     _split_token,
@@ -203,9 +208,12 @@ class TestSplitToken:
 # --------------------------------------------------------------------------- #
 
 class TestInstallExtras:
+    """Capture mode (``stream=False``, the TUI path): subprocess mocked —
+    no real pip/network. The streamed CLI variants live in TestStreamedInstall."""
+
     def test_returns_false_on_empty(self):
         with patch(f"{MODULE}.subprocess.run") as run:
-            ok, message = install_extras([])
+            ok, message = install_extras([], stream=False)
         run.assert_not_called()
         assert ok is False
         assert "No engines selected" in message
@@ -213,7 +221,7 @@ class TestInstallExtras:
     def test_success_returns_true_and_message(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run"):
-            ok, message = install_extras(_reqs("Appium"))
+            ok, message = install_extras(_reqs("Appium"), stream=False)
         assert ok is True
         assert "installed successfully" in message.lower()
 
@@ -221,7 +229,7 @@ class TestInstallExtras:
         engines = _reqs("Appium")
         with patch(f"{MODULE}._installed_version", return_value="1.2.3"), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(engines)
+            install_extras(engines, stream=False)
         run.assert_called_once_with(
             [sys.executable, "-m", "pip", "install", f"{DISTRIBUTION_NAME}[appium]==1.2.3"],
             capture_output=True, text=True, check=True, shell=False,
@@ -230,7 +238,7 @@ class TestInstallExtras:
     def test_unpinned_when_version_unknown(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(_reqs("Appium"))
+            install_extras(_reqs("Appium"), stream=False)
         args = run.call_args.args[0]
         assert args[-1] == f"{DISTRIBUTION_NAME}[appium]"
 
@@ -238,7 +246,7 @@ class TestInstallExtras:
         engines = _reqs("Selenium", "Appium", "Selenium")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(engines)
+            install_extras(engines, stream=False)
         spec = run.call_args.args[0][-1]
         assert spec == f"{DISTRIBUTION_NAME}[appium,selenium]"
 
@@ -246,7 +254,7 @@ class TestInstallExtras:
         reqs = [InstallRequest(engine=ALL_ENGINES["Appium"], version="==4.2.0")]
         with patch(f"{MODULE}._installed_version", return_value="1.2.3"), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(reqs)
+            install_extras(reqs, stream=False)
         assert run.call_args.args[0] == [
             sys.executable, "-m", "pip", "install",
             f"{DISTRIBUTION_NAME}[appium]==1.2.3", "appium-python-client==4.2.0",
@@ -255,14 +263,14 @@ class TestInstallExtras:
     def test_no_version_appends_nothing(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(_reqs("Appium"))
+            install_extras(_reqs("Appium"), stream=False)
         # extras spec only, no trailing concrete package.
         assert run.call_args.args[0][-1] == f"{DISTRIBUTION_NAME}[appium]"
 
     def test_playwright_triggers_browser_install(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(_reqs("Playwright"))
+            install_extras(_reqs("Playwright"), stream=False)
         assert run.call_count == 2
         assert run.call_args_list[1] == call(
             [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
@@ -272,14 +280,14 @@ class TestInstallExtras:
     def test_non_playwright_skips_browser_install(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(_reqs("Appium"))
+            install_extras(_reqs("Appium"), stream=False)
         assert run.call_count == 1
 
     def test_failure_returns_message_with_stderr(self):
         err = subprocess.CalledProcessError(1, "pip", stderr="boom: could not resolve")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run", side_effect=err):
-            ok, message = install_extras(_reqs("Appium"))
+            ok, message = install_extras(_reqs("Appium"), stream=False)
         assert ok is False
         assert "Installation failed" in message
         assert "boom: could not resolve" in message
@@ -288,9 +296,91 @@ class TestInstallExtras:
         err = subprocess.CalledProcessError(1, "pip", output="stdout detail", stderr="")
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run", side_effect=err):
-            ok, message = install_extras(_reqs("Appium"))
+            ok, message = install_extras(_reqs("Appium"), stream=False)
         assert ok is False
         assert "stdout detail" in message
+
+
+# --------------------------------------------------------------------------- #
+# install_extras — streamed CLI path                                           #
+# --------------------------------------------------------------------------- #
+
+def _popen_result(lines: list[str], returncode: int = 0) -> MagicMock:
+    proc = MagicMock()
+    proc.stdout = io.StringIO("".join(f"{line}\n" for line in lines))
+    proc.returncode = returncode
+    proc.wait.return_value = returncode
+    return proc
+
+
+class TestStreamedInstall:
+    """Stream mode (default, the ``optics setup --install`` CLI path): output is
+    echoed live and a short tail is quoted on failure."""
+
+    def test_streams_output_and_returns_success(self, capsys):
+        proc = _popen_result(["Collecting appium-python-client", "Downloading appium..."])
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.Popen", return_value=proc) as popen:
+            ok, message = install_extras(_reqs("Appium"))
+        assert popen.call_args.args[0] == [
+            sys.executable, "-m", "pip", "install", f"{DISTRIBUTION_NAME}[appium]",
+        ]
+        assert popen.call_args.kwargs == dict(
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, shell=False,
+        )
+        captured = capsys.readouterr()
+        assert "Collecting appium-python-client" in captured.out
+        assert "Downloading appium..." in captured.out
+        assert ok is True
+        assert message == "Engines installed successfully!"
+
+    def test_filters_requirement_already_satisfied_noise(self, capsys):
+        proc = _popen_result([
+            "Requirement already satisfied: certifi in /venv (2024.1)",
+            "Collecting appium-python-client",
+        ])
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.Popen", return_value=proc):
+            ok, _ = install_extras(_reqs("Appium"))
+        out = capsys.readouterr().out
+        assert "Requirement already satisfied" not in out
+        assert "Collecting appium-python-client" in out
+        assert ok is True
+
+    def test_version_pin_reaches_pip_argv(self):
+        reqs = [InstallRequest(engine=ALL_ENGINES["Appium"], version="==5.0.0")]
+        proc = _popen_result([])
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.Popen", return_value=proc) as popen:
+            ok, _ = install_extras(reqs)
+        argv = popen.call_args.args[0]
+        assert f"{DISTRIBUTION_NAME}[appium]" in argv
+        assert "appium-python-client==5.0.0" in argv
+        assert ok is True
+
+    def test_playwright_browser_install_also_streams(self):
+        procs = [_popen_result(["pip done"]), _popen_result(["browser downloaded"])]
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.Popen", side_effect=procs) as popen:
+            ok, _ = install_extras(_reqs("Playwright"))
+        assert popen.call_count == 2
+        assert popen.call_args_list[1].args[0][-1] == "chromium"
+        assert ok is True
+
+    def test_failure_quotes_tail_and_reports_failure(self, capsys):
+        lines = [f"line-{n}" for n in range(_TAIL_LINES + 5)]
+        proc = _popen_result(lines, returncode=1)
+        with patch(f"{MODULE}._installed_version", return_value=None), \
+                patch(f"{MODULE}.subprocess.Popen", return_value=proc):
+            ok, message = install_extras(_reqs("Appium"))
+        captured = capsys.readouterr()
+        assert all(f"line-{n}\n" in captured.out for n in range(len(lines)))
+        assert ok is False
+        assert "Installation failed" in message
+        # Only the buffered tail is quoted — early lines are not retained.
+        assert f"line-{len(lines) - 1}" in message
+        assert "line-0" not in message
 
 
 # --------------------------------------------------------------------------- #
@@ -386,3 +476,56 @@ class TestEngineInstallerApp:
                 assert "failed" in str(status.render()).lower()
                 # Install re-enabled so the user can retry after a failure.
                 assert app.query_one("#install", Button).disabled is False
+
+    async def test_install_ticker_shows_elapsed_time_then_final_status(self):
+        release = threading.Event()
+
+        def slow_install(requests, stream=False):
+            release.wait(timeout=10)
+            return True, "Engines installed successfully!"
+
+        app = EngineInstallerApp()
+        with patch(f"{MODULE}.install_extras", side_effect=slow_install) as inst:
+            async with app.run_test() as pilot:
+                app.selected_engines = {"Appium": ALL_ENGINES["Appium"]}
+                await pilot.click("#install")
+                # Let the 1 Hz ticker fire at least once mid-install.
+                await asyncio.sleep(1.3)
+                status = str(app.query_one("#status", Static).render())
+                assert re.search(r"Installing Appium… \d+s", status)
+                release.set()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                status = str(app.query_one("#status", Static).render())
+                assert "installed successfully" in status.lower()
+        assert inst.call_args.kwargs == {"stream": False}
+
+
+class TestKeyboardEscape:
+    """The picker must not be a keyboard trap (regression: q, Esc-less
+    Ctrl+C did nothing — only the on-screen Quit button or Ctrl+Q worked)."""
+
+    def test_q_and_ctrl_c_bindings_map_to_quit(self):
+        bindings = {}
+        for binding in EngineInstallerApp.BINDINGS:
+            key, action = binding[:2]
+            bindings[key] = action
+        assert bindings.get("q") == "quit"
+        assert bindings.get("ctrl+c") == "quit"
+        from textual.app import App
+        default_keys = {b.key for b in App.BINDINGS}
+        assert "ctrl+q" in default_keys
+
+    async def test_footer_is_composed_so_binding_is_visible(self):
+        from textual.widgets import Footer
+        app = EngineInstallerApp()
+        async with app.run_test():
+            assert app.query_one(Footer) is not None
+
+    @pytest.mark.parametrize("key", ["q", "ctrl+c"])
+    async def test_key_quits_the_app(self, key):
+        app = EngineInstallerApp()
+        async with app.run_test() as pilot:
+            await pilot.press(key)
+            await pilot.pause()
+        assert not app.is_running
