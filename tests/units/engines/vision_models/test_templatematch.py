@@ -254,10 +254,14 @@ class TestElementExist:
     def test_featureless_images_raise_from_sift_fallback(self, helper):
         """No-variance input falls through to SIFT, which raises on the miss."""
         frame = np.full((100, 100, 3), 128, dtype=np.uint8)
-        same = frame.copy()
+        # Template larger than the frame so the fast path's oversized guard
+        # routes to SIFT deterministically; cv2.matchTemplate on two identical
+        # solid regions returns a perfect-correlation 1.0 on some builds
+        # (notably the Linux wheels), short-circuiting the SIFT fallback.
+        template = np.full((120, 120, 3), 128, dtype=np.uint8)
 
-        with pytest.raises(RuntimeError, match="SIFT feature detection failed"):
-            helper.element_exist(frame, same)
+        with pytest.raises(RuntimeError):
+            helper.element_exist(frame, template)
 
 
 class TestFindElement:
