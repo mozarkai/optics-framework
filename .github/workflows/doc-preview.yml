@@ -4,8 +4,6 @@ on:
   workflow_run:
     workflows: ["Build-mkdocs-docs"]
     types: [completed]
-  pull_request_target:
-    types: [closed]
 
 permissions:
   contents: read
@@ -112,41 +110,4 @@ jobs:
                 body,
               });
               core.info(`Created preview comment on PR #${prNumber}.`);
-            }
-
-  remove-preview:
-    if: github.event_name == 'pull_request_target'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9
-        with:
-          action: remove
-          comment: false
-          pr-number: ${{ github.event.pull_request.number }}
-          pages-base-url: https://mozarkai.github.io/optics-framework
-      - env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        with:
-          script: |
-            const prNumber = Number(process.env.PR_NUMBER);
-            const marker = "<!-- pr-preview-comment -->";
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-            });
-            for (const c of comments) {
-              if (c.body && c.body.includes(marker)) {
-                await github.rest.issues.deleteComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: c.id,
-                });
-                core.info(`Deleted preview comment ${c.id}.`);
-              }
             }
