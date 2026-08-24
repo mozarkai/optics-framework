@@ -82,4 +82,14 @@ jobs:
           pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
             mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
             mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION
-      - run: mkdocs gh-deploy --force
+      - run: mkdocs build --site-dir /tmp/docs-site
+      - name: Publish site to gh-pages, preserving PR previews
+        run: |
+          git fetch --depth=1 origin gh-pages
+          git checkout --detach origin/gh-pages
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'pr-preview' -exec rm -rf {} +
+          cp -a /tmp/docs-site/. .
+          touch .nojekyll
+          git add -A
+          git diff --cached --quiet || git commit -m "Deploy docs from ${GITHUB_SHA}"
+          git push origin HEAD:gh-pages
