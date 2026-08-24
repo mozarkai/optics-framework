@@ -73,6 +73,44 @@ def render_url(path: str) -> str:
     return rel + "/"
 
 
+DIFF_CSS = """
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+"""
+
+
+def fit_diff_page(page: str, title: str) -> str:
+    page = page.replace("<title></title>", f"<title>{html.escape(title)}</title>", 1)
+    page = page.replace("&nbsp;", " ")
+    page = page.replace("</style>", f"</style>\n<style>{DIFF_CSS}</style>", 1)
+    page = page.replace("<body>", '<body>\n<div class="diff-shell">', 1)
+    return page.replace("</body>", "</div>\n</body>", 1)
+
+
 def write_diff_page(status: str, path: str, old_path: str, base: str) -> str:
     slug = slug_for(path)
     old = [] if status == "A" else file_lines(base, old_path)
@@ -84,10 +122,12 @@ def write_diff_page(status: str, path: str, old_path: str, base: str) -> str:
     else:
         fromdesc = f"{path} @ main"
     todesc = f"{path} (deleted)" if status == "D" else f"{path} @ PR head"
-    page = difflib.HtmlDiff(wrapcolumn=100).make_file(
+    page = difflib.HtmlDiff().make_file(
         old, new, fromdesc=fromdesc, todesc=todesc, context=True, numlines=4
     )
-    (OUT_DIR / f"{slug}.html").write_text(page, encoding="utf-8")
+    (OUT_DIR / f"{slug}.html").write_text(
+        fit_diff_page(page, f"{path} – docs diff"), encoding="utf-8"
+    )
     return slug
 
 
