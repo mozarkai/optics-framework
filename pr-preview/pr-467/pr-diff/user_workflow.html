@@ -1,0 +1,107 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/user_workflow.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to8__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/user_workflow.md @ main</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/user_workflow.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to8__0"></td><td class="diff_header" id="from8_6">6</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_6">6</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_7">7</td><td nowrap="nowrap">To begin, the Optics Framework requires a YAML configuration file (`config.yaml`) and CSV files to define your tests. You can bootstrap a project using the `optics init` command:</td><td class="diff_next"></td><td class="diff_header" id="to8_7">7</td><td nowrap="nowrap">To begin, the Optics Framework requires a YAML configuration file (`config.yaml`) and CSV files to define your tests. You can bootstrap a project using the `optics init` command:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_8">8</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_8">8</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to8__1"></td><td class="diff_header" id="from8_9">9</td><td nowrap="nowrap">```bash</td><td class="diff_next"></td><td class="diff_header" id="to8_9">9</td><td nowrap="nowrap">```bash</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to8__1">n</a></td><td class="diff_header" id="from8_10">10</td><td nowrap="nowrap">optics init<span class="diff_sub"> --name</span> my_project --template contact</td><td class="diff_next"><a href="#difflib_chg_to8__1">n</a></td><td class="diff_header" id="to8_10">10</td><td nowrap="nowrap">optics init my_project --template contact</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_11">11</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to8_11">11</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_12">12</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_12">12</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to8__2"><a href="#difflib_chg_to8__2">n</a></td><td class="diff_header" id="from8_13">13</td><td nowrap="nowrap"><span class="diff_sub">- **--name**: Specifies the project name (required).</span></td><td class="diff_next"><a href="#difflib_chg_to8__2">n</a></td><td class="diff_header" id="to8_13">13</td><td nowrap="nowrap"><span class="diff_add">- **name** (positional): Specifies the project name (`--name &lt;name&gt;` still works but is deprecated).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_14">14</td><td nowrap="nowrap">- **--path**: Directory where the project folder is created (default: current directory).</td><td class="diff_next"></td><td class="diff_header" id="to8_14">14</td><td nowrap="nowrap">- **--path**: Directory where the project folder is created (default: current directory).</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_15">15</td><td nowrap="nowrap">- **--template**: (Optional) Copy a complete sample project (`contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`).</td><td class="diff_next"></td><td class="diff_header" id="to8_15">15</td><td nowrap="nowrap">- **--template**: (Optional) Copy a complete sample project (`contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`).</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_16">16</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_16">16</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to8__top">t</a></td><td class="diff_header" id="from8_17">17</td><td nowrap="nowrap">With `--template`, the project is a ready-to-run copy of that sample. Without it, `optics init` scaffolds the subdirectory layout (`test_cases/`, `modules/`, `test_data/`) plus a commented starter `config.yaml`<span class="diff_chg"> for you to fill in</span>.</td><td class="diff_next"><a href="#difflib_chg_to8__top">t</a></td><td class="diff_header" id="to8_17">17</td><td nowrap="nowrap">With `--template`, the project is a ready-to-run copy of that sample. Without it, `optics init` scaffolds the subdirectory layout (`test_cases/`, `modules/`, `test_data/`) plus a commented starter `config.yaml`<span class="diff_chg">; run `optics configure &lt;folder&gt;` to answer a few questions and generate that config automatically</span>.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_18">18</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_19">19</td><td nowrap="nowrap"><span class="diff_add">!!! tip "New to Optics?"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_20">20</td><td nowrap="nowrap"><span class="diff_add">    `optics quickstart` walks you through engine install, project creation, and config in one guided flow; `optics doctor &lt;folder&gt;` verifies your environment and project setup afterwards.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_18">18</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_21">21</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_19">19</td><td nowrap="nowrap">## CSV Use Cases</td><td class="diff_next"></td><td class="diff_header" id="to8_22">22</td><td nowrap="nowrap">## CSV Use Cases</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_20">20</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to8_23">23</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from8_21">21</td><td nowrap="nowrap">The framework uses three primary CSV files to organize test logic: `test_cases.csv`, `modules.csv`, and `elements.csv`. Below are their purposes and examples.</td><td class="diff_next"></td><td class="diff_header" id="to8_24">24</td><td nowrap="nowrap">The framework uses three primary CSV files to organize test logic: `test_cases.csv`, `modules.csv`, and `elements.csv`. Below are their purposes and examples.</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>

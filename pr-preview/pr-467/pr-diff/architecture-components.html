@@ -1,0 +1,225 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/architecture/components.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/components.md @ main</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/components.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_753">753</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_753">753</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_754">754</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_754">754</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_755">755</td><td nowrap="nowrap">#### Configuration Hierarchy</td><td class="diff_next"></td><td class="diff_header" id="to1_755">755</td><td nowrap="nowrap">#### Configuration Hierarchy</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_756">756</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_756">756</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="from1_757">757</td><td nowrap="nowrap"><span class="diff_sub">Configuration is loaded from multiple sources with precedence:</span></td><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="to1_757">757</td><td nowrap="nowrap"><span class="diff_add">Configuration is project-specific: the runner loads a project's own</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__1"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_758">758</td><td nowrap="nowrap"><span class="diff_add">`config.yaml` over the framework defaults.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_758">758</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_759">759</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_759">759</td><td nowrap="nowrap">```mermaid</td><td class="diff_next"></td><td class="diff_header" id="to1_760">760</td><td nowrap="nowrap">```mermaid</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_760">760</td><td nowrap="nowrap">graph TB</td><td class="diff_next"></td><td class="diff_header" id="to1_761">761</td><td nowrap="nowrap">graph TB</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="from1_761">761</td><td nowrap="nowrap">    A[Default Config] --&gt; <span class="diff_chg">B</span>[<span class="diff_chg">Gl</span>o<span class="diff_chg">bal</span> Config]</td><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="to1_762">762</td><td nowrap="nowrap">    A[Default Config] --&gt; <span class="diff_chg">C</span>[<span class="diff_chg">Pr</span>o<span class="diff_chg">ject</span> Config]</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__2"></td><td class="diff_header" id="from1_762">762</td><td nowrap="nowrap"><span class="diff_sub">    B --&gt; C[Project Config]</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_763">763</td><td nowrap="nowrap">    C --&gt; D[Final Config]</td><td class="diff_next"></td><td class="diff_header" id="to1_763">763</td><td nowrap="nowrap">    C --&gt; D[Final Config]</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_764">764</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_764">764</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_765">765</td><td nowrap="nowrap">    A1[Hardcoded Defaults] --&gt; A</td><td class="diff_next"></td><td class="diff_header" id="to1_765">765</td><td nowrap="nowrap">    A1[Hardcoded Defaults] --&gt; A</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="from1_766">766</td><td nowrap="nowrap"><span class="diff_sub">    B1[~/.optics/global_config.yaml] --&gt; B</span></td><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_767">767</td><td nowrap="nowrap">    C1[Project config.yaml] --&gt; C</td><td class="diff_next"></td><td class="diff_header" id="to1_766">766</td><td nowrap="nowrap">    C1[Project config.yaml] --&gt; C</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__3"></td><td class="diff_header" id="from1_768">768</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_767">767</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_769">769</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_768">768</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_770">770</td><td nowrap="nowrap">**Precedence Order (highest to lowest):**</td><td class="diff_next"></td><td class="diff_header" id="to1_769">769</td><td nowrap="nowrap">**Precedence Order (highest to lowest):**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_771">771</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_770">770</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__4">n</a></td><td class="diff_header" id="from1_772">772</td><td nowrap="nowrap">1. **Project Config** - Project-specific configuration</td><td class="diff_next"><a href="#difflib_chg_to1__4">n</a></td><td class="diff_header" id="to1_771">771</td><td nowrap="nowrap">1. **Project Config** - Project-specific configuration<span class="diff_add"> (`config.yaml`)</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_773">773</td><td nowrap="nowrap"><span class="diff_sub">2. **Global Config** - User's global configuration (`~/.optics/global_config.yaml`)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_774">774</td><td nowrap="nowrap"><span class="diff_chg">3</span>. **Default Config** - Framework defaults</td><td class="diff_next"></td><td class="diff_header" id="to1_772">772</td><td nowrap="nowrap"><span class="diff_chg">2</span>. **Default Config** - Framework defaults</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_775">775</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_776">776</td><td nowrap="nowrap"><span class="diff_sub">#### Configuration Loading</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_777">777</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_778">778</td><td nowrap="nowrap"><span class="diff_sub">```python</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_779">779</td><td nowrap="nowrap"><span class="diff_sub">def load(self) -&gt; Config:</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_780">780</td><td nowrap="nowrap"><span class="diff_sub">    default_config = Config()  # Framework defaults</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_781">781</td><td nowrap="nowrap"><span class="diff_sub">    global_config = self._load_yaml(self.global_config_path)  # Global config</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_782">782</td><td nowrap="nowrap"><span class="diff_sub">    project_config = self.config  # Project config</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_783">783</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_784">784</td><td nowrap="nowrap"><span class="diff_sub">    # Merge with precedence: project &gt; global &gt; default</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_785">785</td><td nowrap="nowrap"><span class="diff_sub">    merged = deep_merge(default_config, global_config)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_786">786</td><td nowrap="nowrap"><span class="diff_sub">    self.config = deep_merge(merged, project_config)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_787">787</td><td nowrap="nowrap"><span class="diff_sub">    return self.config</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_788">788</td><td nowrap="nowrap"><span class="diff_sub">```</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_789">789</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_773">773</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_790">790</td><td nowrap="nowrap">#### Configuration Merging</td><td class="diff_next"></td><td class="diff_header" id="to1_774">774</td><td nowrap="nowrap">#### Configuration Merging</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_791">791</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_775">775</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_792">792</td><td nowrap="nowrap">The `deep_merge()` function recursively merges configurations:</td><td class="diff_next"></td><td class="diff_header" id="to1_776">776</td><td nowrap="nowrap">The `deep_merge()` function recursively merges configurations:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__4"></td><td class="diff_header" id="from1_795">795</td><td nowrap="nowrap">def deep_merge(c1: Config, c2: Config) -&gt; Config:</td><td class="diff_next"></td><td class="diff_header" id="to1_779">779</td><td nowrap="nowrap">def deep_merge(c1: Config, c2: Config) -&gt; Config:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_796">796</td><td nowrap="nowrap">    """Merge c2 into c1, with c2 taking precedence."""</td><td class="diff_next"></td><td class="diff_header" id="to1_780">780</td><td nowrap="nowrap">    """Merge c2 into c1, with c2 taking precedence."""</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_797">797</td><td nowrap="nowrap">    # Recursively merge dictionaries</td><td class="diff_next"></td><td class="diff_header" id="to1_781">781</td><td nowrap="nowrap">    # Recursively merge dictionaries</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_798">798</td><td nowrap="nowrap">    # c2 values override c1 values</td><td class="diff_next"></td><td class="diff_header" id="to1_782">782</td><td nowrap="nowrap">    # c2 values override c1 values</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__5">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__5">n</a></td><td class="diff_header" id="to1_783">783</td><td nowrap="nowrap"><span class="diff_add">    # List values are REPLACED wholesale, not merged item-by-item</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_799">799</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_784">784</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_800">800</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_785">785</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_801">801</td><td nowrap="nowrap">**Merge Rules:**</td><td class="diff_next"></td><td class="diff_header" id="to1_786">786</td><td nowrap="nowrap">**Merge Rules:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_802">802</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_787">787</td><td nowrap="nowrap"></td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__5"></td><td class="diff_header" id="from1_973">973</td><td nowrap="nowrap">max_attempts: 5</td><td class="diff_next"></td><td class="diff_header" id="to1_958">958</td><td nowrap="nowrap">max_attempts: 5</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_974">974</td><td nowrap="nowrap">halt_duration: 0.2</td><td class="diff_next"></td><td class="diff_header" id="to1_959">959</td><td nowrap="nowrap">halt_duration: 0.2</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__6"></td><td class="diff_header" id="from1_975">975</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_960">960</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_976">976</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_961">961</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__6">n</a></td><td class="diff_header" id="from1_977">977</td><td nowrap="nowrap">#### <span class="diff_chg">Envi</span>ro<span class="diff_chg">nm</span>e<span class="diff_chg">n</span>t-Specific Configuration</td><td class="diff_next"><a href="#difflib_chg_to1__6">n</a></td><td class="diff_header" id="to1_962">962</td><td nowrap="nowrap">#### <span class="diff_chg">P</span>ro<span class="diff_chg">j</span>e<span class="diff_chg">c</span>t-Specific Configuration</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_978">978</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_963">963</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__7">n</a></td><td class="diff_header" id="from1_979">979</td><td nowrap="nowrap"><span class="diff_sub">Use global config for environment-specific settings:</span></td><td class="diff_next"><a href="#difflib_chg_to1__7">n</a></td><td class="diff_header" id="to1_964">964</td><td nowrap="nowrap"><span class="diff_add">All configuration lives in the project's `config.yaml` — there is no global</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_980">980</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header" id="to1_965">965</td><td nowrap="nowrap"><span class="diff_add">config layer. Per-environment or per-project differences are handled by giving</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_981">981</td><td nowrap="nowrap"><span class="diff_sub">**Global Config (`~/.optics/global_config.yaml`):**</span></td><td class="diff_next"></td><td class="diff_header" id="to1_966">966</td><td nowrap="nowrap"><span class="diff_add">each project its own file (scaffold one with `optics configure &lt;folder&gt;`).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_982">982</td><td nowrap="nowrap"><span class="diff_sub">```yaml</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_983">983</td><td nowrap="nowrap"><span class="diff_sub"># Development environment</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_984">984</td><td nowrap="nowrap"><span class="diff_sub">log_level: "DEBUG"</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_985">985</td><td nowrap="nowrap"><span class="diff_sub">file_log: true</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_986">986</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_987">987</td><td nowrap="nowrap"><span class="diff_sub"># Production environment</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_988">988</td><td nowrap="nowrap"><span class="diff_sub"># log_level: "INFO"</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_989">989</td><td nowrap="nowrap"><span class="diff_sub"># file_log: false</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_990">990</td><td nowrap="nowrap"><span class="diff_sub">```</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_991">991</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_967">967</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_992">992</td><td nowrap="nowrap">**Project Config:**</td><td class="diff_next"></td><td class="diff_header" id="to1_968">968</td><td nowrap="nowrap">**Project Config:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_993">993</td><td nowrap="nowrap">```yaml</td><td class="diff_next"></td><td class="diff_header" id="to1_969">969</td><td nowrap="nowrap">```yaml</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_994">994</td><td nowrap="nowrap"># Project-specific settings</td><td class="diff_next"></td><td class="diff_header" id="to1_970">970</td><td nowrap="nowrap"># Project-specific settings</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__7"></td><td class="diff_header" id="from1_995">995</td><td nowrap="nowrap">driver_sources:</td><td class="diff_next"></td><td class="diff_header" id="to1_971">971</td><td nowrap="nowrap">driver_sources:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_996">996</td><td nowrap="nowrap">  - appium:</td><td class="diff_next"></td><td class="diff_header" id="to1_972">972</td><td nowrap="nowrap">  - appium:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_997">997</td><td nowrap="nowrap">      enabled: true</td><td class="diff_next"></td><td class="diff_header" id="to1_973">973</td><td nowrap="nowrap">      enabled: true</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_998">998</td><td nowrap="nowrap">      url: "http://localhost:4723"</td><td class="diff_next"></td><td class="diff_header" id="to1_974">974</td><td nowrap="nowrap">      url: "http://localhost:4723"</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__8">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__8">n</a></td><td class="diff_header" id="to1_975">975</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_976">976</td><td nowrap="nowrap"><span class="diff_add">log_level: "DEBUG"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_977">977</td><td nowrap="nowrap"><span class="diff_add">file_log: true</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_999">999</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_978">978</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1000">1000</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_979">979</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1001">1001</td><td nowrap="nowrap">#### Configuration Precedence Examples</td><td class="diff_next"></td><td class="diff_header" id="to1_980">980</td><td nowrap="nowrap">#### Configuration Precedence Examples</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__8"></td><td class="diff_header" id="from1_1002">1002</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_981">981</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1003">1003</td><td nowrap="nowrap">**Example 1: Log Level**</td><td class="diff_next"></td><td class="diff_header" id="to1_982">982</td><td nowrap="nowrap">**Example 1: Log Level**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1004">1004</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_983">983</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1005">1005</td><td nowrap="nowrap">- Default: `INFO`</td><td class="diff_next"></td><td class="diff_header" id="to1_984">984</td><td nowrap="nowrap">- Default: `INFO`</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__9">n</a></td><td class="diff_header" id="from1_1006">1006</td><td nowrap="nowrap"><span class="diff_sub">- Global: `DEBUG`</span></td><td class="diff_next"><a href="#difflib_chg_to1__9">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1007">1007</td><td nowrap="nowrap">- Project: `WARNING`</td><td class="diff_next"></td><td class="diff_header" id="to1_985">985</td><td nowrap="nowrap">- Project: `WARNING`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1008">1008</td><td nowrap="nowrap">- **Result:** `WARNING` (project overrides)</td><td class="diff_next"></td><td class="diff_header" id="to1_986">986</td><td nowrap="nowrap">- **Result:** `WARNING` (project overrides)</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__9"></td><td class="diff_header" id="from1_1009">1009</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_987">987</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1010">1010</td><td nowrap="nowrap">**Example 2: Driver URL**</td><td class="diff_next"></td><td class="diff_header" id="to1_988">988</td><td nowrap="nowrap">**Example 2: Driver URL**</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__10"></td><td class="diff_header" id="from1_1011">1011</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_989">989</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1012">1012</td><td nowrap="nowrap">- Default: `None`</td><td class="diff_next"></td><td class="diff_header" id="to1_990">990</td><td nowrap="nowrap">- Default: `None`</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__10">n</a></td><td class="diff_header" id="from1_1013">1013</td><td nowrap="nowrap"><span class="diff_sub">- Global: `http://localhost:4723`</span></td><td class="diff_next"><a href="#difflib_chg_to1__10">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1014">1014</td><td nowrap="nowrap">- Project: `http://remote:4723`</td><td class="diff_next"></td><td class="diff_header" id="to1_991">991</td><td nowrap="nowrap">- Project: `http://remote:4723`</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__11">n</a></td><td class="diff_header" id="from1_1015">1015</td><td nowrap="nowrap">- **Result:** `http://remote:4723` (project <span class="diff_chg">overr</span>i<span class="diff_sub">d</span>es)</td><td class="diff_next"><a href="#difflib_chg_to1__11">n</a></td><td class="diff_header" id="to1_992">992</td><td nowrap="nowrap">- **Result:** `http://remote:4723` (project <span class="diff_chg">suppl</span>ies<span class="diff_add"> it</span>)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1016">1016</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1017">1017</td><td nowrap="nowrap"><span class="diff_sub">**Example 3: Capabilities Merge**</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1018">1018</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1019">1019</td><td nowrap="nowrap"><span class="diff_sub">- Default: `{}`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1020">1020</td><td nowrap="nowrap"><span class="diff_sub">- Global: `{platformName: "Android"}`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1021">1021</td><td nowrap="nowrap"><span class="diff_sub">- Project: `{deviceName: "emulator"}`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1022">1022</td><td nowrap="nowrap"><span class="diff_sub">- **Result:** `{platformName: "Android", deviceName: "emulator"}` (merged)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1023">1023</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_993">993</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1024">1024</td><td nowrap="nowrap">#### Configuration Validation Rules</td><td class="diff_next"></td><td class="diff_header" id="to1_994">994</td><td nowrap="nowrap">#### Configuration Validation Rules</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1025">1025</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_995">995</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1026">1026</td><td nowrap="nowrap">1. **Required Fields**: None (all fields have defaults)</td><td class="diff_next"></td><td class="diff_header" id="to1_996">996</td><td nowrap="nowrap">1. **Required Fields**: None (all fields have defaults)</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__11"></td><td class="diff_header" id="from1_1029">1029</td><td nowrap="nowrap">4. **Path Validation**: Paths are validated on access (not on load)</td><td class="diff_next"></td><td class="diff_header" id="to1_999">999</td><td nowrap="nowrap">4. **Path Validation**: Paths are validated on access (not on load)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1030">1030</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1000">1000</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1031">1031</td><td nowrap="nowrap">#### Best Practices</td><td class="diff_next"></td><td class="diff_header" id="to1_1001">1001</td><td nowrap="nowrap">#### Best Practices</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1032">1032</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1002">1002</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__12">n</a></td><td class="diff_header" id="from1_1033">1033</td><td nowrap="nowrap"><span class="diff_sub">1. **Use Global Config for Environment Settings**: Store environment-specific settings in global config</span></td><td class="diff_next"><a href="#difflib_chg_to1__12">n</a></td><td class="diff_header" id="to1_1003">1003</td><td nowrap="nowrap"><span class="diff_add">1. **Keep Each Project Self-Contained**: Every setting a run needs belongs in that project's `config.yaml`</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1034">1034</td><td nowrap="nowrap"><span class="diff_sub">2. **Use Project Config for Project Settings**: Store project-specific settings in project config</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1035">1035</td><td nowrap="nowrap"><span class="diff_chg">3</span>. **Enable Only Needed Dependencies**: Disable unused dependencies for better performance</td><td class="diff_next"></td><td class="diff_header" id="to1_1004">1004</td><td nowrap="nowrap"><span class="diff_chg">2</span>. **Enable Only Needed Dependencies**: Disable unused dependencies for better performance</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1036">1036</td><td nowrap="nowrap"><span class="diff_chg">4</span>. **Use Capabilities for Driver Settings**: Store driver-specific settings in capabilities</td><td class="diff_next"></td><td class="diff_header" id="to1_1005">1005</td><td nowrap="nowrap"><span class="diff_chg">3</span>. **Use Capabilities for Driver Settings**: Store driver-specific settings in capabilities</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1037">1037</td><td nowrap="nowrap"><span class="diff_sub">5. **Validate Configuration Early**: Check configuration during initialization</span></td><td class="diff_next"></td><td class="diff_header" id="to1_1006">1006</td><td nowrap="nowrap"><span class="diff_add">4. **Validate Configuration Early**: Run `optics doctor &lt;folder&gt;` to check a project before executing</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1038">1038</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1007">1007</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1039">1039</td><td nowrap="nowrap">#### Troubleshooting</td><td class="diff_next"></td><td class="diff_header" id="to1_1008">1008</td><td nowrap="nowrap">#### Troubleshooting</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1040">1040</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1009">1009</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1041">1041</td><td nowrap="nowrap">**Configuration Not Loading:**</td><td class="diff_next"></td><td class="diff_header" id="to1_1010">1010</td><td nowrap="nowrap">**Configuration Not Loading:**</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__12"></td><td class="diff_header" id="from1_1051">1051</td><td nowrap="nowrap">- Review enabled configs: `config_handler.get("driver_sources")`</td><td class="diff_next"></td><td class="diff_header" id="to1_1020">1020</td><td nowrap="nowrap">- Review enabled configs: `config_handler.get("driver_sources")`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1052">1052</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1021">1021</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1053">1053</td><td nowrap="nowrap">**Configuration Not Applied:**</td><td class="diff_next"></td><td class="diff_header" id="to1_1022">1022</td><td nowrap="nowrap">**Configuration Not Applied:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1054">1054</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1023">1023</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="from1_1055">1055</td><td nowrap="nowrap">- Check precedence order (project &gt; <span class="diff_chg">g</span>l<span class="diff_chg">obal &gt;</span> default)</td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_1024">1024</td><td nowrap="nowrap">- Check precedence order (project <span class="diff_add">config.yaml </span>&gt; <span class="diff_chg">bui</span>l<span class="diff_chg">t-in</span> default<span class="diff_add">s</span>)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1056">1056</td><td nowrap="nowrap">- Verify configuration was saved</td><td class="diff_next"></td><td class="diff_header" id="to1_1025">1025</td><td nowrap="nowrap">- Verify configuration was saved</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1057">1057</td><td nowrap="nowrap">- Check for merge conflicts</td><td class="diff_next"></td><td class="diff_header" id="to1_1026">1026</td><td nowrap="nowrap">- Check for merge conflicts</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1058">1058</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1027">1027</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1059">1059</td><td nowrap="nowrap">## Factory System</td><td class="diff_next"></td><td class="diff_header" id="to1_1028">1028</td><td nowrap="nowrap">## Factory System</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>

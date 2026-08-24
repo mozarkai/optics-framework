@@ -1,0 +1,228 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/quickstart.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to5__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/quickstart.md @ main</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/quickstart.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__0"><a href="#difflib_chg_to5__0">f</a></td><td class="diff_header" id="from5_1">1</td><td nowrap="nowrap"># :material-speedometer: Quick Start Guide</td><td class="diff_next"><a href="#difflib_chg_to5__0">f</a></td><td class="diff_header" id="to5_1">1</td><td nowrap="nowrap"># :material-speedometer: Quick Start Guide</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_2">2</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_2">2</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_3">3</td><td nowrap="nowrap">This guide will walk you through creating automated tests using Optics Framework.</td><td class="diff_next"></td><td class="diff_header" id="to5_3">3</td><td nowrap="nowrap">This guide will walk you through creating automated tests using Optics Framework.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__1">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to5__1">n</a></td><td class="diff_header" id="to5_4">4</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_5">5</td><td nowrap="nowrap"><span class="diff_add">!!! abstract "A few terms first"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_6">6</td><td nowrap="nowrap"><span class="diff_add">    - **Engine** — an installable backend that does the work: an action *driver* (Appium, Selenium, Playwright), an OCR engine, or an LLM. Install engines with `optics setup`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_7">7</td><td nowrap="nowrap"><span class="diff_add">    - **Element source** — where Optics looks for on-screen elements (the driver's page source, OCR text, or image matching), configured under `elements_sources` in `config.yaml`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_8">8</td><td nowrap="nowrap"><span class="diff_add">    - **Locator** — the value that identifies one element: an XPath, a `text=…` string, a CSS selector, or an image filename.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_9">9</td><td nowrap="nowrap"><span class="diff_add">    - **Element** — a named locator you reference from a module as `${name}`, defined in `elements.csv`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_10">10</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_11">11</td><td nowrap="nowrap"><span class="diff_add">!!! tip "Just want to get going?"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_12">12</td><td nowrap="nowrap"><span class="diff_add">    Run **`optics quickstart`** — one guided command installs the right engine, scaffolds a project, writes a starter `config.yaml`, and runs a `doctor` check. The steps below explain what it sets up and how to author tests by hand.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_4">4</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_13">13</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_5">5</td><td nowrap="nowrap">## :material-rocket: Quick Start</td><td class="diff_next"></td><td class="diff_header" id="to5_14">14</td><td nowrap="nowrap">## :material-rocket: Quick Start</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_6">6</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_15">15</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_7">7</td><td nowrap="nowrap">### Step 1: Create Python Virtual Environment</td><td class="diff_next"></td><td class="diff_header" id="to5_16">16</td><td nowrap="nowrap">### Step 1: Create Python Virtual Environment</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__1"></td><td class="diff_header" id="from5_28">28</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_37">37</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_29">29</td><td nowrap="nowrap">!!! warning "Note"</td><td class="diff_next"></td><td class="diff_header" id="to5_38">38</td><td nowrap="nowrap">!!! warning "Note"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_30">30</td><td nowrap="nowrap">    Intel-based Macs cannot download easyocr.</td><td class="diff_next"></td><td class="diff_header" id="to5_39">39</td><td nowrap="nowrap">    Intel-based Macs cannot download easyocr.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_31">31</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_40">40</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__2">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to5__2">n</a></td><td class="diff_header" id="to5_41">41</td><td nowrap="nowrap"><span class="diff_add">!!! info "Mobile needs more than pip"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_42">42</td><td nowrap="nowrap"><span class="diff_add">    `optics setup` installs the Python engine, but Appium mobile automation also needs system tools it can't install for you — a **JDK (17+)**, **Node.js + the `appium` server**, and the **Android platform-tools** (`adb`). See [Installation &amp; Prerequisites](prerequisites.md), and run `optics doctor` any time to see exactly what's still missing (with the command to fix each item).</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__2"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_43">43</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_32">32</td><td nowrap="nowrap">### Step 3: Create a New Test Project</td><td class="diff_next"></td><td class="diff_header" id="to5_44">44</td><td nowrap="nowrap">### Step 3: Create a New Test Project</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_33">33</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_45">45</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__3"></td><td class="diff_header" id="from5_34">34</td><td nowrap="nowrap">```bash</td><td class="diff_next"></td><td class="diff_header" id="to5_46">46</td><td nowrap="nowrap">```bash</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__3">n</a></td><td class="diff_header" id="from5_35">35</td><td nowrap="nowrap">optics init<span class="diff_sub"> --name</span> my_test_project --template contact</td><td class="diff_next"><a href="#difflib_chg_to5__3">n</a></td><td class="diff_header" id="to5_47">47</td><td nowrap="nowrap">optics init my_test_project --template contact</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_36">36</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to5_48">48</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_37">37</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_49">49</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__4">n</a></td><td class="diff_header" id="from5_38">38</td><td nowrap="nowrap">This copies the `contact` sample — a complete, runnable project — into `./my_test_project`. Omit `--template` to scaffold an empty project you fill in yourself. Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`.</td><td class="diff_next"><a href="#difflib_chg_to5__4">n</a></td><td class="diff_header" id="to5_50">50</td><td nowrap="nowrap">This copies the `contact` sample — a complete, runnable project — into `./my_test_project`. Omit `--template` to scaffold an empty project you fill in yourself<span class="diff_add"> (or run `optics quickstart` for the fully guided walkthrough: engines + project + config + doctor check)</span>. Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_39">39</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_51">51</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_40">40</td><td nowrap="nowrap">## :material-file-tree: Project Structure</td><td class="diff_next"></td><td class="diff_header" id="to5_52">52</td><td nowrap="nowrap">## :material-file-tree: Project Structure</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_41">41</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_53">53</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_42">42</td><td nowrap="nowrap">Your test project uses four main components that work together:</td><td class="diff_next"></td><td class="diff_header" id="to5_54">54</td><td nowrap="nowrap">Your test project uses four main components that work together:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__4"></td><td class="diff_header" id="from5_71">71</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to5_83">83</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_72">72</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_84">84</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__5"></td><td class="diff_header" id="from5_73">73</td><td nowrap="nowrap">The API YAML format is different from element files: it defines collections, base URLs, endpoints, request/response, and optional `extract` rules. See the **Invoke Api** and **Add Api** sections in [Keyword Usage](usage/keyword_usage.md), and sample `api.yaml` files</td><td class="diff_next"></td><td class="diff_header" id="to5_85">85</td><td nowrap="nowrap">The API YAML format is different from element files: it defines collections, base URLs, endpoints, request/response, and optional `extract` rules. See the **Invoke Api** and **Add Api** sections in [Keyword Usage](usage/keyword_usage.md), and sample `api.yaml` files</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_74">74</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_86">86</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__5">n</a></td><td class="diff_header" id="from5_75">75</td><td nowrap="nowrap"><span class="diff_sub">## :material-cog: Step 1: Configure Your Environment</span></td><td class="diff_next"><a href="#difflib_chg_to5__5">n</a></td><td class="diff_header" id="to5_87">87</td><td nowrap="nowrap"><span class="diff_add">## :material-cog: Configuring `config.yaml`</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_76">76</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_88">88</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__6">n</a></td><td class="diff_header" id="from5_77">77</td><td nowrap="nowrap"><span class="diff_sub">The `config.yaml` file tells the framework how to connect to your device and what tools to use for finding elements.</span></td><td class="diff_next"><a href="#difflib_chg_to5__6">n</a></td><td class="diff_header" id="to5_89">89</td><td nowrap="nowrap"><span class="diff_add">The `config.yaml` file tells the framework how to connect to your device and what tools to use for finding elements. The quickest way to create it is `optics configure &lt;project&gt;` — a short Q&amp;A writes a platform-correct file for you (or `optics configure &lt;project&gt; --edit` to hand-tune every field in a TUI). You can also edit it directly, as shown below.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_78">78</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_90">90</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_79">79</td><td nowrap="nowrap">### Driver Connection</td><td class="diff_next"></td><td class="diff_header" id="to5_91">91</td><td nowrap="nowrap">### Driver Connection</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_80">80</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_92">92</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_81">81</td><td nowrap="nowrap">Connects to your device/emulator:</td><td class="diff_next"></td><td class="diff_header" id="to5_93">93</td><td nowrap="nowrap">Connects to your device/emulator:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__6"></td><td class="diff_header" id="from5_97">97</td><td nowrap="nowrap">- `deviceName`: Your device name</td><td class="diff_next"></td><td class="diff_header" id="to5_109">109</td><td nowrap="nowrap">- `deviceName`: Your device name</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_98">98</td><td nowrap="nowrap">- `udid`: Your device's unique identifier (find with `adb devices`)</td><td class="diff_next"></td><td class="diff_header" id="to5_110">110</td><td nowrap="nowrap">- `udid`: Your device's unique identifier (find with `adb devices`)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_99">99</td><td nowrap="nowrap">- `url`: Your Appium server address (usually localhost)</td><td class="diff_next"></td><td class="diff_header" id="to5_111">111</td><td nowrap="nowrap">- `url`: Your Appium server address (usually localhost)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_100">100</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_112">112</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__7">n</a></td><td class="diff_header" id="from5_101">101</td><td nowrap="nowrap">## :material-camera: <span class="diff_sub">Step 2: </span>Captur<span class="diff_chg">e</span> UI Element Screenshots</td><td class="diff_next"><a href="#difflib_chg_to5__7">n</a></td><td class="diff_header" id="to5_113">113</td><td nowrap="nowrap">## :material-camera: Captur<span class="diff_chg">ing</span> UI Element Screenshots</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_102">102</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_114">114</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_103">103</td><td nowrap="nowrap">Before defining elements in the CSV, you need to capture screenshots of the UI elements you want to interact with.</td><td class="diff_next"></td><td class="diff_header" id="to5_115">115</td><td nowrap="nowrap">Before defining elements in the CSV, you need to capture screenshots of the UI elements you want to interact with.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_104">104</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_116">116</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_105">105</td><td nowrap="nowrap">### What is `input_templates/`?</td><td class="diff_next"></td><td class="diff_header" id="to5_117">117</td><td nowrap="nowrap">### What is `input_templates/`?</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__7"></td><td class="diff_header" id="from5_108">108</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_120">120</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_109">109</td><td nowrap="nowrap">!!! tip "Best Practice"</td><td class="diff_next"></td><td class="diff_header" id="to5_121">121</td><td nowrap="nowrap">!!! tip "Best Practice"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_110">110</td><td nowrap="nowrap">    Organize `input_templates/` with subfolders for different screens and name images to match their Element_ID exactly.</td><td class="diff_next"></td><td class="diff_header" id="to5_122">122</td><td nowrap="nowrap">    Organize `input_templates/` with subfolders for different screens and name images to match their Element_ID exactly.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_111">111</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_123">123</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__8">n</a></td><td class="diff_header" id="from5_112">112</td><td nowrap="nowrap">## :material-format-list-bulleted: <span class="diff_sub">Step 3: </span>Defin<span class="diff_chg">e</span> Your Elements</td><td class="diff_next"><a href="#difflib_chg_to5__8">n</a></td><td class="diff_header" id="to5_124">124</td><td nowrap="nowrap">## :material-format-list-bulleted: Defin<span class="diff_chg">ing</span> Your Elements</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_113">113</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_125">125</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_114">114</td><td nowrap="nowrap">Elements are the UI components you'll interact with – buttons, text fields, tabs, etc.</td><td class="diff_next"></td><td class="diff_header" id="to5_126">126</td><td nowrap="nowrap">Elements are the UI components you'll interact with – buttons, text fields, tabs, etc.</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__8"></td><td class="diff_header" id="from5_115">115</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_127">127</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_116">116</td><td nowrap="nowrap">### CSV Structure</td><td class="diff_next"></td><td class="diff_header" id="to5_128">128</td><td nowrap="nowrap">### CSV Structure</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_117">117</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_129">129</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__9"></td><td class="diff_header" id="from5_118">118</td><td nowrap="nowrap">```csv</td><td class="diff_next"></td><td class="diff_header" id="to5_130">130</td><td nowrap="nowrap">```csv</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__9">n</a></td><td class="diff_header" id="from5_119">119</td><td nowrap="nowrap"><span class="diff_sub">Element_Name,Element_ID_xpath,Element_ID,Element_ID_Text</span></td><td class="diff_next"><a href="#difflib_chg_to5__9">n</a></td><td class="diff_header" id="to5_131">131</td><td nowrap="nowrap"><span class="diff_add">Element_Name,Element_ID</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_120">120</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to5_132">132</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__10"></td><td class="diff_header" id="from5_121">121</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_133">133</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__10">n</a></td><td class="diff_header" id="from5_122">122</td><td nowrap="nowrap"><span class="diff_sub">### Column Explanations</span></td><td class="diff_next"><a href="#difflib_chg_to5__10">n</a></td><td class="diff_header" id="to5_134">134</td><td nowrap="nowrap"><span class="diff_add">- **Element_Name**: the name you reference from modules as `${Element_Name}`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_135">135</td><td nowrap="nowrap"><span class="diff_add">- **Element_ID**: how to locate it — an XPath, a `text=…` string, a CSS selector, or an image filename from `input_templates/`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_123">123</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_136">136</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__11">n</a></td><td class="diff_header" id="from5_124">124</td><td nowrap="nowrap"><span class="diff_sub">- **Element_Name**: A descriptive name you'll use in modules (e.g., `login_button`)</span></td><td class="diff_next"><a href="#difflib_chg_to5__11">n</a></td><td class="diff_header" id="to5_137">137</td><td nowrap="nowrap"><span class="diff_add">**Fallbacks.** To give one element several locators (tried in order until one matches), add more columns whose names start with `Element_ID` — e.g. `Element_ID_xpath`, `Element_ID_text`, `Element_ID_image`. Only `Element_Name` and `Element_ID*` columns are read; any other column is ignored.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_125">125</td><td nowrap="nowrap"><span class="diff_sub">- **Element_ID_xpath**: The technical XPath or accessibility ID for finding the element</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_126">126</td><td nowrap="nowrap"><span class="diff_sub">- **Element_ID**: The PNG filename from `input_templates/` for visual matching</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_127">127</td><td nowrap="nowrap"><span class="diff_sub">- **Element_Text**: The visible text on the element (optional, for verification)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__11"></td><td class="diff_header" id="from5_128">128</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_138">138</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_129">129</td><td nowrap="nowrap">### Example `elements.csv`</td><td class="diff_next"></td><td class="diff_header" id="to5_139">139</td><td nowrap="nowrap">### Example `elements.csv`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_130">130</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_140">140</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_131">131</td><td nowrap="nowrap">```csv</td><td class="diff_next"></td><td class="diff_header" id="to5_141">141</td><td nowrap="nowrap">```csv</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__12"><a href="#difflib_chg_to5__12">n</a></td><td class="diff_header" id="from5_132">132</td><td nowrap="nowrap">Element_Name,Element_ID_xpath,Element_ID,Element_<span class="diff_chg">T</span>ext</td><td class="diff_next"><a href="#difflib_chg_to5__12">n</a></td><td class="diff_header" id="to5_142">142</td><td nowrap="nowrap">Element_Name,Element_ID_xpath,Element_ID<span class="diff_add">_image</span>,Element_<span class="diff_chg">ID_t</span>ext</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_133">133</td><td nowrap="nowrap">login_button,"//android.widget.Button[@resource-id=""com.app.login:id/btnLogin""]",button_login.png,Login</td><td class="diff_next"></td><td class="diff_header" id="to5_143">143</td><td nowrap="nowrap">login_button,"//android.widget.Button[@resource-id=""com.app.login:id/btnLogin""]",button_login.png,Login</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__13"></td><td class="diff_header" id="from5_134">134</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to5_144">144</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_135">135</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_145">145</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__13">n</a></td><td class="diff_header" id="from5_136">136</td><td nowrap="nowrap"><span class="diff_sub">### Special Element Types</span></td><td class="diff_next"><a href="#difflib_chg_to5__13">n</a></td><td class="diff_header" id="to5_146">146</td><td nowrap="nowrap"><span class="diff_add">Here `login_button` is located by XPath first, then by matching `button_login.png`, then by the on-screen text `Login`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_137">137</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_147">147</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__14">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to5__14">n</a></td><td class="diff_header" id="to5_148">148</td><td nowrap="nowrap"><span class="diff_add">### Values as Data</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__14"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_149">149</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_150">150</td><td nowrap="nowrap"><span class="diff_add">An element can also just hold a value your steps consume via `${...}` (e.g. text to type):</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_151">151</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_138">138</td><td nowrap="nowrap">```csv</td><td class="diff_next"></td><td class="diff_header" id="to5_152">152</td><td nowrap="nowrap">```csv</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__15">n</a></td><td class="diff_header" id="from5_139">139</td><td nowrap="nowrap"><span class="diff_sub">Element_Name,Element_ID_xpath,Element_ID,Element_Text</span></td><td class="diff_next"><a href="#difflib_chg_to5__15">n</a></td><td class="diff_header" id="to5_153">153</td><td nowrap="nowrap"><span class="diff_add">Element_Name,Element_ID</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_140">140</td><td nowrap="nowrap">test_password,<span class="diff_sub">,,</span>SecurePass123</td><td class="diff_next"></td><td class="diff_header" id="to5_154">154</td><td nowrap="nowrap">test_password,SecurePass123</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_141">141</td><td nowrap="nowrap">retry_count,<span class="diff_sub">,,</span>3</td><td class="diff_next"></td><td class="diff_header" id="to5_155">155</td><td nowrap="nowrap">retry_count,3</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_142">142</td><td nowrap="nowrap"><span class="diff_sub">item_list,"[""Item1"",""Item2"",""Item3""]",,</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_143">143</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to5_156">156</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_144">144</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_157">157</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_145">145</td><td nowrap="nowrap">### Finding XPaths</td><td class="diff_next"></td><td class="diff_header" id="to5_158">158</td><td nowrap="nowrap">### Finding XPaths</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_146">146</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_159">159</td><td nowrap="nowrap"></td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__15"></td><td class="diff_header" id="from5_154">154</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_167">167</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_155">155</td><td nowrap="nowrap">!!! tip "Newlines and special characters in CSV"</td><td class="diff_next"></td><td class="diff_header" id="to5_168">168</td><td nowrap="nowrap">!!! tip "Newlines and special characters in CSV"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_156">156</td><td nowrap="nowrap">    XPaths and other locator strings in CSV stay one line per row. To include a newline in a value (e.g. in `@content-desc`), use `\n`; for a tab use `\t`, and for a literal backslash use `\\`. Example: `//android.widget.ImageView[@content-desc="I\nIcici Bank Limited"]` in a cell is read as an XPath whose attribute value contains a real newline between `I` and `Icici Bank Limited`.</td><td class="diff_next"></td><td class="diff_header" id="to5_169">169</td><td nowrap="nowrap">    XPaths and other locator strings in CSV stay one line per row. To include a newline in a value (e.g. in `@content-desc`), use `\n`; for a tab use `\t`, and for a literal backslash use `\\`. Example: `//android.widget.ImageView[@content-desc="I\nIcici Bank Limited"]` in a cell is read as an XPath whose attribute value contains a real newline between `I` and `Icici Bank Limited`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_157">157</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_170">170</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__16">n</a></td><td class="diff_header" id="from5_158">158</td><td nowrap="nowrap">## :material-puzzle: <span class="diff_sub">Step 4: </span>Creat<span class="diff_chg">e</span> Reusable Modules</td><td class="diff_next"><a href="#difflib_chg_to5__16">n</a></td><td class="diff_header" id="to5_171">171</td><td nowrap="nowrap">## :material-puzzle: Creat<span class="diff_chg">ing</span> Reusable Modules</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_159">159</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_172">172</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_160">160</td><td nowrap="nowrap">Modules are sequences of actions that accomplish a specific task, such as building blocks.</td><td class="diff_next"></td><td class="diff_header" id="to5_173">173</td><td nowrap="nowrap">Modules are sequences of actions that accomplish a specific task, such as building blocks.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_161">161</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_174">174</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_162">162</td><td nowrap="nowrap">### CSV Structure</td><td class="diff_next"></td><td class="diff_header" id="to5_175">175</td><td nowrap="nowrap">### CSV Structure</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__16"></td><td class="diff_header" id="from5_187">187</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_200">200</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_188">188</td><td nowrap="nowrap">!!! note "Variable References"</td><td class="diff_next"></td><td class="diff_header" id="to5_201">201</td><td nowrap="nowrap">!!! note "Variable References"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_189">189</td><td nowrap="nowrap">    `${element_name}` references an element from `elements.csv`</td><td class="diff_next"></td><td class="diff_header" id="to5_202">202</td><td nowrap="nowrap">    `${element_name}` references an element from `elements.csv`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_190">190</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_203">203</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__17">n</a></td><td class="diff_header" id="from5_191">191</td><td nowrap="nowrap">## :material-check-circle: <span class="diff_sub">Step 5: </span>Build Test Cases</td><td class="diff_next"><a href="#difflib_chg_to5__17">n</a></td><td class="diff_header" id="to5_204">204</td><td nowrap="nowrap">## :material-check-circle: Build<span class="diff_add">ing</span> Test Cases</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_192">192</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_205">205</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_193">193</td><td nowrap="nowrap">Test cases combine modules into complete test scenarios.</td><td class="diff_next"></td><td class="diff_header" id="to5_206">206</td><td nowrap="nowrap">Test cases combine modules into complete test scenarios.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_194">194</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_207">207</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_195">195</td><td nowrap="nowrap">### CSV Structure</td><td class="diff_next"></td><td class="diff_header" id="to5_208">208</td><td nowrap="nowrap">### CSV Structure</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__17"></td><td class="diff_header" id="from5_237">237</td><td nowrap="nowrap">- Python 3.12 installed on your system</td><td class="diff_next"></td><td class="diff_header" id="to5_250">250</td><td nowrap="nowrap">- Python 3.12 installed on your system</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_238">238</td><td nowrap="nowrap">- Optics Framework installed in your virtual environment</td><td class="diff_next"></td><td class="diff_header" id="to5_251">251</td><td nowrap="nowrap">- Optics Framework installed in your virtual environment</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_239">239</td><td nowrap="nowrap">- Appium server running: `appium`</td><td class="diff_next"></td><td class="diff_header" id="to5_252">252</td><td nowrap="nowrap">- Appium server running: `appium`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_240">240</td><td nowrap="nowrap">- Android virtual device or physical device connected and verified: `adb devices`</td><td class="diff_next"></td><td class="diff_header" id="to5_253">253</td><td nowrap="nowrap">- Android virtual device or physical device connected and verified: `adb devices`</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to5__top">t</a></td><td class="diff_header" id="to5_254">254</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_255">255</td><td nowrap="nowrap"><span class="diff_add">Run `optics doctor my_test_project` to confirm all of the above at once — it reports each engine, tool, and `config.yaml` check as ✅/⚠️/❌ with the command to fix anything missing.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_241">241</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_256">256</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_242">242</td><td nowrap="nowrap">New to Appium or the Android SDK? Install them from their official docs — [Appium](https://appium.io/docs/en/latest/quickstart/) and the [Android platform tools](https://developer.android.com/tools/releases/platform-tools). The [Installation &amp; Prerequisites](prerequisites.md) page lists what Optics itself needs.</td><td class="diff_next"></td><td class="diff_header" id="to5_257">257</td><td nowrap="nowrap">New to Appium or the Android SDK? Install them from their official docs — [Appium](https://appium.io/docs/en/latest/quickstart/) and the [Android platform tools](https://developer.android.com/tools/releases/platform-tools). The [Installation &amp; Prerequisites](prerequisites.md) page lists what Optics itself needs.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_243">243</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_258">258</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_244">244</td><td nowrap="nowrap">### Always Dry Run Test Cases Before Executing</td><td class="diff_next"></td><td class="diff_header" id="to5_259">259</td><td nowrap="nowrap">### Always Dry Run Test Cases Before Executing</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
