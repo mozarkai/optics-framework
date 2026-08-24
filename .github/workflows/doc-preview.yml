@@ -76,7 +76,7 @@ jobs:
           comment: false
           source-dir: docs-site
           pr-number: ${{ steps.validate.outputs.pr_number }}
-          pages-base-url: https://mozarkai.github.io/optics-framework
+          pages-base-url: mozarkai.github.io/optics-framework
       - if: steps.validate.outputs.publish == 'true' && steps.preview.outputs.preview-url != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
@@ -127,7 +127,7 @@ jobs:
           action: remove
           comment: false
           pr-number: ${{ github.event.pull_request.number }}
-          pages-base-url: https://mozarkai.github.io/optics-framework
+          pages-base-url: mozarkai.github.io/optics-framework
       - env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
