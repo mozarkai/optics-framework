@@ -13,7 +13,7 @@ This framework was designed primarily for the following use cases:
    That rely on more than one element identifier and multiple fallbacks to ensure maximum recovery
 
 3. **Enable Non-Coders to Build Test Automation Scripts**
-   No programming knowledge required to create and execute tests
+   No programming knowledge is required to create and execute tests, since entire suites are described as plain-language CSV/YAML steps that anyone on the team can read, review, and extend without touching code
 
 ## Supported Platforms
 
