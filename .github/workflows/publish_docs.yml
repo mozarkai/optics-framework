@@ -32,6 +32,25 @@ jobs:
             mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
             mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION
       - run: mkdocs build
+      - if: github.event_name == 'pull_request'
+        run: git fetch origin "${{ github.event.pull_request.base.sha }}" --depth=1
+      - if: github.event_name == 'pull_request'
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/generate_pr_diff.py
+      - if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: docs-site
+          path: site/
+      - if: github.event_name == 'pull_request'
+        run: echo "${{ github.event.pull_request.number }}" > pr_num
+      - if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: pr_num
+          path: pr_num
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
