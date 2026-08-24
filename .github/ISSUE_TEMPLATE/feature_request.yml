@@ -1,0 +1,58 @@
+name: Feature Request
+description: Suggest an idea, keyword, engine integration, or improvement
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape Optics Framework. Please [search existing issues](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue) first — add a 👍 to an existing request instead of opening a duplicate.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to achieve, and what stands in your way? Concrete scenarios help more than abstract features.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should happen? For keywords, show the CSV/YAML step or SDK call you would like to write.
+      placeholder: |
+        Press Element With Fallback    login_button    ${alt_login}
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this affect?
+      multiple: false
+      options:
+        - Keywords (actions / verification / flow control)
+        - Drivers & element sources
+        - Vision — OCR / image detection / self-healing
+        - LLM — natural language mode / AI self-heal
+        - CLI experience (init, setup, live, generate)
+        - REST API / MCP server
+        - Robot Framework / Python SDK
+        - Reporting & output artefacts
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you have tried, or other tools that solve this.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the [documentation](https://mozarkai.github.io/optics-framework/) and this capability does not exist
+          required: true
+        - label: I searched existing issues and found no duplicate
+          required: true
+        - label: I am willing to help implement or test this feature
