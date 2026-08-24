@@ -110,51 +110,50 @@ See [architecture → engines](docs/architecture/engines.md) for the wiring deta
 
 ## Commit messages
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/) —
-`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`, `perf:`, `style:`,
-`build:`, `ci:` — enforced by commitizen via the commit-msg hook. Scope is
-encouraged: `fix(runner): advance the param-fallback ladder`.
+Messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`, `perf:`, `style:`,
+`build:`, `ci:`) — mostly because the commit-msg hook (commitizen) gently
+bounces anything else. Let `poetry run cz commit` build a valid message for
+you interactively, or write your own; scopes are welcome when they add
+clarity: `fix(runner): advance the param-fallback ladder`.
 
 ```bash
 poetry run cz commit   # interactive helper that produces a valid message
 ```
 
-Sign your commits (`git commit -s`) to certify your contribution under the
-[DCO](https://developercertificate.org/). Commits are authored solely by the
-human committer — do not add AI co-author trailers.
+Signing off your commits (`git commit -s`, the
+[DCO](https://developercertificate.org/)) is appreciated when convenient.
+Please leave AI co-author trailers out — commits here are authored by their
+human committers.
 
-Split large features into multiple logical commits (e.g. scaffolding → core
-logic → tests → docs); each should be green on its own.
+Working on something big? Splitting it into a few logical commits (say,
+scaffolding → core logic → tests → docs) makes reviews nicer, but nobody is
+counting.
 
 ## Pull requests
 
-Open a PR even while work is in progress — early feedback beats surprises.
-Please:
+Open a pull request whenever you like — rough drafts asking for direction are
+just as welcome as polished work, and early feedback beats surprises. Nothing
+below is a gate:
 
-1. Reference issues with `Fixes #123` so they close on merge.
-2. Keep the diff focused; unrelated cleanup belongs in its own PR.
-3. Fill in the PR template. Our review culture reads descriptions closely, so
-   structure yours like this:
-
-   - A one-line summary of the change.
-   - **What** — concrete changes, one bullet per logical change.
-   - **Why** — the motivation, or the issue being fixed.
-   - **Non-obvious choices** — pins, workarounds, alternatives you rejected;
-     anything a reviewer would otherwise have to reconstruct.
-   - **Validation** — exact commands and results (`pytest` pass counts,
-     lint output, CI runs).
-   - **Follow-ups** *(optional)* — known gaps and follow-up issues.
-
-4. Before pushing:
+- Reference issues with `Fixes #123` and they close automatically on merge.
+- Smaller diffs tend to get reviewed faster, but ship what ships.
+- The PR template sketches the description shape that reads best around here:
+  **What** changed, **Why**, any **non-obvious choices** a reviewer would
+  otherwise have to reconstruct, how you **validated** it, and optional
+  **follow-ups**. Skip whatever doesn't apply — nobody audits headings.
+- If you get a chance before pushing, `pre-commit` and `pytest` save a round
+  trip:
 
 ```bash
 poetry run pre-commit run --files $(git diff --name-only main)
 poetry run pytest
 ```
 
-CI runs the pytest suite, CodeQL, Scorecard, SonarQube analysis and a docs
-preview on every PR. Reviews typically land within a few days; if yours has
-been quiet longer, feel free to ping the thread.
+CI runs the test suite, CodeQL, Scorecard, SonarQube analysis and a docs
+preview on every PR anyway, so a red build is never a disaster — just fix and
+push. Reviews usually land within a few days; if yours sits quietly longer, a
+friendly ping on the thread is completely fine.
 
 ## Questions?
 

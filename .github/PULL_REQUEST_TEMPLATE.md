@@ -1,4 +1,5 @@
 <!-- Title line follows Conventional Commits, e.g. fix(runner): advance fallback ladder -->
+<!-- Skip any section that doesn't apply — rough drafts welcome. -->
 
 ## What
 
