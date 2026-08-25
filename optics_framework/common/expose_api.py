@@ -1,5 +1,6 @@
 import base64
 import binascii
+import contextvars
 import json
 import os
 import re
@@ -19,7 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
-from optics_framework.common.session_manager import SessionManager, Session
+from optics_framework.common.session_manager import (
+    SessionManager,
+    Session,
+    request_template_overrides,
+)
 from optics_framework.common.models import ApiData
 from optics_framework.common.execution import (
     ExecutionEngine,
@@ -49,6 +54,16 @@ MSG_EXECUTION_FAILED = "Execution failed:"
 MSG_SESSION_TERMINATION_FAILED = "Session termination failed:"
 MSG_INVALID_BASE64_IMAGE = "Invalid base64 image data:"
 
+# How long teardown waits for an in-flight keyword to release ``keyword_lock``
+# before tearing the session down anyway. Sized to outlast the longest single
+# blocking call a keyword normally makes (Appium's 60 s connection timeout is
+# the worst case; a default ``Assert Presence`` is 30 s) so a healthy request
+# is never cut short, while still guaranteeing the endpoint returns: this is
+# the only eviction path, and a session that cannot be evicted holds a device
+# until the process dies, which is strictly worse than racing one abandoned
+# driver command.
+SESSION_TEARDOWN_LOCK_TIMEOUT_S = 60.0
+
 # --- Execution / request ---
 MODE_KEYWORD = "keyword"
 RUNNER_TYPE_KEYWORD = "keyword"
@@ -59,7 +74,6 @@ STATUS_HEARTBEAT = "HEARTBEAT"
 STATUS_ERROR = "ERROR"
 STATUS_CANCELLED = "CANCELLED"
 KEYWORD_LAUNCH_APP = "launch_app"
-KEYWORD_CLOSE_AND_TERMINATE_APP = "close_and_terminate_app"
 KEY_RESULT = "result"
 EXECUTION_ID_HEARTBEAT = "heartbeat"
 EXECUTION_ID_UNKNOWN = "unknown"
@@ -105,7 +119,10 @@ BASE64_SEPARATOR = ";base64,"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # allow_credentials must stay False while allow_origins is a wildcard:
+    # starlette would otherwise echo the request Origin, letting any site make
+    # credentialed calls against a locally-bound server.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -446,6 +463,11 @@ def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[
     return True, llm_models
 
 
+def _enabled_source_names(sources: list[dict[str, Any]]) -> list[str]:
+    """First key of each non-empty source config, for concise session logging."""
+    return [next(iter(s)) for s in sources if s]
+
+
 @app.post(
     "/v1/sessions/start",
     response_model=SessionResponse,
@@ -521,9 +543,14 @@ async def create_session(config: SessionConfig):
         )
         reconfigure_logging(session_config)
         internal_logger.info(
-            "Created session %s with config: %s",
+            "Created session %s with driver_sources=%s elements_sources=%s "
+            "text_detection=%s image_detection=%s project_path=%s",
             session_id,
-            config.model_dump()
+            _enabled_source_names(driver_sources),
+            _enabled_source_names(elements_sources),
+            _enabled_source_names(text_detection),
+            _enabled_source_names(image_detection),
+            config.project_path,
         )
 
         launch_request = ExecuteRequest(
@@ -531,11 +558,33 @@ async def create_session(config: SessionConfig):
             keyword=KEYWORD_LAUNCH_APP,
             params=[]
         )
-        driver_session = await execute_keyword(session_id, launch_request)
+        try:
+            driver_session = await execute_keyword(session_id, launch_request)
+        except BaseException as launch_error:
+            # The client never received this session id, so this is the only
+            # chance to reclaim the device. If cleanup itself fails, don't let
+            # it mask the original launch failure -- log it and re-raise the
+            # launch error unchanged so the handlers below classify it,
+            # rather than reporting a generic 500 or the wrong error.
+            try:
+                # Shielded: an unshielded cleanup can itself be interrupted by
+                # a second cancellation, leaving exactly the leaked session
+                # this block exists to prevent.
+                await asyncio.shield(
+                    asyncio.to_thread(session_manager.terminate_session, session_id)
+                )
+            except Exception as cleanup_error:
+                internal_logger.warning(
+                    "Cleanup after failed session launch also failed for %s: %s",
+                    session_id, cleanup_error,
+                )
+            raise launch_error
         return SessionResponse(
             session_id=session_id,
             driver_id=(driver_session.data or {}).get(KEY_RESULT)
         )
+    except HTTPException:
+        raise
     except OpticsError as e:
         internal_logger.error(f"Failed to create session: {e}")
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
@@ -838,27 +887,40 @@ async def _execute_keyword_with_fallback(
 
 
 async def _setup_request_template_overrides(
-    session: Session, template_images: Optional[Dict[str, str]]
-) -> List[str]:
-    """Write template images to a temp dir and update session.request_template_overrides. Returns temp dirs for cleanup."""
+    template_images: Optional[Dict[str, str]]
+) -> Tuple[List[str], Optional[contextvars.Token]]:
+    """Write template images to a temp dir and bind them to this request's context.
+
+    Returns the temp dirs to clean up and the ContextVar token to reset, so the
+    caller's ``finally`` can undo exactly what this request set and nothing else.
+    """
     if not template_images:
-        return []
+        return [], None
     temp_dir = tempfile.mkdtemp(prefix=TEMP_DIR_PREFIX)
-    for name, b64_value in template_images.items():
-        try:
-            safe_stem = _safe_template_filename(name)
-        except ValueError as e:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        try:
-            raw = _decode_template_base64(b64_value)
-        except (binascii.Error, ValueError) as e:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
-        path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
-        await asyncio.to_thread(_write_bytes_to_path, path, raw)
-        session.request_template_overrides[name] = path
-    return [temp_dir]
+    # BaseException, not Exception: the await below is a cancellation point,
+    # and a client that disconnects mid-write must not strand the directory --
+    # it was never returned to the caller, so nothing else can remove it.
+    try:
+        overrides: Dict[str, str] = {}
+        for name, b64_value in template_images.items():
+            try:
+                safe_stem = _safe_template_filename(name)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+            try:
+                raw = _decode_template_base64(b64_value)
+            except (binascii.Error, ValueError) as e:
+                raise HTTPException(
+                    status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}"
+                ) from e
+            path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
+            await asyncio.to_thread(_write_bytes_to_path, path, raw)
+            overrides[name] = path
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+    token = request_template_overrides.set(overrides)
+    return [temp_dir], token
 
 
 async def _handle_execution_failure(
@@ -899,7 +961,9 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
 
     engine = ExecutionEngine(session_manager)
     execution_id = str(uuid.uuid4())
-    request_temp_dirs = await _setup_request_template_overrides(session, request.template_images)
+    request_temp_dirs, overrides_token = await _setup_request_template_overrides(
+        request.template_images
+    )
 
     try:
         await session.event_queue.put(ExecutionEvent(
@@ -942,7 +1006,8 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     except Exception as e:
         await _handle_execution_failure(e, session, execution_id, request.keyword)
     finally:
-        session.request_template_overrides.clear()
+        if overrides_token is not None:
+            request_template_overrides.reset(overrides_token)
         for dir_path in request_temp_dirs:
             try:
                 shutil.rmtree(dir_path, ignore_errors=True)
@@ -1007,7 +1072,8 @@ async def add_session_api(session_id: str, body: Annotated[Dict[str, Any], Body(
             status_code=400,
             detail=f"{MSG_INVALID_API_DATA} {e}",
         ) from e
-    session.apis = api_data
+    async with session.keyword_lock:
+        session.apis = api_data
 
 
 # Helper for DRY keyword execution endpoints
@@ -1161,32 +1227,37 @@ async def _gather_workspace_data(
     """
     Gather workspace data (screenshot, elements, optionally source) from a session.
     Returns a dict with screenshot, elements, and optionally source.
+
+    Holds session.keyword_lock: a WebDriver session is not concurrency-safe, and
+    without this the poller's commands interleave with an in-flight keyword's,
+    producing spurious stale-element failures.
     """
     try:
-        verifier = session.optics.build(Verifier)
+        async with session.keyword_lock:
+            verifier = session.optics.build(Verifier)
 
-        # Capture one frame and derive both the returned image and the element bounds
-        # from it, so bounds are scaled to the exact screenshot pixel space the client
-        # renders (see Verifier._collect_interactive_elements).
-        screenshot_np = await asyncio.to_thread(verifier._safe_capture_screenshot_np)
-        elements = await asyncio.to_thread(
-            verifier._collect_interactive_elements, filter_config, screenshot_np
-        )
-        screenshot = (
-            await asyncio.to_thread(encode_numpy_to_base64, screenshot_np)
-            if screenshot_np is not None else ""
-        )
+            # Capture one frame and derive both the returned image and the element bounds
+            # from it, so bounds are scaled to the exact screenshot pixel space the client
+            # renders (see Verifier._collect_interactive_elements).
+            screenshot_np = await asyncio.to_thread(verifier._safe_capture_screenshot_np)
+            elements = await asyncio.to_thread(
+                verifier._collect_interactive_elements, filter_config, screenshot_np
+            )
+            screenshot = (
+                await asyncio.to_thread(encode_numpy_to_base64, screenshot_np)
+                if screenshot_np is not None else ""
+            )
 
-        workspace_data: Dict[str, Any] = {
-            KEY_SCREENSHOT: screenshot or "",
-            KEY_ELEMENTS: elements or [],
-            KEY_SCREENSHOT_FAILED: not screenshot,
-        }
+            workspace_data: Dict[str, Any] = {
+                KEY_SCREENSHOT: screenshot or "",
+                KEY_ELEMENTS: elements or [],
+                KEY_SCREENSHOT_FAILED: not screenshot,
+            }
 
-        if include_source:
-            workspace_data[KEY_SOURCE] = await _capture_source_safe(verifier)
+            if include_source:
+                workspace_data[KEY_SOURCE] = await _capture_source_safe(verifier)
 
-        return workspace_data
+            return workspace_data
     except Exception as e:
         internal_logger.error(f"Error gathering workspace data: {e}")
         return _empty_workspace_data(include_source)
@@ -1273,6 +1344,11 @@ async def event_generator(session: Session):
     """
     HEARTBEAT_INTERVAL = 15  # seconds
     while True:
+        if not session_manager.get_session(session.session_id):
+            internal_logger.warning(
+                f"Session {session.session_id} no longer exists, ending event stream"
+            )
+            break
         try:
             try:
                 event = await asyncio.wait_for(session.event_queue.get(), timeout=HEARTBEAT_INTERVAL)
@@ -1319,33 +1395,108 @@ async def event_generator(session: Session):
             ).model_dump())}
             break
 
+async def _terminate_under_keyword_lock(session: Session) -> None:
+    """Run ``terminate_session`` serialized against any in-flight keyword.
+
+    Teardown quits the remote driver, clears ``inline_templates`` and
+    ``rmtree``s the session temp dir. Doing any of that while a keyword still
+    has a WebDriver command in flight (the keyword holds ``keyword_lock``
+    across an ``asyncio.to_thread`` call, which leaves the loop free to serve
+    this request) kills that command mid-flight, or pulls a template file out
+    from under a running matcher.
+
+    Only the *acquisition* is bounded -- ``asyncio.wait_for`` around the
+    teardown itself would be a lie, since cancelling an ``asyncio.to_thread``
+    call does not stop the thread. On timeout we tear down anyway and log:
+    see ``SESSION_TEARDOWN_LOCK_TIMEOUT_S`` for why an un-evictable session is
+    the worse failure. A cancellation while waiting for the lock is absorbed
+    the same way: this endpoint is the only eviction path, so the teardown
+    still runs (shielded against a second cancellation) before the request
+    dies. ``terminate_session`` never re-acquires the lock, so there is no
+    nesting risk.
+    """
+    lock_acquired = False
+    try:
+        await asyncio.wait_for(
+            session.keyword_lock.acquire(), timeout=SESSION_TEARDOWN_LOCK_TIMEOUT_S
+        )
+        lock_acquired = True
+    except asyncio.CancelledError:
+        internal_logger.warning(
+            "Session %s delete was cancelled while a keyword held the lock; evicting anyway",
+            session.session_id,
+        )
+        try:
+            # Shielded: an unshielded cleanup can itself be interrupted by a
+            # second cancellation, leaving exactly the leaked session this
+            # handler exists to prevent.
+            await asyncio.shield(
+                asyncio.to_thread(session_manager.terminate_session, session.session_id)
+            )
+        except Exception as rescue_error:  # noqa: BLE001 - logged; must not suppress the CancelledError
+            internal_logger.warning(
+                "Teardown of cancelled delete for session %s failed: %s",
+                session.session_id, rescue_error,
+            )
+        raise
+    except asyncio.TimeoutError:
+        internal_logger.warning(
+            "Session %s still had a keyword in flight after %.1fs; tearing down anyway",
+            session.session_id, SESSION_TEARDOWN_LOCK_TIMEOUT_S,
+        )
+    try:
+        await asyncio.to_thread(session_manager.terminate_session, session.session_id)
+    finally:
+        if lock_acquired:
+            session.keyword_lock.release()
+
+
 @app.delete(
     "/v1/sessions/{session_id}/stop",
     response_model=TerminationResponse,
     responses={
+        404: {"description": "Session not found"},
         500: {"description": "Session termination failed"},
     },
 )
 async def delete_session(session_id: str):
     """
     Terminate the specified session and clean up resources.
-    Returns termination status.
+
+    Cleanup runs unconditionally: a driver that fails to quit (rebooted device,
+    restarted Appium server) must never leave the session un-evictable, since
+    this endpoint is the only eviction path. The caller still receives the
+    failure, but the server state is always consistent afterwards.
     """
-    kill_request = ExecuteRequest(
-        mode=MODE_KEYWORD,
-        keyword=KEYWORD_CLOSE_AND_TERMINATE_APP,
-        params=[]
-    )
+    session = session_manager.get_session(session_id)
+    if not session:
+        # terminate_session no-ops on an unknown id, so without this the
+        # endpoint would answer 200 TERMINATED to a typo or a double-delete
+        # and tell the caller a device was released when nothing happened.
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+
+    teardown_error: Exception | None = None
     try:
-        await execute_keyword(session_id, kill_request)
-    except OpticsError as e:
-        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
-    except Exception as e:
-        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_TERMINATION_FAILED} {e}") from e
-    session_manager.terminate_session(session_id)
-    # Clean up workspace hash entry to prevent memory leak
-    workspace_hashes.pop(session_id, None)
-    internal_logger.info(f"Terminated session: {session_id}")
+        await _terminate_under_keyword_lock(session)
+    except Exception as e:  # noqa: BLE001 - reported below, never suppressed
+        teardown_error = e
+        internal_logger.warning(
+            "Driver teardown failed for session %s; session evicted anyway: %s",
+            session_id, e,
+        )
+    finally:
+        workspace_hashes.pop(session_id, None)
+
+    if teardown_error is not None:
+        if isinstance(teardown_error, OpticsError):
+            raise HTTPException(
+                status_code=teardown_error.status_code,
+                detail=teardown_error.to_payload(include_status=True),
+            ) from teardown_error
+        raise HTTPException(
+            status_code=500,
+            detail=f"{MSG_SESSION_TERMINATION_FAILED} {teardown_error}",
+        ) from teardown_error
+
+    internal_logger.info("Terminated session: %s", session_id)
     return TerminationResponse()

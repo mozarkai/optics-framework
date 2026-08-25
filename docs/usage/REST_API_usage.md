@@ -545,8 +545,11 @@ curl -X DELETE "http://localhost:8000/v1/sessions/{session_id}/stop"
 ```
 
 !!! warning "Termination"
-    - Automatically executes `close_and_terminate_app` keyword before termination
-    - Cleans up all session resources
+    - Quits the driver and cleans up all session resources (temp directory, JUnit handler, event manager)
+    - Waits for an in-flight keyword on the same session to finish first, up to 60 seconds, then tears down regardless
+    - Cleanup is unconditional: if the driver refuses to quit you get the error, but the session is evicted anyway
+    - Returns `404` if the session does not exist or has already been terminated
+    - Does **not** run `close_and_terminate_app` first — that pre-call was removed, since it made a session with a dead driver permanently un-evictable. Call it explicitly beforehand if your app needs a clean shutdown.
 
 ## :material-alert-circle: Error Handling
 

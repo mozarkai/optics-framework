@@ -15,7 +15,13 @@ from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.utils import _is_list_type
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
+from optics_framework.common.events import (
+    Event,
+    EventManager,
+    EventStatus,
+    get_event_manager,
+    get_event_manager_registry,
+)
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
 
@@ -368,28 +374,42 @@ class ExecutionEngine:
             )
             raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
 
-    async def _drain_events_and_shutdown(self, event_manager: EventManager) -> None:
-        """Wait for event queue to drain (with timeout), then shutdown."""
+    async def _drain_events(self, event_manager: EventManager) -> None:
+        """Wait for the event queue to drain, with a timeout.
+
+        Deliberately does NOT shut the manager down: it is session-scoped and
+        shared by every concurrent request on that session, so tearing it down
+        here cancels a sibling request's dispatch task and silently drops its
+        events. Shutdown belongs to session teardown, in
+        EventManagerRegistry.remove_session.
+        """
         internal_logger.debug("Event queue size before drain: %d", event_manager.event_queue.qsize())
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + self._event_drain_timeout_s
         while event_manager.event_queue.qsize() > 0:
             if loop.time() >= deadline:
                 internal_logger.warning(
-                    "Event drain timed out after %.2fs; proceeding with shutdown. "
-                    "Remaining events: %d",
+                    "Event drain timed out after %.2fs; proceeding. Remaining events: %d",
                     self._event_drain_timeout_s,
                     event_manager.event_queue.qsize(),
                 )
                 break
             internal_logger.debug("Waiting for %d events to process", event_manager.event_queue.qsize())
             await asyncio.sleep(0.1)
-        event_manager.shutdown()
 
     async def execute(self, params: ExecutionParams) -> Any:
+        # get_event_manager creates on miss, so a request racing a DELETE would
+        # otherwise register a fresh, never-started EventManager under a dead
+        # session id that nothing ever removes. Validation failure takes the
+        # entry back out.
         event_manager = get_event_manager(params.session_id)
         session = self.session_manager.get_session(params.session_id)
-        await self._validate_execution_params(session, params, event_manager)
+        try:
+            await self._validate_execution_params(session, params, event_manager)
+        except Exception:
+            if session is None:
+                get_event_manager_registry().remove_session(params.session_id)
+            raise
         if session is None:
             raise RuntimeError("session must not be None after _validate_execution_params")
 
@@ -425,4 +445,4 @@ class ExecutionEngine:
             finally:
                 if hasattr(runner, "result_printer") and runner.result_printer:
                     internal_logger.debug("Stopping result printer live display")
-                await self._drain_events_and_shutdown(event_manager)
+                await self._drain_events(event_manager)

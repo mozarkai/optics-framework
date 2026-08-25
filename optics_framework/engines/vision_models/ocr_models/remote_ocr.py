@@ -7,7 +7,7 @@ import base64
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
 from optics_framework.common.config_handler import Config
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, redact_sensitive_values
 
 
 class RemoteOCR(TextInterface):
@@ -28,7 +28,7 @@ class RemoteOCR(TextInterface):
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
             raise ValueError("Remote OCR is not enabled in config")
         internal_logger.debug(f"Using configuration for {self.DEPENDENCY_TYPE}: {self.NAME}")
-        internal_logger.debug(f"Remote OCR config: {config}")
+        internal_logger.debug("Remote OCR config: %s", redact_sensitive_values(config))
         # Provide a unified getter for both dicts and Config objects
         self.ocr_url = config.get("url", None)
         caps = config.get("capabilities", {}) or {}

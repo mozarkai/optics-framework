@@ -207,7 +207,7 @@ optics serve --host 0.0.0.0 --port 8000 --workers 1
 
 - `--host` (optional): Host to bind (default: 127.0.0.1)
 - `--port` (optional): Port to bind (default: 8000)
-- `--workers` (optional): Number of worker processes (default: 1)
+- `--workers` (optional): Number of worker processes (default: 1). Values greater than 1 raise `OpticsError(E0501)` in `run_uvicorn_server` before uvicorn starts — each worker process holds its own in-memory `SessionManager`, so a session created on one worker is invisible to the others.
 
 **Behavior:** Starts a FastAPI server that exposes the framework functionality via REST API endpoints.
 

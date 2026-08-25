@@ -556,7 +556,6 @@ def test_execute_keyword_wrong_mode_returns_400(client):
 def _fake_action_session():
     session = MagicMock()
     session.event_queue.put = AsyncMock()
-    session.request_template_overrides = {}
     session.optics.build = MagicMock(return_value=MagicMock())
     return session
 
@@ -655,8 +654,10 @@ def test_create_session_success_and_deprecation(client):
 def test_delete_session_success_and_hash_cleanup(client):
     expose_api.workspace_hashes["sess-del"] = "somehash"
     terminate = MagicMock()
-    with patch.object(expose_api, "execute_keyword", new=AsyncMock(return_value=MagicMock())), \
-            patch.object(expose_api.session_manager, "terminate_session", terminate):
+    # I5: an unknown id is now a 404, so the session has to actually exist.
+    with patch.object(expose_api.session_manager, "get_session",
+                      return_value=_session_with_real_lock("sess-del")), \
+         patch.object(expose_api.session_manager, "terminate_session", terminate):
         resp = client.delete("/v1/sessions/sess-del/stop")
     assert resp.status_code == 200
     assert resp.json()["status"] == expose_api.STATUS_TERMINATED
@@ -666,10 +667,17 @@ def test_delete_session_success_and_hash_cleanup(client):
 
 
 def test_delete_session_optics_error_propagates_status(client):
+    # G1: delete_session no longer routes teardown through execute_keyword
+    # (that close_and_terminate_app pre-call was removed), so the failure is
+    # now injected directly into session_manager.terminate_session, the sole
+    # remaining teardown path.
     err = OpticsError(Code.E0402, message="boom")
-    with patch.object(expose_api, "execute_keyword", new=AsyncMock(side_effect=err)):
+    with patch.object(expose_api.session_manager, "get_session",
+                      return_value=_session_with_real_lock()), \
+         patch.object(expose_api.session_manager, "terminate_session", side_effect=err):
         resp = client.delete("/v1/sessions/s1/stop")
     assert resp.status_code == 404
+    assert resp.json()["detail"]["message"] == "boom"
 
 
 # ---------------------------------------------------------------------------
@@ -861,3 +869,373 @@ def test_upload_template_success_writes_file_and_registers(client, tmp_path):
     stored_path = session.inline_templates["my_btn"]
     with open(stored_path, "rb") as f:
         assert f.read() == raw
+
+
+def test_delete_session_evicts_even_when_driver_teardown_fails():
+    """G1: a driver that refuses to quit must not make a session un-evictable."""
+    mgr = MagicMock()
+    mgr.get_session.return_value = _session_with_real_lock("sess-broken")
+    # terminate_session is the sole remaining teardown path (the
+    # close_and_terminate_app pre-call through execute_keyword was removed),
+    # so it's the mock that must simulate the misbehaving driver.
+    mgr.terminate_session = MagicMock(side_effect=RuntimeError("device rebooted"))
+
+    with patch.object(expose_api, "session_manager", mgr):
+        expose_api.workspace_hashes["sess-broken"] = "deadbeef"
+        with pytest.raises(HTTPException) as exc:
+            _run(expose_api.delete_session("sess-broken"))
+
+    # The caller still learns it failed...
+    assert exc.value.status_code == 500
+    # ...but the session is gone regardless.
+    mgr.terminate_session.assert_called_once_with("sess-broken")
+    assert "sess-broken" not in expose_api.workspace_hashes
+
+
+def _minimal_session_config():
+    """Smallest SessionConfig that normalizes to one enabled driver source."""
+    return expose_api.SessionConfig(
+        driver_sources=[{"appium": {"enabled": True, "url": "http://127.0.0.1:4723"}}],
+        elements_sources=[],
+        text_detection=[],
+        image_detection=[],
+    )
+
+
+def test_create_session_terminates_when_app_launch_fails():
+    """G2: a failed auto-launch must not leave a registered session behind."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-half-built")
+    mgr.terminate_session = MagicMock()
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(
+             expose_api, "execute_keyword",
+             AsyncMock(side_effect=RuntimeError("app not installed")),
+         ), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()):
+        with pytest.raises(HTTPException):
+            _run(expose_api.create_session(_minimal_session_config()))
+
+    mgr.terminate_session.assert_called_once_with("sess-half-built")
+
+
+def test_create_session_preserves_http_status_from_launch():
+    """G2: an HTTPException from launch must not be flattened into a 500."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-1")
+    mgr.terminate_session = MagicMock()
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(
+             expose_api, "execute_keyword",
+             AsyncMock(side_effect=HTTPException(status_code=404, detail="no such keyword")),
+         ), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()):
+        with pytest.raises(HTTPException) as exc:
+            _run(expose_api.create_session(_minimal_session_config()))
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "no such keyword"
+    mgr.terminate_session.assert_called_once_with("sess-1")
+
+
+def test_create_session_preserves_launch_error_when_cleanup_also_fails():
+    """G2 fix-round-1: if terminate_session raises during cleanup, the caller
+    must still see the original launch failure, not the cleanup failure."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-compound-failure")
+    mgr.terminate_session = MagicMock(side_effect=RuntimeError("teardown also broken"))
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(
+             expose_api, "execute_keyword",
+             AsyncMock(side_effect=RuntimeError("app not installed")),
+         ), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()):
+        with pytest.raises(HTTPException) as exc:
+            _run(expose_api.create_session(_minimal_session_config()))
+
+    # The response must reflect the launch failure, not the cleanup failure.
+    assert "app not installed" in str(exc.value.detail)
+    assert "teardown also broken" not in str(exc.value.detail)
+    mgr.terminate_session.assert_called_once_with("sess-compound-failure")
+
+
+# ---------------------------------------------------------------------------
+# _gather_workspace_data: keyword_lock serialization (Phase 0, task 4, H1)
+# ---------------------------------------------------------------------------
+
+
+def test_gather_workspace_data_holds_the_keyword_lock():
+    """H1: the workspace poller must not issue driver commands concurrently with a keyword."""
+    session = MagicMock()
+    session.session_id = "sess-1"
+    session.keyword_lock = asyncio.Lock()
+
+    observed: list[bool] = []
+
+    def _capture_screenshot_np(*_a, **_kw):
+        observed.append(session.keyword_lock.locked())
+        return None
+
+    verifier = MagicMock()
+    verifier._safe_capture_screenshot_np = _capture_screenshot_np
+    verifier._collect_interactive_elements = MagicMock(return_value=[])
+    session.optics.build.return_value = verifier
+
+    with patch.object(expose_api, "Verifier", MagicMock()):
+        _run(asyncio.wait_for(
+            expose_api._gather_workspace_data(session, False, None), timeout=5
+        ))
+
+    assert observed == [True], "driver work ran without holding session.keyword_lock"
+
+
+# ---------------------------------------------------------------------------
+# add_session_api / event_generator guards (Phase 0, task 5, H3 & G7)
+# ---------------------------------------------------------------------------
+
+
+def test_add_session_api_holds_the_keyword_lock():
+    """H3: swapping session.apis must not race an in-flight API keyword."""
+    observed: list[bool] = []
+
+    class _Session:
+        """Real object, not a MagicMock: the apis setter must actually fire."""
+        def __init__(self):
+            self.session_id = "sess-1"
+            self.keyword_lock = asyncio.Lock()
+            self._apis = None
+
+        @property
+        def apis(self):
+            return self._apis
+
+        @apis.setter
+        def apis(self, value):
+            observed.append(self.keyword_lock.locked())
+            self._apis = value
+
+    session = _Session()
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=session):
+        _run(asyncio.wait_for(
+            expose_api.add_session_api("sess-1", {"api": {"global_defaults": {"k": "v"}}}),
+            timeout=5,
+        ))
+
+    assert session.apis.global_defaults == {"k": "v"}, "the swap did not happen at all"
+    assert observed == [True], "session.apis was swapped without holding keyword_lock"
+
+
+def test_event_generator_stops_when_session_is_gone():
+    """G7: the event stream must not outlive its session."""
+    session = MagicMock()
+    session.session_id = "sess-1"
+    session.event_queue = asyncio.Queue()
+
+    async def drain():
+        return [chunk async for chunk in expose_api.event_generator(session)]
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=None):
+        chunks = _run(asyncio.wait_for(drain(), timeout=5))
+
+    assert chunks == [], "generator yielded after the session was terminated"
+
+
+# ---------------------------------------------------------------------------
+# Task 8 hardening: CORS credentials, capability logging, dead executor
+# ---------------------------------------------------------------------------
+
+
+def test_cors_does_not_allow_credentials_with_wildcard_origin():
+    """I2: wildcard origin + credentials lets any site drive local sessions."""
+    cors = [
+        m for m in expose_api.app.user_middleware
+        if "CORSMiddleware" in str(m.cls)
+    ]
+    assert cors, "CORS middleware not found"
+    options = cors[0].kwargs
+    if "*" in options.get("allow_origins", []):
+        assert not options.get("allow_credentials", False), (
+            "allow_credentials must be False when allow_origins is a wildcard"
+        )
+
+
+def test_create_session_does_not_log_raw_capabilities():
+    """I4: capabilities carry cloud-farm access keys; never log them verbatim."""
+    mgr = MagicMock()
+    mgr.create_session = MagicMock(return_value="sess-1")
+
+    config = expose_api.SessionConfig(
+        driver_sources=[{
+            "appium": {
+                "enabled": True,
+                "url": "http://127.0.0.1:4723",
+                "capabilities": {"browserstack.key": "SUPERSECRET123"},
+            }
+        }],
+        elements_sources=[], text_detection=[], image_detection=[],
+    )
+
+    logged: list[str] = []
+
+    def _record(msg, *args, **kwargs):
+        logged.append(msg % args if args else str(msg))
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(expose_api, "execute_keyword", AsyncMock(return_value=MagicMock(data={}))), \
+         patch.object(expose_api, "reconfigure_logging", MagicMock()), \
+         patch.object(expose_api.internal_logger, "info", _record):
+        _run(asyncio.wait_for(expose_api.create_session(config), timeout=5))
+
+    assert not any("SUPERSECRET123" in line for line in logged), (
+        f"secret leaked into logs: {logged}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Final review: teardown serialization (C1) and unknown-session contract (I5)
+# ---------------------------------------------------------------------------
+
+
+def _session_with_real_lock(session_id: str = "sess-mock"):
+    """MagicMock session carrying a real ``asyncio.Lock`` for ``keyword_lock``."""
+    session = MagicMock()
+    session.session_id = session_id
+    session.keyword_lock = asyncio.Lock()
+    return session
+
+
+def test_delete_session_waits_for_in_flight_keyword():
+    """C1: teardown must not quit the driver while a keyword holds the lock.
+
+    A keyword holds ``keyword_lock`` across ``asyncio.to_thread``, which leaves
+    the loop free to serve a concurrent DELETE. Without the lock, that DELETE
+    calls ``driver.quit()`` on the remote session the worker thread is still
+    driving, and rmtree's the template dir a matcher may be reading.
+    """
+    session = _session_with_real_lock("sess-busy")
+    terminated: list[str] = []
+    mgr = MagicMock()
+    mgr.get_session.return_value = session
+    mgr.terminate_session = MagicMock(side_effect=terminated.append)
+
+    async def scenario():
+        # Stand in for a keyword request that is mid-``to_thread``.
+        await session.keyword_lock.acquire()
+        task = asyncio.create_task(expose_api.delete_session("sess-busy"))
+        await asyncio.sleep(0.1)
+        during = list(terminated)
+        session.keyword_lock.release()
+        await task
+        return during, list(terminated)
+
+    with patch.object(expose_api, "session_manager", mgr):
+        during, after = _run(asyncio.wait_for(scenario(), timeout=5))
+
+    assert during == [], "teardown ran while a keyword still held the session lock"
+    assert after == ["sess-busy"], "teardown never ran after the lock was released"
+
+
+def test_delete_session_tears_down_anyway_when_keyword_is_wedged():
+    """C1: a wedged keyword must not make a session permanently un-evictable."""
+    session = _session_with_real_lock("sess-wedged")
+    mgr = MagicMock()
+    mgr.get_session.return_value = session
+    mgr.terminate_session = MagicMock()
+
+    async def scenario():
+        await session.keyword_lock.acquire()  # never released
+        return await expose_api.delete_session("sess-wedged")
+
+    with patch.object(expose_api, "session_manager", mgr), \
+         patch.object(expose_api, "SESSION_TEARDOWN_LOCK_TIMEOUT_S", 0.05):
+        resp = _run(asyncio.wait_for(scenario(), timeout=5))
+
+    assert resp.status == expose_api.STATUS_TERMINATED
+    mgr.terminate_session.assert_called_once_with("sess-wedged")
+
+
+def test_delete_session_cancelled_while_waiting_still_evicts():
+    """G1: a cancelled DELETE must not leave the session registered.
+
+    The lock-wait is the one teardown window a cancellation can interrupt
+    before ``terminate_session`` is submitted. Eviction must still happen --
+    this endpoint is the only path that removes a session -- so the handler
+    runs it shielded and lets the cancellation surface afterwards.
+    """
+    session = _session_with_real_lock("sess-cancel")
+    terminated: list[str] = []
+    mgr = MagicMock()
+    mgr.get_session.return_value = session
+    mgr.terminate_session = MagicMock(side_effect=terminated.append)
+
+    async def scenario():
+        await session.keyword_lock.acquire()  # keyword wedged; DELETE waits
+        task = asyncio.create_task(expose_api.delete_session("sess-cancel"))
+        await asyncio.sleep(0.05)
+        assert not terminated, "teardown ran while the lock was still held"
+        task.cancel()
+        try:
+            await task
+            cancelled = False
+        except asyncio.CancelledError:
+            cancelled = True
+        # The shielded rescue may need another loop tick to finish.
+        for _ in range(100):
+            if terminated:
+                break
+            await asyncio.sleep(0.01)
+        return cancelled, list(terminated)
+
+    with patch.object(expose_api, "session_manager", mgr):
+        cancelled, after = _run(asyncio.wait_for(scenario(), timeout=5))
+
+    assert cancelled, "cancellation was swallowed instead of surfacing"
+    assert after == ["sess-cancel"], "cancelled DELETE skipped eviction"
+
+
+def test_delete_session_releases_lock_when_teardown_raises():
+    """C1: a failing teardown must not leave ``keyword_lock`` held."""
+    session = _session_with_real_lock()
+    mgr = MagicMock()
+    mgr.get_session.return_value = session
+    mgr.terminate_session = MagicMock(side_effect=RuntimeError("device rebooted"))
+
+    with patch.object(expose_api, "session_manager", mgr):
+        with pytest.raises(HTTPException):
+            _run(asyncio.wait_for(expose_api.delete_session("sess-x"), timeout=5))
+
+    assert not session.keyword_lock.locked()
+
+
+def test_delete_unknown_session_returns_404():
+    """I5: terminate_session no-ops on an unknown id; don't report success."""
+    mgr = MagicMock()
+    mgr.get_session.return_value = None
+    mgr.terminate_session = MagicMock()
+
+    with patch.object(expose_api, "session_manager", mgr):
+        with pytest.raises(HTTPException) as exc:
+            _run(asyncio.wait_for(expose_api.delete_session("nope"), timeout=5))
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == expose_api.SESSION_NOT_FOUND
+    mgr.terminate_session.assert_not_called()
+
+
+def test_delete_session_twice_returns_404_the_second_time(client):
+    """I5: a double-delete must not claim the device was released twice."""
+    session = _session_with_real_lock("sess-dd")
+    sessions = {"sess-dd": session}
+
+    with patch.object(expose_api.session_manager, "get_session", sessions.get), \
+         patch.object(expose_api.session_manager, "terminate_session",
+                      MagicMock(side_effect=sessions.pop)):
+        first = client.delete("/v1/sessions/sess-dd/stop")
+        second = client.delete("/v1/sessions/sess-dd/stop")
+
+    assert first.status_code == 200
+    assert second.status_code == 404
