@@ -15,7 +15,7 @@
 
 ## Validation
 
-<!-- Exact commands and results: pytest pass counts, ruff/pre-commit output, mkdocs build, CI runs. -->
+<!-- How did you verify the bug/feature beyond CI? e.g. new/updated tests added, manual testing steps tried. -->
 
 ## Follow-ups
 
