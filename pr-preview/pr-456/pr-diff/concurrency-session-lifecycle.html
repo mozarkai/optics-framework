@@ -1,0 +1,196 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/concurrency/session-lifecycle.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to10__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/concurrency/session-lifecycle.md (new file)</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/concurrency/session-lifecycle.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to10__0"><a href="#difflib_chg_to10__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to10__top">t</a></td><td class="diff_header" id="to10_1">1</td><td nowrap="nowrap"><span class="diff_add"># Session Lifecycle</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_2">2</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_3">3</td><td nowrap="nowrap"><span class="diff_add">:material-check-circle: **Status: Current**, except the final section, which is marked *Planned*.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_4">4</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_5">5</td><td nowrap="nowrap"><span class="diff_add">A `Session` (`optics_framework/common/session_manager.py`) is the unit of isolation in Optics. Everything about one test run — config, drivers, element data, templates, events, output paths — hangs off it. Understanding what it owns, and what it *doesn't*, is the key to reasoning about concurrency.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_6">6</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_7">7</td><td nowrap="nowrap"><span class="diff_add">## What a Session owns</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_8">8</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_9">9</td><td nowrap="nowrap"><span class="diff_add">```mermaid</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_10">10</td><td nowrap="nowrap"><span class="diff_add">graph TD</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_11">11</td><td nowrap="nowrap"><span class="diff_add">    SM[SessionManager] --&gt;|"sessions[uuid]"| S[Session]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_12">12</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; CH[ConfigHandler + Config]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_13">13</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; OB[OpticsBuilder]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_14">14</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; ED["test_cases / modules / elements / apis"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_15">15</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; TPL["templates + inline_templates + mkdtemp"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_16">16</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; ESDK[EventSDK]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_17">17</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; EQ["event_queue (asyncio.Queue)"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_18">18</td><td nowrap="nowrap"><span class="diff_add">    S --&gt; KL["keyword_lock (asyncio.Lock)"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_19">19</td><td nowrap="nowrap"><span class="diff_add">    OB --&gt;|lazy| DRV["driver (InstanceFallback)"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_20">20</td><td nowrap="nowrap"><span class="diff_add">    OB --&gt;|lazy| ES["element_source (InstanceFallback)"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_21">21</td><td nowrap="nowrap"><span class="diff_add">    OB --&gt;|lazy| VIS["text / image / llm engines"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_22">22</td><td nowrap="nowrap"><span class="diff_add">    S -.-&gt;|"keyed by session_id"| EMR[EventManagerRegistry]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_23">23</td><td nowrap="nowrap"><span class="diff_add">    S -.-&gt;|"keyed by session_id"| JHR[JUnitHandlerRegistry]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_24">24</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_25">25</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_26">26</td><td nowrap="nowrap"><span class="diff_add">Engines are **lazily instantiated** — `OpticsBuilder.get_*()` defers construction until a keyword needs them, so a session that never locates an element never builds a `StrategyManager`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_27">27</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_28">28</td><td nowrap="nowrap"><span class="diff_add">## Creation</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_29">29</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_30">30</td><td nowrap="nowrap"><span class="diff_add">1. A `Config` is built (from `config.yaml` for CLI paths, or from the request body for `optics serve`).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_31">31</td><td nowrap="nowrap"><span class="diff_add">2. `SessionManager.create_session` mints a `uuid4` and constructs a `Session`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_32">32</td><td nowrap="nowrap"><span class="diff_add">3. `Session.__init__` does a lot, and two parts of it have process-wide side effects:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_33">33</td><td nowrap="nowrap"><span class="diff_add">    - `ConfigHandler(config)` **mutates the `Config` you passed in** — it sets `execution_output_path` and `os.makedirs` it. It also reconfigures **global** logging.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_34">34</td><td nowrap="nowrap"><span class="diff_add">    - `tempfile.mkdtemp(prefix="optics_session_")` creates the per-session inline-template directory.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_35">35</td><td nowrap="nowrap"><span class="diff_add">4. Enabled dependency configs are filtered, and the driver is built eagerly (`self.driver = self.optics.get_driver()`) so a bad config fails fast rather than at the first keyword.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_36">36</td><td nowrap="nowrap"><span class="diff_add">5. `event_queue` and `keyword_lock` are created.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_37">37</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_38">38</td><td nowrap="nowrap"><span class="diff_add">!!! warning "Never share a `Config` instance between sessions"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_39">39</td><td nowrap="nowrap"><span class="diff_add">    `Session.__init__` mutates it. Two sessions constructed from one `Config` object will overwrite each other's `json_path` and `execution_output_path`, and any already-built handler will disagree with `session.config`. Every current entry point happens to construct a fresh `Config` per session, so this is latent rather than active — but nothing enforces it.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_40">40</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_41">41</td><td nowrap="nowrap"><span class="diff_add">## Termination</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_42">42</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_43">43</td><td nowrap="nowrap"><span class="diff_add">`SessionManager.terminate_session` pops the session, then:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_44">44</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_45">45</td><td nowrap="nowrap"><span class="diff_add">- `session.driver.terminate()` — quits the remote driver and flushes buffered events</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_46">46</td><td nowrap="nowrap"><span class="diff_add">- clears `inline_templates` and `rmtree`s the per-session temp directory (only that directory, never a parent)</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_47">47</td><td nowrap="nowrap"><span class="diff_add">- `cleanup_junit(session_id)` finalizes the JUnit XML</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_48">48</td><td nowrap="nowrap"><span class="diff_add">- removes the session's `EventManager` from the registry</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_49">49</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_50">50</td><td nowrap="nowrap"><span class="diff_add">Every one of those steps runs even if an earlier one raises, and the original driver error is re-raised at the end, so a driver that refuses to quit is reported to the caller without leaving anything behind.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_51">51</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_52">52</td><td nowrap="nowrap"><span class="diff_add">Over HTTP, `delete_session` first looks the session up — an unknown id is a `404`, not a false `200` — then acquires `session.keyword_lock` before offloading `terminate_session` to a thread, so teardown cannot quit the driver or `rmtree` the template directory out from under an in-flight keyword. Only the acquisition is bounded (60 s); on timeout it tears down anyway, because a session that cannot be evicted holds its device until the process dies.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_53">53</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_54">54</td><td nowrap="nowrap"><span class="diff_add">!!! warning "Nothing reclaims a session nobody deletes"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_55">55</td><td nowrap="nowrap"><span class="diff_add">    `DELETE` is still the only eviction path. There is no TTL, no reaper, no heartbeat, no session cap, and no shutdown handler: a client that opens a session and disconnects holds a device indefinitely. That is Phase 4.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_56">56</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_57">57</td><td nowrap="nowrap"><span class="diff_add">## Per-session vs process-global</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_58">58</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_59">59</td><td nowrap="nowrap"><span class="diff_add">This is the table that matters for concurrency.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_60">60</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_61">61</td><td nowrap="nowrap"><span class="diff_add">### Correctly per-session</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_62">62</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_63">63</td><td nowrap="nowrap"><span class="diff_add">| Thing | Notes |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_64">64</td><td nowrap="nowrap"><span class="diff_add">|---|---|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_65">65</td><td nowrap="nowrap"><span class="diff_add">| `SessionManager` itself | Not a singleton — each entry point constructs its own. The one in `expose_api` is module-level, but it is a *manager of many* keyed by uuid, which is the right shape. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_66">66</td><td nowrap="nowrap"><span class="diff_add">| `ConfigHandler` | Not a singleton; holds no global config. Nothing reads config from a global. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_67">67</td><td nowrap="nowrap"><span class="diff_add">| `EventManagerRegistry` | Keyed by `session_id`, guarded by a `threading.Lock`. Each `EventManager` owns its own queues and subscribers. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_68">68</td><td nowrap="nowrap"><span class="diff_add">| `JUnitHandlerRegistry` | Same shape. Output is already `junit_output_&lt;session_id&gt;.xml`. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_69">69</td><td nowrap="nowrap"><span class="diff_add">| `EventSDK` | Constructed per session. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_70">70</td><td nowrap="nowrap"><span class="diff_add">| `OpticsBuilder` | `_instances` is per-builder; `build()` returns a fresh API-class instance each call. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_71">71</td><td nowrap="nowrap"><span class="diff_add">| `InstanceFallback` | A new one per factory call; `current_instance` is instance state. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_72">72</td><td nowrap="nowrap"><span class="diff_add">| `StrategyManager` and its factories | Fully per-instance. `StrategyFactory._registry` is an *instance* attribute despite the name. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_73">73</td><td nowrap="nowrap"><span class="diff_add">| `KeywordRegistry` | Built fresh per runner and per live controller. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_74">74</td><td nowrap="nowrap"><span class="diff_add">| Inline-template temp dir | `mkdtemp` per session, cleaned on terminate. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_75">75</td><td nowrap="nowrap"><span class="diff_add">| `test_context.current_test_case` | A `ContextVar` — correctly task-isolated. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_76">76</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_77">77</td><td nowrap="nowrap"><span class="diff_add">### Process-global, holding state that should be per-session</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_78">78</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_79">79</td><td nowrap="nowrap"><span class="diff_add">| Thing | What breaks with two sessions |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_80">80</td><td nowrap="nowrap"><span class="diff_add">|---|---|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_81">81</td><td nowrap="nowrap"><span class="diff_add">| `TreeResultPrinter._instance` | `test_state` is *replaced* wholesale per session. Session A's rows vanish; its `_update_status` then silently no-ops, so its live tree freezes with no error. Pass/fail is computed over the union of both sessions' test cases. `optics serve` dodges this by using `NullResultPrinter`. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_82">82</td><td nowrap="nowrap"><span class="diff_add">| `PytestRunner.instance` | A class attribute wired into a generated `conftest.py` fixture. Session A's generated tests execute against session B's runner, driver, and element data. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_83">83</td><td nowrap="nowrap"><span class="diff_add">| `GenericFactory._registry` | One registry shared by **all five** factory subclasses. Every terminated session's driver and OCR reader stays referenced forever. Currently a leak rather than a swap, because live paths always construct fresh — but the caching path is live code one call away from handing session B session A's driver. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_84">84</td><td nowrap="nowrap"><span class="diff_add">| The logging manager | Every session reconfigures global logging. See [Logging &amp; Session Isolation](logging-and-isolation.md). |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_85">85</td><td nowrap="nowrap"><span class="diff_add">| `Optics` (SDK facade) | `@library(scope="GLOBAL")` with a single `session_id` slot. A second `Setup` orphans the first session's driver and temp dir without terminating them. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_86">86</td><td nowrap="nowrap"><span class="diff_add">| The global `rich` `Console` | `force_terminal = True` is set on it permanently, and only one `Live` display may own a terminal at a time. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_87">87</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_88">88</td><td nowrap="nowrap"><span class="diff_add">## Request-scoped vs session-scoped</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_89">89</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_90">90</td><td nowrap="nowrap"><span class="diff_add">A distinction worth internalising, because `optics serve` used to get it wrong: **data belonging to one HTTP request must not live on the `Session`.**</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_91">91</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_92">92</td><td nowrap="nowrap"><span class="diff_add">Template overrides supplied with a single `POST /action` were stored in `session.request_template_overrides`, written before the session lock was taken and cleared in a `finally` outside it, so one of two concurrent requests cleared the other's entries. They now live in the module-level `request_template_overrides` `ContextVar` (`session_manager.py`), which is per-task and therefore per-request automatically, and which propagates into `asyncio.to_thread` workers where keywords actually read it. The request sets it, and its `finally` resets exactly its own token.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_93">93</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_94">94</td><td nowrap="nowrap"><span class="diff_add">Its default is `None`, read as `(request_template_overrides.get() or {})`: a mutable default would be shared by every context that never calls `set()`, so a single in-place write would poison it process-wide.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_95">95</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_96">96</td><td nowrap="nowrap"><span class="diff_add">See the [async model](async-model.md#why-a-per-session-executor-not-bare-to_thread) for the trap this introduces when the executor changes.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_97">97</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_98">98</td><td nowrap="nowrap"><span class="diff_add">## Planned: the `SessionRecord`</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_99">99</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_100">100</td><td nowrap="nowrap"><span class="diff_add">:material-alert: **Status: Planned** — not implemented.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_101">101</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_102">102</td><td nowrap="nowrap"><span class="diff_add">To make `optics serve` stateless, the durable part of a session is being separated from the derived part. See [Stateless Serve](stateless-serve.md) for the full design.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_103">103</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_104">104</td><td nowrap="nowrap"><span class="diff_add">**Stored** — all JSON-serializable: `session_id`, `config`, `driver_kind`, a `reattach_handle` (`appium_url`, `remote_session_id`, `capabilities`), `elements` / `modules` / `test_cases` / `apis`, `inline_templates` as blob references, `created_at` / `last_accessed`, and `new_command_timeout_s`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_105">105</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_106">106</td><td nowrap="nowrap"><span class="diff_add">**Derived, never stored** — reconstructed on demand: the driver and element source, all vision and LLM engines, `OpticsBuilder`, `KeywordRegistry`, every `StrategyManager`, `EventSDK`, the JUnit handler, the `EventManager`, the lock, and the event subscription.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_107">107</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to10_108">108</td><td nowrap="nowrap"><span class="diff_add">The schema is the contract: anything not in the stored list must be reconstructible from what is.</span></td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>

@@ -1,0 +1,210 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/concurrency/roadmap.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to9__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/concurrency/roadmap.md (new file)</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/concurrency/roadmap.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to9__0"><a href="#difflib_chg_to9__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to9__top">t</a></td><td class="diff_header" id="to9_1">1</td><td nowrap="nowrap"><span class="diff_add"># Roadmap</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_2">2</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_3">3</td><td nowrap="nowrap"><span class="diff_add">:material-progress-clock: **Status: In progress** — Phase 0 has landed (with one known hole, below). Everything from Phase 1 onward is designed but not started.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_4">4</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_5">5</td><td nowrap="nowrap"><span class="diff_add">Work is phased so that **each phase ships on its own merits**. Phases 0–3 are local-correctness fixes with no new dependencies; they improve `optics execute` and `optics live` regardless of whether the stateless work ever happens. Phases 4–6 deliver cross-pod statelessness and depend on 0–3 being done first.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_6">6</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_7">7</td><td nowrap="nowrap"><span class="diff_add">Finding IDs (`A1`, `E2`, `G1`, …) refer to the [audit](../superpowers/specs/2026-08-18-parallel-sessions-audit.md).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_8">8</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_9">9</td><td nowrap="nowrap"><span class="diff_add">For per-phase scope, task breakdown, exit criteria and risks, see [Phase Plans](phase-plans.md).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_10">10</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_11">11</td><td nowrap="nowrap"><span class="diff_add">## Phase 0 — Leaks &amp; races</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_12">12</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_13">13</td><td nowrap="nowrap"><span class="diff_add">:material-check-circle: **Landed.**</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_14">14</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_15">15</td><td nowrap="nowrap"><span class="diff_add">**Ships:** two guaranteed session leaks closed, the three known cross-request corruption paths in `optics serve` closed, `--workers` made honest.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_16">16</td><td nowrap="nowrap"><span class="diff_add">**Closes:** `G1` `G2` `H1` `H2` `H3` `B3` `G8` `I2` `I4` (and `A2` as a side effect).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_17">17</td><td nowrap="nowrap"><span class="diff_add">**New dependencies:** none. **API change:** `DELETE /v1/sessions/{id}/stop` now returns `404` for an unknown or already-deleted session instead of `200`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_18">18</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_19">19</td><td nowrap="nowrap"><span class="diff_add">!!! warning "One race is deliberately left open"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_20">20</td><td nowrap="nowrap"><span class="diff_add">    Phase 0 does **not** eliminate cross-request corruption outright. Three of the four `keyword_lock` call sites are now correct, but `asyncio.to_thread` is **not cancellable**: when an SSE client disconnects, `CancelledError` propagates at the `await` and `async with session.keyword_lock` releases the lock **while the driver command is still running in the abandoned thread**. A pending request then acquires the lock and issues a second command on the same remote session.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_21">21</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_22">22</td><td nowrap="nowrap"><span class="diff_add">    This cannot be fixed by adding a lock — it is a property of the offload primitive. Phase 1's per-session `ThreadPoolExecutor(max_workers=1)` closes it structurally: the next command cannot start until the worker thread is free, whoever holds the lock.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_23">23</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_24">24</td><td nowrap="nowrap"><span class="diff_add">| Task | What |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_25">25</td><td nowrap="nowrap"><span class="diff_add">|---|---|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_26">26</td><td nowrap="nowrap"><span class="diff_add">| 1 | `delete_session` always evicts, even when driver teardown fails — it is the only eviction path |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_27">27</td><td nowrap="nowrap"><span class="diff_add">| 2 | `create_session` reclaims the device when auto-launch fails, and stops flattening `HTTPException` into 500 |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_28">28</td><td nowrap="nowrap"><span class="diff_add">| 3 | Request template overrides move to a `ContextVar` — off the shared `Session` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_29">29</td><td nowrap="nowrap"><span class="diff_add">| 4 | The workspace SSE stream takes `keyword_lock` before issuing driver commands |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_30">30</td><td nowrap="nowrap"><span class="diff_add">| 5 | Guard the `session.apis` swap; end the event stream with its session |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_31">31</td><td nowrap="nowrap"><span class="diff_add">| 6 | `EventManager` lifecycle moves from per-request to per-session |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_32">32</td><td nowrap="nowrap"><span class="diff_add">| 7 | `--workers &gt; 1` fails loudly instead of returning sporadic 404s |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_33">33</td><td nowrap="nowrap"><span class="diff_add">| 8 | Stop logging raw capabilities; drop credentialed wildcard CORS; delete dead code |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_34">34</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_35">35</td><td nowrap="nowrap"><span class="diff_add">Follow-ups from the final review, landed on top: teardown takes `keyword_lock` (Task 1 had dropped the serialization the removed `close_and_terminate_app` call used to provide); `EventManager.stop()` cancels its dispatch task through `call_soon_threadsafe` when called from a worker thread; capability *values* are redacted at every driver log site, not just in `create_session`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_36">36</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_37">37</td><td nowrap="nowrap"><span class="diff_add">[Full plan](../superpowers/plans/2026-08-18-phase0-session-leaks-and-races.md)</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_38">38</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_39">39</td><td nowrap="nowrap"><span class="diff_add">## Phase 1 — The async seam</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_40">40</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_41">41</td><td nowrap="nowrap"><span class="diff_add">**Ships:** the change that actually unlocks concurrency. Until this lands, a keyword blocks every other session in the process.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_42">42</td><td nowrap="nowrap"><span class="diff_add">**Closes:** `A1` `A2` `A4` `A5` `B1`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_43">43</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_44">44</td><td nowrap="nowrap"><span class="diff_add">- Extract `run_keyword_blocking(session, method, *args)` as the single sync→async seam, dispatching to a **per-session `ThreadPoolExecutor(max_workers=1)`** under the session lease.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_45">45</td><td nowrap="nowrap"><span class="diff_add">- Route `TestRunner._try_execute_with_fallback` through it — this is `A1`, the big one.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_46">46</td><td nowrap="nowrap"><span class="diff_add">- Fix `queue_event_sync`, which calls `asyncio.run` under a running loop and swallows the failure, silently dropping **100% of events** in `--runner pytest` mode.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_47">47</td><td nowrap="nowrap"><span class="diff_add">- Move `pytest.main()` off the event loop.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_48">48</td><td nowrap="nowrap"><span class="diff_add">- Add the missing throttles to the two element-source poll loops that currently spin with no sleep.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_49">49</td><td nowrap="nowrap"><span class="diff_add">- Add the standing regression: `/health` stays responsive while a slow keyword runs.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_50">50</td><td nowrap="nowrap"><span class="diff_add">- Close the cancellation hole Phase 0 leaves open (see the warning above): with a single worker per session, a cancelled request cannot let a second command start while the first is still in flight.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_51">51</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_52">52</td><td nowrap="nowrap"><span class="diff_add">!!! warning "Carries a trap from Phase 0"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_53">53</td><td nowrap="nowrap"><span class="diff_add">    `asyncio.to_thread` propagates `contextvars`; `loop.run_in_executor` does not. The template-override fix from Phase 0 Task 3 relies on that propagation. The executor swap must dispatch via `contextvars.copy_context().run(...)` or it regresses **silently**, surfacing as a spurious element-not-found.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_54">54</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_55">55</td><td nowrap="nowrap"><span class="diff_add">## Phase 2 — Logging</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_56">56</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_57">57</td><td nowrap="nowrap"><span class="diff_add">**Ships:** logs you can actually attribute to a session, and an end to the unbounded queue leak.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_58">58</td><td nowrap="nowrap"><span class="diff_add">**Closes:** `C1`–`C9`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_59">59</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_60">60</td><td nowrap="nowrap"><span class="diff_add">- Instantiate the `QueueListener` the code was written for — it does not exist anywhere in the repo today.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_61">61</td><td nowrap="nowrap"><span class="diff_add">- Configure logging **once at startup**, not per session.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_62">62</td><td nowrap="nowrap"><span class="diff_add">- Session scoping via `contextvars` + a filter, replacing add/remove of handlers on a global logger.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_63">63</td><td nowrap="nowrap"><span class="diff_add">- Lazy formatting on the event hot path; `SensitiveDataFormatter` on the console handler.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_64">64</td><td nowrap="nowrap"><span class="diff_add">- Structured JSON to stdout in server mode.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_65">65</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_66">66</td><td nowrap="nowrap"><span class="diff_add">## Phase 3 — Disk &amp; factories</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_67">67</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_68">68</td><td nowrap="nowrap"><span class="diff_add">**Ships:** a server that doesn't fill its own disk, and artifacts that survive concurrency.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_69">69</td><td nowrap="nowrap"><span class="diff_add">**Closes:** `E1`–`E5` `E8` `D3`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_70">70</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_71">71</td><td nowrap="nowrap"><span class="diff_add">- `execution_output_path` becomes `&lt;base&gt;/execution_output/&lt;session_id&gt;/`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_72">72</td><td nowrap="nowrap"><span class="diff_add">- `page_sources_log.xml` and `api_details.har` become append-only — no more read-modify-write, no more silent corruption.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_73">73</td><td nowrap="nowrap"><span class="diff_add">- `save_captures` gates every writer, not just `Verifier`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_74">74</td><td nowrap="nowrap"><span class="diff_add">- Per-subclass factory registries; drop the instance cache that retains every terminated session's driver forever.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_75">75</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_76">76</td><td nowrap="nowrap"><span class="diff_add">## Phase 4 — Session store</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_77">77</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_78">78</td><td nowrap="nowrap"><span class="diff_add">**Ships:** the `SessionRecord` abstraction and working lifecycle management. In-memory only — no Redis yet.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_79">79</td><td nowrap="nowrap"><span class="diff_add">**Closes:** `G3` `G4` `G5` `H4`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_80">80</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_81">81</td><td nowrap="nowrap"><span class="diff_add">- `SessionRecord` schema — the contract for what may be session state.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_82">82</td><td nowrap="nowrap"><span class="diff_add">- `SessionStore` and `SessionLease` protocols with in-memory adapters.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_83">83</td><td nowrap="nowrap"><span class="diff_add">- `SessionManager.sessions` demoted from source-of-truth to cache.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_84">84</td><td nowrap="nowrap"><span class="diff_add">- TTL, `last_accessed`, a reaper, `max_sessions` with `503` backpressure, `GET /v1/sessions`, and a FastAPI `lifespan` that terminates sessions on shutdown.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_85">85</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_86">86</td><td nowrap="nowrap"><span class="diff_add">## Phase 5 — Re-attach</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_87">87</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_88">88</td><td nowrap="nowrap"><span class="diff_add">**Ships:** a session that survives the process that created it.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_89">89</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_90">90</td><td nowrap="nowrap"><span class="diff_add">- `supports_reattach` / `get_reattach_handle()` / `attach()` on `DriverInterface`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_91">91</td><td nowrap="nowrap"><span class="diff_add">- Appium implementation, wired to the `attach_to_session` machinery that already exists.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_92">92</td><td nowrap="nowrap"><span class="diff_add">- Rehydration on cache miss; pod-affine refusal (`409`) for backends that can't re-attach.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_93">93</td><td nowrap="nowrap"><span class="diff_add">- `newCommandTimeout` becomes explicit and persisted.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_94">94</td><td nowrap="nowrap"><span class="diff_add">- Idempotency keys on `POST /action`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_95">95</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_96">96</td><td nowrap="nowrap"><span class="diff_add">## Phase 6 — Redis adapters</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_97">97</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_98">98</td><td nowrap="nowrap"><span class="diff_add">**Ships:** goal reached — any pod serves any session.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_99">99</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_100">100</td><td nowrap="nowrap"><span class="diff_add">- `RedisSessionStore`, `RedisLease`, `RedisEventTransport`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_101">101</td><td nowrap="nowrap"><span class="diff_add">- `optics-framework[redis]` optional extra.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_102">102</td><td nowrap="nowrap"><span class="diff_add">- Docker/k8s configuration; `--workers` re-enabled under the Redis backend.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_103">103</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_104">104</td><td nowrap="nowrap"><span class="diff_add">## Known risks</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_105">105</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_106">106</td><td nowrap="nowrap"><span class="diff_add">| Risk | Why it matters | How we'd find out |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_107">107</td><td nowrap="nowrap"><span class="diff_add">|---|---|---|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_108">108</td><td nowrap="nowrap"><span class="diff_add">| **`newCommandTimeout` across pod restarts** | If Appium reaps the remote session during a restart, rehydration produces a valid-looking handle to a dead session. This is the single biggest unknown in Phase 5–6. | Measurable early against a real device tier — worth doing *before* building on it. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_109">109</td><td nowrap="nowrap"><span class="diff_add">| **GIL contention from the vision tier** | Driver calls release the GIL; OpenCV template matching and OCR do not. If vision strategies fire on most keywords, per-process throughput degrades in a way threads can't fix. | Measure with `execution_tracer` output before committing to a session-count target. Fix, if needed, is a separate process pool for vision only — much cheaper than process-per-session. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_110">110</td><td nowrap="nowrap"><span class="diff_add">| **Pub/sub has no replay** | A client reconnecting after a pod death loses backlog. | Stated as the contract. Redis Streams if it proves unacceptable. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_111">111</td><td nowrap="nowrap"><span class="diff_add">| **Rehydration latency** | First touch by a new pod pays an attach handshake plus a `StrategyManager` rebuild. | The rebuild is already a per-request cost today (`A8`); caching the registry per session fixes both. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_112">112</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_113">113</td><td nowrap="nowrap"><span class="diff_add">## Explicitly out of scope</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_114">114</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_115">115</td><td nowrap="nowrap"><span class="diff_add">Tracked, not scheduled:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_116">116</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_117">117</td><td nowrap="nowrap"><span class="diff_add">- **Authentication** (`I1`), `project_path` validation (`I5`), rate limiting (`I6`). The server is treated as cluster-internal. Note that statelessness makes `session_id` a *portable* bearer capability — this becomes more urgent, not less, once Phase 6 lands.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_118">118</td><td nowrap="nowrap"><span class="diff_add">- **CLI/SDK singletons** (`D1` `D2` `D4`) — parallel sessions for `optics execute` and the Robot/Python SDK. These don't affect `optics serve`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_119">119</td><td nowrap="nowrap"><span class="diff_add">- **`optics live` collisions** (`E6` `E7` `A12`).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_120">120</td><td nowrap="nowrap"><span class="diff_add">- **Port and device allocation** (`F1` `F2`) — the served deployment delegates this to a Grid or cloud farm. Anyone running parallel sessions against a *local* Appium server hits it immediately; see [Resource Isolation](resource-isolation.md#mitigation-today) for the manual workaround.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_121">121</td><td nowrap="nowrap"><span class="diff_add">- **Selenium `attach_to_session`** — a known ~40-line port of the Appium trick.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to9_122">122</td><td nowrap="nowrap"><span class="diff_add">- **`httpx` is undeclared** in the dev/test dependency groups, yet every `TestClient` test needs it; a fresh `poetry install --with dev,test` cannot run them.</span></td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>

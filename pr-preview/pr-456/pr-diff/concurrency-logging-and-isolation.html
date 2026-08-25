@@ -1,0 +1,167 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/concurrency/logging-and-isolation.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to4__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/concurrency/logging-and-isolation.md (new file)</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/concurrency/logging-and-isolation.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to4__0"><a href="#difflib_chg_to4__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to4__top">t</a></td><td class="diff_header" id="to4_1">1</td><td nowrap="nowrap"><span class="diff_add"># Logging &amp; Session Isolation</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_2">2</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_3">3</td><td nowrap="nowrap"><span class="diff_add">:material-progress-clock: **Status: In progress** — the *Current behaviour* section is accurate today; the *Target* section is Phase 2 and not yet implemented.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_4">4</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_5">5</td><td nowrap="nowrap"><span class="diff_add">For the logging subsystem's original design and intent, see [Architecture → Logging](../architecture/logging.md). This page covers only what happens when more than one session logs at once, which is where the design breaks down.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_6">6</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_7">7</td><td nowrap="nowrap"><span class="diff_add">## The short version</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_8">8</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_9">9</td><td nowrap="nowrap"><span class="diff_add">Optics has **two module-global loggers** — `optics.internal` and `optics.execution` — created once at import in `optics_framework/common/logging_config.py`. There is no per-session logger, no per-session handler, and no filter that separates one session's records from another's. The scaffolding that looks like session scoping (`LoggerContext`, `SessionLoggerAdapter`) only stamps a `session_id` into `extra`; nothing ever reads it.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_10">10</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_11">11</td><td nowrap="nowrap"><span class="diff_add">## Current behaviour</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_12">12</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_13">13</td><td nowrap="nowrap"><span class="diff_add">### The queue has no listener</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_14">14</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_15">15</td><td nowrap="nowrap"><span class="diff_add">`execution_logger` is given a `QueueHandler` feeding `execution_log_queue = queue.Queue(-1)`. That is the correct async-safe pattern — except **`QueueListener` appears zero times in the entire repository**. Nothing ever drains the queue.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_16">16</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_17">17</td><td nowrap="nowrap"><span class="diff_add">Two consequences:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_18">18</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_19">19</td><td nowrap="nowrap"><span class="diff_add">- Every execution `LogRecord` — with its `args`, `exc_info`, and any captured frames — is retained for the process lifetime. `clear_queues()` only runs at `atexit`. In a long-lived server this is a steady, unbounded memory leak.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_20">20</td><td nowrap="nowrap"><span class="diff_add">- `execution_console_handler` is constructed and formatted, then **never attached to any logger**. Execution logs reach a console only because `execution_logger.propagate` is `True`, routing them to the root logger.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_21">21</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_22">22</td><td nowrap="nowrap"><span class="diff_add">The fix is to instantiate the `QueueListener` the code was clearly written for. That single change also moves all handler I/O off the calling thread, which is what makes the whole path async-safe by construction.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_23">23</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_24">24</td><td nowrap="nowrap"><span class="diff_add">### Every session reconfigures logging globally</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_25">25</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_26">26</td><td nowrap="nowrap"><span class="diff_add">`ConfigHandler.__init__` calls `initialize_handlers(config)`, and a `ConfigHandler` is constructed **per session**. `optics serve` additionally calls `reconfigure_logging(session_config)` on every session creation.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_27">27</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_28">28</td><td nowrap="nowrap"><span class="diff_add">`initialize_handlers` sets the level on the two shared loggers and adds a `RotatingFileHandler` for that session's `execution_output_path`, de-duplicated only by `baseFilename` and **never removed**. So:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_29">29</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_30">30</td><td nowrap="nowrap"><span class="diff_add">- Session B starting with `log_level: DEBUG` silently flips session A from `INFO` to `DEBUG` mid-run.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_31">31</td><td nowrap="nowrap"><span class="diff_add">- Once B's file handler is attached, **A's log lines are also written into B's log file**, and vice versa. Every session's log becomes a superset of every concurrent session's.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_32">32</td><td nowrap="nowrap"><span class="diff_add">- Handlers accumulate for the process lifetime. N sessions across N projects means every record is written N times.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_33">33</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_34">34</td><td nowrap="nowrap"><span class="diff_add">### Log capture bleeds between sessions</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_35">35</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_36">36</td><td nowrap="nowrap"><span class="diff_add">To populate JUnit `&lt;log&gt;` elements, `TestRunner._execute_keyword` attaches a `LogCaptureBuffer` to the **process-global** `execution_logger` for the duration of each keyword, then removes it.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_37">37</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_38">38</td><td nowrap="nowrap"><span class="diff_add">With two sessions running, session A's per-keyword buffer captures **session B's records**, and they land in A's JUnit output. `emit` is serialized by the handler lock, but `get_records()` and `clear()` are unsynchronized and are read without one.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_39">39</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_40">40</td><td nowrap="nowrap"><span class="diff_add">### The server forces DEBUG on everything</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_41">41</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_42">42</td><td nowrap="nowrap"><span class="diff_add">`optics serve` replaces the `uvicorn.*` and **root** logger handler lists wholesale and forces root to `DEBUG`; `expose_api` additionally hard-codes `log_level="DEBUG"` into every session `Config`. The net effect is that every record from `urllib3`, `selenium`, `asyncio`, and `appium`, plus every HTTP access line, is rendered by `RichHandler` — markup parse, syntax highlight, terminal measure, write, flush — **on the event loop thread**.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_43">43</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_44">44</td><td nowrap="nowrap"><span class="diff_add">On the hot path, `EventManager._process_events` and the JUnit handler both do:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_45">45</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_46">46</td><td nowrap="nowrap"><span class="diff_add">```python</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_47">47</td><td nowrap="nowrap"><span class="diff_add">internal_logger.debug(f"Processing event: {event.model_dump()}")</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_48">48</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_49">49</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_50">50</td><td nowrap="nowrap"><span class="diff_add">An f-string is evaluated eagerly, so that full Pydantic serialization runs **before** the level check, for every event and every subscriber, whether or not DEBUG is enabled.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_51">51</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_52">52</td><td nowrap="nowrap"><span class="diff_add">### Secrets used to reach stdout</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_53">53</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_54">54</td><td nowrap="nowrap"><span class="diff_add">:material-check-circle: Fixed in Phase 0, in two steps. `create_session` used to log `config.model_dump()` verbatim, which includes driver capabilities; cloud device-farm capabilities routinely carry access keys — `browserstack.key`, `bstack:options.accessKey`, vendor tokens. That line is gone, and separately both drivers used to dump their whole capability dict at DEBUG on every launch, which the forced-DEBUG behaviour above guaranteed would be emitted.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_55">55</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_56">56</td><td nowrap="nowrap"><span class="diff_add">Every capability log site now goes through `redact_sensitive_values` (`common/logging_config.py`): keys are kept — they are what makes a capability dump useful — and only values behind credential-shaped keys (`key`, `token`, `secret`, `password`, `credential`, `auth`, `licence`) are masked, recursing into nested option blocks.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_57">57</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_58">58</td><td nowrap="nowrap"><span class="diff_add">This is a redaction at the *call site*, not a formatter. `SensitiveDataFormatter` does exist, but it only masks `@:`-style URL credentials and is attached **only to file handlers**, not to the console handler — and in a container, stdout is exactly where logs are shipped. Attaching it to the console handler too is still Phase 2.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_59">59</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_60">60</td><td nowrap="nowrap"><span class="diff_add">### One session's shutdown can kill logging process-wide</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_61">61</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_62">62</td><td nowrap="nowrap"><span class="diff_add">`disable_logger()` sets `logging.getLogger().disabled = True` on the **root** logger. It is currently only reached from `atexit`, so it doesn't bite in practice — but it is a process-global kill switch sitting in a per-session teardown path.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_63">63</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_64">64</td><td nowrap="nowrap"><span class="diff_add">## Target</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_65">65</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_66">66</td><td nowrap="nowrap"><span class="diff_add">:material-alert: **Status: Planned** (Phase 2).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_67">67</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_68">68</td><td nowrap="nowrap"><span class="diff_add">- **Configure logging exactly once, at process startup.** `ConfigHandler.__init__` stops calling `initialize_handlers`; `create_session` stops calling `reconfigure_logging`. Log level comes from process configuration, not from whichever session happened to be created last.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_69">69</td><td nowrap="nowrap"><span class="diff_add">- **Instantiate the `QueueListener`**, so the queue is drained and handler I/O leaves the calling thread.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_70">70</td><td nowrap="nowrap"><span class="diff_add">- **Session scoping via `contextvars`.** A `ContextVar` carrying `session_id`, a filter that stamps it onto every record, and — where per-session files are wanted — a filter that routes. This replaces add/remove of handlers on a global logger, which also removes the `LogCaptureBuffer` cross-talk without needing a lock.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_71">71</td><td nowrap="nowrap"><span class="diff_add">- **Structured JSON to stdout in server mode**, at a configured level, so a container's log pipeline can filter by `session_id`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_72">72</td><td nowrap="nowrap"><span class="diff_add">- **Lazy formatting on the event path** — `%`-style args, or an `isEnabledFor` guard.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_73">73</td><td nowrap="nowrap"><span class="diff_add">- **`SensitiveDataFormatter` on the console handler too.**</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_74">74</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_75">75</td><td nowrap="nowrap"><span class="diff_add">## What this means for you today</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_76">76</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_77">77</td><td nowrap="nowrap"><span class="diff_add">- **Do not trust a log file to contain one session's records** if more than one session ran in the process.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_78">78</td><td nowrap="nowrap"><span class="diff_add">- **Capability values behind credential-shaped keys are redacted**, but a secret stored under a key that doesn't look like one (say, `appium:vendorBlob`) is not. Name your credential capabilities recognisably.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to4_79">79</td><td nowrap="nowrap"><span class="diff_add">- **Prefer `%`-style logging args** (`logger.debug("x: %s", value)`) over f-strings in any code that runs per event or per keyword. The formatting cost is real and it is paid whether or not the level is enabled.</span></td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
