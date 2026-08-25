@@ -310,18 +310,13 @@ Details in the [CLI guide](https://mozarkai.github.io/optics-framework/usage/CLI
 
 Contributions welcome — bug reports, docs, and code are all first-class.
 
-- **First contribution?** Pick something from [`good first issue`](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 - **Bigger items** are queued under [`help wanted`](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
 - **Found a bug or missing a keyword?** [Open an issue](https://github.com/mozarkai/optics-framework/issues/new/choose).
 
-The [contribution guide](CONTRIBUTING.md) covers development setup, a project
-layout tour, step-by-step recipes (adding a keyword or engine backend), commit
-conventions, and the pull-request format reviewers expect. Tooling details live
-in the [Developer Guide](docs/contribution/developer_guide.md); behaviour
-expectations in our [Code of Conduct](CODE_OF_CONDUCT.md).
+The [contribution guide](CONTRIBUTING.md) covers development setup, step-by-step recipes (adding a keyword or engine backend), commit conventions, and the pull-request format reviewers expect. Tooling details live in the [Developer Guide](docs/contribution/developer_guide.md); behaviour expectations in our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ```bash
-git clone https://github.com/mozarkai/optics-framework.git
+git clone git@github.com:mozarkai/optics-framework.git
 cd optics-framework
 pipx install poetry
 poetry install --with dev,test,docs
@@ -332,9 +327,9 @@ poetry run pre-commit run --all-files
 poetry run mkdocs serve              # docs preview
 ```
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/),
-enforced by commitizen in the commit-msg hook. Security issues follow
-[SECURITY.md](SECURITY.md) rather than public issues.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by commitizen in the commit-msg hook.
+
+Security issues follow [SECURITY.md](SECURITY.md) rather than public issues.
 
 ## License & support
 
