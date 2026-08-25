@@ -20,8 +20,8 @@ def git(*args: str) -> str:
     ).stdout
 
 
-def changed_entries(base: str) -> list[tuple[str, str, str]]:
-    out = git("diff", "--name-status", f"{base}..HEAD", "--", "docs/")
+def changed_entries(base: str, head: str) -> list[tuple[str, str, str]]:
+    out = git("diff", "--name-status", f"{base}..{head}", "--", "docs/")
     entries: list[tuple[str, str, str]] = []
     for line in out.splitlines():
         if not line.strip():
@@ -37,8 +37,8 @@ def changed_entries(base: str) -> list[tuple[str, str, str]]:
     return sorted(entries, key=lambda e: e[1])
 
 
-def other_changed(base: str) -> list[str]:
-    out = git("diff", "--name-only", f"{base}..HEAD")
+def other_changed(base: str, head: str) -> list[str]:
+    out = git("diff", "--name-only", f"{base}..{head}")
     return [
         p
         for p in out.splitlines()
@@ -111,16 +111,16 @@ def fit_diff_page(page: str, title: str) -> str:
     return page.replace("</body>", "</div>\n</body>", 1)
 
 
-def write_diff_page(status: str, path: str, old_path: str, base: str) -> str:
+def write_diff_page(status: str, path: str, old_path: str, base: str, head: str) -> str:
     slug = slug_for(path)
     old = [] if status == "A" else file_lines(base, old_path)
-    new = [] if status == "D" else file_lines("HEAD", path)
+    new = [] if status == "D" else file_lines(head, path)
     if status == "A":
         fromdesc = f"{path} (new file)"
     elif status == "R":
-        fromdesc = f"{old_path} @ main"
+        fromdesc = f"{old_path} @ base"
     else:
-        fromdesc = f"{path} @ main"
+        fromdesc = f"{path} @ base"
     todesc = f"{path} (deleted)" if status == "D" else f"{path} @ PR head"
     page = difflib.HtmlDiff().make_file(
         old, new, fromdesc=fromdesc, todesc=todesc, context=True, numlines=4
@@ -201,15 +201,24 @@ def write_index(
 def main() -> int:
     base = os.environ.get("GITHUB_PR_BASE")
     if not base:
-        print("GITHUB_PR_BASE (PR base SHA) is required", file=sys.stderr)
+        print("GITHUB_PR_BASE (PR base ref/SHA) is required", file=sys.stderr)
         return 2
+    head = os.environ.get("GITHUB_PR_HEAD", "HEAD")
     pr_number = os.environ.get("GITHUB_PR_NUMBER", "")
-    entries = changed_entries(base)
-    others = other_changed(base)
+    # Diff only what this PR introduces. pull_request.base.sha is frozen at PR
+    # open/sync time and goes stale, and the pull_request checkout is the merge
+    # commit (current base branch + head); diffing either against the merge
+    # surfaces main's forward progress as "PR changes". Resolve the merge-base
+    # of (base, head) -- the true fork point -- and diff that..head.
+    merge_base = git("merge-base", base, head).strip()
+    if merge_base:
+        base = merge_base
+    entries = changed_entries(base, head)
+    others = other_changed(base, head)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     rows: list[tuple[str, str, str, str]] = []
     for status, path, old_path in entries:
-        slug = write_diff_page(status, path, old_path, base)
+        slug = write_diff_page(status, path, old_path, base, head)
         rows.append((status, path, slug, render_url(path)))
     write_index(rows, others, pr_number)
     print(
