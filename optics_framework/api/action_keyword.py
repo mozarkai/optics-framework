@@ -983,7 +983,7 @@ class ActionKeyword:
         If the input is a string that includes angle brackets (e.g., '<enter>'),
         the text between the brackets will be interpreted as a special key name and mapped accordingly.
 
-        :param input: The text or special key identifier to send.
+        :param text_input: The text or special key identifier to send.
         :param event_name: Optional event label for logging.
         """
 
@@ -1155,9 +1155,7 @@ class ActionKeyword:
                                - "mobile:pressKey" (plain script)
                                - '{"script": "mobile:pressKey", "args": {"keycode": 3}}' (JSON with args)
                                - '{"script": "mobile:clear"}' (JSON without args)
-        :type script_or_json: str
         :param event_name: The event triggering the script execution, if any.
-        :type event_name: Optional[str]
         :return: The result of the script execution.
         :rtype: Any
         """

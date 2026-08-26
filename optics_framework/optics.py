@@ -338,7 +338,6 @@ class Optics:
         Discover all image templates in the project directory.
 
         :param project_path: The path to the project directory.
-        :type project_path: str
 
         :return: TemplateData containing image name to path mappings.
         :rtype: TemplateData
@@ -397,12 +396,9 @@ class Optics:
         """
         Configure the Optics Framework from a JSON or YAML configuration file.
 
-        Args:
-            config_file_path: Path to the configuration file (JSON or YAML).
-
-        Raises:
-            ValueError: If the file cannot be read or parsed.
-            FileNotFoundError: If the configuration file doesn't exist.
+        :param config_file_path: Path to the configuration file (JSON or YAML).
+        :raises ValueError: If the file cannot be read or parsed.
+        :raises FileNotFoundError: If the configuration file doesn't exist.
         """
         try:
             with open(config_file_path, "r", encoding="utf-8") as file:
@@ -1192,15 +1188,14 @@ class Optics:
         """
         Get interactive elements on the screen.
 
-        Args:
-            filter_config: Optional list of filter types. Valid values:
-                - "all": Show all elements (default when None or empty)
-                - "interactive": Only interactive elements
-                - "buttons": Only button elements
-                - "inputs": Only input/text field elements
-                - "images": Only image elements
-                - "text": Only text elements
-                Can be combined: ["buttons", "inputs"]
+        :param filter_config: Optional list of filter types. Valid values:
+            - "all": Show all elements (default when None or empty)
+            - "interactive": Only interactive elements
+            - "buttons": Only button elements
+            - "inputs": Only input/text field elements
+            - "images": Only image elements
+            - "text": Only text elements
+            Can be combined: ["buttons", "inputs"]
         """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)

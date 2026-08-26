@@ -433,17 +433,14 @@ class FlowControl:
         Reads tabular data from a CSV file, JSON file, environment variable, or a 2D list,
         applies optional filtering and column selection, and stores the result in the session's elements.
 
-        Args:
-            input_element: Variable name where the result is stored (e.g. `${data}`). Prefer `${name}` form.
-            file_path: Data source. One of: (1) path to a `.csv` or `.json` file; (2) string
-                ``ENV:VAR_NAME`` to use an environment variable (value parsed as JSON, CSV, or plain string);
-                (3) a 2D list with first row as headers (Python API only).
-            query: Optional semicolon-separated parts: ``select=col1,col2`` and/or filter expressions
-                (pandas-style). Any ``${varname}`` in the query is resolved from `session.elements` before
-                evaluation. Default ``""``.
-
-        Returns:
-            The stored value as a list (or list of lists for multi-row results). Also writes into
+        :param input_element: Variable name where the result is stored (e.g. ``${data}``). Prefer ``${name}`` form.
+        :param file_path: Data source. One of: (1) path to a ``.csv`` or ``.json`` file; (2) string
+            ``ENV:VAR_NAME`` to use an environment variable (value parsed as JSON, CSV, or plain string);
+            (3) a 2D list with first row as headers (Python API only).
+        :param query: Optional semicolon-separated parts: ``select=col1,col2`` and/or filter expressions
+            (pandas-style). Any ``${varname}`` in the query is resolved from `session.elements` before
+            evaluation. Default ``""``.
+        :returns: The stored value as a list (or list of lists for multi-row results). Also writes into
             `session.elements` under the name derived from `input_element`.
         """
         internal_logger.debug(f"[READ_DATA] Called with input_element={input_element}, file_path={file_path}, query={query}")
@@ -924,22 +921,18 @@ class FlowControl:
         """
         Evaluates a date expression based on an input date and stores the result in session.elements.
 
-        Args:
-            param1 (str): The variable name (placeholder) where the evaluated date result will be stored.
-            param2 (str): The input date string (e.g., "04/25/2025" or "2025-04-25"). Format is auto-detected.
-            param3 (str): The date expression to evaluate, such as "+1 day", "-2 days", or "today".
-            param4 (Optional[str]): The output format for the evaluated date (default is "%d %B", e.g., "26 April").
-
-        Returns:
-            str: The resulting evaluated and formatted date string.
-
-        Raises:
-            ValueError: If the session is not present, the input date format cannot be detected,
-                        or the expression format is invalid.
+        :param param1: The variable name (placeholder) where the evaluated date result will be stored.
+        :param param2: The input date string (e.g., ``"04/25/2025"`` or ``"2025-04-25"``). Format is auto-detected.
+        :param param3: The date expression to evaluate, such as ``"+1 day"``, ``"-2 days"``, or ``"today"``.
+        :param param4: The output format for the evaluated date (default is ``"%d %B"``, e.g., ``"26 April"``).
+        :returns: The resulting evaluated and formatted date string.
+        :raises OpticsError: If the session is not present, the input date format cannot be detected,
+            or the expression format is invalid.
 
         Example:
+
             date_evaluate("tomorrow", "04/25/2025", "+1 day")
-            ➔ Stores "26 April" in session.elements["tomorrow"]
+            -> Stores "26 April" in session.elements["tomorrow"]
         """
         self._ensure_session()
         if self.session is None:
