@@ -129,7 +129,7 @@ class Verifier:
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
         :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
-        :param timeout: The time to wait for the elements in seconds.
+        :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
         :return: True if the rule is satisfied, False otherwise.
@@ -337,7 +337,6 @@ class Verifier:
         On Appium sources, element bounds are returned in the screenshot's pixel space.
 
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
-        :type filter_config: Optional[List[str]]
         :return: A list of interactive elements.
         """
         screenshot_np = self._safe_capture_screenshot_np() if self._bounds_need_screenshot() else None

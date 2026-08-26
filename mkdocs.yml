@@ -97,6 +97,8 @@ plugins:
       handlers:
         python:
           paths: [.]
+          options:
+            docstring_style: sphinx
   - minify:
       minify_html: true
 

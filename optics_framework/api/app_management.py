@@ -62,7 +62,7 @@ class AppManagement:
         """
         Starts another application.
 
-        :param package_name: The package name of the application.
+        :param app_name: The package name of the application.
         :param event_name: The event triggering the app start, if any.
         """
         self.driver.launch_other_app(app_name, event_name)
