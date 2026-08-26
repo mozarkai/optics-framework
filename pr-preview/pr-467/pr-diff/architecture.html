@@ -7,7 +7,7 @@
 <head>
     <meta http-equiv="Content-Type"
           content="text/html; charset=utf-8" />
-    <title>docs/architecture/execution.md – docs diff</title>
+    <title>docs/architecture.md – docs diff</title>
     <style type="text/css">
         :root {color-scheme: light dark}
         table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
@@ -59,21 +59,18 @@
 <body>
 <div class="diff-shell">
     
-    <table class="diff" id="difflib_chg_to3__top"
+    <table class="diff" id="difflib_chg_to0__top"
            cellspacing="0" cellpadding="0" rules="groups" >
         <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
         <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
-        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/execution.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/execution.md @ PR head</th></tr></thead>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture.md @ PR head</th></tr></thead>
         <tbody>
-            <tr><td class="diff_next" id="difflib_chg_to3__0"></td><td class="diff_header" id="from3_1220">1220</td><td nowrap="nowrap">    participant Session</td><td class="diff_next"></td><td class="diff_header" id="to3_1220">1220</td><td nowrap="nowrap">    participant Session</td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1221">1221</td><td nowrap="nowrap">    participant Builder</td><td class="diff_next"></td><td class="diff_header" id="to3_1221">1221</td><td nowrap="nowrap">    participant Builder</td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1222">1222</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to3_1222">1222</td><td nowrap="nowrap"></td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1223">1223</td><td nowrap="nowrap">    CLI-&gt;&gt;Helper: execute(project)</td><td class="diff_next"></td><td class="diff_header" id="to3_1223">1223</td><td nowrap="nowrap">    CLI-&gt;&gt;Helper: execute(project)</td></tr>
-            <tr><td class="diff_next"><a href="#difflib_chg_to3__top">t</a></td><td class="diff_header" id="from3_1224">1224</td><td nowrap="nowrap">    Helper-&gt;&gt;Helper: load_config()</td><td class="diff_next"><a href="#difflib_chg_to3__top">t</a></td><td class="diff_header" id="to3_1224">1224</td><td nowrap="nowrap">    Helper-&gt;&gt;Helper: load<span class="diff_add">_project</span>_config()</td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1225">1225</td><td nowrap="nowrap">    Helper-&gt;&gt;Helper: load_test_cases()</td><td class="diff_next"></td><td class="diff_header" id="to3_1225">1225</td><td nowrap="nowrap">    Helper-&gt;&gt;Helper: load_test_cases()</td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1226">1226</td><td nowrap="nowrap">    Helper-&gt;&gt;SessionMgr: create_session()</td><td class="diff_next"></td><td class="diff_header" id="to3_1226">1226</td><td nowrap="nowrap">    Helper-&gt;&gt;SessionMgr: create_session()</td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1227">1227</td><td nowrap="nowrap">    SessionMgr-&gt;&gt;Session: new Session()</td><td class="diff_next"></td><td class="diff_header" id="to3_1227">1227</td><td nowrap="nowrap">    SessionMgr-&gt;&gt;Session: new Session()</td></tr>
-            <tr><td class="diff_next"></td><td class="diff_header" id="from3_1228">1228</td><td nowrap="nowrap">    Session-&gt;&gt;Builder: new OpticsBuilder()</td><td class="diff_next"></td><td class="diff_header" id="to3_1228">1228</td><td nowrap="nowrap">    Session-&gt;&gt;Builder: new OpticsBuilder()</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_269">269</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_269">269</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_270">270</td><td nowrap="nowrap">- [REST API Usage](usage/REST_API_usage.md) - Complete REST API endpoint reference</td><td class="diff_next"></td><td class="diff_header" id="to0_270">270</td><td nowrap="nowrap">- [REST API Usage](usage/REST_API_usage.md) - Complete REST API endpoint reference</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_271">271</td><td nowrap="nowrap">- [API Reference](api_reference.md) - Python API documentation</td><td class="diff_next"></td><td class="diff_header" id="to0_271">271</td><td nowrap="nowrap">- [API Reference](api_reference.md) - Python API documentation</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_272">272</td><td nowrap="nowrap">- [Configuration](configuration.md) - Configuration guide</td><td class="diff_next"></td><td class="diff_header" id="to0_272">272</td><td nowrap="nowrap">- [Configuration](configuration.md) - Configuration guide</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_273">273</td><td nowrap="nowrap"><span class="diff_sub">- [Quick Start](quickstart.md) - Getting started guide</span></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_273">273</td><td nowrap="nowrap"><span class="diff_add">- [Getting Started](quickstart.md) - Install, first project, first run</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_274">274</td><td nowrap="nowrap">- [Usage Guide](usage/usage.md) - Usage examples and patterns</td><td class="diff_next"></td><td class="diff_header" id="to0_274">274</td><td nowrap="nowrap">- [Usage Guide](usage/usage.md) - Usage examples and patterns</td></tr>
         </tbody>
     </table>
     <table class="diff" summary="Legends">
