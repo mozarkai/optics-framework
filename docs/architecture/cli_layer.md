@@ -6,12 +6,14 @@ The Optics Framework provides a command-line interface (CLI) that enables users 
 
 The CLI layer provides:
 
-1. **Project Management** - Initialize and manage test projects
-2. **Test Execution** - Execute and validate test cases
-3. **Driver Setup** - Install and configure drivers
-4. **Code Generation** - Generate test framework code
-5. **API Server** - Start the REST API server
-6. **Configuration** - Manage framework configuration
+1. **Onboarding** - `optics quickstart`, `optics doctor`, and `optics configure` take a new user from a fresh install to a runnable project and a healthy setup
+2. **Project Management** - `optics init` scaffolds a project from a template
+3. **Test Execution** - `optics execute` and `optics dry_run` run and validate test cases
+4. **Engine Setup** - `optics setup` installs driver, OCR, and LLM backends by name
+5. **Code Generation** - `optics generate` emits pytest or Robot Framework code
+6. **Interactive & Agent Surfaces** - `optics live` for interactive sessions and `optics mcp` for AI-agent control
+7. **API Server** - `optics serve` starts the REST API
+8. **Listing & Completion** - `optics list` prints keywords; `optics completion` installs shell completions
 
 ## CLI Architecture
 
@@ -25,11 +27,13 @@ graph TB
     F --> G[Core Framework]
 
     D --> H[Init Command]
-    D --> I[Execute Command]
-    D --> J[Setup Command]
-    D --> K[Generate Command]
-    D --> L[Server Command]
-    D --> M[Config Command]
+    D --> I[Quickstart Command]
+    D --> J[Execute / Dry Run]
+    D --> K[Setup Command]
+    D --> L[Generate Command]
+    D --> M[Server / Live / MCP]
+    D --> N[Configure / Doctor]
+    D --> O[List / Completion]
 ```
 
 **Location:** `optics_framework/helper/cli.py`
@@ -284,6 +288,34 @@ optics completion
 ```
 
 **Behavior:** Generates the completion scripts under `~/.optics/`, then asks for confirmation before appending the `source` line to the shell RC file (`.bashrc`, `.zshrc`). On decline — or without an interactive terminal — it prints the line to add manually and leaves RC files untouched.
+
+### 12. Live Command
+
+**Command:** `optics live [folder]`
+
+**Purpose:** Open an interactive terminal session to run keywords against a live target, with recording always on
+
+**Usage:**
+```bash
+optics live                # uses the config.yaml in the current directory
+optics live my_project     # uses that project's config.yaml
+```
+
+**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save <test_case> <module_name>` appends the recording to `modules/modules.csv`, `test_cases/test_cases.csv`, and `elements/elements.csv`. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs the `llm` extra). See [Live Usage](../usage/live_usage.md).
+
+### 13. MCP Command
+
+**Command:** `optics mcp [--transport stdio|http]`
+
+**Purpose:** Run an MCP server that exposes every keyword as a typed tool and device state as resources, so an AI client can drive a real target
+
+**Usage:**
+```bash
+optics mcp                                  # stdio transport (default; local clients like Claude Desktop)
+optics mcp --transport http --port 8090     # networked
+```
+
+**Behavior:** A thin in-process wrapper over the REST engine — it reuses the keyword machinery, not a reimplementation. `start_session` -> observe (`screenshot`, `optics://session/{id}/source`) -> act (`press_element`, `enter_text`, ...) -> `terminate_session`. Sessions are **not** shared with `optics serve`; each is its own process. Requires the optional `mcp` extra (`pip install "optics-framework[mcp]"`). See [MCP Usage](../usage/mcp_usage.md).
 
 ## Helper Modules
 
