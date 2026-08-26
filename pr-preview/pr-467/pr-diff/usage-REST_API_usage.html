@@ -1,0 +1,160 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/REST_API_usage.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to11__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/REST_API_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/REST_API_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to11__1"><a href="#difflib_chg_to11__1">n</a></td><td class="diff_header" id="from11_1">1</td><td nowrap="nowrap"><span class="diff_sub"># :material-api: REST API Usage</span></td><td class="diff_next"><a href="#difflib_chg_to11__1">n</a></td><td class="diff_header" id="to11_1">1</td><td nowrap="nowrap"><span class="diff_add"># REST API Usage</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_2">2</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_2">2</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_3">3</td><td nowrap="nowrap">The Optics Framework provides a RESTful API for programmatic interaction with the framework. This API allows you to create sessions, execute keywords, capture screenshots, and manage test execution.</td><td class="diff_next"></td><td class="diff_header" id="to11_3">3</td><td nowrap="nowrap">The Optics Framework provides a RESTful API for programmatic interaction with the framework. This API allows you to create sessions, execute keywords, capture screenshots, and manage test execution.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_4">4</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_4">4</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to11__2"><a href="#difflib_chg_to11__2">n</a></td><td class="diff_header" id="from11_5">5</td><td nowrap="nowrap"><span class="diff_sub">## :material-link: Base URL</span></td><td class="diff_next"><a href="#difflib_chg_to11__2">n</a></td><td class="diff_header" id="to11_5">5</td><td nowrap="nowrap"><span class="diff_add">## Base URL</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_6">6</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_6">6</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_7">7</td><td nowrap="nowrap">The API is served via FastAPI and typically runs on `http://localhost:8000` by default.</td><td class="diff_next"></td><td class="diff_header" id="to11_7">7</td><td nowrap="nowrap">The API is served via FastAPI and typically runs on `http://localhost:8000` by default.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_8">8</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_8">8</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to11__3"><a href="#difflib_chg_to11__3">n</a></td><td class="diff_header" id="from11_9">9</td><td nowrap="nowrap"><span class="diff_sub">## :material-shield-lock: Authentication</span></td><td class="diff_next"><a href="#difflib_chg_to11__3">n</a></td><td class="diff_header" id="to11_9">9</td><td nowrap="nowrap"><span class="diff_add">## Authentication</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_10">10</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_10">10</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_11">11</td><td nowrap="nowrap">Currently, the API does not require authentication. CORS is enabled for all origins.</td><td class="diff_next"></td><td class="diff_header" id="to11_11">11</td><td nowrap="nowrap">Currently, the API does not require authentication. CORS is enabled for all origins.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_12">12</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_12">12</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to11__4">n</a></td><td class="diff_header" id="from11_13">13</td><td nowrap="nowrap"><span class="diff_sub">## :material-code-json: Response Format</span></td><td class="diff_next"><a href="#difflib_chg_to11__4">n</a></td><td class="diff_header" id="to11_13">13</td><td nowrap="nowrap"><span class="diff_add">## Response Format</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_14">14</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_14">14</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_15">15</td><td nowrap="nowrap">All endpoints return JSON responses. Error responses follow this format:</td><td class="diff_next"></td><td class="diff_header" id="to11_15">15</td><td nowrap="nowrap">All endpoints return JSON responses. Error responses follow this format:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_16">16</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_16">16</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_17">17</td><td nowrap="nowrap">```json</td><td class="diff_next"></td><td class="diff_header" id="to11_17">17</td><td nowrap="nowrap">```json</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to11__4"></td><td class="diff_header" id="from11_19">19</td><td nowrap="nowrap">  "detail": "Error message"</td><td class="diff_next"></td><td class="diff_header" id="to11_19">19</td><td nowrap="nowrap">  "detail": "Error message"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_20">20</td><td nowrap="nowrap">}</td><td class="diff_next"></td><td class="diff_header" id="to11_20">20</td><td nowrap="nowrap">}</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_21">21</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to11_21">21</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_22">22</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_22">22</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to11__5">n</a></td><td class="diff_header" id="from11_23">23</td><td nowrap="nowrap"><span class="diff_sub">## :material-database: Models</span></td><td class="diff_next"><a href="#difflib_chg_to11__5">n</a></td><td class="diff_header" id="to11_23">23</td><td nowrap="nowrap"><span class="diff_add">## Models</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_24">24</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_24">24</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_25">25</td><td nowrap="nowrap">### SessionConfig</td><td class="diff_next"></td><td class="diff_header" id="to11_25">25</td><td nowrap="nowrap">### SessionConfig</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_26">26</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_26">26</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_27">27</td><td nowrap="nowrap">Configuration for starting a new Optics session.</td><td class="diff_next"></td><td class="diff_header" id="to11_27">27</td><td nowrap="nowrap">Configuration for starting a new Optics session.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to11__5"></td><td class="diff_header" id="from11_131">131</td><td nowrap="nowrap">  ]</td><td class="diff_next"></td><td class="diff_header" id="to11_131">131</td><td nowrap="nowrap">  ]</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_132">132</td><td nowrap="nowrap">}</td><td class="diff_next"></td><td class="diff_header" id="to11_132">132</td><td nowrap="nowrap">}</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_133">133</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to11_133">133</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_134">134</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_134">134</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to11__6">n</a></td><td class="diff_header" id="from11_135">135</td><td nowrap="nowrap"><span class="diff_sub">## :material-routes: Endpoints</span></td><td class="diff_next"><a href="#difflib_chg_to11__6">n</a></td><td class="diff_header" id="to11_135">135</td><td nowrap="nowrap"><span class="diff_add">## Endpoints</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_136">136</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_136">136</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_137">137</td><td nowrap="nowrap">### Health Check</td><td class="diff_next"></td><td class="diff_header" id="to11_137">137</td><td nowrap="nowrap">### Health Check</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_138">138</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_138">138</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_139">139</td><td nowrap="nowrap">**GET** `/`</td><td class="diff_next"></td><td class="diff_header" id="to11_139">139</td><td nowrap="nowrap">**GET** `/`</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to11__6"></td><td class="diff_header" id="from11_547">547</td><td nowrap="nowrap">!!! warning "Termination"</td><td class="diff_next"></td><td class="diff_header" id="to11_547">547</td><td nowrap="nowrap">!!! warning "Termination"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_548">548</td><td nowrap="nowrap">    - Automatically executes `close_and_terminate_app` keyword before termination</td><td class="diff_next"></td><td class="diff_header" id="to11_548">548</td><td nowrap="nowrap">    - Automatically executes `close_and_terminate_app` keyword before termination</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_549">549</td><td nowrap="nowrap">    - Cleans up all session resources</td><td class="diff_next"></td><td class="diff_header" id="to11_549">549</td><td nowrap="nowrap">    - Cleans up all session resources</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_550">550</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_550">550</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to11__7">n</a></td><td class="diff_header" id="from11_551">551</td><td nowrap="nowrap"><span class="diff_sub">## :material-alert-circle: Error Handling</span></td><td class="diff_next"><a href="#difflib_chg_to11__7">n</a></td><td class="diff_header" id="to11_551">551</td><td nowrap="nowrap"><span class="diff_add">## Error Handling</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_552">552</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_552">552</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_553">553</td><td nowrap="nowrap">The API uses standard HTTP status codes:</td><td class="diff_next"></td><td class="diff_header" id="to11_553">553</td><td nowrap="nowrap">The API uses standard HTTP status codes:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_554">554</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_554">554</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_555">555</td><td nowrap="nowrap">- `200 OK`: Request succeeded</td><td class="diff_next"></td><td class="diff_header" id="to11_555">555</td><td nowrap="nowrap">- `200 OK`: Request succeeded</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to11__7"></td><td class="diff_header" id="from11_576">576</td><td nowrap="nowrap">  }</td><td class="diff_next"></td><td class="diff_header" id="to11_576">576</td><td nowrap="nowrap">  }</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_577">577</td><td nowrap="nowrap">}</td><td class="diff_next"></td><td class="diff_header" id="to11_577">577</td><td nowrap="nowrap">}</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_578">578</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to11_578">578</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_579">579</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_579">579</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to11__8">n</a></td><td class="diff_header" id="from11_580">580</td><td nowrap="nowrap"><span class="diff_sub">## :material-routes: Common Workflows</span></td><td class="diff_next"><a href="#difflib_chg_to11__8">n</a></td><td class="diff_header" id="to11_580">580</td><td nowrap="nowrap"><span class="diff_add">## Common Workflows</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_581">581</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_581">581</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_582">582</td><td nowrap="nowrap">### Basic Session Workflow</td><td class="diff_next"></td><td class="diff_header" id="to11_582">582</td><td nowrap="nowrap">### Basic Session Workflow</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_583">583</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_583">583</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_584">584</td><td nowrap="nowrap">1. **Create a session:**</td><td class="diff_next"></td><td class="diff_header" id="to11_584">584</td><td nowrap="nowrap">1. **Create a session:**</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to11__8"></td><td class="diff_header" id="from11_617">617</td><td nowrap="nowrap">   ```bash</td><td class="diff_next"></td><td class="diff_header" id="to11_617">617</td><td nowrap="nowrap">   ```bash</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_618">618</td><td nowrap="nowrap">   DELETE /v1/sessions/{session_id}/stop</td><td class="diff_next"></td><td class="diff_header" id="to11_618">618</td><td nowrap="nowrap">   DELETE /v1/sessions/{session_id}/stop</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_619">619</td><td nowrap="nowrap">   ```</td><td class="diff_next"></td><td class="diff_header" id="to11_619">619</td><td nowrap="nowrap">   ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_620">620</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_620">620</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to11__top">t</a></td><td class="diff_header" id="from11_621">621</td><td nowrap="nowrap"><span class="diff_sub">## :material-information: Notes</span></td><td class="diff_next"><a href="#difflib_chg_to11__top">t</a></td><td class="diff_header" id="to11_621">621</td><td nowrap="nowrap"><span class="diff_add">## Notes</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_622">622</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to11_622">622</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_623">623</td><td nowrap="nowrap">- All endpoints that accept `session_id` will return `404` if the session doesn't exist</td><td class="diff_next"></td><td class="diff_header" id="to11_623">623</td><td nowrap="nowrap">- All endpoints that accept `session_id` will return `404` if the session doesn't exist</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_624">624</td><td nowrap="nowrap">- The API supports CORS for all origins</td><td class="diff_next"></td><td class="diff_header" id="to11_624">624</td><td nowrap="nowrap">- The API supports CORS for all origins</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from11_625">625</td><td nowrap="nowrap">- Session creation automatically launches the app configured in the session</td><td class="diff_next"></td><td class="diff_header" id="to11_625">625</td><td nowrap="nowrap">- Session creation automatically launches the app configured in the session</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
