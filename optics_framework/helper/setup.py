@@ -471,7 +471,8 @@ def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tu
             # pulls the required OS libraries.
             run([sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"])
 
-        return True, "Engines installed successfully!"
+        return True, ("Engine packages installed. Services like the Appium "
+                      "server still need to be started separately.")
     except subprocess.CalledProcessError as e:
         # capture_output / _run_streaming route the command's diagnostics to
         # e.stderr/e.stdout rather than losing them, so fold them into the
