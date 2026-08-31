@@ -91,7 +91,7 @@ class Harness:
 
     def __init__(self, ask_values, confirm_values, *,
                  answers=None,
-                 install_result=(True, "Engines installed successfully!")):
+                 install_result=(True, "Engine packages installed.")):
         self.out = io.StringIO()
         self.prompts = Scripted(ask_values)
         self.confirms = Scripted(confirm_values)
@@ -263,9 +263,9 @@ class TestEngineInstall:
     def test_success_message_shown(self, tmp_path):
         with Harness(["mobile", "1", "demo", str(tmp_path)], [True],
                      install_result=(True,
-                                     "Engines installed successfully!")) as h:
+                                     "Engine packages installed.")) as h:
             h.run()
-        assert "installed successfully" in h.out.getvalue().lower()
+        assert "Engine packages installed" in h.out.getvalue()
 
 
 # --------------------------------------------------------------------------- #

@@ -223,7 +223,7 @@ class TestInstallExtras:
                 patch(f"{MODULE}.subprocess.run"):
             ok, message = install_extras(_reqs("Appium"), stream=False)
         assert ok is True
-        assert "installed successfully" in message.lower()
+        assert "Engine packages installed" in message
 
     def test_installs_version_pinned_spec(self):
         engines = _reqs("Appium")
@@ -333,7 +333,10 @@ class TestStreamedInstall:
         assert "Collecting appium-python-client" in captured.out
         assert "Downloading appium..." in captured.out
         assert ok is True
-        assert message == "Engines installed successfully!"
+        # The message must not imply the Appium server itself is now running —
+        # only its Python client was installed (issue #494).
+        assert message == ("Engine packages installed. Services like the Appium "
+                           "server still need to be started separately.")
 
     def test_filters_requirement_already_satisfied_noise(self, capsys):
         proc = _popen_result([
@@ -449,7 +452,7 @@ class TestEngineInstallerApp:
         app = EngineInstallerApp()
         with patch(
             f"{MODULE}.install_extras",
-            return_value=(True, "Engines installed successfully!"),
+            return_value=(True, "Engine packages installed."),
         ) as inst:
             async with app.run_test() as pilot:
                 app.selected_engines = {"Appium": ALL_ENGINES["Appium"]}
@@ -457,7 +460,7 @@ class TestEngineInstallerApp:
                 await app.workers.wait_for_complete()
                 await pilot.pause()
                 status = app.query_one("#status", Static)
-                assert "installed successfully" in str(status.render()).lower()
+                assert "Engine packages installed" in str(status.render())
         inst.assert_called_once()
 
     async def test_failure_result_shown_and_install_reenabled(self):
@@ -482,7 +485,7 @@ class TestEngineInstallerApp:
 
         def slow_install(requests, stream=False):
             release.wait(timeout=10)
-            return True, "Engines installed successfully!"
+            return True, "Engine packages installed."
 
         app = EngineInstallerApp()
         with patch(f"{MODULE}.install_extras", side_effect=slow_install) as inst:
@@ -497,7 +500,7 @@ class TestEngineInstallerApp:
                 await app.workers.wait_for_complete()
                 await pilot.pause()
                 status = str(app.query_one("#status", Static).render())
-                assert "installed successfully" in status.lower()
+                assert "Engine packages installed" in status
         assert inst.call_args.kwargs == {"stream": False}
 
 
