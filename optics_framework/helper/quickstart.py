@@ -39,16 +39,20 @@ def run_quickstart() -> None:
     template = _choose_template()
     while template is not None and _TEMPLATE_DOMAINS.get(template, domain) != domain:
         target_domain = _TEMPLATE_DOMAINS[template]
+        onboarding.blank_line()
         if Confirm.ask(
             f"The '{template}' sample targets {target_domain}, but you chose "
             f"{domain}. Use it anyway?", default=False):
             break
         template = _choose_template()
+    onboarding.blank_line()
     name = Prompt.ask(
         "Project name", default=_DEFAULT_NAME).strip() or _DEFAULT_NAME
+    onboarding.blank_line()
     base_path = Prompt.ask("Where should the project live?", default=os.getcwd())
     project_path = os.path.join(base_path, name)
     while os.path.exists(project_path):
+        onboarding.blank_line()
         # Every re-prompt offers a free name as its default, so hitting Enter
         # always advances towards an available path instead of re-submitting
         # the colliding one.
@@ -87,6 +91,7 @@ def _suggest_free_name(base_path: str, name: str) -> str:
 
 
 def _ask_domain() -> str:
+    onboarding.blank_line()
     return Prompt.ask(
         "What do you want to automate?", choices=["mobile", "web"],
         default="mobile")
@@ -105,6 +110,7 @@ def _offer_engine_install(domain: str) -> None:
     if invalid or not requests:  # defensive: the domain is a fixed bundle token
         return
     names = ", ".join(sorted({req.engine.name for req in requests}))
+    onboarding.blank_line()
     if not Confirm.ask(f"Install {names} now?", default=True):
         _console.print(f"No problem — install later with:  "
                        f"optics setup --install {domain}")
@@ -125,6 +131,7 @@ def _choose_template() -> str | None:
     """Offer every packaged sample plus a blank start. Returns None for blank."""
     templates = initialize.available_templates()
     options = ["blank", *templates]
+    onboarding.blank_line()
     _console.print("Pick a starting point:")
     for number, option in enumerate(options, start=1):
         label = ("An empty project (recommended)" if option == "blank"
@@ -149,6 +156,7 @@ def _build_config(project_path: str, template: str | None, domain: str) -> None:
     config and must not lose it to a silent regeneration."""
     config_path = os.path.join(project_path, "config.yaml")
     if template is not None and os.path.isfile(config_path):
+        onboarding.blank_line()
         if not Confirm.ask(
             f"'{template}' ships its own working config.yaml. Overwrite it "
             "with your own answers?", default=False):
