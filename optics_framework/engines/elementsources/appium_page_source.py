@@ -79,12 +79,23 @@ class AppiumPageSource(ElementSourceInterface):
         internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
         raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
+    def _strict_element_match(self) -> bool:
+        """Whether project config requests exact-only matching for locate (Config.strict_element_match).
+
+        Presence/assert checks ignore this and are always strict -- see assert_elements.
+        """
+        try:
+            return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
+        except AttributeError:
+            return False
+
     def _locate_by_text(self, driver: WebDriver, element: str, element_type: str, index: Optional[int] = None) -> Any:
         locator = element[len("text="):] if element.lower().startswith("text=") else element
+        strict = self._strict_element_match()
         if index is not None:
-            xpath = self.find_xpath_from_text_index(locator, index)
+            xpath = self.find_xpath_from_text_index(locator, index, strict=strict)
         else:
-            xpath = self.find_xpath_from_text(locator)
+            xpath = self.find_xpath_from_text(locator, strict=strict)
         try:
             execution_logger.debug(f"Finding element by text: {locator} with xpath: {xpath}")
             element_obj = driver.find_element(AppiumBy.XPATH, xpath)
@@ -97,7 +108,7 @@ class AppiumPageSource(ElementSourceInterface):
 
     def _locate_by_xpath(self, driver: WebDriver, element: str, element_type: str) -> Any:
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
-            xpath, _ = self.driver.ui_helper.find_xpath(element)
+            xpath, _ = self.driver.ui_helper.find_xpath(element, strict=self._strict_element_match())
             try:
                 element_obj = driver.find_element(AppiumBy.XPATH, xpath)
                 return element_obj
@@ -168,7 +179,9 @@ class AppiumPageSource(ElementSourceInterface):
 
     def locate_using_index(self, element, index, strategy=None) -> Optional[Any]:
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
-            locators = self.driver.ui_helper.get_locator_and_strategy_using_index(element, index, strategy)
+            locators = self.driver.ui_helper.get_locator_and_strategy_using_index(
+                element, index, strategy, strict=self._strict_element_match()
+            )
             if locators:
                 strategy = locators['strategy']
                 locator = locators['locator']
@@ -213,7 +226,7 @@ class AppiumPageSource(ElementSourceInterface):
             self.get_page_source()  # Refresh page source
 
             # Check text-based elements
-            text_found = self.ui_text_search(texts, rule) if texts else (rule == "all")
+            text_found = self.ui_text_search(texts, rule, strict=True) if texts else (rule == "all")
 
             # Check XPath-based elements
             if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None and xpaths:
@@ -238,19 +251,20 @@ class AppiumPageSource(ElementSourceInterface):
         if rule not in ["any", "all"]:
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
 
-    def find_xpath_from_text(self, text):
+    def find_xpath_from_text(self, text, strict: bool = False):
         """
         Find the XPath of an element based on the text content.
 
         Args:
             text (str): The text content to search for in the UI tree.
+            strict (bool): if True, only exact/suffix matches are considered.
 
         Returns:
             str: The XPath of the element containing the
             text content, or None if not found.
         """
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
-            locators = self.driver.ui_helper.get_locator_and_strategy(text)
+            locators = self.driver.ui_helper.get_locator_and_strategy(text, strict=strict)
             if locators:
                 strategy = locators['strategy']
                 locator = locators['locator']
@@ -261,9 +275,11 @@ class AppiumPageSource(ElementSourceInterface):
             raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
         raise RuntimeError("Failed to find XPath from text.")
 
-    def find_xpath_from_text_index(self, text, index, strategy=None):
+    def find_xpath_from_text_index(self, text, index, strategy=None, strict: bool = False):
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
-            locators = self.driver.ui_helper.get_locator_and_strategy_using_index(text, index, strategy)
+            locators = self.driver.ui_helper.get_locator_and_strategy_using_index(
+                text, index, strategy, strict=strict
+            )
             if locators:
                 strategy = locators['strategy']
                 locator = locators['locator']
@@ -280,34 +296,35 @@ class AppiumPageSource(ElementSourceInterface):
             internal_logger.error("Element tree is not initialized. Cannot perform xpath search.")
             raise RuntimeError("Element tree is not initialized.")
 
-    def _search_text_in_attribute(self, text, attrib):
+    def _search_text_in_attribute(self, text, attrib, strict: bool = False):
         """Searches for text in a specific attribute across all elements."""
         matching_elements = self.tree.xpath(f"//*[@{attrib}]")
 
         for elem in matching_elements:
             attrib_value = elem.attrib.get(attrib, '').strip()
-            if attrib_value and utils.compare_text(attrib_value, text):
+            if attrib_value and utils.compare_text(attrib_value, text, strict=strict):
                 internal_logger.debug(f"Match found using {attrib} for '{text}'")
                 return True
         return False
 
-    def _search_single_text(self, text):
+    def _search_single_text(self, text, strict: bool = False):
         """Searches for a single text across all strategies."""
         strategies = ["text", "resource-id", "content-desc", "name", "value", "label"]
         internal_logger.debug(f'Searching for text: {text}')
 
         for attrib in strategies:
-            if self._search_text_in_attribute(text, attrib):
+            if self._search_text_in_attribute(text, attrib, strict):
                 return True
         return False
 
-    def ui_text_search(self, texts, rule='any'):
+    def ui_text_search(self, texts, rule='any', strict: bool = False):
         """
         Checks if any or all given texts exist in the UI tree.
 
         Args:
             texts (list): List of text strings to search for.
             rule (str): Rule for matching ('any' or 'all').
+            strict (bool): if True, only exact matches are considered -- no partial/fuzzy fallback.
 
         Returns:
             bool: True if the condition is met, otherwise False.
@@ -316,7 +333,7 @@ class AppiumPageSource(ElementSourceInterface):
         found_texts = set()
 
         for text in texts:
-            if self._search_single_text(text):
+            if self._search_single_text(text, strict):
                 found_texts.add(text)
                 if rule == 'any':
                     return True
