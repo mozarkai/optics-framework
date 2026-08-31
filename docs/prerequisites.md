@@ -18,6 +18,18 @@ optics --version             # confirm the CLI is on your PATH
 !!! warning "Use a standard virtualenv, not Conda"
     `easyocr` and `optics-framework` have conflicting `numpy` requirements (1.x vs 2.x) under Conda. Use a plain `venv`.
 
+### Linux: OpenCV needs a system OpenGL library
+
+Optics depends on `opencv-python`, which links against `libGL`. Minimal Linux images — Docker containers, CI runners, cloud dev environments — usually don't ship it, so `optics --version` fails on import with `ImportError: libGL.so.1: cannot open shared object file`. Install the library from your distro:
+
+```bash
+sudo apt-get install -y libgl1     # Debian/Ubuntu
+sudo dnf install -y mesa-libGL     # Fedora/RHEL
+sudo pacman -S libglvnd            # Arch
+```
+
+Desktop Linux installs normally already have it. macOS and Windows are unaffected.
+
 ---
 
 ## Engine backends (extras)
