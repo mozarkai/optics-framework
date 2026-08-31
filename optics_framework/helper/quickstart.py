@@ -19,6 +19,8 @@ from optics_framework.helper.setup import install_extras, resolve_engines
 
 _console = Console()
 
+_DEFAULT_NAME = "my-optics-project"
+
 _TEMPLATE_DOMAINS = {
     "calendar": "mobile",
     "clock": "mobile",
@@ -42,20 +44,23 @@ def run_quickstart() -> None:
             f"{domain}. Use it anyway?", default=False):
             break
         template = _choose_template()
-    name = Prompt.ask("Project name", default="my-optics-project")
+    name = Prompt.ask(
+        "Project name", default=_DEFAULT_NAME).strip() or _DEFAULT_NAME
     base_path = Prompt.ask("Where should the project live?", default=os.getcwd())
     project_path = os.path.join(base_path, name)
     while os.path.exists(project_path):
+        # Every re-prompt offers a free name as its default, so hitting Enter
+        # always advances towards an available path instead of re-submitting
+        # the colliding one.
+        suggestion = _suggest_free_name(base_path, name)
         _console.print(
             f"Project '{project_path}' already exists. Choose a different name.")
         try:
-            name = Prompt.ask("Project name").strip()
+            name = Prompt.ask(
+                "Project name", default=suggestion).strip() or suggestion
         except EOFError:
             _console.print("Aborted; the existing project was left untouched.")
             raise SystemExit(1)
-        if not name:
-            _console.print("A project name can't be empty.")
-            continue
         project_path = os.path.join(base_path, name)
 
     # The wizard resolved its template question above and prints its own next
@@ -71,6 +76,14 @@ def run_quickstart() -> None:
     _build_config(project_path, template, domain)
     doctor.run_doctor(folder=project_path)
     onboarding.print_next_steps(project_path, configured=True)
+
+
+def _suggest_free_name(base_path: str, name: str) -> str:
+    """First ``name-N`` under ``base_path`` that nothing occupies yet."""
+    suffix = 2
+    while os.path.exists(os.path.join(base_path, f"{name}-{suffix}")):
+        suffix += 1
+    return f"{name}-{suffix}"
 
 
 def _ask_domain() -> str:
