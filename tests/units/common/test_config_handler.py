@@ -142,3 +142,7 @@ def test_config_handler_precomputes_enabled(tmp_path):
     handler = ConfigHandler(config)
     assert handler.get("driver_sources") == ["appium"]
     assert handler.get("elements_sources") == []
+
+
+def test_strict_element_match_defaults_to_false():
+    assert Config().strict_element_match is False

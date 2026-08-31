@@ -191,6 +191,7 @@ CI runs static analysis on every push to `main` via `.github/workflows/mozarkson
 - **Assume Codex reviews every PR — someone is always watching.** Write code and commit messages as if a sharp reviewer will read them line by line. No dead code, no debug leftovers, no "will fix later" hacks slipping through. Explain non-obvious choices in the commit body, keep diffs focused, and make sure the change actually does what the message claims.
 - **Split large pushes into multiple commits.** If you're pushing a big change or a whole feature, don't dump it in one commit. Break it into logical, individually-reviewable commits (e.g. scaffolding → core logic → tests → docs), each green on its own. One giant commit is a review smell.
 - **After pushing or raising a PR, do a gap analysis.** Deep-dive your own implementation *and* the chat history for the feature, then surface the gaps, risks, edge cases, and follow-ups you noticed to the user. Let the user pick which ones matter; for the approved ones, create GitHub issues, and then reference those issue numbers in the PR description so the open threads are tracked against the work.
+- **No unnecessary code comments.** Names and structure should carry the meaning. Only add an inline comment, or edit a docstring, when the *why* is genuinely non-obvious (a hidden constraint, a subtle invariant, a workaround) or a piece of logic is confusing enough to need a pointer — never to restate *what* the code does.
 
 ## Hard rules
 
