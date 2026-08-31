@@ -20,6 +20,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
+    MIN_STRATEGY_TIMEOUT_S,
     LocatorStrategy,
     StrategyManager,
     TextDetectionStrategy,
@@ -564,12 +565,30 @@ class TestAllocTimeForStrategy:
         # deadline already passed
         assert _sm(MagicMock())._alloc_time_for_strategy(999.0, 0, [1, 2]) is None
 
-    def test_last_strategy_gets_remainder_even_if_sub_second(self, monkeypatch):
+    def test_sub_second_remainder_is_floored_not_zeroed(self, monkeypatch):
+        """A sub-second remainder used to floor to 0s, so the strategy checked nothing."""
         monkeypatch.setattr(time, "time", lambda: 1000.0)
-        # 0.4s left, last strategy (idx 1 of 2): alloc rounds to 0 but the last one still runs.
         result = _sm(MagicMock())._alloc_time_for_strategy(1000.4, 1, [1, 2])
         assert result is not None
-        assert result[0] == 0
+        assert result[0] == MIN_STRATEGY_TIMEOUT_S
+
+    def test_tight_timeout_never_allocates_zero_to_any_strategy(self, monkeypatch):
+        """timeout=1 across 3 strategies: every strategy gets a usable budget (#507)."""
+        now = 1000.0
+        monkeypatch.setattr(time, "time", lambda: now)
+        manager = _sm(MagicMock())
+        strategies = [1, 2, 3]
+        deadline = 1001.0
+        for idx in range(len(strategies)):
+            result = manager._alloc_time_for_strategy(deadline, idx, strategies)
+            assert result is not None
+            assert result[0] >= MIN_STRATEGY_TIMEOUT_S
+            now += 0.4
+
+    def test_alloc_never_exceeds_remaining_time_above_the_floor(self, monkeypatch):
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
+        alloc, remaining, _ = _sm(MagicMock())._alloc_time_for_strategy(1002.5, 1, [1, 2])
+        assert alloc == remaining == 2.5
 
 
 # --- StrategyManager.get_interactive_elements() strategy screening ---
