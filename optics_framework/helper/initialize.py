@@ -5,7 +5,7 @@ import subprocess # nosec
 import pathlib
 import sys
 
-from optics_framework.helper.onboarding import print_next_steps
+from optics_framework.helper.onboarding import blank_line, print_next_steps
 
 
 # Files/directories that must never be copied out of a sample template.
@@ -65,7 +65,8 @@ def _pick_template() -> str | None:
     Returns the chosen ``folderName`` (or ``""`` for Blank) on a clean pick,
     or ``None`` if the user backs out. Only called when stdin is a TTY."""
     choices = _template_choices()
-    print("\nChoose a starting template:")
+    blank_line()
+    print("Choose a starting template:")
     for idx, (display, _) in enumerate(choices, start=1):
         print(f"  {idx}. {display}")
     while True:
@@ -75,10 +76,12 @@ def _pick_template() -> str | None:
         try:
             idx = int(raw)
         except ValueError:
+            blank_line()
             print("Please enter a number.")
             continue
         if 1 <= idx <= len(choices):
             return choices[idx - 1][1]
+        blank_line()
         print(f"Enter a number between 1 and {len(choices)}.")
 
 

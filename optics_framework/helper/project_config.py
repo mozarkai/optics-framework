@@ -19,6 +19,8 @@ import os
 
 from rich.prompt import Confirm, Prompt
 
+from optics_framework.helper.onboarding import blank_line
+
 # Every platform maps to exactly ONE action driver; that driver owns the
 # matching ``<driver>_*`` elements sources.
 _DRIVER_BY_PLATFORM = {
@@ -53,6 +55,16 @@ def _enabled(enabled: bool) -> str:
     return "true" if enabled else "false"
 
 
+def _ask(question: str, **kwargs) -> str:
+    blank_line()
+    return Prompt.ask(question, **kwargs)
+
+
+def _confirm(question: str, **kwargs) -> bool:
+    blank_line()
+    return Confirm.ask(question, **kwargs)
+
+
 def prompt_project_config(domain: str | None = None) -> dict:
     """Ask the beginner about their target, one platform at a time.
 
@@ -69,50 +81,50 @@ def prompt_project_config(domain: str | None = None) -> dict:
         choices, default = ["web-playwright", "web-selenium"], "web-playwright"
     else:
         choices, default = list(_DRIVER_BY_PLATFORM), "android"
-    platform = Prompt.ask(
+    platform = _ask(
         "What are you automating?",
         choices=choices,
         default=default,
     )
     answers: dict = {"platform": platform}
     if platform == "android":
-        answers["device_name"] = Prompt.ask(
+        answers["device_name"] = _ask(
             "Device or emulator name (see `adb devices`)",
             default="emulator-5554")
-        answers["platform_name"] = Prompt.ask(
+        answers["platform_name"] = _ask(
             "Platform name", default="Android")
-        answers["app_package"] = Prompt.ask(
+        answers["app_package"] = _ask(
             "App package id (e.g. com.example.app)", default="com.example.app")
-        answers["app_activity"] = Prompt.ask(
+        answers["app_activity"] = _ask(
             "App main activity (e.g. com.example.app.MainActivity)",
             default="com.example.app.MainActivity")
-        answers["appium_url"] = Prompt.ask(
+        answers["appium_url"] = _ask(
             "Appium server URL", default="http://127.0.0.1:4723")
     elif platform == "ios":
         # iOS launches apps by bundle identifier — appPackage/appActivity are
         # Android-only capabilities and would be ignored (or rejected) by
         # XCUITest.
-        answers["device_name"] = Prompt.ask(
+        answers["device_name"] = _ask(
             "Device or simulator name", default="iPhone 15")
-        answers["platform_name"] = Prompt.ask(
+        answers["platform_name"] = _ask(
             "Platform name", default="iOS")
-        answers["bundle_id"] = Prompt.ask(
+        answers["bundle_id"] = _ask(
             "Bundle identifier (e.g. com.example.app)", default="com.example.app")
-        answers["appium_url"] = Prompt.ask(
+        answers["appium_url"] = _ask(
             "Appium server URL", default="http://127.0.0.1:4723")
     elif platform == "web-selenium":
-        answers["selenium_url"] = Prompt.ask(
+        answers["selenium_url"] = _ask(
             "Selenium/WebDriver server URL", default="http://127.0.0.1:4444/wd/hub")
     else:  # web-playwright
-        answers["browser"] = Prompt.ask(
+        answers["browser"] = _ask(
             "Which browser?", choices=["chromium", "firefox", "webkit"],
             default="chromium")
-        answers["headless"] = Confirm.ask(
+        answers["headless"] = _confirm(
             "Run headless (no browser window)?", default=False)
-    answers["ocr"] = Confirm.ask(
+    answers["ocr"] = _confirm(
         "Also find elements by on-screen text (EasyOCR)? Useful when there "
         "are no stable locators.", default=False)
-    answers["log_level"] = Prompt.ask(
+    answers["log_level"] = _ask(
         "Log level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO")
     return answers

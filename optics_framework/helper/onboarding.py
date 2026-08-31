@@ -69,6 +69,16 @@ def mark_onboarded() -> None:
         pass
 
 
+def blank_line() -> None:
+    """Separate the next prompt from the previous answer in the scrollback.
+
+    The wizards ask questions back to back and rich renders each one flush
+    against the last typed line. Call this at the start of every prompt —
+    before the question's preamble, when it has one, so the whole block
+    stays together."""
+    _console.print()
+
+
 def welcome(first_run: bool = False) -> None:
     """Print the welcome banner shown by ``optics quickstart``.
 
