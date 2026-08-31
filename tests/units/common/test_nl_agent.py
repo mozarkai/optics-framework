@@ -17,6 +17,7 @@ from optics_framework.common.nl_agent import (
     ACTION_SCHEMA,
     CURATION_SCHEMA,
     SYSTEM_PROMPT,
+    _render_screen_elements,
 )
 from optics_framework.common.error import OpticsError, Code
 
@@ -325,7 +326,7 @@ class TestPageSourceInPrompt:
         agent.run("click search")
         assert "CURRENT SCREEN ELEMENTS" in llm.prompt
         assert "search_edit_text" in llm.prompt
-        assert "condensed UI hierarchy" in llm.system
+        assert "on-screen elements" in llm.system
 
     def test_no_provider_means_no_section(self):
         llm = _CapturingLLM()
@@ -343,6 +344,122 @@ class TestPageSourceInPrompt:
         result = agent.run("go")
         assert result.status == "done"  # run still completes
         assert "CURRENT SCREEN ELEMENTS" not in llm.prompt
+
+
+class TestScreenElementsInPrompt:
+    """Precedence between the structured (get_interactive_elements) and raw
+    (strip_page_source) providers: structured wins whenever it's usable; the raw text
+    path is the fallback for sessions/calls where it isn't -- never both at once."""
+
+    def _elements(self, png):
+        self.received_png = png
+        return [
+            {"text": "Search", "bounds": {"x1": 10, "y1": 20, "x2": 110, "y2": 60},
+             "xpath": "//button[1]", "extra": {"clickable": "true"}},
+        ]
+
+    def test_structured_elements_preferred_over_page_source(self):
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=self._elements,
+        )
+        agent.run("tap search")
+        assert "Search" in llm.prompt
+        assert "[10,20][110,60]" in llm.prompt
+        assert "clickable" in llm.prompt
+        assert "RAW HIERARCHY TEXT" not in llm.prompt
+        # The already-captured screenshot is threaded through, not re-captured.
+        assert self.received_png == _shots()
+
+    def test_falls_back_to_page_source_when_structured_unavailable(self):
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=lambda png: None,
+        )
+        agent.run("go")
+        assert "RAW HIERARCHY TEXT" in llm.prompt
+
+    def test_no_screen_elements_provider_falls_back_to_page_source(self):
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+        )
+        agent.run("go")
+        assert "RAW HIERARCHY TEXT" in llm.prompt
+
+    def test_screen_elements_provider_raising_falls_back(self):
+        def boom(png):
+            raise RuntimeError("no structured source configured")
+
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=boom,
+        )
+        result = agent.run("go")
+        assert result.status == "done"  # run still completes
+        assert "RAW HIERARCHY TEXT" in llm.prompt
+
+    def test_empty_structured_list_is_rendered_not_treated_as_unavailable(self):
+        # [] means "the provider works, the screen just has nothing" -- distinct from
+        # None ("provider unusable"), so it must NOT trigger the page_source fallback.
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=lambda png: [],
+        )
+        agent.run("go")
+        assert "RAW HIERARCHY TEXT" not in llm.prompt
+        assert "no interactive elements" in llm.prompt.lower()
+
+
+class TestRenderScreenElements:
+    def test_renders_text_bounds_and_flags(self):
+        elements = [
+            {"text": "Search", "bounds": {"x1": 10, "y1": 20, "x2": 110, "y2": 60},
+             "xpath": "//button[1]", "extra": {"clickable": "true", "class": "android.widget.Button"}},
+            {"text": "Username", "bounds": {"x1": 5, "y1": 100, "x2": 200, "y2": 140},
+             "xpath": "//android.widget.EditText[1]",
+             "extra": {"class": "android.widget.EditText"}},
+        ]
+        out = _render_screen_elements(elements)
+        assert "1." in out and "Search" in out and "[10,20][110,60]" in out
+        assert "clickable" in out
+        assert "2." in out and "Username" in out
+        assert "editable" in out  # EditText class inferred as editable, no explicit flag
+
+    def test_empty_list_renders_placeholder(self):
+        assert "no interactive elements" in _render_screen_elements([]).lower()
+
+    def test_ignores_malformed_entries_without_raising(self):
+        out = _render_screen_elements([{"not": "a valid element"}, None, "garbage"])
+        assert "no interactive elements" in out.lower()
+
+    def test_truncates_to_max_chars(self):
+        elements = [
+            {"text": f"Item {i}", "bounds": {"x1": i, "y1": i, "x2": i + 10, "y2": i + 10},
+             "extra": {}}
+            for i in range(500)
+        ]
+        out = _render_screen_elements(elements, max_chars=200)
+        assert len(out) <= 220
+        assert "truncated" in out
+
+    def test_false_flags_are_not_shown(self):
+        elements = [
+            {"text": "Row", "bounds": {"x1": 0, "y1": 0, "x2": 10, "y2": 10},
+             "extra": {"clickable": "false", "scrollable": "true"}},
+        ]
+        out = _render_screen_elements(elements)
+        assert "scrollable" in out
+        assert "clickable" not in out
 
 
 class TestGeminiMissingDependency:

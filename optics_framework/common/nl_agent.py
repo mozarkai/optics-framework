@@ -121,6 +121,9 @@ StepCallback = Callable[[AgentStep], None]
 AbortCallback = Callable[[], bool]
 # Returns a condensed UI hierarchy (stripped page source) or None when unavailable.
 PagesourceProvider = Callable[[], Optional[str]]
+# Takes the step's screenshot PNG bytes (reused for bounds scaling, no extra capture) and
+# returns get_interactive_elements()-shaped dicts, or None when unsupported/unavailable.
+ScreenElementsProvider = Callable[[bytes], Optional[List[dict]]]
 
 
 # Structured-output schema. Only thought/action/reason are required so the model is never
@@ -159,9 +162,9 @@ ACTION_SCHEMA: Dict[str, Any] = {
 
 SYSTEM_PROMPT = """\
 You drive a UI test-automation framework ONE keyword at a time to fulfil a natural-language \
-instruction. Each turn you are shown a screenshot of the current device screen, a condensed \
-UI hierarchy of the on-screen elements (when available), and the list of available keywords; \
-you must reply with exactly ONE next action as JSON.
+instruction. Each turn you are shown a screenshot of the current device screen, a list of \
+on-screen elements (when available), and the list of available keywords; you must reply with \
+exactly ONE next action as JSON.
 
 CRITICAL — VERIFY, DON'T FLAIL:
 - A `PASS` observation means the keyword EXECUTED, NOT that your goal was achieved. ALWAYS \
@@ -193,20 +196,20 @@ TARGETING POLICY (in strict order of preference):
 2. On-screen control -> name it by its VISIBLE TEXT as the `element` parameter \
 (e.g. press_element with params ["Search"]). The framework self-heals element location across \
 XPath -> on-screen text -> OCR -> image, so a plain text label usually resolves. Use the \
-condensed hierarchy for the EXACT text / content-desc / resource id.
+on-screen elements list below for the EXACT text / content-desc / resource id.
 3. Ambiguous text -> prefix the label with `text_only:` to force OCR matching \
 (e.g. "text_only:Search").
 4. Target not visible -> scroll/swipe to reveal it, THEN target it by text.
 5. LAST RESORT only — an icon with no readable text AND no keycode -> read its bounds \
-[x1,y1][x2,y2] from the hierarchy to compute a precise center and use `press_by_percentage` \
+[x1,y1][x2,y2] from the elements list to compute a precise center and use `press_by_percentage` \
 with params [percent_x, percent_y] (each 0-100). You may attempt coordinates at most TWICE \
 for a given target; if that does not work, STOP and use `action: "fail"`.
 
-USING THE UI HIERARCHY:
-- When the condensed hierarchy is provided, use it together with the screenshot: it gives the \
-exact on-screen text, content-desc, resource ids, element bounds [x1,y1][x2,y2], and flags \
-(clickable/scrollable/selected/editable). A target present in the hierarchy should be named by \
-its text — not tapped by coordinate.
+USING THE ON-SCREEN ELEMENTS LIST:
+- When the elements list is provided, use it together with the screenshot: it gives exact \
+on-screen text and element bounds [x1,y1][x2,y2], plus — when available — interactivity flags \
+(clickable/scrollable/editable/...) or additional identifiers (content-desc/resource id). A \
+target present in the list should be named by its text — not tapped by coordinate.
 
 RULES:
 - Emit exactly one action per turn.
@@ -221,6 +224,79 @@ coordinate guessing has already failed).
 
 _MAX_THOUGHT_CHARS = 160
 
+# Interactivity flags worth surfacing from an element's `extra` metadata (Appium's
+# UIAutomator2/XCUITest attribute names; truthy string values only -- see
+# appium_UI_helper._build_extra_metadata, which keeps "enabled" even when false).
+_ELEMENT_FLAG_KEYS = (
+    "clickable", "long-clickable", "scrollable", "checkable", "checked", "selected", "focused",
+)
+# Class/tag suffixes that mean "editable" without an explicit flag attribute (mirrors
+# utils._is_interesting's own editable-field heuristic).
+_EDITABLE_CLASS_SUFFIXES = ("EditText", "TextField", "SecureTextField")
+_EDITABLE_WEB_TAGS = ("input", "textarea", "select")
+
+_SCREEN_ELEMENTS_MAX_CHARS = 12000
+
+
+def _flag_true(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return isinstance(value, str) and value.lower() == "true"
+
+
+def _element_flags(extra: Dict[str, Any]) -> List[str]:
+    """Interactivity flags worth showing the model for one element's ``extra`` metadata."""
+    flags = [key for key in _ELEMENT_FLAG_KEYS if _flag_true(extra.get(key))]
+    cls = str(extra.get("class") or "")
+    tag = str(extra.get("tag") or "").lower()
+    if cls.endswith(_EDITABLE_CLASS_SUFFIXES) or tag in _EDITABLE_WEB_TAGS:
+        flags.append("editable")
+    if extra.get("href"):
+        flags.append("link")
+    return flags
+
+
+def _render_screen_element(index: int, element: Dict[str, Any]) -> Optional[str]:
+    """One compact line for a single ``get_interactive_elements()`` dict, or ``None``
+    when the entry is too malformed to render (missing/non-dict, unusable bounds)."""
+    if not isinstance(element, dict):
+        return None
+    bounds = element.get("bounds")
+    try:
+        bounds_str = f"[{bounds['x1']},{bounds['y1']}][{bounds['x2']},{bounds['y2']}]"
+    except (KeyError, TypeError):
+        return None
+    text = str(element.get("text") or "").strip().replace("\n", " ")
+    if len(text) > 80:
+        text = text[:77] + "..."
+    flags = _element_flags(element.get("extra") or {})
+    flag_str = f" {{{','.join(flags)}}}" if flags else ""
+    return f"  {index}. \"{text}\" {bounds_str}{flag_str}"
+
+
+def _render_screen_elements(
+    elements: List[Dict[str, Any]], max_chars: int = _SCREEN_ELEMENTS_MAX_CHARS
+) -> str:
+    """Compact, numbered rendering of ``get_interactive_elements()``-shaped dicts.
+
+    Replaces the raw condensed page-source dump for sessions with a structured element
+    source. Truncates to ``max_chars`` the same way ``utils.strip_page_source`` bounds
+    prompt size.
+    """
+    if not elements:
+        return "(no interactive elements detected)"
+    lines = [
+        rendered
+        for i, el in enumerate(elements, 1)
+        if (rendered := _render_screen_element(i, el)) is not None
+    ]
+    if not lines:
+        return "(no interactive elements detected)"
+    out = "\n".join(lines)
+    if len(out) > max_chars:
+        out = out[:max_chars] + "\n  … (truncated)"
+    return out
+
 
 class NaturalLanguageAgent:
     """Bounded ReAct loop translating an instruction into keyword executions."""
@@ -234,6 +310,7 @@ class NaturalLanguageAgent:
         *,
         element_names: Optional[Callable[[], List[str]]] = None,
         pagesource_provider: Optional[PagesourceProvider] = None,
+        screen_elements_provider: Optional[ScreenElementsProvider] = None,
         max_steps: int = 15,
         max_consecutive_failures: int = 3,
         max_blind_repeats: int = 3,
@@ -246,6 +323,7 @@ class NaturalLanguageAgent:
         self.keyword_catalog = keyword_catalog
         self.element_names = element_names
         self.pagesource_provider = pagesource_provider
+        self.screen_elements_provider = screen_elements_provider
         self.max_steps = max_steps
         self.max_consecutive_failures = max_consecutive_failures
         self.max_blind_repeats = max_blind_repeats
@@ -289,8 +367,11 @@ class NaturalLanguageAgent:
         except Exception as exc:  # noqa: BLE001 - screenshot failures end the run cleanly
             return AgentResult("failed", state.history, f"Screenshot failed: {exc}", state.successful)
 
-        page_source = self._capture_page_source()
-        prompt = self._build_prompt(instruction, catalog, state.history, page_source)
+        # Reuses `png` for bounds scaling instead of a second device capture; falls back to
+        # the raw hierarchy only when structured elements aren't usable this call.
+        screen_elements = self._capture_screen_elements(png)
+        page_source = None if screen_elements is not None else self._capture_page_source()
+        prompt = self._build_prompt(instruction, catalog, state.history, page_source, screen_elements)
         try:
             raw = self.llm.generate_json(
                 prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT, temperature=0.0
@@ -436,12 +517,27 @@ class NaturalLanguageAgent:
             internal_logger.debug("NL agent: page source unavailable: %s", exc)
             return None
 
+    def _capture_screen_elements(self, png: bytes) -> Optional[List[dict]]:
+        """Best-effort structured elements; ``None`` when unavailable/unsupported.
+
+        Distinct from "usable but empty" (``[]``, a screen with genuinely no interactive
+        elements) — only ``None`` triggers the raw-page-source fallback in ``_run_one_step``.
+        """
+        if self.screen_elements_provider is None:
+            return None
+        try:
+            return self.screen_elements_provider(png)
+        except Exception as exc:  # noqa: BLE001
+            internal_logger.debug("NL agent: structured screen elements unavailable: %s", exc)
+            return None
+
     def _build_prompt(
         self,
         instruction: str,
         catalog: List[KeywordSpec],
         history: List[AgentStep],
         page_source: Optional[str] = None,
+        screen_elements: Optional[List[dict]] = None,
     ) -> str:
         lines = [f"INSTRUCTION: {instruction}", "", "AVAILABLE KEYWORDS (name and parameters):"]
         lines.extend(f"  {spec.signature}" for spec in catalog)
@@ -453,7 +549,14 @@ class NaturalLanguageAgent:
                 lines.append("NAMED ELEMENTS (reference as ${name}):")
                 lines.append("  " + ", ".join("${" + n + "}" for n in names))
 
-        if page_source:
+        if screen_elements is not None:
+            lines.append("")
+            lines.append(
+                "CURRENT SCREEN ELEMENTS (numbered; text, bounds [x1,y1][x2,y2], and "
+                "interactivity flags where available):"
+            )
+            lines.append(_render_screen_elements(screen_elements))
+        elif page_source:
             lines.append("")
             lines.append(
                 "CURRENT SCREEN ELEMENTS (condensed UI hierarchy — class, text, "
