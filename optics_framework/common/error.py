@@ -39,6 +39,7 @@ class Code(str, Enum):
     E0103 = "E0103"
     E0104 = "E0104"
     E0105 = "E0105"
+    E0106 = "E0106"
     W0104 = "W0104"
 
     # Element location issue
@@ -140,6 +141,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Keyword not supported on this device platform",
         category=Category.DRIVER,
         default_status=400,
+    ),
+    "E0106": ErrorSpec(
+        code=Code.E0106,
+        default_message="Driver session is no longer active",
+        category=Category.DRIVER,
+        default_status=500,
     ),
     "W0104": ErrorSpec(
         code=Code.W0104,
