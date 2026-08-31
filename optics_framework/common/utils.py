@@ -344,7 +344,7 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
     if output_dir is None:
         internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
         return
-    name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
+    name = re.sub(r'[^a-zA-Z0-9\s_]', '_', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
     screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")

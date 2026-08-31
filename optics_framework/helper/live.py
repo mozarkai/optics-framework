@@ -1235,7 +1235,7 @@ class LiveController:
         name = "live_capture"
         timestamp = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S-%f")
         utils.save_screenshot(image, name, output_dir=output_dir, time_stamp=timestamp)
-        sanitized = re.sub(r"[^a-zA-Z0-9\s_]", "", name)
+        sanitized = re.sub(r"[^a-zA-Z0-9\s_]", "_", name)
         return os.path.join(output_dir, f"{timestamp}-{sanitized}.jpg")
 
     def screenshot_png_bytes(self) -> bytes:
