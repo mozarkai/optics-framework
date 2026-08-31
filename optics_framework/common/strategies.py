@@ -12,6 +12,7 @@ from optics_framework.common.logging_config import internal_logger, execution_lo
 from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 # Constants
 TEXT_DETECTION_NOT_AVAILABLE_MSG = "Text detection is not available."
@@ -147,7 +148,8 @@ class LocatorStrategy(ABC):
                     return True, timestamp, annotated_frame
                 return True, timestamp, frame.copy()
             return True, timestamp, None
-        except Exception:
+        except Exception as e:
+            raise_if_session_dead(e)
             return False, None, None
 
 
@@ -674,6 +676,7 @@ class StrategyManager:
         except Exception as e:
             execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
             internal_logger.debug(f"Strategy {strategy.__class__.__name__} failed: {e}")
+            raise_if_session_dead(e)
         return None
 
     def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None, index: int = 0) -> Generator[LocateResult, None, None]:
@@ -761,6 +764,7 @@ class StrategyManager:
                 if result:
                     return result, timestamp, annotated_frame
             except Exception as e:
+                raise_if_session_dead(e)
                 last_exception = e
 
         if last_exception:
@@ -804,6 +808,7 @@ class StrategyManager:
                 return False, None, None
         except Exception as e:
             execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
+            raise_if_session_dead(e)
             return False, None, None
 
 
@@ -817,6 +822,7 @@ class StrategyManager:
                 return img
             except Exception as e:
                 execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
+                raise_if_session_dead(e)
         internal_logger.debug("No screenshot captured.")
         raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.")
 
@@ -839,6 +845,7 @@ class StrategyManager:
                 execution_tracer.log_attempt(strategy, "screenshot_bytes", "fail", error=str(e))
                 internal_logger.debug(
                     "Screenshot bytes via %s failed: %s", source.__class__.__name__, e)
+                raise_if_session_dead(e)
         raise OpticsError(Code.E0303, message="No screenshot bytes captured using available strategies.")
 
     def capture_screenshot_stream(self, timeout: int = 30):
@@ -872,6 +879,7 @@ class StrategyManager:
             except Exception as e:
                 internal_logger.debug(
                     f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
+                raise_if_session_dead(e)
         internal_logger.debug("No pagesource captured.")
         raise OpticsError(Code.E0403, message="No pagesource captured using available strategies.")
 
@@ -901,5 +909,6 @@ class StrategyManager:
             except Exception as e:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
+                raise_if_session_dead(e)
         internal_logger.debug("No interactive elements retrieved.")
         raise OpticsError(Code.E0202, message="No interactive elements retrieved using available strategies.")
