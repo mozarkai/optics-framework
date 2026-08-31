@@ -155,6 +155,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - **`ErrorDefinitions`** (`models.py:308`) — parsed `error_definitions.csv` rows (`error_code, match_string, description, severity`), threaded through `Session` for on-screen error detection (see that section above).
 - **`OpticsError` codes** (`error.py:35`; severities `E` / `W` / `X`):
   - `E0105` keyword not supported on this device platform (e.g. a phone-only Appium method called against a TV profile) → fatal, **not** part of the `E02*` fallback family.
+  - `E0106` driver session no longer active — the remote hub dropped it. Raised by `raise_if_session_dead` (`common/session_liveness.py`) from the broad `except` blocks in `strategies.py` that would otherwise mask a dead session as `E0201`/`E0202`/`E0303`/`E0403`. Fatal, **not** part of the `E02*` fallback family: no locator or element candidate can revive a session.
   - `E0201` element not found in one source → triggers fallback **levels 1 and 2**.
   - `X0201` element not found after all fallbacks → also keeps fallback ladder going.
   - `E0205` invalid element type.
