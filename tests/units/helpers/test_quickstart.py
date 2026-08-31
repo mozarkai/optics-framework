@@ -52,6 +52,26 @@ class Scripted:
         return self._values.pop(0)
 
 
+class AlwaysEnter:
+    """A user who only ever presses Enter, emulating ``rich.Prompt.ask``.
+
+    Rich returns the question's ``default`` on empty input and ``""`` when the
+    question has none, so every prompt the wizard reaches on this path must
+    carry a usable default or the wizard cannot progress. Calls are capped so a
+    regression fails the test instead of hanging the suite."""
+
+    def __init__(self, cap=20):
+        self.cap = cap
+        self.calls = []
+
+    def __call__(self, question, **kwargs):
+        self.calls.append(question)
+        if len(self.calls) > self.cap:
+            raise AssertionError(
+                f"prompt loop did not terminate within {self.cap} questions")
+        return kwargs.get("default", "")
+
+
 class Spy:
     """Recording stand-in for functions the wizard must never call."""
 
@@ -355,6 +375,34 @@ class TestExistingProject:
         assert "already exists" in out
         # quickstart has no --force flag, so its warning must not mention one.
         assert "--force" not in out
+
+    def test_enter_through_collision_lands_on_a_free_name(
+            self, tmp_path, monkeypatch):
+        # The default project name already exists and the user answers every
+        # question by pressing Enter. The re-prompt must offer a free name as
+        # its default, otherwise the wizard spins forever between "already
+        # exists" and an empty answer.
+        monkeypatch.chdir(tmp_path)  # the base-path question defaults to cwd
+        existing = tmp_path / quickstart._DEFAULT_NAME
+        existing.mkdir()
+        (existing / "config.yaml").write_text("keep", encoding="utf-8")
+        with Harness([], [True]) as h:
+            with patch(f"{MODULE}.Prompt.ask", AlwaysEnter()):
+                h.run()
+        args = h.spies.create_project
+        assert args.name == f"{quickstart._DEFAULT_NAME}-2"
+        assert not os.path.exists(os.path.join(args.path, args.name))
+        assert (existing / "config.yaml").read_text(encoding="utf-8") == "keep"
+
+    def test_suggested_name_skips_suffixes_already_taken(
+            self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        for suffix in ("", "-2", "-3"):
+            (tmp_path / f"{quickstart._DEFAULT_NAME}{suffix}").mkdir()
+        with Harness([], [True]) as h:
+            with patch(f"{MODULE}.Prompt.ask", AlwaysEnter()):
+                h.run()
+        assert h.spies.create_project.name == f"{quickstart._DEFAULT_NAME}-4"
 
     def test_eof_on_rename_prompt_aborts_without_touching_existing(self, tmp_path):
         existing = tmp_path / "demo"
