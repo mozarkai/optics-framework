@@ -9,6 +9,8 @@ accumulate in a scrollable history pane above that auto-scrolls to the newest en
 import asyncio
 import functools
 import os
+import textwrap
+from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from prompt_toolkit.application import Application, get_app
@@ -50,6 +52,13 @@ _META = "class:meta"
 # Style class for in-progress / AI-mode indicators, reused across history and overlays.
 _RUNNING = "class:running"
 
+# Popup body bounds; the terminal is the real bound, these only cap it.
+_POPUP_MAX_ROWS = 30
+_POPUP_MAX_COLS = 72
+_POPUP_MIN_COLS = 40
+# Rows/columns the surrounding Frame's border takes off the popup body.
+_FRAME_BORDER = 2
+
 _HELP_TEXT = """\
 Optics Live — command reference
 
@@ -84,6 +93,7 @@ Keys
   Enter          Run the command / accept the highlighted completion
   Tab / S-Tab    Cycle completions
   ${             Suggest element names
+  Up / Down      Scroll an open popup (PgUp/PgDn by page)
   Ctrl-K         Toggle the keyword browser (Up/Down to move, Enter to pick)
   Ctrl-N         Toggle natural-language (AI) mode
   Ctrl-X         Abort a running AI run (stops at the next step)
@@ -112,6 +122,50 @@ _STYLE = Style.from_dict(
         "frame.border": "#5588cc",
     }
 )
+
+
+def _wrap_to_width(text: str, width: int) -> List[str]:
+    """Split ``text`` into the display rows it occupies, over-long lines re-wrapped
+    under their own indent so row counts match what the terminal actually draws."""
+    rows: List[str] = []
+    for line in text.split("\n"):
+        if len(line) <= width:
+            rows.append(line)
+            continue
+        indent = " " * (len(line) - len(line.lstrip()))
+        wrapper = textwrap.TextWrapper(
+            width=width,
+            initial_indent=indent,
+            subsequent_indent=indent,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+        wrapped = wrapper.wrap(line.strip())
+        if wrapped:
+            rows.extend(wrapped)
+        else:
+            rows.extend(line[i : i + width] for i in range(0, len(line), width))
+    return rows
+
+
+def _clamp(value: int, maximum: int) -> int:
+    """Clamp ``value`` to ``[0, maximum]`` — scroll offsets never go negative."""
+    return max(0, min(value, maximum))
+
+
+@dataclass(frozen=True)
+class _PopupLayout:
+    """The wrapped popup text plus the viewport arithmetic that scrolls it.
+
+    ``visible`` is the number of content rows shown per page — the whole text
+    when it fits, otherwise one row is reserved so the scroll indicator stays
+    visible. ``max_scroll`` is the furthest the scroll offset can go (0 when
+    nothing is cut off).
+    """
+
+    lines: List[str]
+    visible: int
+    max_scroll: int
 
 
 class LiveCompleter(Completer):
@@ -191,10 +245,11 @@ class LiveTUI:
         self.overlay_on_select: Optional[Callable[[str], None]] = None
         self.overlay_active = False
 
-        # Popup = static read-only text (help / elements).
+        # Popup = static read-only text (help / elements), scrolled by row offset.
         self.popup_title = ""
         self.popup_text = ""
         self.popup_active = False
+        self.popup_scroll = 0
 
         self.input_buffer = Buffer(
             completer=LiveCompleter(controller, is_nl_mode=lambda: self._nl_mode),
@@ -324,8 +379,45 @@ class LiveTUI:
     def open_popup(self, title: str, text: str) -> None:
         self.popup_title = title
         self.popup_text = text
+        self.popup_scroll = 0
         self.popup_active = True
         self.overlay_active = False
+
+    # -- Popup (scrollable static text) -------------------------------------------
+
+    def _popup_viewport(self) -> Tuple[int, int]:
+        """Rows/columns of popup body the current terminal can actually show."""
+        size = get_app().output.get_size()
+        rows = max(2, min(_POPUP_MAX_ROWS, size.rows - _FRAME_BORDER))
+        cols = max(1, min(_POPUP_MAX_COLS, size.columns - _FRAME_BORDER))
+        return rows, cols
+
+    def _popup_layout(self) -> _PopupLayout:
+        """Wrap the popup text and compute the scrolling viewport over it."""
+        rows, cols = self._popup_viewport()
+        lines = _wrap_to_width(self.popup_text, cols)
+        scrollable = len(lines) > rows
+        visible = rows - 1 if scrollable else len(lines)
+        max_scroll = len(lines) - visible if scrollable else 0
+        return _PopupLayout(lines, visible, max_scroll)
+
+    def _render_popup(self) -> StyleAndTextTuples:
+        layout = self._popup_layout()
+        if not layout.max_scroll:
+            return [("", "\n".join(layout.lines))]
+        top = _clamp(self.popup_scroll, layout.max_scroll)
+        shown = layout.lines[top:top + layout.visible]
+        return [
+            ("", "\n".join(shown) + "\n"),
+            (_META, f" ↑/↓ PgUp/PgDn scroll · {top + 1}-{top + len(shown)}/{len(layout.lines)} "),
+        ]
+
+    def _scroll_popup(self, delta: int, *, page: bool = False) -> None:
+        layout = self._popup_layout()
+        if not layout.max_scroll:
+            return
+        step = delta * layout.visible if page else delta
+        self.popup_scroll = _clamp(self.popup_scroll + step, layout.max_scroll)
 
     # -- Layout / application -----------------------------------------------------
 
@@ -390,9 +482,9 @@ class LiveTUI:
             content=ConditionalContainer(
                 content=Frame(
                     body=Window(
-                        content=FormattedTextControl(text=lambda: self.popup_text),
-                        width=Dimension(min=40, preferred=72),
-                        height=Dimension(min=1, max=30),
+                        content=FormattedTextControl(text=self._render_popup),
+                        width=Dimension(min=_POPUP_MIN_COLS, preferred=_POPUP_MAX_COLS),
+                        height=Dimension(min=1, max=_POPUP_MAX_ROWS),
                         wrap_lines=True,
                     ),
                     title=lambda: self.popup_title,
@@ -473,6 +565,7 @@ class LiveTUI:
         kb = KeyBindings()
         blocking = Condition(lambda: self.overlay_active or self.popup_active)
         overlay_on = Condition(lambda: self.overlay_active)
+        popup_on = Condition(lambda: self.popup_active)
         not_blocking = ~blocking
 
         @kb.add("enter", filter=~blocking)
@@ -506,6 +599,22 @@ class LiveTUI:
         @kb.add("down", filter=overlay_on)
         def _(event):
             self._move_overlay(1)
+
+        @kb.add("up", filter=popup_on)
+        def _(event):
+            self._scroll_popup(-1)
+
+        @kb.add("down", filter=popup_on)
+        def _(event):
+            self._scroll_popup(1)
+
+        @kb.add("pageup", filter=popup_on)
+        def _(event):
+            self._scroll_popup(-1, page=True)
+
+        @kb.add("pagedown", filter=popup_on)
+        def _(event):
+            self._scroll_popup(1, page=True)
 
         @kb.add("up", filter=not_blocking & ~overlay_on)
         def _(event):
