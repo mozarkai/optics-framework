@@ -480,6 +480,7 @@ _PREFLIGHT_SOCKET_TIMEOUT_S = 2.0
 _PREFLIGHT_ADB_TIMEOUT_S = 5.0
 _APPIUM_DEFAULT_URL = "http://127.0.0.1:4723"
 _SELENIUM_DEFAULT_URL = "http://127.0.0.1:4444/wd/hub"
+_SCHEME_DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
 def _probe_tcp(url: str | None, default_port: int,
@@ -492,8 +493,13 @@ def _probe_tcp(url: str | None, default_port: int,
     Missing or unparseable URLs count as unreachable so callers can report the
     real fix instead of an opaque driver error minutes into the run.
 
+    ``urlparse`` never fills in a scheme's implied port, so a remote hub given
+    as ``https://hub.example.com/wd/hub`` would otherwise be probed on the
+    local-server default and reported as down.
+
     :param url: Server URL from config.yaml (e.g. ``http://127.0.0.1:4723``).
-    :param default_port: Port used when the URL carries none.
+    :param default_port: Port used when the URL carries neither an explicit
+                         port nor a scheme whose port is implied.
     :param timeout: Seconds to wait for the connection.
     :return: True when the TCP connection succeeds.
     """
@@ -502,7 +508,9 @@ def _probe_tcp(url: str | None, default_port: int,
     try:
         parsed = urlparse(url)
         host = parsed.hostname
-        port = parsed.port or default_port
+        port = (parsed.port
+                or _SCHEME_DEFAULT_PORTS.get(parsed.scheme)
+                or default_port)
     except ValueError:
         return False
     if not host:
