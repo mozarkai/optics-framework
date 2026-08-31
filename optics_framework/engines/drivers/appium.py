@@ -27,6 +27,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     KEYCODE_RC_NAMED,
 )
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.session_liveness import is_dead_session_error
 
 
 class Appium(DriverInterface):
@@ -278,6 +279,29 @@ class Appium(DriverInterface):
     def get_driver_session_id(self) -> Optional[str]:
         """DriverInterface-compliant getter for Appium session id."""
         return self.get_session_id()
+
+    def _is_session_alive(self) -> bool:
+        """Round-trip the server to tell a live session from a stale handle.
+
+        ``driver.session_id`` is a client-side attribute that survives the hub
+        dropping the session, so it cannot answer this on its own. Only
+        ``invalid session id`` proves the session is gone: any other failure
+        (an unsupported command on a TV profile, a transient network error)
+        leaves the session presumed alive so a working one is never torn down
+        and restarted underneath the caller.
+        """
+        if self.driver is None:
+            return False
+        try:
+            self.driver.get_window_size()
+        except Exception as e:  # noqa: BLE001 - only a dead session is conclusive
+            if is_dead_session_error(e):
+                internal_logger.debug(
+                    "Cached Appium session %s is no longer active on the server.",
+                    self.get_session_id(),
+                )
+                return False
+        return True
 
     def _normalize_args(self, args: tuple) -> list:
         """
@@ -690,7 +714,7 @@ class Appium(DriverInterface):
     ) -> str:
         """Launch the app using the Appium driver."""
         session_id = self.get_session_id()
-        if self.driver is None:
+        if self.driver is None or not self._is_session_alive():
             session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,
