@@ -330,7 +330,7 @@ def _teardown_shell(artifacts_dir: str) -> LiveController:
 class TestArtifactsPersistence:
     def test_teardown_keeps_dir_with_screenshots(self):
         d = tempfile.mkdtemp(prefix="optics_live_shots_")
-        with open(os.path.join(d, "pre-press_element.jpg"), "w") as fh:
+        with open(os.path.join(d, "pre_press_element.jpg"), "w") as fh:
             fh.write("x")
         _teardown_shell(d).teardown()
         # A session that captured screenshots keeps them after /quit.
