@@ -281,16 +281,4 @@ class DriverInterface(ABC):
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
-        """Whether ``exc`` from this backend means the remote server dropped the session.
-
-        Default: this backend has no server-managed session that can be reaped out
-        from under the client, so no exception maps to one. Backends that talk to a
-        remote server (an Appium/Selenium hub, a Playwright browser) override this
-        so the strategy layer can fail fast with ``Code.E0106`` instead of masking
-        the drop as element-not-found.
-
-        :param exc: A single exception from a backend call (not a chain).
-        :return: ``True`` only when ``exc`` is this backend's dropped-session signal.
-        :rtype: bool
-        """
         return False
