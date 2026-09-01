@@ -1,11 +1,3 @@
-"""Appium.launch_app must not trust a client-side cached session id.
-
-A remote hub can drop a session while it sits idle; the client keeps its cached
-``driver.session_id`` regardless. ``launch_app`` used to gate purely on
-``self.driver is None``, so re-launching against a dead session returned the stale
-id in ~0s and reported success while nothing had been launched. It now probes the
-server before deciding there is nothing to do.
-"""
 from unittest.mock import MagicMock
 
 import pytest
@@ -17,7 +9,6 @@ pytestmark = pytest.mark.white_box
 
 
 def _driver_instance(webdriver) -> Appium:
-    """An Appium driver wrapping ``webdriver``, bypassing config-driven __init__."""
     instance = Appium.__new__(Appium)
     instance.driver = webdriver
     return instance
@@ -32,8 +23,6 @@ def _webdriver(session_id: str = "stale-session-id", probe_error=None) -> MagicM
 
 
 class TestIsSessionAlive:
-    """Only an ``invalid session id`` response is treated as conclusive."""
-
     def test_live_session_is_alive(self):
         assert _driver_instance(_webdriver())._is_session_alive() is True
 
@@ -44,7 +33,6 @@ class TestIsSessionAlive:
         assert instance._is_session_alive() is False
 
     def test_unsupported_probe_leaves_session_presumed_alive(self):
-        """A TV profile may reject the probe command; that is not a dead session."""
         instance = _driver_instance(
             _webdriver(probe_error=WebDriverException("unknown command: window rect"))
         )
@@ -55,8 +43,6 @@ class TestIsSessionAlive:
 
 
 class TestLaunchAppRecreatesDeadSession:
-    """The false-positive ``launch_app`` success is the symptom being fixed."""
-
     def test_stale_session_is_restarted(self):
         instance = _driver_instance(
             _webdriver(probe_error=InvalidSessionIdException("the session is not running"))

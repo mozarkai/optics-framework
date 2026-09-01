@@ -1,10 +1,3 @@
-"""Each driver owns which of its exceptions mean the remote server dropped the session.
-
-DriverInterface.is_dead_session_error is the generic seam the strategy layer uses
-to fail fast with E0106 instead of masking a drop as element-not-found. The default
-is "no server-managed session," and remote-server backends override it; these tests
-pin the per-backend signal so the family stays in parity.
-"""
 from selenium.common.exceptions import InvalidSessionIdException, WebDriverException
 import pytest
 
@@ -12,8 +5,6 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.engines.drivers.appium import Appium
 from optics_framework.engines.drivers.selenium import SeleniumDriver
 
-# Playwright is an optional extra CI does not always install; skip its cases rather
-# than failing collection when it is absent.
 try:
     from playwright.async_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
     from optics_framework.engines.drivers.playwright import Playwright
@@ -26,7 +17,7 @@ pytestmark = pytest.mark.white_box
 
 
 class _BackendWithoutRemoteSession(DriverInterface):
-    """A driver that does not override the hook keeps the default answer."""
+    pass
 
 
 class TestDefaultIsNoDeadSession:
@@ -38,8 +29,6 @@ class TestDefaultIsNoDeadSession:
 
 
 class TestWebDriverBackends:
-    """Appium and Selenium share selenium's InvalidSessionIdException signal."""
-
     @pytest.mark.parametrize("driver", [Appium, SeleniumDriver])
     def test_invalid_session_id_is_a_dead_session(self, driver):
         assert driver.is_dead_session_error(InvalidSessionIdException("not running")) is True
@@ -52,8 +41,6 @@ class TestWebDriverBackends:
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright extra not installed")
 class TestPlaywrightBackend:
-    """Playwright's analog is a browser/context/page that has been closed."""
-
     @pytest.mark.parametrize(
         "message",
         [

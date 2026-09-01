@@ -28,9 +28,6 @@ from optics_framework.common.strategies import (
 from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
 from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
 
-# Dead-session recognition is owned by each driver, so a driver whose
-# is_dead_session_error knows InvalidSessionIdException must be loaded for the
-# strategy layer to unmask it (Appium and Selenium both share that signal).
 import optics_framework.engines.drivers.appium  # noqa: F401
 
 
@@ -632,16 +629,7 @@ class TestGetInteractiveElementsStrategyScreening:
         assert exc_info.value.code == Code.E0202
 
 
-# --- Dead driver session (E0106) is not masked as element/pagesource not-found ---
-
-
 class TestDeadSessionIsNotMasked:
-    """A dropped session must surface E0106, not E0201/E0202/E0303/E0403.
-
-    A terminated session is a driver-level failure, not a locator one, so it has to
-    reach the caller as a session error rather than an element-not-found result.
-    """
-
     @staticmethod
     def _dead() -> InvalidSessionIdException:
         return InvalidSessionIdException("A session is either terminated or not started")
@@ -649,57 +637,58 @@ class TestDeadSessionIsNotMasked:
     def test_locate_raises_dead_session_instead_of_e0201(self):
         source = MagicMock()
         source.locate.side_effect = self._dead()
+        results = _sm(source).locate("//button[@id='search']")
 
         with pytest.raises(OpticsError) as exc_info:
-            list(_sm(source).locate("//button[@id='search']"))
+            list(results)
         assert exc_info.value.code == Code.E0106
 
     def test_locate_unwraps_a_source_that_already_wrapped_it_as_e0201(self):
-        """AppiumFindElement re-raises backend errors as E0201 with ``cause`` set."""
         source = MagicMock()
         source.locate.side_effect = OpticsError(
             Code.E0201, message="Element of type XPath not found", cause=self._dead()
         )
+        results = _sm(source).locate("//button[@id='search']")
 
         with pytest.raises(OpticsError) as exc_info:
-            list(_sm(source).locate("//button[@id='search']"))
+            list(results)
         assert exc_info.value.code == Code.E0106
 
     def test_assert_presence_raises_dead_session_instead_of_e0201(self):
         source = MagicMock()
-        # MagicMock reserves bare `assert_*` access for its own assertions, so the
-        # stub has to be assigned rather than auto-vivified (see mock_element_source).
         source.assert_elements = MagicMock(side_effect=self._dead())
+        manager = _sm(source)
 
-        # Needs enough budget for _alloc_time_for_strategy to hand the first strategy a
-        # whole second; the stub raises immediately, so nothing is actually waited on.
         with pytest.raises(OpticsError) as exc_info:
-            _sm(source).assert_presence(["text=Search"], "Text", timeout=10, rule="any")
+            manager.assert_presence(["text=Search"], "Text", timeout=10, rule="any")
         assert exc_info.value.code == Code.E0106
         assert source.assert_elements.called
 
     def test_capture_pagesource_raises_dead_session_instead_of_e0403(self):
         source = MagicMock()
         source.get_page_source.side_effect = self._dead()
+        manager = _sm(source)
 
         with pytest.raises(OpticsError) as exc_info:
-            _sm(source).capture_pagesource()
+            manager.capture_pagesource()
         assert exc_info.value.code == Code.E0106
 
     def test_capture_screenshot_raises_dead_session_instead_of_e0303(self):
         source = MagicMock()
         source.capture.side_effect = self._dead()
+        manager = _sm(source)
 
         with pytest.raises(OpticsError) as exc_info:
-            _sm(source).capture_screenshot()
+            manager.capture_screenshot()
         assert exc_info.value.code == Code.E0106
 
     def test_capture_screenshot_bytes_raises_dead_session_instead_of_e0303(self):
         source = MagicMock()
         source.capture_screenshot_bytes.side_effect = self._dead()
+        manager = _sm(source)
 
         with pytest.raises(OpticsError) as exc_info:
-            _sm(source).capture_screenshot_bytes()
+            manager.capture_screenshot_bytes()
         assert exc_info.value.code == Code.E0106
 
     def test_get_interactive_elements_raises_dead_session_instead_of_e0202(self, monkeypatch):
@@ -708,20 +697,21 @@ class TestDeadSessionIsNotMasked:
         )
         source = MagicMock()
         source.get_interactive_elements.side_effect = self._dead()
+        manager = _sm(source)
 
         with pytest.raises(OpticsError) as exc_info:
-            _sm(source).get_interactive_elements()
+            manager.get_interactive_elements()
         assert exc_info.value.code == Code.E0106
 
     def test_e0106_is_outside_the_element_fallback_family(self):
-        """The param/strategy ladders retry on E02*/X0201; retrying cannot revive a session."""
         assert not Code.E0106.value.startswith("E02")
         assert Code.E0106 != Code.X0201
 
     def test_ordinary_backend_failure_still_reports_not_found(self):
         source = MagicMock()
         source.locate.side_effect = WebDriverException("stale element reference")
+        results = _sm(source).locate("//button[@id='search']")
 
         with pytest.raises(OpticsError) as exc_info:
-            list(_sm(source).locate("//button[@id='search']"))
+            list(results)
         assert exc_info.value.code == Code.E0201
