@@ -290,10 +290,13 @@ def detect_change(frame1, frame2, threshold=0.95):
     score, _ = ssim(gray1, gray2, full=True)
     return score < threshold
 
-def compare_text(given_text, target_text):
+def compare_text(given_text, target_text, strict: bool = False):
     """
     Compare two text values using exact, partial, and fuzzy matching.
     Returns True if the texts match closely enough, otherwise False.
+
+    strict=True restricts the comparison to an exact match only -- no partial/substring
+    or fuzzy fallback -- for presence/assertion checks where a false positive is unacceptable.
     """
     # Normalize both texts (case insensitive, strip whitespace)
     given_text = given_text.strip().lower()
@@ -309,6 +312,10 @@ def compare_text(given_text, target_text):
         internal_logger.debug(f"Exact match found: '{given_text}' == '{target_text}'")
         internal_logger.debug(f'Exact match found for text: {given_text}')
         return True
+
+    if strict:
+        internal_logger.debug(f"Strict match required; no exact match for '{given_text}' and '{target_text}'.")
+        return False
 
     # 2. Partial Match (substring, return immediately)
     if target_text in given_text:

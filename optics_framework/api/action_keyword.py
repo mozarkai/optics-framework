@@ -430,7 +430,7 @@ class ActionKeyword:
                 screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
                 self.execution_dir, func_name,
             )
-        self._save_screenshot_if_available(screenshot_np, f"pre-{func_name}")
+        self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
         results = _locate_element(
             self.strategy_manager, element,
             aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,

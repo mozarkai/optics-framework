@@ -281,7 +281,12 @@ class InitCommand(Command):
         )
         parser.add_argument(
             "--template",
-            help="Start from a sample template: " + ", ".join(available_templates()),
+            help=(
+                "Start from a sample template: "
+                + ", ".join(available_templates())
+                + ". Omit to choose one from an interactive picker; with no "
+                "interactive terminal, a blank project is created instead."
+            ),
         )
         parser.add_argument(
             "--git-init",

@@ -514,12 +514,13 @@ class UIHelper:
                     }
         return None
 
-    def get_locator_and_strategy(self, element):
+    def get_locator_and_strategy(self, element, strict: bool = False):
         """
         Determines the best strategy and locator for the given element identifier.
+
+        strict=True stops after exact/suffix matching -- no fuzzy fallback.
         """
         _, time_stamp = self.get_page_source()
-        tree = self.tree
 
         strategies = [
             ("text", "//*[@text]", "text"),
@@ -534,39 +535,49 @@ class UIHelper:
         if exact is not None:
             return exact
 
-        # Second pass: collect fuzzy candidates and pick the best-scoring one
+        if strict:
+            internal_logger.debug(f"Strict matching enabled; no exact match found for '{element}'.")
+            return None
+
+        return self._find_best_fuzzy_candidate(element, strategies, time_stamp)
+
+    @staticmethod
+    def _fuzzy_ratio(value: str, element: str) -> int:
+        try:
+            return fuzz.ratio(value.lower().strip(), element.lower().strip())
+        except Exception:
+            return 0
+
+    def _find_best_fuzzy_candidate(self, element, strategies, time_stamp):
+        """Second pass: collect fuzzy candidates and return the best-scoring one, if any."""
         best_candidate = None
         best_score = 0
         for strategy_name, xpath_query, attrib in strategies:
-            elements = tree.xpath(xpath_query)
-            for elem in elements:
+            for elem in self.tree.xpath(xpath_query):
                 value = elem.attrib.get(attrib, "").strip()
                 if not value:
                     continue
-                try:
-                    score = fuzz.ratio(value.lower().strip(), element.lower().strip())
-                except Exception:
-                    score = 0
+                score = self._fuzzy_ratio(value, element)
                 if score > best_score:
                     best_score = score
                     best_candidate = (strategy_name, value, elem.attrib)
 
-        if best_candidate and best_score >= 80:
-            strategy_name, value, attributes = best_candidate
+        if not best_candidate or best_score < 80:
             internal_logger.debug(
-                f"Fuzzy match selected (score={best_score}) using '{strategy_name}': '{value}'"
+                f"No matching element found in any of the locator strategies for '{element}'."
             )
-            return {
-                "strategy": strategy_name,
-                "locator": value,
-                "attributes": attributes,
-                "timestamp": time_stamp,
-            }
+            return None
 
+        strategy_name, value, attributes = best_candidate
         internal_logger.debug(
-            f"No matching element found in any of the locator strategies for '{element}'."
+            f"Fuzzy match selected (score={best_score}) using '{strategy_name}': '{value}'"
         )
-        return None
+        return {
+            "strategy": strategy_name,
+            "locator": value,
+            "attributes": attributes,
+            "timestamp": time_stamp,
+        }
 
     def get_view_locator(self, strategy, locator):
         """
@@ -652,7 +663,7 @@ class UIHelper:
             return None
 
     def get_locator_and_strategy_using_index(
-        self, element, index, strategy=None
+        self, element, index, strategy=None, strict: bool = False
     ) -> dict:
         """
         Perform a linear search across all strategies (resource-id, text, content-desc, etc.) in the UI tree,
@@ -662,6 +673,7 @@ class UIHelper:
             element (str): The element identifier to search for.
             index (int): zero indexing
             strategy (str): supported attributes in string, 'resource-id', 'text', 'content-desc', 'name', 'value', 'label'
+            strict (bool): if True, only exact/suffix matches are considered -- no partial/fuzzy fallback.
 
         Returns:
             list: A list of dictionaries, each containing the strategy, value, and index of the match.
@@ -729,7 +741,7 @@ class UIHelper:
                 continue
 
             # fallback to fuzzy/partial compare
-            if utils.compare_text(val, element):
+            if not strict and utils.compare_text(val, element):
                 fuzzy_matches.append(
                     {
                         "index": idx,
