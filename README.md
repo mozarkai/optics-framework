@@ -9,6 +9,7 @@ One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Fr
 [![PyPI](https://img.shields.io/pypi/v/optics-framework.svg)](https://pypi.org/project/optics-framework/)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
+![PyPI Downloads](https://img.shields.io/pypi/dm/optics-framework)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=coverage)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10842/badge)](https://www.bestpractices.dev/projects/10842)
