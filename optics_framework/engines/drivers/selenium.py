@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.common.exceptions import InvalidSessionIdException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
@@ -15,6 +16,11 @@ class SeleniumDriver(DriverInterface):
     NAME = "selenium"
     ACTION_NOT_SUPPORTED = "Action not supported in Selenium."
     SETUP_NOT_INITIALIZED = "Selenium setup not initialized. Call start_session() first."
+
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        """A Selenium Grid/hub reports a reaped session as ``InvalidSessionIdException``."""
+        return isinstance(exc, InvalidSessionIdException)
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
         self.driver: Optional[webdriver.Remote] = None

@@ -28,6 +28,11 @@ from optics_framework.common.strategies import (
 from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
 from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
 
+# Dead-session recognition is owned by each driver, so a driver whose
+# is_dead_session_error knows InvalidSessionIdException must be loaded for the
+# strategy layer to unmask it (Appium and Selenium both share that signal).
+import optics_framework.engines.drivers.appium  # noqa: F401
+
 
 # --- parse_text_only_prefix and determine_element_type (utils) ---
 
@@ -631,11 +636,10 @@ class TestGetInteractiveElementsStrategyScreening:
 
 
 class TestDeadSessionIsNotMasked:
-    """A hub that drops the session must surface E0106, not E0201/E0202/E0303/E0403.
+    """A dropped session must surface E0106, not E0201/E0202/E0303/E0403.
 
-    Every strategy entry point funnels backend failures through a broad ``except
-    Exception`` that reinterprets them as "not found". A terminated session is not a
-    locator problem, so it has to break out of those handlers instead.
+    A terminated session is a driver-level failure, not a locator one, so it has to
+    reach the caller as a session error rather than an element-not-found result.
     """
 
     @staticmethod
