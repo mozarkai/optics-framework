@@ -282,29 +282,14 @@ class Appium(DriverInterface):
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
-        """An Appium hub reports a reaped session as ``InvalidSessionIdException``.
-
-        Any other WebDriver failure -- an unsupported command on a TV profile, a
-        transient network error -- is not conclusive, so it does not count as a
-        dropped session.
-        """
         return isinstance(exc, InvalidSessionIdException)
 
     def _is_session_alive(self) -> bool:
-        """Round-trip the server to tell a live session from a stale handle.
-
-        ``driver.session_id`` is a client-side attribute that survives the hub
-        dropping the session, so it cannot answer this on its own. Only
-        ``invalid session id`` proves the session is gone: any other failure
-        (an unsupported command on a TV profile, a transient network error)
-        leaves the session presumed alive so a working one is never torn down
-        and restarted underneath the caller.
-        """
         if self.driver is None:
             return False
         try:
             self.driver.get_window_size()
-        except Exception as e:  # noqa: BLE001 - only a dead session is conclusive
+        except Exception as e:
             if self.is_dead_session_error(e):
                 internal_logger.debug(
                     "Cached Appium session %s is no longer active on the server.",

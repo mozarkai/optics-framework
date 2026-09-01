@@ -19,7 +19,6 @@ class SeleniumDriver(DriverInterface):
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
-        """A Selenium Grid/hub reports a reaped session as ``InvalidSessionIdException``."""
         return isinstance(exc, InvalidSessionIdException)
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
