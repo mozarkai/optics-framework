@@ -1,6 +1,11 @@
 import asyncio
 from typing import Optional, Any
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    async_playwright,
+    Page,
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.eventSDK import EventSDK
@@ -13,6 +18,23 @@ class Playwright(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "playwright"
     PAGE_NOT_INITIALIZED_MSG = "Playwright page not initialized"
+
+    # Playwright surfaces a browser/context/page that has gone away as an Error
+    # carrying one of these phrases; the pinned version keeps TargetClosedError
+    # off the public API, so match the message rather than a private type.
+    _CLOSED_SESSION_MARKERS = ("has been closed", "target closed", "target crashed")
+
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        """Whether ``exc`` means Playwright's browser/context/page is gone.
+
+        The analog of a hub dropping a remote session: no locator retry can revive
+        a closed browser, so it must fail fast with ``Code.E0106``.
+        """
+        if not isinstance(exc, PlaywrightError):
+            return False
+        message = str(exc).lower()
+        return any(marker in message for marker in Playwright._CLOSED_SESSION_MARKERS)
 
 
     def __init__(self, config: dict, event_sdk: Optional[EventSDK] = None):

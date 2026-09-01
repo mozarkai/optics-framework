@@ -4,6 +4,7 @@ from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
+from selenium.common.exceptions import InvalidSessionIdException
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
@@ -27,7 +28,6 @@ from optics_framework.engines.drivers.appium_platforms import (
     KEYCODE_RC_NAMED,
 )
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.session_liveness import is_dead_session_error
 
 
 class Appium(DriverInterface):
@@ -280,6 +280,16 @@ class Appium(DriverInterface):
         """DriverInterface-compliant getter for Appium session id."""
         return self.get_session_id()
 
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        """An Appium hub reports a reaped session as ``InvalidSessionIdException``.
+
+        Any other WebDriver failure -- an unsupported command on a TV profile, a
+        transient network error -- is not conclusive, so it does not count as a
+        dropped session.
+        """
+        return isinstance(exc, InvalidSessionIdException)
+
     def _is_session_alive(self) -> bool:
         """Round-trip the server to tell a live session from a stale handle.
 
@@ -295,7 +305,7 @@ class Appium(DriverInterface):
         try:
             self.driver.get_window_size()
         except Exception as e:  # noqa: BLE001 - only a dead session is conclusive
-            if is_dead_session_error(e):
+            if self.is_dead_session_error(e):
                 internal_logger.debug(
                     "Cached Appium session %s is no longer active on the server.",
                     self.get_session_id(),
