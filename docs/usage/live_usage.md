@@ -70,6 +70,17 @@ sleep 5
 - A failing keyword is shown as `✗` with a short error (and error code) and is **not**
   recorded; the prompt returns ready for the next command. The UI never crashes.
 
+### Expect a wait on remote targets
+
+While a keyword is in flight its history entry reads `⋯ running…` — there is **no
+elapsed-time counter**; the timing appears only once the action resolves to `✓` or `✗`.
+
+Against a **remote** Appium/Selenium hub every keyword is a full network round trip,
+so `/screenshot` and other real-device actions routinely take **10–20 seconds**. A
+long `running…` is the network, not a hang. Input is blocked while an action runs
+(a second Enter answers `Busy — wait for the current action to finish.`), so just let
+the entry resolve. Local emulators and browsers respond far faster.
+
 ## Autocomplete & hints
 
 - **Keyword completion** — start typing the first token and press Tab.
