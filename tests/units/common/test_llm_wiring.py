@@ -6,7 +6,10 @@ returning no LLM when none is enabled, and the commit-on-done recording semantic
 NLStep adapter.
 """
 import types
+from unittest.mock import MagicMock
 
+import cv2
+import numpy as np
 import pytest
 
 from optics_framework.common.config_handler import Config, DependencyConfig
@@ -16,6 +19,7 @@ from optics_framework.helper.live import LiveController, NLStep
 from optics_framework.helper.live import NLRunStatus
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common import utils
 
 pytestmark = pytest.mark.white_box
 
@@ -59,13 +63,22 @@ def _bare_controller():
 
 
 class _FakeStrategyManager:
-    def __init__(self, result):
+    def __init__(self, result=None, elements_result=None):
         self._result = result
+        self._elements_result = elements_result
+        # screen_elements() decodes the PNG bytes it's given instead of capturing a second
+        # screenshot -- kept as a spy so tests can assert it's never called.
+        self.capture_screenshot = MagicMock(name="capture_screenshot")
 
     def capture_pagesource(self):
         if isinstance(self._result, Exception):
             raise self._result
         return self._result
+
+    def get_interactive_elements(self, filter_config=None):
+        if isinstance(self._elements_result, Exception):
+            raise self._elements_result
+        return self._elements_result
 
 
 def _ps_controller(strategy_result):
@@ -74,6 +87,21 @@ def _ps_controller(strategy_result):
         strategy_manager=_FakeStrategyManager(strategy_result)
     )
     return ctrl
+
+
+def _elements_controller(elements_result, driver_type="appium"):
+    ctrl = LiveController.__new__(LiveController)
+    ctrl._action_keyword = types.SimpleNamespace(
+        strategy_manager=_FakeStrategyManager(elements_result=elements_result),
+        element_source=types.SimpleNamespace(REQUIRED_DRIVER_TYPE=driver_type),
+    )
+    return ctrl
+
+
+def _png_bytes(width=4, height=4):
+    ok, buf = cv2.imencode(".png", np.zeros((height, width, 3), dtype=np.uint8))
+    assert ok
+    return buf.tobytes()
 
 
 _PS_XML = (
@@ -99,6 +127,62 @@ class TestControllerPageSource:
         ctrl = LiveController.__new__(LiveController)
         ctrl._action_keyword = None
         assert ctrl.page_source() is None
+
+
+class TestControllerScreenElements:
+    def test_returns_elements_and_scales_bounds_for_appium(self, monkeypatch):
+        elements = [{"text": "Search", "bounds": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}}]
+        ctrl = _elements_controller(elements, driver_type="appium")
+
+        calls = []
+        monkeypatch.setattr(
+            utils, "scale_interactive_element_bounds",
+            lambda els, src, ss: calls.append((els, src, ss)),
+        )
+
+        out = ctrl.screen_elements(_png_bytes())
+
+        assert out == elements
+        assert len(calls) == 1
+        assert calls[0][0] == elements
+        assert isinstance(calls[0][2], np.ndarray)  # decoded from the passed PNG bytes
+        # No second device screenshot -- bounds come from decoding what was already
+        # captured for the LLM, not a fresh capture_screenshot() round trip.
+        ctrl._action_keyword.strategy_manager.capture_screenshot.assert_not_called()
+
+    def test_skips_decode_for_non_appium_source(self, monkeypatch):
+        elements = [{"text": "Row", "bounds": {"x1": 0, "y1": 0, "x2": 5, "y2": 5}}]
+        ctrl = _elements_controller(elements, driver_type="playwright")
+
+        calls = []
+        monkeypatch.setattr(
+            utils, "scale_interactive_element_bounds",
+            lambda els, src, ss: calls.append(ss),
+        )
+
+        out = ctrl.screen_elements(_png_bytes())
+
+        assert out == elements
+        assert calls == [None]  # scale called, but with no frame to scale against
+        ctrl._action_keyword.strategy_manager.capture_screenshot.assert_not_called()
+
+    def test_returns_none_when_get_interactive_elements_unavailable(self):
+        ctrl = _elements_controller(OpticsError(Code.E0202, message="No interactive elements"))
+        assert ctrl.screen_elements(_png_bytes()) is None
+
+    def test_returns_none_when_no_action_keyword(self):
+        ctrl = LiveController.__new__(LiveController)
+        ctrl._action_keyword = None
+        assert ctrl.screen_elements(_png_bytes()) is None
+
+    def test_undecodable_png_bytes_still_returns_elements(self, monkeypatch):
+        # Bounds scaling is best-effort: bytes that fail to decode into a frame must not
+        # sink the structured elements the NL agent otherwise has available this step.
+        elements = [{"text": "Search", "bounds": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}}]
+        ctrl = _elements_controller(elements, driver_type="appium")
+        monkeypatch.setattr(utils, "scale_interactive_element_bounds", lambda *a, **k: None)
+
+        assert ctrl.screen_elements(b"not a real png") == elements
 
 
 class FakeAgent:

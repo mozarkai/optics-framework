@@ -137,10 +137,14 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         page = self._require_page()
         elements = self.tree.xpath(".//*")
+        # One page.evaluate() call resolves bounds for every candidate node, instead of a
+        # Playwright locator round-trip per node (count() + bounding_box() each).
+        node_xpaths = [self._build_simple_xpath(node) for node in elements]
+        rects = self._resolve_bounds_batch(page, node_xpaths)
         results = []
 
-        for node in elements:
-            bounds = self._extract_bounds(node, page)
+        for node, rect in zip(elements, rects):
+            bounds = self._rect_to_bounds(rect)
             if not bounds:
                 continue
 
@@ -166,48 +170,64 @@ class PlaywrightPageSource(ElementSourceInterface):
     # Helper methods for get_interactive_elements
     # ---------------------------------------------------------
 
-    def _extract_bounds(self, node: etree.Element, page: Any) -> Optional[Dict[str, int]]:
-        """
-        Extract bounding box coordinates for a web element using Playwright.
+    # In-browser: resolves each xpath via document.evaluate and reports its
+    # getBoundingClientRect(), or null when unmatched / not laid out. The visibility
+    # check approximates Playwright's own "not visible" -> null bounding_box() contract,
+    # since that internal algorithm isn't reachable from plain page.evaluate() JS.
+    _BOUNDS_BATCH_SCRIPT = """
+    (xpaths) => xpaths.map((xp) => {
+        if (!xp) return null;
+        try {
+            const result = document.evaluate(
+                xp, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            );
+            const el = result.singleNodeValue;
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+            const style = window.getComputedStyle(el);
+            if (style.visibility === 'hidden' || style.display === 'none') return null;
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        } catch (e) {
+            return null;
+        }
+    });
+    """
 
-        Args:
-            node: The lxml element node
-            page: Playwright page object
-
-        Returns:
-            Dict with x1, y1, x2, y2 or None if cannot get bounds
-        """
+    def _resolve_bounds_batch(
+        self, page: Any, xpaths: List[Optional[str]]
+    ) -> List[Optional[Dict[str, float]]]:
+        """Resolve bounding rects for every candidate xpath in one round trip."""
+        if not xpaths:
+            return []
         try:
-            # Build a selector from the element
-            xpath = self._build_simple_xpath(node)
-            if not xpath:
-                return None
-
-            # Try to locate the element using XPath
-            locator = page.locator(f"xpath={xpath}")
-            count = run_async(locator.count())
-
-            if count == 0:
-                return None
-
-            # Get bounding box from the first matching element
-            bbox = run_async(locator.first.bounding_box())
-
-            if bbox is None:
-                return None
-
-            x1 = int(bbox["x"])
-            y1 = int(bbox["y"])
-            x2 = int(bbox["x"] + bbox["width"])
-            y2 = int(bbox["y"] + bbox["height"])
-
-            return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-
+            rects = run_async(page.evaluate(self._BOUNDS_BATCH_SCRIPT, xpaths))
+            if rects is None or len(rects) != len(xpaths):
+                return [None] * len(xpaths)
+            return rects
         except Exception as e:
+            # The batch call itself failed (e.g. page mid-navigation). Falling back to one
+            # evaluate() per node here would reintroduce the exact per-node round-trip cost
+            # this batching exists to avoid, so degrade to "no bounds this pass" instead,
+            # same as a single node failing used to.
             internal_logger.debug(
-                f"[PlaywrightPageSource] Could not extract bounds for element: {e}"
+                f"[PlaywrightPageSource] Batched bounds lookup failed: {e}"
             )
+            return [None] * len(xpaths)
+
+    @staticmethod
+    def _rect_to_bounds(rect: Optional[Dict[str, float]]) -> Optional[Dict[str, int]]:
+        """Convert a ``{x,y,width,height}`` rect (or ``None``) into ``{x1,y1,x2,y2}``."""
+        if not rect:
             return None
+        try:
+            x1 = int(rect["x"])
+            y1 = int(rect["y"])
+            x2 = int(rect["x"] + rect["width"])
+            y2 = int(rect["y"] + rect["height"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
     def _escape_xpath_value(self, val: str) -> str:
         """
