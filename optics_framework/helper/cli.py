@@ -62,7 +62,22 @@ class ListCommand(Command):
 class AutocompletionCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "completion", help="Enable shell autocompletion for optics CLI"
+            "completion",
+            help="Enable shell autocompletion for optics CLI",
+            description=(
+                "Enable Tab-completion of optics commands and arguments in bash or zsh.\n"
+                "\n"
+                "Writes the completion scripts to ~/.optics/optics_completion.sh (bash) and\n"
+                "~/.optics/optics_completion.zsh (zsh), then asks before appending a\n"
+                '"# Optics CLI autocompletion" comment and one "source" line to the rc file\n'
+                "for your $SHELL: ~/.bashrc for bash, ~/.zshrc for zsh. Declining the prompt,\n"
+                "or running without an interactive terminal, leaves the rc file untouched and\n"
+                "prints the line to add by hand instead.\n"
+                "\n"
+                "There is no uninstall flag: to undo, delete those two lines from the rc file\n"
+                "and, if you want, remove ~/.optics/optics_completion.*."
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         parser.set_defaults(func=self.execute)
 
