@@ -130,6 +130,9 @@ class FlowControl:
         Not exposed on the Optics SDK — session.modules is only populated by
         CSV/YAML-driven execution; SDK/Robot Framework users should call keywords
         directly or write a real function/keyword instead.
+
+        :param module_name: The module to execute.
+        :return: Results of each keyword call in the module, in order.
         """
         module_def = self._get_validated_module_def(module_name)
         results = []
@@ -140,7 +143,13 @@ class FlowControl:
 
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
     def run_loop(self, target: str, *args: str) -> List[Any]:
-        """Runs a loop over a target module, either by count or with variables."""
+        """Runs a loop over a target module, either by count or with variables.
+
+        :param target: The module name to execute in the loop.
+        :param args: A single count (e.g. ``"5"``), or variable-iterable pairs
+            (e.g. ``"${user}", "a|b|c"``) to iterate one value per run.
+        :return: One result list per iteration.
+        """
         internal_logger.debug(f"[RUN_LOOP] Called with target={target}, args={args}")
         self._ensure_session()
         if self.session is None:
@@ -267,7 +276,13 @@ class FlowControl:
             raise OpticsError(Code.E0403, message=f"Expected a list, JSON string, or pipe-separated string for iterable of variable '{variable}', got {type(iterable).__name__}.")
 
     def condition(self, *args: str) -> Optional[List[Any]]:
-        """Evaluates conditions and executes corresponding targets."""
+        """Evaluates conditions and executes corresponding targets.
+
+        :param args: Condition-target pairs, optionally ending with an else target:
+            ``"cond1", "target1", "cond2", "target2", [else_target]``. A condition is a
+            module name (prefix ``!`` to invert) or an expression.
+        :return: Result of the matched target module, or None if nothing matched.
+        """
         internal_logger.debug(f"[CONDITION] Called with args={args}")
         self._ensure_session()
         if self.session is None:
@@ -801,7 +816,13 @@ class FlowControl:
 
     @raw_params(0)
     def evaluate(self, param1: str, param2: str) -> Any:
-        """Evaluates an expression and stores the result in session.elements."""
+        """Evaluates an expression and stores the result in session.elements.
+
+        :param param1: Variable name to store the result under, e.g. ``${result}``.
+        :param param2: Expression to evaluate; ``${var}`` refs are substituted first,
+            then run through a restricted eval (arithmetic, comparisons, ternary).
+        :return: The evaluated result (also stored as a string in session.elements).
+        """
         self._ensure_session()
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
@@ -982,7 +1003,10 @@ class FlowControl:
         return result
 
     def invoke_api(self, api_identifier: str) -> None:
-        """Invokes an API call based on a definition from the session's API data."""
+        """Invokes an API call based on a definition from the session's API data.
+
+        :param api_identifier: API to call, in ``collection.api_name`` form.
+        """
         internal_logger.debug(f"[INVOKE_API] Called with api_identifier={api_identifier}")
         self._ensure_session()
         if self.session is None:

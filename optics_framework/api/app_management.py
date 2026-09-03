@@ -38,6 +38,8 @@ class AppManagement:
         """
         Launches the specified application.
 
+        :param app_identifier: The app identifier (package name for Android, bundle ID for iOS).
+        :param app_activity: The app activity to launch (Android only).
         :param event_name: The event triggering the app launch, if any.
         """
         return self.driver.launch_app(
@@ -91,6 +93,7 @@ class AppManagement:
         """
         Gets the version of the application.
 
+        :param app_package: The app package/bundle ID to check, or the current app if None.
         :return: The version of the application, or None if not available.
         """
         return self.driver.get_app_version(app_package=app_package) if app_package else self.driver.get_app_version()
