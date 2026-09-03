@@ -372,8 +372,8 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
 def _extract_keywords_from_module(module) -> List[KeywordInfo]:
     """Extract all keyword infos from a module."""
     keywords = []
-    for _, obj in inspect.getmembers(module):
-        if inspect.isclass(obj) and obj.__module__ == module.__name__:
+    for name, obj in inspect.getmembers(module):
+        if inspect.isclass(obj) and obj.__module__ == module.__name__ and not name.startswith("_"):
             keywords.extend(_extract_keywords_from_class(obj))
     return keywords
 
