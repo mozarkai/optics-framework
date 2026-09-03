@@ -785,6 +785,7 @@ class ActionKeyword:
         .. deprecated:: Deprecated; prefer :meth:`swipe_from_element` / :meth:`swipe`.
 
         :param element: The seekbar element (Image template, OCR template, or XPath).
+        :param event_name: The event triggering the swipe.
         """
         internal_logger.warning(
             "'Swipe Seekbar To Right Android' is deprecated; use 'Swipe From Element' instead."
