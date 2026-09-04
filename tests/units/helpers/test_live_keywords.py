@@ -6,8 +6,8 @@ unknown-keyword message (with closest-match suggestion), the friendly
 signature hint for ValueError/TypeError failures, and the graceful
 empty-input guard — all against a bare controller shell (no device/session),
 like the other live unit tests. The TUI-side command routing (bare quit/exit
-aliases and the unknown-/command hint) is tested here too against a stubbed
-prompt_toolkit app.
+aliases and the unknown-/command hint) and the scrollable /help popup are
+tested here too against a stubbed prompt_toolkit app.
 """
 from types import SimpleNamespace
 
@@ -182,18 +182,24 @@ def test_unknown_keyword_suggests_closest_match():
 
 
 class _FakeApp:
-    def __init__(self):
+    def __init__(self, rows=40, columns=100):
         self.exited = False
+        self.output = SimpleNamespace(
+            get_size=lambda: SimpleNamespace(rows=rows, columns=columns)
+        )
 
     def exit(self):
         self.exited = True
 
+    def invalidate(self):
+        pass
 
-def _tui_with_stubbed_app(monkeypatch):
+
+def _tui_with_stubbed_app(monkeypatch, rows=40, columns=100):
     """A real LiveTUI over a bare controller; get_app/_info stubbed so no tty is needed."""
     controller = SimpleNamespace(saved=True, recorded=[])
     tui = live_tui.LiveTUI(controller)
-    app = _FakeApp()
+    app = _FakeApp(rows=rows, columns=columns)
     messages: list[str] = []
     monkeypatch.setattr(live_tui, "get_app", lambda: app)
     monkeypatch.setattr(tui, "_info", lambda msg, raw="": messages.append(msg))
@@ -219,6 +225,95 @@ def test_unknown_slash_command_hints_available_commands(monkeypatch):
     assert len(messages) == 1
     assert "/help" in messages[0]
     assert "/quit" in messages[0]
+
+
+def _popup_text(tui) -> str:
+    return "".join(text for _style, text in tui._render_popup())
+
+
+def _popup_key_handler(tui, key):
+    """The single key binding that fires for ``key`` while the popup is open."""
+    bindings = [
+        binding
+        for binding in tui.app.key_bindings.get_bindings_for_keys((key,))
+        if binding.filter()
+    ]
+    assert len(bindings) == 1
+    return bindings[0].handler
+
+
+def test_help_popup_reveals_content_below_the_first_page(monkeypatch):
+    """The tail of the reference (/device, /quit, Keys) used to be clipped away."""
+    tui, _app, _messages = _tui_with_stubbed_app(monkeypatch)
+
+    tui._submit("/help")
+    first_page = _popup_text(tui)
+    tui._scroll_popup(1, page=True)
+    second_page = _popup_text(tui)
+
+    assert "/device" not in first_page
+    for marker in ("/device", "/quit", "Keys", "Ctrl-C", "Press Esc to close this help."):
+        assert marker in second_page
+
+
+def test_help_popup_shows_a_scroll_indicator(monkeypatch):
+    tui, _app, _messages = _tui_with_stubbed_app(monkeypatch)
+
+    tui._submit("/help")
+    layout = tui._popup_layout()
+
+    assert layout.max_scroll > 0
+    assert _popup_text(tui).endswith(
+        f" ↑/↓ PgUp/PgDn scroll · 1-{layout.visible}/{len(layout.lines)} "
+    )
+
+
+def test_help_popup_scroll_clamps_at_both_ends(monkeypatch):
+    tui, _app, _messages = _tui_with_stubbed_app(monkeypatch)
+
+    tui._submit("/help")
+    layout = tui._popup_layout()
+    for _ in range(layout.max_scroll + 10):
+        tui._scroll_popup(1)
+    assert tui.popup_scroll == layout.max_scroll
+    assert "Press Esc to close this help." in _popup_text(tui)
+
+    for _ in range(layout.max_scroll + 10):
+        tui._scroll_popup(-1)
+    assert tui.popup_scroll == 0
+
+
+def test_help_popup_fits_a_short_terminal_by_scrolling(monkeypatch):
+    tui, _app, _messages = _tui_with_stubbed_app(monkeypatch, rows=12)
+
+    tui._submit("/help")
+    layout = tui._popup_layout()
+    assert layout.visible == 12 - 2 - 1  # frame border, then a row for the indicator
+    for _ in range(layout.max_scroll):
+        tui._scroll_popup(1)
+
+    assert "Press Esc to close this help." in _popup_text(tui)
+
+
+def test_arrow_keys_scroll_the_popup_instead_of_recalling_history(monkeypatch):
+    tui, _app, _messages = _tui_with_stubbed_app(monkeypatch)
+    tui._submit("/help")
+
+    _popup_key_handler(tui, "down")(None)
+    assert tui.popup_scroll == 1
+    _popup_key_handler(tui, "pagedown")(None)
+    assert tui.popup_scroll > 1
+    _popup_key_handler(tui, "up")(None)
+    _popup_key_handler(tui, "pageup")(None)
+    assert tui.popup_scroll == 0
+
+
+def test_short_popup_renders_without_a_scroll_indicator(monkeypatch):
+    tui, _app, _messages = _tui_with_stubbed_app(monkeypatch)
+
+    tui.open_popup("Elements", " No named elements found in this project. ")
+
+    assert _popup_text(tui) == " No named elements found in this project. "
 
 
 def test_status_hint_leads_with_help_and_quit():
