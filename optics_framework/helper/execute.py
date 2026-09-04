@@ -4,13 +4,11 @@ import socket
 import subprocess  # nosec B404
 import sys
 import asyncio
-from typing import NoReturn, Optional, Tuple, List, Dict, Set, Any
+from typing import Optional, Tuple, List, Dict, Set, Any
 from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
-from rich.console import Console
-from rich.panel import Panel
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
@@ -32,6 +30,7 @@ from optics_framework.common.models import (
     TemplateData,
     ErrorDefinitions,
 )
+from optics_framework.helper.abort import abort_with_panel
 
 
 def discover_templates(project_path: str) -> TemplateData:
@@ -547,14 +546,6 @@ def _adb_device_count() -> int | None:
     return count if in_list else 0
 
 
-def _abort_preflight(lines: List[str]) -> NoReturn:
-    """Print a friendly rich block explaining the failure and exit non-zero."""
-    console = Console(file=sys.stderr)
-    console.print(Panel("\n".join(lines), title="Cannot start",
-                        border_style="red"))
-    sys.exit(1)
-
-
 def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> None:
     """
     Beginner-facing environment gate for ``optics execute``, run before any
@@ -604,7 +595,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
     """Probe the Appium server and, for Android, adb + an attached device."""
     url = details.url or _APPIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4723):
-        _abort_preflight([
+        abort_with_panel([
             f"No Appium server reachable at {url}.",
             "",
             "Start one in another terminal:  appium",
@@ -615,7 +606,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
         return
     device_count = _adb_device_count()
     if device_count is None:
-        _abort_preflight([
+        abort_with_panel([
             "Android run requested, but the adb tool was not found.",
             "",
             "Install Android platform-tools (any option that puts adb on PATH),",
@@ -623,7 +614,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             f"Then re-run:  optics execute {folder_path}",
         ])
     if device_count == 0:
-        _abort_preflight([
+        abort_with_panel([
             "No Android device/emulator attached (adb reports none).",
             "",
             "Connect a device (USB debugging on) or start an emulator,",
@@ -636,7 +627,7 @@ def _preflight_selenium(details: DependencyConfig, folder_path: str) -> None:
     """Probe the configured Selenium/WebDriver URL."""
     url = details.url or _SELENIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4444):
-        _abort_preflight([
+        abort_with_panel([
             f"No Selenium/WebDriver server reachable at {url}.",
             "",
             "Start one, e.g.:  docker run -d -p 4444:4444 selenium/standalone",
