@@ -10,7 +10,6 @@ log_level: INFO
 # Runtime behavior
 # --------------------------------------------------
 halt_duration: 0.2
-max_attempts: 3
 
 # --------------------------------------------------
 # Drivers

@@ -39,8 +39,8 @@ class Config(BaseModel):
     exclude: Optional[List[str]] = None
     event_attributes_json: Optional[str] = None
     halt_duration: float = 0.1
-    max_attempts: int = 3
     ai_self_heal: bool = False
+    strict_element_match: bool = False
 
     def __init__(self, **data):
         super().__init__(**data)

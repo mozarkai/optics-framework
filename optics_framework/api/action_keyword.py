@@ -430,7 +430,7 @@ class ActionKeyword:
                 screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
                 self.execution_dir, func_name,
             )
-        self._save_screenshot_if_available(screenshot_np, f"pre-{func_name}")
+        self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
         results = _locate_element(
             self.strategy_manager, element,
             aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
@@ -785,6 +785,7 @@ class ActionKeyword:
         .. deprecated:: Deprecated; prefer :meth:`swipe_from_element` / :meth:`swipe`.
 
         :param element: The seekbar element (Image template, OCR template, or XPath).
+        :param event_name: The event triggering the swipe.
         """
         internal_logger.warning(
             "'Swipe Seekbar To Right Android' is deprecated; use 'Swipe From Element' instead."

@@ -132,6 +132,7 @@ class Verifier:
         :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
+        :param fail: If True, raise on failure; if False, return False instead.
         :return: True if the rule is satisfied, False otherwise.
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_presence")
@@ -146,6 +147,7 @@ class Verifier:
         :param timeout_str: The time to wait for the elements to become visible, in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
+        :param fail: If True, raise on failure; if False, return False instead.
         :return: True if the rule is satisfied, False otherwise.
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_visibility")

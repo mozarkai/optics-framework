@@ -4,6 +4,7 @@ from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
+from selenium.common.exceptions import InvalidSessionIdException
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
@@ -278,6 +279,24 @@ class Appium(DriverInterface):
     def get_driver_session_id(self) -> Optional[str]:
         """DriverInterface-compliant getter for Appium session id."""
         return self.get_session_id()
+
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        return isinstance(exc, InvalidSessionIdException)
+
+    def _is_session_alive(self) -> bool:
+        if self.driver is None:
+            return False
+        try:
+            self.driver.get_window_size()
+        except Exception as e:
+            if self.is_dead_session_error(e):
+                internal_logger.debug(
+                    "Cached Appium session %s is no longer active on the server.",
+                    self.get_session_id(),
+                )
+                return False
+        return True
 
     def _normalize_args(self, args: tuple) -> list:
         """
@@ -690,7 +709,7 @@ class Appium(DriverInterface):
     ) -> str:
         """Launch the app using the Appium driver."""
         session_id = self.get_session_id()
-        if self.driver is None:
+        if self.driver is None or not self._is_session_alive():
             session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,

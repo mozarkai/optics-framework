@@ -278,3 +278,7 @@ class DriverInterface(ABC):
         :raises NotImplementedError: If the method is not implemented in a subclass.
         """
         pass
+
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        return False

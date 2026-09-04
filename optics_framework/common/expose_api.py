@@ -270,6 +270,7 @@ class SessionConfig(BaseModel):
     project_path: Optional[str] = None
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
+    strict_element_match: Optional[bool] = None
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
 
     def _normalize_item(self, item: Union[str, Dict[str, Any]], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
@@ -372,8 +373,8 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
 def _extract_keywords_from_module(module) -> List[KeywordInfo]:
     """Extract all keyword infos from a module."""
     keywords = []
-    for _, obj in inspect.getmembers(module):
-        if inspect.isclass(obj) and obj.__module__ == module.__name__:
+    for name, obj in inspect.getmembers(module):
+        if inspect.isclass(obj) and obj.__module__ == module.__name__ and not name.startswith("_"):
             keywords.extend(_extract_keywords_from_class(obj))
     return keywords
 
@@ -496,7 +497,8 @@ async def create_session(config: SessionConfig):
             ai_self_heal=ai_self_heal,
             project_path=config.project_path,
             log_level=LOG_LEVEL_DEBUG,
-            save_captures=False  # do not save screenshots or pagesource when using `optics serve`
+            save_captures=False,  # do not save screenshots or pagesource when using `optics serve`
+            strict_element_match=bool(config.strict_element_match),
         )
         templates = (
             discover_templates(config.project_path) if config.project_path else None
