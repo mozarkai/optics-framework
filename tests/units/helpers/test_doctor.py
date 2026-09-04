@@ -417,6 +417,9 @@ class TestSplitHostPort:
         ("10.0.0.5:4723", ("10.0.0.5", 4723)),  # schemeless host:port
         ("127.0.0.1", ("127.0.0.1", 4723)),     # bare host keeps the default port
         ("localhost:8080/", ("localhost", 8080)),
+        # No explicit port: the scheme's implied port, not the Appium default.
+        ("https://appium-hub.example.com/wd/hub", ("appium-hub.example.com", 443)),
+        ("http://appium-hub.example.com/wd/hub", ("appium-hub.example.com", 80)),
     ])
     def test_parses_host_and_port(self, url, expected):
         assert doctor._split_host_port(url) == expected
