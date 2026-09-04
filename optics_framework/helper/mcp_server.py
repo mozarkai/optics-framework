@@ -250,6 +250,7 @@ def build_server() -> "FastMCP":
         ai_self_heal: Optional[bool] = None,
         llm_provider: Optional[str] = None,
         llm_model: Optional[str] = None,
+        strict_element_match: Optional[bool] = None,
     ) -> dict[str, Any]:
         """Start a new optics session and launch the target app.
 
@@ -267,6 +268,10 @@ def build_server() -> "FastMCP":
         ai_self_heal=True with no provider configured anywhere still degrades to inert
         (no LLM to drive it); LLM credentials always come from the provider's own env
         vars (e.g. GOOGLE_API_KEY), never this tool.
+
+        strict_element_match: reject fuzzy/partial text and xpath matches on locate
+        (default False, i.e. fuzzy-tolerant). Set True when a near-miss locator string
+        pressing the wrong element is worse than the keyword failing outright.
         """
         if url or capabilities:
             driver_sources: list[Any] = [
@@ -283,6 +288,7 @@ def build_server() -> "FastMCP":
             ai_self_heal=ai_self_heal,
             llm_provider=llm_provider,
             llm_model=llm_model,
+            strict_element_match=strict_element_match,
         )
         try:
             response = await expose_api.create_session(config)

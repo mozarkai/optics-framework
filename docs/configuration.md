@@ -22,7 +22,6 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
     log_level: INFO
     project_path: "./my_android_project"
     halt_duration: 0.1
-    max_attempts: 3
 
     # Driver Configuration
     driver_sources:
@@ -75,7 +74,6 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
     log_level: INFO
     project_path: "./web_test_project"
     halt_duration: 0.2
-    max_attempts: 5
 
     # Driver Configuration
     driver_sources:
@@ -168,7 +166,7 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
 |----------|-------------|---------------|
 | **Logging** | `console`, `file_log`, `json_log`, `log_level` | `log_level: INFO` or `DEBUG` |
 | **Paths** | `project_path`, `execution_output_path` | `./my_project`, `./outputs` |
-| **Execution** | `halt_duration`, `max_attempts` | `0.1`, `3` |
+| **Execution** | `halt_duration` | `0.1` |
 | **Drivers** | `appium`, `selenium`, `playwright`, `ble` | See Driver Sources tab |
 | **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |
 | **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |
@@ -290,16 +288,6 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     ```yaml
     halt_duration: 0.1  # 100ms pause between actions
-    ```
-
-    ### `max_attempts`
-
-    **Type:** `int` | **Default:** `3`
-
-    Maximum number of retry attempts for failing actions. The framework will retry up to this many times before reporting failure.
-
-    ```yaml
-    max_attempts: 3
     ```
 
 === "Test Control"
