@@ -3,9 +3,16 @@
 `optics mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server that exposes the optics-framework keyword engine to an LLM client
 (Claude Desktop, Claude Code, Cursor, …). The model can start a device/browser
-session, run automation keywords as **tools**, and observe device state through
-**resources** — driving a live target the way `optics live` does, but under
-agent control.
+session, run automation keywords as **tools**, observe device state through
+**resources**, and then **record what it did into a replayable test suite** —
+driving a live target the way `optics live` does, but under agent control.
+
+The full loop is: **onboard** (`doctor` / `list_devices` / `list_available_sources`)
+→ **connect** (`start_session`) → **interact** (keyword tools + `find_elements`) →
+**cherry-pick** (`start_recording`, drop mis-fires) → **build a suite**
+(`save_test_case` / `save_suite`) → **replay** (`run_test_case` / `run_suite`), all
+without leaving the MCP surface. Suites are stored as a real optics CSV project, so
+they graduate to `optics execute` (CI, pipelines) via `export_optics_project`.
 
 It reuses the in-process keyword machinery from the REST server
 (`optics serve`), so whatever driver and element sources optics already supports
@@ -128,15 +135,49 @@ the client at the URL:
 
 ## 5. The expected journey
 
+0. **Onboard** *(optional but recommended)* — `doctor` checks your environment
+   (Python, adb + Android SDK, Appium reachability, browser binaries) and returns
+   an actionable `fix` for anything wrong; `list_devices` shows connected devices;
+   `list_available_sources` lists valid engine source names so you never guess them.
 1. **`start_session`** — open a session against your driver. Returns
    `{ "session_id", "driver_id" }`. The target app is launched automatically.
    Capture the `session_id`; **every** other tool and resource needs it.
-2. **Observe** — read a resource or call `screenshot` to see the screen, read
-   `optics://session/{session_id}/source` for the UI hierarchy, or call
-   `get_interactive_elements` for tappable elements.
+   `elements_sources` now **defaults per driver** (appium →
+   `appium_find_element`/`appium_page_source`/`appium_screenshot`), so
+   `start_session` with just a `driver` works. Reconnect to a still-live session
+   after a context reset with `list_sessions` / `session_info`.
+2. **Observe** — call `find_elements` (filtered, compact, paginated — the
+   token-safe way to inspect the screen) and `get_screen_size`; or read
+   `optics://session/{session_id}/source`, or call `screenshot`. On Android,
+   `get_current_app` / `list_installed_apps` avoid guessing package names.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
-   `assert_presence`, …) with the `session_id`.
-4. **`terminate_session`** — release the driver when done.
+   `assert_presence`, …) with the `session_id`. Prefer targeting a `find_elements`
+   result's `xpath`/`text` over raw coordinates.
+4. **Build a reusable suite** — see below.
+5. **`terminate_session`** — release the driver when done.
+
+### Record → save → replay (the reusable-artifact loop)
+
+Individual keyword calls are one-offs. To turn a session into a suite:
+
+1. **`start_recording(session_id)`** — from here, every *successful* action
+   keyword is captured (with its resolved args); observers like `screenshot` and
+   `get_interactive_elements` are not. Mis-fired taps that error aren't recorded.
+2. **Cherry-pick** — `list_recorded_steps`, then `remove_step` / `edit_step` to
+   drop or fix a step, or `clear_recording` to start over.
+3. **`save_test_case(session_id, name, variables?)`** — persists the recording as
+   a replayable test case in the MCP **workspace** (a real optics CSV project;
+   defaults to `~/.optics/mcp_workspace`, override with `OPTICS_MCP_WORKSPACE`).
+   `variables` (a JSON object `{ "hour": "22" }`) parameterizes the module: any arg
+   equal to a default becomes `${hour}`, so the same test case replays with new
+   values. You can also pass explicit `steps` instead of using the recording.
+4. **Replay** — `run_test_case(session_id, name, params?)` replays against the
+   live session and returns per-step pass/fail plus a base64 screenshot on the
+   failing step; `params` overrides `${var}` values. Group test cases with
+   `save_suite` and replay them together with `run_suite`.
+5. **Graduate** — `export_optics_project(dest_path, session_id?)` writes a
+   standalone `optics execute`-able project (CSVs + `config.yaml`);
+   `import_optics_project(path)` reads an existing project back in for editing/replay.
 
 ### `start_session` arguments
 
@@ -145,7 +186,7 @@ the client at the URL:
 | `driver` | str | driver name, e.g. `"appium"` (default) |
 | `url` | str | driver/hub URL (e.g. local `http://127.0.0.1:4723` or a remote hub) |
 | `capabilities` | object | driver capabilities (platform, device, app, auth…) |
-| `elements_sources` | list[str] | element sources to enable (see §7) |
+| `elements_sources` | list[str] | element sources to enable; **optional** — defaults to the driver's canonical set (see §8). Call `list_available_sources` to see the choices |
 | `text_detection` | list[str] | optional OCR sources (e.g. `["googlevision"]`) |
 | `image_detection` | list[str] | optional template sources (e.g. `["templatematch"]`) |
 | `project_path` | str | optional project folder (loads bundled templates) |
@@ -250,6 +291,31 @@ The full machine-readable catalog (every keyword, its params and docs) is the
 `screenshot` returns a rendered `image/png` your client can display inline —
 prefer it over the screenshot resource when you want to *see* the screen.
 
+Beyond the reflected keywords, these **purpose-built** tools add onboarding,
+discovery, and the reusable-suite surface:
+
+- **Onboarding / diagnostics:** `doctor` (environment health with fixes),
+  `list_devices` (adb + libimobiledevice), `list_available_sources` (engine
+  source names by category/driver).
+- **Discovery / reliability:** `find_elements` (filter by `text`/`resource_id`/
+  `class_name`/`clickable`/`region`, paginate with `offset`/`limit`, `compact`
+  by default), `get_screen_size` (pixel dimensions — target with element
+  `bounds`/`center` instead of eyeballing), `get_current_app` /
+  `list_installed_apps` (Android/adb, best-effort).
+- **Session durability:** `list_sessions`, `session_info` — reconnect to a
+  still-live session after a context reset instead of recreating it.
+- **Recording:** `start_recording`, `stop_recording`, `recording_status`,
+  `list_recorded_steps`, `edit_step`, `remove_step`, `clear_recording`.
+- **Suite authoring/storage:** `save_test_case`, `list_test_cases`,
+  `get_test_case`, `delete_test_case`, `save_suite`, `list_suites`, `get_suite`.
+- **Suite execution:** `run_test_case`, `run_suite` (per-step pass/fail + a
+  failure screenshot).
+- **Portability:** `export_optics_project`, `import_optics_project`.
+
+Tool args are strings (see §5); object/array args (e.g. `variables`, `steps`,
+`test_cases`, `params`) are passed as **JSON strings**, e.g.
+`variables='{"hour": "22"}'`.
+
 ## 7. Resources reference
 
 | URI | Content |
@@ -270,7 +336,10 @@ as a tool (so the model can pass `filter_config`).
 ## 8. Element sources decide what works
 
 The keywords you can use depend on which `elements_sources` (and detection
-sources) you enable in `start_session` — same rules as a normal optics project:
+sources) you enable in `start_session` — same rules as a normal optics project.
+When you omit `elements_sources`, `start_session` enables the driver's canonical
+trio automatically (appium → `appium_find_element`/`appium_page_source`/
+`appium_screenshot`); pass the argument only to narrow or extend that:
 
 | Capability | Needs |
 |------------|-------|
@@ -303,11 +372,31 @@ expected; enable `appium_page_source` (or a vision source) for that path.
 - **Errors surface as MCP tool errors.** An optics failure (element not found,
   bad config, driver error) comes back as a `ToolError` carrying the optics
   error code/message, so the model can read and react to it.
+- **`start_session` failed with "Element source configuration must be set".** You
+  passed an explicit empty `elements_sources`. Omit it to get the driver defaults,
+  or run `list_available_sources` to pick names.
+- **`get_current_app` / `list_installed_apps` say "Android-only".** They shell out
+  to `adb` and only work for Android sessions with `adb` on the server's PATH;
+  they are best-effort helpers, not part of the driver contract.
+- **Saved test cases aren't where I expect.** They live in the MCP workspace,
+  `~/.optics/mcp_workspace` by default. Set `OPTICS_MCP_WORKSPACE` before starting
+  the server to relocate it, or use `export_optics_project` to write a copy.
+- **A recorded step is missing / extra.** Only *successful* action keywords are
+  recorded; observers (`screenshot`, `get_interactive_elements`, `get_text`, …)
+  and failed calls are skipped. Use `list_recorded_steps` + `remove_step` /
+  `edit_step` to curate before `save_test_case`. Saving from the recording clears
+  the buffer (one test case per save).
+- **Recordings/sessions vanished.** Both live only in this server process; a
+  restart clears them. Persist with `save_test_case` / `export_optics_project`.
 
 ## 10. How it works (pointer)
 
 `optics mcp` is a thin in-process wrapper over `common/expose_api.py`. It
 reflects the API keyword classes into typed tools and routes execution through
 the same `execute_keyword` path the REST server uses; read-only observers become
-resources. See `optics_framework/helper/mcp_server.py` and the "MCP server
-journey" section of `CLAUDE.md` for the internals.
+resources. The onboarding/discovery helpers live in
+`optics_framework/helper/mcp_diagnostics.py` (device + engine discovery, reusing
+`optics doctor`'s checks), and recording + suite storage/replay in
+`optics_framework/helper/mcp_authoring.py` (the canonical CSV project layout). See
+`optics_framework/helper/mcp_server.py` and the "MCP server journey" section of
+`CLAUDE.md` for the internals.
