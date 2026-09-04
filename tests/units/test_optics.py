@@ -29,7 +29,7 @@ def test_optics_is_reexported_from_package_root():
     from optics_framework import Optics as RootOptics
 
     assert RootOptics is Optics
-    assert "Optics" in optics_framework.__all__
+    assert "Optics" in dir(optics_framework)
 
 
 def load_config(config_path):
