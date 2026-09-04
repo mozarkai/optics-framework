@@ -735,7 +735,6 @@ class Config(BaseModel):
     include: Optional[List[str]] = None
     exclude: Optional[List[str]] = None
     halt_duration: float = 0.1
-    max_attempts: int = 3
 
     # Events
     event_attributes_json: Optional[str] = None
@@ -955,7 +954,6 @@ log_level: "DEBUG"
 file_log: true
 log_path: "/path/to/logs"
 event_attributes_json: "/path/to/events.json"
-max_attempts: 5
 halt_duration: 0.2
 ```
 

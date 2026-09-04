@@ -872,6 +872,16 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         return original_element, element
 
+    def _strict_element_match(self) -> bool:
+        """Whether project config requests exact-only matching for locate (Config.strict_element_match).
+
+        Presence/assert checks ignore this and are always strict -- see assert_elements.
+        """
+        try:
+            return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
+        except AttributeError:
+            return False
+
     def _build_playwright_locator(self, page: Any, element: str, element_type: str) -> Any:
         """
         Build Playwright locator based on element type.
@@ -883,7 +893,7 @@ class PlaywrightPageSource(ElementSourceInterface):
         """
         if element_type == "Text":
             text_value = self._strip_prefix_for_page_source(element, "text=")
-            return page.get_by_text(text_value, exact=False)
+            return page.get_by_text(text_value, exact=self._strict_element_match())
 
         if element_type == "XPath":
             xpath_value = self._strip_prefix_for_page_source(element, "xpath=")
@@ -961,7 +971,8 @@ class PlaywrightPageSource(ElementSourceInterface):
             )
             element_type = utils.determine_element_type(element)
             if element_type == "Text":
-                locator = page.get_by_text(element, exact=False)
+                # Presence/assert checks ignore Config.strict_element_match and are always strict.
+                locator = page.get_by_text(element, exact=True)
             elif element_type == "XPath":
                 locator = page.locator(f"xpath={element}")
             else:
