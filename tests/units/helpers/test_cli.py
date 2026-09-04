@@ -9,6 +9,10 @@ patched at cli's import-time bindings; nothing real runs.
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
 from unittest.mock import patch
 
 import pytest
@@ -114,6 +118,69 @@ class TestSetupInstallErrors:
             _run(["setup", "--install", "appium=4.2"])
         assert exc.value.code == 1
         assert "invalid version" in capsys.readouterr().out
+
+
+class TestStartupImportGuard:
+    """A dependency that fails to load (classically ``cv2`` when a minimal
+    Linux image has no ``libGL.so.1``) must surface as guidance rather than an
+    import-time traceback from the ``optics`` console script."""
+
+    def test_libgl_failure_names_the_package_to_install(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            cli._abort_on_import_error(ImportError(
+                "libGL.so.1: cannot open shared object file: No such file or directory"))
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "libGL.so.1" in err
+        assert "libgl1" in err
+
+    def test_unrelated_failure_still_shows_the_real_error(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            cli._abort_on_import_error(
+                ImportError("No module named 'pydantic'"))
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "pydantic" in err
+        assert "force-reinstall" in err
+        assert "libgl1" not in err
+
+    def test_importing_cli_without_cv2_exits_instead_of_raising(self):
+        # End-to-end over the console-script path, in a subprocess so the
+        # already-imported cli module can't mask the failure. Guards both
+        # halves of the fix: the package __init__ must stay importable
+        # (lazy re-export) for cli's own try/except to be reachable at all,
+        # and a star import must not resolve Optics through __getattr__ and
+        # resurrect the eager load (that is why __all__ is empty).
+        script = textwrap.dedent(
+            """
+            import importlib, sys
+
+            class BlockCv2:
+                def find_spec(self, fullname, path=None, target=None):
+                    if fullname == "cv2" or fullname.startswith("cv2."):
+                        raise ImportError(
+                            "libGL.so.1: cannot open shared object file:"
+                            " No such file or directory")
+                    return None
+
+            sys.meta_path.insert(0, BlockCv2())
+            importlib.import_module("optics_framework")
+            print("PACKAGE_IMPORT_OK")
+            namespace = {}
+            exec("from optics_framework import *", namespace)
+            print("STAR_IMPORT_OK")
+            importlib.import_module("optics_framework.helper.cli")
+            """
+        )
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True, text=True, env=env, check=False)
+        assert "PACKAGE_IMPORT_OK" in result.stdout
+        assert "STAR_IMPORT_OK" in result.stdout
+        assert result.returncode == 1
+        assert "Traceback" not in result.stderr
+        assert "libgl1" in result.stderr
 
 
 class TestCommandForwarding:
