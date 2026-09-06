@@ -2,10 +2,18 @@
 
 `optics mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server that exposes the optics-framework keyword engine to an LLM client
-(Claude Desktop, Claude Code, Cursor, …). The model can start a device/browser
-session, run automation keywords as **tools**, and observe device state through
-**resources** — driving a live target the way `optics live` does, but under
-agent control.
+(Claude Desktop, Claude Code, Cursor, …). The model starts a device/browser
+session, runs automation keywords as **tools**, and observes device state through
+**resources** — driving a live target the way `optics live` does, but under agent
+control.
+
+The surface is deliberately small: the keyword tools plus a few resources. There
+are **no record/save/replay tools** — a capable agent already knows the steps it
+ran, so to turn a session into a reusable suite it authors an optics CSV project
+itself (the `optics://project-format` resource documents the exact layout) and
+runs it with `optics execute`. The MCP layer stays driver- and device-agnostic:
+it never shells out to `adb` or assumes a device type; it only makes calls to the
+driver server you point `start_session` at.
 
 It reuses the in-process keyword machinery from the REST server
 (`optics serve`), so whatever driver and element sources optics already supports
@@ -131,12 +139,44 @@ the client at the URL:
 1. **`start_session`** — open a session against your driver. Returns
    `{ "session_id", "driver_id" }`. The target app is launched automatically.
    Capture the `session_id`; **every** other tool and resource needs it.
-2. **Observe** — read a resource or call `screenshot` to see the screen, read
-   `optics://session/{session_id}/source` for the UI hierarchy, or call
-   `get_interactive_elements` for tappable elements.
+   `elements_sources` **defaults per driver** (appium →
+   `appium_find_element`/`appium_page_source`/`appium_screenshot`; selenium and
+   playwright analogous), so `start_session` with just a `driver` works. The device
+   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs
+   no `adb` of its own.
+2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,
+   or call `get_interactive_elements` for tappable elements with their `bounds`.
+   These work the same across drivers via the session's own element sources.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
-   `assert_presence`, …) with the `session_id`.
-4. **`terminate_session`** — release the driver when done.
+   `assert_presence`, …) with the `session_id`. **Target elements by locator**
+   (`xpath=`/`text=`/an id/an image) with `press_element`; when there is no stable
+   locator, `detect_and_press` taps by the visible text/label, and otherwise use
+   the exact `bounds` from `get_interactive_elements`. Do not tap raw pixel
+   coordinates guessed off a screenshot; those misfire.
+4. **Build a reusable suite** — see below.
+5. **`terminate_session`** — release the driver when done.
+
+### Build a reusable suite (author it — there's no save tool)
+
+The MCP has no recording/save/replay tools on purpose: you already know the
+keywords you called and their args, so you can author an optics project directly.
+
+1. Read the **`optics://project-format`** resource — it documents the CSV layout
+   (`test_cases/`, `modules/`, `test_data/elements.csv`, `config.yaml`), how
+   modules reference `${variables}`, and the escaping rules.
+2. Write those files (the keyword *display names* come from the `optics://keywords`
+   catalog). Parameterize by putting run-specific values in `elements.csv` and
+   referencing them as `${name}`, so "set alarm to 22:00" becomes a reusable
+   `${time}`. A whole cell must be exactly `${name}` — the runner substitutes
+   whole values only, not `${name}` inside a larger string.
+3. For loops, branching, computed values or API calls in a suite, author the
+   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)
+   into the modules — they run under `optics execute`. Live, you drive that logic
+   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP
+   tools because they need the runner's module/data context.
+4. Run it with the CLI: `optics execute <folder>` (results land in
+   `execution_output/`). To replay interactively instead, just call the keyword
+   tools again in sequence — the agent is the runner.
 
 ### `start_session` arguments
 
@@ -145,7 +185,7 @@ the client at the URL:
 | `driver` | str | driver name, e.g. `"appium"` (default) |
 | `url` | str | driver/hub URL (e.g. local `http://127.0.0.1:4723` or a remote hub) |
 | `capabilities` | object | driver capabilities (platform, device, app, auth…) |
-| `elements_sources` | list[str] | element sources to enable (see §7) |
+| `elements_sources` | list[str] | element sources to enable; **optional** — defaults to the driver's canonical set (see §8) |
 | `text_detection` | list[str] | optional OCR sources (e.g. `["googlevision"]`) |
 | `image_detection` | list[str] | optional template sources (e.g. `["templatematch"]`) |
 | `project_path` | str | optional project folder (loads bundled templates) |
@@ -250,11 +290,19 @@ The full machine-readable catalog (every keyword, its params and docs) is the
 `screenshot` returns a rendered `image/png` your client can display inline —
 prefer it over the screenshot resource when you want to *see* the screen.
 
+Besides the reflected keywords, only three tools are purpose-built:
+`start_session`, `terminate_session`, and `screenshot`. There are intentionally
+**no** recording, suite-CRUD, replay, device-discovery, or `doctor` tools — an
+agent composes those from the keyword tools plus the `optics://project-format`
+knowledge (see §5). `start_session` supplies the one non-obvious convenience: a
+per-driver `elements_sources` default so the call just works.
+
 ## 7. Resources reference
 
 | URI | Content |
 |-----|---------|
 | `optics://keywords` | full keyword catalog (name, slug, description, params) |
+| `optics://project-format` | how optics stores a suite (CSV layout + `${var}`), so you can author one |
 | `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |
 | `optics://session/{session_id}/source` | page source / UI hierarchy |
 | `optics://session/{session_id}/elements` | interactive elements (unfiltered) |
@@ -270,7 +318,12 @@ as a tool (so the model can pass `filter_config`).
 ## 8. Element sources decide what works
 
 The keywords you can use depend on which `elements_sources` (and detection
-sources) you enable in `start_session` — same rules as a normal optics project:
+sources) you enable in `start_session` — same rules as a normal optics project.
+When you omit `elements_sources`, `start_session` enables the driver's canonical
+trio automatically (appium → `appium_find_element`/`appium_page_source`/
+`appium_screenshot`); pass the argument only to narrow or extend that. An
+explicit **empty** list is passed through and disables element sources entirely
+(the session then fails to start) — omit the argument for the defaults:
 
 | Capability | Needs |
 |------------|-------|
@@ -303,11 +356,26 @@ expected; enable `appium_page_source` (or a vision source) for that path.
 - **Errors surface as MCP tool errors.** An optics failure (element not found,
   bad config, driver error) comes back as a `ToolError` carrying the optics
   error code/message, so the model can read and react to it.
+- **`start_session` failed with "Element source configuration must be set".** You
+  passed an explicit empty `elements_sources`, or the driver name doesn't match
+  any installed element-source modules (e.g. a typo — check the name against
+  §8). Omit `elements_sources` to get the driver defaults, or name the sources
+  per §8.
+- **Where do suites live?** Wherever you write them — the MCP has no workspace of
+  its own. Author the CSV project (see `optics://project-format`) at a path you
+  choose and run it with `optics execute`.
+- **Setup errors (device unreachable, driver not running).** The MCP only talks to
+  the driver server at the `url` you pass; make sure that server is up and can see
+  the device (for Appium+Android that means its host has the Android SDK — the MCP
+  itself needs none). `optics doctor` on that host diagnoses the toolchain.
 
 ## 10. How it works (pointer)
 
-`optics mcp` is a thin in-process wrapper over `common/expose_api.py`. It
-reflects the API keyword classes into typed tools and routes execution through
-the same `execute_keyword` path the REST server uses; read-only observers become
-resources. See `optics_framework/helper/mcp_server.py` and the "MCP server
-journey" section of `CLAUDE.md` for the internals.
+`optics mcp` is a thin in-process wrapper over `common/expose_api.py`. It reflects
+the API keyword classes into typed tools and routes execution through the same
+`execute_keyword` path the REST server uses; read-only observers become resources.
+The only hand-written additions are the `start_session`/`terminate_session`/
+`screenshot` lifecycle tools, the per-driver `elements_sources` default, and the
+`optics://project-format` knowledge resource — no recording/suite/device tooling.
+See `optics_framework/helper/mcp_server.py` and the "MCP server journey" section of
+`CLAUDE.md` for the internals.

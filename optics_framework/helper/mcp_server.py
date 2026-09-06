@@ -23,9 +23,7 @@ them. A client must call ``start_session`` before any keyword tool will work.
 from __future__ import annotations
 
 import base64
-import importlib
 import inspect
-import pkgutil
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
@@ -39,28 +37,30 @@ from optics_framework.common.factories import ElementSourceFactory
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.helper.version import VERSION
 
-# Strategy priority order for a driver's element sources (find_element before
-# page_source before screenshot), used to order the start_session defaults.
+# Listing order for a driver's element-source config entries (find_element
+# before page_source before screenshot) when start_session builds its
+# defaults. Unrelated to StrategyFactory's locate-strategy priority in
+# strategies.py (XPath/Text/TextDetection/Image, one per LocatorStrategy
+# class): this ranks element-source *modules*, of which there's no 1:1
+# correspondence to those 4 strategies (page_source backs neither a
+# LocatorStrategy nor PagesourceStrategy's own separate factory list).
 _SOURCE_RANK = {"find_element": 0, "page_source": 1, "screenshot": 2}
 
 
 def _default_sources_for_driver(driver: str) -> list[str]:
     """The driver's canonical ``elements_sources``, discovered by reflection.
 
-    Returns the ``{driver}_find_element/_page_source/_screenshot`` trio (in strategy
-    priority order) for whatever driver is named, by matching the installed
-    element-source module filenames — so it stays correct for appium, selenium,
-    playwright, or any future driver, and returns ``[]`` for one with no matching
-    sources (the caller then keeps whatever it was given). Name-level only: no
-    engine import, so a missing optional extra never breaks it.
+    Returns the ``{driver}_find_element/_page_source/_screenshot`` trio (in
+    ``_SOURCE_RANK`` order) for whatever driver is named, by matching the
+    installed element-source module names — so it stays correct for appium,
+    selenium, playwright, or any future driver. Returns ``[]`` for a driver
+    with no matching sources (e.g. a misspelled name); the caller then passes
+    that on, and session creation fails with the explicit "Element source
+    configuration must be set" error. Name-level only: no engine import, so a
+    missing optional extra never breaks it.
     """
     key = (driver or "").strip().lower()
-    try:
-        pkg = importlib.import_module(ElementSourceFactory.DEFAULT_PACKAGE)
-        names = [m.name for m in pkgutil.iter_modules(pkg.__path__) if not m.name.startswith("_")]
-    except Exception:  # pragma: no cover - the engines package always imports
-        return []
-    matches = [n for n in names if n.split("_", 1)[0] == key]
+    matches = ElementSourceFactory.available_sources(key)
 
     def rank(name: str) -> tuple[int, str]:
         suffix = name.split("_", 1)[1] if "_" in name else name
@@ -140,16 +140,18 @@ positional value.
     module_name,module_step,param_1,param_2
     Open Clock,Launch App
     Create Alarm,Press Element,${add_alarm}
-    Create Alarm,Enter Text,${hour_field},${hour}
+    Create Alarm,Enter Text,${hour_field},${time}
 
 ## test_data/elements.csv  — columns: Element_Name,Element_ID
 Maps a name to a locator OR a value; steps reference it as `${Element_Name}`.
 This is also how you parameterize a suite: put the run-specific value here and
-reference it, so "set alarm to 22:00" becomes a reusable `${hour}:${minute}`.
+reference it, so "set alarm to 22:00" becomes a reusable `${time}`. A whole cell
+must be exactly `${Name}` — the runner substitutes whole values only, it does not
+expand `${name}` inside a larger string.
     Element_Name,Element_ID
     add_alarm,//*[@content-desc="Add alarm"]
     hour_field,text=Hour
-    hour,22
+    time,22:00
 
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
@@ -398,11 +400,15 @@ def build_server() -> "FastMCP":
             ]
         else:
             driver_sources = [driver]
-        # Sane defaults: without an explicit elements_sources list, session creation
-        # fails with "Element source configuration must be set". Derive the driver's
-        # canonical sources (e.g. appium -> appium_find_element/page_source/screenshot)
-        # so `start_session(driver="appium")` just works.
-        resolved_elements = elements_sources or _default_sources_for_driver(driver)
+        # Sane defaults: only an *omitted* elements_sources (None) triggers the
+        # per-driver defaults. An explicit empty list is passed through — it
+        # disables element sources entirely, and session creation then fails with
+        # "Element source configuration must be set".
+        resolved_elements = (
+            elements_sources
+            if elements_sources is not None
+            else _default_sources_for_driver(driver)
+        )
         config = expose_api.SessionConfig(
             driver_sources=driver_sources,
             elements_sources=resolved_elements,
