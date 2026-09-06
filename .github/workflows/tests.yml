@@ -23,6 +23,6 @@ jobs:
         env:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
           POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
-        run: poetry install --with test --extras appium --extras selenium --extras google-vision
+        run: poetry install --with test --extras appium --extras selenium --extras google-vision --extras mcp
       - name: Run tests
         run: poetry run pytest -c pytest.toml --no-cov -q

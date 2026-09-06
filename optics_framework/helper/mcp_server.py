@@ -23,7 +23,9 @@ them. A client must call ``start_session`` before any keyword tool will work.
 from __future__ import annotations
 
 import base64
+import importlib
 import inspect
+import pkgutil
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
@@ -33,8 +35,38 @@ from optics_framework.api.app_management import AppManagement
 from optics_framework.api.verifier import Verifier
 from optics_framework.common import expose_api
 from optics_framework.common.error import OpticsError
+from optics_framework.common.factories import ElementSourceFactory
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.helper.version import VERSION
+
+# Strategy priority order for a driver's element sources (find_element before
+# page_source before screenshot), used to order the start_session defaults.
+_SOURCE_RANK = {"find_element": 0, "page_source": 1, "screenshot": 2}
+
+
+def _default_sources_for_driver(driver: str) -> list[str]:
+    """The driver's canonical ``elements_sources``, discovered by reflection.
+
+    Returns the ``{driver}_find_element/_page_source/_screenshot`` trio (in strategy
+    priority order) for whatever driver is named, by matching the installed
+    element-source module filenames — so it stays correct for appium, selenium,
+    playwright, or any future driver, and returns ``[]`` for one with no matching
+    sources (the caller then keeps whatever it was given). Name-level only: no
+    engine import, so a missing optional extra never breaks it.
+    """
+    key = (driver or "").strip().lower()
+    try:
+        pkg = importlib.import_module(ElementSourceFactory.DEFAULT_PACKAGE)
+        names = [m.name for m in pkgutil.iter_modules(pkg.__path__) if not m.name.startswith("_")]
+    except Exception:  # pragma: no cover - the engines package always imports
+        return []
+    matches = [n for n in names if n.split("_", 1)[0] == key]
+
+    def rank(name: str) -> tuple[int, str]:
+        suffix = name.split("_", 1)[1] if "_" in name else name
+        return (_SOURCE_RANK.get(suffix, len(_SOURCE_RANK)), name)
+
+    return sorted(matches, key=rank)
 
 # fastmcp is optional (extra: mcp). Import lazily with a clear, actionable error.
 try:
@@ -53,18 +85,105 @@ except ImportError as _e:  # pragma: no cover - exercised only without the extra
 
 SERVER_NAME = "Optics MCP"
 SERVER_INSTRUCTIONS = (
-    "Drive a live device/browser through the optics-framework.\n"
-    "1. Call `start_session` first to open a session against your driver "
-    "(e.g. appium) and capture the returned `session_id`.\n"
-    "2. Pass that `session_id` to every keyword tool (press_element, enter_text, "
-    "swipe, assert_presence, ...).\n"
-    "3. Observe device state via resources: optics://session/{session_id}/screenshot, "
-    "/source, /elements, /screen_elements. The full keyword catalog is at "
-    "optics://keywords.\n"
-    "4. Call `terminate_session` when done.\n"
-    "Sessions live only inside this server process; they are not shared with "
-    "`optics serve` or `optics live`."
+    "Drive a live device or browser through the optics-framework under agent control.\n"
+    "1. `start_session` opens a session against your driver (e.g. appium) and returns "
+    "a `session_id`; pass it to every keyword tool and resource. Element sources "
+    "default per driver, so `start_session(driver=\"appium\")` just works — supply "
+    "`url`/`capabilities` for your target (device id goes in capabilities, e.g. "
+    "deviceName/udid; the MCP itself needs no adb).\n"
+    "2. Act with the keyword tools (press_element, enter_text, swipe, assert_presence, "
+    "...). Target elements by locator (`xpath=`/`text=`/an id/an image) with "
+    "`press_element`; if there is no stable locator, `detect_and_press` taps by the "
+    "visible text/label. Otherwise use the exact `bounds` from `get_interactive_elements` "
+    "— do NOT tap pixel coordinates guessed from a screenshot; they misfire. Observe "
+    "with the `screenshot` tool and the `optics://session/{id}/...` resources.\n"
+    "3. To build a reusable suite you already have the steps you ran — author an "
+    "optics CSV project yourself (read the `optics://project-format` resource for the "
+    "exact layout and `${var}` parameterization), then run it with the CLI "
+    "(`optics execute <folder>`). The MCP has no record/save/replay tools by design: "
+    "compose them from the keyword tools plus that format knowledge.\n"
+    "4. `terminate_session` when done. Sessions live only inside this server process; "
+    "they are not shared with `optics serve` or `optics live`."
 )
+
+# Knowledge (not a tool) served at optics://project-format so an agent can author
+# a runnable optics suite itself from the steps it already ran — no save/record
+# tool needed. It documents the CSV layout the `optics execute` runner reads.
+_PROJECT_FORMAT_DOC = """\
+# Optics project format
+
+An optics test project is a folder of CSV files plus a `config.yaml` that
+`optics execute <folder>` runs. Author one directly from the steps you already
+performed this session — the MCP has no save/record tool because you don't need
+one: you know the keywords you called and their args.
+
+## Layout
+    <project>/
+      config.yaml                 # driver + element sources
+      test_cases/test_cases.csv   # which modules each test case runs, in order
+      modules/modules.csv         # the keyword steps of each module
+      test_data/elements.csv      # named locators / variables
+
+## test_cases/test_cases.csv  — columns: test_case,test_step
+One row per (test case, module) in run order; `test_step` holds a MODULE name
+(not a keyword).
+    test_case,test_step
+    Set Alarm,Open Clock
+    Set Alarm,Create Alarm
+
+## modules/modules.csv  — columns: module_name,module_step,param_1,param_2,...
+One row per step. `module_step` is a keyword's display name (Title Case of the
+tool/keyword name: `press_element` -> "Press Element"; full catalog at the
+`optics://keywords` resource). Params are positional; an optional keyword arg is
+written `name=value` (e.g. `index=2`). A locator such as `text=Save` stays one
+positional value.
+    module_name,module_step,param_1,param_2
+    Open Clock,Launch App
+    Create Alarm,Press Element,${add_alarm}
+    Create Alarm,Enter Text,${hour_field},${hour}
+
+## test_data/elements.csv  — columns: Element_Name,Element_ID
+Maps a name to a locator OR a value; steps reference it as `${Element_Name}`.
+This is also how you parameterize a suite: put the run-specific value here and
+reference it, so "set alarm to 22:00" becomes a reusable `${hour}:${minute}`.
+    Element_Name,Element_ID
+    add_alarm,//*[@content-desc="Add alarm"]
+    hour_field,text=Hour
+    hour,22
+
+## config.yaml  — driver + element sources
+`elements_sources` for a driver are `{driver}_find_element`,
+`{driver}_page_source`, `{driver}_screenshot`. appium is only an example here —
+selenium and playwright follow the same shape.
+    driver_sources:
+      - appium:            # or selenium / playwright / ...
+          enabled: true
+          url: "<driver server url>"
+          capabilities: {}   # e.g. platformName, deviceName/udid for appium
+    elements_sources:
+      - appium_find_element: { enabled: true }
+      - appium_page_source: { enabled: true }
+      - appium_screenshot: { enabled: true }
+
+## Control flow & data (author these into modules; the runner executes them)
+A module step is any keyword from the `optics://keywords` catalog — including the
+control-flow/data keywords that only run under the CSV runner, not as a live
+tool: `Run Loop`, `Condition`, `Execute Module`, `Evaluate`, `Date Evaluate`,
+`Read Data`, `Invoke Api`. Use them when a suite needs loops, branching, computed
+values, or API calls (e.g. a picker's read-current -> compute -> repeat pattern
+becomes an `Evaluate` + `Run Loop`). Live, you drive that logic yourself by
+calling the primitive keyword tools in the loop/branch you decide; you only need
+these keywords when authoring a suite to run headless via `optics execute`.
+
+## Escaping
+CSV values containing commas are quoted by the writer; a literal newline, tab or
+backslash in a value is written escaped (`\\n`, `\\t`, `\\\\`) and the runner
+un-escapes it on read.
+
+## Running
+`optics execute <project>` runs every test case; JUnit XML, logs and screenshots
+land in `<project>/execution_output/`.
+"""
 
 # API classes whose public methods become keyword tools — the same set the HTTP
 # `execute_keyword` registry builds (FlowControl is intentionally excluded; it
@@ -279,9 +398,14 @@ def build_server() -> "FastMCP":
             ]
         else:
             driver_sources = [driver]
+        # Sane defaults: without an explicit elements_sources list, session creation
+        # fails with "Element source configuration must be set". Derive the driver's
+        # canonical sources (e.g. appium -> appium_find_element/page_source/screenshot)
+        # so `start_session(driver="appium")` just works.
+        resolved_elements = elements_sources or _default_sources_for_driver(driver)
         config = expose_api.SessionConfig(
             driver_sources=driver_sources,
-            elements_sources=elements_sources or [],
+            elements_sources=resolved_elements,
             text_detection=text_detection or [],
             image_detection=image_detection or [],
             project_path=project_path,
@@ -326,6 +450,12 @@ def build_server() -> "FastMCP":
     def keywords_catalog() -> list[dict[str, Any]]:
         """The full optics keyword catalog (name, slug, description, params)."""
         return [info.model_dump() for info in expose_api.discover_keywords()]
+
+    @mcp.resource("optics://project-format", mime_type="text/markdown")
+    def project_format() -> str:
+        """How optics stores a test suite (CSV layout + ${var} params) so you can
+        author a runnable project yourself, then run it with `optics execute`."""
+        return _PROJECT_FORMAT_DOC
 
     @mcp.resource("optics://session/{session_id}/screenshot", mime_type="image/png")
     async def screenshot_resource(session_id: str) -> bytes:
