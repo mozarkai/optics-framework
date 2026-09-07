@@ -707,7 +707,7 @@ class Appium(DriverInterface):
         app_activity: Optional[str] = None,
         event_name: Optional[str] = None,
     ) -> str:
-        """Launch the app using the Appium driver."""
+        """Launch the app, activating it on the driver if a session is already alive."""
         session_id = self.get_session_id()
         if self.driver is None or not self._is_session_alive():
             session_id = self.start_session(
@@ -715,6 +715,13 @@ class Appium(DriverInterface):
                 app_activity=app_activity,
                 event_name=event_name,
             )
+        elif app_identifier:
+            try:
+                self._require_driver().activate_app(app_identifier)
+            except Exception as exc:
+                raise OpticsError(
+                    Code.E0401, message=f"Failed to launch: {app_identifier}", cause=exc
+                ) from exc
 
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
