@@ -1,4 +1,4 @@
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Union
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
@@ -124,7 +124,7 @@ class Verifier:
         return result
 
 
-    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
+    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
@@ -132,12 +132,13 @@ class Verifier:
         :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
-        :param fail: If True, raise on failure; if False, return False instead.
+        :param fail: If True, raise on failure; if False, return False instead. A suite writes
+            this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_presence")
 
-    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
+    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
         Asserts that elements are actually rendered/visible on screen right now -- distinct
         from :meth:`assert_presence`, which reports found even for elements that exist in
@@ -147,17 +148,19 @@ class Verifier:
         :param timeout_str: The time to wait for the elements to become visible, in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
-        :param fail: If True, raise on failure; if False, return False instead.
+        :param fail: If True, raise on failure; if False, return False instead. A suite writes
+            this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_visibility")
 
     def _assert_common(
         self, elements: str, timeout_str: str, rule: str,
-        event_name: Optional[str], fail: bool, method_name: str,
+        event_name: Optional[str], fail: Union[bool, str], method_name: str,
     ) -> bool:
         rule = rule.lower()
         timeout = int(timeout_str)
+        fail = str(fail).strip().lower() != "false"
         elements_list = elements.split('|')
 
         grouped_elements = self._group_elements_by_type(elements_list)
