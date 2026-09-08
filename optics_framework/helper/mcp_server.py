@@ -37,27 +37,16 @@ from optics_framework.common.factories import ElementSourceFactory
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.helper.version import VERSION
 
-# Listing order for a driver's element-source config entries (find_element
-# before page_source before screenshot) when start_session builds its
-# defaults. Unrelated to StrategyFactory's locate-strategy priority in
-# strategies.py (XPath/Text/TextDetection/Image, one per LocatorStrategy
-# class): this ranks element-source *modules*, of which there's no 1:1
-# correspondence to those 4 strategies (page_source backs neither a
-# LocatorStrategy nor PagesourceStrategy's own separate factory list).
+# Unrelated to StrategyFactory's locate-strategy priority in strategies.py —
+# this ranks element-source modules, not locate techniques.
 _SOURCE_RANK = {"find_element": 0, "page_source": 1, "screenshot": 2}
 
 
 def _default_sources_for_driver(driver: str) -> list[str]:
-    """The driver's canonical ``elements_sources``, discovered by reflection.
+    """The driver's canonical elements_sources trio, found by reflection.
 
-    Returns the ``{driver}_find_element/_page_source/_screenshot`` trio (in
-    ``_SOURCE_RANK`` order) for whatever driver is named, by matching the
-    installed element-source module names — so it stays correct for appium,
-    selenium, playwright, or any future driver. Returns ``[]`` for a driver
-    with no matching sources (e.g. a misspelled name); the caller then passes
-    that on, and session creation fails with the explicit "Element source
-    configuration must be set" error. Name-level only: no engine import, so a
-    missing optional extra never breaks it.
+    Returns ``[]`` for an unmatched driver name; ``start_session`` then fails
+    with the usual "Element source configuration must be set" error.
     """
     key = (driver or "").strip().lower()
     matches = ElementSourceFactory.available_sources(key)
