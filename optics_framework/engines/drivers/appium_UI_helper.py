@@ -17,6 +17,17 @@ XPATH_MAYBE_UNIQUE_ATTRIBUTES = ["label", "text", "value"]
 # The only attributes get_xpath ever probes, so the only ones worth indexing.
 XPATH_INDEXED_ATTRIBUTES = (*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIBUTES)
 
+# Class-name fragments for the compact extractor. iOS has no clickable/checkable/
+# scrollable attributes, so its XCUIElementType* nodes are classified by name.
+TAP_CLASS_FRAGMENTS = (
+    "Button", "SeekBar", "Slider", "XCUIElementTypeCell", "XCUIElementTypeSwitch",
+    "XCUIElementTypeStepper", "XCUIElementTypeLink", "XCUIElementTypeTab", "XCUIElementTypeMenuItem",
+)
+TOGGLE_CLASS_FRAGMENTS = ("Switch", "CheckBox", "RadioButton", "ToggleButton")
+INPUT_CLASS_FRAGMENTS = ("EditText", "TextField", "SecureTextField", "AutoCompleteTextView", "SearchField")
+SCROLL_CLASS_FRAGMENTS = ("XCUIElementTypeScrollView", "XCUIElementTypeTable", "XCUIElementTypeCollectionView")
+COMPACT_LABEL_MAX_CHARS = 120
+
 
 class XPathUniquenessIndex:
     """Document-order posting lists answering "how many nodes match this probe?".
@@ -899,8 +910,112 @@ class UIHelper:
         except etree.XPathSyntaxError as e:
             internal_logger.debug(f"Invalid XPath syntax: {xpath} - Error: {str(e)}")
 
-    # element extraction
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[Dict]:
+    # Compact interactive-element extraction (get_interactive_elements(compact=True)).
+    @staticmethod
+    def _class_of(node: etree.Element) -> str:
+        return node.attrib.get("class") or node.tag or ""
+
+    def _element_actions(self, node: etree.Element) -> List[str]:
+        """Interactions a node affords: tap/long/toggle/input/scroll (empty => none)."""
+        attrs, cls = node.attrib, self._class_of(node)
+        actions: List[str] = []
+        if attrs.get("clickable") == "true" or any(f in cls for f in TAP_CLASS_FRAGMENTS):
+            actions.append("tap")
+        if attrs.get("long-clickable") == "true":
+            actions.append("long")
+        if attrs.get("checkable") == "true" or any(f in cls for f in TOGGLE_CLASS_FRAGMENTS):
+            actions.append("toggle")
+        if attrs.get("editable") == "true" or any(f in cls for f in INPUT_CLASS_FRAGMENTS):
+            actions.append("input")
+        if attrs.get("scrollable") == "true" or any(f in cls for f in SCROLL_CLASS_FRAGMENTS):
+            actions.append("scroll")
+        return actions
+
+    def _is_actionable(self, node: etree.Element) -> bool:
+        attrs = node.attrib
+        if attrs.get("enabled") == "false" or attrs.get("visible") == "false":
+            return False
+        return bool(self._extract_bounds(node)) and bool(self._element_actions(node))
+
+    @staticmethod
+    def _own_label(node: etree.Element) -> str:
+        # label before name: on iOS `label` is the human text and `name` an accessibility id.
+        for key in ("text", "content-desc", "label", "name", "value"):
+            val = (node.attrib.get(key) or "").strip()
+            if val:
+                return val
+        return ""
+
+    def _folded_label(self, node: etree.Element) -> str:
+        # Own label, else descendant text; stops at nested actionable subtrees so a row
+        # keeps its own label and does not swallow a control it contains.
+        own = self._own_label(node)
+        if own:
+            return own[:COMPACT_LABEL_MAX_CHARS]
+        parts: List[str] = []
+
+        def walk(current: etree.Element, is_root: bool) -> None:
+            if not is_root and self._is_actionable(current):
+                return
+            text = self._own_label(current)
+            if text:
+                parts.append(text)
+            for child in current:
+                walk(child, False)
+
+        walk(node, True)
+        return " ".join(dict.fromkeys(parts))[:COMPACT_LABEL_MAX_CHARS]
+
+    def _folds_text(self, node: etree.Element) -> bool:
+        # A clickable/toggle/input container folds its text; a pure scroll container does not.
+        return self._is_actionable(node) and self._element_actions(node) != ["scroll"]
+
+    def _has_folding_ancestor(self, node: etree.Element) -> bool:
+        parent = node.getparent()
+        while parent is not None:
+            if self._folds_text(parent):
+                return True
+            parent = parent.getparent()
+        return False
+
+    def _compact_entry(self, node: etree.Element, label: str, actions: List[str], bounds: Dict) -> Dict:
+        extra = {"class": self._class_of(node)}
+        rid = node.attrib.get("resource-id")
+        if rid:
+            extra["resource-id"] = rid
+        return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+
+    def _has_actionable_descendant(self, node: etree.Element) -> bool:
+        return any(c is not node and self._is_actionable(c) for c in node.iter())
+
+    def _compact_entry_for(self, node: etree.Element) -> Optional[Dict]:
+        # One compact entry for a node, or None to drop it.
+        bounds = self._extract_bounds(node)
+        if not bounds or node.attrib.get("visible") == "false":
+            return None
+        actions = self._element_actions(node) if node.attrib.get("enabled") != "false" else []
+        if actions == ["scroll"]:
+            return self._compact_entry(node, self._own_label(node), actions, bounds)
+        if actions:
+            label = self._folded_label(node)
+            # An empty-labelled wrapper around another actionable element (an iOS Cell
+            # around its Button) is noise; the inner element carries the label.
+            if label or not self._has_actionable_descendant(node):
+                return self._compact_entry(node, label, actions, bounds)
+            return None
+        label = self._own_label(node)
+        if label and len(node) == 0 and not self._has_folding_ancestor(node):
+            return self._compact_entry(node, label, [], bounds)
+        return None
+
+    def _extract_compact_interactives(self, root: etree.Element) -> List[Dict]:
+        # Actionable elements (folded labels) + standalone visible text; drops the rest.
+        entries = (self._compact_entry_for(node) for node in root.iter())
+        return [entry for entry in entries if entry is not None]
+
+    def get_interactive_elements(
+        self, filter_config: Optional[List[str]] = None, compact: bool = False
+    ) -> List[Dict]:
         """
         Cross-platform element extraction supporting both Android and iOS.
 
@@ -913,11 +1028,15 @@ class UIHelper:
                 - "images": Only image elements
                 - "text": Only text elements
                 Can be combined: ["buttons", "inputs"]
+            compact: When True, ignore filter_config and return only actionable elements
+                (with descendant labels folded in) plus standalone visible text (act: []).
         """
         page_source, _ = self.get_page_source()
         root = etree.ElementTree(
             etree.fromstring(page_source.encode("utf-8"))
         ).getroot()
+        if compact:
+            return self._extract_compact_interactives(root)
         elements = root.xpath(".//*")
         # One index for the whole tree: every node's XPath is derived from the same
         # document, so the uniqueness probes are shared rather than rescanned per node.

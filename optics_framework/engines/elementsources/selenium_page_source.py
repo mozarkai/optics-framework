@@ -66,7 +66,7 @@ class SeleniumPageSource(ElementSourceInterface):
         internal_logger.debug('Page source fetched at: %s', time_stamp)
         return str(page_source), str(time_stamp)
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False):
         msg = "Getting interactive elements is not yet supported using Selenium Page Source."
         internal_logger.exception(msg)
         raise NotImplementedError(msg)

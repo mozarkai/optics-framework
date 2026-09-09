@@ -459,10 +459,10 @@ class PagesourceStrategy:
         except Exception as e:
             raise OpticsError(Code.E0403, message=f"Invalid pagesource captured: {e}") from e
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[dict]:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
         """Retrieve interactive elements from the element source."""
 
-        elements_dict = self.element_source.get_interactive_elements(filter_config)
+        elements_dict = self.element_source.get_interactive_elements(filter_config, compact=compact)
         if elements_dict is not None:
             return elements_dict
         raise NotImplementedError("Interactive elements retrieval failed.")
@@ -897,7 +897,7 @@ class StrategyManager:
             strategy.element_source, "get_interactive_elements"
         )
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[dict]:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
         """Retrieve interactive elements from the element source."""
         applicable_strategies = [
             s for s in self.pagesource_strategies
@@ -905,7 +905,7 @@ class StrategyManager:
         ]
         for strategy in applicable_strategies:
             try:
-                return strategy.get_interactive_elements(filter_config)
+                return strategy.get_interactive_elements(filter_config, compact=compact)
             except Exception as e:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")

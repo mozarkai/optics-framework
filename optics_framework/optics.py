@@ -1184,7 +1184,7 @@ class Optics:
         )
 
     @keyword("Get Interactive Elements")
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List:
         """
         Get interactive elements on the screen.
 
@@ -1196,10 +1196,13 @@ class Optics:
             - "images": Only image elements
             - "text": Only text elements
             Can be combined: ["buttons", "inputs"]
+        :param compact: When True (Appium only), return only actionable elements (folded
+            labels, with an ``act`` list) plus read-only text, as
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}``.
         """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        return self.verifier.get_interactive_elements(filter_config)
+        return self.verifier.get_interactive_elements(filter_config, compact=compact)
 
     @keyword("Capture Screenshot")
     def capture_screenshot(self):

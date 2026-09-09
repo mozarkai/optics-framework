@@ -73,9 +73,9 @@ class AppiumPageSource(ElementSourceInterface):
         internal_logger.debug('Page source fetched at: %s', time_stamp)
         return str(page_source), str(time_stamp)
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None):
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False):
         if self.driver is not None and hasattr(self.driver, "ui_helper"):
-            return self.driver.ui_helper.get_interactive_elements(filter_config)
+            return self.driver.ui_helper.get_interactive_elements(filter_config, compact=compact)
         internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
         raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 

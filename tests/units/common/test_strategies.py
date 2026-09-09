@@ -592,14 +592,14 @@ class TestGetInteractiveElementsStrategyScreening:
         if supports_extraction:
             source.get_interactive_elements = MagicMock(return_value=elements or [])
         else:
-            def _unsupported(filter_config=None):
+            def _unsupported(filter_config=None, compact=False):
                 raise NotImplementedError("does not support getting interactive elements")
             source.get_interactive_elements = _unsupported
 
         strategy = MagicMock()
         strategy.element_source = source
         strategy.get_interactive_elements = MagicMock(
-            side_effect=lambda fc=None: source.get_interactive_elements(fc)
+            side_effect=lambda fc=None, compact=False: source.get_interactive_elements(fc, compact=compact)
         )
         return strategy
 
