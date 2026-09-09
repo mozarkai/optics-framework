@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import inspect
+import os
 import pathlib
 from typing import Any, Callable, Optional
 
@@ -82,11 +83,15 @@ SERVER_INSTRUCTIONS = (
     "`url`/`capabilities` for your target (device id goes in capabilities, e.g. "
     "deviceName/udid; the MCP itself needs no adb).\n"
     "2. Act with the keyword tools (press_element, enter_text, swipe, assert_presence, "
-    "...). Target elements by locator (`xpath=`/`text=`/an id/an image) with "
-    "`press_element`; if there is no stable locator, `detect_and_press` taps by the "
-    "visible text/label. Otherwise use the exact `bounds` from `get_interactive_elements` "
-    "— do NOT tap pixel coordinates guessed from a screenshot; they misfire. Observe "
-    "with the `screenshot` tool and the `optics://session/{id}/...` resources.\n"
+    "...). First read the `optics://session/{id}/elements` resource (or call "
+    "`get_interactive_elements`): it returns a compact list of every actionable element "
+    "with a label, its `act` (tap/long/toggle/input/scroll) and bounds, plus read-only "
+    "text (`act: []`) for asserting screen state. Target by locator (`xpath=`/`text=`/an "
+    "id/an image) with `press_element`, or `detect_and_press` to tap an element by its "
+    "visible label from that list. Raw pixel/percentage taps are intentionally not exposed "
+    "(they misfire on the wrong element) — ground every tap in the elements list or a "
+    "locator. Observe with the `screenshot` tool and the `optics://session/{id}/...` "
+    "resources.\n"
     "3. To build a reusable suite you already have the steps you ran — author an "
     "optics CSV project yourself (read the `optics://project-format` resource for the "
     "exact layout and `${var}` parameterization), then run it with the CLI "
@@ -117,7 +122,18 @@ _RESOURCE_ONLY_KEYWORDS = frozenset(
     {"capture_screenshot", "capture_pagesource", "get_screen_elements"}
 )
 
+# Raw pixel/percentage tap keywords, kept out of the MCP tool surface by default: tapping
+# a coordinate the agent eyeballed off a screenshot misfires. Operators can re-enable via
+# env var; this gates only the MCP tools, not AI self-heal's internal press_by_percentage.
+_COORDINATE_TAP_KEYWORDS = frozenset({"press_by_coordinates", "press_by_percentage"})
+ENV_ALLOW_COORDINATE_TAPS = "OPTICS_MCP_ALLOW_COORDINATE_TAPS"
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+
 _RESULT_KEY = expose_api.KEY_RESULT
+
+
+def _coordinate_taps_allowed() -> bool:
+    return os.environ.get(ENV_ALLOW_COORDINATE_TAPS, "").strip().lower() in _TRUE_STRINGS
 
 
 def _require_fastmcp() -> None:
@@ -234,15 +250,23 @@ def _make_keyword_tool(slug: str, params: list[inspect.Parameter]) -> Callable[.
     return wrapper
 
 
+def _is_keyword_tool(name: str, seen: set[str], allow_coordinate_taps: bool) -> bool:
+    """Whether a public API method should be exposed as its own MCP tool."""
+    if name.startswith("_") or name.startswith("test") or name in seen:
+        return False
+    if name in _RESOURCE_ONLY_KEYWORDS:
+        return False
+    return allow_coordinate_taps or name not in _COORDINATE_TAP_KEYWORDS
+
+
 def _iter_keyword_tools() -> list[tuple[str, str, Callable[..., Any]]]:
     """Yield (slug, description, wrapper) for every action keyword to register."""
     tools: list[tuple[str, str, Callable[..., Any]]] = []
     seen: set[str] = set()
+    allow_coordinate_taps = _coordinate_taps_allowed()
     for cls in _KEYWORD_CLASSES:
         for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-            if name.startswith("_") or name.startswith("test"):
-                continue
-            if name in _RESOURCE_ONLY_KEYWORDS or name in seen:
+            if not _is_keyword_tool(name, seen, allow_coordinate_taps):
                 continue
             seen.add(name)
             description = inspect.getdoc(method) or expose_api._humanize_keyword(name)
@@ -251,10 +275,12 @@ def _iter_keyword_tools() -> list[tuple[str, str, Callable[..., Any]]]:
     return tools
 
 
-async def _observe(session_id: str, keyword: str) -> Any:
+async def _observe(
+    session_id: str, keyword: str, params: Optional[dict[str, Any]] = None
+) -> Any:
     """Run a read-only observer keyword and return its unwrapped result."""
     try:
-        response = await expose_api.run_keyword_endpoint(session_id, keyword)
+        response = await expose_api.run_keyword_endpoint(session_id, keyword, params)
     except HTTPException as exc:
         raise ToolError(_http_detail(exc.detail)) from exc
     data = getattr(response, "data", None) or {}
@@ -392,8 +418,11 @@ def build_server() -> "FastMCP":
 
     @mcp.resource("optics://session/{session_id}/elements", mime_type="application/json")
     async def interactive_elements(session_id: str) -> Any:
-        """All interactive elements on screen (unfiltered; use the tool to filter)."""
-        return await _observe(session_id, "get_interactive_elements")
+        """Compact on-screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}:
+        actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
+        read-only text (act: []). Use the get_interactive_elements tool with compact=false
+        for the full untrimmed list."""
+        return await _observe(session_id, "get_interactive_elements", {"compact": "true"})
 
     @mcp.resource(
         "optics://session/{session_id}/screen_elements", mime_type="application/json"
