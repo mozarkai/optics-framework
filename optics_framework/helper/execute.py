@@ -548,9 +548,23 @@ def _adb_device_count() -> int | None:
 
 
 def _abort_preflight(lines: List[str]) -> NoReturn:
-    """Print a friendly rich block explaining the failure and exit non-zero."""
+    """
+    Print a friendly rich block explaining the failure and exit non-zero.
+
+    Any of these checks can fire against a remote or cloud-hosted target
+    that will never satisfy them locally, so the escape hatch has to be
+    visible wherever the gate stops the run.
+
+    :param lines: Failure-specific message lines for the panel body.
+    """
     console = Console(file=sys.stderr)
-    console.print(Panel("\n".join(lines), title="Cannot start",
+    body = [
+        *lines,
+        "",
+        "Driving a remote/cloud device?",
+        f"Skip this check:  {_PREFLIGHT_SKIP_ENV}=1",
+    ]
+    console.print(Panel("\n".join(body), title="Cannot start",
                         border_style="red"))
     sys.exit(1)
 

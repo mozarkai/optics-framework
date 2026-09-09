@@ -333,6 +333,27 @@ class TestPreflightGate:
         probe.assert_not_called()
         adb.assert_not_called()
 
+    @pytest.mark.parametrize("config,probe,adb", [
+        pytest.param(_config_for("appium"), False, None,
+                     id="appium server unreachable"),
+        pytest.param(_config_for("appium",
+                                 capabilities={"platformName": "Android"}),
+                     True, None, id="adb tool missing"),
+        pytest.param(_config_for("appium",
+                                 capabilities={"platformName": "Android"}),
+                     True, 0, id="no android device attached"),
+        pytest.param(_config_for("selenium"), False, None,
+                     id="selenium server unreachable"),
+    ])
+    def test_every_panel_points_at_the_skip_env(self, capsys, config, probe, adb):
+        with patch.object(execute_module, "_probe_tcp", return_value=probe), \
+                patch.object(execute_module, "_adb_device_count", return_value=adb):
+            with pytest.raises(SystemExit):
+                execute_module._preflight_or_exit(config)
+        err = capsys.readouterr().err
+        assert "remote/cloud device" in err
+        assert f"{execute_module._PREFLIGHT_SKIP_ENV}=1" in err
+
     def test_no_enabled_driver_is_left_to_the_existing_gate(self):
         config = Config(driver_sources=[{"selenium": DependencyConfig(enabled=False)}])
         with patch.object(execute_module, "_probe_tcp") as probe:
