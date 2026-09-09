@@ -23,8 +23,9 @@ from typing import NamedTuple
 from urllib.parse import urlparse
 
 import yaml
+from rich.cells import cell_len
 from rich.console import Console
-from rich.table import Table
+from rich.text import Text
 
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
 
@@ -33,11 +34,9 @@ _console = Console()
 _SOCKET_TIMEOUT_S = 3.0
 _ADB_TIMEOUT_S = 10.0
 
-_STATUS_GLYPH = {
-    "ok": "[green]✅[/green]",
-    "warn": "[yellow]⚠️[/yellow] ",
-    "fail": "[red]❌[/red]",
-}
+_STATUS_GLYPH = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
+_STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
+_MAX_NAME_COLUMN = 32
 
 _ADB_DEVICES = "adb devices"
 _APPIUM_SERVER = "appium server"
@@ -398,21 +397,56 @@ def _split_host_port(url: object) -> tuple[str, int] | None:
         return None
 
 
-def _print_report(rows: list[Check], mandatory_hints: list[str]) -> None:
-    """Print the report table, the counts line and the closing message.
+def _row_text(row: Check, name_width: int) -> Text:
+    """One check as a single line: glyph, padded name, detail — no table
+    borders to break when a narrow terminal wraps a long detail string."""
+    glyph = _STATUS_GLYPH.get(row.status, "•")
+    style = _STATUS_STYLE.get(row.status, "")
+    text = Text("  ")
+    text.append(glyph, style=style)
+    text.append(" " * max(1, 3 - cell_len(glyph)))
+    text.append(row.name.ljust(name_width))
+    text.append("  ")
+    text.append(row.detail)
+    return text
+
+
+def _hint_text(hint: str) -> Text:
+    text = Text("      → ", style="dim")
+    text.append(hint, style="dim")
+    return text
+
+
+def _print_section(title: str, rows: list[Check], name_width: int) -> None:
+    if not rows:
+        return
+    _console.print(f"[bold]{title}[/bold]")
+    for row in rows:
+        _console.print(_row_text(row, name_width))
+        if row.hint:
+            _console.print(_hint_text(row.hint))
+    _console.print()
+
+
+def _print_report(sections: list[tuple[str, list[Check]]],
+                   mandatory_hints: list[str]) -> None:
+    """Print the report as grouped, left-aligned lines (not a bordered
+    table), the counts line and the closing message.
+
+    A four-column table sized wider than the visible terminal/pane wraps its
+    box-drawing characters mid-line and comes out jagged; plain lines instead
+    degrade gracefully — a long detail or hint just wraps as text.
 
     ``mandatory_hints`` carries the warnings on the ENABLED driver's own
     requirements; when non-empty the reassurance line is replaced by a
     targeted call-to-action listing them."""
-    table = Table(title="🩺 optics doctor", header_style="bold")
-    table.add_column("")
-    table.add_column("Check")
-    table.add_column("Details")
-    table.add_column("Hint", style="dim")
-    for row in rows:
-        table.add_row(_STATUS_GLYPH.get(row.status, "•"),
-                      row.name, row.detail, row.hint)
-    _console.print(table)
+    rows = [row for _, section_rows in sections for row in section_rows]
+    name_width = min(max((len(row.name) for row in rows), default=0),
+                      _MAX_NAME_COLUMN)
+
+    _console.print("[bold]🩺 optics doctor[/bold]\n")
+    for title, section_rows in sections:
+        _print_section(title, section_rows, name_width)
 
     counts = {status: sum(1 for r in rows if r.status == status)
               for status in ("ok", "warn", "fail")}
@@ -449,19 +483,21 @@ def run_doctor(folder: str | None = None, check: bool = False) -> int:
         target = _appium_target(folder)
         if target:
             host, port = target
-    rows = [
-        *check_core(),
-        *check_engines(),
-        *check_mobile(host, port),
-        *check_web(),
+    sections: list[tuple[str, list[Check]]] = [
+        ("Core", check_core()),
+        ("Engines", check_engines()),
+        ("Mobile", check_mobile(host, port)),
+        ("Web", check_web()),
     ]
     if folder:
-        rows.extend(validate_project(folder))
+        sections.append(("Project", validate_project(folder)))
     elif not os.path.isfile(os.path.join(os.getcwd(), "config.yaml")):
-        rows.append(Check("project", "warn", "No config.yaml found here",
-                          _NO_CONFIG_HINT))
+        sections.append(("Project", [Check("project", "warn",
+                                           "No config.yaml found here",
+                                           _NO_CONFIG_HINT)]))
+    rows = [row for _, section_rows in sections for row in section_rows]
     drivers = _enabled_driver_names(folder) if folder else set()
-    _print_report(rows, _mandatory_hints(rows, drivers))
+    _print_report(sections, _mandatory_hints(rows, drivers))
     if check and any(row.status == "fail" for row in rows):
         return 1
     return 0
