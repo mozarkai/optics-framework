@@ -111,7 +111,7 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         return html, str(timestamp)
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[Dict]:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[Dict]:
         """
         Cross-platform element extraction for web pages.
 
@@ -124,10 +124,12 @@ class PlaywrightPageSource(ElementSourceInterface):
                 - "images": Only image elements
                 - "text": Only text elements
                 Can be combined: ["buttons", "inputs"]
+            compact: Accepted for interface parity; not yet implemented for web (ignored).
 
         Returns:
             List of dictionaries with keys: text, bounds, xpath, extra
         """
+        _ = compact  # not implemented for web
         # Ensure page source is fetched and parsed
         self.get_page_source()  # Returns (html, timestamp); updates self.tree
 

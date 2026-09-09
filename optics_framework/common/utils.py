@@ -199,6 +199,19 @@ def parse_text_only_prefix(element: str) -> Tuple[str, bool]:
     return (element, False)
 
 
+def to_bool(value: Any, default: bool = False) -> bool:
+    """Coerce a flag that may cross the keyword boundary as a string to a bool.
+
+    Recognizes true/1/yes/on case-insensitively; ``None`` yields ``default``. Needed
+    because ``"false"`` is otherwise a truthy non-empty string.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+
 def get_timestamp():
     try:
         current_utc_time = datetime.now(timezone.utc)

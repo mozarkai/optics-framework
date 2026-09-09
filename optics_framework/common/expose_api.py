@@ -1046,7 +1046,8 @@ async def get_driver_session_id(session_id: str):
 @app.get("/v1/sessions/{session_id}/elements")
 async def get_elements(
     session_id: str,
-    filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text")
+    filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text"),
+    compact: bool = Query(False, description="Return only actionable elements (folded labels) plus read-only text, as a compact token-lean list (Appium only)")
 ):
     """
     Get interactive elements from the current session screen.
@@ -1061,14 +1062,18 @@ async def get_elements(
             - "images": Only image elements
             - "text": Only text elements
             Can be combined: ?filter_config=buttons&filter_config=inputs
+        compact: When true, ignore filter_config and return the compact list
+            ({i, label, cls, bounds, act, rid?}) instead of the full element dump.
 
     Returns:
         The elements result.
     """
-    params: Optional[Dict[str, Union[str, List[str]]]] = None
+    params: Dict[str, Union[str, List[str]]] = {}
     if filter_config:
-        params = {PARAM_FILTER_CONFIG: filter_config}
-    return await run_keyword_endpoint(session_id, "get_interactive_elements", params)
+        params[PARAM_FILTER_CONFIG] = filter_config
+    if compact:
+        params["compact"] = "true"
+    return await run_keyword_endpoint(session_id, "get_interactive_elements", params or None)
 
 @app.get("/v1/sessions/{session_id}/source")
 async def get_pagesource(session_id: str):

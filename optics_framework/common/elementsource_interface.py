@@ -122,12 +122,15 @@ class ElementSourceInterface(ABC):
         )
 
     @abstractmethod
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> list:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> list:
         """
         Retrieve a list of interactive elements on the current screen.
 
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
         :type filter_config: Optional[List[str]]
+        :param compact: When True, return only actionable elements (folded labels) plus
+            standalone visible text. Sources that do not implement it may ignore it.
+        :type compact: bool
         :return: A list of interactive elements (e.g., buttons, links).
         :rtype: list
         """
