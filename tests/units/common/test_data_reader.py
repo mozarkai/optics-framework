@@ -175,6 +175,50 @@ class TestYAMLDataReader:
     def test_parse_module_step(self, step, expected):
         assert self.reader._parse_module_step(step) == expected
 
+    @pytest.mark.parametrize(
+        "step, expected",
+        [
+            # The only way a param can hold a space: a value written entirely in quotes.
+            ('Enter Text ${f} text="two words"', ("Enter Text", ["${f}", "text=two words"])),
+            ("Enter Text ${f} text='two words'", ("Enter Text", ["${f}", "text=two words"])),
+            ('Enter Text ${f} "two words"', ("Enter Text", ["${f}", "two words"])),
+            # A locator's own quotes are inside the value, so they stay — this is what
+            # `shlex.split` would have eaten.
+            (
+                'Press Element //button[@id="save"] repeat=2',
+                ("Press Element", ['//button[@id="save"]', "repeat=2"]),
+            ),
+            ('Press Element //*[@text="a b"]', ("Press Element", ['//*[@text="a b"]'])),
+            # Unquoted lines split as they always have.
+            ("Enter Text ${f} plain words here", ("Enter Text", ["${f}", "plain", "words", "here"])),
+            # An apostrophe is not an unbalanced quote, so a double-quoted value keeps its
+            # space, and the other quote character inside a value is not special either.
+            (
+                'Enter Text ${f} text="Bob\'s file"',
+                ("Enter Text", ["${f}", "text=Bob's file"]),
+            ),
+            (
+                "Enter Text ${f} text='say \"hi\" now'",
+                ("Enter Text", ["${f}", 'text=say "hi" now']),
+            ),
+            # An unbalanced quote falls back rather than dropping the quote and splitting.
+            ('Enter Text ${f} text="abc', ("Enter Text", ["${f}", 'text="abc'])),
+            ("Enter Text ${f} it's fine", ("Enter Text", ["${f}", "it's", "fine"])),
+        ],
+    )
+    def test_parse_module_step_honours_quoted_params(self, step, expected):
+        assert self.reader._parse_module_step(step) == expected
+
+    def test_read_modules_keeps_a_quoted_space(self, tmp_path):
+        path = _write(
+            tmp_path,
+            "m.yaml",
+            'Modules:\n  - M:\n      - Enter Text ${f} text="two words"\n',
+        )
+        assert self.reader.read_modules(path) == {
+            "M": [("Enter Text", ["${f}", "text=two words"])]
+        }
+
     def test_parse_module_step_prefers_a_module_of_the_same_name(self):
         """A module may be named after a keyword's first word without being that keyword."""
         assert self.reader._parse_module_step("Sleep Well", {"Sleep Well"}) == ("Sleep Well", [])
