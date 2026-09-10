@@ -17,6 +17,8 @@ from optics_framework.common.session_liveness import raise_if_session_dead
 # Constants
 TEXT_DETECTION_NOT_AVAILABLE_MSG = "Text detection is not available."
 
+MIN_STRATEGY_TIMEOUT_S = 0.5
+
 
 class LocateValueWithFrame(NamedTuple):
     """Result from vision strategies: coordinates (or value) plus optional annotated image."""
@@ -701,21 +703,15 @@ class StrategyManager:
 
     def _alloc_time_for_strategy(
         self, deadline: float, idx: int, applicable_strategies: List[Any]
-    ) -> Optional[Tuple[int, float, int]]:
+    ) -> Optional[Tuple[float, float, int]]:
         """Compute seconds to allocate for this strategy. Returns (alloc, remaining_total, remaining_strategies) or None to break."""
         remaining_total = max(0.0, deadline - time.time())
         remaining_strategies = len(applicable_strategies) - idx
         if remaining_total <= 0:
             internal_logger.debug("No remaining time left to try further strategies.")
             return None
-        alloc = int(math.ceil(remaining_total / remaining_strategies))
-        alloc = min(alloc, int(math.floor(remaining_total)))
-        if alloc <= 0:
-            if idx == len(applicable_strategies) - 1:
-                return (0, remaining_total, remaining_strategies)
-            internal_logger.debug("Insufficient time to allocate to next strategies.")
-            return None
-        return (alloc, remaining_total, remaining_strategies)
+        alloc = min(math.ceil(remaining_total / remaining_strategies), remaining_total)
+        return (max(alloc, MIN_STRATEGY_TIMEOUT_S), remaining_total, remaining_strategies)
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         """Assert elements are present -- possibly off-screen, anywhere in the page/DOM."""
@@ -790,7 +786,7 @@ class StrategyManager:
             return LocatorStrategy._is_method_implemented(strategy.element_source, "assert_elements_visible")
         return True
 
-    def _try_assert_with_strategy(self, strategy, elements: list, timeout: int, rule: str, method_name: str = "assert_elements"):
+    def _try_assert_with_strategy(self, strategy, elements: list, timeout: float, rule: str, method_name: str = "assert_elements"):
         """Try to assert elements using a specific strategy.
 
         Strategies are required to return (result, timestamp, annotated_frame).
