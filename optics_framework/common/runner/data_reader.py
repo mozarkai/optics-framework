@@ -14,6 +14,45 @@ from optics_framework.common.models import (
 from optics_framework.common.utils import unescape_csv_value
 
 
+# A quoted run is one token. Applied to the whole step, so a locator keeps the quotes inside
+# it (`//button[@id="save"]`) while a value written as one (`text="a b"`) gives them up.
+_TOKEN = re.compile(r'''(?:[^\s"']|"[^"]*"|'[^']*')+''')
+_WRAPPED = re.compile(r'''^(?P<q>["'])(?P<body>.*)(?P=q)$''', re.S)
+
+
+def _unbalanced_quote(step: str) -> bool:
+    """Whether the token pattern would skip a non-whitespace character, which only an
+    unpaired quote makes it do."""
+    gap = 0
+    for match in _TOKEN.finditer(step):
+        if step[gap : match.start()].strip():
+            return True
+        gap = match.end()
+    return bool(step[gap:].strip())
+
+
+def _tokens(step: str) -> List[str]:
+    """Whitespace-split, except that a quoted run holds together and a value written entirely
+    in quotes is unwrapped — which is the only way a param can contain a space.
+
+    An unbalanced quote falls back to `.split()`: the pattern would drop the quote and split
+    anyway, so `text=it's fine` keeps reading as it always has."""
+    if _unbalanced_quote(step):
+        return step.split()
+
+    out = []
+    for token in _TOKEN.findall(step):
+        key, sep, value = token.partition("=")
+        found = _WRAPPED.match(value if sep else token)
+        if not found:
+            out.append(token)
+        elif sep:
+            out.append(f"{key}={found['body']}")
+        else:
+            out.append(found["body"])
+    return out
+
+
 def _keyword_slug(name: str) -> str:
     return "_".join(name.replace("_", " ").split()).lower()
 
@@ -356,7 +395,7 @@ class YAMLDataReader(DataReader):
         if module_names and step in module_names:
             return step, []
 
-        words = step.split()
+        words = _tokens(step)
         catalogue = _keyword_names()
         # longest first, so "Enter Text hi" is not read as "Enter"
         for count in range(len(words), 0, -1):
@@ -369,8 +408,7 @@ class YAMLDataReader(DataReader):
         if params:
             param_start = step.index(params[0])
             keyword = step[:param_start].strip()
-            param_str = step[param_start:].strip()
-            param_parts = param_str.split()
+            param_parts = _tokens(step[param_start:].strip())
             return keyword, [p.strip() for p in param_parts if p.strip()]
 
         return step, []
