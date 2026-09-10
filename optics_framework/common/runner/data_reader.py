@@ -3,7 +3,8 @@ import yaml
 import re
 import inspect
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, Dict, Union, List, Tuple, cast
+from functools import lru_cache
+from typing import Callable, Optional, Dict, Set, Union, List, Tuple, cast
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import (
     ApiData,
@@ -11,6 +12,40 @@ from optics_framework.common.models import (
     ExpectedResultDefinition,
 )
 from optics_framework.common.utils import unescape_csv_value
+
+
+def _keyword_slug(name: str) -> str:
+    return "_".join(name.replace("_", " ").split()).lower()
+
+
+# The SDK/Robot facade (optics.py) exposes two keyword names the runtime map does not:
+# an alias of press_element and the session teardown. They still belong in the catalogue,
+# so a suite using one reports the unknown keyword instead of dispatching the words after
+# it to the shorter runtime keyword that shares their prefix.
+_FACADE_KEYWORD_SLUGS = frozenset({"press_element_with_index", "quit"})
+
+
+@lru_cache(maxsize=1)
+def _keyword_names() -> frozenset:
+    import importlib
+    import pkgutil
+
+    import optics_framework.api
+
+    names = set()
+    package = optics_framework.api
+    for _, module_name, _ in pkgutil.iter_modules(package.__path__):
+        module = importlib.import_module(f"{package.__name__}.{module_name}")
+        for class_name, cls in inspect.getmembers(module, inspect.isclass):
+            if cls.__module__ != module.__name__ or class_name.startswith("_"):
+                continue
+            names.update(
+                attr
+                for attr in dir(cls)
+                if not attr.startswith("_") and callable(getattr(cls, attr))
+            )
+    names.update(_FACADE_KEYWORD_SLUGS)
+    return frozenset(names)
 
 
 class DataReader(ABC):
@@ -276,38 +311,56 @@ class YAMLDataReader(DataReader):
                 test_cases[name] = [step.strip() for step in steps if step.strip()]
         return test_cases
 
-    def _parse_module_step(self, step: str) -> Tuple[str, List[str]]:
+    def _parse_module_step(
+        self, step: str, module_names: Optional[Set[str]] = None
+    ) -> Tuple[str, List[str]]:
         """
         Parse a module step to extract the keyword and parameters.
 
         :param step: The module step string.
+        :param module_names: Names defined in the same file, which win over the catalogue — a
+            module may be called ``Sleep Well`` without its first word being read as a keyword.
         :return: Tuple of (keyword, list of parameters).
         """
         step = step.strip()
         if not step:
             return "", []
 
-        param_pattern = re.compile(r"\${[^{}]+}")
-        params = param_pattern.findall(step)
-        if not params:
+        if module_names and step in module_names:
             return step, []
 
-        param_start = step.index(params[0])
-        keyword = step[:param_start].strip()
-        param_str = step[param_start:].strip()
-        param_parts = param_str.split()
-        return keyword, [p.strip() for p in param_parts if p.strip()]
+        words = step.split()
+        catalogue = _keyword_names()
+        # longest first, so "Enter Text hi" is not read as "Enter"
+        for count in range(len(words), 0, -1):
+            name = " ".join(words[:count])
+            if _keyword_slug(name) in catalogue:
+                return name, words[count:]
 
-    def _process_module_steps(self, steps: List[str]) -> List[Tuple[str, List[str]]]:
+        param_pattern = re.compile(r"\${[^{}]+}")
+        params = param_pattern.findall(step)
+        if params:
+            param_start = step.index(params[0])
+            keyword = step[:param_start].strip()
+            param_str = step[param_start:].strip()
+            param_parts = param_str.split()
+            return keyword, [p.strip() for p in param_parts if p.strip()]
+
+        return step, []
+
+    def _process_module_steps(
+        self, steps: List[str], module_names: Optional[Set[str]] = None
+    ) -> List[Tuple[str, List[str]]]:
         """
         Process a list of module steps into a list of (keyword, params) tuples.
 
         :param steps: List of step strings.
+        :param module_names: Names defined in the same file, passed through to the step parser.
         :return: List of (keyword, params) tuples.
         """
         module_steps = []
         for step in steps:
-            keyword, params = self._parse_module_step(step)
+            keyword, params = self._parse_module_step(step, module_names)
             if keyword:
                 module_steps.append((keyword, params))
         return module_steps
@@ -325,6 +378,13 @@ class YAMLDataReader(DataReader):
         data = self.read_file(file_path)
         modules = {}
         modules_data = data.get("Modules", [])
+        # Collected before any step is parsed: a step may reference a module defined below it.
+        module_names = {
+            str(name).strip()
+            for module in modules_data
+            for name in module
+            if str(name).strip()
+        }
 
         for module in modules_data:
             for name, steps in module.items():
@@ -334,7 +394,7 @@ class YAMLDataReader(DataReader):
                         f"Warning: Module '{name}' is empty or invalid"
                     )
                     continue
-                modules[name] = self._process_module_steps(steps)
+                modules[name] = self._process_module_steps(steps, module_names)
 
         return modules
 
