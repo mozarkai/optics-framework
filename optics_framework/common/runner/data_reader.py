@@ -123,17 +123,31 @@ class DataReader(ABC):
         pass
 
     @abstractmethod
-    def read_modules(self, file_path: str) -> dict:
+    def read_modules(
+        self, file_path: str, module_names: Optional[Set[str]] = None
+    ) -> dict:
         """
         Read a file containing module information and return a dictionary mapping
         module names to lists of tuples (module_step, params).
 
         :param file_path: Path to the file.
         :type file_path: str
+        :param module_names: Every module name in the project, for a reader that has to tell a
+            module reference from a keyword. A suite is split across files, so a name defined
+            in one file may be referenced from another.
         :return: A dictionary where keys are module names and values are lists of (module_step, params) tuples.
         :rtype: dict
         """
         pass
+
+    def read_module_names(self, file_path: str) -> Set[str]:
+        """The module names a file defines, so a caller can gather the project-wide set before
+        any step is parsed. The names are the dictionary's keys, which no step parsing affects.
+
+        :param file_path: Path to the file.
+        :return: The module names defined in that file.
+        """
+        return set(self.read_modules(file_path))
 
     @abstractmethod
     def read_elements(self, file_path: Optional[str]) -> dict:
@@ -187,13 +201,17 @@ class CSVDataReader(DataReader):
             test_cases[test_case].append(test_step)
         return test_cases
 
-    def read_modules(self, file_path: str) -> dict:
+    def read_modules(
+        self, file_path: str, module_names: Optional[Set[str]] = None
+    ) -> dict:
         """
         Read a CSV file containing module information and return a dictionary mapping
         module names to lists of tuples (module_step, params).
 
         :param file_path: Path to the modules CSV file.
         :type file_path: str
+        :param module_names: Unused — a CSV keeps each param in its own column, so the keyword
+            name never has to be told from a module reference.
         :return: A dictionary where keys are module names and values are lists of (module_step, params) tuples.
         :rtype: dict
         """
@@ -218,6 +236,15 @@ class CSVDataReader(DataReader):
                 modules[module_name] = []
             modules[module_name].append((keyword, params))
         return modules
+
+    def read_module_names(self, file_path: str) -> Set[str]:
+        """Read only the module_name column, so the project-wide names pass neither parses
+        steps nor repeats the malformed-row warnings the parse pass emits."""
+        return {
+            row["module_name"].strip()
+            for row in self.read_file(file_path)
+            if row.get("module_name") and str(row["module_name"]).strip()
+        }
 
     def read_elements(self, file_path: Optional[str]) -> dict:
         """
@@ -365,21 +392,27 @@ class YAMLDataReader(DataReader):
                 module_steps.append((keyword, params))
         return module_steps
 
-    def read_modules(self, file_path: str) -> Dict[str, List[Tuple[str, List[str]]]]:
+    def read_modules(
+        self, file_path: str, module_names: Optional[Set[str]] = None
+    ) -> Dict[str, List[Tuple[str, List[str]]]]:
         """
         Read a YAML file containing module information and return a dictionary mapping
         module names to lists of tuples (module_step, params).
 
         :param file_path: Path to the YAML file.
         :type file_path: str
+        :param module_names: Every module name in the project. Without it only this file's own
+            names are known, and a step referencing a keyword-shaped module defined in another
+            file — ``Sleep Well`` — would be read as the keyword ``Sleep``.
         :return: A dictionary where keys are module names and values are lists of (module_step, params) tuples.
         :rtype: dict
         """
         data = self.read_file(file_path)
         modules = {}
         modules_data = data.get("Modules", [])
-        # Collected before any step is parsed: a step may reference a module defined below it.
-        module_names = {
+        # This file's own names as well, gathered before any step is parsed: a step may
+        # reference a module defined below it.
+        known_modules = set(module_names or ()) | {
             str(name).strip()
             for module in modules_data
             for name in module
@@ -394,9 +427,20 @@ class YAMLDataReader(DataReader):
                         f"Warning: Module '{name}' is empty or invalid"
                     )
                     continue
-                modules[name] = self._process_module_steps(steps, module_names)
+                modules[name] = self._process_module_steps(steps, known_modules)
 
         return modules
+
+    def read_module_names(self, file_path: str) -> Set[str]:
+        """Read only the module keys, so the project-wide names pass does not parse, and
+        warn about, every step that the parse pass reads again."""
+        data = self.read_file(file_path)
+        return {
+            str(name).strip()
+            for module in data.get("Modules", [])
+            for name in module
+            if str(name).strip()
+        }
 
     def read_elements(self, file_path: Optional[str]) -> dict:
         """

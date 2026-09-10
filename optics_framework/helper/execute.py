@@ -726,9 +726,15 @@ class BaseRunner:
 
     def _load_modules(self, module_files):
         self.modules_data: ModuleData = ModuleData()
+        # Every module name first, across every file: a YAML step referencing a module is told
+        # from a keyword call by name, and the module it names may be defined in another file.
+        module_names = set()
         for file_path in module_files:
             reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            modules = reader.read_modules(file_path)
+            module_names |= reader.read_module_names(file_path)
+        for file_path in module_files:
+            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
+            modules = reader.read_modules(file_path, module_names)
             for name, definition in modules.items():
                 if self.modules_data.get_module_definition(name):
                     internal_logger.warning(
