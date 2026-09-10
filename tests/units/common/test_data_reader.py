@@ -139,10 +139,59 @@ class TestYAMLDataReader:
             ("Enter Text ${f} hello", ("Enter Text", ["${f}", "hello"])),
             ("Sleep", ("Sleep", [])),
             ("", ("", [])),
+            # The catalogue ends the keyword name, so a first param that is a plain value is
+            # no longer swallowed into it.
+            ("Swipe 1000 300 up", ("Swipe", ["1000", "300", "up"])),
+            ("Sleep 5", ("Sleep", ["5"])),
+            ("Swipe By Percentage 50 50 20", ("Swipe By Percentage", ["50", "50", "20"])),
+            # The longest run wins, or "Enter Text hi" would parse as "Enter".
+            ("Enter Text hi", ("Enter Text", ["hi"])),
+            # A facade alias the runtime map lacks is a catalogue name too, or the line
+            # is dispatched to "Press Element" with "With Index ..." as its params.
+            ("Press Element With Index ${el} 2", ("Press Element With Index", ["${el}", "2"])),
+            # Slug form is a keyword too, whatever the params look like.
+            ("press_element ${btn}", ("press_element", ["${btn}"])),
+            ("enter_text ${f} hello", ("enter_text", ["${f}", "hello"])),
+            ("swipe_by_percentage 50 50 20", ("swipe_by_percentage", ["50", "50", "20"])),
+            ("swipe 1000 300 up", ("swipe", ["1000", "300", "up"])),
+            # A name the catalogue does not know still reports the name alone, so the runner's
+            # "did you mean" hint has something to work with.
+            ("Press Elemnt ${btn}", ("Press Elemnt", ["${btn}"])),
+            # Failing both, the line is returned whole — how a step referencing another module
+            # has always reached the runner.
+            ("Login Flow", ("Login Flow", [])),
         ],
     )
     def test_parse_module_step(self, step, expected):
         assert self.reader._parse_module_step(step) == expected
+
+    def test_parse_module_step_prefers_a_module_of_the_same_name(self):
+        """A module may be named after a keyword's first word without being that keyword."""
+        assert self.reader._parse_module_step("Sleep Well", {"Sleep Well"}) == ("Sleep Well", [])
+        assert self.reader._parse_module_step("Sleep Well") == ("Sleep", ["Well"])
+
+    def test_read_modules_keeps_a_literal_first_param(self, tmp_path):
+        """The whole point, through the public reader: the params survive the round trip."""
+        path = _write(
+            tmp_path,
+            "m.yaml",
+            "Modules:\n  - M:\n      - Swipe 1000 300 up\n      - Press Element ${btn}\n",
+        )
+        assert self.reader.read_modules(path) == {
+            "M": [("Swipe", ["1000", "300", "up"]), ("Press Element", ["${btn}"])]
+        }
+
+    def test_read_modules_lets_a_step_reference_a_module_named_like_a_keyword(self, tmp_path):
+        """Module names come from the whole file, so one defined below is still recognised."""
+        path = _write(
+            tmp_path,
+            "m.yaml",
+            "Modules:\n  - Caller:\n      - Sleep Well\n  - Sleep Well:\n      - Sleep 1\n",
+        )
+        assert self.reader.read_modules(path) == {
+            "Caller": [("Sleep Well", [])],
+            "Sleep Well": [("Sleep", ["1"])],
+        }
 
     def test_read_elements_single_and_list_values(self, tmp_path):
         path = _write(
