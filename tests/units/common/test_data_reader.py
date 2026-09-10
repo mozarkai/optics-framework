@@ -76,6 +76,16 @@ class TestCSVDataReader:
         path = _write(tmp_path, "m.csv", "module_name,module_step,param_1\nM,Launch App,\n,Sleep,1\nM,,2\n")
         assert self.reader.read_modules(path) == {"M": [("Launch App", [])]}
 
+    def test_read_module_names_does_not_parse_steps(self, tmp_path, monkeypatch):
+        """The names pass reads the column only, so read_modules parses and warns once, later."""
+        monkeypatch.setattr(
+            CSVDataReader,
+            "read_modules",
+            lambda self, file_path, module_names=None: pytest.fail("names pass parsed the file"),
+        )
+        path = _write(tmp_path, "m.csv", "module_name,module_step\nM,Launch App\n,Bad,row\n")
+        assert self.reader.read_module_names(path) == {"M"}
+
     def test_read_elements_supports_multiple_ids_for_fallback(self, tmp_path):
         path = _write(
             tmp_path, "e.csv",
@@ -180,6 +190,27 @@ class TestYAMLDataReader:
         assert self.reader.read_modules(path) == {
             "M": [("Swipe", ["1000", "300", "up"]), ("Press Element", ["${btn}"])]
         }
+
+    def test_read_modules_takes_module_names_from_other_files(self, tmp_path):
+        """A suite is split across files, so the name a step references may be defined in
+        another one — without the project-wide set it would read as a keyword call."""
+        caller = _write(tmp_path, "a.yaml", "Modules:\n  - Caller:\n      - Sleep Well\n")
+        defined = _write(tmp_path, "b.yaml", "Modules:\n  - Sleep Well:\n      - Sleep 1\n")
+        names = self.reader.read_module_names(caller) | self.reader.read_module_names(defined)
+        assert names == {"Caller", "Sleep Well"}
+        assert self.reader.read_modules(caller, names) == {"Caller": [("Sleep Well", [])]}
+
+    def test_read_module_names_does_not_parse_steps(self, tmp_path, monkeypatch):
+        """The names pass reads the keys only, so read_modules parses and warns once, later."""
+        monkeypatch.setattr(
+            YAMLDataReader,
+            "read_modules",
+            lambda self, file_path, module_names=None: pytest.fail("names pass parsed the file"),
+        )
+        path = _write(
+            tmp_path, "m.yaml", "Modules:\n  - Empty:\n  - M:\n      - Swipe 1000 300 up\n"
+        )
+        assert self.reader.read_module_names(path) == {"Empty", "M"}
 
     def test_read_modules_lets_a_step_reference_a_module_named_like_a_keyword(self, tmp_path):
         """Module names come from the whole file, so one defined below is still recognised."""
