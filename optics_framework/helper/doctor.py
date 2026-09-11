@@ -32,6 +32,7 @@ _console = Console()
 
 _SOCKET_TIMEOUT_S = 3.0
 _ADB_TIMEOUT_S = 10.0
+_SCHEME_DEFAULT_PORTS = {"http": 80, "https": 443}
 
 _STATUS_GLYPH = {
     "ok": "[green]✅[/green]",
@@ -388,12 +389,20 @@ def _appium_target(folder: str) -> tuple[str, int] | None:
 
 
 def _split_host_port(url: object) -> tuple[str, int] | None:
+    """(host, port) for a configured server url.
+
+    ``urlparse`` never fills in a scheme's implied port, so a remote hub given
+    as ``https://hub.example.com/wd/hub`` would otherwise be probed on the
+    local Appium port and reported as unreachable."""
     if not isinstance(url, str) or not url.strip():
         return None
     try:
         # "//" (not http://) lets urlparse read a bare host:port as a netloc.
         parsed = urlparse(url if "://" in url else f"//{url}")
-        return parsed.hostname or "127.0.0.1", parsed.port or 4723
+        port = (parsed.port
+                or _SCHEME_DEFAULT_PORTS.get(parsed.scheme)
+                or 4723)
+        return parsed.hostname or "127.0.0.1", port
     except ValueError:
         return None
 
