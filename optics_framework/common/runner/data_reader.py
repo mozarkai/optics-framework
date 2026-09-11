@@ -35,6 +35,10 @@ def _tokens(step: str) -> List[str]:
     """Whitespace-split, except that a quoted run holds together and a value written entirely
     in quotes is unwrapped — which is the only way a param can contain a space.
 
+    Unwrapped whatever the value holds, not only when it holds a space: an editor writing
+    every param as `name="value"` would otherwise hand the keyword the quotes as well, and
+    `index="2"` would arrive as the string `"2"`.
+
     An unbalanced quote falls back to `.split()`: the pattern would drop the quote and split
     anyway, so `text=it's fine` keeps reading as it always has."""
     if _unbalanced_quote(step):
@@ -60,31 +64,138 @@ def _keyword_slug(name: str) -> str:
 # The SDK/Robot facade (optics.py) exposes two keyword names the runtime map does not:
 # an alias of press_element and the session teardown. They still belong in the catalogue,
 # so a suite using one reports the unknown keyword instead of dispatching the words after
-# it to the shorter runtime keyword that shares their prefix.
-_FACADE_KEYWORD_SLUGS = frozenset({"press_element_with_index", "quit"})
+# it to the shorter runtime keyword that shares their prefix. Their arity is written out
+# because reflection only walks the api classes.
+_FACADE_KEYWORD_SLUGS = {"press_element_with_index": 3, "quit": 0}
 
 
-@lru_cache(maxsize=1)
-def _keyword_names() -> frozenset:
+def _arity(method) -> Optional[int]:
+    """How many params a keyword takes, or nothing when it takes any number. Unreadable
+    signatures answer "any number" so a keyword is never rejected for the wrong reason."""
+    try:
+        parameters = list(inspect.signature(method).parameters.values())
+    except (TypeError, ValueError):
+        return None
+
+    count = 0
+    for parameter in parameters:
+        if parameter.name == "self":
+            continue
+        if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+            return None
+        if parameter.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            count += 1
+    return count
+
+
+def _catalogue_classes(package) -> List[type]:
+    """Every public class the package's modules define (not merely re-export)."""
     import importlib
     import pkgutil
 
-    import optics_framework.api
-
-    names = set()
-    package = optics_framework.api
+    classes = []
     for _, module_name, _ in pkgutil.iter_modules(package.__path__):
         module = importlib.import_module(f"{package.__name__}.{module_name}")
         for class_name, cls in inspect.getmembers(module, inspect.isclass):
-            if cls.__module__ != module.__name__ or class_name.startswith("_"):
-                continue
-            names.update(
-                attr
-                for attr in dir(cls)
-                if not attr.startswith("_") and callable(getattr(cls, attr))
-            )
-    names.update(_FACADE_KEYWORD_SLUGS)
-    return frozenset(names)
+            if cls.__module__ == module.__name__ and not class_name.startswith("_"):
+                classes.append(cls)
+    return classes
+
+
+def _class_keyword_entries(cls) -> Dict[str, Optional[int]]:
+    """Every public callable a class exposes, against the number of params it takes."""
+    entries: Dict[str, Optional[int]] = {}
+    for attr in dir(cls):
+        if attr.startswith("_"):
+            continue
+        method = getattr(cls, attr)
+        if callable(method):
+            entries[attr] = _arity(method)
+    return entries
+
+
+@lru_cache(maxsize=1)
+def _keyword_catalogue() -> Dict[str, Optional[int]]:
+    """Every keyword slug the runtime registers, against the number of params it takes."""
+    import optics_framework.api
+
+    catalogue: Dict[str, Optional[int]] = {}
+    for cls in _catalogue_classes(optics_framework.api):
+        catalogue.update(_class_keyword_entries(cls))
+    catalogue.update(_FACADE_KEYWORD_SLUGS)
+    return catalogue
+
+
+def _keyword_names() -> frozenset:
+    return frozenset(_keyword_catalogue())
+
+
+def _matched_module_name(step: str, module_names: Set[str]) -> Optional[str]:
+    if step in module_names:
+        return step
+    step_slug = _keyword_slug(step)
+    for name in sorted(module_names, key=str):
+        name = str(name)
+        if "${" not in name and _keyword_slug(name) == step_slug:
+            return name
+    return None
+
+
+def _split_at_variable(step: str) -> Optional[Tuple[str, List[str]]]:
+    """The legacy split, for a step the catalogue cannot claim: the keyword is everything
+    before the first token holding a `${...}`.
+
+    Split on the token and not on the `${` itself, or `Press Element text=Login
+    timeout=${t}` is cut through the middle and `text=Login timeout=` is read as part of
+    the keyword name. Params are left exactly as `_tokens` returned them, so a quoted
+    value keeps the spaces it was quoted for."""
+    words = _tokens(step)
+    for index, word in enumerate(words):
+        if "${" in word:
+            return " ".join(words[:index]), words[index:]
+    return None
+
+
+# A word that could be part of a keyword's name: letters, and nothing else. A param that
+# is a number, a `${...}`, a `name=value`, a quoted value or a locator is none of these.
+_NAME_WORD = re.compile(r"^[A-Za-z][A-Za-z_]*$")
+
+
+def _mistyped(name: str, params: List[str]) -> bool:
+    """Whether a catalogue match is really the front half of a misspelt longer keyword.
+
+    `Swipe By Percent ${x} ${y}` matches `swipe`, leaving `By` and `Percent` as params —
+    which the runner would then dispatch, silently doing the wrong thing instead of
+    reporting an unknown keyword. Two exact signals, no fuzzy matching, and both need the
+    next param to be a bare word: the word continues a name the catalogue knows
+    (`swipe by` -> `swipe by percentage`), or the match cannot hold this many params
+    (`Scroll To Element foo` gives `scroll` three, and it takes two).
+
+    A keyword whose first param really is a bare word is unaffected: nothing extends
+    `press element login`, and `press element` takes ten params."""
+    if not params or not _NAME_WORD.match(params[0]):
+        return False
+
+    catalogue = _keyword_catalogue()
+    extended = _keyword_slug(f"{name} {params[0]}") + "_"
+    if any(slug.startswith(extended) for slug in catalogue):
+        return True
+
+    limit = catalogue.get(_keyword_slug(name))
+    return limit is not None and len(params) > limit
+
+
+def _catalogue_match(step: str) -> Optional[Tuple[str, List[str]]]:
+    words = _tokens(step)
+    catalogue = _keyword_names()
+    for count in range(len(words), 0, -1):
+        name = " ".join(words[:count])
+        if _keyword_slug(name) in catalogue:
+            return name, words[count:]
+    return None
 
 
 class DataReader(ABC):
@@ -384,32 +495,27 @@ class YAMLDataReader(DataReader):
         Parse a module step to extract the keyword and parameters.
 
         :param step: The module step string.
-        :param module_names: Names defined in the same file, which win over the catalogue — a
-            module may be called ``Sleep Well`` without its first word being read as a keyword.
+        :param module_names: Module names that win over the keyword catalogue.
         :return: Tuple of (keyword, list of parameters).
         """
         step = step.strip()
         if not step:
             return "", []
 
-        if module_names and step in module_names:
-            return step, []
+        if module_names:
+            matched = _matched_module_name(step, module_names)
+            if matched is not None:
+                return matched, []
 
-        words = _tokens(step)
-        catalogue = _keyword_names()
-        # longest first, so "Enter Text hi" is not read as "Enter"
-        for count in range(len(words), 0, -1):
-            name = " ".join(words[:count])
-            if _keyword_slug(name) in catalogue:
-                return name, words[count:]
+        # The catalogue answers first, or a keyword whose first param is a plain value has
+        # nothing to split on and `Sleep 5` reads as a keyword named `sleep 5`.
+        match = _catalogue_match(step)
+        if match is not None and not _mistyped(*match):
+            return match
 
-        param_pattern = re.compile(r"\${[^{}]+}")
-        params = param_pattern.findall(step)
-        if params:
-            param_start = step.index(params[0])
-            keyword = step[:param_start].strip()
-            param_parts = _tokens(step[param_start:].strip())
-            return keyword, [p.strip() for p in param_parts if p.strip()]
+        split = _split_at_variable(step)
+        if split is not None:
+            return split
 
         return step, []
 
@@ -473,9 +579,13 @@ class YAMLDataReader(DataReader):
         """Read only the module keys, so the project-wide names pass does not parse, and
         warn about, every step that the parse pass reads again."""
         data = self.read_file(file_path)
+        modules_data = data.get("Modules", [])
+        if not isinstance(modules_data, list):
+            return set()
         return {
             str(name).strip()
-            for module in data.get("Modules", [])
+            for module in modules_data
+            if isinstance(module, dict)
             for name in module
             if str(name).strip()
         }
