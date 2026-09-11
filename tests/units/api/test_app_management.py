@@ -21,25 +21,27 @@ class TestAppManagement:
         assert app_management.initialise_setup() is None
 
     @pytest.mark.parametrize(
-        "method, args, driver_attr, expected_args, expected_kwargs",
+        "method, args, kwargs, driver_attr, expected_args, expected_kwargs",
         [
-            ("launch_app", ("com.x",), "launch_app", (),
+            ("launch_app", (), {"app_identifier": "com.x"}, "launch_app", (),
              {"app_identifier": "com.x", "app_activity": None, "event_name": None}),
-            ("launch_other_app", ("com.y", "ev"), "launch_other_app", ("com.y", "ev"), {}),
-            ("close_and_terminate_app", (), "terminate", (), {}),
-            ("force_terminate_app", ("com.z", "ev"), "force_terminate_app", ("com.z", "ev"), {}),
-            ("start_appium_session", ("ev",), "launch_app", ("ev",), {}),
-            ("get_driver_session_id", (), "get_driver_session_id", (), {}),
+            ("launch_other_app", ("com.y", "ev"), {}, "launch_other_app", (),
+             {"app_name": "com.y", "event_name": "ev"}),
+            ("close_and_terminate_app", (), {}, "terminate", (), {}),
+            ("force_terminate_app", ("com.z", "ev"), {}, "force_terminate_app", (),
+             {"app_name": "com.z", "event_name": "ev"}),
+            ("start_appium_session", (), {"event_name": "ev"}, "launch_app", (), {"event_name": "ev"}),
+            ("get_driver_session_id", (), {}, "get_driver_session_id", (), {}),
         ],
     )
-    def test_delegates_to_driver(self, app_management, mock_driver, method, args,
+    def test_delegates_to_driver(self, app_management, mock_driver, method, args, kwargs,
                                  driver_attr, expected_args, expected_kwargs):
-        getattr(app_management, method)(*args)
+        getattr(app_management, method)(*args, **kwargs)
         getattr(mock_driver, driver_attr).assert_called_once_with(*expected_args, **expected_kwargs)
 
     def test_launch_app_returns_driver_result(self, app_management, mock_driver):
         mock_driver.launch_app.return_value = "session-123"
-        assert app_management.launch_app("com.x") == "session-123"
+        assert app_management.launch_app(app_identifier="com.x") == "session-123"
 
     def test_get_app_version_without_package(self, app_management, mock_driver):
         mock_driver.get_app_version.return_value = "1.2.3"
