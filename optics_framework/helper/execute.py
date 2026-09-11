@@ -1,3 +1,4 @@
+import inspect
 import os
 import shutil
 import socket
@@ -32,6 +33,23 @@ from optics_framework.common.models import (
     TemplateData,
     ErrorDefinitions,
 )
+
+
+def _reader_accepts_module_names(reader) -> bool:
+    try:
+        parameters = inspect.signature(reader.read_modules).parameters
+    except (TypeError, ValueError):
+        return False
+    return "module_names" in parameters
+
+
+def _read_module_names(reader, file_path) -> Set[str]:
+    read_names = getattr(reader, "read_module_names", None)
+    if read_names is not None:
+        return read_names(file_path)
+    if _reader_accepts_module_names(reader):
+        return set(reader.read_modules(file_path, None))
+    return set(reader.read_modules(file_path))
 
 
 def discover_templates(project_path: str) -> TemplateData:
@@ -731,10 +749,14 @@ class BaseRunner:
         module_names = set()
         for file_path in module_files:
             reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            module_names |= reader.read_module_names(file_path)
+            module_names |= _read_module_names(reader, file_path)
         for file_path in module_files:
             reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            modules = reader.read_modules(file_path, module_names)
+            modules = (
+                reader.read_modules(file_path, module_names)
+                if _reader_accepts_module_names(reader)
+                else reader.read_modules(file_path)
+            )
             for name, definition in modules.items():
                 if self.modules_data.get_module_definition(name):
                     internal_logger.warning(
