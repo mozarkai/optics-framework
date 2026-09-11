@@ -72,24 +72,23 @@ class SeleniumPageSource(ElementSourceInterface):
         raise NotImplementedError(msg)
 
     def _strict_element_match(self) -> bool:
-        """Whether project config requests exact-only matching for locate (Config.strict_element_match).
+        """Whether project config requests exact-only matching (Config.strict_element_match).
 
-        Presence/assert checks ignore this and are always strict -- see assert_elements.
+        Governs both locate and presence/assert checks so the two stay uniform -- see
+        assert_elements. Defaults False (fuzzy) when the config chain is unavailable.
         """
         try:
             return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
         except AttributeError:
             return False
 
-    def locate(self, element: str, index: Optional[int] = None, *, strict_override: Optional[bool] = None) -> Any:
+    def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
         Locate an element on the current webpage using Selenium.
 
         Args:
             element (str): The identifier of the element to locate. Can be an XPath string, visible text, or element ID.
             index (int, optional): Index-based selection is not supported for Selenium and will raise a ValueError if provided.
-            strict_override (bool, optional): bypasses Config.strict_element_match -- used by
-                assert_elements, which always resolves text strictly regardless of config.
 
         Returns:
             WebElement or None: The located Selenium WebElement if found, otherwise None.
@@ -103,7 +102,7 @@ class SeleniumPageSource(ElementSourceInterface):
             msg = 'Selenium Page Source does not support locating elements using index.'
             internal_logger.error(msg)
             raise ValueError(msg)
-        strict = strict_override if strict_override is not None else self._strict_element_match()
+        strict = self._strict_element_match()
         try:
             if element_type == "Image":
                 internal_logger.debug("Selenium does not support locating elements by image.")
@@ -215,7 +214,7 @@ class SeleniumPageSource(ElementSourceInterface):
 
         while time.time() - start_time < timeout:
             found_elements = [
-                self.locate(element, strict_override=True) is not None for element in elements
+                self.locate(element) is not None for element in elements
             ]
 
             if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):

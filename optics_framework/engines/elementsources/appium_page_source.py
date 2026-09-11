@@ -80,9 +80,10 @@ class AppiumPageSource(ElementSourceInterface):
         raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
     def _strict_element_match(self) -> bool:
-        """Whether project config requests exact-only matching for locate (Config.strict_element_match).
+        """Whether project config requests exact-only matching (Config.strict_element_match).
 
-        Presence/assert checks ignore this and are always strict -- see assert_elements.
+        Governs both locate and presence/assert checks so the two stay uniform -- see
+        assert_elements. Defaults False (fuzzy) when the config chain is unavailable.
         """
         try:
             return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
@@ -225,12 +226,14 @@ class AppiumPageSource(ElementSourceInterface):
 
             self.get_page_source()  # Refresh page source
 
+            strict = self._strict_element_match()
+
             # Check text-based elements
-            text_found = self.ui_text_search(texts, rule, strict=True) if texts else (rule == "all")
+            text_found = self.ui_text_search(texts, rule, strict=strict) if texts else (rule == "all")
 
             # Check XPath-based elements
             if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None and xpaths:
-                xpath_results = [self.driver.ui_helper.find_xpath(xpath, strict=True)[0] for xpath in xpaths]
+                xpath_results = [self.driver.ui_helper.find_xpath(xpath, strict=strict)[0] for xpath in xpaths]
             else:
                 xpath_results = [rule == "all"]
             xpath_found = (all(xpath_results) if rule == "all" else any(xpath_results))
