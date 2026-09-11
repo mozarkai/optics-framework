@@ -29,6 +29,20 @@ from optics_framework.engines.drivers.appium_platforms import (
 )
 from optics_framework.common.error import OpticsError, Code
 
+_MAX_ERROR_OUTPUT_LINES = 20
+
+
+def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LINES) -> str:
+    """Cap command output embedded in error messages so one failure can't flood the log."""
+    lines = [line for line in (output or "").splitlines() if line.strip()]
+    if not lines:
+        return "<no output>"
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    half = max_lines // 2
+    omitted = len(lines) - max_lines
+    return "\n".join([*lines[:half], f"… ({omitted} lines omitted)", *lines[-half:]])
+
 
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
@@ -630,17 +644,25 @@ class Appium(DriverInterface):
                     return appver
 
         except Exception as e:
+            output = getattr(e, "output", "") or output
             internal_logger.info(f"Error executing adb command {dumpsys_cmd}: {e}")
             raise OpticsError(
                 Code.E0401,
-                message=f"Error executing adb command {dumpsys_cmd}: {e}. Received output = {output}.",
+                message=(
+                    f"Error executing adb command {dumpsys_cmd}: {e}. "
+                    f"Output:\n{_summarize_command_output(output)}"
+                ),
                 details=str(e),
                 cause=e
             ) from e
 
         raise OpticsError(
             Code.E0401,
-            message=f"Could not find versionName for package: {app_package}. Received output = {output}"
+            message=(
+                f"Could not find versionName for package: {app_package} in "
+                f"'{' '.join(dumpsys_cmd)}' output.\n"
+                f"Output:\n{_summarize_command_output(output)}"
+            )
         )
 
     def _get_ios_app_version(self, bundle_id_override: Optional[str] = None) -> str:
@@ -675,7 +697,10 @@ class Appium(DriverInterface):
         except Exception as e:
             raise OpticsError(
                 Code.E0401,
-                message=f"ideviceinstaller command failed: {e}. Output: {output}",
+                message=(
+                    f"ideviceinstaller command failed: {e}. "
+                    f"Output:\n{_summarize_command_output(output)}"
+                ),
                 details=str(e),
                 cause=e,
             ) from e
@@ -693,7 +718,10 @@ class Appium(DriverInterface):
 
         raise OpticsError(
             Code.E0401,
-            message=f"Could not find bundle '{bundle_id}' in ideviceinstaller output. Output: {output}",
+            message=(
+                f"Could not find bundle '{bundle_id}' in ideviceinstaller output.\n"
+                f"Output:\n{_summarize_command_output(output)}"
+            ),
         )
 
     def initialise_setup(self) -> None:
