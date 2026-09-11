@@ -1100,8 +1100,12 @@ class Optics:
         timeout: fallback_str = "60",
         rule: fallback_str = "any",
         event_name: Optional[fallback_str] = None,
+        fail: Union[bool, str] = True,
     ) -> bool:
-        """Assert the presence of elements."""
+        """Assert the presence of elements.
+
+        :param fail: If True, raise on failure; if False, return False instead.
+        """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
         return self.verifier.assert_presence(
@@ -1109,6 +1113,7 @@ class Optics:
             timeout_str=cast(str, timeout),
             rule=cast(str, rule),
             event_name=cast(Optional[str], event_name),
+            fail=fail,
         )
 
     @keyword("Assert Visibility")
@@ -1119,8 +1124,12 @@ class Optics:
         timeout: fallback_str = "60",
         rule: fallback_str = "any",
         event_name: Optional[fallback_str] = None,
+        fail: Union[bool, str] = True,
     ) -> bool:
-        """Assert that elements are actually rendered/visible on screen right now."""
+        """Assert that elements are actually rendered/visible on screen right now.
+
+        :param fail: If True, raise on failure; if False, return False instead.
+        """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
         return self.verifier.assert_visibility(
@@ -1128,6 +1137,7 @@ class Optics:
             timeout_str=cast(str, timeout),
             rule=cast(str, rule),
             event_name=cast(Optional[str], event_name),
+            fail=fail,
         )
 
     @keyword("Validate Screen")
