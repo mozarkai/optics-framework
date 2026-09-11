@@ -520,10 +520,10 @@ class ActionKeyword:
                 internal_logger.info(
                     f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
                 self.driver.press_coordinates(
-                    x + int(offset_x), y + int(offset_y), event_name)
+                    x + int(offset_x), y + int(offset_y), event_name=event_name)
             else:
                 internal_logger.info(f"Pressing element '{element}'")
-                self.driver.press_element(located, int(repeat), event_name)
+                self.driver.press_element(located, int(repeat), event_name=event_name)
 
         self._locate_and_act(
             element, "press_element", act, (repeat, offset_x, offset_y),
@@ -542,7 +542,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "press_by_percentage")
         self.driver.press_percentage_coordinates(
-            float(percent_x), float(percent_y), int(repeat), event_name
+            float(percent_x), float(percent_y), int(repeat), event_name=event_name
         )
 
     def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
@@ -557,7 +557,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "press_by_coordinates")
         internal_logger.info(f'Pressing by coordinates: ({coor_x}, {coor_y})')
-        self.driver.press_coordinates(int(coor_x), int(coor_y), event_name)
+        self.driver.press_coordinates(int(coor_x), int(coor_y), event_name=event_name)
 
 
     def detect_and_press(self, element: str, timeout: str = "30", event_name: Optional[str] = None) -> None:
@@ -664,7 +664,7 @@ class ActionKeyword:
         if container is None:
             _raise_option_not_found(element, option, after)
 
-        self._scroll_dropdown_until_found(element, option, container, float(timeout), event_name)
+        self._scroll_dropdown_until_found(element, option, container, float(timeout), event_name=event_name)
 
     def _find_option_element(self, option: str, timeout_str: str = _DROPDOWN_OPTION_CHECK_TIMEOUT) -> bool:
         """
@@ -732,7 +732,7 @@ class ActionKeyword:
         previous_hash = self._safe_pagesource_hash()
         start_time = time.time()
         while time.time() - start_time < timeout:
-            self.driver.swipe(center_x, center_y, "up", swipe_length, event_name)
+            self.driver.swipe(center_x, center_y, "up", swipe_length, event_name=event_name)
             time.sleep(1)
 
             current_hash = self._safe_pagesource_hash()
@@ -761,7 +761,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe")
         internal_logger.info(f'Swiping from ({coor_x}, {coor_y}) to the {direction} with length {swipe_length}')
-        self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name)
+        self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name=event_name)
 
     def swipe_by_percentage(self, percent_x: str, percent_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
         """
@@ -776,7 +776,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe_percentage")
         internal_logger.info(f'Swiping from ({percent_x}, {percent_y}) to the {direction} with length {swipe_length}')
-        self.driver.swipe_percentage(int(percent_x), int(percent_y), direction, int(swipe_length), event_name)
+        self.driver.swipe_percentage(int(percent_x), int(percent_y), direction, int(swipe_length), event_name=event_name)
 
     def swipe_seekbar_to_right_android(self, element: str, event_name: Optional[str] = None) -> None:
         """
@@ -793,7 +793,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe_seekbar_to_right_android")
         internal_logger.info(f'Swiping seekbar element: {element} to the right')
-        self.driver.swipe_element(element, 'right', 50, event_name)
+        self.driver.swipe_element(element, 'right', 50, event_name=event_name)
 
     def swipe_until_element_appears(self, element: str, direction: str, timeout: str, event_name: Optional[str] = None) -> None:
         """
@@ -818,7 +818,7 @@ class ActionKeyword:
             except OpticsError as e:
                 if e.code != Code.E0201:
                     raise
-            self.driver.swipe_percentage(10, 50, direction, 25, event_name)
+            self.driver.swipe_percentage(10, 50, direction, 25, event_name=event_name)
             time.sleep(3)
         if not found:
             raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after swiping {direction} for {timeout}s.")
@@ -843,11 +843,11 @@ class ActionKeyword:
             if isinstance(located, tuple):
                 x, y = located
                 internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
-                self.driver.swipe(x, y, direction, int(swipe_length), event_name)
+                self.driver.swipe(x, y, direction, int(swipe_length), event_name=event_name)
             else:
                 internal_logger.debug(f"Swiping from element '{element}'")
                 self.driver.swipe_element(
-                    located, direction, int(swipe_length), event_name)
+                    located, direction, int(swipe_length), event_name=event_name)
 
         self._locate_and_act(
             element, "swipe_from_element", act, (direction, swipe_length),
@@ -864,7 +864,7 @@ class ActionKeyword:
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "scroll")
         internal_logger.info(f"Scrolling {direction} with event {event_name}")
-        self.driver.scroll(direction, 1000, event_name)
+        self.driver.scroll(direction, 1000, event_name=event_name)
 
     def scroll_until_element_appears(self, element: str, direction: str, timeout: str, event_name: Optional[str] = None) -> None:
         """
@@ -892,7 +892,7 @@ class ActionKeyword:
                 # Don't hide configuration/strategy issues; scrolling won't fix these.
                 if "No strategies found" in e.message or "No valid strategies found" in e.message:
                     raise
-            self.driver.scroll(direction, 1000, event_name)
+            self.driver.scroll(direction, 1000, event_name=event_name)
             time.sleep(3)
         if not found:
             raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
@@ -917,11 +917,11 @@ class ActionKeyword:
             if isinstance(located, tuple):
                 x, y = located
                 internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
-                self.driver.swipe(x, y, direction, int(scroll_length), event_name)
+                self.driver.swipe(x, y, direction, int(scroll_length), event_name=event_name)
             else:
                 internal_logger.debug(f"Swiping from element '{element}'")
                 self.driver.swipe_element(
-                    located, direction, int(scroll_length), event_name)
+                    located, direction, int(scroll_length), event_name=event_name)
 
         self._locate_and_act(
             element, "scroll_from_element", act, (direction, scroll_length),
@@ -952,10 +952,10 @@ class ActionKeyword:
                 x, y = located
                 internal_logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
                 self.driver.press_coordinates(x, y, event_name=event_name)
-                self.driver.enter_text(text, event_name)
+                self.driver.enter_text(text, event_name=event_name)
             else:
                 internal_logger.debug(f"Entering text '{text}' into element '{element}'")
-                self.driver.enter_text_element(located, text, event_name)
+                self.driver.enter_text_element(located, text, event_name=event_name)
 
         self._locate_and_act(
             element, "enter_text", act, (text,),
@@ -975,7 +975,7 @@ class ActionKeyword:
         except Exception as e:
             internal_logger.error(f"Error capturing screenshot: {e}")
         internal_logger.info(f'Entering text directly: {text}')
-        self.driver.enter_text(text, event_name)
+        self.driver.enter_text(text, event_name=event_name)
 
     def enter_text_using_keyboard(self, text_input: str, event_name: Optional[str] = None) -> None:
         """
@@ -997,7 +997,7 @@ class ActionKeyword:
         except Exception as e:
             internal_logger.error(f"Error capturing screenshot: {e}")
         internal_logger.info(f'Entering text using keyboard: {text_input}')
-        self.driver.enter_text_using_keyboard(text_input, event_name)
+        self.driver.enter_text_using_keyboard(text_input, event_name=event_name)
 
     def enter_number(self, element: str, number: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
                      aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
@@ -1018,10 +1018,10 @@ class ActionKeyword:
                 x, y = located
                 internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
                 self.driver.press_coordinates(x, y, event_name=event_name)
-                self.driver.enter_text(str(number), event_name)
+                self.driver.enter_text(str(number), event_name=event_name)
             else:
                 internal_logger.debug(f"Entering number '{number}' into element '{element}'")
-                self.driver.enter_text_element(located, str(number), event_name)
+                self.driver.enter_text_element(located, str(number), event_name=event_name)
 
         self._locate_and_act(
             element, "enter_number", act, (number,),
@@ -1042,7 +1042,7 @@ class ActionKeyword:
             internal_logger.error(f"Error capturing screenshot: {e}")
 
         internal_logger.info(f"Pressing keycode: {keycode}")
-        self.driver.press_keycode(keycode, event_name)
+        self.driver.press_keycode(keycode, event_name=event_name)
 
 
     def clear_element_text(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
@@ -1064,10 +1064,10 @@ class ActionKeyword:
                 internal_logger.debug(f"Clearing text at coordinates ({x}, {y})")
                 self.driver.press_coordinates(
                     x, y, event_name=event_name)
-                self.driver.clear_text(event_name)
+                self.driver.clear_text(event_name=event_name)
             else:
                 internal_logger.debug(f"Clearing text from element '{element}'")
-                self.driver.clear_text_element(located, event_name)
+                self.driver.clear_text_element(located, event_name=event_name)
 
         self._locate_and_act(
             element, "clear_element_text", act,
