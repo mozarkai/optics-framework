@@ -138,7 +138,7 @@ class ScreenshotStream:
 
         Args:
             wait_for_threads (bool): Whether to wait for threads to finish
-            timeout (int): Maximum time to wait for threads to finish
+            timeout (float): Maximum total time to wait for all threads to finish
         """
         internal_logger.debug("Stopping screenshot capture...")
         self.stop_event.set()
@@ -152,10 +152,19 @@ class ScreenshotStream:
             if self.dedup_thread and self.dedup_thread.is_alive():
                 threads_to_wait.append(("Deduplication", self.dedup_thread))
 
+            deadline = time.time() + timeout
             for thread_name, thread in threads_to_wait:
-                thread.join(timeout=timeout)
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    internal_logger.warning(
+                        f"{thread_name} thread not joined; stop deadline exceeded."
+                    )
+                    continue
+                thread.join(timeout=remaining)
                 if thread.is_alive():
-                    internal_logger.warning(f"{thread_name} thread did not stop within {timeout} seconds")
+                    internal_logger.warning(
+                        f"{thread_name} thread did not stop within the allotted time"
+                    )
                 else:
                     internal_logger.debug(f"{thread_name} thread stopped successfully")
 
