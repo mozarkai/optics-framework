@@ -22,10 +22,6 @@ def _write(tmp_path, name, content):
     return str(path)
 
 
-# --------------------------------------------------------------------------- #
-# split_params_by_signature — '=' locator vs genuine keyword-arg disambiguation #
-# --------------------------------------------------------------------------- #
-
 class TestSplitParamsBySignature:
     @staticmethod
     def _method(element, timeout="10", rule="all", event_name=None):
@@ -56,10 +52,6 @@ class TestSplitParamsBySignature:
         assert pos == []
         assert kw == {"text": "x"}
 
-
-# --------------------------------------------------------------------------- #
-# CSVDataReader                                                                #
-# --------------------------------------------------------------------------- #
 
 class TestCSVDataReader:
     reader = CSVDataReader()
@@ -120,10 +112,6 @@ class TestCSVDataReader:
             "E1": {"match_string": "Session expired", "description": "Auth error", "severity": "high"}
         }
 
-
-# --------------------------------------------------------------------------- #
-# YAMLDataReader                                                               #
-# --------------------------------------------------------------------------- #
 
 class TestYAMLDataReader:
     reader = YAMLDataReader()
@@ -204,10 +192,96 @@ class TestYAMLDataReader:
             # An unbalanced quote falls back rather than dropping the quote and splitting.
             ('Enter Text ${f} text="abc', ("Enter Text", ["${f}", 'text="abc'])),
             ("Enter Text ${f} it's fine", ("Enter Text", ["${f}", "it's", "fine"])),
+            # A value gives its quotes up whatever is inside it, not only when it holds a
+            # space. An editor writing every param as `name="value"` depends on this: the
+            # keyword must be handed `2`, never the three characters `"2"`.
+            ('Press Element ${el} index="2"', ("Press Element", ["${el}", 'index=2'])),
+            ('Enter Text ${f} text="hello"', ("Enter Text", ["${f}", "text=hello"])),
+            ('Press Element "Login"', ("Press Element", ["Login"])),
+            # And the quotes are what carry the spaces, so they survive the split intact.
+            ('Enter Text ${f} text=" "', ("Enter Text", ["${f}", "text= "])),
+            ('Enter Text ${f} text=""', ("Enter Text", ["${f}", "text="])),
+            # A `${...}` inside a quoted value does not end the keyword name, and neither
+            # does one inside a `name=value`: the split is on tokens, not on the `${`.
+            (
+                "Press Element text=Login timeout=${t}",
+                ("Press Element", ["text=Login", "timeout=${t}"]),
+            ),
+            ('Enter Text hello text="${x}"', ("Enter Text", ["hello", "text=${x}"])),
+            # A literal param before a variable one is still a param.
+            (
+                "Swipe By Percentage 50 50 ${dur}",
+                ("Swipe By Percentage", ["50", "50", "${dur}"]),
+            ),
         ],
     )
     def test_parse_module_step_honours_quoted_params(self, step, expected):
         assert self.reader._parse_module_step(step) == expected
+
+    @pytest.mark.parametrize(
+        "step, expected",
+        [
+            # A misspelt keyword whose first words spell a shorter one must not dispatch to
+            # the shorter one: the params would be wrong and no error would be raised.
+            # `swipe by` continues `swipe by percentage`, so `Swipe` is not the answer.
+            ("Swipe By Percent ${x} ${y}", ("Swipe By Percent", ["${x}", "${y}"])),
+            (
+                "Enter Text Using Keybord ${f} hi",
+                ("Enter Text Using Keybord", ["${f}", "hi"]),
+            ),
+            (
+                "Press Element With Indx ${el} 2",
+                ("Press Element With Indx", ["${el}", "2"]),
+            ),
+            # Nothing continues `scroll to`, but `scroll` takes two params and this leaves
+            # it three — so the words are part of a name, not params.
+            ("Scroll To Element foo", ("Scroll To Element foo", [])),
+            # The fallback split ends the name at the token holding the `${...}`, not at
+            # the `${` itself, or half a param is read as part of the keyword's name and
+            # the "did you mean" hint has nothing usable to work with.
+            ('Slep text="${x}"', ("Slep", ["text=${x}"])),
+            ("Slep ${f} timeout=${t}", ("Slep", ["${f}", "timeout=${t}"])),
+        ],
+    )
+    def test_a_misspelt_keyword_is_not_dispatched_to_its_shorter_prefix(self, step, expected):
+        assert self.reader._parse_module_step(step) == expected
+
+    @pytest.mark.parametrize(
+        "step, expected",
+        [
+            # The guard only fires on a bare word, and only when the catalogue says so.
+            # Nothing continues `scroll down`, and `scroll` holds one param fine.
+            ("Scroll down", ("Scroll", ["down"])),
+            ("Swipe up", ("Swipe", ["up"])),
+            # Nothing continues `press element login`, and `press element` takes ten.
+            ("Press Element Login", ("Press Element", ["Login"])),
+            ("Press Keycode ENTER", ("Press Keycode", ["ENTER"])),
+            # A variadic keyword has no count to exceed.
+            ("Run Loop MyModule 3", ("Run Loop", ["MyModule", "3"])),
+            # The longer keyword spelt correctly is matched whole, params and all.
+            (
+                "Enter Text Using Keyboard hello",
+                ("Enter Text Using Keyboard", ["hello"]),
+            ),
+            ("Enter Text Direct hello", ("Enter Text Direct", ["hello"])),
+            # Too many params, but the first is not a word, so this stays an arity error
+            # for the runner to report rather than an unknown keyword.
+            ("Sleep 5 extra", ("Sleep", ["5", "extra"])),
+        ],
+    )
+    def test_a_bare_word_param_is_still_a_param(self, step, expected):
+        assert self.reader._parse_module_step(step) == expected
+
+    def test_read_modules_keeps_a_quoted_value_without_a_space(self, tmp_path):
+        """Through the public reader, because this is the form the yaml editor writes."""
+        path = _write(
+            tmp_path,
+            "m.yaml",
+            'Modules:\n  - M:\n      - Press Element ${btn} index="2"\n',
+        )
+        assert self.reader.read_modules(path) == {
+            "M": [("Press Element", ["${btn}", "index=2"])]
+        }
 
     def test_read_modules_keeps_a_quoted_space(self, tmp_path):
         path = _write(
@@ -321,10 +395,6 @@ class TestYAMLDataReader:
         assert set(merged.collections) == {"c1", "c2"}
 
 
-# --------------------------------------------------------------------------- #
-# escape/unescape helpers (used by the readers and by output round-trips)      #
-# --------------------------------------------------------------------------- #
-
 class TestEscapeCsvValue:
     @pytest.mark.parametrize(
         "raw, escaped",
@@ -363,10 +433,6 @@ class TestEscapeUnescapeInverses:
     def test_unescape_of_escape_is_identity(self, raw):
         assert unescape_csv_value(escape_csv_value(raw)) == raw
 
-
-# --------------------------------------------------------------------------- #
-# merge_dicts                                                                  #
-# --------------------------------------------------------------------------- #
 
 class TestMergeDicts:
     def test_merges_disjoint_keys(self):
