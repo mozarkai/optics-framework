@@ -1289,11 +1289,18 @@ class FlowControl:
                 f"Could not extract '{element_name}' using path '{path}'."
             )
 
-    def _get_or_create_session_elements(self):
-        """Gets session elements or creates if not properly initialized."""
+    def _get_or_create_session_elements(self) -> ElementData:
+        """Gets session elements or creates if not properly initialized.
+
+        `optics serve` creates every session with `elements=None` and offers no way to fill
+        it, so raising here left `Invoke API` unusable there — its `extract` had nowhere to
+        put a value. `TestRunner` already substitutes an empty `ElementData` in the same
+        case, so creating one is the reading the runner has always taken.
+        """
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
+            runner_elements = ElementData()
+            self.session.elements = runner_elements
         return runner_elements
 
     def _evaluate_jsonpath_assertions(
