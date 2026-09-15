@@ -62,7 +62,7 @@ def _default_sources_for_driver(driver: str) -> list[str]:
 try:
     from fastmcp import FastMCP
     from fastmcp.exceptions import ToolError
-    from fastmcp.tools.tool import Tool
+    from fastmcp.tools import Tool
     from fastmcp.utilities.types import Image
 
     _FASTMCP_IMPORT_ERROR: Optional[ImportError] = None
