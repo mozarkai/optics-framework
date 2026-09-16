@@ -17,6 +17,7 @@ import base64
 import inspect
 import json
 import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,6 +27,7 @@ from fastapi.testclient import TestClient
 from optics_framework.common import expose_api
 from optics_framework.common.config_handler import DependencyConfig
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.models import ElementData
 
 
 def _run(coro):
@@ -861,3 +863,31 @@ def test_upload_template_success_writes_file_and_registers(client, tmp_path):
     stored_path = session.inline_templates["my_btn"]
     with open(stored_path, "rb") as f:
         assert f.read() == raw
+
+
+def test_get_session_variables_returns_namespace(client):
+    session = SimpleNamespace(elements=ElementData())
+    session.elements.add_element("otp", "482913")
+    session.elements.add_element("access_token", "eyJhbGci")
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=session):
+        resp = client.get("/v1/sessions/s1/variables")
+
+    assert resp.status_code == 200
+    assert resp.json()["variables"] == {"otp": ["482913"], "access_token": ["eyJhbGci"]}
+
+
+def test_get_session_variables_empty_when_store_absent(client):
+    with patch.object(expose_api.session_manager, "get_session", return_value=SimpleNamespace(elements=None)):
+        resp = client.get("/v1/sessions/s1/variables")
+
+    assert resp.status_code == 200
+    assert resp.json()["variables"] == {}
+
+
+def test_get_session_variables_session_not_found_returns_404(client):
+    with patch.object(expose_api.session_manager, "get_session", return_value=None):
+        resp = client.get("/v1/sessions/missing/variables")
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == expose_api.SESSION_NOT_FOUND

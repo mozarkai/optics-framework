@@ -9,6 +9,8 @@ tracked as a deferred behaviour fix — so the cases that expose it are marked
 prompting removal of the marker) once the fix lands.
 """
 import json
+import tempfile
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -47,6 +49,13 @@ class _Session:
         self.apis = ApiData()
         self.apis.collections = {}
         self.config_handler = MagicMock()
+        # A real path: invoke_api writes api_details.log/.har under it, and a bare
+        # MagicMock makes that land in a gitignored MagicMock/<object-id>/ tree that
+        # collides whenever CPython recycles an id across runs.
+        temp_dir = tempfile.mkdtemp()
+        self.config_handler.config = SimpleNamespace(
+            execution_output_path=temp_dir, project_path=temp_dir
+        )
 
 
 @pytest.fixture

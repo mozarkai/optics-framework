@@ -327,6 +327,39 @@ curl -X POST "http://localhost:8000/v1/sessions/{session_id}/action" \
 
 Use the identifier format `collection_name.api_name` (e.g. `auth.token`). Extracted values from the API response are stored in the session and can be used by subsequent keywords or reads.
 
+The response is returned to the caller in `data`:
+
+```json
+{
+  "execution_id": "...",
+  "status": "SUCCESS",
+  "data": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {"txnType": "OTP", "dummy": "482913"},
+    "elapsed_ms": 412.337
+  }
+}
+```
+
+A dict-returning keyword is placed in `data` as-is (see `execute_keyword`), so `data` *is*
+the response — there is no `data.result` wrapper for this keyword.
+
+### Read session variables
+
+Returns the session's `${variable}` namespace — every value an `extract` block or a
+variable-writing keyword has stored, as an ordered list per name.
+
+```bash
+curl "http://localhost:8000/v1/sessions/{session_id}/variables"
+```
+
+```json
+{"variables": {"access_token": ["eyJhbGci..."], "otp": ["482913"]}}
+```
+
+This is unrelated to `/elements`, which inspects the device screen.
+
 ### Capture Screenshot
 
 **GET** `/v1/sessions/{session_id}/screenshot`
