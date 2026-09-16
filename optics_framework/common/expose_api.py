@@ -20,7 +20,7 @@ from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData
+from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
@@ -517,7 +517,7 @@ async def create_session(config: SessionConfig):
             session_config,
             test_cases=None,
             modules=None,
-            elements=None,
+            elements=ElementData(),
             apis=apis,
             templates=templates,
         )
@@ -1042,6 +1042,23 @@ async def get_driver_session_id(session_id: str):
     Returns ExecutionResponse with the session id in data.result.
     """
     return await run_keyword_endpoint(session_id, "get_driver_session_id")
+
+@app.get(
+    "/v1/sessions/{session_id}/variables",
+    responses={404: {"description": "Session not found"}},
+)
+async def get_session_variables(session_id: str):
+    """
+    Return the session's ``${variable}`` namespace: name -> ordered values, as
+    populated by Invoke API extractions and variable-writing keywords.
+    Unrelated to /elements, which inspects the device screen.
+    """
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+    elements = session.elements
+    return {"variables": elements.elements if isinstance(elements, ElementData) else {}}
+
 
 @app.get("/v1/sessions/{session_id}/elements")
 async def get_elements(

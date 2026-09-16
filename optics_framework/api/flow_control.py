@@ -827,10 +827,7 @@ class FlowControl:
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         var_name = self._extract_variable_name(param1)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         result = self._compute_expression(param2)
         runner_elements.remove_element(var_name)
         runner_elements.add_element(var_name, str(result))
@@ -994,18 +991,15 @@ class FlowControl:
         # Format result
         result = base_date.strftime(output_format)
 
-        # Store in session.elements
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         runner_elements.add_element(var_name, result)
         return result
 
-    def invoke_api(self, api_identifier: str) -> None:
+    def invoke_api(self, api_identifier: str) -> dict[str, Any]:
         """Invokes an API call based on a definition from the session's API data.
 
         :param api_identifier: API to call, in ``collection.api_name`` form.
+        :return: ``status_code``, ``headers``, ``body`` and ``elapsed_ms`` of the response.
         """
         internal_logger.debug(f"[INVOKE_API] Called with api_identifier={api_identifier}")
         self._ensure_session()
@@ -1024,6 +1018,19 @@ class FlowControl:
         internal_logger.debug(f"[INVOKE_API] Received response: status_code={response.status_code}")
         self._process_response(response, api_def)
         internal_logger.debug(f"[INVOKE_API] Finished processing response for API: {api_name}")
+        return {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "body": self._response_body(response),
+            "elapsed_ms": round(response.elapsed.total_seconds() * 1000, 3),
+        }
+
+    def _response_body(self, response: requests.Response) -> Any:
+        """Parsed JSON body, or the raw text when the response is not JSON."""
+        try:
+            return response.json()
+        except ValueError:
+            return response.text
 
     def _parse_api_identifier(self, identifier: str) -> Tuple[str, str]:
         """Parses 'collection.api' into a tuple."""
@@ -1289,11 +1296,12 @@ class FlowControl:
                 f"Could not extract '{element_name}' using path '{path}'."
             )
 
-    def _get_or_create_session_elements(self):
-        """Gets session elements or creates if not properly initialized."""
+    def _get_or_create_session_elements(self) -> ElementData:
+        """Gets the session's element store, creating and attaching it if absent."""
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
+            runner_elements = ElementData()
+            setattr(self.session, "elements", runner_elements)
         return runner_elements
 
     def _evaluate_jsonpath_assertions(
@@ -1334,20 +1342,18 @@ class FlowControl:
                 ) from e
 
     def _extract_from_json(self, data: Any, path: str) -> Optional[Any]:
-        """Extracts a value from a nested dictionary using a dot-separated path."""
-        current_data = data
-        for key in path.split("."):
-            internal_logger.debug(
-                f"_extract_from_json: Current data type: {type(current_data)}, Key: {key}"
-            )
-            if isinstance(current_data, dict):
-                current_data = current_data.get(key)
-                internal_logger.debug(
-                    f"_extract_from_json: Value after get('{key}'): {current_data}"
-                )
-            else:
-                internal_logger.warning(
-                    f"_extract_from_json: Data is not a dictionary at key '{key}'. Current data: {current_data}"
-                )
-                return None
-        return current_data
+        """Extracts a value using a JSONPath expression.
+
+        Accepts both ``$.a.b[0].c`` and the bare ``a.b`` form, so definitions written
+        against the old dot-path behaviour keep working.
+        """
+        expression = path if path.lstrip().startswith("$") else f"$.{path}"
+        try:
+            matches = jsonpath_parse(expression).find(data)
+        except Exception as e:  # noqa: BLE001 - a bad path is a definition error, not a crash
+            internal_logger.warning(f"Invalid extract path '{path}': {e}")
+            return None
+        if not matches:
+            internal_logger.warning(f"Extract path '{path}' matched nothing in the response.")
+            return None
+        return matches[0].value

@@ -82,3 +82,46 @@ def test_invoke_api_request_failure(flow_control):
 
     with pytest.raises(OpticsError, match="API request to http://127.0.0.1:9/token failed:"):
         flow_control.invoke_api("authentication_apis.post_token")
+
+
+def test_invoke_api_returns_response(flow_control):
+    result = flow_control.invoke_api("authentication_apis.post_token")
+
+    assert result["status_code"] == 200
+    assert result["body"]["access_token"] == "real_auth_token_123"
+    assert isinstance(result["headers"], dict)
+    assert isinstance(result["elapsed_ms"], float)
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("$.access_token", "tok"),
+        ("access_token", "tok"),
+        ("$.user.userId", "98765"),
+        ("user.userId", "98765"),
+        ("$.resultObj.containers[0].metadata.title", "Taj Mahal"),
+        ("resultObj.containers[0].metadata.title", "Taj Mahal"),
+        ("$.missing", None),
+        ("user.missing.deeper", None),
+    ],
+)
+def test_extract_from_json_paths(path, expected):
+    data = {
+        "access_token": "tok",
+        "user": {"userId": "98765"},
+        "resultObj": {"containers": [{"metadata": {"title": "Taj Mahal"}}]},
+    }
+    assert FlowControl.__new__(FlowControl)._extract_from_json(data, path) == expected
+
+
+def test_extraction_creates_element_store_when_missing():
+    class SessionWithoutElements:
+        elements = None
+
+    flow_control = FlowControl.__new__(FlowControl)
+    flow_control.session = SessionWithoutElements()
+
+    flow_control._extract_and_store_single_value({"dummy": "482913"}, "otp", "$.dummy")
+
+    assert flow_control.session.elements.get_first("otp") == "482913"
