@@ -257,7 +257,7 @@ class Appium(DriverInterface):
         all_caps = self.capabilities.copy() if self.capabilities else {}
         self._apply_app_identifier_caps(all_caps, app_package, app_activity)
 
-        attached_sid = self._try_attach_or_clear_session_caps(all_caps, event_name)
+        attached_sid = self._try_attach_or_clear_session_caps(all_caps, event_name=event_name)
         if attached_sid is not None:
             return attached_sid
 
@@ -267,7 +267,7 @@ class Appium(DriverInterface):
         for key, value in final_caps.items():
             options.set_capability(key, value)
 
-        return self._create_new_driver_session(options, event_name)
+        return self._create_new_driver_session(options, event_name=event_name)
 
     def get_session_id(self) -> Optional[str]:
         """Return the current Appium session id, if a session is active."""
@@ -891,7 +891,7 @@ class Appium(DriverInterface):
         else:
             internal_logger.error(f"Unknown swipe direction: {direction}")
             return
-        self.swipe(start_x, start_y, direction, swipe_length, event_name)
+        self.swipe(start_x, start_y, direction, swipe_length, event_name=event_name)
 
     @supported_on(*MOBILE)
     def swipe_element(
@@ -1236,7 +1236,7 @@ class Appium(DriverInterface):
         """
         coor_x, coor_y = int(coor_x), int(coor_y)
         internal_logger.debug(f"Pressing at coordinates: ({coor_x}, {coor_y})")
-        self.tap_at_coordinates(coor_x, coor_y, event_name)
+        self.tap_at_coordinates(coor_x, coor_y, event_name=event_name)
 
     @supported_on(*MOBILE)
     def press_percentage_coordinates(
@@ -1255,7 +1255,7 @@ class Appium(DriverInterface):
             internal_logger.debug(
                 f"Pressing at percentage coordinates: ({percentage_x}%, {percentage_y}%)"
             )
-            self.press_coordinates(x, y, event_name)
+            self.press_coordinates(x, y, event_name=event_name)
 
     @supported_on(*MOBILE)
     def press_xpath_using_coordinates(self, xpath: str, event_name: Optional[str] = None) -> None:
@@ -1274,7 +1274,7 @@ class Appium(DriverInterface):
             (x1, y1), (x2, y2) = bbox
             x_centre = (x1 + x2) // 2
             y_centre = (y1 + y2) // 2
-            self.tap_at_coordinates(x_centre, y_centre, event_name)
+            self.tap_at_coordinates(x_centre, y_centre, event_name=event_name)
         else:
             internal_logger.debug(
                 f"Bounding box not found for element with xpath: {xpath}"

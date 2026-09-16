@@ -43,7 +43,7 @@ class Verifier:
         """
         internal_logger.debug(f"Validating element: {element}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
-        self.assert_presence(element, timeout, rule, event_name)
+        self.assert_presence(element, timeout, rule, event_name=event_name)
 
     def is_element(
         self,
@@ -216,7 +216,7 @@ class Verifier:
     def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str, method_name: str):
         """Handle the final result, including event capture and error raising."""
         if result:
-            self._capture_success_event(timestamps, event_name)
+            self._capture_success_event(timestamps, event_name=event_name)
         elif fail:
             assertion_label = method_name.replace("assert_", "").capitalize()
             raise AssertionError(f"{assertion_label} assertion failed based on rule: {rule}")
@@ -240,7 +240,7 @@ class Verifier:
         internal_logger.debug(f"Validating screen for elements: {elements}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         try:
-            self.assert_presence(elements, timeout, rule, event_name, fail=False)
+            self.assert_presence(elements, timeout, rule, event_name=event_name, fail=False)
             return True
         except OpticsError as e:
             internal_logger.info(f"Validate Screen: Elements not found. Error: {e}")

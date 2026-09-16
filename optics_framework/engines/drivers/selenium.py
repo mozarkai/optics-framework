@@ -246,7 +246,7 @@ class SeleniumDriver(DriverInterface):
             size = self.driver.get_window_size()
             abs_x = int(size['width'] * percentage_x / 100)
             abs_y = int(size['height'] * percentage_y / 100)
-            self.press_coordinates(abs_x, abs_y, event_name)
+            self.press_coordinates(abs_x, abs_y, event_name=event_name)
         except Exception as e:
             internal_logger.error(f"Failed to click using percentage coordinates: {e}")
             raise

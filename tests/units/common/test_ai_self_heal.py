@@ -525,7 +525,7 @@ class TestActionKeywordWiring:
         ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
 
         assert ak._ai_self_heal("Login", "press_element", (), shot) is True
-        ak.driver.scroll.assert_called_once_with("down", 1000, None)
+        ak.driver.scroll.assert_called_once_with("down", 1000, event_name=None)
         # Healed keyword is recorded as a breadcrumb (may appear more than once —
         # the inner press_element records one, and _log_heal_outcome records another).
         steps = list(ak._recent_steps)

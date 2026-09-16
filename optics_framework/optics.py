@@ -793,7 +793,9 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.detect_and_press(
-            cast(str, element), cast(str, timeout), cast(Optional[str], event_name)
+            element=cast(str, element),
+            timeout=cast(str, timeout),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe")
@@ -810,11 +812,11 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe(
-            cast(str, coor_x),
-            cast(str, coor_y),
-            cast(str, direction),
-            cast(str, swipe_length),
-            cast(Optional[str], event_name),
+            coor_x=cast(str, coor_x),
+            coor_y=cast(str, coor_y),
+            direction=cast(str, direction),
+            swipe_length=cast(str, swipe_length),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe By Percentage")
@@ -831,11 +833,11 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe_by_percentage(
-            cast(str, percent_x),
-            cast(str, percent_y),
-            cast(str, direction),
-            cast(str, swipe_length),
-            cast(Optional[str], event_name),
+            percent_x=cast(str, percent_x),
+            percent_y=cast(str, percent_y),
+            direction=cast(str, direction),
+            swipe_length=cast(str, swipe_length),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe Until Element Appears")
@@ -851,10 +853,10 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe_until_element_appears(
-            cast(str, element),
-            cast(str, direction),
-            cast(str, timeout),
-            cast(Optional[str], event_name),
+            element=cast(str, element),
+            direction=cast(str, direction),
+            timeout=cast(str, timeout),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe From Element")
@@ -870,10 +872,10 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe_from_element(
-            cast(str, element),
-            cast(str, direction),
-            cast(str, swipe_length),
-            cast(Optional[str], event_name),
+            element=cast(str, element),
+            direction=cast(str, direction),
+            swipe_length=cast(str, swipe_length),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Scroll")
@@ -887,7 +889,7 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.scroll(
-            cast(str, direction), cast(Optional[str], event_name)
+            direction=cast(str, direction), event_name=cast(Optional[str], event_name)
         )
 
     @keyword("Scroll Until Element Appears")

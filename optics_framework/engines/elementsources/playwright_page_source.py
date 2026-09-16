@@ -873,9 +873,10 @@ class PlaywrightPageSource(ElementSourceInterface):
         return original_element, element
 
     def _strict_element_match(self) -> bool:
-        """Whether project config requests exact-only matching for locate (Config.strict_element_match).
+        """Whether project config requests exact-only matching (Config.strict_element_match).
 
-        Presence/assert checks ignore this and are always strict -- see assert_elements.
+        Governs both locate and presence/assert checks so the two stay uniform -- see
+        assert_elements. Defaults False (fuzzy) when the config chain is unavailable.
         """
         try:
             return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
@@ -971,8 +972,7 @@ class PlaywrightPageSource(ElementSourceInterface):
             )
             element_type = utils.determine_element_type(element)
             if element_type == "Text":
-                # Presence/assert checks ignore Config.strict_element_match and are always strict.
-                locator = page.get_by_text(element, exact=True)
+                locator = page.get_by_text(element, exact=self._strict_element_match())
             elif element_type == "XPath":
                 locator = page.locator(f"xpath={element}")
             else:

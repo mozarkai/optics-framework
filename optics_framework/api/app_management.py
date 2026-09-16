@@ -54,7 +54,7 @@ class AppManagement:
 
         :param event_name: The event triggering the session start, if any.
         """
-        self.driver.launch_app(event_name)
+        self.driver.launch_app(event_name=event_name)
 
     def get_driver_session_id(self) -> Optional[str]:
         """Return the current driver session id, if available."""
@@ -67,7 +67,7 @@ class AppManagement:
         :param app_name: The package name of the application.
         :param event_name: The event triggering the app start, if any.
         """
-        self.driver.launch_other_app(app_name, event_name)
+        self.driver.launch_other_app(app_name=app_name, event_name=event_name)
 
     def close_and_terminate_app(self) -> None:
         """
@@ -87,7 +87,7 @@ class AppManagement:
         :param app_name: The name of the application to terminate.
         :param event_name: The event triggering the forced termination, if any.
         """
-        self.driver.force_terminate_app(app_name, event_name)
+        self.driver.force_terminate_app(app_name=app_name, event_name=event_name)
 
     def get_app_version(self, app_package: Optional[str] = None) -> Optional[str]:
         """

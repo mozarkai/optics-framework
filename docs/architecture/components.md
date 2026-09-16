@@ -205,7 +205,7 @@ enter_text(["username", "user_name", "//input[@name='user']"], "testuser")
 **3. Environment-Specific Values:**
 ```python
 # Different values for different environments
-launch_app([
+launch_app(app_identifier=[
     "com.example.app.dev",      # Development
     "com.example.app.staging",  # Staging
     "com.example.app.prod"      # Production

@@ -196,10 +196,7 @@ class FlowControl:
         internal_logger.debug(f"[_LOOP_WITH_VARIABLES] min_length={min_length}, var_names={var_names}")
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
 
         results = []
         for i in range(min_length):
@@ -638,10 +635,7 @@ class FlowControl:
 
     def _resolve_query_vars(self, q):
         pattern = re.compile(VAR_PATTERN)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         def replacer(match):
             var_name = match.group(1).strip()
             value = runner_elements.get_first(var_name)
@@ -991,6 +985,7 @@ class FlowControl:
         # Format result
         result = base_date.strftime(output_format)
 
+        # Store in session.elements
         runner_elements = self._get_or_create_session_elements()
         runner_elements.add_element(var_name, result)
         return result
@@ -1297,11 +1292,17 @@ class FlowControl:
             )
 
     def _get_or_create_session_elements(self) -> ElementData:
-        """Gets the session's element store, creating and attaching it if absent."""
+        """Gets session elements or creates if not properly initialized.
+
+        `optics serve` creates every session with `elements=None` and offers no way to fill
+        it, so raising here left `Invoke API` unusable there — its `extract` had nowhere to
+        put a value. `TestRunner` already substitutes an empty `ElementData` in the same
+        case, so creating one is the reading the runner has always taken.
+        """
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+            self.session.elements = runner_elements
         return runner_elements
 
     def _evaluate_jsonpath_assertions(

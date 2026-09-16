@@ -193,7 +193,7 @@ optics.setup(
     elements_sources=[{"appium_find_element": {"enabled": True}}],
 )
 
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 optics.enter_text("username_field", "testuser")
 optics.press_element("submit_button")
 optics.validate_element("welcome_message")

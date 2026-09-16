@@ -517,7 +517,7 @@ async def create_session(config: SessionConfig):
             session_config,
             test_cases=None,
             modules=None,
-            elements=ElementData(),
+            elements=None,
             apis=apis,
             templates=templates,
         )
