@@ -196,10 +196,7 @@ class FlowControl:
         internal_logger.debug(f"[_LOOP_WITH_VARIABLES] min_length={min_length}, var_names={var_names}")
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
 
         results = []
         for i in range(min_length):
@@ -638,10 +635,7 @@ class FlowControl:
 
     def _resolve_query_vars(self, q):
         pattern = re.compile(VAR_PATTERN)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         def replacer(match):
             var_name = match.group(1).strip()
             value = runner_elements.get_first(var_name)
@@ -827,10 +821,7 @@ class FlowControl:
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         var_name = self._extract_variable_name(param1)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         result = self._compute_expression(param2)
         runner_elements.remove_element(var_name)
         runner_elements.add_element(var_name, str(result))
@@ -995,10 +986,7 @@ class FlowControl:
         result = base_date.strftime(output_format)
 
         # Store in session.elements
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         runner_elements.add_element(var_name, result)
         return result
 
