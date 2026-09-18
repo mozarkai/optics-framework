@@ -460,12 +460,35 @@ class PagesourceStrategy:
             raise OpticsError(Code.E0403, message=f"Invalid pagesource captured: {e}") from e
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
-        """Retrieve interactive elements from the element source."""
+        """Retrieve interactive elements from the element source.
 
-        elements_dict = self.element_source.get_interactive_elements(filter_config, compact=compact)
+        ``compact`` is forwarded only to sources whose signature declares it. An
+        out-of-tree source built against the earlier
+        ``get_interactive_elements(filter_config)`` contract keeps working; it just
+        cannot answer the compact projection, so it returns its full list.
+        """
+
+        if self._source_accepts_compact():
+            elements_dict = self.element_source.get_interactive_elements(filter_config, compact=compact)
+        else:
+            elements_dict = self.element_source.get_interactive_elements(filter_config)
         if elements_dict is not None:
             return elements_dict
         raise NotImplementedError("Interactive elements retrieval failed.")
+
+    def _source_accepts_compact(self) -> bool:
+        """Whether the source's extraction method accepts the ``compact`` keyword."""
+        method = getattr(self.element_source, "get_interactive_elements", None)
+        if method is None:
+            return False
+        try:
+            parameters = inspect.signature(method).parameters
+        except (TypeError, ValueError):
+            return False
+        return "compact" in parameters or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
 
     @staticmethod
     def supports(element_source: ElementSourceInterface) -> bool:

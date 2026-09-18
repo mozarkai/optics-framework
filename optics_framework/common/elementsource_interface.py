@@ -129,7 +129,9 @@ class ElementSourceInterface(ABC):
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
         :type filter_config: Optional[List[str]]
         :param compact: When True, return only actionable elements (folded labels) plus
-            standalone visible text. Sources that do not implement it may ignore it.
+            standalone visible text. It is forwarded only to implementations that declare
+            it; sources kept on the legacy two-argument signature still work and return
+            their full list.
         :type compact: bool
         :return: A list of interactive elements (e.g., buttons, links).
         :rtype: list
