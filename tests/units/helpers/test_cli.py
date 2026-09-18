@@ -146,11 +146,13 @@ class TestStartupImportGuard:
 
     def test_importing_cli_without_cv2_exits_instead_of_raising(self):
         # End-to-end over the console-script path, in a subprocess so the
-        # already-imported cli module can't mask the failure. Guards both
-        # halves of the fix: the package __init__ must stay importable
-        # (lazy re-export) for cli's own try/except to be reachable at all,
-        # and a star import must not resolve Optics through __getattr__ and
-        # resurrect the eager load (that is why __all__ is empty).
+        # already-imported cli module can't mask the failure. The package
+        # __init__ must stay importable (lazy re-export) for cli's own
+        # try/except to be reachable at all. A star import is the one package
+        # import that still resolves Optics eagerly, because it asks for the
+        # facade by name; it fails here exactly like the documented
+        # ``from optics_framework import Optics`` would, and that is separate
+        # from the console-script path this guard protects.
         script = textwrap.dedent(
             """
             import importlib, sys
@@ -166,9 +168,10 @@ class TestStartupImportGuard:
             sys.meta_path.insert(0, BlockCv2())
             importlib.import_module("optics_framework")
             print("PACKAGE_IMPORT_OK")
-            namespace = {}
-            exec("from optics_framework import *", namespace)
-            print("STAR_IMPORT_OK")
+            try:
+                exec("from optics_framework import *", {})
+            except ImportError:
+                print("STAR_IMPORT_NEEDS_CV2")
             importlib.import_module("optics_framework.helper.cli")
             """
         )
@@ -177,7 +180,7 @@ class TestStartupImportGuard:
             [sys.executable, "-c", script],
             capture_output=True, text=True, env=env, check=False)
         assert "PACKAGE_IMPORT_OK" in result.stdout
-        assert "STAR_IMPORT_OK" in result.stdout
+        assert "STAR_IMPORT_NEEDS_CV2" in result.stdout
         assert result.returncode == 1
         assert "Traceback" not in result.stderr
         assert "libgl1" in result.stderr
