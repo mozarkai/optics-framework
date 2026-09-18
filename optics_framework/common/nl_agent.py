@@ -121,6 +121,10 @@ StepCallback = Callable[[AgentStep], None]
 AbortCallback = Callable[[], bool]
 # Returns a condensed UI hierarchy (stripped page source) or None when unavailable.
 PagesourceProvider = Callable[[], Optional[str]]
+# Takes the step's screenshot PNG bytes (reused for bounds scaling, so no second device
+# capture) and returns compact get_interactive_elements() dicts, or None when the active
+# element source cannot answer.
+ScreenElementsProvider = Callable[[bytes], Optional[List[dict]]]
 
 
 # Structured-output schema. Only thought/action/reason are required so the model is never
@@ -159,9 +163,9 @@ ACTION_SCHEMA: Dict[str, Any] = {
 
 SYSTEM_PROMPT = """\
 You drive a UI test-automation framework ONE keyword at a time to fulfil a natural-language \
-instruction. Each turn you are shown a screenshot of the current device screen, a condensed \
-UI hierarchy of the on-screen elements (when available), and the list of available keywords; \
-you must reply with exactly ONE next action as JSON.
+instruction. Each turn you are shown a screenshot of the current device screen, a list of \
+the on-screen elements (when available), and the list of available keywords; you must reply \
+with exactly ONE next action as JSON.
 
 CRITICAL — VERIFY, DON'T FLAIL:
 - A `PASS` observation means the keyword EXECUTED, NOT that your goal was achieved. ALWAYS \
@@ -192,21 +196,26 @@ TARGETING POLICY (in strict order of preference):
 1. SYSTEM button (home/back/recents/enter/menu/volume/...) -> `press_keycode` with the code above.
 2. On-screen control -> name it by its VISIBLE TEXT as the `element` parameter \
 (e.g. press_element with params ["Search"]). The framework self-heals element location across \
-XPath -> on-screen text -> OCR -> image, so a plain text label usually resolves. Use the \
-condensed hierarchy for the EXACT text / content-desc / resource id.
+XPath -> on-screen text -> OCR -> image, so a plain text label usually resolves. Take the \
+EXACT label from the on-screen elements list.
 3. Ambiguous text -> prefix the label with `text_only:` to force OCR matching \
 (e.g. "text_only:Search").
 4. Target not visible -> scroll/swipe to reveal it, THEN target it by text.
 5. LAST RESORT only — an icon with no readable text AND no keycode -> read its bounds \
-[x1,y1][x2,y2] from the hierarchy to compute a precise center and use `press_by_percentage` \
-with params [percent_x, percent_y] (each 0-100). You may attempt coordinates at most TWICE \
-for a given target; if that does not work, STOP and use `action: "fail"`.
+[x1,y1][x2,y2] from the elements list to compute a precise center and use \
+`press_by_percentage` with params [percent_x, percent_y] (each 0-100). You may attempt \
+coordinates at most TWICE for a given target; if that does not work, STOP and use \
+`action: "fail"`.
 
-USING THE UI HIERARCHY:
-- When the condensed hierarchy is provided, use it together with the screenshot: it gives the \
-exact on-screen text, content-desc, resource ids, element bounds [x1,y1][x2,y2], and flags \
-(clickable/scrollable/selected/editable). A target present in the hierarchy should be named by \
-its text — not tapped by coordinate.
+USING THE ON-SCREEN ELEMENTS LIST:
+- Use it together with the screenshot. Each line is: label, the actions the element affords, \
+its bounds [x1,y1][x2,y2], and its resource id when it has one.
+- The actions are (tap), (long), (toggle), (input), (scroll) — an element with NO actions is \
+read-only text: useful for judging screen state, never a tap target. Pick a target whose \
+actions match what you intend, e.g. only `enter_text` into an element listed (input).
+- A target present in the list should be named by its label — not tapped by coordinate.
+- The list may be a condensed UI hierarchy instead on sources that cannot produce the \
+structured list; it carries the same text, ids and bounds in tree form.
 
 RULES:
 - Emit exactly one action per turn.
@@ -220,6 +229,51 @@ coordinate guessing has already failed).
 """
 
 _MAX_THOUGHT_CHARS = 160
+_MAX_ELEMENT_LABEL_CHARS = 80
+# Backstop only: the compact list is ~95% smaller than the raw hierarchy it replaced, so
+# this bounds a pathological screen rather than trimming an ordinary one.
+_SCREEN_ELEMENTS_MAX_CHARS = 12000
+_NO_ELEMENTS_MSG = "(no interactive elements detected)"
+
+
+def _render_screen_element(index: int, element: Dict[str, Any]) -> Optional[str]:
+    """One line for a compact element dict, or ``None`` when it cannot be rendered.
+
+    Mirrors the vocabulary of the MCP ``elements`` resource (label, ``act``, bounds,
+    resource id) so both agent surfaces describe a screen the same way.
+    """
+    if not isinstance(element, dict):
+        return None
+    bounds = element.get("bounds")
+    try:
+        bounds_str = f"[{bounds['x1']},{bounds['y1']}][{bounds['x2']},{bounds['y2']}]"
+    except (KeyError, TypeError):
+        return None
+    label = str(element.get("text") or "").strip().replace("\n", " ")
+    if len(label) > _MAX_ELEMENT_LABEL_CHARS:
+        label = label[: _MAX_ELEMENT_LABEL_CHARS - 3] + "..."
+    actions = element.get("act") or []
+    action_str = f" ({','.join(str(a) for a in actions)})" if actions else ""
+    rid = str((element.get("extra") or {}).get("resource-id") or "").split("/")[-1]
+    rid_str = f" #{rid}" if rid else ""
+    return f'  {index}. "{label}"{action_str} {bounds_str}{rid_str}'
+
+
+def _render_screen_elements(
+    elements: List[Dict[str, Any]], max_chars: int = _SCREEN_ELEMENTS_MAX_CHARS
+) -> str:
+    """Numbered rendering of compact ``get_interactive_elements()`` dicts."""
+    lines = [
+        rendered
+        for i, el in enumerate(elements, 1)
+        if (rendered := _render_screen_element(i, el)) is not None
+    ]
+    if not lines:
+        return _NO_ELEMENTS_MSG
+    out = "\n".join(lines)
+    if len(out) > max_chars:
+        out = out[:max_chars] + "\n  … (truncated)"
+    return out
 
 
 class NaturalLanguageAgent:
@@ -234,6 +288,7 @@ class NaturalLanguageAgent:
         *,
         element_names: Optional[Callable[[], List[str]]] = None,
         pagesource_provider: Optional[PagesourceProvider] = None,
+        screen_elements_provider: Optional[ScreenElementsProvider] = None,
         max_steps: int = 15,
         max_consecutive_failures: int = 3,
         max_blind_repeats: int = 3,
@@ -246,6 +301,7 @@ class NaturalLanguageAgent:
         self.keyword_catalog = keyword_catalog
         self.element_names = element_names
         self.pagesource_provider = pagesource_provider
+        self.screen_elements_provider = screen_elements_provider
         self.max_steps = max_steps
         self.max_consecutive_failures = max_consecutive_failures
         self.max_blind_repeats = max_blind_repeats
@@ -289,8 +345,13 @@ class NaturalLanguageAgent:
         except Exception as exc:  # noqa: BLE001 - screenshot failures end the run cleanly
             return AgentResult("failed", state.history, f"Screenshot failed: {exc}", state.successful)
 
-        page_source = self._capture_page_source()
-        prompt = self._build_prompt(instruction, catalog, state.history, page_source)
+        # Structured elements win when the source can answer; `png` doubles as the frame
+        # their bounds are scaled against, so this costs no extra device capture.
+        screen_elements = self._capture_screen_elements(png)
+        page_source = None if screen_elements is not None else self._capture_page_source()
+        prompt = self._build_prompt(
+            instruction, catalog, state.history, page_source, screen_elements
+        )
         try:
             raw = self.llm.generate_json(
                 prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT, temperature=0.0
@@ -436,12 +497,27 @@ class NaturalLanguageAgent:
             internal_logger.debug("NL agent: page source unavailable: %s", exc)
             return None
 
+    def _capture_screen_elements(self, png: bytes) -> Optional[List[dict]]:
+        """Best-effort compact elements; ``None`` when unavailable or unsupported.
+
+        Distinct from "usable but empty" (``[]``, a screen with genuinely nothing on it):
+        only ``None`` falls back to the raw page-source path in ``_run_one_step``.
+        """
+        if self.screen_elements_provider is None:
+            return None
+        try:
+            return self.screen_elements_provider(png)
+        except Exception as exc:  # noqa: BLE001
+            internal_logger.debug("NL agent: structured screen elements unavailable: %s", exc)
+            return None
+
     def _build_prompt(
         self,
         instruction: str,
         catalog: List[KeywordSpec],
         history: List[AgentStep],
         page_source: Optional[str] = None,
+        screen_elements: Optional[List[dict]] = None,
     ) -> str:
         lines = [f"INSTRUCTION: {instruction}", "", "AVAILABLE KEYWORDS (name and parameters):"]
         lines.extend(f"  {spec.signature}" for spec in catalog)
@@ -453,7 +529,14 @@ class NaturalLanguageAgent:
                 lines.append("NAMED ELEMENTS (reference as ${name}):")
                 lines.append("  " + ", ".join("${" + n + "}" for n in names))
 
-        if page_source:
+        if screen_elements is not None:
+            lines.append("")
+            lines.append(
+                "CURRENT SCREEN ELEMENTS (label, afforded actions, bounds "
+                "[x1,y1][x2,y2], resource id — no actions means read-only text):"
+            )
+            lines.append(_render_screen_elements(screen_elements))
+        elif page_source:
             lines.append("")
             lines.append(
                 "CURRENT SCREEN ELEMENTS (condensed UI hierarchy — class, text, "
