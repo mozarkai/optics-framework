@@ -19,13 +19,19 @@ XPATH_INDEXED_ATTRIBUTES = (*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIB
 
 # Class-name fragments for the compact extractor. iOS has no clickable/checkable/
 # scrollable attributes, so its XCUIElementType* nodes are classified by name.
+# "XCUIElementTypeKey" is deliberately a fragment: it prefix-matches the keyboard
+# container too, which drops out as an unlabelled node with actionable descendants.
 TAP_CLASS_FRAGMENTS = (
     "Button", "SeekBar", "Slider", "XCUIElementTypeCell", "XCUIElementTypeSwitch",
     "XCUIElementTypeStepper", "XCUIElementTypeLink", "XCUIElementTypeTab", "XCUIElementTypeMenuItem",
+    "XCUIElementTypeKey",
 )
 TOGGLE_CLASS_FRAGMENTS = ("Switch", "CheckBox", "RadioButton", "ToggleButton")
 INPUT_CLASS_FRAGMENTS = ("EditText", "TextField", "SecureTextField", "AutoCompleteTextView", "SearchField")
-SCROLL_CLASS_FRAGMENTS = ("XCUIElementTypeScrollView", "XCUIElementTypeTable", "XCUIElementTypeCollectionView")
+SCROLL_CLASS_FRAGMENTS = (
+    "XCUIElementTypeScrollView", "XCUIElementTypeTable", "XCUIElementTypeCollectionView",
+    "XCUIElementTypePickerWheel",
+)
 COMPACT_LABEL_MAX_CHARS = 120
 
 
