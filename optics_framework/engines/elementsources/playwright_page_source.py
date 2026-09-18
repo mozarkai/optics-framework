@@ -167,6 +167,10 @@ class PlaywrightPageSource(ElementSourceInterface):
         rects = self._resolve_bounds_batch(
             page, [self._build_simple_xpath(node) for node in elements]
         )
+        if rects is None:
+            # No bounds means every element would be dropped below anyway; keep the
+            # pre-batching "no elements this pass" result for this best-effort list.
+            return []
         results = []
 
         for node, rect in zip(elements, rects):
@@ -222,24 +226,31 @@ class PlaywrightPageSource(ElementSourceInterface):
 
     def _resolve_bounds_batch(
         self, page: Any, xpaths: List[Optional[str]]
-    ) -> List[Optional[Dict[str, float]]]:
-        """Resolve bounding rects for every candidate xpath in one round trip."""
+    ) -> Optional[List[Optional[Dict[str, float]]]]:
+        """Resolve bounding rects for every candidate xpath in one round trip.
+
+        ``None`` means the batch lookup itself failed: ``page.evaluate`` raised or
+        returned a malformed payload. That is deliberately distinct from a list of
+        per-element ``None``s, which just means no candidate had visible bounds.
+        """
         if not xpaths:
             return []
         try:
             rects = run_async(page.evaluate(self._BOUNDS_BATCH_SCRIPT, xpaths))
-            if rects is None or len(rects) != len(xpaths):
-                return [None] * len(xpaths)
-            return rects
         except Exception as e:
             # The batch call itself failed (e.g. page mid-navigation). Falling back to one
             # evaluate() per node here would reintroduce the exact per-node round-trip cost
-            # this batching exists to avoid, so degrade to "no bounds this pass" instead,
-            # same as a single node failing used to.
+            # this batching exists to avoid.
             internal_logger.debug(
                 f"[PlaywrightPageSource] Batched bounds lookup failed: {e}"
             )
-            return [None] * len(xpaths)
+            return None
+        if rects is None or len(rects) != len(xpaths):
+            internal_logger.debug(
+                "[PlaywrightPageSource] Batched bounds lookup returned a malformed payload"
+            )
+            return None
+        return rects
 
     @staticmethod
     def _rect_to_bounds(rect: Optional[Dict[str, float]]) -> Optional[Dict[str, int]]:
@@ -612,6 +623,15 @@ class PlaywrightPageSource(ElementSourceInterface):
         rects = self._resolve_bounds_batch(
             page, [self._build_simple_xpath(node) for node, _ in candidates]
         )
+        if rects is None:
+            # Every entry needs bounds, so a failed batch would collapse to an empty list
+            # indistinguishable from a genuinely empty screen. Consumers such as the live
+            # NL agent fall back to page source on "unavailable" but not on "empty", so
+            # surface the failure instead of swallowing it.
+            raise OpticsError(
+                Code.E0202,
+                message="Batched bounds lookup failed; compact elements unavailable.",
+            )
         entries = []
         for (node, (label, actions)), rect in zip(candidates, rects):
             bounds = self._rect_to_bounds(rect)

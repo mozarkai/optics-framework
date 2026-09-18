@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from lxml import etree
 
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.engines.elementsources import playwright_page_source as pw
 
 pytestmark = pytest.mark.white_box
@@ -157,14 +158,41 @@ class TestBatchFailureDegradesGracefully:
         # A whole-batch failure must not fall back to one evaluate() call per node.
         assert page.evaluate.call_count == 1
 
-    def test_compact_batch_failure_returns_no_elements(self, monkeypatch):
+    def test_compact_batch_failure_is_unavailable_not_empty(self, monkeypatch):
+        # The NL agent falls back to page source on "unavailable", so a failed batch
+        # must raise rather than return [] and look like a genuinely empty screen.
         src, page = _source(_grid_html(3), monkeypatch)
         page.evaluate.side_effect = RuntimeError("page navigated mid-evaluate")
 
-        elements = src.get_interactive_elements(None, compact=True)
+        with pytest.raises(OpticsError) as excinfo:
+            src.get_interactive_elements(None, compact=True)
 
-        assert elements == []
+        assert excinfo.value.code == Code.E0202
         assert page.evaluate.call_count == 1
+
+    def test_compact_malformed_batch_is_unavailable_not_empty(self, monkeypatch):
+        src, page = _source(_grid_html(3), monkeypatch)
+        page.evaluate.return_value = [{"x": 0, "y": 0, "width": 5, "height": 5}]  # too short
+
+        with pytest.raises(OpticsError) as excinfo:
+            src.get_interactive_elements(None, compact=True)
+
+        assert excinfo.value.code == Code.E0202
+
+    def test_compact_empty_page_still_returns_empty_list(self, monkeypatch):
+        src, page = _source("", monkeypatch)
+        page.evaluate.side_effect = _uniform_rects()
+
+        assert src.get_interactive_elements(None, compact=True) == []
+        assert page.evaluate.call_count == 0
+
+    def test_compact_all_bounds_invisible_still_returns_empty_list(self, monkeypatch):
+        # A length-matched payload of nulls is a real "nothing visible" answer, not a
+        # failed lookup, so it must keep the [] that means empty.
+        src, page = _source(_grid_html(3), monkeypatch)
+        page.evaluate.side_effect = lambda script, xpaths: [None] * len(xpaths)
+
+        assert src.get_interactive_elements(None, compact=True) == []
 
     def test_mismatched_length_response_is_treated_as_all_absent(self, monkeypatch):
         src, page = _source(_grid_html(3), monkeypatch)
