@@ -1,21 +1,40 @@
 import argparse
 import os
 import sys
-from typing import Literal, Optional
-from pydantic import BaseModel
-from optics_framework.helper.list_keyword import main as list_main
-from optics_framework.helper.initialize import create_project, available_templates
-from optics_framework.helper.version import VERSION
-from optics_framework.helper.execute import execute_main, dryrun_main
-from optics_framework.helper.live import live_main
-from optics_framework.helper.generate import generate_test_file as generate_framework_code
-from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines, print_install_next_steps
-from optics_framework.helper.serve import run_uvicorn_server
-from optics_framework.helper.autocompletion import update_shell_rc
-from optics_framework.helper.config_manager import configure as configure_project
-from optics_framework.helper.onboarding import welcome, is_first_run, mark_onboarded
-from optics_framework.helper.doctor import run_doctor
-from optics_framework.helper.quickstart import run_quickstart
+from typing import Literal, NoReturn, Optional
+
+from optics_framework.helper.abort import abort_with_panel, classify_import_error
+
+
+def _abort_on_import_error(exc: ImportError) -> NoReturn:
+    """Report a startup import failure as guidance instead of a traceback."""
+    failure = classify_import_error(exc)
+    abort_with_panel([
+        "Optics could not load one of its dependencies, so no command can run.",
+        "",
+        f"Underlying error: {failure.error}",
+        "",
+        *failure.guidance,
+    ])
+
+
+try:
+    from pydantic import BaseModel
+    from optics_framework.helper.list_keyword import main as list_main
+    from optics_framework.helper.initialize import create_project, available_templates
+    from optics_framework.helper.version import VERSION
+    from optics_framework.helper.execute import execute_main, dryrun_main
+    from optics_framework.helper.live import live_main
+    from optics_framework.helper.generate import generate_test_file as generate_framework_code
+    from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines, print_install_next_steps
+    from optics_framework.helper.serve import run_uvicorn_server
+    from optics_framework.helper.autocompletion import update_shell_rc
+    from optics_framework.helper.config_manager import configure as configure_project
+    from optics_framework.helper.onboarding import welcome, is_first_run, mark_onboarded
+    from optics_framework.helper.doctor import run_doctor
+    from optics_framework.helper.quickstart import run_quickstart
+except ImportError as exc:
+    _abort_on_import_error(exc)
 
 
 class Command:
