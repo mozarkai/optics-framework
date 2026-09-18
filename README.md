@@ -26,27 +26,6 @@ Most frameworks assume a UI element has one true locator, and a test breaks the 
 
 That idea runs through the whole framework: locators fall back, drivers fall back, element values fall back. Tests are data (CSV or YAML), so non-coders can write them, and the same keywords are reachable from Python, Robot Framework, HTTP, and MCP.
 
-## Why Optics
-
-**A locator ladder, not a locator.** Every element-based keyword walks a priority-ordered chain until one strategy succeeds:
-
-| # | Strategy | How it finds the element |
-|---|----------|--------------------------|
-| 1 | `XPathStrategy` | Native XPath query through the driver's accessibility tree |
-| 2 | `TextElementStrategy` | Direct text / CSS / class lookup through the element source |
-| 3 | `TextDetectionStrategy` | Screenshot → OCR (EasyOCR, Pytesseract, Google Vision, remote OCR) |
-| 4 | `ImageDetectionStrategy` | Screenshot → template matching against a reference PNG |
-| 5 | AI self-heal *(opt-in)* | All four failed → an LLM reads the screen and recovers |
-
-Cheap strategies run first, so vision only costs you time when the tree can't help. Steps 1–4 are `LocatorStrategy` registrations; step 5 is a separate recovery layer, bounded to five turns and a six-keyword allowlist so it re-enters the ladder rather than tapping blind coordinates. Two more fallback axes sit alongside: **multiple values per element name**, and **multiple enabled drivers or element sources**, each tried in config order.
-
-Beyond the ladder:
-
-- **Tests are data** — elements, modules and test cases as plain CSV or YAML. No IDE, no programming.
-- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS.
-- **Non-intrusive** — the `ble` driver drives production devices as a Bluetooth HID mouse/keyboard where debugging and screenshots are blocked. Coordinate-only, so pair it with `camera_screenshot` and the vision strategies.
-- **Agent-ready** — `optics mcp` exposes every keyword as a typed MCP tool and device state as MCP resources.
-
 ## Install
 
 Optics needs **Python 3.12+**. The core install ships no drivers, OCR, or LLM backends — you add only what you need:
@@ -109,6 +88,27 @@ optics execute my_test_project
 - `playwright` — Playwright → `[playwright]` (then `playwright install` for the browsers)
 
 Omit `--template` for an empty scaffold with a commented starter `config.yaml`. Need only a config for an existing folder? `optics configure <folder>` writes one from a few questions, and `optics doctor [folder] [--check]` verifies engines, tooling, and project config.
+
+## Why Optics
+
+**A locator ladder, not a locator.** Every element-based keyword walks a priority-ordered chain until one strategy succeeds:
+
+| # | Strategy | How it finds the element |
+|---|----------|--------------------------|
+| 1 | `XPathStrategy` | Native XPath query through the driver's accessibility tree |
+| 2 | `TextElementStrategy` | Direct text / CSS / class lookup through the element source |
+| 3 | `TextDetectionStrategy` | Screenshot → OCR (EasyOCR, Pytesseract, Google Vision, remote OCR) |
+| 4 | `ImageDetectionStrategy` | Screenshot → template matching against a reference PNG |
+| 5 | AI self-heal *(opt-in)* | All four failed → an LLM reads the screen and recovers |
+
+Cheap strategies run first, so vision only costs you time when the tree can't help. Steps 1–4 are `LocatorStrategy` registrations; step 5 is a separate recovery layer, bounded to five turns and a six-keyword allowlist so it re-enters the ladder rather than tapping blind coordinates. Two more fallback axes sit alongside: **multiple values per element name**, and **multiple enabled drivers or element sources**, each tried in config order.
+
+Beyond the ladder:
+
+- **Tests are data** — elements, modules and test cases as plain CSV or YAML. No IDE, no programming.
+- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS.
+- **Non-intrusive** — the `ble` driver drives production devices as a Bluetooth HID mouse/keyboard where debugging and screenshots are blocked. Coordinate-only, so pair it with `camera_screenshot` and the vision strategies.
+- **Agent-ready** — `optics mcp` exposes every keyword as a typed MCP tool and device state as MCP resources.
 
 ## Write a test as data
 
