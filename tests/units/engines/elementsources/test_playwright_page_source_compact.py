@@ -1,25 +1,46 @@
+from unittest.mock import MagicMock
+
 import pytest
 from lxml import etree
 
 from optics_framework.api.verifier import Verifier
+from optics_framework.engines.elementsources import playwright_page_source as pw
 from optics_framework.engines.elementsources.playwright_page_source import (
     PlaywrightPageSource,
 )
 
 pytestmark = pytest.mark.white_box
 
+RECT = {"x": 1, "y": 2, "width": 2, "height": 2}
 BOUNDS = {"x1": 1, "y1": 2, "x2": 3, "y2": 4}
+
+
+@pytest.fixture(autouse=True)
+def _passthrough_run_async(monkeypatch):
+    """The fake page below returns plain values rather than real coroutines."""
+    monkeypatch.setattr(pw, "run_async", lambda coro: coro)
 
 
 def _source(html: str) -> PlaywrightPageSource:
     source = PlaywrightPageSource.__new__(PlaywrightPageSource)
     source.tree = etree.HTML(html)
-    source._extract_bounds = lambda node, page: dict(BOUNDS)
     return source
 
 
+def _page() -> MagicMock:
+    """A page whose single batched evaluate() gives every candidate the same rect.
+
+    Stubbing the browser boundary rather than the source's own bounds helper keeps
+    these tests exercising the real extraction path, so a helper that disappears from
+    the class fails here instead of being silently supplied by the stub.
+    """
+    page = MagicMock()
+    page.evaluate.side_effect = lambda script, xpaths: [dict(RECT) for _ in xpaths]
+    return page
+
+
 def _compact(html: str) -> list[dict]:
-    return _source(html)._extract_compact_web_interactives(None)
+    return _source(html)._extract_compact_web_interactives(_page())
 
 
 def _by_label(entries: list[dict]) -> dict[str, dict]:
@@ -109,7 +130,7 @@ class TestWebCompactProjectsToMCPShape:
     def test_verifier_projects_web_records_to_compact_shape(self):
         entries = _source(
             '<button id="go"><span>Go</span></button><span>Hello</span>'
-        )._extract_compact_web_interactives(None)
+        )._extract_compact_web_interactives(_page())
 
         assert Verifier._to_compact_shape(entries) == [
             {"i": 0, "label": "Go", "cls": "button", "bounds": [1, 2, 3, 4],
