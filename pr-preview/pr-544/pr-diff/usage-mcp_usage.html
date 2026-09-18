@@ -1,0 +1,139 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/mcp_usage.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_144">144</td><td nowrap="nowrap">   playwright analogous), so `start_session` with just a `driver` works. The device</td><td class="diff_next"></td><td class="diff_header" id="to0_144">144</td><td nowrap="nowrap">   playwright analogous), so `start_session` with just a `driver` works. The device</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_145">145</td><td nowrap="nowrap">   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs</td><td class="diff_next"></td><td class="diff_header" id="to0_145">145</td><td nowrap="nowrap">   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_146">146</td><td nowrap="nowrap">   no `adb` of its own.</td><td class="diff_next"></td><td class="diff_header" id="to0_146">146</td><td nowrap="nowrap">   no `adb` of its own.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_147">147</td><td nowrap="nowrap">2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,</td><td class="diff_next"></td><td class="diff_header" id="to0_147">147</td><td nowrap="nowrap">2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="from0_148">148</td><td nowrap="nowrap"><span class="diff_sub">   or call `get_interactive_elements` for tappable elements with their `bounds`.</span></td><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="to0_148">148</td><td nowrap="nowrap"><span class="diff_add">   or read `optics://session/{session_id}/elements` for the compact list of</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_149">149</td><td nowrap="nowrap"><span class="diff_add">   actionable elements (labels, `act`, `bounds`) plus read-only text. These work</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_149">149</td><td nowrap="nowrap">  <span class="diff_sub"> These work</span> the same across drivers via the session's own element sources.</td><td class="diff_next"></td><td class="diff_header" id="to0_150">150</td><td nowrap="nowrap">   the same across drivers via the session's own element sources.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_150">150</td><td nowrap="nowrap">3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,</td><td class="diff_next"></td><td class="diff_header" id="to0_151">151</td><td nowrap="nowrap">3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_151">151</td><td nowrap="nowrap">   `assert_presence`, …) with the `session_id`. **Target elements by locator**</td><td class="diff_next"></td><td class="diff_header" id="to0_152">152</td><td nowrap="nowrap">   `assert_presence`, …) with the `session_id`. **Target elements by locator**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_152">152</td><td nowrap="nowrap">   (`xpath=`/`text=`/an id/an image) with `press_element`; when there is no stable</td><td class="diff_next"></td><td class="diff_header" id="to0_153">153</td><td nowrap="nowrap">   (`xpath=`/`text=`/an id/an image) with `press_element`; when there is no stable</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_153">153</td><td nowrap="nowrap">   locator, `detect_and_press` taps by the visible text/label, and otherwise use</td><td class="diff_next"></td><td class="diff_header" id="to0_154">154</td><td nowrap="nowrap">   locator, `detect_and_press` taps by the visible text/label, and otherwise use</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__1"></td><td class="diff_header" id="from0_271">271</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_272">272</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_272">272</td><td nowrap="nowrap">- **Session/app:** `start_session`, `terminate_session`, `launch_app`,</td><td class="diff_next"></td><td class="diff_header" id="to0_273">273</td><td nowrap="nowrap">- **Session/app:** `start_session`, `terminate_session`, `launch_app`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_273">273</td><td nowrap="nowrap">  `launch_other_app`, `close_and_terminate_app`, `get_app_version`,</td><td class="diff_next"></td><td class="diff_header" id="to0_274">274</td><td nowrap="nowrap">  `launch_other_app`, `close_and_terminate_app`, `get_app_version`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_274">274</td><td nowrap="nowrap">  `get_driver_session_id`.</td><td class="diff_next"></td><td class="diff_header" id="to0_275">275</td><td nowrap="nowrap">  `get_driver_session_id`.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="from0_275">275</td><td nowrap="nowrap"><span class="diff_sub">- **Interact:** `press_element`, `press_by_coordinates`, `press_by_percentage`,</span></td><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="to0_276">276</td><td nowrap="nowrap"><span class="diff_add">- **Interact:** `press_element`, `press_keycode`, `enter_text`, `enter_number`,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_276">276</td><td nowrap="nowrap"><span class="diff_sub">  `press_keycode`, `enter_text`, `enter_number`, `clear_element_text`,</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_277">277</td><td nowrap="nowrap">  `select_dropdown_option`, `detect_and_press`.</td><td class="diff_next"></td><td class="diff_header" id="to0_277">277</td><td nowrap="nowrap"> <span class="diff_add"> `clear_element_text`,</span> `select_dropdown_option`, `detect_and_press`.<span class="diff_add"> Raw</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_278">278</td><td nowrap="nowrap"><span class="diff_add">  coordinate taps (`press_by_coordinates`, `press_by_percentage`) are not exposed</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_279">279</td><td nowrap="nowrap"><span class="diff_add">  as tools because a pixel eyed off a screenshot misfires; set</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_280">280</td><td nowrap="nowrap"><span class="diff_add">  `OPTICS_MCP_ALLOW_COORDINATE_TAPS=1` before starting the server to re-enable</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_281">281</td><td nowrap="nowrap"><span class="diff_add">  them for targets with no queryable elements (e.g. a canvas).</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__2"></td><td class="diff_header" id="from0_278">278</td><td nowrap="nowrap">- **Gestures/scroll:** `swipe`, `swipe_by_percentage`, `swipe_from_element`,</td><td class="diff_next"></td><td class="diff_header" id="to0_282">282</td><td nowrap="nowrap">- **Gestures/scroll:** `swipe`, `swipe_by_percentage`, `swipe_from_element`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_279">279</td><td nowrap="nowrap">  `swipe_until_element_appears`, `scroll`, `scroll_from_element`,</td><td class="diff_next"></td><td class="diff_header" id="to0_283">283</td><td nowrap="nowrap">  `swipe_until_element_appears`, `scroll`, `scroll_from_element`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_280">280</td><td nowrap="nowrap">  `scroll_until_element_appears`.</td><td class="diff_next"></td><td class="diff_header" id="to0_284">284</td><td nowrap="nowrap">  `scroll_until_element_appears`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_281">281</td><td nowrap="nowrap">- **Observe/verify:** `screenshot` (rendered image), `get_text`,</td><td class="diff_next"></td><td class="diff_header" id="to0_285">285</td><td nowrap="nowrap">- **Observe/verify:** `screenshot` (rendered image), `get_text`,</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="from0_282">282</td><td nowrap="nowrap">  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`<span class="diff_sub">)</span>,</td><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="to0_286">286</td><td nowrap="nowrap">  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`,<span class="diff_add"> and</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_283">283</td><td nowrap="nowrap"><span class="diff_sub">  `is_element`, `assert_presence`, `assert_equality`, `validate_element`,</span></td><td class="diff_next"></td><td class="diff_header" id="to0_287">287</td><td nowrap="nowrap"><span class="diff_add">  `compact` for the token-lean list), `is_element`, `assert_presence`,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_284">284</td><td nowrap="nowrap"><span class="diff_sub">  `validate_screen`.</span></td><td class="diff_next"></td><td class="diff_header" id="to0_288">288</td><td nowrap="nowrap"><span class="diff_add">  `assert_equality`, `validate_element`, `validate_screen`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_285">285</td><td nowrap="nowrap">- **Misc:** `sleep`, `execute_script`.</td><td class="diff_next"></td><td class="diff_header" id="to0_289">289</td><td nowrap="nowrap">- **Misc:** `sleep`, `execute_script`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_286">286</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_290">290</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_287">287</td><td nowrap="nowrap">The full machine-readable catalog (every keyword, its params and docs) is the</td><td class="diff_next"></td><td class="diff_header" id="to0_291">291</td><td nowrap="nowrap">The full machine-readable catalog (every keyword, its params and docs) is the</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_288">288</td><td nowrap="nowrap">`optics://keywords` resource.</td><td class="diff_next"></td><td class="diff_header" id="to0_292">292</td><td nowrap="nowrap">`optics://keywords` resource.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__3"></td><td class="diff_header" id="from0_304">304</td><td nowrap="nowrap">| `optics://keywords` | full keyword catalog (name, slug, description, params) |</td><td class="diff_next"></td><td class="diff_header" id="to0_308">308</td><td nowrap="nowrap">| `optics://keywords` | full keyword catalog (name, slug, description, params) |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_305">305</td><td nowrap="nowrap">| `optics://project-format` | how optics stores a suite (CSV layout + `${var}`), so you can author one |</td><td class="diff_next"></td><td class="diff_header" id="to0_309">309</td><td nowrap="nowrap">| `optics://project-format` | how optics stores a suite (CSV layout + `${var}`), so you can author one |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_306">306</td><td nowrap="nowrap">| `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |</td><td class="diff_next"></td><td class="diff_header" id="to0_310">310</td><td nowrap="nowrap">| `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__4"></td><td class="diff_header" id="from0_307">307</td><td nowrap="nowrap">| `optics://session/{session_id}/source` | page source / UI hierarchy |</td><td class="diff_next"></td><td class="diff_header" id="to0_311">311</td><td nowrap="nowrap">| `optics://session/{session_id}/source` | page source / UI hierarchy |</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__4">n</a></td><td class="diff_header" id="from0_308">308</td><td nowrap="nowrap"><span class="diff_sub">| `optics://session/{session_id}/elements` | interactive elements (unfiltered) |</span></td><td class="diff_next"><a href="#difflib_chg_to0__4">n</a></td><td class="diff_header" id="to0_312">312</td><td nowrap="nowrap"><span class="diff_add">| `optics://session/{session_id}/elements` | compact actionable elements + read-only text (Appium/Playwright) |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_309">309</td><td nowrap="nowrap">| `optics://session/{session_id}/screen_elements` | captured screen elements |</td><td class="diff_next"></td><td class="diff_header" id="to0_313">313</td><td nowrap="nowrap">| `optics://session/{session_id}/screen_elements` | captured screen elements |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_310">310</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_314">314</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_311">311</td><td nowrap="nowrap">`get_interactive_elements` is available **both** as a resource (u<span class="diff_sub">nfi</span>lt<span class="diff_sub">ered</span>)<span class="diff_sub"> and</span></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_315">315</td><td nowrap="nowrap">`get_interactive_elements` is available **both** as a resource (<span class="diff_add">compact by defa</span>ult)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_312">312</td><td nowrap="nowrap"><span class="diff_sub">as a tool (so the model can pass `filter_config`).</span></td><td class="diff_next"></td><td class="diff_header" id="to0_316">316</td><td nowrap="nowrap"><span class="diff_add">and as a tool (so the model can pass `filter_config`, or `compact=false` for the full</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_317">317</td><td nowrap="nowrap"><span class="diff_add">untrimmed element list).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_313">313</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_318">318</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_314">314</td><td nowrap="nowrap">&gt; The screenshot **resource** delivers raw PNG bytes with a generic</td><td class="diff_next"></td><td class="diff_header" id="to0_319">319</td><td nowrap="nowrap">&gt; The screenshot **resource** delivers raw PNG bytes with a generic</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_315">315</td><td nowrap="nowrap">&gt; `application/octet-stream` mime (a limitation of templated MCP resources). For</td><td class="diff_next"></td><td class="diff_header" id="to0_320">320</td><td nowrap="nowrap">&gt; `application/octet-stream` mime (a limitation of templated MCP resources). For</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_316">316</td><td nowrap="nowrap">&gt; an image your client renders as a picture, use the **`screenshot` tool**.</td><td class="diff_next"></td><td class="diff_header" id="to0_321">321</td><td nowrap="nowrap">&gt; an image your client renders as a picture, use the **`screenshot` tool**.</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
