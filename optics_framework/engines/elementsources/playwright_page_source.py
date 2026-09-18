@@ -245,7 +245,7 @@ class PlaywrightPageSource(ElementSourceInterface):
                 f"[PlaywrightPageSource] Batched bounds lookup failed: {e}"
             )
             return None
-        if rects is None or len(rects) != len(xpaths):
+        if not isinstance(rects, list) or len(rects) != len(xpaths):
             internal_logger.debug(
                 "[PlaywrightPageSource] Batched bounds lookup returned a malformed payload"
             )

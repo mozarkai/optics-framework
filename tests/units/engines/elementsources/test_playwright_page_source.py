@@ -170,9 +170,16 @@ class TestBatchFailureDegradesGracefully:
         assert excinfo.value.code == Code.E0202
         assert page.evaluate.call_count == 1
 
-    def test_compact_malformed_batch_is_unavailable_not_empty(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            [{"x": 0, "y": 0, "width": 5, "height": 5}],  # too short
+            {"unexpected": "payload"},  # not a list at all
+        ],
+    )
+    def test_compact_malformed_batch_is_unavailable_not_empty(self, payload, monkeypatch):
         src, page = _source(_grid_html(3), monkeypatch)
-        page.evaluate.return_value = [{"x": 0, "y": 0, "width": 5, "height": 5}]  # too short
+        page.evaluate.return_value = payload
 
         with pytest.raises(OpticsError) as excinfo:
             src.get_interactive_elements(None, compact=True)
