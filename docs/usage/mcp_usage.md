@@ -145,8 +145,9 @@ the client at the URL:
    is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs
    no `adb` of its own.
 2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,
-   or call `get_interactive_elements` for tappable elements with their `bounds`.
-   These work the same across drivers via the session's own element sources.
+   or read `optics://session/{session_id}/elements` for the compact list of
+   actionable elements (labels, `act`, `bounds`) plus read-only text. These work
+   the same across drivers via the session's own element sources.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
    `assert_presence`, …) with the `session_id`. **Target elements by locator**
    (`xpath=`/`text=`/an id/an image) with `press_element`; when there is no stable
@@ -272,16 +273,19 @@ other tool is an optics keyword auto-exposed from `ActionKeyword` /
 - **Session/app:** `start_session`, `terminate_session`, `launch_app`,
   `launch_other_app`, `close_and_terminate_app`, `get_app_version`,
   `get_driver_session_id`.
-- **Interact:** `press_element`, `press_by_coordinates`, `press_by_percentage`,
-  `press_keycode`, `enter_text`, `enter_number`, `clear_element_text`,
-  `select_dropdown_option`, `detect_and_press`.
+- **Interact:** `press_element`, `press_keycode`, `enter_text`, `enter_number`,
+  `clear_element_text`, `select_dropdown_option`, `detect_and_press`. Raw
+  coordinate taps (`press_by_coordinates`, `press_by_percentage`) are not exposed
+  as tools because a pixel eyed off a screenshot misfires; set
+  `OPTICS_MCP_ALLOW_COORDINATE_TAPS=1` before starting the server to re-enable
+  them for targets with no queryable elements (e.g. a canvas).
 - **Gestures/scroll:** `swipe`, `swipe_by_percentage`, `swipe_from_element`,
   `swipe_until_element_appears`, `scroll`, `scroll_from_element`,
   `scroll_until_element_appears`.
 - **Observe/verify:** `screenshot` (rendered image), `get_text`,
-  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`),
-  `is_element`, `assert_presence`, `assert_equality`, `validate_element`,
-  `validate_screen`.
+  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`, and
+  `compact` for the token-lean list), `is_element`, `assert_presence`,
+  `assert_equality`, `validate_element`, `validate_screen`.
 - **Misc:** `sleep`, `execute_script`.
 
 The full machine-readable catalog (every keyword, its params and docs) is the
@@ -305,11 +309,12 @@ per-driver `elements_sources` default so the call just works.
 | `optics://project-format` | how optics stores a suite (CSV layout + `${var}`), so you can author one |
 | `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |
 | `optics://session/{session_id}/source` | page source / UI hierarchy |
-| `optics://session/{session_id}/elements` | interactive elements (unfiltered) |
+| `optics://session/{session_id}/elements` | compact actionable elements + read-only text (Appium/Playwright) |
 | `optics://session/{session_id}/screen_elements` | captured screen elements |
 
-`get_interactive_elements` is available **both** as a resource (unfiltered) and
-as a tool (so the model can pass `filter_config`).
+`get_interactive_elements` is available **both** as a resource (compact by default)
+and as a tool (so the model can pass `filter_config`, or `compact=false` for the full
+untrimmed element list).
 
 > The screenshot **resource** delivers raw PNG bytes with a generic
 > `application/octet-stream` mime (a limitation of templated MCP resources). For

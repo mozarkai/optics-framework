@@ -82,3 +82,42 @@ def test_invoke_api_request_failure(flow_control):
 
     with pytest.raises(OpticsError, match="API request to http://127.0.0.1:9/token failed:"):
         flow_control.invoke_api("authentication_apis.post_token")
+
+
+@pytest.fixture
+def served_session(mock_runner, api_test_data):
+    """A session shaped as ``optics serve`` creates one: ``elements=None``, with no way to
+    fill it afterwards. Every other fixture here hands FlowControl a ready ``ElementData``,
+    which is why nothing caught that ``extract`` could not run in a served session.
+    """
+    mock_runner.apis = api_test_data
+    mock_runner.modules = {}
+    mock_runner.elements = None
+    flow_control = FlowControl(mock_runner, {})
+    flow_control.session = mock_runner
+    return flow_control
+
+
+def test_extract_works_in_a_session_created_without_an_element_store(served_session):
+    served_session.invoke_api("authentication_apis.post_token")
+
+    assert served_session.session.elements.get_first("auth_token") == "real_auth_token_123"
+    assert served_session.session.elements.get_first("user_id") == "98765"
+
+
+def test_a_later_api_reads_what_an_earlier_one_extracted(served_session):
+    """The store has to survive on the session, not just inside the call that made it:
+    ``send_otp`` sends ``${auth_token}``, which only ``post_token`` supplies."""
+    served_session.invoke_api("authentication_apis.post_token")
+    served_session.invoke_api("authentication_apis.send_otp")
+
+    assert served_session.session.elements.get_first("auth_token") == "real_auth_token_123"
+
+
+def test_an_existing_element_store_is_kept_rather_than_replaced(flow_control):
+    """A packaged run arrives with elements loaded from its csvs; an extract adds to those."""
+    flow_control.session.elements.add_element("from_a_csv", "//button")
+    flow_control.invoke_api("authentication_apis.post_token")
+
+    assert flow_control.session.elements.get_first("from_a_csv") == "//button"
+    assert flow_control.session.elements.get_first("auth_token") == "real_auth_token_123"

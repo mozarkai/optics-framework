@@ -29,6 +29,20 @@ from optics_framework.engines.drivers.appium_platforms import (
 )
 from optics_framework.common.error import OpticsError, Code
 
+_MAX_ERROR_OUTPUT_LINES = 20
+
+
+def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LINES) -> str:
+    """Cap command output embedded in error messages so one failure can't flood the log."""
+    lines = [line for line in (output or "").splitlines() if line.strip()]
+    if not lines:
+        return "<no output>"
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    half = max_lines // 2
+    omitted = len(lines) - max_lines
+    return "\n".join([*lines[:half], f"… ({omitted} lines omitted)", *lines[-half:]])
+
 
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
@@ -257,7 +271,7 @@ class Appium(DriverInterface):
         all_caps = self.capabilities.copy() if self.capabilities else {}
         self._apply_app_identifier_caps(all_caps, app_package, app_activity)
 
-        attached_sid = self._try_attach_or_clear_session_caps(all_caps, event_name)
+        attached_sid = self._try_attach_or_clear_session_caps(all_caps, event_name=event_name)
         if attached_sid is not None:
             return attached_sid
 
@@ -267,7 +281,7 @@ class Appium(DriverInterface):
         for key, value in final_caps.items():
             options.set_capability(key, value)
 
-        return self._create_new_driver_session(options, event_name)
+        return self._create_new_driver_session(options, event_name=event_name)
 
     def get_session_id(self) -> Optional[str]:
         """Return the current Appium session id, if a session is active."""
@@ -630,17 +644,25 @@ class Appium(DriverInterface):
                     return appver
 
         except Exception as e:
+            output = getattr(e, "output", "") or output
             internal_logger.info(f"Error executing adb command {dumpsys_cmd}: {e}")
             raise OpticsError(
                 Code.E0401,
-                message=f"Error executing adb command {dumpsys_cmd}: {e}. Received output = {output}.",
+                message=(
+                    f"Error executing adb command {dumpsys_cmd}: {e}. "
+                    f"Output:\n{_summarize_command_output(output)}"
+                ),
                 details=str(e),
                 cause=e
             ) from e
 
         raise OpticsError(
             Code.E0401,
-            message=f"Could not find versionName for package: {app_package}. Received output = {output}"
+            message=(
+                f"Could not find versionName for package: {app_package} in "
+                f"'{' '.join(dumpsys_cmd)}' output.\n"
+                f"Output:\n{_summarize_command_output(output)}"
+            )
         )
 
     def _get_ios_app_version(self, bundle_id_override: Optional[str] = None) -> str:
@@ -675,7 +697,10 @@ class Appium(DriverInterface):
         except Exception as e:
             raise OpticsError(
                 Code.E0401,
-                message=f"ideviceinstaller command failed: {e}. Output: {output}",
+                message=(
+                    f"ideviceinstaller command failed: {e}. "
+                    f"Output:\n{_summarize_command_output(output)}"
+                ),
                 details=str(e),
                 cause=e,
             ) from e
@@ -693,7 +718,10 @@ class Appium(DriverInterface):
 
         raise OpticsError(
             Code.E0401,
-            message=f"Could not find bundle '{bundle_id}' in ideviceinstaller output. Output: {output}",
+            message=(
+                f"Could not find bundle '{bundle_id}' in ideviceinstaller output.\n"
+                f"Output:\n{_summarize_command_output(output)}"
+            ),
         )
 
     def initialise_setup(self) -> None:
@@ -891,7 +919,7 @@ class Appium(DriverInterface):
         else:
             internal_logger.error(f"Unknown swipe direction: {direction}")
             return
-        self.swipe(start_x, start_y, direction, swipe_length, event_name)
+        self.swipe(start_x, start_y, direction, swipe_length, event_name=event_name)
 
     @supported_on(*MOBILE)
     def swipe_element(
@@ -1236,7 +1264,7 @@ class Appium(DriverInterface):
         """
         coor_x, coor_y = int(coor_x), int(coor_y)
         internal_logger.debug(f"Pressing at coordinates: ({coor_x}, {coor_y})")
-        self.tap_at_coordinates(coor_x, coor_y, event_name)
+        self.tap_at_coordinates(coor_x, coor_y, event_name=event_name)
 
     @supported_on(*MOBILE)
     def press_percentage_coordinates(
@@ -1255,7 +1283,7 @@ class Appium(DriverInterface):
             internal_logger.debug(
                 f"Pressing at percentage coordinates: ({percentage_x}%, {percentage_y}%)"
             )
-            self.press_coordinates(x, y, event_name)
+            self.press_coordinates(x, y, event_name=event_name)
 
     @supported_on(*MOBILE)
     def press_xpath_using_coordinates(self, xpath: str, event_name: Optional[str] = None) -> None:
@@ -1274,7 +1302,7 @@ class Appium(DriverInterface):
             (x1, y1), (x2, y2) = bbox
             x_centre = (x1 + x2) // 2
             y_centre = (y1 + y2) // 2
-            self.tap_at_coordinates(x_centre, y_centre, event_name)
+            self.tap_at_coordinates(x_centre, y_centre, event_name=event_name)
         else:
             internal_logger.debug(
                 f"Bounding box not found for element with xpath: {xpath}"

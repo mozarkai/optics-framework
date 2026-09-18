@@ -44,7 +44,7 @@ class Playwright(DriverInterface):
     # =====================================================
 
     def launch_app(self, app_identifier=None, app_activity=None, event_name=None):
-        return run_async(self._launch_app_async(app_identifier, event_name))
+        return run_async(self._launch_app_async(app_identifier, event_name=event_name))
 
     async def _launch_app_async(self, app_identifier, event_name):
         try:
@@ -89,7 +89,7 @@ class Playwright(DriverInterface):
             if self._context is None:
                 # If no context exists, initialize browser first
                 internal_logger.info("[Playwright] No existing context, initializing browser")
-                await self._launch_app_async(None, event_name)
+                await self._launch_app_async(None, event_name=event_name)
 
             # Create a new page (tab) in the existing context
             internal_logger.debug("[Playwright] Creating new tab for %s", app_name)
@@ -110,7 +110,7 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0102, str(e), cause=e)
 
     def launch_other_app(self, app_name: str, event_name=None):
-        return run_async(self._launch_other_app_async(app_name, event_name))
+        return run_async(self._launch_other_app_async(app_name, event_name=event_name))
 
     async def _navigate_to(self, url: str):
         """
@@ -173,7 +173,7 @@ class Playwright(DriverInterface):
     # =====================================================
 
     def press_element(self, element: str, repeat: int = 1, event_name=None):
-        run_async(self._press_element_async(element, repeat, event_name))
+        run_async(self._press_element_async(element, repeat, event_name=event_name))
 
     async def _press_element_async(self, element, repeat, event_name):
         # Handle both string selectors and Playwright locator objects

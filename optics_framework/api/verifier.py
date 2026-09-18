@@ -43,7 +43,7 @@ class Verifier:
         """
         internal_logger.debug(f"Validating element: {element}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
-        self.assert_presence(element, timeout, rule, event_name)
+        self.assert_presence(element, timeout, rule, event_name=event_name)
 
     def is_element(
         self,
@@ -216,7 +216,7 @@ class Verifier:
     def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str, method_name: str):
         """Handle the final result, including event capture and error raising."""
         if result:
-            self._capture_success_event(timestamps, event_name)
+            self._capture_success_event(timestamps, event_name=event_name)
         elif fail:
             assertion_label = method_name.replace("assert_", "").capitalize()
             raise AssertionError(f"{assertion_label} assertion failed based on rule: {rule}")
@@ -240,7 +240,7 @@ class Verifier:
         internal_logger.debug(f"Validating screen for elements: {elements}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         try:
-            self.assert_presence(elements, timeout, rule, event_name, fail=False)
+            self.assert_presence(elements, timeout, rule, event_name=event_name, fail=False)
             return True
         except OpticsError as e:
             internal_logger.info(f"Validate Screen: Elements not found. Error: {e}")
@@ -310,8 +310,32 @@ class Verifier:
         source = self.element_source.active_instance
         return getattr(source, "REQUIRED_DRIVER_TYPE", None) == "appium"
 
+    @staticmethod
+    def _to_compact_shape(elements: list) -> list:
+        # Project compact dicts to {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}.
+        # A payload without an "act" key (a source that does not implement compact)
+        # passes through.
+        if not elements or not isinstance(elements[0], dict) or "act" not in elements[0]:
+            return elements
+        compact = []
+        for i, el in enumerate(elements):
+            extra = el.get("extra") or {}
+            bounds = el.get("bounds") or {}
+            entry = {
+                "i": i,
+                "label": el.get("text") or "",
+                "cls": (extra.get("class") or "").split(".")[-1],
+                "bounds": [bounds.get("x1"), bounds.get("y1"), bounds.get("x2"), bounds.get("y2")],
+                "act": el.get("act") or [],
+            }
+            rid = extra.get("resource-id")
+            if rid:
+                entry["rid"] = rid.split("/")[-1]
+            compact.append(entry)
+        return compact
+
     def _collect_interactive_elements(
-        self, filter_config: Optional[List[str]], screenshot_np: Optional[Any]
+        self, filter_config: Optional[List[str]], screenshot_np: Optional[Any], compact: bool = False
     ) -> list:
         """Fetch interactive elements, CSV-escape their text/xpath, and scale their
         bounds into the given screenshot's pixel space.
@@ -320,7 +344,7 @@ class Verifier:
         workspace stream so all three return consistent, screenshot-aligned bounds from
         a single capture. Does not persist anything — callers decide whether to save.
         """
-        elements = self.strategy_manager.get_interactive_elements(filter_config)
+        elements = self.strategy_manager.get_interactive_elements(filter_config, compact=compact)
         for el in elements:
             if isinstance(el, dict):
                 if "xpath" in el and el["xpath"] is not None:
@@ -333,7 +357,7 @@ class Verifier:
         utils.scale_interactive_element_bounds(elements, self.element_source, screenshot_np)
         return elements
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> list:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> list:
         """
         Retrieves a list of interactive elements on the current screen.
 
@@ -342,10 +366,17 @@ class Verifier:
         On Appium sources, element bounds are returned in the screenshot's pixel space.
 
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
+        :param compact: When True, return only actionable elements (labels folded in,
+            with an ``act`` list) plus standalone visible text (``act: []``), as
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}``. Implemented by the
+            Appium and Playwright page sources; sources without it return their full list.
         :return: A list of interactive elements.
         """
+        compact = utils.to_bool(compact)
         screenshot_np = self._safe_capture_screenshot_np() if self._bounds_need_screenshot() else None
-        elements = self._collect_interactive_elements(filter_config, screenshot_np)
+        elements = self._collect_interactive_elements(filter_config, screenshot_np, compact=compact)
+        if compact:
+            elements = self._to_compact_shape(elements)
         utils.save_interactable_elements(elements, output_dir=self.execution_dir)
         return elements
 

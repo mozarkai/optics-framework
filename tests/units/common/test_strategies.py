@@ -21,6 +21,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
     LocatorStrategy,
+    PagesourceStrategy,
     StrategyManager,
     TextDetectionStrategy,
     LocateResult,
@@ -592,14 +593,14 @@ class TestGetInteractiveElementsStrategyScreening:
         if supports_extraction:
             source.get_interactive_elements = MagicMock(return_value=elements or [])
         else:
-            def _unsupported(filter_config=None):
+            def _unsupported(filter_config=None, compact=False):
                 raise NotImplementedError("does not support getting interactive elements")
             source.get_interactive_elements = _unsupported
 
         strategy = MagicMock()
         strategy.element_source = source
         strategy.get_interactive_elements = MagicMock(
-            side_effect=lambda fc=None: source.get_interactive_elements(fc)
+            side_effect=lambda fc=None, compact=False: source.get_interactive_elements(fc, compact=compact)
         )
         return strategy
 
@@ -627,6 +628,53 @@ class TestGetInteractiveElementsStrategyScreening:
         with pytest.raises(OpticsError) as exc_info:
             manager.get_interactive_elements()
         assert exc_info.value.code == Code.E0202
+
+
+# --- PagesourceStrategy compact-forwarding compatibility ---
+
+
+class _LegacyExtractionSource:
+    def __init__(self):
+        self.calls: list = []
+
+    def get_interactive_elements(self, filter_config=None):
+        self.calls.append(filter_config)
+        return [{"text": "OK"}]
+
+
+class _VarKwargsExtractionSource:
+    def __init__(self):
+        self.kwargs: dict = {}
+
+    def get_interactive_elements(self, filter_config=None, **kwargs):
+        self.kwargs = kwargs
+        return []
+
+
+class TestPagesourceStrategyCompactForwarding:
+    def test_legacy_signature_is_called_without_compact(self):
+        source = _LegacyExtractionSource()
+        elements = PagesourceStrategy(source).get_interactive_elements(None, compact=True)
+        assert elements == [{"text": "OK"}]
+        assert source.calls == [None]
+
+    def test_declared_compact_is_forwarded(self):
+        source = MagicMock()
+        source.get_interactive_elements.return_value = []
+        PagesourceStrategy(source).get_interactive_elements(None, compact=True)
+        source.get_interactive_elements.assert_called_once_with(None, compact=True)
+
+    def test_var_keyword_signature_is_forwarded(self):
+        source = _VarKwargsExtractionSource()
+        PagesourceStrategy(source).get_interactive_elements(None, compact=True)
+        assert source.kwargs == {"compact": True}
+
+    def test_none_result_still_raises_not_implemented(self):
+        source = _LegacyExtractionSource()
+        source.get_interactive_elements = lambda filter_config=None: None
+        strategy = PagesourceStrategy(source)
+        with pytest.raises(NotImplementedError):
+            strategy.get_interactive_elements()
 
 
 class TestDeadSessionIsNotMasked:

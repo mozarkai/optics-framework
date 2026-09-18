@@ -62,20 +62,20 @@ trio = ["trio (>=0.32.0)"]
 
 [[package]]
 name = "appium-python-client"
-version = "5.3.1"
+version = "6.0.5"
 description = "Python client for Appium"
 optional = true
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\""
 files = [
-    {file = "appium_python_client-5.3.1-py3-none-any.whl", hash = "sha256:da0d3227ee059c31908a16f30a131424713ea96998fcd48e255d2cf9d107b557"},
-    {file = "appium_python_client-5.3.1.tar.gz", hash = "sha256:30800f9a53a585814138e7c8f569fd295273f933c9b34ad1a9580f3bf923fc63"},
+    {file = "appium_python_client-6.0.5-py3-none-any.whl", hash = "sha256:6be8b77a57991b494dd81cfc16e6cf0d4ad9dc204998d23f5e292ff5a76ff331"},
+    {file = "appium_python_client-6.0.5.tar.gz", hash = "sha256:c93d62c7fe57b75c43c4f802dac88955a4fa081ec7420b8b40b85a47a606ddce"},
 ]
 
 [package.dependencies]
-selenium = ">=4.26,<5.0"
-typing-extensions = ">=4.13,<5.0"
+selenium = ">=4.37.0,<5.0"
+typing-extensions = ">=4.16,<5.0"
 
 [[package]]
 name = "argcomplete"
@@ -1097,14 +1097,14 @@ test = ["pytest (>=6)"]
 
 [[package]]
 name = "fastapi"
-version = "0.137.1"
+version = "0.141.1"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "fastapi-0.137.1-py3-none-any.whl", hash = "sha256:64f6983c59e45c4b9fdc44e57cb8035c2451ee91ea8e8ec042aca37de7cf6b69"},
-    {file = "fastapi-0.137.1.tar.gz", hash = "sha256:822360704230d9533d8d9475399613525968aa2f0b5bd2a3ccc9f18c88fd541c"},
+    {file = "fastapi-0.141.1-py3-none-any.whl", hash = "sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3"},
+    {file = "fastapi-0.141.1.tar.gz", hash = "sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1"},
 ]
 
 [package.dependencies]
@@ -1115,46 +1115,46 @@ typing-extensions = ">=4.8.0"
 typing-inspection = ">=0.4.2"
 
 [package.extras]
-all = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.8)", "httpx (>=0.23.0,<1.0.0)", "itsdangerous (>=1.1.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "pyyaml (>=5.3.1)", "uvicorn[standard] (>=0.12.0)"]
-standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.8)", "fastar (>=0.9.0)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
-standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[standard-no-fastapi-cloud-cli] (>=0.0.8)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
+all = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.32)", "httpx (>=0.23.0,<1.0.0)", "itsdangerous (>=1.1.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "pyyaml (>=5.3.1)", "uvicorn[standard] (>=0.12.0)"]
+standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.32)", "fastar (>=0.9.0)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
+standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[standard-no-fastapi-cloud-cli] (>=0.0.32)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
 
 [[package]]
 name = "fastmcp"
-version = "3.4.4"
+version = "4.0.3"
 description = "The fast, Pythonic way to build MCP servers and clients."
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"mcp\""
 files = [
-    {file = "fastmcp-3.4.4-py3-none-any.whl", hash = "sha256:f86f208713212260068cf55c32936839eee856fefc7808e18a032f31eb0f718e"},
-    {file = "fastmcp-3.4.4.tar.gz", hash = "sha256:378202e26ec15b23819d9a1c0d1b0ebda096bc712720532010a0b82a45c2b1df"},
+    {file = "fastmcp-4.0.3-py3-none-any.whl", hash = "sha256:f743f43193e1daf606e6497a9dddba5bbaad7df7957a98fd093716ecf4458b99"},
+    {file = "fastmcp-4.0.3.tar.gz", hash = "sha256:0dd50baf070105ee4436c245f087ac3c047e655c32d9e783de16d0bf15783a98"},
 ]
 
 [package.dependencies]
-fastmcp-slim = {version = "3.4.4", extras = ["client", "server"]}
+fastmcp-slim = {version = "4.0.3", extras = ["client", "server"]}
 
 [package.extras]
-anthropic = ["fastmcp-slim[anthropic] (==3.4.4)"]
-apps = ["fastmcp-slim[apps] (==3.4.4)"]
-azure = ["fastmcp-slim[azure] (==3.4.4)"]
-code-mode = ["fastmcp-slim[code-mode] (==3.4.4)"]
-gemini = ["fastmcp-slim[gemini] (==3.4.4)"]
-openai = ["fastmcp-slim[openai] (==3.4.4)"]
-tasks = ["fastmcp-slim[tasks] (==3.4.4)"]
+anthropic = ["fastmcp-slim[anthropic] (==4.0.3)"]
+apps = ["fastmcp-slim[apps] (==4.0.3)"]
+azure = ["fastmcp-slim[azure] (==4.0.3)"]
+code-mode = ["fastmcp-slim[code-mode] (==4.0.3)"]
+gemini = ["fastmcp-slim[gemini] (==4.0.3)"]
+openai = ["fastmcp-slim[openai] (==4.0.3)"]
+tasks = ["fastmcp-tasks (==4.0.3)"]
 
 [[package]]
 name = "fastmcp-slim"
-version = "3.4.4"
+version = "4.0.3"
 description = "The dependency-slim FastMCP package."
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"mcp\""
 files = [
-    {file = "fastmcp_slim-3.4.4-py3-none-any.whl", hash = "sha256:9d3a6327b9ee835188eb7323fc3b5d4cd061631b48da8ece56794bb538972505"},
-    {file = "fastmcp_slim-3.4.4.tar.gz", hash = "sha256:dcaa3e0be2127d7eacdce592c2ef0039204923dc0ec396454615cb4a3275b078"},
+    {file = "fastmcp_slim-4.0.3-py3-none-any.whl", hash = "sha256:3756ed4bd9f82f40adaf51974b7cdd1463ab6b9f479cf69b69b2692969312b87"},
+    {file = "fastmcp_slim-4.0.3.tar.gz", hash = "sha256:3ce04a82b82cc41ccb12bb3bb366cfd65b52bc797b8fee332a75da9d480f9b74"},
 ]
 
 [package.dependencies]
@@ -1162,17 +1162,18 @@ authlib = {version = ">=1.6.11", optional = true, markers = "extra == \"client\"
 cyclopts = {version = ">=4.0.0", optional = true, markers = "extra == \"server\""}
 exceptiongroup = {version = ">=1.2.2", optional = true, markers = "extra == \"client\" or extra == \"server\""}
 griffelib = {version = ">=2.0.0", optional = true, markers = "extra == \"server\""}
-httpx = {version = ">=0.28.1,<1.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
-joserfc = {version = ">=1.1.0", optional = true, markers = "extra == \"server\""}
+httpx2 = {version = ">=2.5.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+joserfc = {version = ">=1.5.0", optional = true, markers = "extra == \"server\""}
 jsonref = {version = ">=1.1.0", optional = true, markers = "extra == \"server\""}
 jsonschema-path = {version = ">=0.3.4", optional = true, markers = "extra == \"server\""}
-mcp = {version = ">=1.24.0,<2.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+mcp = {version = ">=2.0.0,<3.0.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+mcp-types = ">=2.0.0,<3.0.0"
 openapi-pydantic = {version = ">=0.5.1", optional = true, markers = "extra == \"server\""}
-opentelemetry-api = {version = ">=1.20.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+opentelemetry-api = {version = ">=1.28.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
 packaging = {version = ">=24.0", optional = true, markers = "extra == \"server\""}
 platformdirs = ">=4.0.0"
 py-key-value-aio = {version = ">=0.4.4,<0.5.0", extras = ["filetree", "keyring", "memory"], optional = true, markers = "extra == \"client\" or extra == \"server\""}
-pydantic = {version = ">=2.11.7", extras = ["email"]}
+pydantic = {version = ">=2.12.0", extras = ["email"]}
 pydantic-settings = ">=2.0.0"
 pyperclip = {version = ">=1.9.0", optional = true, markers = "extra == \"server\""}
 python-dotenv = ">=1.1.0"
@@ -1181,22 +1182,21 @@ pyyaml = {version = ">=6.0,<7.0", optional = true, markers = "extra == \"server\
 rich = ">=13.9.4"
 starlette = {version = ">=1.0.1", optional = true, markers = "extra == \"client\" or extra == \"server\""}
 typing-extensions = ">=4.0.0"
-uncalled-for = {version = ">=0.2.0", optional = true, markers = "extra == \"server\""}
+uncalled-for = {version = ">=0.4.0", optional = true, markers = "extra == \"server\""}
 uvicorn = {version = ">=0.35", optional = true, markers = "extra == \"server\""}
 watchfiles = {version = ">=1.0.0", optional = true, markers = "extra == \"server\""}
 websockets = {version = ">=15.0.1", optional = true, markers = "extra == \"server\""}
 
 [package.extras]
-anthropic = ["anthropic (>=0.48.0)"]
+anthropic = ["anthropic (>=0.48.0,<1)"]
 apps = ["prefab-ui (>=0.18.0)"]
 azure = ["azure-identity (>=1.16.0)", "pyjwt (>=2.12.0)"]
-client = ["authlib (>=1.6.11)", "exceptiongroup (>=1.2.2)", "httpx (>=0.28.1,<1.0)", "mcp (>=1.24.0,<2.0)", "opentelemetry-api (>=1.20.0)", "py-key-value-aio[filetree,keyring,memory] (>=0.4.4,<0.5.0)", "starlette (>=1.0.1)"]
-code-mode = ["pydantic-monty (==0.0.17)"]
+client = ["authlib (>=1.6.11)", "exceptiongroup (>=1.2.2)", "httpx2 (>=2.5.0)", "mcp (>=2.0.0,<3.0.0)", "opentelemetry-api (>=1.28.0)", "py-key-value-aio[filetree,keyring,memory] (>=0.4.4,<0.5.0)", "starlette (>=1.0.1)"]
+code-mode = ["pydantic-monty (==0.0.18)"]
 gemini = ["google-genai (>=1.18.0)", "jsonref (>=1.1.0)"]
-mcp = ["exceptiongroup (>=1.2.2)", "httpx (>=0.28.1,<1.0)", "mcp (>=1.24.0,<2.0)", "opentelemetry-api (>=1.20.0)", "starlette (>=1.0.1)"]
+mcp = ["exceptiongroup (>=1.2.2)", "httpx2 (>=2.5.0)", "mcp (>=2.0.0,<3.0.0)", "opentelemetry-api (>=1.28.0)", "starlette (>=1.0.1)"]
 openai = ["openai (>=1.102.0)"]
-server = ["authlib (>=1.6.11)", "cyclopts (>=4.0.0)", "exceptiongroup (>=1.2.2)", "griffelib (>=2.0.0)", "httpx (>=0.28.1,<1.0)", "joserfc (>=1.1.0)", "jsonref (>=1.1.0)", "jsonschema-path (>=0.3.4)", "mcp (>=1.24.0,<2.0)", "openapi-pydantic (>=0.5.1)", "opentelemetry-api (>=1.20.0)", "packaging (>=24.0)", "py-key-value-aio[filetree,keyring,memory] (>=0.4.4,<0.5.0)", "pyperclip (>=1.9.0)", "python-multipart (>=0.0.26)", "pyyaml (>=6.0,<7.0)", "starlette (>=1.0.1)", "uncalled-for (>=0.2.0)", "uvicorn (>=0.35)", "watchfiles (>=1.0.0)", "websockets (>=15.0.1)"]
-tasks = ["pydocket (>=0.20.0)"]
+server = ["authlib (>=1.6.11)", "cyclopts (>=4.0.0)", "exceptiongroup (>=1.2.2)", "griffelib (>=2.0.0)", "httpx2 (>=2.5.0)", "joserfc (>=1.5.0)", "jsonref (>=1.1.0)", "jsonschema-path (>=0.3.4)", "mcp (>=2.0.0,<3.0.0)", "openapi-pydantic (>=0.5.1)", "opentelemetry-api (>=1.28.0)", "packaging (>=24.0)", "py-key-value-aio[filetree,keyring,memory] (>=0.4.4,<0.5.0)", "pyperclip (>=1.9.0)", "python-multipart (>=0.0.26)", "pyyaml (>=6.0,<7.0)", "starlette (>=1.0.1)", "uncalled-for (>=0.4.0)", "uvicorn (>=0.35)", "watchfiles (>=1.0.0)", "websockets (>=15.0.1)"]
 
 [[package]]
 name = "filelock"
@@ -1656,7 +1656,7 @@ description = "A minimal low-level HTTP client."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"mcp\" or extra == \"all\" or extra == \"llm\""
+markers = "extra == \"all\" or extra == \"llm\""
 files = [
     {file = "httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"},
     {file = "httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8"},
@@ -1678,12 +1678,12 @@ version = "2.12.0"
 description = "A minimal low-level HTTP client."
 optional = false
 python-versions = ">=3.10"
-groups = ["test"]
-markers = "sys_platform != \"emscripten\""
+groups = ["main", "test"]
 files = [
     {file = "httpcore2-2.12.0-py3-none-any.whl", hash = "sha256:7e04258ce01013d7d615e5b910a3b27fac937d7a95038227e79652b4ba3b4ceb"},
     {file = "httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648"},
 ]
+markers = {main = "extra == \"mcp\" and sys_platform != \"emscripten\"", test = "sys_platform != \"emscripten\""}
 
 [package.dependencies]
 h11 = ">=0.16"
@@ -1702,7 +1702,7 @@ description = "The next generation HTTP client."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"mcp\" or extra == \"all\" or extra == \"llm\""
+markers = "extra == \"all\" or extra == \"llm\""
 files = [
     {file = "httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"},
     {file = "httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc"},
@@ -1722,29 +1722,17 @@ socks = ["socksio (==1.*)"]
 zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
-name = "httpx-sse"
-version = "0.4.3"
-description = "Consume Server-Sent Event (SSE) messages with HTTPX."
-optional = true
-python-versions = ">=3.9"
-groups = ["main"]
-markers = "extra == \"mcp\""
-files = [
-    {file = "httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc"},
-    {file = "httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d"},
-]
-
-[[package]]
 name = "httpx2"
 version = "2.12.0"
 description = "The next generation HTTP client."
 optional = false
 python-versions = ">=3.10"
-groups = ["test"]
+groups = ["main", "test"]
 files = [
     {file = "httpx2-2.12.0-py3-none-any.whl", hash = "sha256:cc8b6eecb8661c146b8f89a60e97456ee086e91a784ed31ac450c3a9e613dd36"},
     {file = "httpx2-2.12.0.tar.gz", hash = "sha256:7631fe9887a8a2275f4a2540e053aa670fcc50742864a9ae7c66e609fdcf12cf"},
 ]
+markers = {main = "extra == \"mcp\""}
 
 [package.dependencies]
 anyio = {version = ">=4.10", markers = "sys_platform != \"emscripten\""}
@@ -1768,12 +1756,12 @@ version = "1.0"
 description = "httpx2 transports for Emscripten/Pyodide, backed by the JavaScript fetch API."
 optional = false
 python-versions = ">=3.12"
-groups = ["test"]
-markers = "sys_platform == \"emscripten\""
+groups = ["main", "test"]
 files = [
     {file = "httpx2_jsfetch-1.0-py3-none-any.whl", hash = "sha256:cb916b707601e69a07721aabc8f3f6659be3a6893bc1ff5c6f9e02241df2da32"},
     {file = "httpx2_jsfetch-1.0.tar.gz", hash = "sha256:70a0e3eabfef7cce5ad9c629f7d01ca05e418f586646f4ddf14782e4c1454c60"},
 ]
+markers = {main = "sys_platform == \"emscripten\" and extra == \"mcp\"", test = "sys_platform == \"emscripten\""}
 
 [[package]]
 name = "identify"
@@ -2556,46 +2544,59 @@ files = [
 
 [[package]]
 name = "mcp"
-version = "1.29.0"
+version = "2.2.0"
 description = "Model Context Protocol SDK"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"mcp\""
 files = [
-    {file = "mcp-1.29.0-py3-none-any.whl", hash = "sha256:f5a075bb611f23d6f4d080c6a1699fa62772eebc562ba9e66b306ddde1c755f7"},
-    {file = "mcp-1.29.0.tar.gz", hash = "sha256:52d01f334de1868cc3bb2d6604931126a67631f99a6c5d3b82ba47290315ec36"},
+    {file = "mcp-2.2.0-py3-none-any.whl", hash = "sha256:bde982589473a060ae145e3406e9a5333fe538c97229ba841f5a7f92be004f81"},
+    {file = "mcp-2.2.0.tar.gz", hash = "sha256:2dc37ecb1974becdcebdbf7561e7c15a07dbbf20ba21ba16c3593b3038b3afbd"},
 ]
 
 [package.dependencies]
-anyio = ">=4.5"
-httpx = ">=0.27.1,<1.0.0"
-httpx-sse = ">=0.4"
-jsonschema = ">=4.20.0"
-pydantic = [
-    {version = ">=2.11.0,<3.0.0", markers = "python_version < \"3.14\""},
-    {version = ">=2.12.0,<3.0.0", markers = "python_version >= \"3.14\""},
+anyio = [
+    {version = ">=4.9", markers = "python_version < \"3.14\""},
+    {version = ">=4.10", markers = "python_version >= \"3.14\""},
 ]
-pydantic-settings = ">=2.5.2"
+httpx2 = ">=2.5.0"
+jsonschema = ">=4.20.0"
+mcp-types = "2.2.0"
+opentelemetry-api = ">=1.28.0"
+pydantic = ">=2.12.0"
 pyjwt = {version = ">=2.10.1", extras = ["crypto"]}
 python-multipart = ">=0.0.9"
-pywin32 = [
-    {version = ">=310", markers = "sys_platform == \"win32\" and python_version < \"3.14\""},
-    {version = ">=311", markers = "sys_platform == \"win32\" and python_version >= \"3.14\""},
-]
-sse-starlette = ">=1.6.1"
+pywin32 = {version = ">=311", markers = "sys_platform == \"win32\""}
+sse-starlette = ">=3.0.0"
 starlette = [
     {version = ">=0.27", markers = "python_version < \"3.14\""},
     {version = ">=0.48.0", markers = "python_version >= \"3.14\""},
 ]
-typing-extensions = ">=4.9.0"
+typing-extensions = ">=4.13.0"
 typing-inspection = ">=0.4.1"
 uvicorn = {version = ">=0.31.1", markers = "sys_platform != \"emscripten\""}
 
 [package.extras]
 cli = ["python-dotenv (>=1.0.0)", "typer (>=0.16.0)"]
 rich = ["rich (>=13.9.4)"]
-ws = ["websockets (>=15.0.1)"]
+
+[[package]]
+name = "mcp-types"
+version = "2.2.0"
+description = "Model Context Protocol wire types"
+optional = true
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "extra == \"mcp\""
+files = [
+    {file = "mcp_types-2.2.0-py3-none-any.whl", hash = "sha256:ea476b73ee86709ab5abc9452385ed36cc05907e582355622e294595c9a04f13"},
+    {file = "mcp_types-2.2.0.tar.gz", hash = "sha256:d3ed53703ddd10d9c6399f29d322bb66f3f67ab41348ac8556ba23e07fedefad"},
+]
+
+[package.dependencies]
+pydantic = ">=2.12.0"
+typing-extensions = ">=4.13.0"
 
 [[package]]
 name = "mdit-py-plugins"
@@ -2708,14 +2709,14 @@ pyyaml = ">=5.1"
 
 [[package]]
 name = "mkdocs-material"
-version = "9.7.6"
+version = "9.7.7"
 description = "Documentation that simply works"
 optional = false
 python-versions = ">=3.8"
 groups = ["docs"]
 files = [
-    {file = "mkdocs_material-9.7.6-py3-none-any.whl", hash = "sha256:71b84353921b8ea1ba84fe11c50912cc512da8fe0881038fcc9a0761c0e635ba"},
-    {file = "mkdocs_material-9.7.6.tar.gz", hash = "sha256:00bdde50574f776d328b1862fe65daeaf581ec309bd150f7bff345a098c64a69"},
+    {file = "mkdocs_material-9.7.7-py3-none-any.whl", hash = "sha256:8ea9bb1737a5b524a5f9dcf2e1b4ebda8274ae3008aa7845720a97083bef708f"},
+    {file = "mkdocs_material-9.7.7.tar.gz", hash = "sha256:c0649c065b1b0512d60aad8c10f947f8e455284475239b364b610f2deb4d0855"},
 ]
 
 [package.dependencies]
@@ -3673,18 +3674,18 @@ virtualenv = ">=20.10.0"
 
 [[package]]
 name = "prompt-toolkit"
-version = "3.0.51"
+version = "3.0.53"
 description = "Library for building powerful interactive command lines in Python"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.10"
 groups = ["main", "dev"]
 files = [
-    {file = "prompt_toolkit-3.0.51-py3-none-any.whl", hash = "sha256:52742911fde84e2d423e2f9a4cf1de7d7ac4e51958f648d9540e0fb8db077b07"},
-    {file = "prompt_toolkit-3.0.51.tar.gz", hash = "sha256:931a162e3b27fc90c86f1b48bb1fb2c528c2761475e57c9c06de13311c7b54ed"},
+    {file = "prompt_toolkit-3.0.53-py3-none-any.whl", hash = "sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2"},
+    {file = "prompt_toolkit-3.0.53.tar.gz", hash = "sha256:9ec8a0ad96d5c56148b3f914aa79c1564c3fde5d2e6b876e7bc327e353cf8fa6"},
 ]
 
 [package.dependencies]
-wcwidth = "*"
+wcwidth = ">=0.1.4"
 
 [[package]]
 name = "proto-plus"
@@ -4261,14 +4262,14 @@ testing = ["coverage (>=6.2)", "hypothesis (>=5.7.1)"]
 
 [[package]]
 name = "pytest-cov"
-version = "7.0.0"
+version = "7.1.0"
 description = "Pytest plugin for measuring coverage."
 optional = false
 python-versions = ">=3.9"
 groups = ["dev", "test"]
 files = [
-    {file = "pytest_cov-7.0.0-py3-none-any.whl", hash = "sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861"},
-    {file = "pytest_cov-7.0.0.tar.gz", hash = "sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1"},
+    {file = "pytest_cov-7.1.0-py3-none-any.whl", hash = "sha256:a0461110b7865f9a271aa1b51e516c9a95de9d696734a2f71e3e78f46e1d4678"},
+    {file = "pytest_cov-7.1.0.tar.gz", hash = "sha256:30674f2b5f6351aa09702a9c8c364f6a01c27aae0c1366ae8016160d1efc56b2"},
 ]
 
 [package.dependencies]
@@ -5358,14 +5359,14 @@ files = [
 
 [[package]]
 name = "soupsieve"
-version = "2.8.4"
+version = "2.9"
 description = "A modern CSS selector implementation for Beautiful Soup."
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "soupsieve-2.8.4-py3-none-any.whl", hash = "sha256:e7e6b0769c8f51ed59acab6e994b00621096cfb1c640a7509295987388fbaf65"},
-    {file = "soupsieve-2.8.4.tar.gz", hash = "sha256:e121fd02e975c695e4e9e8774a5ee35d74714b59307868dcc5319ad2d9e3328e"},
+    {file = "soupsieve-2.9-py3-none-any.whl", hash = "sha256:a2b2c76d67df2382d245409fd71e321a571717e58463efa32ace87dcadac2c12"},
+    {file = "soupsieve-2.9.tar.gz", hash = "sha256:acee8417325c5653e1377dc31eccad59eb82cbc65942afe6174c53b3aaad63fc"},
 ]
 
 [[package]]
@@ -5785,12 +5786,12 @@ version = "0.10.4"
 description = "Verify certificates using native system trust stores"
 optional = false
 python-versions = ">=3.10"
-groups = ["test"]
-markers = "sys_platform != \"emscripten\""
+groups = ["main", "test"]
 files = [
     {file = "truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981"},
     {file = "truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301"},
 ]
+markers = {main = "extra == \"mcp\" and sys_platform != \"emscripten\"", test = "sys_platform != \"emscripten\""}
 
 [[package]]
 name = "typing-extensions"
@@ -5850,15 +5851,15 @@ test = ["coverage", "pytest", "pytest-cov"]
 
 [[package]]
 name = "uncalled-for"
-version = "0.3.2"
+version = "0.4.0"
 description = "Async dependency injection for Python functions"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"mcp\""
 files = [
-    {file = "uncalled_for-0.3.2-py3-none-any.whl", hash = "sha256:0ff60b142c7d1f8070bde9d42afaa70aedc77dcc10998c227687e9c15713418e"},
-    {file = "uncalled_for-0.3.2.tar.gz", hash = "sha256:89f5dbcd71e2b8f47c030b1fa302e6cce2ec795d1ac565eeb6525c5fe55cb8a2"},
+    {file = "uncalled_for-0.4.0-py3-none-any.whl", hash = "sha256:16c4bb3337532e4bd5569adc192285976f3ad5305402256d34c67a12b5c968bd"},
+    {file = "uncalled_for-0.4.0.tar.gz", hash = "sha256:335b95bd2422332ec210d518f314a16e4c640921c39fc8bf2ad095bd3538f4af"},
 ]
 
 [[package]]
@@ -6322,4 +6323,4 @@ web = ["playwright", "selenium"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "d8428f5ecfdaab228e9508d7c1a804308108a9defb10a2bc1ea2d112529f8fc4"
+content-hash = "ad6b6055210559ac584463d8936b8eca74fecafd3caddb5db206b5459447d938"
