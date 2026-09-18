@@ -1198,9 +1198,10 @@ class Optics:
             - "images": Only image elements
             - "text": Only text elements
             Can be combined: ["buttons", "inputs"]
-        :param compact: When True (Appium only), return only actionable elements (folded
-            labels, with an ``act`` list) plus read-only text, as
-            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}``.
+        :param compact: When True, return only actionable elements (folded labels,
+            with an ``act`` list) plus read-only text, as
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}``. Implemented for the
+            Appium and Playwright page sources.
         """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)

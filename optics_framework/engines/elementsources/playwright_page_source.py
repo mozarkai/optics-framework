@@ -13,6 +13,23 @@ PLAYWRIGHT_NOT_INITIALISED_MSG = (
     "Playwright driver is not initialized for PlaywrightPageSource."
 )
 
+# Compact web inspector (get_interactive_elements(compact=True)). HTML carries no
+# clickable/editable attributes, so actionable nodes are inferred from tag/role/type.
+WEB_TAP_TAGS = frozenset({"button", "summary", "label"})
+WEB_TAP_ROLES = frozenset(
+    {"button", "link", "menuitem", "tab", "option", "checkbox", "radio", "switch"}
+)
+WEB_TOGGLE_INPUT_TYPES = frozenset({"checkbox", "radio"})
+WEB_TOGGLE_ROLES = frozenset({"switch", "checkbox", "radio"})
+WEB_TEXT_INPUT_TYPES = frozenset({
+    "text", "search", "email", "password", "tel", "url", "number",
+    "date", "datetime-local", "month", "time", "week",
+})
+WEB_SKIP_TAGS = frozenset(
+    {"script", "style", "meta", "link", "title", "head", "noscript", "template"}
+)
+WEB_COMPACT_LABEL_MAX_CHARS = 120
+
 
 class PlaywrightPageSource(ElementSourceInterface):
     """
@@ -124,12 +141,15 @@ class PlaywrightPageSource(ElementSourceInterface):
                 - "images": Only image elements
                 - "text": Only text elements
                 Can be combined: ["buttons", "inputs"]
-            compact: Accepted for interface parity; not yet implemented for web (ignored).
+            compact: When True, ignore filter_config and return only actionable
+                elements (labels folded in from descendants, with an ``act`` list)
+                plus standalone visible text (``act: []``), shaped for the Verifier's
+                compact projection.
 
         Returns:
-            List of dictionaries with keys: text, bounds, xpath, extra
+            List of dictionaries with keys: text, bounds, xpath, extra. In compact
+            mode each dict carries ``act`` instead of ``xpath``.
         """
-        _ = compact  # not implemented for web
         # Ensure page source is fetched and parsed
         self.get_page_source()  # Returns (html, timestamp); updates self.tree
 
@@ -138,6 +158,9 @@ class PlaywrightPageSource(ElementSourceInterface):
             return []
 
         page = self._require_page()
+        if compact:
+            return self._extract_compact_web_interactives(page)
+
         elements = self.tree.xpath(".//*")
         results = []
 
@@ -405,6 +428,160 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         # Try class (last resort)
         return self._try_class_text(attrs)
+
+    # ---------------------------------------------------------
+    # Compact extraction helpers (get_interactive_elements(compact=True))
+    # ---------------------------------------------------------
+
+    def _web_is_hidden(self, node: etree.Element) -> bool:
+        """Cheap hidden/disabled checks; CSS-driven hiding is caught by the bounds probe."""
+        attrs = node.attrib or {}
+        if attrs.get("hidden") is not None or (attrs.get("aria-hidden") or "").lower() == "true":
+            return True
+        if (node.tag or "").lower() == "input" and (attrs.get("type") or "").lower() == "hidden":
+            return True
+        style = (attrs.get("style") or "").lower().replace(" ", "")
+        return "display:none" in style or "visibility:hidden" in style
+
+    def _is_web_toggle(self, node: etree.Element) -> bool:
+        tag = (node.tag or "").lower()
+        attrs = node.attrib or {}
+        role = (attrs.get("role") or "").lower()
+        return (
+            (tag == "input" and (attrs.get("type") or "").lower() in WEB_TOGGLE_INPUT_TYPES)
+            or role in WEB_TOGGLE_ROLES
+        )
+
+    def _is_web_disabled(self, node: etree.Element) -> bool:
+        """Native disabled or an ARIA widget marked non-operable."""
+        attrs = node.attrib or {}
+        return "disabled" in attrs or (attrs.get("aria-disabled") or "").lower() == "true"
+
+    def _web_element_actions(self, node: etree.Element) -> List[str]:
+        """Interactions a web node affords: tap/toggle/input (empty => none).
+
+        Inferred from tag/role/type because HTML has none of UiAutomator2's action
+        attributes. Scroll-only elements have no static signal and stay unclassified.
+        """
+        if self._web_is_hidden(node) or self._is_web_disabled(node):
+            return []
+        tag = (node.tag or "").lower()
+        attrs = node.attrib or {}
+        role = (attrs.get("role") or "").lower()
+        input_type = (attrs.get("type") or "").lower()
+        contenteditable = attrs.get("contenteditable")
+        text_input = (
+            (tag == "input" and (not input_type or input_type in WEB_TEXT_INPUT_TYPES))
+            or tag == "textarea"
+            or (contenteditable is not None and contenteditable.lower() != "false")
+        )
+        clickable = (
+            tag in WEB_TAP_TAGS
+            or (tag == "a" and attrs.get("href"))
+            or role in WEB_TAP_ROLES
+            or "onclick" in attrs
+            or tag in ("input", "select")
+            or text_input
+        )
+        actions: List[str] = []
+        if clickable:
+            actions.append("tap")
+        if self._is_web_toggle(node):
+            actions.append("toggle")
+        if text_input:
+            actions.append("input")
+        return actions
+
+    def _web_own_label(self, node: etree.Element) -> str:
+        """The node's own visible text, else its accessibility-ish attributes."""
+        text = (node.text or "").strip()
+        if text:
+            return text
+        attrs = node.attrib or {}
+        for key in ("aria-label", "title", "alt", "placeholder", "value"):
+            if key == "value" and self._is_web_toggle(node):
+                continue  # a checkbox/radio value is a form payload, not a label
+            val = (attrs.get(key) or "").strip()
+            if val:
+                return val
+        return ""
+
+    def _web_folded_label(self, node: etree.Element) -> str:
+        # An attribute label wins when the node has no direct text of its own; otherwise
+        # fold in direct text, descendant text and inline tails.
+        if not (node.text or "").strip():
+            own = self._web_own_label(node)
+            if own:
+                return own[:WEB_COMPACT_LABEL_MAX_CHARS]
+        parts: List[str] = []
+        self._collect_web_text(node, parts)
+        return " ".join(dict.fromkeys(parts))[:WEB_COMPACT_LABEL_MAX_CHARS]
+
+    def _collect_web_text(self, node: etree.Element, parts: List[str]) -> None:
+        # node.text is only the text before the first child and each child's tail is the
+        # text after it, so both are needed to keep "Save <b>Changes</b> now" whole.
+        # Nested actionable subtrees are not descended into.
+        text = self._web_own_label(node)
+        if text:
+            parts.append(text)
+        for child in node:
+            if isinstance(child.tag, str) and not self._web_element_actions(child):
+                self._collect_web_text(child, parts)
+            if child.tail and child.tail.strip():
+                parts.append(child.tail.strip())
+
+    def _web_folds_text(self, node: etree.Element) -> bool:
+        return bool(self._web_element_actions(node))
+
+    def _has_web_folding_ancestor(self, node: etree.Element) -> bool:
+        parent = node.getparent()
+        while parent is not None:
+            if self._web_folds_text(parent):
+                return True
+            parent = parent.getparent()
+        return False
+
+    def _has_actionable_web_descendant(self, node: etree.Element) -> bool:
+        return any(
+            child is not node and self._web_element_actions(child) for child in node.iter()
+        )
+
+    def _compact_web_entry(
+        self, node: etree.Element, label: str, actions: List[str], bounds: Dict
+    ) -> Dict:
+        extra = {"class": (node.tag or "").lower()}
+        rid = node.attrib.get("id")
+        if rid:
+            extra["resource-id"] = rid
+        return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+
+    def _compact_web_entry_for(self, node: etree.Element, page: Any) -> Optional[Dict]:
+        # One compact entry for a node, or None to drop it. Bounds are probed only for
+        # kept nodes -- the probe is a Playwright round trip per element.
+        if not isinstance(node.tag, str) or node.tag.lower() in WEB_SKIP_TAGS:
+            return None
+        if self._web_is_hidden(node):
+            return None
+        actions = self._web_element_actions(node)
+        if actions:
+            label = self._web_folded_label(node)
+            # An empty-labelled wrapper around another actionable element (a div around
+            # its button) is noise; the inner element carries the label.
+            if not label and self._has_actionable_web_descendant(node):
+                return None
+        else:
+            label = self._web_own_label(node)
+            if not label or len(node) > 0 or self._has_web_folding_ancestor(node):
+                return None
+        bounds = self._extract_bounds(node, page)
+        if not bounds:
+            return None
+        return self._compact_web_entry(node, label, actions, bounds)
+
+    def _extract_compact_web_interactives(self, page: Any) -> List[Dict]:
+        # Actionable elements (folded labels) + standalone visible text; drops the rest.
+        entries = (self._compact_web_entry_for(node, page) for node in self.tree.iter())
+        return [entry for entry in entries if entry is not None]
 
     def _check_filter_type(self, node: etree.Element, filter_type: str) -> bool:
         """

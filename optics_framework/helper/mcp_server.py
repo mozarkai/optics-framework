@@ -420,8 +420,9 @@ def build_server() -> "FastMCP":
     async def interactive_elements(session_id: str) -> Any:
         """Compact on-screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}:
         actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
-        read-only text (act: []). Use the get_interactive_elements tool with compact=false
-        for the full untrimmed list."""
+        read-only text (act: []). Appium and Playwright page sources answer the compact
+        projection; a source without it returns its full element list. Use the
+        get_interactive_elements tool with compact=false for the full untrimmed list."""
         return await _observe(session_id, "get_interactive_elements", {"compact": "true"})
 
     @mcp.resource(

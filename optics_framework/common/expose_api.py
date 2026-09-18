@@ -1047,7 +1047,7 @@ async def get_driver_session_id(session_id: str):
 async def get_elements(
     session_id: str,
     filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text"),
-    compact: bool = Query(False, description="Return only actionable elements (folded labels) plus read-only text, as a compact token-lean list (Appium only)")
+    compact: bool = Query(False, description="Return only actionable elements (folded labels) plus read-only text, as a compact token-lean list (Appium and Playwright sources)")
 ):
     """
     Get interactive elements from the current session screen.
