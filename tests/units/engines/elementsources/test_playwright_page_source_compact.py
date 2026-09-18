@@ -17,7 +17,7 @@ BOUNDS = {"x1": 1, "y1": 2, "x2": 3, "y2": 4}
 
 @pytest.fixture(autouse=True)
 def _passthrough_run_async(monkeypatch):
-    """The fake page below returns plain values rather than real coroutines."""
+    # The fake page returns plain values, so awaiting them like real coroutines would fail.
     monkeypatch.setattr(pw, "run_async", lambda coro: coro)
 
 
@@ -28,12 +28,8 @@ def _source(html: str) -> PlaywrightPageSource:
 
 
 def _page() -> MagicMock:
-    """A page whose single batched evaluate() gives every candidate the same rect.
-
-    Stubbing the browser boundary rather than the source's own bounds helper keeps
-    these tests exercising the real extraction path, so a helper that disappears from
-    the class fails here instead of being silently supplied by the stub.
-    """
+    # Stub the browser boundary, not the source's own bounds helper, so these tests
+    # exercise the real extraction path and a helper that disappears fails here.
     page = MagicMock()
     page.evaluate.side_effect = lambda script, xpaths: [dict(RECT) for _ in xpaths]
     return page

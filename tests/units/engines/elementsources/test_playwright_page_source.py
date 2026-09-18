@@ -1,16 +1,3 @@
-"""Unit tests for PlaywrightPageSource.get_interactive_elements batched bounds extraction.
-
-Bounds used to be resolved one Playwright locator round trip (count() + bounding_box())
-per candidate DOM node -- fine for a mobile page source dump, painfully slow for a web
-page with a few hundred nodes. Both the full and the compact path now issue exactly one
-page.evaluate() call that resolves every candidate's bounding box in-browser via
-document.evaluate() + getBoundingClientRect(), so the call count stays constant
-regardless of node count.
-
-These tests assert the call-count fix and pin the output contract (same dict shape,
-same `if not bounds: continue` filtering, same filter_config semantics) that the
-rewrite must not change.
-"""
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,11 +9,7 @@ pytestmark = pytest.mark.white_box
 
 
 def _source(html, monkeypatch):
-    """A PlaywrightPageSource wired to a fake page.
-
-    run_async is patched to a pass-through since the fake page's methods return plain
-    values (via Mock return_value/side_effect) rather than real coroutines.
-    """
+    # run_async is a pass-through: the fake page returns plain values, not coroutines.
     monkeypatch.setattr(pw, "run_async", lambda coro: coro)
     page = MagicMock()
     page.content.return_value = html
@@ -47,7 +30,6 @@ def _candidate_count(html):
 
 
 def _uniform_rects(width=20, height=20):
-    """An evaluate() side_effect giving every candidate xpath the same real rect."""
     def _side_effect(script, xpaths):
         return [{"x": i, "y": i, "width": width, "height": height} for i, _ in enumerate(xpaths)]
     return _side_effect
