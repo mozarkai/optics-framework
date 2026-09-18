@@ -162,10 +162,19 @@ class PlaywrightPageSource(ElementSourceInterface):
             return self._extract_compact_web_interactives(page)
 
         elements = self.tree.xpath(".//*")
+        # One page.evaluate() resolves bounds for every candidate node, instead of a
+        # Playwright locator round trip per node (count() + bounding_box() each).
+        rects = self._resolve_bounds_batch(
+            page, [self._build_simple_xpath(node) for node in elements]
+        )
+        if rects is None:
+            # No bounds means every element would be dropped below anyway; keep the
+            # pre-batching "no elements this pass" result for this best-effort list.
+            return []
         results = []
 
-        for node in elements:
-            bounds = self._extract_bounds(node, page)
+        for node, rect in zip(elements, rects):
+            bounds = self._rect_to_bounds(rect)
             if not bounds:
                 continue
 
@@ -191,48 +200,71 @@ class PlaywrightPageSource(ElementSourceInterface):
     # Helper methods for get_interactive_elements
     # ---------------------------------------------------------
 
-    def _extract_bounds(self, node: etree.Element, page: Any) -> Optional[Dict[str, int]]:
-        """
-        Extract bounding box coordinates for a web element using Playwright.
+    # In-browser: resolves each xpath via document.evaluate and reports its
+    # getBoundingClientRect(), or null when unmatched / not laid out. The visibility
+    # check approximates Playwright's own "not visible" -> null bounding_box() contract,
+    # since that internal algorithm isn't reachable from plain page.evaluate() JS.
+    _BOUNDS_BATCH_SCRIPT = """
+    (xpaths) => xpaths.map((xp) => {
+        if (!xp) return null;
+        try {
+            const result = document.evaluate(
+                xp, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            );
+            const el = result.singleNodeValue;
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+            const style = window.getComputedStyle(el);
+            if (style.visibility === 'hidden' || style.display === 'none') return null;
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        } catch (e) {
+            return null;
+        }
+    });
+    """
 
-        Args:
-            node: The lxml element node
-            page: Playwright page object
+    def _resolve_bounds_batch(
+        self, page: Any, xpaths: List[Optional[str]]
+    ) -> Optional[List[Optional[Dict[str, float]]]]:
+        """Resolve bounding rects for every candidate xpath in one round trip.
 
-        Returns:
-            Dict with x1, y1, x2, y2 or None if cannot get bounds
+        ``None`` means the batch lookup itself failed: ``page.evaluate`` raised or
+        returned a malformed payload. That is deliberately distinct from a list of
+        per-element ``None``s, which just means no candidate had visible bounds.
         """
+        if not xpaths:
+            return []
         try:
-            # Build a selector from the element
-            xpath = self._build_simple_xpath(node)
-            if not xpath:
-                return None
-
-            # Try to locate the element using XPath
-            locator = page.locator(f"xpath={xpath}")
-            count = run_async(locator.count())
-
-            if count == 0:
-                return None
-
-            # Get bounding box from the first matching element
-            bbox = run_async(locator.first.bounding_box())
-
-            if bbox is None:
-                return None
-
-            x1 = int(bbox["x"])
-            y1 = int(bbox["y"])
-            x2 = int(bbox["x"] + bbox["width"])
-            y2 = int(bbox["y"] + bbox["height"])
-
-            return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-
+            rects = run_async(page.evaluate(self._BOUNDS_BATCH_SCRIPT, xpaths))
         except Exception as e:
+            # The batch call itself failed (e.g. page mid-navigation). Falling back to one
+            # evaluate() per node here would reintroduce the exact per-node round-trip cost
+            # this batching exists to avoid.
             internal_logger.debug(
-                f"[PlaywrightPageSource] Could not extract bounds for element: {e}"
+                f"[PlaywrightPageSource] Batched bounds lookup failed: {e}"
             )
             return None
+        if not isinstance(rects, list) or len(rects) != len(xpaths):
+            internal_logger.debug(
+                "[PlaywrightPageSource] Batched bounds lookup returned a malformed payload"
+            )
+            return None
+        return rects
+
+    @staticmethod
+    def _rect_to_bounds(rect: Optional[Dict[str, float]]) -> Optional[Dict[str, int]]:
+        """Convert a ``{x,y,width,height}`` rect (or ``None``) into ``{x1,y1,x2,y2}``."""
+        if not rect:
+            return None
+        try:
+            x1 = int(rect["x"])
+            y1 = int(rect["y"])
+            x2 = int(rect["x"] + rect["width"])
+            y2 = int(rect["y"] + rect["height"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
     def _escape_xpath_value(self, val: str) -> str:
         """
@@ -555,9 +587,14 @@ class PlaywrightPageSource(ElementSourceInterface):
             extra["resource-id"] = rid
         return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
 
-    def _compact_web_entry_for(self, node: etree.Element, page: Any) -> Optional[Dict]:
-        # One compact entry for a node, or None to drop it. Bounds are probed only for
-        # kept nodes -- the probe is a Playwright round trip per element.
+    def _compact_web_candidate(
+        self, node: etree.Element
+    ) -> Optional[Tuple[str, List[str]]]:
+        """``(label, actions)`` for a node worth reporting, or ``None`` to drop it.
+
+        Deliberately bounds-free so every kept node can be resolved in one batched
+        lookup rather than a Playwright round trip each.
+        """
         if not isinstance(node.tag, str) or node.tag.lower() in WEB_SKIP_TAGS:
             return None
         if self._web_is_hidden(node):
@@ -573,15 +610,34 @@ class PlaywrightPageSource(ElementSourceInterface):
             label = self._web_own_label(node)
             if not label or len(node) > 0 or self._has_web_folding_ancestor(node):
                 return None
-        bounds = self._extract_bounds(node, page)
-        if not bounds:
-            return None
-        return self._compact_web_entry(node, label, actions, bounds)
+        return label, actions
 
     def _extract_compact_web_interactives(self, page: Any) -> List[Dict]:
         # Actionable elements (folded labels) + standalone visible text; drops the rest.
-        entries = (self._compact_web_entry_for(node, page) for node in self.tree.iter())
-        return [entry for entry in entries if entry is not None]
+        # Candidates are chosen first so one batched lookup covers all of their bounds.
+        candidates = [
+            (node, candidate)
+            for node in self.tree.iter()
+            if (candidate := self._compact_web_candidate(node)) is not None
+        ]
+        rects = self._resolve_bounds_batch(
+            page, [self._build_simple_xpath(node) for node, _ in candidates]
+        )
+        if rects is None:
+            # Every entry needs bounds, so a failed batch would collapse to an empty list
+            # indistinguishable from a genuinely empty screen. Consumers such as the live
+            # NL agent fall back to page source on "unavailable" but not on "empty", so
+            # surface the failure instead of swallowing it.
+            raise OpticsError(
+                Code.E0202,
+                message="Batched bounds lookup failed; compact elements unavailable.",
+            )
+        entries = []
+        for (node, (label, actions)), rect in zip(candidates, rects):
+            bounds = self._rect_to_bounds(rect)
+            if bounds:
+                entries.append(self._compact_web_entry(node, label, actions, bounds))
+        return entries
 
     def _check_filter_type(self, node: etree.Element, filter_type: str) -> bool:
         """

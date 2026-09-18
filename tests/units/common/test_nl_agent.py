@@ -17,6 +17,7 @@ from optics_framework.common.nl_agent import (
     ACTION_SCHEMA,
     CURATION_SCHEMA,
     SYSTEM_PROMPT,
+    _render_screen_elements,
 )
 from optics_framework.common.error import OpticsError, Code
 
@@ -325,7 +326,7 @@ class TestPageSourceInPrompt:
         agent.run("click search")
         assert "CURRENT SCREEN ELEMENTS" in llm.prompt
         assert "search_edit_text" in llm.prompt
-        assert "condensed UI hierarchy" in llm.system
+        assert "on-screen elements list" in llm.system.lower()
 
     def test_no_provider_means_no_section(self):
         llm = _CapturingLLM()
@@ -343,6 +344,111 @@ class TestPageSourceInPrompt:
         result = agent.run("go")
         assert result.status == "done"  # run still completes
         assert "CURRENT SCREEN ELEMENTS" not in llm.prompt
+
+
+def _compact(text, x1=10, y1=20, x2=110, y2=60, act=("tap",), rid=None):
+    """One entry shaped like get_interactive_elements(compact=True) returns."""
+    extra = {"class": "android.widget.Button"}
+    if rid:
+        extra["resource-id"] = rid
+    return {"text": text, "bounds": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            "act": list(act), "extra": extra}
+
+
+class TestScreenElementsInPrompt:
+    """Precedence between the structured (compact get_interactive_elements) and raw
+    (strip_page_source) providers: structured wins whenever it is usable, and the raw
+    text path is the fallback for sources that cannot answer -- never both at once."""
+
+    def _elements(self, png):
+        self.received_png = png
+        return [_compact("Search", rid="com.app:id/search_box")]
+
+    def test_structured_elements_preferred_over_page_source(self):
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=self._elements,
+        )
+        agent.run("tap search")
+        assert "Search" in llm.prompt
+        assert "[10,20][110,60]" in llm.prompt
+        assert "(tap)" in llm.prompt
+        assert "#search_box" in llm.prompt
+        assert "RAW HIERARCHY TEXT" not in llm.prompt
+        # The already-captured screenshot is threaded through, not re-captured.
+        assert self.received_png == _shots()
+
+    def test_falls_back_to_page_source_when_structured_unavailable(self):
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=lambda png: None,
+        )
+        agent.run("go")
+        assert "RAW HIERARCHY TEXT" in llm.prompt
+
+    def test_screen_elements_provider_raising_falls_back(self):
+        def boom(png):
+            raise RuntimeError("no structured source configured")
+
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=boom,
+        )
+        result = agent.run("go")
+        assert result.status == "done"  # run still completes
+        assert "RAW HIERARCHY TEXT" in llm.prompt
+
+    def test_empty_structured_list_is_rendered_not_treated_as_unavailable(self):
+        # [] means "the provider works, the screen just has nothing" -- distinct from
+        # None ("provider unusable"), so it must NOT trigger the page_source fallback.
+        llm = _CapturingLLM()
+        agent = NaturalLanguageAgent(
+            llm, _shots, _ok_executor([]), _catalog,
+            pagesource_provider=lambda: "RAW HIERARCHY TEXT",
+            screen_elements_provider=lambda png: [],
+        )
+        agent.run("go")
+        assert "RAW HIERARCHY TEXT" not in llm.prompt
+        assert "no interactive elements" in llm.prompt.lower()
+
+
+class TestRenderScreenElements:
+    def test_renders_label_actions_bounds_and_resource_id(self):
+        out = _render_screen_elements([
+            _compact("Search", act=("tap",), rid="com.app:id/search_box"),
+            _compact("Username", y1=100, y2=140, act=("tap", "input")),
+        ])
+        assert '1. "Search" (tap) [10,20][110,60] #search_box' in out
+        assert '2. "Username" (tap,input) [10,100][110,140]' in out
+
+    def test_read_only_text_shows_no_actions(self):
+        out = _render_screen_elements([_compact("Version 1.2.3", act=())])
+        assert '"Version 1.2.3" [10,20][110,60]' in out
+        assert "(" not in out
+
+    def test_empty_list_renders_placeholder(self):
+        assert "no interactive elements" in _render_screen_elements([]).lower()
+
+    def test_ignores_malformed_entries_without_raising(self):
+        out = _render_screen_elements([{"not": "a valid element"}, None, "garbage"])
+        assert "no interactive elements" in out.lower()
+
+    def test_long_label_is_shortened(self):
+        out = _render_screen_elements([_compact("x" * 200)])
+        assert "..." in out
+        assert len(out) < 200
+
+    def test_truncates_to_max_chars(self):
+        elements = [_compact(f"Item {i}", x1=i, y1=i, x2=i + 10, y2=i + 10) for i in range(500)]
+        out = _render_screen_elements(elements, max_chars=200)
+        assert len(out) <= 220
+        assert "truncated" in out
 
 
 class TestGeminiMissingDependency:
