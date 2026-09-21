@@ -126,18 +126,19 @@ class TestStartupImportGuard:
     import-time traceback from the ``optics`` console script."""
 
     def test_libgl_failure_names_the_package_to_install(self, capsys):
+        error = ImportError(
+            "libGL.so.1: cannot open shared object file: No such file or directory")
         with pytest.raises(SystemExit) as exc:
-            cli._abort_on_import_error(ImportError(
-                "libGL.so.1: cannot open shared object file: No such file or directory"))
+            cli._abort_on_import_error(error)
         assert exc.value.code == 1
         err = capsys.readouterr().err
         assert "libGL.so.1" in err
         assert "libgl1" in err
 
     def test_unrelated_failure_still_shows_the_real_error(self, capsys):
+        error = ImportError("No module named 'pydantic'")
         with pytest.raises(SystemExit) as exc:
-            cli._abort_on_import_error(
-                ImportError("No module named 'pydantic'"))
+            cli._abort_on_import_error(error)
         assert exc.value.code == 1
         err = capsys.readouterr().err
         assert "pydantic" in err
