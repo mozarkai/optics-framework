@@ -977,6 +977,20 @@ Invokes an API call based on a definition from the session's API data.
 Invoke API,users.get_user
 ```
 
+**Extracting response values**
+
+`expected_result.extract` maps a variable name to a JSONPath expression evaluated against
+the JSON response; the value lands in the session's `${variable}` namespace.
+
+```yaml
+expected_result:
+  extract:
+    otp: $.dummy
+    first_title: $.resultObj.containers[0].metadata.title
+```
+
+The bare form (`resultObj.total`) still works and may include JSONPath array expressions.
+
 **Data source: API definition YAML**
 
 Invoke API does **not** use element files. It uses **API definition YAML files** only. The format is different from element CSV/YAML: definitions live under a top-level `api` (or `apis`) key, with `collections` → each collection has `base_url`, `global_headers`, and `apis` → each API has `endpoint`, `request` (e.g. `method`, `headers`, `body`), and optionally `expected_result`, `extract`, and so on.
