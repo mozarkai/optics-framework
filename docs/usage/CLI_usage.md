@@ -71,7 +71,7 @@ optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 - `--use-printer` (default): Enable live result printer.
 - `--no-use-printer`: Disable live result printer.
 
-**Preflight check:** before running anything, `optics execute` verifies the enabled driver's backend is actually reachable — the Appium server (plus at least one attached Android device via `adb`) for Appium projects, or the remote WebDriver URL for Selenium projects. If something is missing it stops with the exact fix (e.g. "Start one in another terminal: `appium`") and a non-zero exit code instead of running tests that cannot reach a target. Set `OPTICS_SKIP_PREFLIGHT=1` to bypass this check.
+**Preflight check:** before running anything, `optics execute` verifies the enabled driver's backend is actually reachable — the Appium server for Appium projects, or the remote WebDriver URL for Selenium projects. For an Android Appium project whose server URL is on this machine (e.g. `127.0.0.1`/`localhost`), it additionally requires at least one attached device via `adb`; a remote Appium server or device hub is assumed to manage its own devices, so that extra check is skipped. If something is missing it stops with the exact fix (e.g. "Start one in another terminal: `appium`") and a non-zero exit code instead of running tests that cannot reach a target. Set `OPTICS_SKIP_PREFLIGHT=1` to bypass this check entirely.
 
 **Failure details:** when any step fails, a *Failure details* panel is printed below the summary with each failing step and its reason; unknown steps include a `Did you mean '…'?` suggestion when a close keyword match exists.
 

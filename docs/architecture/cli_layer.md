@@ -126,7 +126,7 @@ sequenceDiagram
     CLI-->>User: Results displayed (+ failure details when steps failed)
 ```
 
-The preflight aborts with a non-zero exit and fix instructions when the enabled driver's backend is unreachable (Appium server / Android device, Selenium remote URL). `OPTICS_SKIP_PREFLIGHT=1` bypasses it.
+The preflight aborts with a non-zero exit and fix instructions when the enabled driver's backend is unreachable (Appium server, Selenium remote URL). The Android device check only runs when the Appium server URL is local — a remote server/hub is left to manage its own devices. `OPTICS_SKIP_PREFLIGHT=1` bypasses the whole check.
 
 ### 3. Dry Run Command
 

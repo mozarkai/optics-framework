@@ -1,4 +1,5 @@
 import inspect
+import ipaddress
 import os
 import shutil
 import socket
@@ -532,6 +533,22 @@ def _probe_tcp(url: str | None, default_port: int,
         return False
 
 
+def _is_local_host(url: str | None) -> bool:
+    """Best-effort loopback check, so a remote Appium hub's own devices aren't checked via local adb."""
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _adb_device_count() -> int | None:
     """
     Count attached Android devices/emulators via ``adb devices``.
@@ -566,9 +583,23 @@ def _adb_device_count() -> int | None:
 
 
 def _abort_preflight(lines: List[str]) -> NoReturn:
-    """Print a friendly rich block explaining the failure and exit non-zero."""
+    """
+    Print a friendly rich block explaining the failure and exit non-zero.
+
+    Any of these checks can fire against a remote or cloud-hosted target
+    that will never satisfy them locally, so the escape hatch has to be
+    visible wherever the gate stops the run.
+
+    :param lines: Failure-specific message lines for the panel body.
+    """
     console = Console(file=sys.stderr)
-    console.print(Panel("\n".join(lines), title="Cannot start",
+    body = [
+        *lines,
+        "",
+        "Driving a remote/cloud device?",
+        f"Skip this check:  {_PREFLIGHT_SKIP_ENV}=1",
+    ]
+    console.print(Panel("\n".join(body), title="Cannot start",
                         border_style="red"))
     sys.exit(1)
 
@@ -583,9 +614,10 @@ def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> 
 
     - playwright: self-contained, skipped silently.
     - selenium: probes the configured WebDriver URL (~2s).
-    - appium: probes the configured Appium server URL (~2s); when capabilities
-      say Android, additionally requires adb on PATH and one attached device.
-      iOS projects get the server probe only.
+    - appium: probes the configured Appium server URL (~2s); for a local
+      Android server, additionally requires adb on PATH and one attached
+      device. iOS projects and remote Appium servers/hubs get the server
+      probe only.
 
     On failure prints exactly what is wrong and how to fix it, then exits 1
     without executing tests (dry_run never invokes this gate). Callers pass
@@ -619,7 +651,7 @@ def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> 
 
 
 def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
-    """Probe the Appium server and, for Android, adb + an attached device."""
+    """Probe the Appium server and, for Android on a local server, adb + an attached device."""
     url = details.url or _APPIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4723):
         _abort_preflight([
@@ -629,7 +661,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             f"Then re-run:  optics execute {folder_path}",
         ])
     platform = str(details.capabilities.get("platformName", "")).lower()
-    if platform != "android":
+    if platform != "android" or not _is_local_host(url):
         return
     device_count = _adb_device_count()
     if device_count is None:
