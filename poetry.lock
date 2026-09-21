@@ -1382,15 +1382,15 @@ protobuf = ">=4.25.8,<8.0.0"
 
 [[package]]
 name = "google-genai"
-version = "2.20.0"
+version = "2.24.0"
 description = "GenAI Python SDK"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"llm\""
 files = [
-    {file = "google_genai-2.20.0-py3-none-any.whl", hash = "sha256:49bddeccd29a4e6bf1706c5de67735f7115f537f08b6c36a70b8023c99399095"},
-    {file = "google_genai-2.20.0.tar.gz", hash = "sha256:d382186f024e9050a7a4b25af6eacba9aa16c6e09594f5d1b530f22ff7f9d76f"},
+    {file = "google_genai-2.24.0-py3-none-any.whl", hash = "sha256:59e5f2d88bc2d6ed04aa1aa14cb5629090cfe9458401745e620b24d1fe9893d7"},
+    {file = "google_genai-2.24.0.tar.gz", hash = "sha256:814b63d05dca4776c5a322699eb30c565040cf8d5fd77c38714076535fb2e019"},
 ]
 
 [package.dependencies]
