@@ -15,6 +15,11 @@ ENV WHL_FILE=${WHL_FILE}
 ARG VISION_BACKEND=easyocr
 ENV VISION_BACKEND=${VISION_BACKEND}
 
+# Optional comma-separated extras, e.g. "mcp,llm,appium,google-vision".
+# Empty (the default) installs the base package, preserving previous behaviour.
+ARG OPTICS_EXTRAS=""
+ENV OPTICS_EXTRAS=${OPTICS_EXTRAS}
+
 # Copy the wheel and lockfile into the container
 COPY dist/${WHL_FILE} /app/
 COPY poetry.lock scripts/lock_pins.py /app/
@@ -44,7 +49,7 @@ RUN eval "$(python3 lock_pins.py)" \
       fi \
    && WHEEL_VERSION=$(basename "$WHEEL" .whl | cut -d- -f2) \
    && pip install --no-cache-dir --only-binary=:all: --find-links="$(dirname "$WHEEL")" \
-        "optics-framework==${WHEEL_VERSION}" \
+        "optics-framework${OPTICS_EXTRAS:+[${OPTICS_EXTRAS}]}==${WHEEL_VERSION}" \
    && if [ "$VISION_BACKEND" = "easyocr" ]; then \
       pip install --no-cache-dir --only-binary=:all: "easyocr==$EASYOCR_VERSION"; \
    elif [ "$VISION_BACKEND" = "google-vision" ]; then \
