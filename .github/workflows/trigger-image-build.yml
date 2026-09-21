@@ -1,0 +1,32 @@
+name: Trigger optics-server image build
+
+# Publishing a release asks the Bitbucket pipeline to build the matching image.
+# How that image is built — registry, extras, credentials — lives entirely in
+# mozarkai/optics-framework-image-autobuild, not here.
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  trigger:
+    if: github.repository == 'mozarkai/optics-framework'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Bitbucket to build this release
+        env:
+          TOKEN: ${{ secrets.BITBUCKET_TRIGGER_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg t "$TAG" '{
+                  target: {
+                    type: "pipeline_ref_target", ref_type: "branch", ref_name: "main",
+                    selector: {type: "custom", pattern: "build-tag"}
+                  },
+                  variables: [{key: "TAG", value: $t}]
+                }')" \
+            https://api.bitbucket.org/2.0/repositories/mozarkai/optics-framework-image-autobuild/pipelines/
