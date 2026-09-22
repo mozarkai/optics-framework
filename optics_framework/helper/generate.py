@@ -8,6 +8,7 @@ import json
 import shutil
 
 from optics_framework.common.utils import unescape_csv_value
+from optics_framework.helper import engine_requirements
 
 TestCaseKey = "Test Cases"
 
@@ -770,6 +771,19 @@ def read_mixed_data(files: list[str], data_type: str) -> dict:
     return merged_data
 
 
+def warn_missing_engines(config: Config, folder_path: str) -> None:
+    """Warn about engines the project enables but has not installed.
+
+    Generating only writes code, so this never stops the command — but the code
+    it writes hits the very wall ``optics execute`` refuses to start on, and
+    saying nothing is how that reaches a device before anyone notices."""
+    missing = engine_requirements.missing_engines(config)
+    if missing:
+        logger.warning(
+            "Generated code will not run yet — %s",
+            engine_requirements.report(missing, folder_path))
+
+
 def generate_test_file(
     folder_path: str, framework: str = "pytest", output_filename: str | None = None
 ) -> None:
@@ -817,6 +831,7 @@ def generate_test_file(
     # Config is always single YAML file
     config_reader = YAMLDataReader()
     config = config_reader.read_config(all_files["config"][0])
+    warn_missing_engines(config, folder_path)
 
     output_filename = output_filename or default_filename
     generated_folder = os.path.join(folder_path, "generated")

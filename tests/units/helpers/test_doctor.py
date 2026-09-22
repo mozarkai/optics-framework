@@ -670,21 +670,45 @@ class TestGatedClosingMessage:
 
 class TestMandatoryHintsCoverEnabledEngines:
     """The server can be up and the device attached, and the run still dies the
-    moment the driver is instantiated."""
+    moment the driver is instantiated.
+
+    Matching is on the install command, so the hint is promoted whether it came
+    from the machine-wide Engines row or the project's own engine row."""
+
+    APPIUM_INSTALL = "optics setup --install appium"
 
     def test_missing_client_for_the_enabled_driver_blocks(self):
         rows = [
             Check("Appium", "warn", "appium-python-client not installed",
-                  "optics setup --install appium"),
+                  self.APPIUM_INSTALL),
             Check("adb devices", "ok", "1 connected: emu-5554"),
             Check("appium server", "ok", "reachable at 127.0.0.1:4723"),
         ]
-        assert doctor._mandatory_hints(rows, {"appium"}) == [
-            "optics setup --install appium"]
+        assert doctor._mandatory_hints(
+            rows, {"appium"}, {self.APPIUM_INSTALL}) == [self.APPIUM_INSTALL]
 
     def test_missing_client_for_an_unused_driver_does_not_block(self):
         rows = [
             Check("Playwright", "warn", "playwright not installed",
                   "optics setup --install playwright"),
         ]
-        assert doctor._mandatory_hints(rows, {"appium"}) == []
+        assert doctor._mandatory_hints(rows, {"appium"}, {self.APPIUM_INSTALL}) == []
+
+    def test_project_engine_hints_cover_every_config_section(self, tmp_path):
+        """An OCR engine sits in text_detection, not driver_sources — it is no
+        less required for being there."""
+        folder = _write_config(tmp_path, raw=(
+            "driver_sources:\n"
+            "  - appium:\n"
+            "      enabled: true\n"
+            "text_detection:\n"
+            "  - easyocr:\n"
+            "      enabled: true\n"
+            "  - pytesseract:\n"
+            "      enabled: false\n"
+        ))
+        assert doctor._project_engine_hints(folder) == {
+            self.APPIUM_INSTALL, "optics setup --install easyocr"}
+
+    def test_project_engine_hints_empty_without_a_folder(self):
+        assert doctor._project_engine_hints(None) == set()
