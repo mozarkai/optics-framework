@@ -2,10 +2,11 @@
 
 Every collaborator is mocked: rich prompts are scripted, project creation /
 engine install / doctor / onboarding output are stubs. Project paths live
-under pytest's tmp_path so even the simulated scaffolding stays hermetic. The
-central guarantee under test is that the wizard scaffolds and advises — it
-must never invoke ``execute_main`` or ``dryrun_main``, which are patched with
-recording spies.
+under pytest's tmp_path so even the simulated scaffolding stays hermetic.
+
+The wizard may run the finished project, but only when doctor reports nothing
+blocking and the user says yes; ``run_project`` is therefore recorded rather
+than forbidden. ``dryrun_main`` stays a never-call guard.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
-from optics_framework.helper import quickstart
+from optics_framework.helper import doctor, quickstart
 
 pytestmark = pytest.mark.white_box
 
@@ -91,13 +92,23 @@ class Harness:
 
     def __init__(self, ask_values, confirm_values, *,
                  answers=None,
-                 install_result=(True, "Engine packages installed.")):
+                 install_result=(True, "Engine packages installed."),
+                 start_from_sample=False, ready=False, run_first=False,
+                 run_passes=True):
         self.out = io.StringIO()
         self.prompts = Scripted(ask_values)
-        self.confirms = Scripted(confirm_values)
+        # The wizard asks about the domain's sample between the engine-install
+        # question and everything else, and about a first run only when doctor
+        # came back ready. Both are spliced in here rather than written into
+        # every caller's list, so a test's own booleans keep their meaning.
+        confirms = list(confirm_values)
+        confirms = [*confirms[:1], start_from_sample, *confirms[1:]]
+        if ready:
+            confirms.append(run_first)
+        self.confirms = Scripted(confirms)
         self.spies = types.SimpleNamespace(
             create_project=None, create_project_kwargs=None,
-            write=None, run_doctor=None,
+            write=None, diagnose=None, what_next=None,
             next_steps=None, install=None, prompt_domain=None,
             execute_main=Spy(), dryrun_main=Spy())
         answers = answers or ANDROID_ANSWERS
@@ -120,8 +131,23 @@ class Harness:
                           encoding="utf-8"):
                     pass
 
-        def fake_doctor(*args, **kwargs):
-            self.spies.run_doctor = (args, kwargs)
+        def fake_diagnose(folder=None):
+            self.spies.diagnose = folder
+            # `ready` is the property; a blocking hint is what makes it False,
+            # exactly as a missing device or unstarted Appium server would.
+            return doctor.Diagnosis(
+                sections=[], blocking=[] if ready else ["connect a device"],
+                failed=False)
+
+        def fake_print_diagnosis(_diagnosis):
+            pass
+
+        def fake_run_project(folder, *_a, **_k):
+            self.spies.execute_main(folder)
+            return run_passes
+
+        def fake_what_next(path):
+            self.spies.what_next = path
 
         def fake_next_steps(path, **kwargs):
             self.spies.next_steps = (path, kwargs)
@@ -143,15 +169,20 @@ class Harness:
              lambda a: "rendered-config"),
             (f"{MODULE}.project_config.write_project_config", fake_write),
             (f"{MODULE}.initialize.create_project", fake_create),
-            (f"{MODULE}.initialize.available_templates", lambda: ["contact"]),
-            (f"{MODULE}.doctor.run_doctor", fake_doctor),
+            (f"{MODULE}.initialize.available_templates",
+             lambda: ["contact", "playwright"]),
+            (f"{MODULE}.doctor.diagnose", fake_diagnose),
+            (f"{MODULE}.doctor.print_diagnosis", fake_print_diagnosis),
             (f"{MODULE}.onboarding.welcome", lambda *a, **k: None),
             (f"{MODULE}.onboarding.is_first_run", lambda: False),
             (f"{MODULE}.onboarding.print_next_steps", fake_next_steps),
+            (f"{MODULE}.onboarding.print_what_next", fake_what_next),
             (f"{MODULE}.resolve_engines", _fake_resolve),
             (f"{MODULE}.install_extras", fake_install),
-            # Guards: the wizard must never drive or dry-run anything itself.
-            (f"{EXECUTE_MODULE}.execute_main", self.spies.execute_main),
+            # run_project is recorded rather than forbidden: the wizard may
+            # run the project, but only when asked to. dryrun_main stays a
+            # never-call guard.
+            (f"{EXECUTE_MODULE}.run_project", fake_run_project),
             (f"{EXECUTE_MODULE}.dryrun_main", self.spies.dryrun_main),
         ]:
             stack.enter_context(patch(target, replacement))
@@ -202,7 +233,7 @@ class TestHappyPath:
         folder = str(tmp_path / "demo")
         with Harness(["mobile", "1", "demo", str(tmp_path)], [True]) as h:
             h.run()
-        assert h.spies.run_doctor == ((), {"folder": folder})
+        assert h.spies.diagnose == folder
         assert h.spies.next_steps == (folder, {"configured": True})
 
     def test_installs_mobile_engine_for_mobile_domain(self, tmp_path):
@@ -210,11 +241,12 @@ class TestHappyPath:
             h.run()
         assert [r.engine.name for r in h.spies.install] == ["Appium"]
 
-    def test_never_invokes_execute_or_dry_run(self, tmp_path):
+    def test_does_not_run_anything_when_doctor_found_blockers(self, tmp_path):
         with Harness(["web", "1", "demo", str(tmp_path)], [True]) as h:
             h.run()
         assert h.spies.execute_main.calls == []
         assert h.spies.dryrun_main.calls == []
+        assert h.spies.next_steps is not None
 
 
 class TestWebDomain:
@@ -252,13 +284,15 @@ class TestEngineInstall:
         # copy-pasteable.
         assert "optics setup --install mobile" in h.out.getvalue()
 
-    def test_failed_install_prints_message_and_virtualenv_hint(self, tmp_path):
+    def test_failed_install_surfaces_the_reason_and_keeps_going(self, tmp_path):
+        """install_extras owns the remedy (it knows the environment); the
+        wizard only has to show it and still deliver the project."""
         with Harness(["mobile", "1", "demo", str(tmp_path)], [True],
                      install_result=(False, "Installation failed: boom")) as h:
             h.run()  # must not raise
-        out = h.out.getvalue()
-        assert "boom" in out
-        assert "virtualenv" in out.lower()
+        assert "boom" in h.out.getvalue()
+        assert h.spies.create_project is not None
+        assert h.spies.diagnose is not None
 
     def test_success_message_shown(self, tmp_path):
         with Harness(["mobile", "1", "demo", str(tmp_path)], [True],
@@ -442,3 +476,69 @@ def test_wizard_completes_without_execute_or_dry_run(
         h.run()
     assert h.spies.execute_main.calls == []
     assert h.spies.dryrun_main.calls == []
+
+
+class TestSampleFirst:
+    """A blank project scaffolds header-only CSVs, so a newcomer who takes the
+    default reaches "now run it" with nothing to run."""
+
+    def _sample_question(self, h):
+        return next((args[0] for args, _ in h.confirms.calls
+                     if "straight away" in str(args)), None)
+
+    def test_accepting_the_offer_skips_the_template_list(self, tmp_path):
+        # No template number is scripted: reaching the list would overrun the
+        # prompt script and fail loudly.
+        with Harness(["mobile", "demo", str(tmp_path)], [True, False],
+                     start_from_sample=True) as h:
+            h.run()
+        assert h.spies.create_project.template == "contact"
+
+    def test_web_is_offered_the_browser_only_sample(self, tmp_path):
+        with Harness(["web", "site", str(tmp_path)], [True, False],
+                     start_from_sample=True) as h:
+            h.run()
+        assert h.spies.create_project.template == "playwright"
+        assert "playwright" in self._sample_question(h)
+
+    def test_declining_falls_through_to_the_full_list(self, tmp_path):
+        with Harness(["mobile", "1", "demo", str(tmp_path)], [True],
+                     start_from_sample=False) as h:
+            h.run()
+        assert h.spies.create_project.template is None
+
+
+class TestFirstRun:
+    def test_ready_and_accepted_runs_then_shows_what_next(self, tmp_path):
+        with Harness(["mobile", "demo", str(tmp_path)], [True, False],
+                     start_from_sample=True, ready=True, run_first=True) as h:
+            h.run()
+        folder = str(tmp_path / "demo")
+        assert h.spies.execute_main.calls == [((folder,), {})]
+        assert h.spies.what_next == folder
+        assert h.spies.next_steps is None
+
+    def test_ready_but_declined_runs_nothing_and_still_advises(self, tmp_path):
+        with Harness(["mobile", "demo", str(tmp_path)], [True, False],
+                     start_from_sample=True, ready=True, run_first=False) as h:
+            h.run()
+        assert h.spies.execute_main.calls == []
+        assert h.spies.what_next is None
+        assert h.spies.next_steps == (str(tmp_path / "demo"),
+                                      {"configured": True})
+
+    def test_failing_run_keeps_the_closing_guidance(self, tmp_path):
+        with Harness(["mobile", "demo", str(tmp_path)], [True, False],
+                     start_from_sample=True, ready=True, run_first=True,
+                     run_passes=False) as h:
+            h.run()
+        assert h.spies.execute_main.calls != []
+        assert h.spies.what_next is None
+        assert h.spies.next_steps == (str(tmp_path / "demo"),
+                                      {"configured": True})
+
+    def test_dry_run_is_still_never_invoked(self, tmp_path):
+        with Harness(["mobile", "demo", str(tmp_path)], [True, False],
+                     start_from_sample=True, ready=True, run_first=True) as h:
+            h.run()
+        assert h.spies.dryrun_main.calls == []

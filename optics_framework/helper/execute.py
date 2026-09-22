@@ -909,12 +909,22 @@ def execute_main(
     folder_path: str, runner: str = "test_runner", use_printer: bool = True
 ):
     """Entry point for execute command."""
+    if not run_project(folder_path, runner, use_printer):
+        sys.exit(1)
+
+
+def run_project(
+    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+) -> bool:
+    """Execute a project; True when nothing failed.
+
+    Split out of ``execute_main`` so an in-process caller can read the outcome
+    instead of catching the ``SystemExit`` the CLI reports failure with."""
     args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
     runner_instance = ExecuteRunner(args)
     _preflight_or_exit(getattr(runner_instance, "config", None), folder_path)
     results = asyncio.run(runner_instance.execute())
-    if _has_failed_results(results):
-        sys.exit(1)
+    return not _has_failed_results(results)
 
 
 def dryrun_main(
