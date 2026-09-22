@@ -44,16 +44,6 @@ _ADD_COMMANDS = {
     "pipenv": "pipenv install",
 }
 
-# Each manager's "drop whatever the lockfile no longer lists" command. Removal
-# by name is not the equivalent — `uv remove` and `poetry remove` only touch
-# declared dependencies and error out on a stale transitive one.
-_PRUNE_COMMANDS = {
-    "uv": "uv sync",
-    "poetry": "poetry sync",
-    "pdm": "pdm sync --clean",
-    "pipenv": "pipenv clean",
-}
-
 # Stands in for a real requirement when the caller only wants to know whether
 # an environment refuses installs, so the rendered command reads as a template.
 _PLACEHOLDER_SPEC = "optics-framework[<engine>]"
@@ -292,21 +282,30 @@ def plan_install(env: Environment, specs: list[str]) -> InstallPlan:
     return _direct_plan(env, specs)
 
 
-def removal_command(env: Environment, package: str) -> str:
-    """The command that gets ``package`` out of this environment.
+def replace_command(env: Environment, stale: str, restore: str) -> str:
+    """One line that drops ``stale`` and lays ``restore`` back down.
 
-    Ownership decides the shape, on the same reasoning as `plan_install`: a
-    lock-managed environment prunes rather than uninstalls, because a removal
-    made behind its manager's back returns on the next sync, and a tool
-    environment has to be named explicitly or the ``pip`` on PATH edits some
-    other environment entirely."""
-    if env.kind is EnvKind.PROJECT:
-        return _PRUNE_COMMANDS.get(env.manager or "uv", _PRUNE_COMMANDS["uv"])
-    if env.kind is EnvKind.TOOL and env.manager == "pipx":
-        return f"pipx runpip optics-framework uninstall -y {package}"
-    if env.kind is EnvKind.TOOL or (not env.has_pip and env.uv):
-        return f"uv pip uninstall --python {shlex.quote(env.python)} {package}"
-    return f"pip uninstall -y {package}"
+    Reinstalling is not padding. Two distributions that share an import name
+    share their files on disk too, because the later install overwrote the
+    earlier's — so uninstalling one deletes files the other's metadata still
+    claims, and a bare uninstall trades an ambiguous install for a broken one.
+
+    A lock-managed environment needs no case of its own here, unlike
+    `plan_install`: dropping a distribution the lockfile does not list moves
+    towards the lock rather than behind the manager's back, and ``restore``
+    carries the version already recorded, so nothing is re-resolved. A tool
+    environment still does, because its manager rebuilds it from current
+    metadata, which is both steps at once."""
+    restore = shlex.quote(restore)
+    if env.kind is EnvKind.TOOL:
+        return ("pipx reinstall optics-framework" if env.manager == "pipx"
+                else "uv tool install --reinstall optics-framework")
+    if not env.has_pip and env.uv:
+        python = shlex.quote(env.python)
+        return (f"uv pip uninstall --python {python} {stale} && "
+                f"uv pip install --python {python} --reinstall {restore}")
+    return (f"pip uninstall -y {stale} && "
+            f"pip install --force-reinstall {restore}")
 
 
 def describe(env: Environment) -> tuple[str, str, str] | None:

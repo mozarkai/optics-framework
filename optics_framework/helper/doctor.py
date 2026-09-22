@@ -29,7 +29,7 @@ from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
-from optics_framework.helper.environment import Environment, removal_command
+from optics_framework.helper.environment import Environment, replace_command
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
@@ -132,12 +132,11 @@ def check_web() -> list[Check]:
     return [_playwright_row(), _selenium_row()]
 
 
-def _is_installed(package: str) -> bool:
+def _installed_version(package: str) -> str | None:
     try:
-        version(package)
+        return version(package)
     except PackageNotFoundError:
-        return False
-    return True
+        return None
 
 
 def _opencv_row(env: Environment) -> Check | None:
@@ -148,14 +147,19 @@ def _opencv_row(env: Environment) -> Check | None:
     upgraded environment keeps both and the import resolves to whichever was
     laid down last. The GUI build needs system libraries (libxcb and friends)
     that minimal Linux images do not carry, so when it wins there, the package
-    stops importing at all."""
-    if not (_is_installed(_OPENCV_GUI) and _is_installed(_OPENCV_HEADLESS)):
+    stops importing at all.
+
+    The repair pins the headless version already installed, so putting it back
+    restores the files the uninstall takes with it without re-resolving
+    anything."""
+    headless = _installed_version(_OPENCV_HEADLESS)
+    if headless is None or _installed_version(_OPENCV_GUI) is None:
         return None
     return Check(
         "opencv", "warn",
         f"{_OPENCV_GUI} and {_OPENCV_HEADLESS} are both installed; "
         "which one provides cv2 depends on install order",
-        removal_command(env, _OPENCV_GUI))
+        replace_command(env, _OPENCV_GUI, f"{_OPENCV_HEADLESS}=={headless}"))
 
 
 def _adb_devices_row(adb: str) -> Check:

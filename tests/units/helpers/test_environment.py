@@ -19,7 +19,7 @@ from optics_framework.helper.environment import (
     detect,
     describe,
     plan_install,
-    removal_command,
+    replace_command,
 )
 
 pytestmark = pytest.mark.white_box
@@ -272,52 +272,59 @@ class TestDescribe:
         assert "uv tool install" in hint
 
 
-class TestRemovalCommand:
-    """A removal has the same ownership problem as an install: run it with the
-    wrong tool and it either edits another environment or is undone."""
+class TestReplaceCommand:
+    """Dropping one of two distributions that share an import name is only
+    half the repair, and which half-pair to run depends on who owns the
+    environment."""
 
     STALE = "opencv-python"
+    RESTORE = "opencv-python-headless==4.11.0.86"
 
-    def test_venv_with_pip_uninstalls_directly(self):
-        assert removal_command(_env(EnvKind.VENV), self.STALE) == (
-            "pip uninstall -y opencv-python")
+    def _command(self, env):
+        return replace_command(env, self.STALE, self.RESTORE)
 
-    def test_unmarked_system_interpreter_uninstalls_directly(self):
-        assert removal_command(_env(EnvKind.SYSTEM), self.STALE) == (
-            "pip uninstall -y opencv-python")
+    @pytest.mark.parametrize("env", [
+        _env(EnvKind.VENV),
+        _env(EnvKind.SYSTEM),
+        # A lock-managed environment gets the same command: removing what the
+        # lockfile does not list, and restoring the version it does, converges
+        # on the lock instead of drifting from it.
+        _env(EnvKind.PROJECT, manager="poetry"),
+    ])
+    def test_pip_environments_uninstall_then_reinstall(self, env):
+        assert self._command(env) == (
+            "pip uninstall -y opencv-python && "
+            "pip install --force-reinstall opencv-python-headless==4.11.0.86")
 
-    def test_venv_without_pip_removes_through_uv(self):
-        assert removal_command(
-            _env(EnvKind.VENV, has_pip=False), self.STALE) == (
-            "uv pip uninstall --python /p/bin/python opencv-python")
+    def test_the_survivor_is_always_laid_back_down(self):
+        """Both wheels write the same cv2 files, so the uninstall takes the
+        survivor's files with it — stopping at the uninstall would leave an
+        installed distribution that no longer imports."""
+        assert "--force-reinstall" in self._command(_env(EnvKind.VENV))
 
-    def test_venv_without_pip_or_uv_still_names_pip(self):
+    def test_environment_without_pip_goes_through_uv(self):
+        assert self._command(_env(EnvKind.VENV, has_pip=False)) == (
+            "uv pip uninstall --python /p/bin/python opencv-python && "
+            "uv pip install --python /p/bin/python --reinstall "
+            "opencv-python-headless==4.11.0.86")
+
+    def test_environment_without_pip_or_uv_still_names_pip(self):
         """Nothing better exists to suggest, and `describe` already carries a
         row saying this environment takes no changes at all."""
-        assert removal_command(
-            _env(EnvKind.VENV, has_pip=False, uv=None), self.STALE) == (
-            "pip uninstall -y opencv-python")
-
-    def test_uv_tool_environment_names_its_interpreter(self):
-        assert removal_command(
-            _env(EnvKind.TOOL, manager="uv", has_pip=False), self.STALE) == (
-            "uv pip uninstall --python /p/bin/python opencv-python")
-
-    def test_pipx_tool_environment_goes_through_its_own_pip(self):
-        """A pipx venv has a pip, but it is not the pip on PATH."""
-        assert removal_command(
-            _env(EnvKind.TOOL, manager="pipx"), self.STALE) == (
-            "pipx runpip optics-framework uninstall -y opencv-python")
+        assert self._command(_env(EnvKind.VENV, has_pip=False, uv=None)) == (
+            "pip uninstall -y opencv-python && "
+            "pip install --force-reinstall opencv-python-headless==4.11.0.86")
 
     @pytest.mark.parametrize("manager,command", [
-        ("uv", "uv sync"),
-        ("poetry", "poetry sync"),
-        ("pdm", "pdm sync --clean"),
-        ("pipenv", "pipenv clean"),
+        ("uv", "uv tool install --reinstall optics-framework"),
+        ("pipx", "pipx reinstall optics-framework"),
     ])
-    def test_lock_managed_environment_prunes_instead(self, manager, command):
-        assert removal_command(
-            _env(EnvKind.PROJECT, manager=manager), self.STALE) == command
+    def test_tool_environment_is_rebuilt_instead(self, manager, command):
+        """A tool manager recreates the whole environment from current
+        metadata, so the stale distribution never comes back and the survivor
+        is written fresh — both halves in one command."""
+        assert self._command(
+            _env(EnvKind.TOOL, manager=manager, has_pip=False)) == command
 
 
 class TestRecoveryCommandIsRunnableWhereItIsRead:

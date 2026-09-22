@@ -135,12 +135,21 @@ class TestOpenCvRow:
         return next((r for r in self._core_rows(*installed, env=env)
                      if r.name == "opencv"), None)
 
-    def test_both_builds_installed_warns_with_the_removal_command(self):
+    def test_both_builds_installed_warns_with_the_repair_command(self):
         row = self._row("opencv-python", "opencv-python-headless")
         assert row is not None
         assert row.status == "warn"
         assert "opencv-python-headless" in row.detail
-        assert row.hint == "pip uninstall -y opencv-python"
+        assert row.hint == (
+            "pip uninstall -y opencv-python && "
+            "pip install --force-reinstall opencv-python-headless==4.11.0.86")
+
+    def test_repair_pins_the_headless_version_already_installed(self):
+        """Both wheels own the same cv2 files, so the survivor has to be laid
+        back down — at the version already recorded, or the repair turns into
+        an unasked-for upgrade."""
+        row = self._row("opencv-python", "opencv-python-headless")
+        assert "opencv-python-headless==4.11.0.86" in row.hint
 
     def test_headless_only_is_silent(self):
         assert self._row("opencv-python-headless") is None
@@ -163,8 +172,7 @@ class TestOpenCvRow:
         which is some other environment entirely."""
         row = self._row("opencv-python", "opencv-python-headless",
                         env=_environment(EnvKind.TOOL, manager="pipx"))
-        assert row.hint == (
-            "pipx runpip optics-framework uninstall -y opencv-python")
+        assert row.hint == "pipx reinstall optics-framework"
 
 
 # --------------------------------------------------------------------------- #
