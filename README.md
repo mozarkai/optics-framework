@@ -28,7 +28,19 @@ That idea runs through the whole framework: locators fall back, drivers fall bac
 
 ## Install
 
-Optics needs **Python 3.12+**. The core install ships no drivers, OCR, or LLM backends — you add only what you need:
+One line puts the `optics` CLI on your PATH:
+
+```bash
+curl -fsSL https://optics-framework.org/install | sh      # macOS, Linux
+```
+
+```powershell
+irm https://optics-framework.org/install.ps1 | iex        # Windows
+```
+
+It installs into its own virtual environment under `~/.optics`, so nothing lands in your system Python. Then `optics quickstart` builds a project, checks your setup, and runs your first test.
+
+Already managing your own environment? Optics needs **Python 3.12+**, and the core install ships no drivers, OCR, or LLM backends — you add only what you need:
 
 ```bash
 python3 -m venv venv && source venv/bin/activate

@@ -6,7 +6,34 @@ This page is the reference for what to install: the core CLI, the optional **eng
 
 ## Core install
 
-Optics requires **Python 3.12 or newer**. Install the CLI into a standard virtual environment:
+The installer is the shortest path — it finds a suitable Python, builds a virtual environment under `~/.optics`, installs Optics into it and puts the CLI on your PATH.
+
+=== "macOS / Linux"
+
+    ```bash
+    curl -fsSL https://optics-framework.org/install | sh
+    ```
+
+    Options are `--version`, `--extra appium,llm`, `--dir`, `--no-modify-path`, `--dry-run` and `--uninstall`; pass them after `sh -s --`. The `-f` matters: without it, curl would pipe an HTTP error page into your shell.
+
+=== "Windows"
+
+    ```powershell
+    irm https://optics-framework.org/install.ps1 | iex
+    ```
+
+    Piping into `iex` passes no parameters, so the same options are environment variables — set them first:
+
+    ```powershell
+    $env:OPTICS_EXTRA = "appium,llm"
+    irm https://optics-framework.org/install.ps1 | iex
+    ```
+
+    `OPTICS_VERSION`, `OPTICS_INSTALL_DIR` and `OPTICS_NO_MODIFY_PATH` work the same way. Downloaded as a file, the script takes `-Version`, `-Extra`, `-Dir`, `-NoModifyPath`, `-DryRun` and `-Uninstall` directly.
+
+### Installing it yourself
+
+Optics requires **Python 3.12 or newer**. To manage the environment yourself — in CI, or inside an existing project:
 
 ```bash
 python3 -m venv venv
@@ -18,17 +45,28 @@ optics --version             # confirm the CLI is on your PATH
 !!! warning "Use a standard virtualenv, not Conda"
     `easyocr` and `optics-framework` have conflicting `numpy` requirements (1.x vs 2.x) under Conda. Use a plain `venv`.
 
-### Linux: OpenCV needs a system OpenGL library
+### Where Optics can install engine extras
 
-Optics depends on `opencv-python`, which links against `libGL`. Minimal Linux images — Docker containers, CI runners, cloud dev environments — usually don't ship it, so `optics --version` fails on import with `ImportError: libGL.so.1: cannot open shared object file`. Install the library from your distro:
+`optics setup` and `optics quickstart` add engine extras to the environment Optics is running in. Not every environment allows that, so Optics checks first and tells you which command to use instead. `optics doctor` reports the same thing in its `environment` row, before you hit it.
 
-```bash
-sudo apt-get install -y libgl1     # Debian/Ubuntu
-sudo dnf install -y mesa-libGL     # Fedora/RHEL
-sudo pacman -S libglvnd            # Arch
-```
+| Your environment | `optics setup --install <engine>` | Add engines with |
+|---|---|---|
+| `python -m venv`, `virtualenv` | installs with pip | — |
+| `uv venv` | installs with uv (these venvs have no pip) | — |
+| `uv tool install` / `uvx` | refuses | `uv tool install "optics-framework[<engine>]"` |
+| `pipx install` | refuses | `pipx install --force "optics-framework[<engine>]"` |
+| uv / Poetry / PDM / Pipenv project | refuses | `uv add`, `poetry add`, `pdm add`, `pipenv install` |
+| System Python on Debian 12+, Ubuntu 23.04+, Fedora, Arch, Homebrew | refuses ([PEP 668][pep668]) | create a venv first |
+| Conda | refuses | use a plain `venv` (see the warning above) |
 
-Desktop Linux installs normally already have it. macOS and Windows are unaffected.
+[pep668]: https://peps.python.org/pep-0668/
+
+The refusals are deliberate. Tool installers rebuild their environment on every upgrade, and project managers prune anything their lockfile does not list — so an install that appeared to succeed would silently vanish on the next `uv tool upgrade` or `uv sync`.
+
+!!! note "Tool installs give you the CLI, not the library"
+    `pipx install optics-framework` and `uv tool install optics-framework` put the `optics` command on your PATH in an isolated environment. That covers `optics execute`, `optics live`, `optics serve` and `optics mcp`.
+
+    They do **not** make `optics_framework` importable from your own code, so the [Python SDK](usage/library_usage.md) and [Robot Framework](usage/robot_usage.md) library (`Library    optics_framework.optics.Optics`) will not find it. For those, install into the same virtual environment your tests run in.
 
 ---
 
