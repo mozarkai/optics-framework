@@ -8,6 +8,8 @@ This section provides guidelines for developers who want to contribute to the Op
 
 To set up the development environment for the Optics Framework, follow these steps:
 
+**Prefer not to set this up by hand?** The repository ships a dev container that does all of it for you, locally in VS Code or in a GitHub Codespace — see [Dev Container and Codespaces](dev_container.md).
+
 ### Clone the Repository
 
 Clone the Optics Framework repository to your local machine using the following command:
