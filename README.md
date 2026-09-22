@@ -178,6 +178,8 @@ Add Contact with Contact App,Verify Contact is Added
 | **REST API** | `optics serve` | Remote/orchestrated execution, live workspace streaming over SSE |
 | **MCP server** | `optics mcp` | Letting an AI agent drive a real device |
 
+The last two also ship as container images — `Docker/` holds a Dockerfile per server plus a Compose file, and the [Docker Deployment guide](https://mozarkai.github.io/optics-framework/usage/docker_deployment/) covers building, vision-backend build args, and reaching Appium from inside a container.
+
 <details>
 <summary><b>optics live — turning a session into a reusable module</b></summary>
 
