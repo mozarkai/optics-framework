@@ -48,6 +48,12 @@ Below are the primary usage guides, each tailored to a specific aspect of the fr
 
     [:material-arrow-right: MCP Usage →](mcp_usage.md)
 
+-   :material-docker: **Docker Deployment**
+
+    Build and run the REST API and MCP server as containers, with Compose.
+
+    [:material-arrow-right: Docker Deployment →](docker_deployment.md)
+
 -   :material-alert-circle: **Error Detection**
 
     Define crash dialogs and network errors; Optics scans visible text and reports to JUnit.

@@ -62,6 +62,7 @@ nav:
     - Robot Framework Usage: usage/robot_usage.md
     - REST API Usage: usage/REST_API_usage.md
     - MCP Usage: usage/mcp_usage.md
+    - Docker Deployment: usage/docker_deployment.md
     - Error Detection: usage/error_detection.md
   - Architecture:
     - Architecture Overview: architecture.md
@@ -88,6 +89,7 @@ nav:
     - Contributing Guidelines: contribution/contributing_guidelines.md
     - Recipes: contribution/recipes.md
     - Developer Guide: contribution/developer_guide.md
+    - Dev Container and Codespaces: contribution/dev_container.md
     - Help Wanted: contribution/help_wanted.md
     - Code of Conduct: contribution/code_of_conduct.md
 
