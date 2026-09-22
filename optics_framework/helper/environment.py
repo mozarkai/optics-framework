@@ -44,6 +44,16 @@ _ADD_COMMANDS = {
     "pipenv": "pipenv install",
 }
 
+# Each manager's "drop whatever the lockfile no longer lists" command. Removal
+# by name is not the equivalent — `uv remove` and `poetry remove` only touch
+# declared dependencies and error out on a stale transitive one.
+_PRUNE_COMMANDS = {
+    "uv": "uv sync",
+    "poetry": "poetry sync",
+    "pdm": "pdm sync --clean",
+    "pipenv": "pipenv clean",
+}
+
 # Stands in for a real requirement when the caller only wants to know whether
 # an environment refuses installs, so the rendered command reads as a template.
 _PLACEHOLDER_SPEC = "optics-framework[<engine>]"
@@ -280,6 +290,23 @@ def plan_install(env: Environment, specs: list[str]) -> InstallPlan:
             None, env.pep668_error or _PEP668_FALLBACK, f"  {_make_venv_hint()}")
 
     return _direct_plan(env, specs)
+
+
+def removal_command(env: Environment, package: str) -> str:
+    """The command that gets ``package`` out of this environment.
+
+    Ownership decides the shape, on the same reasoning as `plan_install`: a
+    lock-managed environment prunes rather than uninstalls, because a removal
+    made behind its manager's back returns on the next sync, and a tool
+    environment has to be named explicitly or the ``pip`` on PATH edits some
+    other environment entirely."""
+    if env.kind is EnvKind.PROJECT:
+        return _PRUNE_COMMANDS.get(env.manager or "uv", _PRUNE_COMMANDS["uv"])
+    if env.kind is EnvKind.TOOL and env.manager == "pipx":
+        return f"pipx runpip optics-framework uninstall -y {package}"
+    if env.kind is EnvKind.TOOL or (not env.has_pip and env.uv):
+        return f"uv pip uninstall --python {shlex.quote(env.python)} {package}"
+    return f"pip uninstall -y {package}"
 
 
 def describe(env: Environment) -> tuple[str, str, str] | None:

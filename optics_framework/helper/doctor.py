@@ -29,6 +29,7 @@ from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
+from optics_framework.helper.environment import Environment, removal_command
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
@@ -47,6 +48,9 @@ _APPIUM_SERVER = "appium server"
 _PLAYWRIGHT_BROWSER = "playwright browser"
 _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
+
+_OPENCV_GUI = "opencv-python"
+_OPENCV_HEADLESS = "opencv-python-headless"
 
 
 class Check(NamedTuple):
@@ -79,9 +83,13 @@ def check_core() -> list[Check]:
         rows.append(Check("optics-framework", "warn",
                           "not installed as a package (source checkout?)",
                           "pip install optics-framework"))
-    row = describe_environment(detect_environment())
+    env = detect_environment()
+    row = describe_environment(env)
     if row:
         rows.append(Check("environment", *row))
+    opencv = _opencv_row(env)
+    if opencv:
+        rows.append(opencv)
     return rows
 
 
@@ -122,6 +130,32 @@ def check_web() -> list[Check]:
     A pip package being installed says nothing about whether its browser was
     downloaded, so anything short of a confirmed binary is a warning."""
     return [_playwright_row(), _selenium_row()]
+
+
+def _is_installed(package: str) -> bool:
+    try:
+        version(package)
+    except PackageNotFoundError:
+        return False
+    return True
+
+
+def _opencv_row(env: Environment) -> Check | None:
+    """The leftover-GUI-OpenCV row, or None when only one build is installed.
+
+    Both distributions ship the same ``cv2`` module, and pip does not remove
+    ``opencv-python`` when a release switches to the headless build — so an
+    upgraded environment keeps both and the import resolves to whichever was
+    laid down last. The GUI build needs system libraries (libxcb and friends)
+    that minimal Linux images do not carry, so when it wins there, the package
+    stops importing at all."""
+    if not (_is_installed(_OPENCV_GUI) and _is_installed(_OPENCV_HEADLESS)):
+        return None
+    return Check(
+        "opencv", "warn",
+        f"{_OPENCV_GUI} and {_OPENCV_HEADLESS} are both installed; "
+        "which one provides cv2 depends on install order",
+        removal_command(env, _OPENCV_GUI))
 
 
 def _adb_devices_row(adb: str) -> Check:

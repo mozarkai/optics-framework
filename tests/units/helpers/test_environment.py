@@ -19,6 +19,7 @@ from optics_framework.helper.environment import (
     detect,
     describe,
     plan_install,
+    removal_command,
 )
 
 pytestmark = pytest.mark.white_box
@@ -269,6 +270,54 @@ class TestDescribe:
             _env(EnvKind.TOOL, manager="uv", has_pip=False))
         assert status == "warn"
         assert "uv tool install" in hint
+
+
+class TestRemovalCommand:
+    """A removal has the same ownership problem as an install: run it with the
+    wrong tool and it either edits another environment or is undone."""
+
+    STALE = "opencv-python"
+
+    def test_venv_with_pip_uninstalls_directly(self):
+        assert removal_command(_env(EnvKind.VENV), self.STALE) == (
+            "pip uninstall -y opencv-python")
+
+    def test_unmarked_system_interpreter_uninstalls_directly(self):
+        assert removal_command(_env(EnvKind.SYSTEM), self.STALE) == (
+            "pip uninstall -y opencv-python")
+
+    def test_venv_without_pip_removes_through_uv(self):
+        assert removal_command(
+            _env(EnvKind.VENV, has_pip=False), self.STALE) == (
+            "uv pip uninstall --python /p/bin/python opencv-python")
+
+    def test_venv_without_pip_or_uv_still_names_pip(self):
+        """Nothing better exists to suggest, and `describe` already carries a
+        row saying this environment takes no changes at all."""
+        assert removal_command(
+            _env(EnvKind.VENV, has_pip=False, uv=None), self.STALE) == (
+            "pip uninstall -y opencv-python")
+
+    def test_uv_tool_environment_names_its_interpreter(self):
+        assert removal_command(
+            _env(EnvKind.TOOL, manager="uv", has_pip=False), self.STALE) == (
+            "uv pip uninstall --python /p/bin/python opencv-python")
+
+    def test_pipx_tool_environment_goes_through_its_own_pip(self):
+        """A pipx venv has a pip, but it is not the pip on PATH."""
+        assert removal_command(
+            _env(EnvKind.TOOL, manager="pipx"), self.STALE) == (
+            "pipx runpip optics-framework uninstall -y opencv-python")
+
+    @pytest.mark.parametrize("manager,command", [
+        ("uv", "uv sync"),
+        ("poetry", "poetry sync"),
+        ("pdm", "pdm sync --clean"),
+        ("pipenv", "pipenv clean"),
+    ])
+    def test_lock_managed_environment_prunes_instead(self, manager, command):
+        assert removal_command(
+            _env(EnvKind.PROJECT, manager=manager), self.STALE) == command
 
 
 class TestRecoveryCommandIsRunnableWhereItIsRead:
