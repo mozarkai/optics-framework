@@ -199,7 +199,10 @@ class TestPlanInstall:
     def test_venv_without_pip_or_uv_refuses(self):
         plan = plan_install(_env(EnvKind.VENV, has_pip=False, uv=None), [SPEC])
         assert plan.command is None
-        assert "python3 -m venv" in plan.manual
+        # The hint itself is platform-specific (python3 vs python, bin/activate
+        # vs Scripts\Activate.ps1); what matters is that it tells you to build a
+        # venv rather than handing back a command.
+        assert "-m venv .venv" in plan.manual
 
     def test_read_only_prefix_refuses(self):
         plan = plan_install(_env(EnvKind.VENV, writable=False), [SPEC])

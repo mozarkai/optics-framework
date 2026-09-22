@@ -19,6 +19,7 @@ import pytest
 from rich.console import Console
 
 from optics_framework.helper import doctor, project_config
+from tests.conftest import set_home
 from optics_framework.helper.doctor import Check
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
 
@@ -212,7 +213,7 @@ class TestCheckMobile:
 class TestCheckWeb:
     @pytest.fixture(autouse=True)
     def isolated_home(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("HOME", str(tmp_path))
+        set_home(monkeypatch, tmp_path)
         self.home = tmp_path
 
     def test_uninstalled_packages_warn(self, monkeypatch):
@@ -224,7 +225,12 @@ class TestCheckWeb:
         assert any("optics setup --install playwright" in h for h in hints)
 
     @pytest.mark.parametrize(
-        "browser_dir", [["Library/Caches/ms-playwright"], [".cache/ms-playwright"]]
+        "browser_dir",
+        [
+            ["Library/Caches/ms-playwright"],
+            [".cache/ms-playwright"],
+            ["AppData/Local/ms-playwright"],
+        ],
     )
     def test_chromium_download_detected(self, browser_dir, monkeypatch):
         cache = self.home

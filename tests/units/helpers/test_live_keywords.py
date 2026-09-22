@@ -21,7 +21,7 @@ from optics_framework.common.models import ElementData
 from optics_framework.helper import live_tui
 from optics_framework.helper.live import ActionStatus, LiveController
 
-pytestmark = pytest.mark.white_box
+pytestmark = [pytest.mark.white_box, pytest.mark.usefixtures("pt_app_session")]
 
 
 class _Recorder:
