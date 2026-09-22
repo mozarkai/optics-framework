@@ -94,7 +94,7 @@ def check_engines() -> list[Check]:
             rows.append(Check(backend.name, "ok", f"{package} {version(package)}"))
         except PackageNotFoundError:
             rows.append(Check(backend.name, "warn", f"{package} not installed",
-                              f"optics setup --install {backend.extra}"))
+                              backend.install_hint))
     return rows
 
 
