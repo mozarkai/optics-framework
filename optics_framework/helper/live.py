@@ -1234,11 +1234,12 @@ class LiveController:
         image = self._action_keyword.strategy_manager.capture_screenshot()
         output_dir = os.path.join(self.folder_path, "screenshots")
         os.makedirs(output_dir, exist_ok=True)
-        name = "live_capture"
         timestamp = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S-%f")
-        utils.save_screenshot(image, name, output_dir=output_dir, time_stamp=timestamp)
-        sanitized = re.sub(r"[^a-zA-Z0-9\s_]", "", name)
-        return os.path.join(output_dir, f"{timestamp}-{sanitized}.jpg")
+        path = utils.save_screenshot(
+            image, "live_capture", output_dir=output_dir, time_stamp=timestamp)
+        if path is None:
+            raise OpticsError(Code.E0303, message="Screenshot could not be written to disk")
+        return path
 
     def screenshot_png_bytes(self) -> bytes:
         """Capture the current screen as encoded PNG bytes (for the LLM); no file side-effect.
