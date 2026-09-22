@@ -1,45 +1,36 @@
 """Friendly startup-abort rendering shared by cli.py and execute.py."""
 
+import shlex
 import sys
-from dataclasses import dataclass
 from typing import NoReturn
 
-_LIBGL_MARKERS = ("libGL", "libgl")
-
-_GRAPHICS_LIBRARY_GUIDANCE = (
-    "OpenCV needs a system graphics library that minimal and headless",
-    "Linux images do not ship. Install it, then re-run the command:",
-    "",
-    "  Debian/Ubuntu:  apt-get install -y libgl1",
-    "  RHEL/Fedora:    dnf install -y mesa-libGL",
-    "  Alpine:         apk add mesa-gl",
-)
-
-_REINSTALL_GUIDANCE = (
-    "Reinstall the package and its dependencies, then re-run:",
-    "",
-    "  pip install --force-reinstall optics-framework",
-)
+from optics_framework.helper.environment import (EnvKind, detect,
+                                                 project_add_command)
 
 
-@dataclass(frozen=True)
-class ImportFailure:
-    """A startup import error paired with the guidance that explains it."""
+def reinstall_guidance() -> tuple[str, ...]:
+    """Reinstall advice for the environment actually in use.
 
-    error: ImportError
-    guidance: tuple[str, ...]
-
-
-def classify_import_error(exc: ImportError) -> ImportFailure:
-    """Pair an import error with its fix guidance.
-
-    OpenCV reports a missing system graphics library as a message substring
-    rather than a structured attribute, so the markers are the only signal
-    that survives across OpenCV versions.
-    """
-    if any(marker in str(exc) for marker in _LIBGL_MARKERS):
-        return ImportFailure(exc, _GRAPHICS_LIBRARY_GUIDANCE)
-    return ImportFailure(exc, _REINSTALL_GUIDANCE)
+    A broken install is precisely the case where a hardcoded ``pip install`` is
+    most likely to be wrong: uv and pipx environments have no pip to run, and a
+    manager-owned one would discard the reinstall on its next sync."""
+    env = detect()
+    package = "optics-framework"
+    if env.kind is EnvKind.TOOL:
+        command = (f"pipx reinstall {package}" if env.manager == "pipx"
+                   else f"uv tool install --reinstall {package}")
+    elif env.kind is EnvKind.PROJECT:
+        command = f"{project_add_command(env)} {package}"
+    elif not env.has_pip and env.uv:
+        command = (f"uv pip install --python {shlex.quote(env.python)} "
+                   f"--reinstall {package}")
+    else:
+        command = f"pip install --force-reinstall {package}"
+    return (
+        "Reinstall the package and its dependencies, then re-run:",
+        "",
+        f"  {command}",
+    )
 
 
 def abort_with_panel(lines: list[str]) -> NoReturn:

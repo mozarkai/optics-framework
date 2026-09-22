@@ -17,7 +17,8 @@ from unittest.mock import patch
 
 import pytest
 
-from optics_framework.helper import cli
+from optics_framework.helper import abort, cli
+from optics_framework.helper.environment import EnvKind, Environment
 
 pytestmark = pytest.mark.white_box
 
@@ -120,30 +121,41 @@ class TestSetupInstallErrors:
         assert "invalid version" in capsys.readouterr().out
 
 
+def _env(kind, *, manager=None, has_pip=True):
+    return Environment(kind=kind, python="/py", prefix="/prefix",
+                       has_pip=has_pip, writable=True, manager=manager,
+                       uv="/usr/bin/uv")
+
+
+class TestReinstallGuidance:
+    """A broken install is where a hardcoded ``pip install`` is most likely to
+    be wrong, so the advice follows the environment actually in use."""
+
+    @pytest.mark.parametrize("env, expected", [
+        (_env(EnvKind.VENV), "pip install --force-reinstall"),
+        (_env(EnvKind.VENV, has_pip=False), "uv pip install"),
+        (_env(EnvKind.TOOL, manager="pipx", has_pip=False), "pipx reinstall"),
+        (_env(EnvKind.TOOL, manager="uv", has_pip=False), "uv tool install --reinstall"),
+        (_env(EnvKind.PROJECT, manager="poetry"), "poetry add"),
+    ])
+    def test_command_matches_the_environment(self, monkeypatch, env, expected):
+        monkeypatch.setattr(abort, "detect", lambda: env)
+        assert abort.reinstall_guidance()[-1].strip().startswith(expected)
+
+
 class TestStartupImportGuard:
-    """A dependency that fails to load (classically ``cv2`` when a minimal
-    Linux image has no ``libGL.so.1``) must surface as guidance rather than an
+    """A dependency that fails to load must surface as guidance rather than an
     import-time traceback from the ``optics`` console script."""
 
-    def test_libgl_failure_names_the_package_to_install(self, capsys):
-        error = ImportError(
-            "libGL.so.1: cannot open shared object file: No such file or directory")
-        with pytest.raises(SystemExit) as exc:
-            cli._abort_on_import_error(error)
-        assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "libGL.so.1" in err
-        assert "libgl1" in err
-
-    def test_unrelated_failure_still_shows_the_real_error(self, capsys):
+    def test_failure_shows_the_real_error_and_how_to_recover(self, capsys):
         error = ImportError("No module named 'pydantic'")
         with pytest.raises(SystemExit) as exc:
             cli._abort_on_import_error(error)
         assert exc.value.code == 1
         err = capsys.readouterr().err
         assert "pydantic" in err
-        assert "force-reinstall" in err
-        assert "libgl1" not in err
+        assert "Reinstall the package" in err
+        assert "optics-framework" in err
 
     def test_importing_cli_without_cv2_exits_instead_of_raising(self):
         # End-to-end over the console-script path, in a subprocess so the
@@ -161,9 +173,7 @@ class TestStartupImportGuard:
             class BlockCv2:
                 def find_spec(self, fullname, path=None, target=None):
                     if fullname == "cv2" or fullname.startswith("cv2."):
-                        raise ImportError(
-                            "libGL.so.1: cannot open shared object file:"
-                            " No such file or directory")
+                        raise ImportError("cv2 is unimportable in this test")
                     return None
 
             sys.meta_path.insert(0, BlockCv2())
@@ -184,7 +194,7 @@ class TestStartupImportGuard:
         assert "STAR_IMPORT_NEEDS_CV2" in result.stdout
         assert result.returncode == 1
         assert "Traceback" not in result.stderr
-        assert "libgl1" in result.stderr
+        assert "Reinstall the package" in result.stderr
 
 
 class TestCommandForwarding:

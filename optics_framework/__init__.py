@@ -6,9 +6,10 @@ It is re-exported here so the documented import works::
     from optics_framework import Optics
 
 The re-export is resolved lazily (:pep:`562`). Importing it eagerly would pull
-the whole API and vision stack — including ``cv2`` — into *every* import of any
-``optics_framework`` submodule, so a missing ``libGL.so.1`` crashed the
-``optics`` console script before ``helper/cli.py`` could run a single line.
+the whole API and vision stack into *every* import of any ``optics_framework``
+submodule, so any dependency that failed to import crashed the ``optics``
+console script before ``helper/cli.py`` could run a single line — and before
+its own guard could turn that into a readable message.
 
 ``Optics`` stays in ``__all__`` so ``from optics_framework import *`` keeps
 binding it. That star import resolves the name through :func:`__getattr__` and

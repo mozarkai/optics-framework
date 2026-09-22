@@ -3,18 +3,17 @@ import os
 import sys
 from typing import Literal, NoReturn, Optional
 
-from optics_framework.helper.abort import abort_with_panel, classify_import_error
+from optics_framework.helper.abort import abort_with_panel, reinstall_guidance
 
 
 def _abort_on_import_error(exc: ImportError) -> NoReturn:
     """Report a startup import failure as guidance instead of a traceback."""
-    failure = classify_import_error(exc)
     abort_with_panel([
         "Optics could not load one of its dependencies, so no command can run.",
         "",
-        f"Underlying error: {failure.error}",
+        f"Underlying error: {exc}",
         "",
-        *failure.guidance,
+        *reinstall_guidance(),
     ])
 
 
