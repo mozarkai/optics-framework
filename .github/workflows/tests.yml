@@ -30,3 +30,76 @@ jobs:
         run: poetry install --with test --extras appium --extras selenium --extras google-vision --extras mcp
       - name: Run tests
         run: poetry run pytest -c pytest.toml --no-cov -q
+
+  # Windows-only, and deliberately not run on pull requests: the pytest matrix
+  # above already covers path handling and encoding on Windows across the whole
+  # suite with precise failures. This job adds the one thing unit tests cannot
+  # reach — a real browser launch writing real artefacts — at the cost of a
+  # ~150 MB Chromium download, so it runs where releases are cut from instead.
+  playwright-sample:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: |
+          pip install --no-cache-dir --only-binary=:all: poetry==2.4.1
+      # Only the runtime group: this job runs the CLI the way a user installs
+      # it, and the docs group's csscompressor ships no wheel for ':all:'.
+      - name: Install dependencies
+        env:
+          POETRY_INSTALLER_ONLY_BINARY: ':all:'
+        run: poetry install --only main --extras playwright
+      - name: Install Chromium
+        run: poetry run playwright install chromium
+      - name: Scaffold the Playwright sample
+        run: poetry run optics init demo --template playwright
+      - name: Diagnose the project
+        run: poetry run optics doctor demo --check
+      - name: Execute the suite
+        run: poetry run optics execute demo
+      - name: Check the run left usable artefacts
+        run: |
+          $out = Join-Path 'demo' 'execution_output'
+          $report = Join-Path $out 'junit_output.xml'
+          if (-not (Test-Path -LiteralPath $report)) {
+            throw "No JUnit report at $report - the run wrote nothing under execution_output."
+          }
+          [xml]$junit = Get-Content -LiteralPath $report
+          $tests = 0; $failures = 0; $errors = 0
+          foreach ($suite in @($junit.testsuites.testsuite)) {
+            $tests += [int]$suite.tests
+            $failures += [int]$suite.failures
+            $errors += [int]$suite.errors
+          }
+          # `optics execute` exits 0 on an empty result set, so without this an
+          # empty report would read as a green run that executed nothing.
+          if ($tests -eq 0) {
+            throw "JUnit report lists no test cases."
+          }
+          if ($failures -ne 0 -or $errors -ne 0) {
+            throw "JUnit report lists $failures failure(s) and $errors error(s)."
+          }
+          # save_screenshot swallows a rejected path (cv2.imwrite returns False
+          # rather than raising), so a dropped capture would still exit 0.
+          $shots = @(Get-ChildItem -LiteralPath $out -Filter '*.jpg' -File)
+          if ($shots.Count -eq 0) {
+            throw "No screenshot under execution_output - capture dropped its output silently."
+          }
+          Write-Host "$tests test case(s) passed, $($shots.Count) screenshot(s) saved."
+      - name: Upload execution output
+        if: failure()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: windows-execution-output
+          path: demo/execution_output/
+          if-no-files-found: ignore
