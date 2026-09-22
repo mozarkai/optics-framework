@@ -355,6 +355,8 @@ poetry run pre-commit run --all-files
 poetry run mkdocs serve              # docs preview
 ```
 
+Or skip the setup entirely: `.devcontainer/` builds that environment for you in a GitHub Codespace or VS Code's Dev Containers — see [Dev Container and Codespaces](https://mozarkai.github.io/optics-framework/contribution/dev_container/).
+
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by commitizen in the commit-msg hook.
 
 Security issues follow [SECURITY.md](SECURITY.md) rather than public issues.
