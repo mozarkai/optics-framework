@@ -17,12 +17,23 @@ so does import the vision stack — but only for a caller that asked for the
 facade, which is exactly the ``from optics_framework import Optics`` contract.
 Plain ``import optics_framework`` and every submodule import stay lazy, which
 is what keeps the console script reaching ``helper/cli.py``.
+
+The one eager import is :mod:`~optics_framework.helper.console_encoding`, which
+is stdlib-only and so costs nothing the laziness above is protecting against.
+It runs here rather than in ``helper/cli.py`` because every entry point — the
+console script, the Python SDK, the Robot Framework library, ``optics serve``
+and ``optics mcp`` — reaches the package root, and only some of them reach the
+CLI.
 """
 
 from typing import TYPE_CHECKING, Any
 
+from optics_framework.helper.console_encoding import ensure_console_encoding
+
 if TYPE_CHECKING:
     from optics_framework.optics import Optics  # noqa: F401 - type-checker-only re-export for the lazy facade
+
+ensure_console_encoding()
 
 __all__: list[str] = ["Optics"]
 

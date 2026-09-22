@@ -348,7 +348,15 @@ def compare_text(given_text, target_text, strict: bool = False):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
-def save_screenshot(img, name, output_dir, time_stamp=None):
+RESERVED_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def sanitize_filename_component(value: str) -> str:
+    """Replace characters that cannot appear in a filename on every platform."""
+    return RESERVED_FILENAME_CHARS.sub('-', value)
+
+
+def save_screenshot(img, name, output_dir, time_stamp=None) -> Optional[str]:
     """
     Save the screenshot with a timestamp and keyword in the filename.
 
@@ -357,24 +365,38 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
         name: Name for the screenshot file
         output_dir: Directory where to save the screenshot (required)
         time_stamp: Optional timestamp, will be generated if not provided
+
+    Returns:
+        The path written, or ``None`` when nothing was written.
     """
     if img is None:
         internal_logger.debug("Image is empty. Cannot save screenshot.")
         raise ValueError("Image is empty. Cannot save screenshot.")
     if output_dir is None:
         internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
-        return
+        return None
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
-        time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
+        time_stamp = datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f')
+    # Callers pass get_timestamp()'s ISO-8601 value, whose colons — in the time
+    # and in the UTC offset — are reserved in a Windows filename.
+    file_name = f"{sanitize_filename_component(str(time_stamp))}-{name}.jpg"
+    screenshot_file_path = os.path.join(output_dir, file_name)
     try:
-        cv2.imwrite(screenshot_file_path, img)
-        internal_logger.debug(f'Screenshot saved as : {time_stamp}-{name}.jpg')
-        internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
-
+        written = cv2.imwrite(screenshot_file_path, img)
     except Exception as e:
-        internal_logger.debug(f"Error writing screenshot to file : {e}")
+        internal_logger.warning(f"Could not write screenshot to {screenshot_file_path}: {e}")
+        return None
+    if not written:
+        # imwrite reports a rejected path or an unwritable destination by
+        # returning False, so an unchecked call loses the capture silently.
+        internal_logger.warning(
+            f"Screenshot was not written to {screenshot_file_path}: "
+            "the path was rejected or the destination is not writable."
+        )
+        return None
+    internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
+    return screenshot_file_path
 
 
 def annotate(screenshot, bboxes):
