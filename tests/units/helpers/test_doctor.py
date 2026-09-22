@@ -85,7 +85,7 @@ class TestCheckCore:
     def test_missing_package_is_warn_not_fail(self):
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
             rows = doctor.check_core()
-        optics_row = rows[-1]
+        optics_row = next(r for r in rows if r.name == DISTRIBUTION_NAME)
         assert optics_row.status == "warn"
         assert "pip install" in optics_row.hint
 
@@ -232,7 +232,35 @@ class TestCheckWeb:
             cache = cache / part
         (cache / "chromium-1200").mkdir(parents=True)
         monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
+        monkeypatch.setattr(doctor, "_playwright_chromium_revision",
+                            lambda: "1200")
         with patch(f"{MODULE}.version", return_value="1.49.0"):
+            rows = doctor.check_web()
+        pw = next(r for r in rows if r.name == "playwright browser")
+        assert pw.status == "ok"
+
+    def test_chromium_from_an_earlier_playwright_is_not_accepted(self, monkeypatch):
+        """Playwright pins one exact build and refuses to launch any other, so
+        a leftover download is not a usable browser. Reporting it as one sends
+        the user into a run that fails on launch."""
+        cache = self.home / "Library/Caches/ms-playwright"
+        (cache / "chromium-1234").mkdir(parents=True)
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
+        monkeypatch.setattr(doctor, "_playwright_chromium_revision",
+                            lambda: "1243")
+        with patch(f"{MODULE}.version", return_value="1.58.0"):
+            rows = doctor.check_web()
+        pw = next(r for r in rows if r.name == "playwright browser")
+        assert pw.status == "warn"
+        assert "playwright install chromium" in pw.hint
+
+    def test_unreadable_manifest_falls_back_to_any_chromium(self, monkeypatch):
+        """Better a usable answer than none when the revision cannot be read."""
+        cache = self.home / "Library/Caches/ms-playwright"
+        (cache / "chromium-1234").mkdir(parents=True)
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
+        monkeypatch.setattr(doctor, "_playwright_chromium_revision", lambda: None)
+        with patch(f"{MODULE}.version", return_value="1.58.0"):
             rows = doctor.check_web()
         pw = next(r for r in rows if r.name == "playwright browser")
         assert pw.status == "ok"
@@ -638,3 +666,25 @@ class TestGatedClosingMessage:
         ]
         _, out = self._run_with_rows(tmp_path, env_rows=rows)
         assert "warning(s)" in out
+
+
+class TestMandatoryHintsCoverEnabledEngines:
+    """The server can be up and the device attached, and the run still dies the
+    moment the driver is instantiated."""
+
+    def test_missing_client_for_the_enabled_driver_blocks(self):
+        rows = [
+            Check("Appium", "warn", "appium-python-client not installed",
+                  "optics setup --install appium"),
+            Check("adb devices", "ok", "1 connected: emu-5554"),
+            Check("appium server", "ok", "reachable at 127.0.0.1:4723"),
+        ]
+        assert doctor._mandatory_hints(rows, {"appium"}) == [
+            "optics setup --install appium"]
+
+    def test_missing_client_for_an_unused_driver_does_not_block(self):
+        rows = [
+            Check("Playwright", "warn", "playwright not installed",
+                  "optics setup --install playwright"),
+        ]
+        assert doctor._mandatory_hints(rows, {"appium"}) == []
