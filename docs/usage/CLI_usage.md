@@ -229,6 +229,9 @@ optics doctor [folder] [--check]
 - `[folder]`: Project folder to diagnose (default: current directory). With one, the Appium probe targets that project's configured server URL and its `config.yaml` is validated.
 - `--check`: Non-interactive mode — exit non-zero when a project-config check fails (useful in CI).
 
+!!! note "Engines your project enables but has not installed"
+    An engine set to `enabled: true` in `config.yaml` whose Python package is missing is reported the same way everywhere, differing only in how far each command can get with it: `optics doctor` and `optics generate` warn and carry on, while `optics dry_run` and `optics execute` stop before the session and print the same description and `optics setup --install <engine>` command. Doctor also lists it under "Before your first real run", since it is something the project asked for rather than an optional extra.
+
 ## Checking Version
 
 Check the installed version:

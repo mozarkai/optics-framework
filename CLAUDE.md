@@ -46,6 +46,26 @@ The full chain when a user types `optics execute <folder>`:
 
 `dry_run` follows the same path with `DryRunExecutor` (`execution.py:93`) and `TestRunner._process_test_case(..., dry_run=True)` — it resolves params via `resolve_param` (`test_runnner.py:225`, returns *first* element value, not the list) and checks `keyword_map` membership without calling methods. The first-vs-list resolution divergence is a known dry-run vs execute pitfall. `DryRunExecutor.execute` returns `runner.result_printer.test_state` (`Dict[str, TestCaseResult]`) and `ExecutionEngine.execute` propagates it — the CLI ignores the return. Dry-run is a **validator**: an unknown keyword or an unresolved `${var}` is recorded as a per-keyword `FAIL` (with `reason`), not raised — `_dry_run_module` (`test_runnner.py:829`) catches `OpticsError`/`ValueError` rather than crashing the run.
 
+## Missing-engine severity
+
+"An engine is `enabled: true` in config.yaml but its Python package was never installed" is one condition met by four commands, and `optics_framework/helper/engine_requirements.py` owns both the detection and the wording so they cannot drift apart again (they did: #497 found a warning, an uncaught `E0601` and silence for the same missing `easyocr`).
+
+`missing_engines(config)` (`:84`) walks every engine section of a config — `driver_sources`, `elements_sources`, `text_detection`, `image_detection`, `llm_models` — via `enabled_keys` (`:64`), maps each enabled key to its `EngineBackend` with `setup.engine_for` (`setup.py:161`, the alias index that also resolves `optics setup --install` tokens), and checks the extra's packages against installed distribution metadata. A key with no extra (`templatematch`, `remote_ocr`, or an element source riding on its driver's extra) resolves to `None` and is never flagged. `enabled_keys` reads a parsed-YAML mapping and a `Config` model alike — both answer `.get(section, default)` — because doctor and generate hold raw YAML while the runners hold a `Config`.
+
+The severity is the caller's, the words are not: every surface renders `MissingEngine.detail` / `.hint` (`:33`), and `.hint` is `EngineBackend.install_hint` (`setup.py:41`), the one place the `optics setup --install <extra>` string is built.
+
+| Command | Severity | Where |
+|---|---|---|
+| `optics doctor` | ⚠️ project row, exit 0 | `_engine_rows` (`doctor.py:329`), inside `validate_project`; `_project_engine_hints` (`doctor.py:397`) also promotes the hint into the blocking call-to-action, so `Diagnosis.ready` is False and `quickstart` won't offer a first run |
+| `optics generate` | warning log, exit 0 | `warn_missing_engines` (`generate.py:774`) |
+| `optics dry_run` / `optics execute` | stderr + exit 1, before any session | `BaseRunner._require_installed_engines` (`execute.py:838`) |
+
+The runner gate is a project-level precondition, in the same family as the no-driver-enabled gate in `_setup_session` — not a dry-run validation finding. Dry-run still records per-keyword `FAIL` for problems a keyword owns; a missing engine belongs to no keyword, and both dry_run and execute instantiate the engines listed in config.yaml, so neither can get past it.
+
+A new engine backend takes part in none of this until it has an `EngineBackend` entry in `ALL_ENGINES` (`setup.py:99`) whose `extra` matches both its pyproject extra and its config.yaml key; without one it stays invisible here and its missing package surfaces as the raw `E0601` again.
+
+**Not yet covered:** `optics serve`, `optics mcp` and `optics live` build sessions directly rather than through `BaseRunner`, so they still surface the raw `Code.E0601` from `GenericFactory._load_module` (`base_factory.py:171`) — which names an optics module that is in fact present, the missing piece being its third-party dependency.
+
 ## On-screen error-detection journey
 
 A project can drop an auto-discovered `error_definitions.csv` (columns `error_code,match_string,description,severity`) in its folder root. `find_files` routes it into the `error_definitions` bucket (execute journey step 3 above), and `_load_error_definitions` (`execute.py:793`) reads it via `read_error_definitions` (`common/runner/data_reader.py:430`) into an `ErrorDefinitions` model (`common/models.py:308`), threaded through `Session` (`session_manager.py:101`). After a CSV/YAML batch run finishes, `TestRunner._capture_end_of_run_artifacts` (`test_runnner.py:573`) captures a final screenshot + pagesource via `_save_end_of_run_pagesource` (`:592`) and calls `_run_end_of_run_detection` (`:607`), which uses shared primitives in `common/error_detection.py`: `extract_visible_text` (`:35`, strips HTML via BeautifulSoup / reads mobile XML text-bearing attributes) and `detect_errors_in_text` (`:80`, case-insensitive **substring** matching, not regex). Matches are reported as a synthetic failing JUnit testcase via `JUnitEventHandler.add_detected_errors` (`Junit_eventhandler.py:258`).
