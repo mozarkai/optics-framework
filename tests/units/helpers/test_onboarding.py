@@ -1,8 +1,8 @@
 """Unit tests for the onboarding helpers (``optics_framework/helper/onboarding.py``).
 
-The first-run marker lives under HOME, so every filesystem test points HOME at
-a tmp_path. Output-producing functions are rendered through a Console writing
-to an in-memory buffer; no real terminal is touched.
+The first-run marker lives under the user's home directory, so every filesystem
+test redirects that home at a tmp_path. Output-producing functions are rendered
+through a Console writing to an in-memory buffer; no real terminal is touched.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from rich.console import Console
 
 from optics_framework.helper import onboarding
 from optics_framework.helper.version import VERSION
+from tests.conftest import set_home
 
 pytestmark = pytest.mark.white_box
 
@@ -24,12 +25,13 @@ MODULE = "optics_framework.helper.onboarding"
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
-    """Point HOME at a fresh temp dir so the real ~/.optics is never touched.
+    """Point the home directory at a fresh temp dir so the real ~/.optics is
+    never touched.
 
     OPTICS_HOME is cleared so an ambient value on the test runner can't
-    redirect the marker away from the isolated HOME and invalidate the
-    HOME-based assertions below."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    redirect the marker away from the isolated home and invalidate the
+    home-based assertions below."""
+    set_home(monkeypatch, tmp_path)
     monkeypatch.delenv("OPTICS_HOME", raising=False)
     return tmp_path
 
@@ -112,14 +114,14 @@ class TestOpticsHomeOverride:
         home = tmp_path / "home"
         custom = tmp_path / "optics-state"
         home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
+        set_home(monkeypatch, home)
         monkeypatch.setenv("OPTICS_HOME", str(custom))
         onboarding.mark_onboarded()
         assert os.path.exists(os.path.join(str(custom), ".onboarded"))
         assert not os.path.exists(os.path.join(str(home), ".optics"))
 
     def test_falls_back_to_home_when_optics_home_unset(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HOME", str(tmp_path))
+        set_home(monkeypatch, tmp_path)
         monkeypatch.delenv("OPTICS_HOME", raising=False)
         onboarding.mark_onboarded()
         assert os.path.isfile(os.path.join(str(tmp_path), ".optics", ".onboarded"))
