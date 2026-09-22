@@ -282,6 +282,32 @@ def plan_install(env: Environment, specs: list[str]) -> InstallPlan:
     return _direct_plan(env, specs)
 
 
+def replace_command(env: Environment, stale: str, restore: str) -> str:
+    """One line that drops ``stale`` and lays ``restore`` back down.
+
+    Reinstalling is not padding. Two distributions that share an import name
+    share their files on disk too, because the later install overwrote the
+    earlier's — so uninstalling one deletes files the other's metadata still
+    claims, and a bare uninstall trades an ambiguous install for a broken one.
+
+    A lock-managed environment needs no case of its own here, unlike
+    `plan_install`: dropping a distribution the lockfile does not list moves
+    towards the lock rather than behind the manager's back, and ``restore``
+    carries the version already recorded, so nothing is re-resolved. A tool
+    environment still does, because its manager rebuilds it from current
+    metadata, which is both steps at once."""
+    restore = shlex.quote(restore)
+    if env.kind is EnvKind.TOOL:
+        return ("pipx reinstall optics-framework" if env.manager == "pipx"
+                else "uv tool install --reinstall optics-framework")
+    if not env.has_pip and env.uv:
+        python = shlex.quote(env.python)
+        return (f"uv pip uninstall --python {python} {stale} && "
+                f"uv pip install --python {python} --reinstall {restore}")
+    return (f"pip uninstall -y {stale} && "
+            f"pip install --force-reinstall {restore}")
+
+
 def describe(env: Environment) -> tuple[str, str, str] | None:
     """``(status, detail, hint)`` for the ``optics doctor`` environment row, or
     None when this environment takes engine installs.

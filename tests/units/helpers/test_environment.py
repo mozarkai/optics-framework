@@ -19,6 +19,7 @@ from optics_framework.helper.environment import (
     detect,
     describe,
     plan_install,
+    replace_command,
 )
 
 pytestmark = pytest.mark.white_box
@@ -269,6 +270,61 @@ class TestDescribe:
             _env(EnvKind.TOOL, manager="uv", has_pip=False))
         assert status == "warn"
         assert "uv tool install" in hint
+
+
+class TestReplaceCommand:
+    """Dropping one of two distributions that share an import name is only
+    half the repair, and which half-pair to run depends on who owns the
+    environment."""
+
+    STALE = "opencv-python"
+    RESTORE = "opencv-python-headless==4.11.0.86"
+
+    def _command(self, env):
+        return replace_command(env, self.STALE, self.RESTORE)
+
+    @pytest.mark.parametrize("env", [
+        _env(EnvKind.VENV),
+        _env(EnvKind.SYSTEM),
+        # A lock-managed environment gets the same command: removing what the
+        # lockfile does not list, and restoring the version it does, converges
+        # on the lock instead of drifting from it.
+        _env(EnvKind.PROJECT, manager="poetry"),
+    ])
+    def test_pip_environments_uninstall_then_reinstall(self, env):
+        assert self._command(env) == (
+            "pip uninstall -y opencv-python && "
+            "pip install --force-reinstall opencv-python-headless==4.11.0.86")
+
+    def test_the_survivor_is_always_laid_back_down(self):
+        """Both wheels write the same cv2 files, so the uninstall takes the
+        survivor's files with it — stopping at the uninstall would leave an
+        installed distribution that no longer imports."""
+        assert "--force-reinstall" in self._command(_env(EnvKind.VENV))
+
+    def test_environment_without_pip_goes_through_uv(self):
+        assert self._command(_env(EnvKind.VENV, has_pip=False)) == (
+            "uv pip uninstall --python /p/bin/python opencv-python && "
+            "uv pip install --python /p/bin/python --reinstall "
+            "opencv-python-headless==4.11.0.86")
+
+    def test_environment_without_pip_or_uv_still_names_pip(self):
+        """Nothing better exists to suggest, and `describe` already carries a
+        row saying this environment takes no changes at all."""
+        assert self._command(_env(EnvKind.VENV, has_pip=False, uv=None)) == (
+            "pip uninstall -y opencv-python && "
+            "pip install --force-reinstall opencv-python-headless==4.11.0.86")
+
+    @pytest.mark.parametrize("manager,command", [
+        ("uv", "uv tool install --reinstall optics-framework"),
+        ("pipx", "pipx reinstall optics-framework"),
+    ])
+    def test_tool_environment_is_rebuilt_instead(self, manager, command):
+        """A tool manager recreates the whole environment from current
+        metadata, so the stale distribution never comes back and the survivor
+        is written fresh — both halves in one command."""
+        assert self._command(
+            _env(EnvKind.TOOL, manager=manager, has_pip=False)) == command
 
 
 class TestRecoveryCommandIsRunnableWhereItIsRead:

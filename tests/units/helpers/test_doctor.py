@@ -20,6 +20,7 @@ from rich.console import Console
 
 from optics_framework.helper import doctor, project_config
 from optics_framework.helper.doctor import Check
+from optics_framework.helper.environment import EnvKind, Environment
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
 
 pytestmark = pytest.mark.white_box
@@ -95,6 +96,83 @@ class TestCheckCore:
         python_row = rows[0]
         assert python_row.name == "python"
         assert python_row.status == "ok"
+
+
+# --------------------------------------------------------------------------- #
+# opencv                                                                       #
+# --------------------------------------------------------------------------- #
+
+def _installed(*packages: str):
+    """A ``version`` stand-in in which only ``packages`` resolve."""
+    def fake_version(package):
+        if package in packages:
+            return "4.11.0.86"
+        raise PackageNotFoundError(package)
+    return fake_version
+
+
+def _environment(kind=EnvKind.VENV, **overrides) -> Environment:
+    fields = {"python": "/p/bin/python", "prefix": "/p", "has_pip": True,
+              "writable": True, "uv": "/usr/bin/uv"}
+    fields.update(overrides)
+    return Environment(kind=kind, **fields)
+
+
+class TestOpenCvRow:
+    """pip leaves opencv-python installed when a release moves to the headless
+    build, and the two ship the same cv2 module — so the leftover can win the
+    import and take the whole CLI down on an image without its system
+    libraries."""
+
+    def _core_rows(self, *installed, env=None):
+        with patch(f"{MODULE}.version", side_effect=_installed(*installed)), \
+                patch(f"{MODULE}.detect_environment",
+                      return_value=env or _environment()), \
+                patch(f"{MODULE}.describe_environment", return_value=None):
+            return doctor.check_core()
+
+    def _row(self, *installed, env=None):
+        return next((r for r in self._core_rows(*installed, env=env)
+                     if r.name == "opencv"), None)
+
+    def test_both_builds_installed_warns_with_the_repair_command(self):
+        row = self._row("opencv-python", "opencv-python-headless")
+        assert row is not None
+        assert row.status == "warn"
+        assert "opencv-python-headless" in row.detail
+        assert row.hint == (
+            "pip uninstall -y opencv-python && "
+            "pip install --force-reinstall opencv-python-headless==4.11.0.86")
+
+    def test_repair_pins_the_headless_version_already_installed(self):
+        """Both wheels own the same cv2 files, so the survivor has to be laid
+        back down — at the version already recorded, or the repair turns into
+        an unasked-for upgrade."""
+        row = self._row("opencv-python", "opencv-python-headless")
+        assert "opencv-python-headless==4.11.0.86" in row.hint
+
+    def test_headless_only_is_silent(self):
+        assert self._row("opencv-python-headless") is None
+
+    def test_gui_only_is_silent(self):
+        """One build is one cv2 — a stale pin is a different problem and not
+        one a removal hint would fix."""
+        assert self._row("opencv-python") is None
+
+    def test_neither_installed_is_silent(self):
+        assert self._row() is None
+
+    def test_missing_metadata_does_not_break_the_other_core_rows(self):
+        rows = self._core_rows()
+        assert [r.name for r in rows][:1] == ["python"]
+        assert all(r.status in ("ok", "warn") for r in rows)
+
+    def test_hint_follows_the_install_environment(self):
+        """A bare `pip uninstall` in a pipx environment edits the pip on PATH,
+        which is some other environment entirely."""
+        row = self._row("opencv-python", "opencv-python-headless",
+                        env=_environment(EnvKind.TOOL, manager="pipx"))
+        assert row.hint == "pipx reinstall optics-framework"
 
 
 # --------------------------------------------------------------------------- #
