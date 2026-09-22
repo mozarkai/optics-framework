@@ -120,11 +120,15 @@ poetry run mkdocs serve
 
 This will start a local server (typically at `http://127.0.0.1:8000`) that automatically reloads when you make changes to the documentation files.
 
-To build the documentation for production:
+To build the documentation the way CI does:
 
 ```bash
-poetry run mkdocs build
+poetry run mkdocs build --strict
 ```
+
+`--strict` turns MkDocs warnings into failures, so a link to a page that does not exist fails the build instead of shipping. The `Build-mkdocs-docs` workflow uses it for both the pull-request build and the deploy to GitHub Pages — run it locally before pushing a docs change.
+
+A link to a file outside `docs/` (a Dockerfile, `docker-compose.yml`, `.devcontainer/devcontainer.json`) cannot be relative: `docs/` is the site root, so anything above it is unreachable. Link to those with their full `https://github.com/mozarkai/optics-framework/blob/main/...` URL.
 
 ### Run Tests
 
