@@ -62,6 +62,7 @@ nav:
     - Robot Framework Usage: usage/robot_usage.md
     - REST API Usage: usage/REST_API_usage.md
     - MCP Usage: usage/mcp_usage.md
+    - Docker Deployment: usage/docker_deployment.md
     - Error Detection: usage/error_detection.md
   - Architecture:
     - Architecture Overview: architecture.md
