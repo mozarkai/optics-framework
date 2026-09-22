@@ -26,3 +26,32 @@ jobs:
         run: poetry install --with test --extras appium --extras selenium --extras google-vision --extras mcp
       - name: Run tests
         run: poetry run pytest -c pytest.toml --no-cov -q
+
+  bare-image-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: |
+          pip install --no-cache-dir --only-binary=:all: poetry==2.4.1
+      - name: Build wheel
+        run: poetry build --format wheel
+      # The image is deliberately left bare: its lack of system graphics libraries
+      # is the assertion. A dependency that links against libGL/libxcb makes the
+      # very first command fail on import for every Docker and CI user, which the
+      # pytest job cannot see because its runner already has those libraries.
+      # If this job goes red, the startup path regressed — fix the dependency.
+      # Do not add `apt-get install` of graphics libraries to make it pass.
+      - name: Run the CLI on a bare image
+        run: |
+          docker run --rm -v "$PWD/dist:/wheels:ro" python:3.12-slim sh -c '
+            set -eux
+            pip install --no-cache-dir --quiet /wheels/*.whl
+            optics --version
+            optics list > /dev/null
+          '
