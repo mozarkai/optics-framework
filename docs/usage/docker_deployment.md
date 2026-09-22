@@ -181,8 +181,29 @@ or in an MCP `start_session` call:
 }
 ```
 
-On Linux, `host.docker.internal` resolves only when the container is started
-with `--add-host=host.docker.internal:host-gateway`.
+Docker Desktop resolves that name for you. On Linux it does not exist unless
+you add it, and none of the Compose services declares it — so pass it to
+`docker run`:
+
+```bash
+docker run -d -p 8000:8000 \
+  --add-host=host.docker.internal:host-gateway \
+  --name optics-api-prod optics-api-prod
+```
+
+or layer it onto Compose with a second file:
+
+```yaml
+# Docker/docker-compose.host.yml
+services:
+  app:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+```bash
+docker compose -f Docker/docker-compose.yml -f Docker/docker-compose.host.yml up app
+```
 
 ## Connecting a client
 
