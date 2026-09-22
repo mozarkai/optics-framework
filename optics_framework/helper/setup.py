@@ -12,6 +12,8 @@ from textual.widgets import Checkbox, Button, Header, Footer, Static
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import BaseModel
 
+from optics_framework.helper.environment import detect, plan_install
+
 
 DISTRIBUTION_NAME = "optics-framework"
 _STATUS_ID = "#status"
@@ -446,6 +448,10 @@ def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tu
     user sees pip working; ``stream=False`` (the TUI, whose alternate screen
     swallows prints) captures quietly instead.
 
+    The installing command comes from `plan_install`, not from a hardcoded
+    ``pip``: uv and pipx environments ship no pip, and manager-owned ones would
+    discard the install on their next sync.
+
     Returns ``(success, message)`` rather than raising, so both the CLI
     (`optics setup --install`) and the TUI can surface the outcome — the TUI's
     alternate screen swallows ``print``. On failure the message carries an
@@ -461,18 +467,30 @@ def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tu
 
     pinned = [f"{req.engine.packages[0]}{req.version}" for req in requests if req.version]
 
+    env = detect()
+    plan = plan_install(env, [spec, *pinned])
+    if plan.command is None:
+        return False, plan.describe()
+
     run = _run_streaming if stream else _run_capture
+    # Callers print whatever comes back, so the note goes out either now or in
+    # the returned message — never both.
+    if plan.note and stream:
+        print(plan.note)
     try:
-        run([sys.executable, "-m", "pip", "install", spec, *pinned])
+        run(plan.command)
 
         if any(req.engine.extra == "playwright" for req in requests):
             # Per https://playwright.dev/python/docs/browsers this must run after
             # the pip install. Chromium is the most common target; --with-deps
             # pulls the required OS libraries.
-            run([sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"])
+            run([env.python, "-m", "playwright", "install", "--with-deps", "chromium"])
 
-        return True, ("Engine packages installed. Services like the Appium "
-                      "server still need to be started separately.")
+        success = ("Engine packages installed. Services like the Appium "
+                   "server still need to be started separately.")
+        if plan.note and not stream:
+            return True, f"{plan.note}\n{success}"
+        return True, success
     except subprocess.CalledProcessError as e:
         # capture_output / _run_streaming route the command's diagnostics to
         # e.stderr/e.stdout rather than losing them, so fold them into the
