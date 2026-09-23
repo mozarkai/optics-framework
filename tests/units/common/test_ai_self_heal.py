@@ -18,6 +18,7 @@ from optics_framework.common.ai_self_heal import (
     HealContext,
     HealKeywordSpec,
     HEAL_ACTION_SCHEMA,
+    HEAL_SYSTEM_PROMPT,
 )
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.step_curation import CURATION_SCHEMA
@@ -204,6 +205,37 @@ class TestHandlerActions:
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is False
         assert len(executor.calls) == 2
+
+    def test_prompt_lists_prior_heal_steps_with_outcomes(self):
+        """Each turn sees the heal's own earlier calls, so a FAIL isn't retried blind."""
+        prompts = []
+
+        class RecordingLLM(FakeLLM):
+            def generate_json(self, prompt, *args, **kwargs):
+                prompts.append(prompt)
+                return super().generate_json(prompt, *args, **kwargs)
+
+        llm = RecordingLLM([
+            {"action": "keyword", "keyword": "press_element", "params": ["WrongText"],
+             "completed": True, "reason": "try pressing"},
+            {"action": "keyword", "keyword": "scroll", "params": ["down"],
+             "completed": False, "reason": "reveal"},
+            {"action": "give_up", "reason": "stuck"},
+        ])
+        executor = FakeExecutor(fail_keywords={"press_element"})
+        AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=3).heal(_ctx(), _shots, _no_ps)
+
+        assert "SELF-HEAL STEPS SO FAR" not in prompts[0]
+        assert "1. press_element WrongText -> FAIL" in prompts[1]
+        assert "1. press_element WrongText -> FAIL" in prompts[2]
+        assert "2. scroll down -> PASS" in prompts[2]
+
+    def test_system_prompt_names_only_dispatchable_gestures(self):
+        """The prompt must not steer the model to a keyword the heal allowlist lacks."""
+        assert "`swipe`" not in HEAL_SYSTEM_PROMPT
+        assert "swipe instead of scroll" not in HEAL_SYSTEM_PROMPT.lower()
+        for name in ("scroll", "swipe_by_percentage", "press_keycode", "press_by_percentage"):
+            assert f"`{name}`" in HEAL_SYSTEM_PROMPT
 
     def test_intermediate_press_then_final_press(self):
         """LLM presses a menu (completed=False), then the final target (completed=True)."""

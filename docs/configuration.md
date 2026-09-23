@@ -823,7 +823,7 @@ this section out has no cost for projects that don't use either feature.
           enabled: true
           capabilities:
             model: gemini-3.8-flash    # optional; framework default is gemini-2.5-flash
-            temperature: 0.0           # optional; this is the default
+            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)
             # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI
             # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT
             # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION
