@@ -74,7 +74,7 @@ def curate_steps(llm: LLMInterface, prompt: str, step_count: int) -> Optional[Li
     try:
         raw = llm.generate_json(
             prompt, CURATION_SCHEMA, images=None,
-            system=CURATION_SYSTEM_PROMPT, temperature=0.0,
+            system=CURATION_SYSTEM_PROMPT,
         )
     except OpticsError as exc:
         internal_logger.debug("Step curation: LLM error, keeping all steps: %s", exc.message)

@@ -349,7 +349,7 @@ class NaturalLanguageAgent:
         )
         try:
             raw = self.llm.generate_json(
-                prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT, temperature=0.0
+                prompt, ACTION_SCHEMA, images=[png], system=SYSTEM_PROMPT
             )
         except OpticsError as exc:
             return AgentResult("failed", state.history, f"LLM error: {exc.message}", state.successful)
