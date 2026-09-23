@@ -20,6 +20,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
+    ImageDetectionStrategy,
     LocatorStrategy,
     PagesourceStrategy,
     StrategyManager,
@@ -763,3 +764,118 @@ class TestDeadSessionIsNotMasked:
         with pytest.raises(OpticsError) as exc_info:
             list(results)
         assert exc_info.value.code == Code.E0201
+
+
+class TestPollFramesWithinDeadline:
+    """_poll_frames_within_deadline must clamp sleeps/waits to the remaining slice."""
+
+    def _fake_clock(self, monkeypatch):
+        clock = {"now": 100.0}
+        monkeypatch.setattr(
+            "optics_framework.common.strategies.time.time", lambda: clock["now"]
+        )
+
+        def sleep(seconds):
+            clock["now"] += seconds
+
+        monkeypatch.setattr("optics_framework.common.strategies.time.sleep", sleep)
+        return clock
+
+    def test_empty_stream_backs_off_within_remaining(self, monkeypatch):
+        clock = self._fake_clock(monkeypatch)
+        stream = MagicMock()
+        stream.get_all_available_screenshots.return_value = []
+
+        gen = LocatorStrategy._poll_frames_within_deadline(
+            stream, end_time=100.5, poll_interval=1.5
+        )
+
+        assert list(gen) == []
+        stream.get_all_available_screenshots.assert_called_once_with(wait_time=0.5)
+        assert clock["now"] == 100.5  # backoff slept exactly the remaining slice
+
+    def test_sub_poll_interval_slice_still_polls_and_yields(self, monkeypatch):
+        self._fake_clock(monkeypatch)
+        stream = MagicMock()
+        stream.get_all_available_screenshots.return_value = [("frame", "ts")]
+
+        gen = LocatorStrategy._poll_frames_within_deadline(
+            stream, end_time=100.5, poll_interval=1.5
+        )
+
+        batches = []
+        for frames in gen:
+            batches.append(frames)
+            break
+
+        assert batches == [[("frame", "ts")]]
+        stream.get_all_available_screenshots.assert_called_once_with(wait_time=0.5)
+
+    def test_polls_with_clamped_wait_and_yields_frames(self, monkeypatch):
+        self._fake_clock(monkeypatch)
+        stream = MagicMock()
+        stream.get_all_available_screenshots.return_value = [("frame", "ts")]
+
+        gen = LocatorStrategy._poll_frames_within_deadline(
+            stream, end_time=103.0, poll_interval=1.5
+        )
+
+        batches = []
+        for frames in gen:
+            batches.append(frames)
+            break
+
+        assert batches == [[("frame", "ts")]]
+        stream.get_all_available_screenshots.assert_called_once_with(wait_time=1)
+
+
+def _make_text_detection_strategy(manager):
+    return TextDetectionStrategy(
+        element_source=MagicMock(),
+        text_detection=MagicMock(),
+        strategy_manager=manager,
+    )
+
+
+def _make_image_detection_strategy(manager):
+    return ImageDetectionStrategy(
+        element_source=MagicMock(),
+        image_detection=MagicMock(),
+        strategy_manager=manager,
+    )
+
+
+class TestVisionAssertStopIsBounded:
+    """Vision assert_elements must not let stop_capture block past the allocated slice."""
+
+    def _fake_clock(self, monkeypatch):
+        clock = {"now": 100.0}
+        monkeypatch.setattr(
+            "optics_framework.common.strategies.time.time", lambda: clock["now"]
+        )
+
+        def sleep(seconds):
+            clock["now"] += seconds
+
+        monkeypatch.setattr("optics_framework.common.strategies.time.sleep", sleep)
+        return clock
+
+    @pytest.mark.parametrize(
+        "strategy_factory",
+        [_make_text_detection_strategy, _make_image_detection_strategy],
+        ids=["text", "image"],
+    )
+    def test_stop_capture_bounded_by_slice(self, monkeypatch, strategy_factory):
+        self._fake_clock(monkeypatch)
+
+        manager = MagicMock()
+        ss_stream = MagicMock()
+        ss_stream.get_all_available_screenshots.return_value = []
+        manager.capture_screenshot_stream.return_value = ss_stream
+
+        strategy = strategy_factory(manager)
+        strategy.assert_elements(["Submit"], timeout=0.5, rule="any")
+
+        ss_stream.stop_capture.assert_called_once()
+        passed_timeout = ss_stream.stop_capture.call_args.kwargs["timeout"]
+        assert passed_timeout == 0.0  # empty stream consumed the whole 0.5s slice
