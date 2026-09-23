@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents (Claude Code, Codex, ...) when working with code in this repository. `AGENTS.md` is a symlink to this file, so edit only this one.
 
-Concrete map of the optics-framework runtime for Claude Code and similar tools. All line numbers below are anchors at the time of writing — if a `path:line` no longer matches the named symbol, fix this file instead of trusting it.
+Concrete map of the optics-framework runtime for coding agents. All line numbers below are anchors at the time of writing — if a `path:line` no longer matches the named symbol, fix this file instead of trusting it.
 
 ## Execute journey (CLI → driver action)
 
