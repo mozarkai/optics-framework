@@ -130,4 +130,11 @@ class GeminiLLM(LLMInterface):
             raise OpticsError(
                 Code.E0801, message=f"Gemini request failed: {exc}"
             ) from exc
+        usage = getattr(response, "usage_metadata", None)
+        if usage is not None:
+            internal_logger.debug(
+                "Gemini usage (%s): prompt=%s cached=%s output=%s thoughts=%s",
+                self.model_name, usage.prompt_token_count, usage.cached_content_token_count,
+                usage.candidates_token_count, usage.thoughts_token_count,
+            )
         return response.text or ""
