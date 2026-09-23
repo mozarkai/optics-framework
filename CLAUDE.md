@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents (Claude Code, Codex, ...) when working with code in this repository. `AGENTS.md` is a symlink to this file, so edit only this one.
 
-Concrete map of the optics-framework runtime for Claude Code and similar tools. All line numbers below are anchors at the time of writing — if a `path:line` no longer matches the named symbol, fix this file instead of trusting it.
+Concrete map of the optics-framework runtime for coding agents. All line numbers below are anchors at the time of writing — if a `path:line` no longer matches the named symbol, fix this file instead of trusting it.
 
 ## Execute journey (CLI → driver action)
 
@@ -118,7 +118,7 @@ These chains are independent. `_try_execute_with_fallback` only sees the keyword
 Adding a method to an API class is **not enough** if the keyword should be reachable from every surface.
 
 1. **CSV/YAML test runner** — `RunnerFactory.create_runner` (`execution.py:240`) builds a `KeywordRegistry` and calls `register(instance)` (`keyword_register.py:22`) on each API class. New public methods on `ActionKeyword` / `AppManagement` / `Verifier` / `FlowControl` are picked up automatically. CSV/YAML caller text is `Title Case Words`; the lookup normalises via `func_name = "_".join(name.split()).lower()` (`test_runnner.py:390`).
-2. **Public Python SDK / Robot Framework** — `optics.py:Optics` (`:147`) is a `@library(scope="GLOBAL")` class with an explicit `@keyword("Pretty Name")` method per keyword (e.g. `press_element` at `optics.py:689`, `scroll` at `:883`). Each method `cast`s args and delegates to its `self.action_keyword` / `self.app_management` / etc. instance. Robot Framework picks these up via the `@library` + `@keyword` decorators (no-op fallbacks at `optics.py:54`/`54` when `robotframework` isn't installed). **No auto-registration** — new SDK-facing keywords must be added here too. The `@fallback_params` decorator (`optics.py:99`) provides param-level fallback for `fallback_str = Union[str, List[str]]` typed params at the SDK boundary (independent of runner-level fallback).
+2. **Public Python SDK / Robot Framework** — `optics.py:Optics` (`:147`) is a `@library(scope="GLOBAL")` class with an explicit `@keyword("Pretty Name")` method per keyword (e.g. `press_element` at `optics.py:689`, `scroll` at `:883`). Each method `cast`s args and delegates to its `self.action_keyword` / `self.app_management` / etc. instance. Robot Framework picks these up via the `@library` + `@keyword` decorators (no-op fallbacks `keyword` (`optics.py:54`) / `library` (`optics.py:65`) when `robotframework` isn't installed). **No auto-registration** — new SDK-facing keywords must be added here too. The `@fallback_params` decorator (`optics.py:99`) provides param-level fallback for `fallback_str = Union[str, List[str]]` typed params at the SDK boundary (independent of runner-level fallback).
 3. **HTTP server (`optics serve`)** — `helper/serve.py` mounts the FastAPI app from `common/expose_api.py`. `discover_keywords()` (`expose_api.py:381`) reflects over `optics_framework.api.*`; `_extract_keywords_from_class` (`:354`) collects public methods (skipping `_*` and `test*`) and humanises names via `_humanize_keyword` (`:209`). Adding to the API class suffices — but parameter types and docstrings flow into the OpenAPI schema, so keep them accurate. The server is **unauthenticated**.
 4. **Code generation (`optics generate`)** — `helper/generate.py` produces pytest or Robot Framework code from CSV/YAML. Three update points:
    - `TestFrameworkGenerator.keyword_registry` dict (`generate.py:202`) — maps `"Press Element" → "press_element"` for both pytest and robot. Without an entry, the generator silently skips the keyword.
@@ -134,8 +134,8 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - Add `def <name>(...)` on `ActionKeyword` (`api/action_keyword.py:182`). Auto-registered for the CSV/YAML runner.
 - If it locates an element, build an `act(located)` callback and return `self._locate_and_act(element, "<name>", act, intent_args, index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height))` (`action_keyword.py:402`; see `press_element` at `:499`) so it routes through `StrategyManager`, gets the AOI / screenshot-resilience path, the `_act_until_success` retry, and AI self-heal (fallback level 4) for free. If it should be callable from AI self-heal itself, also add it to `ActionKeyword._heal_dispatch` (`:221`).
 - Add a wrapper on `optics.py:Optics` with `@keyword("Pretty Name")` and (if it has element/fallback args) `@fallback_params` — without this it won't be reachable from Robot Framework or the public SDK.
-- Add `"Pretty Name": "method_name"` to `TestFrameworkGenerator.keyword_registry` (`generate.py:202`) so `optics generate` emits it.
-- Add `"Pretty Name"` to the `keyword_registry` set inside `YAMLDataReader.read_modules` (`generate.py:134`) so YAML step parsing recognises multi-word names.
+- Add `"Pretty Name": "method_name"` to `TestFrameworkGenerator.keyword_registry` (`generate.py:240`) so `optics generate` emits it.
+- Add `"Pretty Name"` to the `keyword_registry` set inside `YAMLDataReader.read_modules` (`generate.py:172`) so YAML step parsing recognises multi-word names.
 - Re-run `optics list` to confirm reflection picks it up; `tests/feature/` and `tests/units/` may need fixtures.
 
 ## Where else to put things
@@ -221,7 +221,7 @@ CI runs static analysis on every push to `main` via `.github/workflows/mozarkson
 - **Async re-entrancy.** `ExecutionEngine.execute` and below must run inside `asyncio.run(...)` — `BaseRunner.run` is the only sanctioned entry. `PytestRunner` (`test_runnner.py:963`) uses `queue_event_sync` (`:89`) which spawns `asyncio.run` per event; do not mix the two paths in one flow.
 - **`Session` mutates the passed-in `Config`.** `_maybe_setup_junit` (`session_manager.py:40`) sets `config.json_path`; `ConfigHandler.__init__` (`config_handler.py:136`) sets `execution_output_path` and creates the directory. Don't share a `Config` instance across sessions.
 - **`OPTICS_EVENT_DRAIN_TIMEOUT_S`** (`execution.py:292`, default `2.0`) caps shutdown-side event flushing. Truncated JUnit XML on long runs → raise this env before debugging logic.
-- **Robot Framework is optional.** `optics.py:54`/`54` provides no-op `keyword` / `library` decorators when `robotframework` isn't installed. Don't hard-import `robot.api`; mirror the try/except.
+- **Robot Framework is optional.** `keyword` (`optics.py:54`) / `library` (`optics.py:65`) provide no-op decorators when `robotframework` isn't installed. Don't hard-import `robot.api`; mirror the try/except.
 - **`element_source.locate` stubs hide strategies.** `LocatorStrategy._is_method_implemented` (`strategies.py:80`) reads source to detect bodies that just `raise NotImplementedError` and excludes that source from the strategy. A poorly-stubbed new element source can silently disappear from the strategy list.
 - **Two test trees.** `tests/units/` and `tests/feature/` both run under one `pytest` invocation (`pytest.toml`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
 
