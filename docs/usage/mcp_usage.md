@@ -150,10 +150,11 @@ the client at the URL:
    the same across drivers via the session's own element sources.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
    `assert_presence`, …) with the `session_id`. **Target elements by locator**
-   (`xpath=`/`text=`/an id/an image) with `press_element`; when there is no stable
-   locator, `detect_and_press` taps by the visible text/label, and otherwise use
-   the exact `bounds` from `get_interactive_elements`. Do not tap raw pixel
-   coordinates guessed off a screenshot; those misfire.
+   (`xpath=`/`text=`/an id/an image) or by an element's visible label with
+   `press_element`, which raises when the target is not found. `detect_and_press`
+   is for optional taps only: it skips the press and still succeeds when the target
+   never appears. Do not tap raw pixel coordinates guessed off a screenshot; those
+   misfire.
 4. **Build a reusable suite** — see below.
 5. **`terminate_session`** — release the driver when done.
 
