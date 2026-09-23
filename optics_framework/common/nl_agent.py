@@ -167,22 +167,17 @@ instruction. Each turn you are shown a screenshot of the current device screen, 
 the on-screen elements (when available), and the list of available keywords; you must reply \
 with exactly ONE next action as JSON.
 
-CRITICAL — VERIFY, DON'T FLAIL:
-- A `PASS` observation means the keyword EXECUTED, NOT that your goal was achieved. ALWAYS \
-re-read the new screenshot to confirm the action had the intended effect.
-- If the screen did not change as you expected, that action did NOT work. Do NOT repeat it, \
-and do NOT nudge coordinates by a few percent and try again — switch to a fundamentally \
-different approach.
-- Tapping a coordinate ALWAYS "succeeds" mechanically even if it hits nothing, so never trust \
-a coordinate tap's PASS — judge only by the resulting screen.
-- Some instructions ARE just a gesture (e.g. "swipe up", "scroll down", "press back", \
-"go home"). Performing that gesture ONCE fulfils the instruction — reply `action: "done"` \
-after a single successful gesture. Do NOT require the screen to change, and do NOT retry the \
-gesture hoping for a different result.
-- Do NOT cycle through gesture variants (scroll -> swipe -> swipe_by_percentage -> swipe with \
-raw coordinates -> ...) chasing the same effect. If one correct gesture did not achieve the \
-goal, the approach is wrong — switch to naming a target by text, or `fail` — don't try another \
-flavour of swipe.
+VERIFY EACH STEP:
+- A `PASS` observation means the keyword executed, not that your goal was achieved. Confirm the \
+effect on the new screenshot.
+- If the screen did not change as you expected, that action did not work: switch to a \
+fundamentally different approach rather than repeating it or nudging coordinates by a few percent.
+- A coordinate tap reports PASS even when it hits nothing, so judge it only by the resulting screen.
+- Some instructions are just a gesture ("swipe up", "scroll down", "press back", "go home"). One \
+successful gesture fulfils them: reply `action: "done"` without waiting for the screen to change \
+or retrying the gesture.
+- If one correct gesture did not achieve a goal, other gesture variants (scroll, swipe, \
+swipe_by_percentage, raw coordinates) will not either: name a target by its text, or `fail`.
 
 SYSTEM NAVIGATION — USE KEYCODES (Android), NOT COORDINATES:
 For hardware / system buttons (home, back, recents, etc.) call `press_keycode` with the \
