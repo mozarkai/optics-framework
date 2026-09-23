@@ -157,43 +157,29 @@ HEAL_ACTION_SCHEMA: Dict[str, Any] = {
 
 
 HEAL_SYSTEM_PROMPT = """\
-You are the LAST-RESORT self-healing layer of a UI test-automation framework. The normal element \
-locators (XPath, on-screen text, OCR, image matching) have ALL failed to find the target for the \
-keyword described below. Your job is to look at the current screen and execute framework keywords \
-step-by-step until the original keyword's goal is achieved.
+You are the last-resort self-healing layer of a UI test-automation framework. The normal element \
+locators (XPath, on-screen text, OCR, image matching) all failed to find the target of the keyword \
+described below. Drive the UI with the listed keywords, one call per turn, until that keyword's \
+goal is achieved.
 
-YOU MUST FINISH THE JOB YOURSELF by issuing keyword calls. You have access to the same keywords \
-the framework uses. The most important one is `press_element` — it takes a visible text label \
-as its element parameter and the framework will locate the element using its full strategy ladder \
-(XPath → text → OCR → image matching). NAME TARGETS BY THEIR VISIBLE TEXT whenever possible.
+`press_element` is the main tool: give it the target's visible text and the framework locates it \
+through its full ladder (XPath -> text -> OCR -> image), so naming a target by its visible text is \
+more reliable than coordinates. Take exact text, content-desc or resource id from the condensed \
+hierarchy.
 
-WORKFLOW:
-1. Look at the screenshot and UI hierarchy to understand the current screen state.
-2. If the target element IS visible on screen, call the appropriate keyword to act on it \
-(e.g. `press_element` with the element's visible text). Set `completed` to true.
-3. If the target element is NOT visible, navigate to reveal it — scroll, swipe, press a menu, \
-or type in a search bar. Set `completed` to false for intermediate steps.
-4. Use `action: "done"` when you believe the original keyword's goal has been fully achieved.
-5. Use `action: "give_up"` only when there is no recoverable next action.
+If the target is visible, act on it and set `completed` to true. If it is not, reveal it first - \
+scroll, press a menu, or type into a search field - with `completed` false, then act on it by \
+text. For system buttons use `press_keycode` with the Android keycode (HOME=3, BACK=4, \
+RECENTS=187, ENTER=66). Use `press_by_percentage` only for a target that has no text and no \
+keycode.
 
-TARGETING POLICY (strict order of preference):
-1. Name the target by its VISIBLE TEXT as the element parameter (e.g. press_element ["Meesho"]). \
-Use the condensed hierarchy for EXACT text / content-desc / resource id.
-2. If the target is not visible, swipe to reveal it, THEN name it by text.
-3. For system buttons (home/back/recents), use press_keycode with the Android keycode \
-(HOME=3, BACK=4, RECENTS=187, ENTER=66).
-4. LAST RESORT: use press_by_percentage with coordinate percentages.
-5. Use swipe instead of scroll.
+The two gesture keywords name directions differently:
+- `scroll` names the way you move through the content: "down" reveals content further down.
+- `swipe_by_percentage` names the way the finger moves: "up" (finger drags bottom to top) reveals \
+content further down.
 
-GESTURE DIRECTIONS:
-- To reveal content below (swipe down the list to see lower items), you must use direction "up" (finger drags from bottom to top).
-- To reveal content above (swipe up the list to see upper items), you must use direction "down" (finger drags from top to bottom).
-
-RULES:
-- Emit exactly ONE action per turn as JSON.
-- Keep `reason` short.
-- Prefer naming elements by text over guessing coordinates.
-- Set `completed` to true only when this step achieves the original keyword's goal.
+Reply `done` once the original keyword's goal is achieved, or `give_up` when no recoverable next \
+action remains. Keep `reason` short.
 """
 
 _MAX_THOUGHT_CHARS = 160
@@ -229,6 +215,7 @@ class AISelfHealHandler:
         catalog: List[HealKeywordSpec],
         attempted: List[str],
         succeeded: List[Tuple[str, List[str]]],
+        heal_log: List[str],
     ) -> Optional[HealResult]:
         """Execute one self-heal iteration; return a terminal HealResult or None to continue.
 
@@ -241,7 +228,7 @@ class AISelfHealHandler:
             return HealResult(False, message="No screenshot available for self-heal.")
         page_source = self._safe_call(pagesource_provider)
 
-        prompt = self._build_prompt(ctx, step, page_source, catalog)
+        prompt = self._build_prompt(ctx, page_source, catalog, heal_log)
         try:
             raw = self.llm.generate_json(
                 prompt, HEAL_ACTION_SCHEMA, images=[png],
@@ -270,7 +257,9 @@ class AISelfHealHandler:
         except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
             return HealResult(False, action=action, message=f"Keyword failed: {exc}")
 
-        attempted.append(self._build_line(action.keyword, action.params))
+        line = self._build_line(action.keyword, action.params)
+        attempted.append(line)
+        heal_log.append(f"{line} -> {'PASS' if outcome.ok else 'FAIL'}")
         if outcome.ok:
             succeeded.append((action.keyword, list(action.params)))
         if outcome.done:
@@ -287,10 +276,12 @@ class AISelfHealHandler:
         catalog = self.keyword_catalog()
         attempted: List[str] = []
         succeeded: List[Tuple[str, List[str]]] = []
+        heal_log: List[str] = []
 
         for step in range(self.max_steps):
             result = self._execute_single_step(
-                step, ctx, screenshot_provider, pagesource_provider, catalog, attempted, succeeded
+                step, ctx, screenshot_provider, pagesource_provider, catalog, attempted,
+                succeeded, heal_log,
             )
             if result is not None:
                 result.steps_taken = list(attempted)
@@ -424,8 +415,8 @@ class AISelfHealHandler:
         return keyword + " " + " ".join(shlex.quote(p) for p in params)
 
     def _build_prompt(
-        self, ctx: HealContext, step: int, page_source: Optional[str],
-        catalog: List[HealKeywordSpec],
+        self, ctx: HealContext, page_source: Optional[str],
+        catalog: List[HealKeywordSpec], heal_log: List[str],
     ) -> str:
         params = " ".join(str(p) for p in ctx.intent_params)
         lines = [
@@ -455,12 +446,10 @@ class AISelfHealHandler:
             lines.append("RECENT SUCCESSFUL STEPS (most recent last):")
             for idx, (kw, kw_params) in enumerate(ctx.recent_steps, 1):
                 lines.append(f"  {idx}. {kw} {kw_params}")
-        if step > 0:
+        if heal_log:
             lines.append("")
-            lines.append(
-                f"This is attempt {step + 1}. Your previous keyword changed the screen; "
-                "re-read the CURRENT screenshot and complete the goal."
-            )
+            lines.append("SELF-HEAL STEPS SO FAR (PASS = executed, not goal reached):")
+            lines.extend(f"  {idx}. {entry}" for idx, entry in enumerate(heal_log, 1))
         lines.append("")
         lines.append("The attached image is the CURRENT screen. Decide the SINGLE next action as JSON.")
         return "\n".join(lines)
