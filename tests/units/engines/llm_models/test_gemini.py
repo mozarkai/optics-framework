@@ -38,3 +38,15 @@ def test_per_call_temperature_overrides_capabilities(fake_client):
     llm = gemini.GeminiLLM({"capabilities": {"temperature": 0.0}})
     llm.generate("hi", temperature=0.7)
     assert fake_client.configs[-1].temperature == 0.7
+
+
+def test_token_usage_is_logged(fake_client, monkeypatch):
+    usage = SimpleNamespace(
+        prompt_token_count=120, cached_content_token_count=100,
+        candidates_token_count=15, thoughts_token_count=40,
+    )
+    fake_client.generate_content = lambda **_kw: SimpleNamespace(text="{}", usage_metadata=usage)
+    logged = []
+    monkeypatch.setattr(gemini.internal_logger, "debug", lambda msg, *args: logged.append(msg % args))
+    gemini.GeminiLLM({"capabilities": {"model": "m"}}).generate("hi")
+    assert "Gemini usage (m): prompt=120 cached=100 output=15 thoughts=40" in logged
