@@ -76,7 +76,9 @@ Press By Coordinates,500,800,,tap_event
 
 ### Detect And Press
 
-Detects a specified element and presses it if found.
+Presses an element if it appears within `timeout`. When it never appears the press is
+skipped and the keyword still passes, so use it for optional taps (e.g. dismissing a popup
+that may not show) and `Press Element` when the target must be present.
 
 **Parameters:**
 
@@ -116,6 +118,8 @@ Select Dropdown Option,${country_dropdown},India,30,country_selected
 ### Swipe
 
 Performs a swipe action in a specified direction from given coordinates.
+`direction` is the way the finger moves: `up` drags bottom to top, which reveals content
+further down (the opposite of `Scroll`, where `down` reveals content further down).
 
 **Parameters:**
 
@@ -136,6 +140,8 @@ Swipe,500,800,down,100,swipe_down
 ### Swipe By Percentage
 
 Performs a swipe action in a specified direction by percentage of the screen (0-100).
+`direction` is the way the finger moves: `up` drags bottom to top, which reveals content
+further down (the opposite of `Scroll`, where `down` reveals content further down).
 
 **Parameters:**
 
@@ -197,13 +203,15 @@ Swipe From Element,slider.png,right,50,0,0,100,100,swipe_slider
 
 ### Scroll
 
-Performs a scroll action in a specified direction.
+Scrolls the current view one step. `direction` names the way you move through the
+content: `down` reveals content further down. Every driver supports `up`/`down`;
+`left`/`right` work only on Selenium. The keyword passes whether or not the view moved.
 
 **Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `direction` | Required | The scroll direction: `up`, `down`, `left`, or `right` | - |
+| `direction` | Required | `up` or `down` (`left`/`right` on Selenium only) | - |
 | `event_name` | Optional | A string identifier for the scroll event | - |
 
 **Example:**

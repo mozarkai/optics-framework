@@ -562,10 +562,14 @@ class ActionKeyword:
 
     def detect_and_press(self, element: str, timeout: str = "30", event_name: Optional[str] = None) -> None:
         """
-        Detect and press a specified element.
+        Press an element if it appears within ``timeout``; otherwise do nothing.
+
+        When the element never appears the press is skipped and the keyword still succeeds
+        (it does not raise), so use it for optional taps such as dismissing a popup that may
+        not show. Use ``press_element`` when the target must be present.
 
         :param element: The element to be detected and pressed (Image template, OCR template, or XPath).
-        :param timeout: Timeout for the detection operation.
+        :param timeout: Seconds to wait for the element to appear.
         :param event_name: The event triggering the press.
         """
         try:
@@ -750,12 +754,15 @@ class ActionKeyword:
     # Swipe and Scroll actions
     def swipe(self, coor_x: str, coor_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
         """
-        Perform a swipe action in a specified direction.
+        Swipe from a point in a specified direction.
 
-        :param coor_x: X coordinate of the swipe.
-        :param coor_y: Y coordinate of the swipe.
-        :param direction: The swipe direction (up, down, left, right).
-        :param swipe_length: The length of the swipe.
+        ``direction`` is the way the finger moves: "up" drags bottom to top, which reveals
+        content further down. The keyword succeeds whether or not anything moved.
+
+        :param coor_x: X pixel coordinate where the swipe starts.
+        :param coor_y: Y pixel coordinate where the swipe starts.
+        :param direction: The finger direction (up, down, left, right).
+        :param swipe_length: Swipe distance in pixels.
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self._capture_screenshot_safe()
@@ -765,12 +772,15 @@ class ActionKeyword:
 
     def swipe_by_percentage(self, percent_x: str, percent_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
         """
-        Perform a swipe action in a specified direction by percentage.
+        Swipe from a screen position, given in percentages, in a specified direction.
 
-        :param percent_x: X percentage of the swipe.
-        :param percent_y: Y percentage of the swipe.
-        :param direction: The swipe direction (up, down, left, right).
-        :param swipe_length: The length of the swipe.
+        ``direction`` is the way the finger moves: "up" drags bottom to top, which reveals
+        content further down. The keyword succeeds whether or not anything moved.
+
+        :param percent_x: Start X as a percentage of screen width (0-100).
+        :param percent_y: Start Y as a percentage of screen height (0-100).
+        :param direction: The finger direction (up, down, left, right).
+        :param swipe_length: Swipe distance as a percentage of screen height (up/down) or width (left/right).
         :param event_name: The event triggering the swipe.
         """
         screenshot_np = self._capture_screenshot_safe()
@@ -856,9 +866,14 @@ class ActionKeyword:
 
     def scroll(self, direction: str, event_name: Optional[str] = None) -> None:
         """
-        Perform a scroll action in a specified direction.
+        Scroll the current view one step in a direction.
 
-        :param direction: The scroll direction (up, down, left, right).
+        ``direction`` names the way you move through the content: "down" reveals content
+        further down. Every driver supports up/down; left/right work only on Selenium
+        (Appium logs and ignores them, Playwright treats anything but "down" as up). The
+        keyword succeeds whether or not the view actually moved.
+
+        :param direction: up or down (left/right on Selenium only).
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self._capture_screenshot_safe()
@@ -1030,7 +1045,10 @@ class ActionKeyword:
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         """
-        Press a specified keycode.
+        Press a device key by keycode, for system/hardware keys with no on-screen element.
+
+        On Android the keycode is the numeric KeyEvent code (3 = HOME, 4 = BACK, 66 = ENTER,
+        187 = RECENTS); TV platform profiles map it to their remote-control key instead.
 
         :param keycode: The keycode to be pressed.
         :param event_name: The event triggering the press.
