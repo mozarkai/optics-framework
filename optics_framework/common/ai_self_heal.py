@@ -232,7 +232,7 @@ class AISelfHealHandler:
         try:
             raw = self.llm.generate_json(
                 prompt, HEAL_ACTION_SCHEMA, images=[png],
-                system=HEAL_SYSTEM_PROMPT, temperature=0.0,
+                system=HEAL_SYSTEM_PROMPT,
             )
         except OpticsError as exc:
             return HealResult(False, message=f"LLM error: {exc.message}")
