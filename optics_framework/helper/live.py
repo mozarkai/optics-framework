@@ -4,11 +4,13 @@ This module holds the non-UI half of the live experience. It keeps a single
 framework :class:`~optics_framework.common.session_manager.Session` alive for
 the whole session, resolves and executes individual keywords against it (reusing
 the same ``KeywordRegistry`` and ``${element}`` resolution the batch runner uses),
-records executed actions, and persists them as framework-compatible CSV modules.
+records executed actions, and persists them as framework-compatible CSV or YAML
+modules.
 
 The full-screen terminal UI lives in :mod:`optics_framework.helper.live_tui`.
 """
 
+import io
 import os
 import re
 import csv
@@ -21,7 +23,7 @@ import logging
 import tempfile
 import subprocess  # nosec B404 - used only for local adb/idevice_id device discovery
 import inspect
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
@@ -48,6 +50,7 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     DataReader,
+    format_module_step,
 )
 from optics_framework.common.utils import escape_csv_value
 from optics_framework.common.nl_agent import (
@@ -158,8 +161,8 @@ def keyword_to_title(func_name: str) -> str:
 
 class SaveConflictError(Exception):
     """Raised by :meth:`LiveController.save` when the requested test case or module
-    name already exists in the standard CSVs and the caller has not opted into
-    appending.
+    name is already defined in the project's CSV or YAML files and the caller has not
+    opted into appending.
 
     ``conflicts`` is a list of ``(kind, name)`` tuples, e.g. ``[("module", "login")]``,
     so the caller can ask the user whether to append or pick a new name.
@@ -169,6 +172,75 @@ class SaveConflictError(Exception):
         self.conflicts = conflicts
         joined = ", ".join(f"{kind} {name!r}" for kind, name in conflicts)
         super().__init__(f"Already exists: {joined}")
+
+
+class SaveFormat(str, Enum):
+    """File format :meth:`LiveController.save` writes the suite files in."""
+
+    CSV = "csv"
+    YAML = "yaml"
+
+
+@dataclass
+class _SuiteIndex:
+    """Which files define each module and test case name, across CSV and YAML."""
+
+    modules: Dict[str, set[str]] = field(default_factory=dict)
+    test_cases: Dict[str, set[str]] = field(default_factory=dict)
+    formats: set[SaveFormat] = field(default_factory=set)
+
+    def auto_format(self) -> SaveFormat:
+        """YAML only for a project whose suite files are all YAML; CSV otherwise."""
+        return SaveFormat.YAML if self.formats == {SaveFormat.YAML} else SaveFormat.CSV
+
+
+_YAML_SUFFIXES = (".yaml", ".yml")
+
+_ELEMENT_SUFFIXES: Dict[SaveFormat, Tuple[str, ...]] = {
+    SaveFormat.CSV: (".csv",),
+    SaveFormat.YAML: _YAML_SUFFIXES,
+}
+
+
+def _read_bytes(path: str) -> Optional[bytes]:
+    """The file's bytes, or None when it does not exist."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+
+
+def _replace_file(path: str, data: bytes) -> None:
+    """Swap ``data`` in for ``path`` in one step, keeping an existing file's mode.
+
+    A symlinked suite file is resolved first, so the file it points to is the one
+    replaced; replacing the link itself would leave that file without the save.
+    """
+    target = os.path.realpath(path)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    staging = f"{target}.{os.getpid()}.tmp"
+    try:
+        with open(staging, "wb") as fh:
+            fh.write(data)
+        if os.path.exists(target):
+            shutil.copymode(target, staging)
+        os.replace(staging, target)
+    except OSError:
+        with suppress(FileNotFoundError):
+            os.remove(staging)
+        raise
+
+
+def _restore_file(path: str, original: Optional[bytes]) -> None:
+    """Put back what ``path`` held before a save (removing a file the save created)."""
+    try:
+        if original is None:
+            os.remove(path)
+        else:
+            _replace_file(path, original)
+    except OSError as exc:
+        internal_logger.error("Could not restore %s after a failed save: %s", path, exc)
 
 
 @dataclass
@@ -228,7 +300,7 @@ def _load_partial_config(folder_path: str) -> Optional[Config]:
     """Load the first YAML in ``folder_path`` that looks like an Optics config."""
     for root, _dirs, files in os.walk(folder_path):
         for fname in files:
-            if not fname.lower().endswith((".yml", ".yaml")):
+            if not fname.lower().endswith(_YAML_SUFFIXES):
                 continue
             config = _config_from_yaml(os.path.join(root, fname))
             if config is not None:
@@ -471,12 +543,12 @@ class LiveController:
 
     # -- Element loading (lazy) ---------------------------------------------------
 
-    def _iter_element_files(self) -> Iterator[Tuple[str, str]]:
+    def _iter_data_files(self) -> Iterator[Tuple[str, str]]:
         """Yield ``(path, lowercased_name)`` for every CSV/YAML under the project."""
         for root, _dirs, files in os.walk(self.folder_path):
             for fname in files:
                 lname = fname.lower()
-                if lname.endswith((".csv", ".yml", ".yaml")):
+                if lname.endswith((".csv", *_YAML_SUFFIXES)):
                     yield os.path.join(root, fname), lname
 
     @staticmethod
@@ -495,7 +567,7 @@ class LiveController:
         csv_reader = CSVDataReader()
         yaml_reader = YAMLDataReader()
         elements = self.session.elements if self.session.elements is not None else ElementData()
-        for path, lname in self._iter_element_files():
+        for path, lname in self._iter_data_files():
             try:
                 if "elements" not in identify_file_content(path):
                     continue
@@ -823,23 +895,33 @@ class LiveController:
         module_name: str,
         *,
         allow_append: bool = False,
+        file_format: Optional[SaveFormat] = None,
     ) -> SaveResult:
-        """Persist the recorded actions to the project's standard CSV files.
+        """Persist the recorded actions to the project's standard suite files.
 
         Appends to three fixed-name files so a session can build up a test suite one
-        module at a time: ``modules/modules.csv`` (the recorded keywords as one module
-        named ``module_name``), ``test_cases/test_cases.csv`` (a ``(test_case,
-        module_name)`` row), and the project's elements CSV. Elements go into an
-        existing elements file when one is tracked anywhere in the project (the
-        scaffolds keep it at ``test_data/elements.csv``) — only names not already
-        present are merged in; with no elements CSV anywhere, a header-only
-        ``elements/elements.csv`` stub is created as before.
+        module at a time: ``modules/modules.<ext>`` (the recorded keywords as one module
+        named ``module_name``), ``test_cases/test_cases.<ext>`` (``module_name`` as a
+        step of ``test_case``), and the project's elements file. Elements go into an
+        existing elements file of the same format when one is tracked anywhere in the
+        project (the scaffolds keep it at ``test_data/elements.csv``) — only names not
+        already present are merged in; with none, an empty ``elements/elements.<ext>``
+        stub is created.
+
+        ``file_format`` picks CSV or YAML. Left unset, YAML is chosen only when every
+        project file defining test cases or modules is YAML, so a CSV, mixed or empty
+        project keeps saving CSV.
 
         Session artifacts are copied to ``execution_output/<module_name>/``.
 
-        Raises :class:`SaveConflictError` if ``module_name`` or ``test_case`` already
-        exists and ``allow_append`` is ``False``; with ``allow_append=True`` the new
-        rows are merged in. On success the recording buffer is cleared.
+        Raises :class:`SaveConflictError` if ``module_name`` or ``test_case`` is
+        already defined in any CSV or YAML file of the project and ``allow_append`` is
+        ``False``. With ``allow_append=True`` the new steps are merged into the
+        existing definition, which must live only in the file this save writes: the
+        runner keeps one definition per name, so a copy in any other file would win or
+        lose against the appended steps by load order. Every file's new content is
+        built before the first write, and the writes are rolled back if one fails. On
+        success the recording buffer is cleared.
         """
         if not self.recorded:
             raise OpticsError(Code.E0501, message="Nothing recorded to save")
@@ -850,28 +932,25 @@ class LiveController:
         if not mod:
             raise OpticsError(Code.E0501, message=f"Invalid module name: {module_name!r}")
 
-        modules_dir = os.path.join(self.folder_path, "modules")
-        test_cases_dir = os.path.join(self.folder_path, "test_cases")
-        for directory in (modules_dir, test_cases_dir):
-            os.makedirs(directory, exist_ok=True)
-        modules_path = os.path.join(modules_dir, "modules.csv")
-        test_cases_path = os.path.join(test_cases_dir, "test_cases.csv")
+        index = self._index_suite()
+        fmt = file_format or index.auto_format()
+        modules_path = os.path.join(self.folder_path, "modules", f"modules.{fmt.value}")
+        test_cases_path = os.path.join(self.folder_path, "test_cases", f"test_cases.{fmt.value}")
 
-        module_exists = mod in self._existing_names(modules_path, "module_name")
-        test_case_exists = tc in self._existing_names(test_cases_path, "test_case")
-        if not allow_append:
-            conflicts: List[Tuple[str, str]] = []
-            if module_exists:
-                conflicts.append(("module", mod))
-            if test_case_exists:
-                conflicts.append(("test case", tc))
-            if conflicts:
-                raise SaveConflictError(conflicts)
+        module_files = index.modules.get(mod, set())
+        test_case_files = index.test_cases.get(tc, set())
+        self._check_names(
+            [
+                ("module", mod, module_files, modules_path),
+                ("test case", tc, test_case_files, test_cases_path),
+            ],
+            allow_append=allow_append,
+        )
 
         step_count = len(self.recorded)
-        self._append_module_csv(modules_path, mod)
-        self._append_test_case_csv(test_cases_path, tc, mod)
-        elements_path = self._write_elements()
+        stage = self._stage_yaml if fmt is SaveFormat.YAML else self._stage_csv
+        contents, elements_path = stage(modules_path, test_cases_path, tc, mod)
+        self._write_all(contents)
 
         artifacts_path: Optional[str] = None
         if os.path.isdir(self._artifacts_dir) and os.listdir(self._artifacts_dir):
@@ -892,9 +971,107 @@ class LiveController:
             test_case=tc,
             module_name=mod,
             step_count=step_count,
-            appended_module=module_exists,
-            appended_test_case=test_case_exists,
+            appended_module=bool(module_files),
+            appended_test_case=bool(test_case_files),
         )
+
+    def _index_suite(self) -> _SuiteIndex:
+        """Every module and test case name the project defines, with the files defining it.
+
+        A file that cannot be read is skipped with a warning rather than blocking the
+        save; the runner reports it when the suite runs.
+        """
+        index = _SuiteIndex()
+        readers: Dict[SaveFormat, DataReader] = {
+            SaveFormat.CSV: CSVDataReader(),
+            SaveFormat.YAML: YAMLDataReader(),
+        }
+        for path, lname in self._iter_data_files():
+            content = identify_file_content(path)
+            if not content & {"modules", "test_cases"}:
+                continue
+            fmt = SaveFormat.CSV if lname.endswith(".csv") else SaveFormat.YAML
+            index.formats.add(fmt)
+            reader = readers[fmt]
+            try:
+                modules = reader.read_module_names(path) if "modules" in content else set()
+                test_cases = set(reader.read_test_cases(path)) if "test_cases" in content else set()
+            except (OSError, ValueError, TypeError, AttributeError, csv.Error) as exc:
+                internal_logger.warning("Skipping unreadable suite file %s: %s", path, exc)
+                continue
+            for name in modules:
+                index.modules.setdefault(name, set()).add(path)
+            for name in test_cases:
+                index.test_cases.setdefault(name, set()).add(path)
+        return index
+
+    def _check_names(
+        self, names: List[Tuple[str, str, set[str], str]], *, allow_append: bool
+    ) -> None:
+        """Refuse a save whose ``(kind, name, defining files, target file)`` would clash.
+
+        Without ``allow_append`` any existing definition is a conflict. With it, the name
+        may be defined only in the target file: the runner keeps one definition per name,
+        so a definition in any other file would replace the appended steps, or be replaced
+        by them, depending on load order.
+        """
+        if not allow_append:
+            conflicts = [(kind, name) for kind, name, files, _target in names if files]
+            if conflicts:
+                raise SaveConflictError(conflicts)
+            return
+        for kind, name, files, target in names:
+            elsewhere = files - {target}
+            if elsewhere:
+                where = ", ".join(sorted(os.path.relpath(p, self.folder_path) for p in elsewhere))
+                raise OpticsError(
+                    Code.E0501,
+                    message=(
+                        f"{kind.capitalize()} {name!r} is defined in {where}, so appending it "
+                        f"to {os.path.relpath(target, self.folder_path)} would leave two "
+                        "definitions and the runner keeps only one. Choose another name."
+                    ),
+                )
+
+    @staticmethod
+    def _write_all(contents: Dict[str, str]) -> None:
+        """Write every staged file, or leave every one as it was.
+
+        Each file goes through a temporary sibling that replaces it, so a failure never
+        leaves one truncated. If a later file fails, the ones already replaced are put
+        back, so a retry does not meet a name conflict from a half-finished save.
+
+        Paths are resolved first, so a symlink is never what gets written or restored:
+        rolling back a file created behind a dangling link removes that file and keeps
+        the link. Two paths resolving to one file with different content would have
+        the second write drop the first, so that save is refused before anything is
+        written.
+        """
+        resolved: Dict[str, str] = {}
+        for path, text in contents.items():
+            real = os.path.realpath(path)
+            if resolved.get(real, text) != text:
+                raise OpticsError(
+                    Code.E0501,
+                    message=(
+                        f"{path} is the same file as another suite file this save writes; "
+                        "point them at separate files"
+                    ),
+                )
+            resolved[real] = text
+        originals = {path: _read_bytes(path) for path in resolved}
+        done: List[str] = []
+        for path, text in resolved.items():
+            try:
+                _replace_file(path, text.encode("utf-8"))
+            except OSError as exc:
+                for written in done:
+                    _restore_file(written, originals[written])
+                raise OpticsError(
+                    Code.E0501,
+                    message=f"Could not write {path} ({exc}); the save was rolled back",
+                ) from exc
+            done.append(path)
 
     @staticmethod
     def _sanitize_name(name: str) -> str:
@@ -909,27 +1086,33 @@ class LiveController:
         with open(path, "r", encoding="utf-8", newline="") as fh:
             return list(csv.DictReader(fh))
 
-    def _existing_names(self, path: str, column: str) -> set[str]:
-        """Distinct stripped values of ``column`` already present in a CSV."""
-        return {
-            (row.get(column) or "").strip()
-            for row in self._read_rows(path)
-            if (row.get(column) or "").strip()
-        }
-
     @staticmethod
-    def _write_rows(path: str, header: List[str], rows: List[Dict[str, str]]) -> None:
-        """Rewrite ``path`` with ``header`` and ``rows``, coercing missing cells to ``""``."""
-        with open(path, "w", encoding="utf-8", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=header, extrasaction="ignore")
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({key: (row.get(key) or "") for key in header})
+    def _render_rows(header: List[str], rows: List[Dict[str, str]]) -> str:
+        """``header`` and ``rows`` as CSV text, coercing missing cells to ``""``."""
+        buffer = io.StringIO(newline="")
+        writer = csv.DictWriter(buffer, fieldnames=header, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: (row.get(key) or "") for key in header})
+        return buffer.getvalue()
 
-    def _append_module_csv(self, path: str, module_name: str) -> None:
-        """Append the recorded keywords as rows for ``module_name``.
+    def _stage_csv(
+        self, modules_path: str, test_cases_path: str, test_case: str, module_name: str
+    ) -> Tuple[Dict[str, str], str]:
+        """The CSV suite files' new contents, by path, and the elements file used."""
+        contents = {
+            modules_path: self._module_csv_text(modules_path, module_name),
+            test_cases_path: self._test_case_csv_text(test_cases_path, test_case, module_name),
+        }
+        elements_path, elements_text = self._stage_csv_elements()
+        if elements_text is not None:
+            contents[elements_path] = elements_text
+        return contents, elements_path
 
-        The whole file is rewritten so the ``param_N`` header always spans the widest
+    def _module_csv_text(self, path: str, module_name: str) -> str:
+        """``path`` with the recorded keywords appended as rows for ``module_name``.
+
+        The whole file is re-rendered so the ``param_N`` header always spans the widest
         row across both pre-existing and newly-recorded steps.
         """
         rows = self._read_rows(path)
@@ -950,10 +1133,10 @@ class LiveController:
         header = ["module_name", "module_step"] + [
             f"param_{i}" for i in range(1, max_params + 1)
         ]
-        self._write_rows(path, header, rows)
+        return self._render_rows(header, rows)
 
-    def _append_test_case_csv(self, path: str, test_case: str, module_name: str) -> None:
-        """Append a ``(test_case, module_name)`` step, skipping an exact duplicate row."""
+    def _test_case_csv_text(self, path: str, test_case: str, module_name: str) -> str:
+        """``path`` with a ``(test_case, module_name)`` step, skipping an exact duplicate row."""
         rows = self._read_rows(path)
         existing_pairs = {
             ((row.get("test_case") or "").strip(), (row.get("test_step") or "").strip())
@@ -961,58 +1144,184 @@ class LiveController:
         }
         if (test_case, module_name) not in existing_pairs:
             rows.append({"test_case": test_case, "test_step": module_name})
-        self._write_rows(path, ["test_case", "test_step"], rows)
+        return self._render_rows(["test_case", "test_step"], rows)
 
-    @staticmethod
-    def _ensure_elements_stub(path: str) -> None:
-        """Create a header-only ``elements.csv`` if one does not already exist."""
-        if os.path.isfile(path):
-            return
-        with open(path, "w", encoding="utf-8", newline="") as fh:
-            csv.writer(fh).writerow(["Element_Name", "Element_ID"])
-
-    def _write_elements(self) -> str:
-        """Merge the session's elements into the project's tracked elements CSV.
+    def _stage_csv_elements(self) -> Tuple[str, Optional[str]]:
+        """The elements CSV to merge into and its new text, or None when it is unchanged.
 
         An existing elements CSV anywhere under the project is preferred over
         creating a second file (the scaffolds track elements in
         ``test_data/elements.csv``, and a fresh ``elements/elements.csv`` stub
         would scatter element data across two folders). Only names not already
-        present are appended; with no elements CSV anywhere, today's header-only
-        ``elements/elements.csv`` stub is created. Returns the file written.
+        present are appended; with no elements CSV anywhere, a header-only
+        ``elements/elements.csv`` stub is created, unless a file already sits at
+        that path, which is left untouched.
         """
         self.ensure_elements_loaded()
-        existing = self._find_elements_csv()
+        existing = self._find_elements_file(SaveFormat.CSV)
         if existing is not None:
-            self._append_new_elements(existing)
-            return existing
-        elements_path = os.path.join(self.folder_path, "elements", "elements.csv")
-        os.makedirs(os.path.dirname(elements_path), exist_ok=True)
-        self._ensure_elements_stub(elements_path)
-        return elements_path
+            return existing, self._elements_csv_text(existing)
+        stub_path = os.path.join(self.folder_path, "elements", "elements.csv")
+        if os.path.exists(stub_path):
+            return stub_path, None
+        stub = io.StringIO(newline="")
+        csv.writer(stub).writerow(["Element_Name", "Element_ID"])
+        return stub_path, stub.getvalue()
 
-    def _find_elements_csv(self) -> Optional[str]:
-        """Path of an existing elements CSV under the project, or None.
+    def _find_elements_file(self, fmt: SaveFormat) -> Optional[str]:
+        """Path of an existing elements file of ``fmt`` under the project, or None.
 
-        Content-header based discovery (an ``element_name``/``element_id``
-        header), mirroring :func:`optics_framework.helper.execute.find_files`.
-        ``test_data/elements.csv`` — the scaffold convention — wins when present,
+        Content based discovery (an ``element_name``/``element_id`` CSV header, an
+        ``Elements`` YAML key), mirroring :func:`optics_framework.helper.execute.find_files`.
+        ``test_data/elements.<ext>`` — the scaffold convention — wins when present,
         otherwise the lexicographically first match keeps the choice deterministic.
         """
-        matches: List[str] = []
-        for root, _dirs, files in os.walk(self.folder_path):
-            for fname in files:
-                if not fname.lower().endswith(".csv"):
-                    continue
-                path = os.path.join(root, fname)
-                if "elements" in identify_file_content(path):
-                    matches.append(path)
+        suffixes = _ELEMENT_SUFFIXES[fmt]
+        matches = [
+            path
+            for path, lname in self._iter_data_files()
+            if lname.endswith(suffixes) and "elements" in identify_file_content(path)
+        ]
         if not matches:
             return None
-        preferred = os.path.join(self.folder_path, "test_data", "elements.csv")
-        if preferred in matches:
-            return preferred
+        for suffix in suffixes:
+            preferred = os.path.join(self.folder_path, "test_data", f"elements{suffix}")
+            if preferred in matches:
+                return preferred
         return min(matches)
+
+    def _stage_yaml(
+        self, modules_path: str, test_cases_path: str, test_case: str, module_name: str
+    ) -> Tuple[Dict[str, str], str]:
+        """The YAML suite files' new contents, by resolved path, and the elements file used.
+
+        Each file is loaded once, keyed by the file a path resolves to: the elements may
+        live in the modules or test cases file, or two paths may be symlinks to one file,
+        and a second copy of it would overwrite the first one's changes.
+        """
+        steps = self._yaml_steps()
+        self.ensure_elements_loaded()
+        elements_path = self._find_elements_file(SaveFormat.YAML) or os.path.join(
+            self.folder_path, "elements", "elements.yaml"
+        )
+        real = {p: os.path.realpath(p) for p in (modules_path, test_cases_path, elements_path)}
+        docs: Dict[str, Dict[Any, Any]] = {}
+        for path in real.values():
+            if path not in docs:
+                docs[path] = self._load_yaml_doc(path)
+
+        self._extend_yaml_entry(
+            self._yaml_section(docs[real[modules_path]], "Modules", list, modules_path),
+            module_name,
+            steps,
+        )
+        test_steps = self._yaml_section(
+            docs[real[test_cases_path]], "Test Cases", list, test_cases_path
+        )
+        self._extend_yaml_entry(test_steps, test_case, [module_name], skip_present=True)
+        elements = self._yaml_section(
+            docs[real[elements_path]], "Elements", dict, elements_path
+        )
+
+        changed = [real[modules_path], real[test_cases_path]]
+        if self._merge_yaml_elements(elements) or not os.path.isfile(elements_path):
+            changed.append(real[elements_path])
+        contents = {path: self._render_yaml(docs[path]) for path in dict.fromkeys(changed)}
+        return contents, elements_path
+
+    def _yaml_steps(self) -> List[str]:
+        steps: List[str] = []
+        for func_name, params in self.recorded:
+            keyword = keyword_to_title(func_name)
+            try:
+                steps.append(format_module_step(keyword, params))
+            except ValueError as exc:
+                raise OpticsError(
+                    Code.E0501,
+                    message=(
+                        f"'{keyword}' cannot be written as a YAML module step ({exc}); "
+                        "save this module as CSV instead."
+                    ),
+                ) from exc
+        return steps
+
+    @staticmethod
+    def _load_yaml_doc(path: str) -> Dict[Any, Any]:
+        if not os.path.isfile(path):
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                doc = yaml.safe_load(fh)
+        except yaml.YAMLError as exc:
+            raise OpticsError(
+                Code.E0501, message=f"Cannot append to {path}: invalid YAML ({exc})"
+            ) from exc
+        if doc is None:
+            return {}
+        if not isinstance(doc, dict):
+            raise OpticsError(
+                Code.E0501, message=f"Cannot append to {path}: its top level is not a mapping"
+            )
+        return doc
+
+    @staticmethod
+    def _yaml_section(doc: Dict[Any, Any], key: str, kind: type, path: str) -> Any:
+        """``doc[key]``, created empty when absent; refuses one the reader cannot iterate."""
+        section = doc.get(key)
+        if section is None:
+            section = doc[key] = kind()
+        if not isinstance(section, kind):
+            shape = "list" if kind is list else "mapping"
+            raise OpticsError(
+                Code.E0501, message=f"Cannot append to {path}: '{key}' is not a {shape}"
+            )
+        return section
+
+    @staticmethod
+    def _extend_yaml_entry(
+        entries: List[Any], name: str, steps: List[str], *, skip_present: bool = False
+    ) -> None:
+        """Add ``steps`` to the ``- name:`` entry, or append a new entry.
+
+        The last matching entry is extended because the reader keeps the last one when
+        a name repeats. ``skip_present`` drops steps the entry already lists.
+        """
+        for entry in reversed(entries):
+            if not isinstance(entry, dict):
+                continue
+            key = next((k for k in entry if str(k).strip() == name), None)
+            if key is None:
+                continue
+            existing = entry[key] or []
+            if not isinstance(existing, list):
+                raise OpticsError(
+                    Code.E0501, message=f"Cannot append to '{name}': its steps are not a list"
+                )
+            entry[key] = existing + [s for s in steps if not (skip_present and s in existing)]
+            return
+        entries.append({name: list(steps)})
+
+    def _merge_yaml_elements(self, section: Dict[Any, Any]) -> bool:
+        """Add session elements missing from ``section``; True when any was added.
+
+        Dedupe is case-insensitive on element name, as for CSV. A single locator is
+        written as a scalar and several as the ordered fallback list.
+        """
+        elements = self.session.elements
+        if elements is None:
+            return False
+        present = {str(name).strip().lower() for name in section}
+        added = False
+        for name, values in elements.elements.items():
+            if not values or name.strip().lower() in present:
+                continue
+            section[name] = values[0] if len(values) == 1 else list(values)
+            added = True
+        return added
+
+    @staticmethod
+    def _render_yaml(doc: Dict[Any, Any]) -> str:
+        return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=sys.maxsize)
 
     def _existing_element_names(self, path: str) -> set[str]:
         """Element names already tracked in ``path``, lowercased.
@@ -1029,8 +1338,8 @@ class LiveController:
                         names.add(name.lower())
         return names
 
-    def _append_new_elements(self, path: str) -> None:
-        """Append session element rows missing from ``path`` (never duplicates).
+    def _elements_csv_text(self, path: str) -> Optional[str]:
+        """``path`` with the session element rows it lacks appended, or None if none are new.
 
         Dedupe is case-insensitive on element name; rows are appended verbatim
         so the file's existing content, column layout, and line endings stay
@@ -1039,7 +1348,7 @@ class LiveController:
         """
         elements = self.session.elements
         if elements is None or not elements.elements:
-            return
+            return None
         present = self._existing_element_names(path)
         rows = [
             (escape_csv_value(name), escape_csv_value(value))
@@ -1048,14 +1357,16 @@ class LiveController:
             for value in values
         ]
         if not rows:
-            return
+            return None
         with open(path, "r", encoding="utf-8", newline="") as fh:
             raw = fh.read()
         terminator = "\r\n" if raw.endswith("\r\n") else "\n"
-        with open(path, "a", encoding="utf-8", newline="") as fh:
-            if raw and not raw.endswith(("\r", "\n")):
-                fh.write(terminator)
-            csv.writer(fh, lineterminator=terminator).writerows(rows)
+        buffer = io.StringIO(newline="")
+        buffer.write(raw)
+        if raw and not raw.endswith(("\r", "\n")):
+            buffer.write(terminator)
+        csv.writer(buffer, lineterminator=terminator).writerows(rows)
+        return buffer.getvalue()
 
     # -- Devices ------------------------------------------------------------------
 

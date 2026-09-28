@@ -40,8 +40,11 @@ from prompt_toolkit.widgets import Frame
 
 from optics_framework.helper.live import (
     LiveController, ActionResult, NLStep, NLSummary,
-    ActionStatus, NLRunStatus, NLStepKind, SaveConflictError,
+    ActionStatus, NLRunStatus, NLStepKind, SaveConflictError, SaveFormat,
 )
+
+_SAVE_FORMATS = {"csv": SaveFormat.CSV, "yaml": SaveFormat.YAML, "yml": SaveFormat.YAML}
+_SAVE_USAGE = "Usage: /save <test_case> <module_name> [csv|yaml]"
 
 
 _STATUS_HINT = "/help · /quit · Tab complete · Ctrl-K keywords · Ctrl-N AI mode"
@@ -78,10 +81,11 @@ Natural-language mode (Ctrl-N)
   Requires an enabled 'llm_models' entry (e.g. gemini) in config.yaml.
 
 Slash commands (work in both modes)
-  /save <test_case> <module_name>
-                 Save recorded actions as <module_name> in modules/modules.csv and a
-                 <test_case> row in test_cases/test_cases.csv (appends if they exist;
-                 clears the buffer so the next actions form the next module)
+  /save <test_case> <module_name> [csv|yaml]
+                 Save recorded actions as <module_name> in modules/modules.<ext> and add
+                 it to <test_case> in test_cases/test_cases.<ext> (appends if they exist;
+                 clears the buffer so the next actions form the next module). Without a
+                 format: YAML when the project's suite files are all YAML, else CSV
   /device [id]   List/switch connected Android + iOS devices (Appium sessions only)
   /elements      Show named elements and their locators (read-only)
   /screenshot    Capture the device screen to a file
@@ -234,9 +238,9 @@ class LiveTUI:
         self.entries: List[ActionResult] = []
         self._busy = False
         self._quit_armed = False
-        # Set to the (test_case, module_name) of the last /save that hit a name
+        # Set to the (test_case, module_name, format) of the last /save that hit a name
         # conflict; re-running the identical /save then confirms the append.
-        self._save_armed: Optional[Tuple[str, str]] = None
+        self._save_armed: Optional[Tuple[str, str, Optional[SaveFormat]]] = None
         self._known_devices: List[str] = []
 
         # Natural-language mode: when on, the whole input box is treated as English and
@@ -805,17 +809,24 @@ class LiveTUI:
 
     def _cmd_save(self, arg: str) -> None:
         tokens = arg.split()
-        if len(tokens) != 2:
-            self._info("Usage: /save <test_case> <module_name>")
+        if len(tokens) not in (2, 3):
+            self._info(_SAVE_USAGE)
             return
-        test_case, module_name = tokens
-        allow_append = self._save_armed == (test_case, module_name)
+        file_format = None
+        if len(tokens) == 3:
+            file_format = _SAVE_FORMATS.get(tokens[2].lower())
+            if file_format is None:
+                self._info(_SAVE_USAGE)
+                return
+        test_case, module_name = tokens[:2]
+        request = (test_case, module_name, file_format)
+        allow_append = self._save_armed == request
         try:
             result = self.controller.save(
-                test_case, module_name, allow_append=allow_append
+                test_case, module_name, allow_append=allow_append, file_format=file_format
             )
         except SaveConflictError as conflict:
-            self._save_armed = (test_case, module_name)
+            self._save_armed = request
             existing = ", ".join(f"{kind} '{name}'" for kind, name in conflict.conflicts)
             self._info(
                 f"{existing} already exist(s). Re-run the same /save to append, "
