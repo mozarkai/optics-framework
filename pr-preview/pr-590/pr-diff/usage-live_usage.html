@@ -1,0 +1,161 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/live_usage.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/live_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/live_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_83">83</td><td nowrap="nowrap">## Slash commands</td><td class="diff_next"></td><td class="diff_header" id="to1_83">83</td><td nowrap="nowrap">## Slash commands</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_84">84</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_84">84</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_85">85</td><td nowrap="nowrap">| Command          | Description |</td><td class="diff_next"></td><td class="diff_header" id="to1_85">85</td><td nowrap="nowrap">| Command          | Description |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_86">86</td><td nowrap="nowrap">|------------------|-------------|</td><td class="diff_next"></td><td class="diff_header" id="to1_86">86</td><td nowrap="nowrap">|------------------|-------------|</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="from1_87">87</td><td nowrap="nowrap">| `/save &lt;test_case&gt; &lt;module_name&gt;<span class="diff_chg">` </span>| Save the recorded actions as `&lt;module_name&gt;` in `modules/modules.csv` and add a `(&lt;test_case&gt;, &lt;module_name&gt;)` row to `test_cases/test_cases.csv`<span class="diff_chg">. Elements are merged into your project's existing elements </span>CSV w<span class="diff_chg">hen one is tra</span>cked<span class="diff_chg"> any</span>whe<span class="diff_chg">re</span> (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second `elements/elements.csv` <span class="diff_chg">appears; with no elements file, a header-only `elements/elements.csv`</span> stub is created. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `&lt;module_name&gt;` or `&lt;test_case&gt;` <span class="diff_chg">already exists</span>, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/&lt;module_name&gt;/`. |</td><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="to1_87">87</td><td nowrap="nowrap">| `/save &lt;test_case&gt; &lt;module_name&gt;<span class="diff_chg"> [csv\</span>|<span class="diff_add">yaml]` |</span> Save the recorded actions as `&lt;module_name&gt;` in `modules/modules.csv` and add a `(&lt;test_case&gt;, &lt;module_name&gt;)` row to `test_cases/test_cases.csv`<span class="diff_chg"> — or, as YAML, in `modules/modules.yaml` and `test_cases/test_cases.yaml` (see [</span>CSV <span class="diff_add">or YAML](#csv-or-yaml) for ho</span>w<span class="diff_chg"> the format is pi</span>cked<span class="diff_chg">). Elements are merged into your project's existing elements file of that format </span>whe<span class="diff_chg">n one is tracked anywhere</span> (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second<span class="diff_add"> elements file appears; with none, an empty</span> `elements/elements.csv` <span class="diff_chg">(or `.yaml`)</span> stub is created. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `&lt;module_name&gt;` or `&lt;test_case&gt;` <span class="diff_chg">is already defined in any CSV or YAML file of the project</span>, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/&lt;module_name&gt;/`. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_88">88</td><td nowrap="nowrap">| `/device [id]`   | **Appium sessions only.** List the **Android** (`adb`) and **iOS** (`idevice_id`) devices attached to *this* machine, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). See the note below for remote Appium hubs. |</td><td class="diff_next"></td><td class="diff_header" id="to1_88">88</td><td nowrap="nowrap">| `/device [id]`   | **Appium sessions only.** List the **Android** (`adb`) and **iOS** (`idevice_id`) devices attached to *this* machine, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). See the note below for remote Appium hubs. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_89">89</td><td nowrap="nowrap">| `/elements`      | Open a read-only popup of named elements and their locators (Up/Down scrolls, Esc closes). |</td><td class="diff_next"></td><td class="diff_header" id="to1_89">89</td><td nowrap="nowrap">| `/elements`      | Open a read-only popup of named elements and their locators (Up/Down scrolls, Esc closes). |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_90">90</td><td nowrap="nowrap">| `/screenshot`    | Capture the current device screen to a file and note the path in the history. |</td><td class="diff_next"></td><td class="diff_header" id="to1_90">90</td><td nowrap="nowrap">| `/screenshot`    | Capture the current device screen to a file and note the path in the history. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_91">91</td><td nowrap="nowrap">| `/help`          | Show the command reference (Up/Down scrolls, Esc closes). |</td><td class="diff_next"></td><td class="diff_header" id="to1_91">91</td><td nowrap="nowrap">| `/help`          | Show the command reference (Up/Down scrolls, Esc closes). |</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__1"></td><td class="diff_header" id="from1_179">179</td><td nowrap="nowrap">and then **clears the buffer** so the next actions form the next module. If you</td><td class="diff_next"></td><td class="diff_header" id="to1_179">179</td><td nowrap="nowrap">and then **clears the buffer** so the next actions form the next module. If you</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_180">180</td><td nowrap="nowrap">`/quit` with unsaved actions, you are warned once — run `/save &lt;test_case&gt; &lt;module_name&gt;`</td><td class="diff_next"></td><td class="diff_header" id="to1_180">180</td><td nowrap="nowrap">`/quit` with unsaved actions, you are warned once — run `/save &lt;test_case&gt; &lt;module_name&gt;`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_181">181</td><td nowrap="nowrap">to keep them, or `/quit` again to discard and exit.</td><td class="diff_next"></td><td class="diff_header" id="to1_181">181</td><td nowrap="nowrap">to keep them, or `/quit` again to discard and exit.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_182">182</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_182">182</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_183">183</td><td nowrap="nowrap"><span class="diff_add">### CSV or YAML</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_184">184</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_185">185</td><td nowrap="nowrap"><span class="diff_add">`/save` follows the format your suite already uses. When every file in the project that</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_186">186</td><td nowrap="nowrap"><span class="diff_add">defines test cases or modules is YAML, it saves YAML; a CSV project, a project mixing</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_187">187</td><td nowrap="nowrap"><span class="diff_add">both, or a project with no suite files yet saves CSV. Add `csv` or `yaml` as a third</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_188">188</td><td nowrap="nowrap"><span class="diff_add">argument to choose for one save:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_189">189</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_190">190</td><td nowrap="nowrap"><span class="diff_add">```text</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_191">191</td><td nowrap="nowrap"><span class="diff_add">/save login_test login_module yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_192">192</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_193">193</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_194">194</td><td nowrap="nowrap"><span class="diff_add">A YAML save writes the layout the runner reads:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_195">195</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_196">196</td><td nowrap="nowrap"><span class="diff_add">```yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_197">197</td><td nowrap="nowrap"><span class="diff_add"># modules/modules.yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_198">198</td><td nowrap="nowrap"><span class="diff_add">Modules:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_199">199</td><td nowrap="nowrap"><span class="diff_add">- login_module:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_200">200</td><td nowrap="nowrap"><span class="diff_add">  - Launch App</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_201">201</td><td nowrap="nowrap"><span class="diff_add">  - Enter Text ${username_field} "test user"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_202">202</td><td nowrap="nowrap"><span class="diff_add">  - Press Element ${login_button}</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_203">203</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_204">204</td><td nowrap="nowrap"><span class="diff_add"># test_cases/test_cases.yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_205">205</td><td nowrap="nowrap"><span class="diff_add">Test Cases:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_206">206</td><td nowrap="nowrap"><span class="diff_add">- login_test:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_207">207</td><td nowrap="nowrap"><span class="diff_add">  - login_module</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_208">208</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_209">209</td><td nowrap="nowrap"><span class="diff_add"># test_data/elements.yaml (merged into when it exists)</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_210">210</td><td nowrap="nowrap"><span class="diff_add">Elements:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_211">211</td><td nowrap="nowrap"><span class="diff_add">  username_field: //input[@id="user"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_212">212</td><td nowrap="nowrap"><span class="diff_add">  login_button:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_213">213</td><td nowrap="nowrap"><span class="diff_add">  - loginBtn</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_214">214</td><td nowrap="nowrap"><span class="diff_add">  - //button[@id='login']</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_215">215</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_216">216</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_217">217</td><td nowrap="nowrap"><span class="diff_add">Each step is one line of keyword and params. A param holding spaces or quotes is quoted</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_218">218</td><td nowrap="nowrap"><span class="diff_add">so it reads back as the same single param (`text="Sign in"`, `"two words"`), and an</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_219">219</td><td nowrap="nowrap"><span class="diff_add">element with several locators is written as its ordered fallback list, as</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_220">220</td><td nowrap="nowrap"><span class="diff_add">`login_button` is above. Existing YAML files are merged</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_221">221</td><td nowrap="nowrap"><span class="diff_add">into, not replaced: appending to a module that is already there adds the steps to its</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_222">222</td><td nowrap="nowrap"><span class="diff_add">list, and anything else in the file is kept. Comments in a file `/save` rewrites are not</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_223">223</td><td nowrap="nowrap"><span class="diff_add">preserved, since the file is re-serialised.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_224">224</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_225">225</td><td nowrap="nowrap"><span class="diff_add">A few recordings cannot be written as a YAML step, such as a param that holds both</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_226">226</td><td nowrap="nowrap"><span class="diff_add">quote characters and a space; `/save` then fails without touching any file and asks you</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_227">227</td><td nowrap="nowrap"><span class="diff_add">to save that module as CSV. The same all-or-nothing rule applies to a malformed target</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_228">228</td><td nowrap="nowrap"><span class="diff_add">YAML file.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_229">229</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_230">230</td><td nowrap="nowrap"><span class="diff_add">**Appending across files.** A name the project already defines is a conflict in either</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_231">231</td><td nowrap="nowrap"><span class="diff_add">format — a module in `modules/modules.csv` blocks `/save … yaml` under the same name</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_232">232</td><td nowrap="nowrap"><span class="diff_add">too. Confirming the append only works when the existing definition is in the file this</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_233">233</td><td nowrap="nowrap"><span class="diff_add">save writes (`modules/modules.&lt;ext&gt;` / `test_cases/test_cases.&lt;ext&gt;`). The runner keeps</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_234">234</td><td nowrap="nowrap"><span class="diff_add">one definition per name, so an appended copy in a second file would silently replace</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_235">235</td><td nowrap="nowrap"><span class="diff_add">the original; `/save` refuses it and names the file that already defines it.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_236">236</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_183">183</td><td nowrap="nowrap">### Screenshots are saved automatically</td><td class="diff_next"></td><td class="diff_header" id="to1_237">237</td><td nowrap="nowrap">### Screenshots are saved automatically</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_184">184</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_238">238</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_185">185</td><td nowrap="nowrap">The framework auto-generates screenshots for every keyword call (a pre-action</td><td class="diff_next"></td><td class="diff_header" id="to1_239">239</td><td nowrap="nowrap">The framework auto-generates screenshots for every keyword call (a pre-action</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_186">186</td><td nowrap="nowrap">screenshot, the post-action result image, and annotated/AOI captures). In a live</td><td class="diff_next"></td><td class="diff_header" id="to1_240">240</td><td nowrap="nowrap">screenshot, the post-action result image, and annotated/AOI captures). In a live</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
