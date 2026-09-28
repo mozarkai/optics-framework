@@ -84,7 +84,7 @@ sleep 5
 
 | Command          | Description |
 |------------------|-------------|
-| `/save <test_case> <module_name>` | Save the recorded actions as `<module_name>` in `modules/modules.csv` and add a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`. Elements are merged into your project's existing elements CSV when one is tracked anywhere (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second `elements/elements.csv` appears; with no elements file, a header-only `elements/elements.csv` stub is created. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `<module_name>` or `<test_case>` already exists, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/<module_name>/`. |
+| `/save <test_case> <module_name> [csv\|yaml]` | Save the recorded actions as `<module_name>` in `modules/modules.csv` and add a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv` — or, as YAML, in `modules/modules.yaml` and `test_cases/test_cases.yaml` (see [CSV or YAML](#csv-or-yaml) for how the format is picked). Elements are merged into your project's existing elements file of that format when one is tracked anywhere (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second elements file appears; with none, an empty `elements/elements.csv` (or `.yaml`) stub is created. All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `<module_name>` or `<test_case>` is already defined in any CSV or YAML file of the project, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/<module_name>/`. |
 | `/device [id]`   | **Appium sessions only.** List the **Android** (`adb`) and **iOS** (`idevice_id`) devices attached to *this* machine, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). See the note below for remote Appium hubs. |
 | `/elements`      | Open a read-only popup of named elements and their locators (Up/Down scrolls, Esc closes). |
 | `/screenshot`    | Capture the current device screen to a file and note the path in the history. |
@@ -179,6 +179,68 @@ in the order it ran. The buffer is only written to disk when you run
 and then **clears the buffer** so the next actions form the next module. If you
 `/quit` with unsaved actions, you are warned once — run `/save <test_case> <module_name>`
 to keep them, or `/quit` again to discard and exit.
+
+### CSV or YAML
+
+`/save` follows the format your suite already uses. When every file in the project that
+defines test cases or modules is YAML, it saves YAML; a CSV project, a project mixing
+both, or a project with no suite files yet saves CSV. Add `csv` or `yaml` as a third
+argument to choose for one save:
+
+```text
+/save login_test login_module yaml
+```
+
+A YAML save writes the layout the runner reads:
+
+```yaml
+# modules/modules.yaml
+Modules:
+- login_module:
+  - Launch App
+  - Enter Text ${username_field} "test user"
+  - Press Element ${login_button}
+
+# test_cases/test_cases.yaml
+Test Cases:
+- login_test:
+  - login_module
+
+# test_data/elements.yaml (merged into when it exists)
+Elements:
+  username_field: //input[@id="user"]
+  login_button:
+  - loginBtn
+  - //button[@id='login']
+```
+
+Each step is one line of keyword and params. A param holding spaces or quotes is quoted
+so it reads back as the same single param (`text="Sign in"`, `"two words"`), and an
+element with several locators is written as its ordered fallback list, as
+`login_button` is above. Existing YAML files are merged
+into, not replaced: appending to a module that is already there adds the steps to its
+list, and anything else in the file is kept. Comments in a file `/save` rewrites are not
+preserved, since the file is re-serialised.
+
+A few recordings cannot be written as a YAML step, such as a param that holds both
+quote characters and a space; `/save` then fails without touching any file and asks you
+to save that module as CSV. The same all-or-nothing rule applies to a malformed target
+YAML file.
+
+**Saves are all or nothing.** In either format, every file's new content is built before
+anything is written, and each file is replaced in one step rather than rewritten in
+place. If a write fails partway (a full disk, a permissions error), the files already
+written are put back, so the project is never left with half a save and a retry doesn't
+hit a name conflict from one.
+
+**Appending across files.** A name the project already defines is a conflict in either
+format — a module in `modules/modules.csv` blocks `/save … yaml` under the same name
+too. Confirming the append only works when the existing definition is **only** in the
+file this save writes (`modules/modules.<ext>` / `test_cases/test_cases.<ext>`). The
+runner keeps one definition per name, so with a copy in any other file the appended
+steps could be replaced, or replace it, depending on load order; `/save` refuses and
+names the other file. Confirmations are tied to the format too: after a conflict on
+`/save … csv`, running `/save … yaml` asks again.
 
 ### Screenshots are saved automatically
 
