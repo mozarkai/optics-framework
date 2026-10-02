@@ -21,6 +21,9 @@ include = [
 	"optics_framework/py.typed"
 ]
 
+[tool.poetry.urls]
+Website = "https://optics-framework.org/"
+
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
 typing_extensions = ">=4.13.0"
