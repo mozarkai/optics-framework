@@ -1,6 +1,8 @@
 import subprocess  # nosec
 from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
+from appium.webdriver.appium_connection import AppiumConnection
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
@@ -42,6 +44,36 @@ def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LI
     half = max_lines // 2
     omitted = len(lines) - max_lines
     return "\n".join([*lines[:half], f"… ({omitted} lines omitted)", *lines[-half:]])
+
+
+class _QueryForwardingConnection(AppiumConnection):
+    """Re-appends the server URL's query string after each command path."""
+
+    def __init__(self, query: str, client_config: AppiumClientConfig) -> None:
+        self._forwarded_query = query
+        super().__init__(client_config=client_config)
+
+    def _request(self, method, url, body=None):  # type: ignore[override]
+        parts = urlsplit(url)
+        query = "&".join(q for q in (parts.query, self._forwarded_query) if q)
+        return super()._request(method, urlunsplit(parts._replace(query=query)), body=body)
+
+
+def _command_executor_and_config(
+    server_url: str, timeout: int
+) -> tuple[str | AppiumConnection, AppiumClientConfig | None]:
+    """The ``command_executor`` and ``client_config`` to hand ``webdriver.Remote``.
+
+    A connection built here holds its own client config, so none is returned with it.
+    """
+    if "?" not in server_url and "#" not in server_url:
+        return server_url, AppiumClientConfig(remote_server_addr=server_url, timeout=timeout)
+    parts = urlsplit(server_url)
+    base_url = urlunsplit(parts._replace(query="", fragment=""))
+    connection = _QueryForwardingConnection(
+        parts.query, AppiumClientConfig(remote_server_addr=base_url, timeout=timeout)
+    )
+    return connection, None
 
 
 class Appium(DriverInterface):
@@ -234,12 +266,12 @@ class Appium(DriverInterface):
         internal_logger.debug(
             f"Connection/session-creation timeout: {self.CONNECTION_TIMEOUT}s"
         )
-        client_config = AppiumClientConfig(
-            remote_server_addr=self.appium_server_url, timeout=self.CONNECTION_TIMEOUT
+        command_executor, client_config = _command_executor_and_config(
+            self.appium_server_url, self.CONNECTION_TIMEOUT
         )
         try:
             self.driver = webdriver.Remote(
-                self.appium_server_url, options=options, client_config=client_config
+                command_executor, options=options, client_config=client_config
             )  # type: ignore
             if self.driver is None:
                 raise OpticsError(Code.E0102, message="Failed to create Appium WebDriver instance")
@@ -447,14 +479,12 @@ class Appium(DriverInterface):
         if not executor:
             raise OpticsError(Code.E0104, message="Appium server URL is not configured.")
 
-        client_config = AppiumClientConfig(
-            remote_server_addr=executor, timeout=self.CONNECTION_TIMEOUT
-        )
+        command_executor, client_config = _command_executor_and_config(executor, self.CONNECTION_TIMEOUT)
 
         class SessionAttachmentWebDriver(webdriver.Remote):
             def __init__(
                 self,
-                command_executor: str,
+                command_executor: str | AppiumConnection,
                 options: Any,
                 target_session_id: str,
                 client_config: Optional[AppiumClientConfig] = None,
@@ -479,7 +509,7 @@ class Appium(DriverInterface):
         try:
             options = self._get_options_for_attach()
             attached_driver = SessionAttachmentWebDriver(
-                command_executor=executor,
+                command_executor=command_executor,
                 options=options,
                 target_session_id=session_id,
                 client_config=client_config,
