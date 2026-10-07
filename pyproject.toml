@@ -31,7 +31,7 @@ fuzzywuzzy = "^0.18.0"
 opencv-python-headless = ">=4.11.0.86,<6.0.0.0"
 python-levenshtein = "^0.27.1"
 prompt-toolkit = "^3.0.50"
-rich = ">=13.9.4,<15.0.0"
+rich = ">=13.9.4,<16.0.0"
 python-json-logger = ">=3.3,<5.0"
 sse-starlette = ">=2.2.1,<4.0.0"
 # Ceiling lifted past 0.119 so the optional `mcp` extra (fastmcp) can resolve:
