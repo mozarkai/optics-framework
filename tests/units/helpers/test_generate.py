@@ -286,7 +286,12 @@ class TestResolveParams:
 
     @pytest.mark.parametrize("framework", ["pytest", "robot"])
     def test_keyword_argument_passthrough(self, framework):
-        assert PytestGenerator()._resolve_params(["index=2"], {}, framework) == ["index=2"]
+        expected = ["index='2'"] if framework == "pytest" else ["index=2"]
+        assert PytestGenerator()._resolve_params(["index=2"], {}, framework) == expected
+
+    def test_xpath_with_equals_is_a_literal_not_a_kwarg(self):
+        resolved = PytestGenerator()._resolve_params(["//input[@id='user']"], {}, "pytest")
+        assert resolved == ['"//input[@id=\'user\']"']
 
     def test_literal_is_quoted_for_pytest_only(self):
         assert PytestGenerator()._resolve_params(["hello"], {}, "pytest") == ["'hello'"]
@@ -323,7 +328,17 @@ class TestPytestGenerator:
 
     def test_elements_dict_rendered(self, code):
         assert "ELEMENTS = {" in code
-        assert "'username_field': '//input[@id='user']'," in code
+        assert """'username_field': "//input[@id='user']",""" in code
+
+    def test_generated_code_is_valid_python(self, code):
+        import ast
+
+        ast.parse(code)
+
+    def test_config_uses_the_keys_optics_setup_reads(self, code):
+        assert "'driver_sources':" in code
+        assert "'elements_sources':" in code
+        assert "driver_config" not in code
 
     def test_module_function_and_calls(self, code):
         assert "def login_module(optics: Optics) -> None:" in code
@@ -368,12 +383,12 @@ class TestRobotGenerator:
         transformed = RobotGenerator()._transform_config_structure(
             {"driver_sources": ["d"], "elements_sources": ["e"], "text_detection": ["t"]}
         )
-        assert transformed["driver_config"] == ["d"]
-        assert transformed["element_source_config"] == ["e"]
-        assert transformed["text_config"] == ["t"]
+        assert transformed["driver_sources"] == ["d"]
+        assert transformed["elements_sources"] == ["e"]
+        assert transformed["text_detection"] == ["t"]
         assert transformed["project_path"] == "${EXECDIR}"
         # Empty optional sections are omitted, not rendered as [].
-        assert "image_config" not in transformed
+        assert "image_detection" not in transformed
 
     def test_escape_json_for_robot(self):
         escaped = RobotGenerator()._escape_json_for_robot('{"a":"b\\c"}')

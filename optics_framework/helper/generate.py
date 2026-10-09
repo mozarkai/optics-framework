@@ -1,3 +1,4 @@
+import re
 import os
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Optional, Union, Any, Iterator
@@ -7,7 +8,11 @@ import yaml
 import json
 import shutil
 
+
 from optics_framework.common.utils import unescape_csv_value
+
+# `name=value` in a step is a keyword argument; `//input[@id='x']` is not.
+_KWARG = re.compile(r"^[A-Za-z_]\w*=")
 
 TestCaseKey = "Test Cases"
 
@@ -252,10 +257,11 @@ class TestFrameworkGenerator(ABC):
                 if var_name not in elements:
                     raise ValueError(f"Element '{var_name}' not found in elements.")
                 resolved.append(f"ELEMENTS['{var_name}']" if framework == "pytest" else f"${{ELEMENTS.{var_name}}}")
-            elif "=" in param and not param.startswith(("'", '"')):
-                resolved.append(param)
+            elif _KWARG.match(param):
+                name, value = param.split("=", 1)
+                resolved.append(f"{name}={value!r}" if framework == "pytest" else param)
             elif framework == "pytest":
-                resolved.append(f"'{param}'")
+                resolved.append(repr(param))
             else:
                 resolved.append(param)
         return resolved
@@ -313,18 +319,18 @@ class PytestGenerator(TestFrameworkGenerator):
 
                 "",
                 "CONFIG = {",
-                f"    'driver_config': {config.get('driver_sources', [])},"
+                f"    'driver_sources': {config.get('driver_sources', [])},"
                 if config.get("driver_sources")
-                else "    'driver_config': [],",
-                f"    'element_source_config': {config.get('elements_sources', [])},"
+                else "    'driver_sources': [],",
+                f"    'elements_sources': {config.get('elements_sources', [])},"
                 if config.get("elements_sources")
-                else "    'element_source_config': [],",
-                f"    'text_config': {config.get('text_detection', [])},"
+                else "    'elements_sources': [],",
+                f"    'text_detection': {config.get('text_detection', [])},"
                 if config.get("text_detection")
-                else "    'text_config': [],",
-                f"    'image_config': {config.get('image_detection', [])},"
+                else "    'text_detection': [],",
+                f"    'image_detection': {config.get('image_detection', [])},"
                 if config.get("image_detection")
-                else "    'image_config': [],",
+                else "    'image_detection': [],",
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
                 "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
@@ -339,7 +345,7 @@ class PytestGenerator(TestFrameworkGenerator):
     def _generate_elements(self, elements: Elements) -> str:
         lines = ["ELEMENTS = {"]
         for name, value in elements.items():
-            lines.append(f"    '{name}': '{value}',")
+            lines.append(f"    {name!r}: {value!r},")
         lines.append("}\n")
         return "\n".join(lines)
 
@@ -421,17 +427,17 @@ class RobotGenerator(TestFrameworkGenerator):
             Dict with the structure expected by the new Optics setup method
         """
         transformed = {
-            "driver_config": config.get('driver_sources', []),
-            "element_source_config": config.get('elements_sources', []),
+            "driver_sources": config.get('driver_sources', []),
+            "elements_sources": config.get('elements_sources', []),
             "project_path": "${EXECDIR}"
         }
 
         # Add optional configurations only if they exist and are not empty
         if config.get('image_detection'):
-            transformed["image_config"] = config.get('image_detection', [])
+            transformed["image_detection"] = config.get('image_detection', [])
 
         if config.get('text_detection'):
-            transformed["text_config"] = config.get('text_detection', [])
+            transformed["text_detection"] = config.get('text_detection', [])
 
         if config.get('execution_output_path'):
             transformed["execution_output_path"] = config.get('execution_output_path')
@@ -498,7 +504,7 @@ class RobotGenerator(TestFrameworkGenerator):
         lines.extend([
             "Setup Optics",
             "    # Parse JSON configuration and setup Optics",
-            "    ${config_dict}=    Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
+            "    ${config_dict}=    BuiltIn.Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
             "    Setup    config=${config_dict}",
             "",
         ])
