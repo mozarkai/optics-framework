@@ -49,6 +49,15 @@ def test_clear_text_empties_a_located_field():
     located.fill.assert_awaited_once_with("")
 
 
+def test_get_text_reads_a_located_element():
+    driver = _driver()
+    located = MagicMock()
+    located.inner_text = AsyncMock(return_value="1")
+
+    assert driver.get_text_element(located) == "1"
+    driver.page.locator.assert_not_called()
+
+
 def test_settings_are_read_from_capabilities():
     driver = Playwright({"enabled": True, "capabilities": {"browser": "firefox", "headless": True}})
 

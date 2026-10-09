@@ -308,8 +308,7 @@ class Playwright(DriverInterface):
             ) from e
 
     async def _swipe_element_async(self, element: str, direction: str, swipe_length: int):
-        normalized = self._normalize_locator(element)
-        locator = self.page.locator(normalized)
+        locator = self._as_locator(element)
         await locator.wait_for(state="visible", timeout=10000)
 
         # Calculate scroll delta
@@ -343,8 +342,7 @@ class Playwright(DriverInterface):
     # =====================================================
 
     def get_text_element(self, element: str) -> str:
-        normalized = self._normalize_locator(element)
-        return run_async(self.page.locator(normalized).inner_text())
+        return run_async(self._as_locator(element).inner_text())
 
     def force_terminate_app(self, app_name: str, event_name=None):
         raise NotImplementedError("force_terminate_app not supported")
