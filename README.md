@@ -16,7 +16,7 @@ One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Fr
 
 ![Optics demo](https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/optics-demo.gif)
 
-[Documentation](https://mozarkai.github.io/optics-framework/) · [Install](https://mozarkai.github.io/optics-framework/prerequisites/) · [Getting Started](https://mozarkai.github.io/optics-framework/getting-started/) · [Keywords](https://mozarkai.github.io/optics-framework/usage/keyword_usage/) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
+[Documentation](https://optics-framework.org/docs/) · [Install](https://optics-framework.org/docs/get-started/install) · [Getting Started](https://optics-framework.org/docs/get-started/quickstart) · [Keywords](https://optics-framework.org/docs/reference/keywords/) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
 
 </div>
 
@@ -67,7 +67,7 @@ optics setup --install appium easyocr
 > The `mcp` server extra is **pip-only** (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
 
 > [!IMPORTANT]
-> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://mozarkai.github.io/optics-framework/prerequisites/).
+> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://optics-framework.org/docs/get-started/install).
 
 > [!WARNING]
 > Conda is not supported for `easyocr` + `optics-framework` together (conflicting NumPy 1.x/2.x requirements). Use a standard `venv`.
@@ -189,7 +189,7 @@ Every successful keyword is buffered as you work. To persist the buffer:
 
 That appends the recorded keywords to `modules/modules.csv` as `<module_name>`, adds a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`, creates a header-only `elements/elements.csv` stub if none exists, and copies the session's screenshots to `execution_output/<module_name>/`. The buffer then clears, so the next actions become the next module. If either name already exists, re-run the identical `/save` to confirm the append.
 
-Other commands: `/device [id]`, `/elements`, `/screenshot`, `/help`, `/quit`. Full reference: [Live Usage](https://mozarkai.github.io/optics-framework/usage/live_usage/).
+Other commands: `/device [id]`, `/elements`, `/screenshot`, `/help`, `/quit`. Full reference: [Live Usage](https://optics-framework.org/docs/create/record).
 
 </details>
 
@@ -236,7 +236,7 @@ Every public method on the four API classes is automatically a keyword, on every
 | **App lifecycle** | Launch App · Launch Other App · Start Appium Session · Get Driver Session Id · Close And Terminate App · Force Terminate App · Get App Version |
 | **Flow control** | Run Loop · Condition · Read Data · Evaluate · Date Evaluate · Invoke API |
 
-Run `optics list` for the live catalogue with signatures, or read the [Keyword Usage guide](https://mozarkai.github.io/optics-framework/usage/keyword_usage/) for parameters and examples. Location keywords accept percentage-based **Area-of-Interest** bounds (`aoi_x/y/width/height`, 0–100) to scope a vision search to part of the screen.
+Run `optics list` for the live catalogue with signatures, or read the [Keyword Usage guide](https://optics-framework.org/docs/reference/keywords/) for parameters and examples. Location keywords accept percentage-based **Area-of-Interest** bounds (`aoi_x/y/width/height`, 0–100) to scope a vision search to part of the screen.
 
 > [!NOTE]
 > `Press Checkbox` and `Press Radio Button` still resolve but are deprecated aliases of `Press Element` — use `Press Element` directly. `Add API` is available on the `Optics` Python class only, not to the CSV/YAML runner; define APIs in an `api.yaml` and call them with `Invoke API` instead.
@@ -298,7 +298,7 @@ ai_self_heal: true                 # opt into the LLM backstop; default false
 
 Credentials are read from the environment by the `google-genai` SDK — `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for the Gemini Developer API, or `GOOGLE_GENAI_USE_VERTEXAI` + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` / `GOOGLE_APPLICATION_CREDENTIALS` for Vertex AI. **Never commit keys to `config.yaml`.** With every `capabilities` key omitted the SDK auto-detects the backend. `google-genai` is imported only when `gemini` is enabled, and a misconfigured LLM degrades to "no self-heal" rather than a hard failure.
 
-Full reference: [Configuration](https://mozarkai.github.io/optics-framework/configuration/). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
+Full reference: [Configuration](https://optics-framework.org/docs/reference/config). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
 
 ## Results
 
@@ -309,7 +309,7 @@ An `optics execute` run writes to `<project>/execution_output/`:
 - **screenshots** — pre/post action frames, plus strategy-annotated and AOI overlays
 - **`detected_errors_<session_id>.json`** — on-screen error detection
 
-Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text for crash dialogs, `Session expired`, network errors, and the like — no assertions required. Matches also land in the JUnit XML as a synthetic failing testcase, so CI fails a build on "the app crashed mid-test" the same way it fails a normal assertion. See [Error Detection](https://mozarkai.github.io/optics-framework/usage/error_detection/).
+Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text for crash dialogs, `Session expired`, network errors, and the like — no assertions required. Matches also land in the JUnit XML as a synthetic failing testcase, so CI fails a build on "the app crashed mid-test" the same way it fails a normal assertion. See [Error Detection](https://optics-framework.org/docs/run/error-detection).
 
 ## CLI reference
 
@@ -330,7 +330,7 @@ optics completion  Install shell autocompletion
 optics --version   Print the installed version
 ```
 
-Details in the [CLI guide](https://mozarkai.github.io/optics-framework/usage/CLI_usage/).
+Details in the [CLI guide](https://optics-framework.org/docs/reference/cli).
 
 ## Contributing
 

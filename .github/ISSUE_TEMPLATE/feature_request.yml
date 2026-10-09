@@ -51,7 +51,7 @@ body:
     attributes:
       label: Before submitting
       options:
-        - label: I checked the [documentation](https://mozarkai.github.io/optics-framework/) and this capability does not exist
+        - label: I checked the [documentation](https://optics-framework.org/docs/) and this capability does not exist
           required: true
         - label: I searched existing issues and found no duplicate
           required: true
