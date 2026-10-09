@@ -4,6 +4,9 @@ hide:
   - toc
 ---
 
+!!! info "The documentation has moved"
+    The Optics documentation now lives at **[optics-framework.org/docs](https://optics-framework.org/docs/)**, with a new quickstart, step-by-step guides and a full reference. These pages are no longer updated.
+
 # Optics Framework
 
 Welcome to the official documentation for the **Optics Framework**, an open-source test automation framework designed to simplify and streamline the creation and execution of automated tests across various platforms. Whether you're testing mobile apps (including DRM-enabled ones), Optics Framework provides a flexible, extensible, and user-friendly solution to meet your testing needs.
