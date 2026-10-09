@@ -39,6 +39,14 @@ class Playwright(DriverInterface):
 
         internal_logger.info("[Playwright] Driver initialized")
 
+    def _setting(self, key, default):
+        """A driver setting from config.yaml's `capabilities`, where the docs and
+        `optics configure` put it, or from the top level of the driver entry."""
+        capabilities = self.config.get("capabilities") or {}
+        if key in capabilities:
+            return capabilities[key]
+        return self.config.get(key, default)
+
     # =====================================================
     # APP / SESSION
     # =====================================================
@@ -52,9 +60,9 @@ class Playwright(DriverInterface):
 
             self._pw = await async_playwright().start()
 
-            browser = self.config.get("browser", "chromium")
-            headless = self.config.get("headless", False)
-            viewport = self.config.get("viewport", {"width": 1280, "height": 800})
+            browser = self._setting("browser", "chromium")
+            headless = self._setting("headless", False)
+            viewport = self._setting("viewport", {"width": 1280, "height": 800})
 
             self._browser = await getattr(self._pw, browser).launch(headless=headless)
             self._context = await self._browser.new_context(viewport=viewport)
@@ -120,8 +128,8 @@ class Playwright(DriverInterface):
         if not self.page:
             raise OpticsError(Code.E0102, self.PAGE_NOT_INITIALIZED_MSG)
 
-        timeout_ms = int(self.config.get("navigation_timeout_ms", 60000))
-        wait_until = self.config.get("navigation_wait_until", "domcontentloaded")
+        timeout_ms = int(self._setting("navigation_timeout_ms", 60000))
+        wait_until = self._setting("navigation_wait_until", "domcontentloaded")
 
         try:
             await self.page.goto(url, timeout=timeout_ms, wait_until=wait_until)
@@ -242,16 +250,20 @@ class Playwright(DriverInterface):
         run_async(self.page.keyboard.type(text))
 
     def enter_text_element(self, element: str, text: str, event_name=None):
-        normalized = self._normalize_locator(element)
-        run_async(self.page.locator(normalized).fill(text))
+        run_async(self._as_locator(element).fill(text))
 
     def clear_text(self, event_name=None):
         run_async(self.page.keyboard.press("Control+A"))
         run_async(self.page.keyboard.press("Backspace"))
 
     def clear_text_element(self, element: str, event_name=None):
+        run_async(self._as_locator(element).fill(""))
+
+    def _as_locator(self, element):
+        """A locator for a selector string. Element sources already return a
+        Locator, which must not be wrapped in page.locator() again."""
         normalized = self._normalize_locator(element)
-        run_async(self.page.locator(normalized).fill(""))
+        return self.page.locator(normalized) if isinstance(normalized, str) else normalized
 
     # =====================================================
     # SCROLL / SWIPE
@@ -296,8 +308,7 @@ class Playwright(DriverInterface):
             ) from e
 
     async def _swipe_element_async(self, element: str, direction: str, swipe_length: int):
-        normalized = self._normalize_locator(element)
-        locator = self.page.locator(normalized)
+        locator = self._as_locator(element)
         await locator.wait_for(state="visible", timeout=10000)
 
         # Calculate scroll delta
@@ -331,8 +342,7 @@ class Playwright(DriverInterface):
     # =====================================================
 
     def get_text_element(self, element: str) -> str:
-        normalized = self._normalize_locator(element)
-        return run_async(self.page.locator(normalized).inner_text())
+        return run_async(self._as_locator(element).inner_text())
 
     def force_terminate_app(self, app_name: str, event_name=None):
         raise NotImplementedError("force_terminate_app not supported")
