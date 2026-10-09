@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://mozarkai.github.io/optics-framework/
+    url: https://optics-framework.org/docs/
     about: Setup guides, keyword reference, configuration and architecture docs — many questions are answered here.
   - name: Security vulnerabilities
     url: https://github.com/mozarkai/optics-framework/blob/main/SECURITY.md
