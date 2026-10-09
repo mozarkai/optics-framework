@@ -1,5 +1,8 @@
+import re
 import os
+import inspect
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from typing import Dict, List, Tuple, Optional, Union, Any, Iterator
 import logging
 import pandas as pd
@@ -7,7 +10,42 @@ import yaml
 import json
 import shutil
 
+
 from optics_framework.common.utils import unescape_csv_value
+
+_KWARG = re.compile(r"^([A-Za-z_]\w*)=(.*)$", re.DOTALL)
+
+
+@lru_cache(maxsize=None)
+def _sdk_parameters(method_name: str) -> Optional[frozenset]:
+    """Parameter names of the Optics SDK method a generated step calls, or None if unknown."""
+    try:
+        from optics_framework.optics import Optics  # deferred: pulls in the vision stack
+    except ImportError:
+        return None
+    method = getattr(Optics, method_name, None)
+    if method is None:
+        return None
+    try:
+        return frozenset(inspect.signature(method).parameters) - {"self"}
+    except (TypeError, ValueError):
+        return None
+
+
+def _keyword_argument(param: str, accepted: Optional[frozenset]) -> Optional[Tuple[str, str]]:
+    """Split ``name=value`` when ``name`` is a parameter of the target method.
+
+    Locators such as ``css=#login`` or ``text=Login`` also look like ``name=value``
+    but are the step's element, so they stay positional. Matching quotes around the
+    value are dropped: ``index="2"`` passes the string ``2``.
+    """
+    match = _KWARG.match(param)
+    if not match or (accepted is not None and match.group(1) not in accepted):
+        return None
+    name, value = match.groups()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    return name, value
 
 TestCaseKey = "Test Cases"
 
@@ -244,18 +282,34 @@ class TestFrameworkGenerator(ABC):
     ) -> str:
         pass
 
-    def _resolve_params(self, params: List[str], elements: Elements, framework: str) -> List[str]:
+    def _method_name(self, keyword: str) -> str:
+        return self.keyword_registry.get(keyword, "_".join(keyword.lower().split()))
+
+    def _resolve_params(
+        self, params: List[str], elements: Elements, framework: str, method_name: str
+    ) -> List[str]:
+        accepted = _sdk_parameters(method_name)
+        kwargs = [_keyword_argument(param, accepted) for param in params]
+        # Named arguments can only follow the positional ones, so only a trailing run
+        # counts: in `Enter Text text=Email hello`, `text=Email` is the element.
+        first_named = len(params)
+        while first_named and kwargs[first_named - 1]:
+            first_named -= 1
         resolved = []
-        for param in params:
-            if param.startswith("${") and param.endswith("}"):
+        for i, param in enumerate(params):
+            kwarg = kwargs[i]
+            if i >= first_named and kwarg:
+                name, value = kwarg
+                resolved.append(f"{name}={value!r}" if framework == "pytest" else f"{name}={value}")
+            elif param.startswith("${") and param.endswith("}"):
                 var_name = param[2:-1]
                 if var_name not in elements:
                     raise ValueError(f"Element '{var_name}' not found in elements.")
                 resolved.append(f"ELEMENTS['{var_name}']" if framework == "pytest" else f"${{ELEMENTS.{var_name}}}")
-            elif "=" in param and not param.startswith(("'", '"')):
-                resolved.append(param)
             elif framework == "pytest":
-                resolved.append(f"'{param}'")
+                resolved.append(repr(param))
+            elif kwarg and accepted is not None:
+                resolved.append(param.replace("=", "\\=", 1))
             else:
                 resolved.append(param)
         return resolved
@@ -313,18 +367,18 @@ class PytestGenerator(TestFrameworkGenerator):
 
                 "",
                 "CONFIG = {",
-                f"    'driver_config': {config.get('driver_sources', [])},"
+                f"    'driver_sources': {config.get('driver_sources', [])},"
                 if config.get("driver_sources")
-                else "    'driver_config': [],",
-                f"    'element_source_config': {config.get('elements_sources', [])},"
+                else "    'driver_sources': [],",
+                f"    'elements_sources': {config.get('elements_sources', [])},"
                 if config.get("elements_sources")
-                else "    'element_source_config': [],",
-                f"    'text_config': {config.get('text_detection', [])},"
+                else "    'elements_sources': [],",
+                f"    'text_detection': {config.get('text_detection', [])},"
                 if config.get("text_detection")
-                else "    'text_config': [],",
-                f"    'image_config': {config.get('image_detection', [])},"
+                else "    'text_detection': [],",
+                f"    'image_detection': {config.get('image_detection', [])},"
                 if config.get("image_detection")
-                else "    'image_config': [],",
+                else "    'image_detection': [],",
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
                 "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
@@ -339,7 +393,7 @@ class PytestGenerator(TestFrameworkGenerator):
     def _generate_elements(self, elements: Elements) -> str:
         lines = ["ELEMENTS = {"]
         for name, value in elements.items():
-            lines.append(f"    '{name}': '{value}',")
+            lines.append(f"    {name!r}: {value!r},")
         lines.append("}\n")
         return "\n".join(lines)
 
@@ -362,10 +416,8 @@ class PytestGenerator(TestFrameworkGenerator):
         func_name = "_".join(module_name.lower().split())
         lines = [f"def {func_name}(optics: Optics) -> None:"]
         for keyword, params in steps:
-            method_name = self.keyword_registry.get(
-                keyword, "_".join(keyword.lower().split())
-            )
-            resolved_params = self._resolve_params(params, elements, "pytest")
+            method_name = self._method_name(keyword)
+            resolved_params = self._resolve_params(params, elements, "pytest", method_name)
             param_str = ", ".join(resolved_params)
             lines.append(f"    optics.{method_name}({param_str})")
         return "\n".join(lines) + "\n"
@@ -421,17 +473,17 @@ class RobotGenerator(TestFrameworkGenerator):
             Dict with the structure expected by the new Optics setup method
         """
         transformed = {
-            "driver_config": config.get('driver_sources', []),
-            "element_source_config": config.get('elements_sources', []),
+            "driver_sources": config.get('driver_sources', []),
+            "elements_sources": config.get('elements_sources', []),
             "project_path": "${EXECDIR}"
         }
 
         # Add optional configurations only if they exist and are not empty
         if config.get('image_detection'):
-            transformed["image_config"] = config.get('image_detection', [])
+            transformed["image_detection"] = config.get('image_detection', [])
 
         if config.get('text_detection'):
-            transformed["text_config"] = config.get('text_detection', [])
+            transformed["text_detection"] = config.get('text_detection', [])
 
         if config.get('execution_output_path'):
             transformed["execution_output_path"] = config.get('execution_output_path')
@@ -498,7 +550,7 @@ class RobotGenerator(TestFrameworkGenerator):
         lines.extend([
             "Setup Optics",
             "    # Parse JSON configuration and setup Optics",
-            "    ${config_dict}=    Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
+            "    ${config_dict}=    BuiltIn.Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
             "    Setup    config=${config_dict}",
             "",
         ])
@@ -514,7 +566,9 @@ class RobotGenerator(TestFrameworkGenerator):
         for module_name, steps in modules.items():
             lines.append(module_name)
             for keyword, params in steps:
-                resolved_params = self._resolve_params(params, elements, "robot")
+                resolved_params = self._resolve_params(
+                    params, elements, "robot", self._method_name(keyword)
+                )
                 param_str = "    ".join(resolved_params)
                 lines.append(f"    {keyword}    {param_str}")
             lines.append("")

@@ -276,21 +276,51 @@ class TestResolveParams:
     )
     def test_element_reference(self, framework, expected):
         out = PytestGenerator()._resolve_params(
-            ["${login_button}"], {"login_button": "loginBtn"}, framework
+            ["${login_button}"], {"login_button": "loginBtn"}, framework, "press_element"
         )
         assert out == [expected]
 
     def test_missing_element_raises(self):
         with pytest.raises(ValueError, match="Element 'ghost' not found"):
-            PytestGenerator()._resolve_params(["${ghost}"], {}, "pytest")
+            PytestGenerator()._resolve_params(["${ghost}"], {}, "pytest", "press_element")
 
     @pytest.mark.parametrize("framework", ["pytest", "robot"])
-    def test_keyword_argument_passthrough(self, framework):
-        assert PytestGenerator()._resolve_params(["index=2"], {}, framework) == ["index=2"]
+    @pytest.mark.parametrize("param", ["index=2", 'index="2"', "index='2'"])
+    def test_keyword_argument_value_is_the_bare_string(self, framework, param):
+        expected = ["index='2'"] if framework == "pytest" else ["index=2"]
+        assert PytestGenerator()._resolve_params([param], {}, framework, "press_element") == expected
+
+    @pytest.mark.parametrize("locator", ["css=#login", "text=Login", "id=submit"])
+    def test_locator_strategy_prefix_is_not_a_kwarg(self, locator):
+        gen = PytestGenerator()
+        assert gen._resolve_params([locator], {}, "pytest", "press_element") == [repr(locator)]
+        assert gen._resolve_params([locator], {}, "robot", "press_element") == [locator]
+
+    def test_only_trailing_name_value_tokens_are_kwargs(self):
+        params = ["text=Email", "hello", "event_name=typed"]
+        gen = PytestGenerator()
+        assert gen._resolve_params(params, {}, "pytest", "enter_text") == [
+            "'text=Email'", "'hello'", "event_name='typed'"
+        ]
+        # Robot would read text=Email as the named `text` argument; escape it.
+        assert gen._resolve_params(params, {}, "robot", "enter_text") == [
+            "text\\=Email", "hello", "event_name=typed"
+        ]
+
+    def test_unknown_method_keeps_name_value_as_kwarg(self):
+        resolved = PytestGenerator()._resolve_params(["mode=fast"], {}, "pytest", "custom_widget_tap")
+        assert resolved == ["mode='fast'"]
+
+    def test_xpath_with_equals_is_a_literal_not_a_kwarg(self):
+        resolved = PytestGenerator()._resolve_params(
+            ["//input[@id='user']"], {}, "pytest", "press_element"
+        )
+        assert resolved == ['"//input[@id=\'user\']"']
 
     def test_literal_is_quoted_for_pytest_only(self):
-        assert PytestGenerator()._resolve_params(["hello"], {}, "pytest") == ["'hello'"]
-        assert PytestGenerator()._resolve_params(["hello"], {}, "robot") == ["hello"]
+        gen = PytestGenerator()
+        assert gen._resolve_params(["hello"], {}, "pytest", "enter_text") == ["'hello'"]
+        assert gen._resolve_params(["hello"], {}, "robot", "enter_text") == ["hello"]
 
 
 # --------------------------------------------------------------------------- #
@@ -323,7 +353,17 @@ class TestPytestGenerator:
 
     def test_elements_dict_rendered(self, code):
         assert "ELEMENTS = {" in code
-        assert "'username_field': '//input[@id='user']'," in code
+        assert """'username_field': "//input[@id='user']",""" in code
+
+    def test_generated_code_is_valid_python(self, code):
+        import ast
+
+        ast.parse(code)
+
+    def test_config_uses_the_keys_optics_setup_reads(self, code):
+        assert "'driver_sources':" in code
+        assert "'elements_sources':" in code
+        assert "driver_config" not in code
 
     def test_module_function_and_calls(self, code):
         assert "def login_module(optics: Optics) -> None:" in code
@@ -334,6 +374,42 @@ class TestPytestGenerator:
     def test_test_function_invokes_modules(self, code):
         assert "def test_login_test(optics):" in code
         assert "    login_module(optics)" in code
+
+    def test_generated_calls_bind_to_the_sdk_signatures(self):
+        import ast
+        import inspect
+
+        from optics_framework.optics import Optics
+
+        elements = {"btn": "//button[@id='x']"}
+        modules = {
+            "M": [
+                ("Press Element", ["css=#login"]),
+                ("Press Element", ["${btn}", 'index="2"', "event_name=tap"]),
+                ("Enter Text", ["text=Email", "ava@birch.shop"]),
+            ]
+        }
+        code = PytestGenerator().generate({"T": ["M"]}, modules, elements, {})
+
+        def value(node):
+            if isinstance(node, ast.Subscript) and ast.unparse(node.value) == "ELEMENTS":
+                return elements[ast.literal_eval(node.slice)]
+            return ast.literal_eval(node)
+
+        calls = []
+        for node in ast.walk(ast.parse(code)):
+            if isinstance(node, ast.Call) and ast.unparse(node.func).startswith("optics.") \
+                    and node.func.attr in {"press_element", "enter_text"}:
+                args = [value(a) for a in node.args]
+                kwargs = {k.arg: value(k.value) for k in node.keywords}
+                inspect.signature(getattr(Optics, node.func.attr)).bind(None, *args, **kwargs)
+                calls.append((node.func.attr, args, kwargs))
+
+        assert calls == [
+            ("press_element", ["css=#login"], {}),
+            ("press_element", ["//button[@id='x']"], {"index": "2", "event_name": "tap"}),
+            ("enter_text", ["text=Email", "ava@birch.shop"], {}),
+        ]
 
     def test_unknown_keyword_falls_back_to_snake_case(self):
         code = PytestGenerator().generate(
@@ -368,12 +444,12 @@ class TestRobotGenerator:
         transformed = RobotGenerator()._transform_config_structure(
             {"driver_sources": ["d"], "elements_sources": ["e"], "text_detection": ["t"]}
         )
-        assert transformed["driver_config"] == ["d"]
-        assert transformed["element_source_config"] == ["e"]
-        assert transformed["text_config"] == ["t"]
+        assert transformed["driver_sources"] == ["d"]
+        assert transformed["elements_sources"] == ["e"]
+        assert transformed["text_detection"] == ["t"]
         assert transformed["project_path"] == "${EXECDIR}"
         # Empty optional sections are omitted, not rendered as [].
-        assert "image_config" not in transformed
+        assert "image_detection" not in transformed
 
     def test_escape_json_for_robot(self):
         escaped = RobotGenerator()._escape_json_for_robot('{"a":"b\\c"}')
