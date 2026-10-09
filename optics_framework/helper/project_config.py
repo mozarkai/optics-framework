@@ -142,7 +142,7 @@ def _header(platform: str) -> list[str]:
         "#      optics setup --install appium",
         "#   3. Validate everything with  optics doctor <this-folder>",
         "#",
-        "# Full reference: https://mozarkai.github.io/optics-framework/configuration/",
+        "# Full reference: https://optics-framework.org/docs/reference/config",
         "",
     ]
 

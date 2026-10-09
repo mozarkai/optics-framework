@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = ["test automation", "framework", "mobile automation"]
 homepage = "https://github.com/mozarkai/optics-framework"
 repository = "https://github.com/mozarkai/optics-framework"
-documentation = "https://mozarkai.github.io/optics-framework/"
+documentation = "https://optics-framework.org/docs/"
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"Programming Language :: Python :: 3.12",
