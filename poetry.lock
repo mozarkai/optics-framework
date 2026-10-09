@@ -577,14 +577,14 @@ markers = {main = "platform_system == \"Windows\" or sys_platform == \"win32\"",
 
 [[package]]
 name = "commitizen"
-version = "4.18.1"
+version = "4.19.1"
 description = "Python commitizen client tool"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["dev"]
 files = [
-    {file = "commitizen-4.18.1-py3-none-any.whl", hash = "sha256:16ed052ff775bf42cad85bc09075db110ca7ba84f49233fc642629a0da65862b"},
-    {file = "commitizen-4.18.1.tar.gz", hash = "sha256:27379caedd00553344e44cc8cef039598b6d3e65f9b598e31d355489c481563d"},
+    {file = "commitizen-4.19.1-py3-none-any.whl", hash = "sha256:314196d4e7309d6706ff5d594cd4114eea262bcb3f3e39ad67be01aa162e72d6"},
+    {file = "commitizen-4.19.1.tar.gz", hash = "sha256:a98fa17604b2b3777da4a3e23935e9c897dbe4821570ecffa66818d41d86c729"},
 ]
 
 [package.dependencies]
