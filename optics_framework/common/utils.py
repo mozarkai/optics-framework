@@ -367,8 +367,6 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    # Callers pass get_timestamp()'s ISO 8601 form; ':' is not allowed in Windows
-    # file names or in GitHub Actions artifact paths.
     file_stamp = str(time_stamp).replace(":", "-")
     screenshot_file_path = os.path.join(output_dir, f"{file_stamp}-{name}.jpg")
     try:
