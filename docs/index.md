@@ -91,61 +91,61 @@ The wizard asks what you want to automate (Android, iOS, web…), installs the m
 
     Learn about the framework's architecture and capabilities
 
-    [:material-arrow-right: Introduction →](introduction.md)
+    [Introduction](introduction.md)
 
 -   :material-speedometer: **Getting Started**
 
     Set up Optics and run your first test in minutes — guided or step by step
 
-    [:material-arrow-right: Getting Started →](getting-started.md)
+    [Getting Started](getting-started.md)
 
 -   :material-office-building: **Architecture**
 
     Deep dive into the framework's architecture, components, and design patterns
 
-    [:material-arrow-right: Architecture →](architecture.md)
+    [Architecture](architecture.md)
 
 -   :material-routes: **User Workflow**
 
     Understand the typical workflow for creating and running tests
 
-    [:material-arrow-right: User Workflow →](user_workflow.md)
+    [User Workflow](user_workflow.md)
 
 -   :material-toolbox: **Usage**
 
     Comprehensive guides for CLI and keyword usage
 
-    [:material-arrow-right: Usage →](usage/usage.md)
+    [Usage](usage/usage.md)
 
 -   :material-api: **API Reference**
 
     Python API documentation and REST API usage guides
 
-    [:material-arrow-right: API Reference →](api_reference.md)
+    [API Reference](api_reference.md)
 
 -   :material-code-tags: **Developer Guide**
 
     Learn how to extend and contribute to the framework
 
-    [:material-arrow-right: Developer Guide →](contribution/developer_guide.md)
+    [Developer Guide](contribution/developer_guide.md)
 
 -   :material-hand-heart: **Contributing**
 
     Guidelines for contributing to the project
 
-    [:material-arrow-right: Contributing →](contribution/contributing_guidelines.md)
+    [Contributing](contribution/contributing_guidelines.md)
 
 -   :material-help-circle: **Help Wanted**
 
     Areas where we need your help to improve the framework
 
-    [:material-arrow-right: Help Wanted →](contribution/help_wanted.md)
+    [Help Wanted](contribution/help_wanted.md)
 
 -   :material-shield-account: **Code of Conduct**
 
     Our community standards and expectations
 
-    [:material-arrow-right: Code of Conduct →](contribution/code_of_conduct.md)
+    [Code of Conduct](contribution/code_of_conduct.md)
 
 </div>
 
