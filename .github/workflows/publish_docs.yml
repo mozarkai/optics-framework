@@ -32,7 +32,8 @@ jobs:
           eval "$(python3 scripts/lock_pins.py)"
           pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
             mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
-            mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION
+            mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION \
+            pymdown-extensions==$PYMDOWN_EXTENSIONS_VERSION
       - run: mkdocs build
       - if: github.event_name == 'pull_request'
         run: git fetch origin "${{ github.event.pull_request.base.ref }}"
@@ -84,7 +85,8 @@ jobs:
           eval "$(python3 scripts/lock_pins.py)"
           pip install --no-cache-dir --only-binary=:all: --no-binary=jsmin,csscompressor \
             mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
-            mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION
+            mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION \
+            pymdown-extensions==$PYMDOWN_EXTENSIONS_VERSION
       - run: mkdocs build --site-dir /tmp/docs-site
       - name: Publish site to gh-pages, preserving PR previews
         run: |
