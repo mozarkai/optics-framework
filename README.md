@@ -178,6 +178,8 @@ Add Contact with Contact App,Verify Contact is Added
 | **REST API** | `optics serve` | Remote/orchestrated execution, live workspace streaming over SSE |
 | **MCP server** | `optics mcp` | Letting an AI agent drive a real device |
 
+The last two also ship as container images — `Docker/` holds a Dockerfile per server plus a Compose file, and the [Docker Deployment guide](https://mozarkai.github.io/optics-framework/usage/docker_deployment/) covers building, vision-backend build args, and reaching Appium from inside a container.
+
 <details>
 <summary><b>optics live — turning a session into a reusable module</b></summary>
 
@@ -352,6 +354,8 @@ poetry run ruff check --fix .        # lint
 poetry run pre-commit run --all-files
 poetry run mkdocs serve              # docs preview
 ```
+
+Or skip the setup entirely: `.devcontainer/` builds that environment for you in a GitHub Codespace or VS Code's Dev Containers — see [Dev Container and Codespaces](https://mozarkai.github.io/optics-framework/contribution/dev_container/).
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by commitizen in the commit-msg hook.
 
