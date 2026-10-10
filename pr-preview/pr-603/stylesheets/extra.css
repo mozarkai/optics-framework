@@ -1,0 +1,34 @@
+/* Optics brand colours on top of Material's own components. */
+
+:root {
+  --md-primary-fg-color: #002CDE;
+  --md-primary-fg-color--light: #3D5BF0;
+  --md-primary-fg-color--dark: #0021A8;
+  --md-accent-fg-color: #002CDE;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #1A2470;
+  --md-primary-fg-color--light: #2B3790;
+  --md-primary-fg-color--dark: #10174D;
+  --md-accent-fg-color: #7086FF;
+  --md-typeset-a-color: #7086FF;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  letter-spacing: -0.02em;
+}
+
+/* Slate's navy primary is too dark for button text and outlines. */
+[data-md-color-scheme="slate"] .md-typeset .md-button {
+  color: #7086FF;
+  border-color: #7086FF;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  color: #fff;
+  background-color: #002CDE;
+  border-color: #002CDE;
+}
