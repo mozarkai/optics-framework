@@ -1,11 +1,34 @@
+import asyncio
 from typing import Optional, Any, List
 import numpy as np
 import cv2
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.sync_api import Page
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.async_utils import run_async
+
+
+# Headed Chromium under a virtual display (xvfb on CI runners) intermittently fails
+# Page.captureScreenshot with this message while the page is loaded and visible;
+# the same call succeeds a moment later.
+_TRANSIENT_CAPTURE_ERROR = "Unable to capture screenshot"
+_CAPTURE_RETRY_DELAYS_S = (0.1, 0.3)
+
+
+async def _screenshot_viewport(page) -> bytes:
+    for delay in _CAPTURE_RETRY_DELAYS_S:
+        try:
+            return await page.screenshot(full_page=False)
+        except PlaywrightError as e:
+            if _TRANSIENT_CAPTURE_ERROR not in str(e):
+                raise
+            internal_logger.debug(
+                "Playwright screenshot failed transiently, retrying in %.1fs", delay
+            )
+            await asyncio.sleep(delay)
+    return await page.screenshot(full_page=False)
 
 
 class PlaywrightScreenshot(ElementSourceInterface):
@@ -52,8 +75,7 @@ class PlaywrightScreenshot(ElementSourceInterface):
         page = self._require_page()
         try:
             internal_logger.debug("Capturing Playwright screenshot")
-            # Use run_async to handle async page.screenshot() if page is from async_api.
-            return run_async(page.screenshot(full_page=False))
+            return run_async(_screenshot_viewport(page))
         except Exception as e:
             internal_logger.warning(
                 "Error capturing Playwright screenshot bytes: %s", e, exc_info=True

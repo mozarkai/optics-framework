@@ -8,7 +8,7 @@ assert_presence time-allocation math, and the native screenshot-bytes fast path.
 import base64
 import time
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import cv2
 import numpy as np
@@ -322,13 +322,12 @@ class TestSeleniumScreenshotBytes:
 class TestPlaywrightScreenshotBytes:
     """PlaywrightScreenshot returns page.screenshot()'s PNG bytes verbatim (no decode)."""
 
-    def test_returns_page_screenshot_bytes(self, monkeypatch):
+    def test_returns_page_screenshot_bytes(self):
         pytest.importorskip("playwright")
         import optics_framework.engines.elementsources.playwright_screenshot as pw
-        monkeypatch.setattr(pw, "run_async", lambda coro: coro)
         png = b"\x89PNG\r\n\x1a\nPLAYWRIGHT"
         page = MagicMock()
-        page.screenshot.return_value = png
+        page.screenshot = AsyncMock(return_value=png)
         src = pw.PlaywrightScreenshot(driver=SimpleNamespace(page=page))
         assert src.capture_screenshot_bytes() == png
 
