@@ -84,7 +84,9 @@ TEXT_ENGINES = EngineCategory(
 LLM_ENGINES = EngineCategory(
     name="LLM Engine",
     engines={
-        "Gemini": EngineBackend(name="Gemini", extra="llm", packages=["google-genai"], aliases=["llm"]),
+        "Gemini": EngineBackend(name="Gemini", extra="gemini", packages=["google-genai"]),
+        "OpenAI": EngineBackend(name="OpenAI", extra="openai", packages=["openai"]),
+        "Anthropic": EngineBackend(name="Anthropic", extra="anthropic", packages=["anthropic"]),
     }
 )
 
@@ -99,6 +101,7 @@ _BUNDLES: Dict[str, List[EngineBackend]] = {
     "mobile": [ACTION_DRIVERS.engines["Appium"]],
     "web": [ACTION_DRIVERS.engines["Selenium"], ACTION_DRIVERS.engines["Playwright"]],
     "vision": list(TEXT_ENGINES.engines.values()),
+    "llm": list(LLM_ENGINES.engines.values()),
     "all": list(ALL_ENGINES.values()),
 }
 

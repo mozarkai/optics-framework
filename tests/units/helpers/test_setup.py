@@ -125,6 +125,7 @@ class TestResolveEngines:
             ("mobile", ["appium"]),
             ("web", ["selenium", "playwright"]),
             ("vision", ["easyocr", "pytesseract", "google-vision"]),
+            ("llm", ["gemini", "openai", "anthropic"]),
         ],
     )
     def test_bundle_expands_to_member_engines(self, bundle, expected_extras):
