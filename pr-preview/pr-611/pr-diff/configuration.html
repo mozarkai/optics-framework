@@ -1,0 +1,187 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/configuration.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_170">170</td><td nowrap="nowrap">| **Drivers** | `appium`, `selenium`, `playwright`, `ble` | See Driver Sources tab |</td><td class="diff_next"></td><td class="diff_header" id="to1_170">170</td><td nowrap="nowrap">| **Drivers** | `appium`, `selenium`, `playwright`, `ble` | See Driver Sources tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_171">171</td><td nowrap="nowrap">| **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |</td><td class="diff_next"></td><td class="diff_header" id="to1_171">171</td><td nowrap="nowrap">| **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_172">172</td><td nowrap="nowrap">| **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |</td><td class="diff_next"></td><td class="diff_header" id="to1_172">172</td><td nowrap="nowrap">| **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_173">173</td><td nowrap="nowrap">| **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |</td><td class="diff_next"></td><td class="diff_header" id="to1_173">173</td><td nowrap="nowrap">| **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="from1_174">174</td><td nowrap="nowrap">| **LLM Models** | `gemini` | See LLM Models tab |</td><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="to1_174">174</td><td nowrap="nowrap">| **LLM Models** | `gemini`<span class="diff_add">, `openai`, `anthropic`</span> | See LLM Models tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_175">175</td><td nowrap="nowrap">| **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |</td><td class="diff_next"></td><td class="diff_header" id="to1_175">175</td><td nowrap="nowrap">| **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_176">176</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_176">176</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_177">177</td><td nowrap="nowrap">## Configuration Structure</td><td class="diff_next"></td><td class="diff_header" id="to1_177">177</td><td nowrap="nowrap">## Configuration Structure</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_178">178</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_178">178</td><td nowrap="nowrap"></td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__1"></td><td class="diff_header" id="from1_810">810</td><td nowrap="nowrap">above, and `optics live`'s natural-language mode (`Ctrl-N`). Both stay inert until an entry</td><td class="diff_next"></td><td class="diff_header" id="to1_810">810</td><td nowrap="nowrap">above, and `optics live`'s natural-language mode (`Ctrl-N`). Both stay inert until an entry</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_811">811</td><td nowrap="nowrap">below is enabled — the backend SDK is only imported when its engine is enabled, so leaving</td><td class="diff_next"></td><td class="diff_header" id="to1_811">811</td><td nowrap="nowrap">below is enabled — the backend SDK is only imported when its engine is enabled, so leaving</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_812">812</td><td nowrap="nowrap">this section out has no cost for projects that don't use either feature.</td><td class="diff_next"></td><td class="diff_header" id="to1_812">812</td><td nowrap="nowrap">this section out has no cost for projects that don't use either feature.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_813">813</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_813">813</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="to1_814">814</td><td nowrap="nowrap"><span class="diff_add">Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_815">815</td><td nowrap="nowrap"><span class="diff_add">`llm` extra installs all three. Keys are read from environment variables only. If you enable</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_816">816</td><td nowrap="nowrap"><span class="diff_add">more than one entry, a failed call falls through to the next one in list order.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_817">817</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_818">818</td><td nowrap="nowrap"><span class="diff_add">| You have | Engine |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_819">819</td><td nowrap="nowrap"><span class="diff_add">|----------|--------|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_820">820</td><td nowrap="nowrap"><span class="diff_add">| A Gemini API key, or Vertex AI | `gemini` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_821">821</td><td nowrap="nowrap"><span class="diff_add">| An OpenAI key, OpenRouter, Azure OpenAI, or a local server (Ollama, vLLM, LM Studio) | `openai` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_822">822</td><td nowrap="nowrap"><span class="diff_add">| A Claude key, or Claude on Amazon Bedrock / Google Vertex AI | `anthropic` |</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__2"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_823">823</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_814">814</td><td nowrap="nowrap">=== "Gemini"</td><td class="diff_next"></td><td class="diff_header" id="to1_824">824</td><td nowrap="nowrap">=== "Gemini"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_815">815</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_825">825</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_816">816</td><td nowrap="nowrap">    **Purpose:** Google Gemini via the `google-genai` SDK, supporting both the Gemini</td><td class="diff_next"></td><td class="diff_header" id="to1_826">826</td><td nowrap="nowrap">    **Purpose:** Google Gemini via the `google-genai` SDK, supporting both the Gemini</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="from1_817">817</td><td nowrap="nowrap"><span class="diff_sub">    Developer API and Vertex AI. Requires the optional `llm` extra:</span></td><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="to1_827">827</td><td nowrap="nowrap"><span class="diff_add">    Developer API and Vertex AI. Install: `pip install 'optics-framework[gemini]'`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_818">818</td><td nowrap="nowrap"><span class="diff_sub">    `pip install 'optics-framework[llm]'`.</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_819">819</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_828">828</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_820">820</td><td nowrap="nowrap">    ```yaml</td><td class="diff_next"></td><td class="diff_header" id="to1_829">829</td><td nowrap="nowrap">    ```yaml</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_821">821</td><td nowrap="nowrap">    llm_models:</td><td class="diff_next"></td><td class="diff_header" id="to1_830">830</td><td nowrap="nowrap">    llm_models:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_822">822</td><td nowrap="nowrap">      - gemini:</td><td class="diff_next"></td><td class="diff_header" id="to1_831">831</td><td nowrap="nowrap">      - gemini:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__3"></td><td class="diff_header" id="from1_842">842</td><td nowrap="nowrap">    !!! warning "Don't hardcode credentials"</td><td class="diff_next"></td><td class="diff_header" id="to1_851">851</td><td nowrap="nowrap">    !!! warning "Don't hardcode credentials"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_843">843</td><td nowrap="nowrap">        `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a</td><td class="diff_next"></td><td class="diff_header" id="to1_852">852</td><td nowrap="nowrap">        `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_844">844</td><td nowrap="nowrap">        warning when used — prefer the environment variables above so keys never end up in</td><td class="diff_next"></td><td class="diff_header" id="to1_853">853</td><td nowrap="nowrap">        warning when used — prefer the environment variables above so keys never end up in</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_845">845</td><td nowrap="nowrap">        a committed `config.yaml`.</td><td class="diff_next"></td><td class="diff_header" id="to1_854">854</td><td nowrap="nowrap">        a committed `config.yaml`.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_855">855</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_856">856</td><td nowrap="nowrap"><span class="diff_add">=== "OpenAI-compatible"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_857">857</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_858">858</td><td nowrap="nowrap"><span class="diff_add">    **Purpose:** any server that speaks the OpenAI Chat Completions API, via the `openai`</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_859">859</td><td nowrap="nowrap"><span class="diff_add">    SDK. Without `url` it calls OpenAI; with one it calls that server instead.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_860">860</td><td nowrap="nowrap"><span class="diff_add">    Install: `pip install 'optics-framework[openai]'`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_861">861</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_862">862</td><td nowrap="nowrap"><span class="diff_add">    ```yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_863">863</td><td nowrap="nowrap"><span class="diff_add">    llm_models:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_864">864</td><td nowrap="nowrap"><span class="diff_add">      - openai:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_865">865</td><td nowrap="nowrap"><span class="diff_add">          enabled: true</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_866">866</td><td nowrap="nowrap"><span class="diff_add">          url: https://openrouter.ai/api/v1   # omit for OpenAI; or OPENAI_BASE_URL</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_867">867</td><td nowrap="nowrap"><span class="diff_add">          capabilities:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_868">868</td><td nowrap="nowrap"><span class="diff_add">            model: anthropic/claude-sonnet-5-5  # required; the name the server uses</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_869">869</td><td nowrap="nowrap"><span class="diff_add">            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_870">870</td><td nowrap="nowrap"><span class="diff_add">            # response_format: json_object     # for servers without JSON-schema output</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_871">871</td><td nowrap="nowrap"><span class="diff_add">            # temperature: 0.0</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_872">872</td><td nowrap="nowrap"><span class="diff_add">    ```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_873">873</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_874">874</td><td nowrap="nowrap"><span class="diff_add">    | Server | `url` | Key |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_875">875</td><td nowrap="nowrap"><span class="diff_add">    |--------|-------|-----|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_876">876</td><td nowrap="nowrap"><span class="diff_add">    | OpenAI | (omit) | `OPENAI_API_KEY` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_877">877</td><td nowrap="nowrap"><span class="diff_add">    | OpenRouter | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` via `api_key_env` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_878">878</td><td nowrap="nowrap"><span class="diff_add">    | Azure OpenAI | `https://&lt;resource&gt;.openai.azure.com/openai/v1/` | your Azure key via `api_key_env` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_879">879</td><td nowrap="nowrap"><span class="diff_add">    | Ollama | `http://localhost:11434/v1` | none |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_880">880</td><td nowrap="nowrap"><span class="diff_add">    | vLLM / LM Studio | the server's `/v1` URL | none |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_881">881</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_882">882</td><td nowrap="nowrap"><span class="diff_add">    Natural-language mode and self-heal send screenshots, so pick a model that accepts</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_883">883</td><td nowrap="nowrap"><span class="diff_add">    images. Responses use strict JSON-schema output by default; if the server rejects it,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_884">884</td><td nowrap="nowrap"><span class="diff_add">    set `response_format: json_object` and the schema is sent in the prompt instead.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_885">885</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_886">886</td><td nowrap="nowrap"><span class="diff_add">=== "Anthropic"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_887">887</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_888">888</td><td nowrap="nowrap"><span class="diff_add">    **Purpose:** Claude via the `anthropic` SDK, on the Claude API, Amazon Bedrock, or</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_889">889</td><td nowrap="nowrap"><span class="diff_add">    Google Vertex AI. Install: `pip install 'optics-framework[anthropic]'` (for Bedrock</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_890">890</td><td nowrap="nowrap"><span class="diff_add">    or Vertex, also `pip install 'anthropic[bedrock]'` or `'anthropic[vertex]'`).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_891">891</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_892">892</td><td nowrap="nowrap"><span class="diff_add">    ```yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_893">893</td><td nowrap="nowrap"><span class="diff_add">    llm_models:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_894">894</td><td nowrap="nowrap"><span class="diff_add">      - anthropic:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_895">895</td><td nowrap="nowrap"><span class="diff_add">          enabled: true</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_896">896</td><td nowrap="nowrap"><span class="diff_add">          capabilities:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_897">897</td><td nowrap="nowrap"><span class="diff_add">            model: claude-sonnet-5-5   # required; Bedrock/Vertex use their own model IDs</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_898">898</td><td nowrap="nowrap"><span class="diff_add">            # platform: bedrock        # anthropic (default) | bedrock | vertex</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_899">899</td><td nowrap="nowrap"><span class="diff_add">            # region: us-east-1        # Bedrock or Vertex region</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_900">900</td><td nowrap="nowrap"><span class="diff_add">            # project: your-project    # Vertex project</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_901">901</td><td nowrap="nowrap"><span class="diff_add">            # max_tokens: 4096</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_902">902</td><td nowrap="nowrap"><span class="diff_add">            # temperature: 0.0</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_903">903</td><td nowrap="nowrap"><span class="diff_add">    ```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_904">904</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_905">905</td><td nowrap="nowrap"><span class="diff_add">    | Platform | Credentials |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_906">906</td><td nowrap="nowrap"><span class="diff_add">    |----------|-------------|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_907">907</td><td nowrap="nowrap"><span class="diff_add">    | `anthropic` | `ANTHROPIC_API_KEY`, or the variable named by `api_key_env` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_908">908</td><td nowrap="nowrap"><span class="diff_add">    | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_909">909</td><td nowrap="nowrap"><span class="diff_add">    | `vertex` | Google application default credentials |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_846">846</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_910">910</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_847">847</td><td nowrap="nowrap">---</td><td class="diff_next"></td><td class="diff_header" id="to1_911">911</td><td nowrap="nowrap">---</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_848">848</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_912">912</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_849">849</td><td nowrap="nowrap">## Dependency Configuration Structure</td><td class="diff_next"></td><td class="diff_header" id="to1_913">913</td><td nowrap="nowrap">## Dependency Configuration Structure</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
