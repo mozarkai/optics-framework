@@ -5,6 +5,8 @@ import pytest
 
 from optics_framework.engines.llm_models import gemini
 
+pytest.importorskip("google.genai", reason="gemini engine tests need the llm extra")
+
 pytestmark = pytest.mark.white_box
 
 
