@@ -225,7 +225,7 @@ that's already integrated inherits it with no `start_session` changes:
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `OPTICS_AI_SELF_HEAL` | off | `true`/`1`/`yes`/`on` (case-insensitive) enables it |
-| `OPTICS_LLM_PROVIDER` | `gemini` | which `llm_models` entry to enable |
+| `OPTICS_LLM_PROVIDER` | `gemini` | which `llm_models` entry to enable: `gemini`, `openai` or `anthropic` |
 | `OPTICS_LLM_MODEL` | provider default | optional model name override |
 
 Because a single `serve`/`mcp` process is multi-tenant, each of these is also a
@@ -233,9 +233,12 @@ Because a single `serve`/`mcp` process is multi-tenant, each of these is also a
 `llm_model`. A per-session value always wins over the matching env-var default,
 so a caller can opt in/out and pick its own model without being locked to the
 operator's choice; anything left unset falls back to the env default (and then to
-`gemini`). LLM credentials (e.g. `GOOGLE_API_KEY`/`GEMINI_API_KEY` for Gemini)
-always come from the provider's own environment variables — never through
-`start_session` — so choosing a provider/model per session exposes no secrets.
+`gemini`). LLM credentials always come from the provider's own environment
+variables (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — never through
+`start_session` — so choosing a provider/model per session exposes no secrets. The
+same goes for the endpoint: to route the `openai` engine to OpenRouter or a local
+server, the operator sets `OPENAI_BASE_URL`; a caller cannot point the server's key
+at a URL of its choosing.
 
 When self-heal recovers a keyword, the call still succeeds, and the result carries
 the recovery so a client can learn *how* it was fixed:

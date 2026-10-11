@@ -171,7 +171,7 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
 | **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |
 | **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |
 | **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |
-| **LLM Models** | `gemini` | See LLM Models tab |
+| **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |
 | **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |
 
 ## Configuration Structure
@@ -811,11 +811,20 @@ above, and `optics live`'s natural-language mode (`Ctrl-N`). Both stay inert unt
 below is enabled — the backend SDK is only imported when its engine is enabled, so leaving
 this section out has no cost for projects that don't use either feature.
 
+Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the
+`llm` extra installs all three. Keys are read from environment variables only. If you enable
+more than one entry, a failed call falls through to the next one in list order.
+
+| You have | Engine |
+|----------|--------|
+| A Gemini API key, or Vertex AI | `gemini` |
+| An OpenAI key, OpenRouter, Azure OpenAI, or a local server (Ollama, vLLM, LM Studio) | `openai` |
+| A Claude key, or Claude on Amazon Bedrock / Google Vertex AI | `anthropic` |
+
 === "Gemini"
 
     **Purpose:** Google Gemini via the `google-genai` SDK, supporting both the Gemini
-    Developer API and Vertex AI. Requires the optional `llm` extra:
-    `pip install 'optics-framework[llm]'`.
+    Developer API and Vertex AI. Install: `pip install 'optics-framework[gemini]'`.
 
     ```yaml
     llm_models:
@@ -843,6 +852,61 @@ this section out has no cost for projects that don't use either feature.
         `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a
         warning when used — prefer the environment variables above so keys never end up in
         a committed `config.yaml`.
+
+=== "OpenAI-compatible"
+
+    **Purpose:** any server that speaks the OpenAI Chat Completions API, via the `openai`
+    SDK. Without `url` it calls OpenAI; with one it calls that server instead.
+    Install: `pip install 'optics-framework[openai]'`.
+
+    ```yaml
+    llm_models:
+      - openai:
+          enabled: true
+          url: https://openrouter.ai/api/v1   # omit for OpenAI; or OPENAI_BASE_URL
+          capabilities:
+            model: anthropic/claude-sonnet-5-5  # required; the name the server uses
+            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY
+            # response_format: json_object     # for servers without JSON-schema output
+            # temperature: 0.0
+    ```
+
+    | Server | `url` | Key |
+    |--------|-------|-----|
+    | OpenAI | (omit) | `OPENAI_API_KEY` |
+    | OpenRouter | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` via `api_key_env` |
+    | Azure OpenAI | `https://<resource>.openai.azure.com/openai/v1/` | your Azure key via `api_key_env` |
+    | Ollama | `http://localhost:11434/v1` | none |
+    | vLLM / LM Studio | the server's `/v1` URL | none |
+
+    Natural-language mode and self-heal send screenshots, so pick a model that accepts
+    images. Responses use strict JSON-schema output by default; if the server rejects it,
+    set `response_format: json_object` and the schema is sent in the prompt instead.
+
+=== "Anthropic"
+
+    **Purpose:** Claude via the `anthropic` SDK, on the Claude API, Amazon Bedrock, or
+    Google Vertex AI. Install: `pip install 'optics-framework[anthropic]'` (for Bedrock
+    or Vertex, also `pip install 'anthropic[bedrock]'` or `'anthropic[vertex]'`).
+
+    ```yaml
+    llm_models:
+      - anthropic:
+          enabled: true
+          capabilities:
+            model: claude-sonnet-5-5   # required; Bedrock/Vertex use their own model IDs
+            # platform: bedrock        # anthropic (default) | bedrock | vertex
+            # region: us-east-1        # Bedrock or Vertex region
+            # project: your-project    # Vertex project
+            # max_tokens: 4096
+            # temperature: 0.0
+    ```
+
+    | Platform | Credentials |
+    |----------|-------------|
+    | `anthropic` | `ANTHROPIC_API_KEY`, or the variable named by `api_key_env` |
+    | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |
+    | `vertex` | Google application default credentials |
 
 ---
 

@@ -47,14 +47,14 @@ python3 -m venv venv && source venv/bin/activate
 pip install "optics-framework[appium,easyocr]"
 ```
 
-Most extra names match the `config.yaml` source keys, so the word you install is usually the word you enable (exceptions: `llm` enables the `gemini` engine, `google-vision` enables `google_vision`, and the bundles and `mcp` aren't config keys):
+Most extra names match the `config.yaml` source keys, so the word you install is usually the word you enable (exceptions: `google-vision` enables `google_vision`, and the bundles and `mcp` aren't config keys):
 
 | | |
 |---|---|
 | **Drivers** | `appium` · `selenium` · `playwright` · `ble` |
 | **OCR** | `easyocr` · `pytesseract` · `google-vision` |
-| **AI** | `llm` (natural-language mode + self-heal) · `mcp` (MCP server) |
-| **Bundles** | `mobile` · `web` · `vision` · `all` |
+| **AI** | `gemini` · `openai` · `anthropic` (natural-language mode + self-heal) · `mcp` (MCP server) |
+| **Bundles** | `mobile` · `web` · `vision` · `llm` · `all` |
 
 `optics setup` installs the drivers, OCR and LLM engines above (and the bundles) by name — pinned to your installed Optics version — and bare `optics setup` opens a TUI picker. `optics quickstart` goes one step further and offers the right extras for the platform you pick:
 
@@ -277,26 +277,33 @@ log_level: INFO
 | **Element sources** | `appium_find_element` · `appium_page_source` · `appium_screenshot` · `selenium_*` · `playwright_*` · `camera_screenshot` |
 | **Text detection** | `easyocr` · `pytesseract` · `google_vision` · `remote_ocr` |
 | **Image detection** | `templatematch` · `remote_oir` |
-| **LLM** | `gemini` |
+| **LLM** | `gemini` · `openai` (and any OpenAI-compatible server) · `anthropic` |
 
 ### Enabling the LLM features
 
-The `llm_models` block powers both natural-language mode in `optics live` (`Ctrl-N`) and AI self-heal. Install the extra (`pip install "optics-framework[llm]"`), then add:
+The `llm_models` block powers both natural-language mode in `optics live` (`Ctrl-N`) and AI self-heal. Pick the engine that matches the account you already have, install its extra, and enable it:
+
+| You have | Install | Enable |
+|---|---|---|
+| A Gemini API key, or Vertex AI | `optics-framework[gemini]` | `gemini` |
+| An OpenAI key | `optics-framework[openai]` | `openai` with a `model` |
+| An OpenRouter key (any hosted model) | `optics-framework[openai]` | `openai` with `url: https://openrouter.ai/api/v1` |
+| A local model (Ollama, vLLM, LM Studio) | `optics-framework[openai]` | `openai` with the server's `url` |
+| A Claude key, or Claude on Bedrock / Vertex | `optics-framework[anthropic]` | `anthropic` with a `model` |
 
 ```yaml
 llm_models:
-  - gemini:
+  - openai:
       enabled: true
+      url: https://openrouter.ai/api/v1         # omit for OpenAI itself
       capabilities:
-        model: gemini-2.5-flash    # optional; this is the default
-        # use_vertexai: true       # optional; else read from the environment
-        # project: my-gcp-project  # optional (Vertex)
-        # location: us-east4       # optional (Vertex)
+        model: anthropic/claude-sonnet-5-5
+        api_key_env: OPENROUTER_API_KEY         # default OPENAI_API_KEY
 
-ai_self_heal: true                 # opt into the LLM backstop; default false
+ai_self_heal: true                              # opt into the LLM backstop; default false
 ```
 
-Credentials are read from the environment by the `google-genai` SDK — `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for the Gemini Developer API, or `GOOGLE_GENAI_USE_VERTEXAI` + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` / `GOOGLE_APPLICATION_CREDENTIALS` for Vertex AI. **Never commit keys to `config.yaml`.** With every `capabilities` key omitted the SDK auto-detects the backend. `google-genai` is imported only when `gemini` is enabled, and a misconfigured LLM degrades to "no self-heal" rather than a hard failure.
+Keys always come from environment variables (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or the variable `api_key_env` names). **Never commit keys to `config.yaml`.** Enable more than one entry and Optics falls back to the next when a call fails. A misconfigured LLM degrades to "no self-heal" rather than a hard failure.
 
 Full reference: [Configuration](https://optics-framework.org/docs/reference/config). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
 

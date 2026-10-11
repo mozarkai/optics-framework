@@ -131,45 +131,32 @@ replayable script, not a transcript of everything it tried. An incomplete instru
 result it safely falls back to keeping every successful step, so a working recording is never
 lost. Three steps to enable AI mode:
 
-**1. Install the optional LLM extra** (the SDK is not in the base install):
+**1. Install the extra for your provider** (the SDKs are not in the base install):
 
 ```bash
-pip install 'optics-framework[llm]'
-# or, from a clone with poetry:
-poetry install --extras llm
+pip install 'optics-framework[gemini]'    # or [openai], [anthropic]; [llm] installs all three
 ```
 
-**2. Provide Gemini credentials** (read from the environment — don't hardcode them).
-Pick one backend:
+**2. Export your key** (read from the environment — don't hardcode it):
 
 ```bash
-# A. Gemini Developer API (key from Google AI Studio)
-export GEMINI_API_KEY=your_key            # GOOGLE_API_KEY also works
-
-# B. Vertex AI
-export GOOGLE_GENAI_USE_VERTEXAI=true
-export GOOGLE_CLOUD_PROJECT=your-project
-export GOOGLE_CLOUD_LOCATION=us-east4
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service_account.json
+export GEMINI_API_KEY=your_key            # or OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
 ```
 
-**3. Enable `gemini` in your project's `config.yaml`** (alongside your driver/element sources):
+**3. Enable the engine in your project's `config.yaml`** (alongside your driver/element sources):
 
 ```yaml
 llm_models:
   - gemini:
       enabled: true
-      capabilities:
-        model: gemini-2.5-flash    # optional; this is the default
-        # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI
-        # project / location       # optional Vertex overrides; else env vars
 ```
 
-All `capabilities` are optional — with none set, the SDK auto-detects everything from the
-environment variables above. The `google-genai` SDK is **only imported when `gemini` is
-enabled**, so non-AI users are unaffected. If you toggle `Ctrl-N` without an enabled
-`llm_models` entry, the session simply tells you to add one; if the extra isn't installed,
-you get a clear install hint.
+The `openai` engine also reaches OpenRouter, Azure OpenAI and local servers such as Ollama,
+and `anthropic` also runs Claude on Bedrock or Vertex AI. See
+[Configuration → LLM Models](../configuration.md#llm-models) for each engine's options. An
+engine's SDK is **only imported when that engine is enabled**, so non-AI users are
+unaffected. If you toggle `Ctrl-N` without an enabled `llm_models` entry, the session
+tells you to add one; if the extra isn't installed, you get the install command.
 
 ## Recording & saving
 
