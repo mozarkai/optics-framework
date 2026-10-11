@@ -286,3 +286,15 @@ class TestOneConditionOneSeverity:
             text_detection=[{"easyocr": DependencyConfig(enabled=True)}])
         with _absent():
             runner._require_installed_engines()
+
+    def test_runners_do_not_stop_for_a_missing_llm_package(self, tmp_path):
+        """The LLM resolves lazily and self-heal degrades to inert, so a
+        missing google-genai must never refuse to start — even with a gemini
+        entry enabled, the run would never touch it."""
+        folder = _project(tmp_path)
+        runner = execute_module.BaseRunner.__new__(execute_module.BaseRunner)
+        runner.folder_path = folder
+        runner.config = Config(
+            llm_models=[{"gemini": DependencyConfig(enabled=True)}])
+        with _absent("google-genai"):
+            runner._require_installed_engines()

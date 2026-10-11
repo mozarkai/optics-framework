@@ -32,6 +32,7 @@ from optics_framework.common.models import (
     ErrorDefinitions,
 )
 from optics_framework.helper import engine_requirements
+from optics_framework.helper.setup import LLM_ENGINES
 from optics_framework.helper.abort import abort_with_panel
 
 
@@ -847,8 +848,14 @@ class BaseRunner:
         them own this one.
 
         Same condition and same words as ``optics doctor``'s ⚠️ rows; only the
-        severity differs, because this command was about to load the engine."""
-        missing = engine_requirements.missing_engines(self.config)
+        severity differs, because this command was about to load the engine.
+
+        The LLM is the exception: it resolves lazily and AI self-heal degrades
+        to inert when its package is absent, so neither command fatally loads
+        it — a missing ``google-genai`` must not refuse to start a run that
+        would never touch it."""
+        missing = [m for m in engine_requirements.missing_engines(self.config)
+                   if m.engine not in LLM_ENGINES.engines.values()]
         if not missing:
             return
         report = engine_requirements.report(missing, self.folder_path)
