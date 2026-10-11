@@ -1256,7 +1256,7 @@ class LiveController:
     def natural_language_available(self) -> bool:
         """True if an LLM engine is enabled in config (an ``llm_models`` entry).
 
-        Instantiation errors (missing ``[llm]`` extra, bad credentials) are not probed
+        Instantiation errors (missing engine extra, bad credentials) are not probed
         here — they surface with an actionable message in :meth:`run_natural_language`.
         """
         if self._nl_available is None:
@@ -1331,11 +1331,12 @@ class LiveController:
         """Build (and cache) the NL agent. Raises OpticsError if no LLM is usable."""
         if self._nl_agent is not None:
             return self._nl_agent
-        llm = self.session.optics.get_llm()  # may raise E0601 if the [llm] extra is missing
+        llm = self.session.optics.get_llm()  # may raise E0601 if the engine's extra is missing
         if llm is None or not getattr(llm, "instances", None):
             raise OpticsError(
                 Code.E0501,
-                message="No LLM engine enabled. Enable a 'gemini' entry under llm_models in config.yaml.",
+                message="No LLM engine enabled. Enable a gemini, openai or anthropic entry "
+                "under llm_models in config.yaml.",
             )
         self._nl_agent = NaturalLanguageAgent(
             llm=llm,
