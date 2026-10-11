@@ -29,9 +29,12 @@ from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
+from optics_framework.helper.engine_requirements import (
+    enabled_keys, missing_engines)
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
-from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
+from optics_framework.helper.setup import (
+    ALL_ENGINES, DISTRIBUTION_NAME, engine_for)
 
 _console = Console()
 
@@ -94,7 +97,7 @@ def check_engines() -> list[Check]:
             rows.append(Check(backend.name, "ok", f"{package} {version(package)}"))
         except PackageNotFoundError:
             rows.append(Check(backend.name, "warn", f"{package} not installed",
-                              f"optics setup --install {backend.extra}"))
+                              backend.install_hint))
     return rows
 
 
@@ -315,11 +318,24 @@ def validate_project(folder: str) -> list[Check]:
     for driver, cfg in sorted(drivers.items()):
         rows.append(_source_row(driver, sources))
         rows.append(_settings_row(driver, cfg))
+    rows.extend(_engine_rows(data))
 
     if all(row.status == "ok" for row in rows):
         rows.append(Check("config: project", "ok",
                           "driver, element sources and settings look runnable"))
     return rows
+
+
+def _engine_rows(data: dict) -> list[Check]:
+    """A ⚠️ row per engine this project enables whose package is missing.
+
+    The Engines section is a machine-wide inventory, where a missing package is
+    an extra nobody asked for; here the project asked for it, so the row belongs
+    with the rest of what the config promises. Same condition, and the same
+    words, that ``dry_run``/``execute`` refuse to start on."""
+    return [Check(f"config: {item.config_key} engine", "warn",
+                  item.detail, item.hint)
+            for item in missing_engines(data)]
 
 
 def _source_row(driver: str, enabled_sources: set[str]) -> Check:
@@ -378,11 +394,21 @@ _DRIVER_ROW_NAMES = {
 }
 
 
-def _engine_row_names_by_driver() -> dict[str, str]:
-    """Driver config key → the Engines row that carries its Python client.
+def _project_engine_hints(folder: str | None) -> set[str]:
+    """Install commands for every engine the project enables.
 
-    An engine's ``extra`` is also its ``config.yaml`` source key."""
-    return {engine.extra: engine.name for engine in ALL_ENGINES.values()}
+    An enabled engine is one the project asked for, wherever in config.yaml it
+    sits, so a warning pointing at its install command is not an optional extra
+    — the run dies the moment that engine is instantiated. Matching on the hint
+    rather than a row name catches it whether the machine-wide Engines row or
+    the project's own ``config: <key> engine`` row raised it."""
+    if not folder:
+        return set()
+    data, _ = _load_project_yaml(folder)
+    if data is None:
+        return set()
+    engines = (engine_for(key) for key in enabled_keys(data))
+    return {engine.install_hint for engine in engines if engine is not None}
 
 
 def _enabled_driver_names(folder: str) -> set[str]:
@@ -394,18 +420,18 @@ def _enabled_driver_names(folder: str) -> set[str]:
     return set(_enabled_entries(data.get("driver_sources")))
 
 
-def _mandatory_hints(rows: list[Check], drivers: set[str]) -> list[str]:
+def _mandatory_hints(rows: list[Check], drivers: set[str],
+                     engine_hints: set[str]) -> list[str]:
     """Hints of warnings on an ENABLED driver's must-have pieces.
 
     A warning for something the user never enabled (say, Playwright's browser
     while they drive Appium) is an optional extra; a warning for their own
     driver's server/device/browser blocks the first real run and gets called
     out in the closing message. Order follows the rows, deduplicated. An
-    enabled driver's missing Python client blocks just as hard — the server can
-    be up and the device attached, and the run still fails on instantiation."""
-    engine_rows = _engine_row_names_by_driver()
-    required_engines = {engine_rows[driver] for driver in drivers
-                        if driver in engine_rows}
+    enabled engine's missing Python package blocks just as hard — the server can
+    be up and the device attached, and the run still fails on instantiation —
+    so ``engine_hints`` carries the install commands the project laid claim to
+    (`_project_engine_hints`), drivers and OCR/LLM engines alike."""
     hints: list[str] = []
     for row in rows:
         if row.status != "warn" or not row.hint:
@@ -415,7 +441,7 @@ def _mandatory_hints(rows: list[Check], drivers: set[str]) -> list[str]:
              and (row.name == _APPIUM_SERVER
                   or (row.name == _ADB_DEVICES
                       and "no devices attached" in row.detail)))
-            or row.name in required_engines
+            or row.hint in engine_hints
             or any(row.name in names
                    for driver, names in _DRIVER_ROW_NAMES.items()
                    if driver in drivers)
@@ -560,7 +586,9 @@ def diagnose(folder: str | None = None) -> Diagnosis:
                                            _NO_CONFIG_HINT)]))
     rows = [row for _, section_rows in sections for row in section_rows]
     drivers = _enabled_driver_names(folder) if folder else set()
-    return Diagnosis(sections, _mandatory_hints(rows, drivers),
+    return Diagnosis(sections,
+                     _mandatory_hints(rows, drivers,
+                                      _project_engine_hints(folder)),
                      any(row.status == "fail" for row in rows))
 
 

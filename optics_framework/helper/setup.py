@@ -37,6 +37,14 @@ class EngineBackend(BaseModel):
     packages: List[str]  # concrete packages the extra pulls in (shown to the user)
     aliases: List[str] = []  # extra tokens accepted on the CLI
 
+    @property
+    def install_hint(self) -> str:
+        """The command that installs this backend.
+
+        Every surface that meets a missing engine — doctor's rows, generate's
+        warning, the runners' refusal — points at this one string."""
+        return f"optics setup --install {self.extra}"
+
 
 class EngineCategory(BaseModel):
     name: str
@@ -148,6 +156,15 @@ def _alias_index() -> Dict[str, EngineBackend]:
         for token in [engine.name, engine.extra, *engine.aliases]:
             index[_norm(token)] = engine
     return index
+
+
+def engine_for(token: str) -> Optional[EngineBackend]:
+    """The engine backend a config.yaml key or CLI token names, or None.
+
+    None means the token names nothing separately installable: `templatematch`
+    and `remote_ocr` need no extra, and an element source (`appium_page_source`)
+    rides on its driver's."""
+    return _alias_index().get(_norm(token))
 
 
 def _add_request(resolved: List[InstallRequest], engine: EngineBackend, version: Optional[str]) -> None:
