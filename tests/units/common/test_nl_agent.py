@@ -295,8 +295,6 @@ class TestActionSchema:
         assert "params" not in ACTION_SCHEMA["required"]
 
     def test_no_anyof_in_schema(self):
-        # Gemini structured-output anyOf support is unreliable; the schema must avoid it.
-
         assert "anyOf" not in json.dumps(ACTION_SCHEMA)
 
 
@@ -458,7 +456,7 @@ class TestGeminiMissingDependency:
         with pytest.raises(OpticsError) as exc_info:
             gemini.GeminiLLM({"capabilities": {}})
         assert exc_info.value.code == Code.E0601
-        assert "optics-framework[llm]" in exc_info.value.message
+        assert "optics-framework[gemini]" in exc_info.value.message
 
 
 class TestCurationSchema:
