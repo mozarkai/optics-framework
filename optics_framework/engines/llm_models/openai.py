@@ -46,6 +46,7 @@ class OpenAILLM(LLMInterface):
             )
         self.model_name: str = model
         self.temperature: float | None = caps.get("temperature")
+        self.max_tokens: int | None = caps.get("max_tokens")
         self.response_format: str = caps.get("response_format", "json_schema")
         if self.response_format not in _RESPONSE_FORMATS:
             raise OpticsError(
@@ -101,6 +102,8 @@ class OpenAILLM(LLMInterface):
         effective_temperature = self.temperature if temperature is None else temperature
         if effective_temperature is not None:
             request["temperature"] = effective_temperature
+        if self.max_tokens is not None:
+            request["max_completion_tokens"] = self.max_tokens
         if response_format is not None:
             request["response_format"] = response_format
 
@@ -116,7 +119,13 @@ class OpenAILLM(LLMInterface):
                 "OpenAI usage (%s): prompt=%s output=%s",
                 self.model_name, response.usage.prompt_tokens, response.usage.completion_tokens,
             )
-        message = response.choices[0].message
+        choice = response.choices[0]
+        if choice.finish_reason == "length":
+            raise OpticsError(
+                Code.E0801,
+                message="The model hit its output limit before finishing; raise capabilities.max_tokens.",
+            )
+        message = choice.message
         if message.refusal:
             raise OpticsError(Code.E0801, message=f"Model refused the request: {message.refusal}")
         content = message.content or ""

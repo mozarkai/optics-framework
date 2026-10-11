@@ -226,7 +226,7 @@ that's already integrated inherits it with no `start_session` changes:
 |---------|---------|---------|
 | `OPTICS_AI_SELF_HEAL` | off | `true`/`1`/`yes`/`on` (case-insensitive) enables it |
 | `OPTICS_LLM_PROVIDER` | `gemini` | which `llm_models` entry to enable: `gemini`, `openai` or `anthropic` |
-| `OPTICS_LLM_MODEL` | provider default | optional model name override |
+| `OPTICS_LLM_MODEL` | `gemini-2.5-flash` for `gemini` | model name; **required** for `openai` and `anthropic`, which have no default |
 
 Because a single `serve`/`mcp` process is multi-tenant, each of these is also a
 **per-session override** on `start_session`: `ai_self_heal`, `llm_provider`, and
