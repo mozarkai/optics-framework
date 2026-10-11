@@ -10,9 +10,6 @@ The two loops are documented as siblings that must be kept in sync (see CLAUDE.m
 sharing the schema, system prompt, and index-coercion here keeps their curation
 identical. Each caller still builds its own user prompt, because the candidate/failed
 step context differs between them.
-
-``CURATION_SCHEMA`` is kept flat (no anyOf) because Gemini's response_schema support
-for anyOf/discriminated unions is unreliable.
 """
 
 from typing import Any, Dict, List, Optional
@@ -36,7 +33,6 @@ CURATION_SCHEMA: Dict[str, Any] = {
         },
     },
     "required": ["keep", "reason"],
-    "propertyOrdering": ["keep", "reason"],
 }
 
 

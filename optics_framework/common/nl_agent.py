@@ -128,8 +128,8 @@ ScreenElementsProvider = Callable[[bytes], Optional[List[dict]]]
 
 
 # Structured-output schema. Only thought/action/reason are required so the model is never
-# forced to emit dummy keyword/params on a done/fail turn. anyOf/discriminated unions are
-# deliberately avoided (Gemini response_schema support for them is unreliable).
+# forced to emit dummy keyword/params on a done/fail turn. Kept to the JSON Schema subset every
+# engine accepts: flat, no anyOf/$ref, and property order is the order the model reasons in.
 ACTION_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -157,7 +157,6 @@ ACTION_SCHEMA: Dict[str, Any] = {
         },
     },
     "required": ["thought", "action", "reason"],
-    "propertyOrdering": ["thought", "action", "keyword", "params", "reason"],
 }
 
 
