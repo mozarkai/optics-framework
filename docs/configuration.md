@@ -868,6 +868,7 @@ more than one entry, a failed call falls through to the next one in list order.
             model: anthropic/claude-sonnet-5-5  # required; the name the server uses
             api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY
             # response_format: json_object     # for servers without JSON-schema output
+            # max_tokens: 4096                  # optional cap per reply; unset = server default
             # temperature: 0.0
     ```
 

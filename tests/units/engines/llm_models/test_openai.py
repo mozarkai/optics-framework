@@ -31,10 +31,12 @@ class _FakeCompletions:
     def __init__(self):
         self.requests = []
         self.message = SimpleNamespace(content='{"action": "done"}', refusal=None)
+        self.finish_reason = "stop"
 
     def create(self, **request):
         self.requests.append(request)
-        return SimpleNamespace(choices=[SimpleNamespace(message=self.message)], usage=None)
+        choice = SimpleNamespace(message=self.message, finish_reason=self.finish_reason)
+        return SimpleNamespace(choices=[choice], usage=None)
 
 
 @pytest.fixture
@@ -125,6 +127,19 @@ def test_temperature_precedence(fake_client):
     assert fake_client.requests[-1]["temperature"] == 0.7
     _llm().generate("hi")
     assert "temperature" not in fake_client.requests[-1]
+
+
+def test_max_tokens_is_sent_only_when_configured(fake_client):
+    _llm().generate("hi")
+    assert "max_completion_tokens" not in fake_client.requests[-1]
+    _llm(max_tokens=512).generate("hi")
+    assert fake_client.requests[-1]["max_completion_tokens"] == 512
+
+
+def test_truncated_reply_raises(fake_client):
+    fake_client.finish_reason = "length"
+    with pytest.raises(OpticsError, match="max_tokens"):
+        _llm().generate("hi", response_schema=SCHEMA)
 
 
 def test_refusal_raises(fake_client):
