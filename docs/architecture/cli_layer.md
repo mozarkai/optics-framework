@@ -301,7 +301,7 @@ optics live                # uses the config.yaml in the current directory
 optics live my_project     # uses that project's config.yaml
 ```
 
-**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save <test_case> <module_name>` appends the recording to `modules/modules.csv`, `test_cases/test_cases.csv`, and `elements/elements.csv`. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs the `llm` extra). See [Live Usage](../usage/live_usage.md).
+**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save <test_case> <module_name> [csv|yaml]` appends the recording to `modules/modules.<ext>` and `test_cases/test_cases.<ext>`, merging elements into the project's elements file of that format. The format follows the project (YAML only when every suite file is YAML) unless given explicitly. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs the `llm` extra). See [Live Usage](../usage/live_usage.md).
 
 ### 13. MCP Command
 
