@@ -432,9 +432,8 @@ def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[
     default > built-in default. A single serve/mcp process is multi-tenant, so a
     caller can enable/disable self-heal and choose its own LLM provider/model per
     session rather than being locked to the operator's choice. LLM credentials never
-    flow through here — the provider reads its own environment variables (e.g.
-    GeminiLLM reads GOOGLE_API_KEY/GEMINI_API_KEY) — so exposing provider/model per
-    session adds no credential surface.
+    flow through here — each engine reads its own credentials and endpoint from the
+    process environment — so exposing provider/model per session adds no credential surface.
     """
     env_enabled, env_provider, env_model = _env_self_heal_defaults()
     enabled = config.ai_self_heal if config.ai_self_heal is not None else env_enabled
