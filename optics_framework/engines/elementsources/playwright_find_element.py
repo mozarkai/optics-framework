@@ -139,7 +139,7 @@ class PlaywrightFindElement(ElementSourceInterface):
 
     def assert_elements(
         self,
-        elements: List[str],
+        elements: list[str],
         timeout: int = 10,
         rule: str = "any",
     ):
@@ -147,7 +147,7 @@ class PlaywrightFindElement(ElementSourceInterface):
 
     def assert_elements_visible(
         self,
-        elements: List[str],
+        elements: list[str],
         timeout: int = 10,
         rule: str = "any",
     ):

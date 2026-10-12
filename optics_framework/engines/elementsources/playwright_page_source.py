@@ -542,7 +542,7 @@ class PlaywrightPageSource(ElementSourceInterface):
     def _label_for(self, node: etree.Element) -> str:
         cache = getattr(self, "_label_cache", None)
         if cache is None or cache[0] is not self.tree:
-            labels: Dict[str, str] = {}
+            labels: dict[str, str] = {}
             for label in self.tree.iter("label") if self.tree is not None else ():
                 target = label.attrib.get("for")
                 if target and target not in labels:
@@ -592,7 +592,7 @@ class PlaywrightPageSource(ElementSourceInterface):
 
     def _compact_web_entry(
         self, node: etree.Element, label: str, actions: List[str], bounds: Dict,
-        locator: Optional[str] = None,
+        locator: str | None = None,
     ) -> Dict:
         extra = {"class": (node.tag or "").lower()}
         rid = node.attrib.get("id")
@@ -603,7 +603,7 @@ class PlaywrightPageSource(ElementSourceInterface):
             entry["loc"] = locator
         return entry
 
-    def _suggest_locators(self, page: Any, xpaths: List[Optional[str]]) -> List[Optional[str]]:
+    def _suggest_locators(self, page: Any, xpaths: list[str | None]) -> list[str | None]:
         try:
             return playwright_locator.suggest_locators(page, xpaths)
         except Exception as e:

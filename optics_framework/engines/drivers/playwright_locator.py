@@ -1,7 +1,7 @@
 """Turns an Optics element value into a Playwright locator, for every Playwright source."""
 
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 
@@ -23,13 +23,13 @@ _VISIBLE_FLAGS_SCRIPT = """
 """
 
 
-def _strip_prefix(element: str, prefix: str) -> Optional[str]:
+def _strip_prefix(element: str, prefix: str) -> str | None:
     if element[: len(prefix)].lower() == prefix:
         return element[len(prefix):]
     return None
 
 
-def _semantic(page: Any, value: str, kinds: tuple, exact: bool) -> List[Any]:
+def _semantic(page: Any, value: str, kinds: tuple, exact: bool) -> list[Any]:
     # Exact matches of every kind come before partial ones.
     builders = {
         "text": lambda e: page.get_by_text(value, exact=e),
@@ -42,7 +42,7 @@ def _semantic(page: Any, value: str, kinds: tuple, exact: bool) -> List[Any]:
     return [builders[kind](e) for e in passes for kind in kinds]
 
 
-def candidates(page: Any, element: str, *, exact: bool = False) -> List[Any]:
+def candidates(page: Any, element: str, *, exact: bool = False) -> list[Any]:
     """The locators ``element`` may mean, most specific first."""
     element = element.strip()
     if (value := _strip_prefix(element, "xpath=")) is not None:
@@ -67,7 +67,7 @@ def candidates(page: Any, element: str, *, exact: bool = False) -> List[Any]:
     return _semantic(page, element, text_kinds, exact)
 
 
-def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) -> Optional[Any]:
+def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) -> Any | None:
     try:
         if not visible_only:
             return locator.nth(index) if run_async(locator.count()) > index else None
@@ -89,7 +89,7 @@ def find(
     timeout_s: float = 0.0,
     visible_only: bool = True,
     on_screen: bool = False,
-) -> Optional[Any]:
+) -> Any | None:
     """The ``index``-th (visible) match of ``element``, or ``None`` after ``timeout_s``."""
     options = candidates(page, element, exact=exact)
     deadline = time.monotonic() + timeout_s
@@ -154,7 +154,7 @@ _SUGGEST_SCRIPT = r"""
 """
 
 
-def suggest_locators(page: Any, xpaths: List[Optional[str]]) -> List[Optional[str]]:
+def suggest_locators(page: Any, xpaths: list[str | None]) -> list[str | None]:
     """A unique CSS locator per node, checked in the page, or ``None``."""
     if not xpaths:
         return []
