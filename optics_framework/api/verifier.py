@@ -332,6 +332,8 @@ class Verifier:
             rid = extra.get("resource-id")
             if rid:
                 entry["rid"] = rid.split("/")[-1]
+            if el.get("loc"):
+                entry["loc"] = el["loc"]
             compact.append(entry)
         return compact
 
@@ -369,8 +371,8 @@ class Verifier:
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
         :param compact: When True, return only actionable elements (labels folded in,
             with an ``act`` list) plus standalone visible text (``act: []``), as
-            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}``. Implemented by the
-            Appium and Playwright page sources; sources without it return their full list.
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?}`` (``loc``: a unique web
+            locator). Implemented by the Appium and Playwright page sources; sources without it return their full list.
         :return: A list of interactive elements.
         """
         compact = utils.to_bool(compact)

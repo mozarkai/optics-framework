@@ -110,3 +110,52 @@ def is_present(page: Any, element: str, *, exact: bool = False) -> bool:
 def is_visible(page: Any, element: str, *, exact: bool = False) -> bool:
     return find(page, element, exact=exact, on_screen=True) is not None
 
+
+# Per xpath: a selector matching only that node, or null. Test attributes first.
+_SUGGEST_SCRIPT = r"""
+(xpaths) => {
+    const TEST_ATTRS = ['data-testid', 'data-test', 'data-test-id', 'data-qa', 'data-cy'];
+    const quote = (v) => '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    const unique = (sel, el) => {
+        try {
+            const hits = document.querySelectorAll(sel);
+            return hits.length === 1 && hits[0] === el;
+        } catch (e) {
+            return false;
+        }
+    };
+    const suggest = (el) => {
+        const tag = el.tagName.toLowerCase();
+        for (const attr of TEST_ATTRS) {
+            const v = el.getAttribute(attr);
+            if (v && unique(`[${attr}=${quote(v)}]`, el)) return `[${attr}=${quote(v)}]`;
+        }
+        if (el.id && /^[A-Za-z_-][\w-]*$/.test(el.id) && unique('#' + el.id, el)) return '#' + el.id;
+        for (const attr of ['name', 'aria-label', 'placeholder', 'title', 'alt']) {
+            const v = el.getAttribute(attr);
+            if (v && unique(`${tag}[${attr}=${quote(v)}]`, el)) return `${tag}[${attr}=${quote(v)}]`;
+        }
+        const href = tag === 'a' && el.getAttribute('href');
+        if (href && unique(`a[href=${quote(href)}]`, el)) return `a[href=${quote(href)}]`;
+        return null;
+    };
+    return xpaths.map((xp) => {
+        if (!xp) return null;
+        try {
+            const el = document.evaluate(
+                xp, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            ).singleNodeValue;
+            return el && el.nodeType === 1 ? suggest(el) : null;
+        } catch (e) {
+            return null;
+        }
+    });
+}
+"""
+
+
+def suggest_locators(page: Any, xpaths: List[Optional[str]]) -> List[Optional[str]]:
+    """A unique CSS locator per node, checked in the page, or ``None``."""
+    if not xpaths:
+        return []
+    return list(run_async(page.evaluate(_SUGGEST_SCRIPT, xpaths)))

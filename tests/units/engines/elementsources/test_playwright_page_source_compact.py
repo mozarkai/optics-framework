@@ -137,3 +137,10 @@ class TestWebCompactProjectsToMCPShape:
     def test_legacy_payload_without_actions_passes_through(self):
         full = [{"text": "OK", "bounds": dict(BOUNDS), "xpath": "//x", "extra": {}}]
         assert Verifier._to_compact_shape(full) == full
+
+
+def test_an_input_takes_its_label_from_label_for():
+    source = _source('<label for="e">E<b>mail</b></label><input id="e" type="email">')
+    node = source.tree.xpath("//input")[0]
+
+    assert source._web_own_label(node) == "Email"
