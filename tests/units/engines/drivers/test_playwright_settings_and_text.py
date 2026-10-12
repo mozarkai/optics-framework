@@ -125,3 +125,45 @@ async def test_launch_falls_back_to_top_level_settings(monkeypatch):
     pw.webkit.launch.assert_awaited_once_with(headless=False)
     browser.new_context.assert_awaited_once_with(viewport={"width": 1280, "height": 800})
     page.goto.assert_awaited_once_with("https://example.com", timeout=1000, wait_until="load")
+
+
+async def test_a_second_launch_navigates_the_open_browser(monkeypatch):
+    pw, browser, page = _fake_playwright(monkeypatch)
+    page.is_closed = MagicMock(return_value=False)
+    driver = Playwright(CONFLICTING)
+
+    await driver._launch_app_async("https://example.com", event_name=None)
+    await driver._launch_app_async("https://example.com/cart", event_name=None)
+
+    pw.firefox.launch.assert_awaited_once()
+    assert page.goto.await_count == 2
+
+
+def test_special_keys_are_pressed_not_typed():
+    driver = _driver()
+    driver.page.keyboard.press = AsyncMock()
+    driver.page.keyboard.type = AsyncMock()
+
+    driver.enter_text_using_keyboard(pw_driver.SpecialKey.ENTER)
+
+    driver.page.keyboard.press.assert_awaited_once_with("Enter")
+    driver.page.keyboard.type.assert_not_awaited()
+
+
+def test_secret_prefix_is_not_typed():
+    driver = _driver()
+    located = MagicMock()
+    located.fill = AsyncMock()
+
+    driver.enter_text_element(located, "@:secret")
+
+    located.fill.assert_awaited_once_with("secret")
+
+
+def test_go_back_uses_browser_history():
+    driver = _driver()
+    driver.page.go_back = AsyncMock()
+
+    driver.go_back()
+
+    driver.page.go_back.assert_awaited_once()

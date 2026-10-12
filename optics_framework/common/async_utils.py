@@ -37,7 +37,10 @@ def _get_or_create_persistent_loop() -> asyncio.AbstractEventLoop:
     return _persistent_loop
 
 
-def run_async(coro: Coroutine[Any, Any, Any]):
+DEFAULT_TIMEOUT_S = 15.0
+
+
+def run_async(coro: Coroutine[Any, Any, Any], timeout: float = DEFAULT_TIMEOUT_S):
     """
     Safely run async coroutine from sync code.
     - Works with pytest / nested loops
@@ -56,12 +59,12 @@ def run_async(coro: Coroutine[Any, Any, Any]):
     loop = _get_or_create_persistent_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     try:
-        return future.result(timeout=15)
+        return future.result(timeout=timeout)
     except (TimeoutError, FutureTimeoutError) as e:
         # Cancel the coroutine if it's still running to prevent it from continuing
         if not future.done():
             future.cancel()
-        raise OpticsError(Code.E0102, f"Async operation timed out after 15 seconds: {str(e) or 'Operation exceeded timeout limit'}", cause=e)
+        raise OpticsError(Code.E0102, f"Async operation timed out after {timeout:g} seconds: {str(e) or 'Operation exceeded timeout limit'}", cause=e)
     except Exception:
         # Cancel the coroutine if it's still running to prevent it from continuing
         if not future.done():
