@@ -1,5 +1,6 @@
 # Optics project format
 
+
 An optics test project is a folder of CSV files plus a `config.yaml` that
 `optics execute <folder>` runs. Author one directly from the steps you already
 performed this session — the MCP has no save/record tool because you don't need

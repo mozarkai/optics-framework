@@ -160,17 +160,15 @@ class PlaywrightFindElement(ElementSourceInterface):
             elements = [elements]
         page = self._require_page()
         exact = self._strict_element_match()
-        found = dict.fromkeys(elements, False)
         deadline = time.monotonic() + float(timeout)
         while True:
             try:
-                for element in elements:
-                    found[element] = found[element] or check(page, element, exact=exact)
+                found = [check(page, element, exact=exact) for element in elements]
             except Exception as e:
                 raise OpticsError(
                     Code.E0401, message=f"Error during element assertion: {e}"
                 ) from e
-            done = any(found.values()) if rule == "any" else all(found.values())
+            done = any(found) if rule == "any" else all(found)
             if done:
                 return True, utils.get_timestamp()
             if time.monotonic() >= deadline:
