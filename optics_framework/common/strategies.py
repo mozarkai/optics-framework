@@ -152,22 +152,7 @@ class LocatorStrategy(ABC):
     def _poll_frames_within_deadline(
         ss_stream, end_time: float, poll_interval: float
     ) -> Generator[list, None, None]:
-        """Yield batches of available screenshots, never waiting past ``end_time``.
-
-        Polls the stream first so a strategy given a slice smaller than
-        ``poll_interval`` (e.g. the 0.5s floor from #518) still gets to inspect a
-        frame. When the stream has nothing ready it backs off for ``poll_interval``
-        -- clamped to the remaining budget -- before polling again. The stream wait
-        and the backoff are both bounded by ``end_time``, so a 0.5s slice can no
-        longer overshoot into a fixed 1.5s sleep (see issue #524).
-
-        :param ss_stream: An active screenshot stream exposing
-            ``get_all_available_screenshots(wait_time=...)``.
-        :param end_time: Absolute deadline (``time.time()`` epoch seconds).
-        :param poll_interval: Preferred backoff granularity between polls.
-        :yield: Lists of ``(frame, timestamp)`` tuples. Empty results are not
-            yielded; the generator backs off (bounded) and polls again.
-        """
+        """Yield available screenshot batches until the deadline."""
         while True:
             remaining = end_time - time.time()
             if remaining <= 0:
