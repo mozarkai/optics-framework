@@ -414,11 +414,10 @@ class TestSelectDropdownOption:
 class TestSwipeUntilElementAppears:
     """Tests for OpticsError(E0201) handling in swipe_until_element_appears."""
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_e0201_continues_loop_until_found(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_e0201_continues_loop_until_found(self, mock_time, action_keyword):
         """E0201 is caught, loop continues, element found on second call."""
-        mock_time.side_effect = [0, 0, 3, 6, 9]
+        mock_time.time.side_effect = [0, 0, 3, 6, 9]
         call_count = 0
 
         def assert_presence_side_effect(*args, **kwargs):
@@ -434,11 +433,10 @@ class TestSwipeUntilElementAppears:
         assert call_count == 2
         action_keyword.driver.swipe_percentage.assert_called_once_with(10, 50, "down", 25, event_name=None)
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_non_e0201_is_reraised(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_non_e0201_is_reraised(self, mock_time, action_keyword):
         """Non-E0201 OpticsError is re-raised immediately."""
-        mock_time.side_effect = [0, 0]
+        mock_time.time.side_effect = [0, 0]
 
         with patch.object(
             action_keyword.verifier, 'assert_presence',
@@ -450,22 +448,20 @@ class TestSwipeUntilElementAppears:
         assert exc_info.value.code == Code.E0303
         action_keyword.driver.swipe_percentage.assert_not_called()
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_element_found_stops_loop(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_element_found_stops_loop(self, mock_time, action_keyword):
         """Element found on first call, no swipe performed."""
-        mock_time.side_effect = [0, 0]
+        mock_time.time.side_effect = [0, 0]
 
         with patch.object(action_keyword.verifier, 'assert_presence', return_value=True):
             action_keyword.swipe_until_element_appears("element", "down", "10")
 
         action_keyword.driver.swipe_percentage.assert_not_called()
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_timeout_stops_loop(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_timeout_stops_loop(self, mock_time, action_keyword):
         """Element never found, loop exits after timeout and raises."""
-        mock_time.side_effect = [0, 0, 3, 6, 9, 12]
+        mock_time.time.side_effect = [0, 0, 3, 6, 9, 12]
 
         with patch.object(
             action_keyword.verifier, 'assert_presence',
