@@ -1273,6 +1273,13 @@ class Appium(DriverInterface):
         return mapping.get(char.lower())
 
     @supported_on(*MOBILE)
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        driver = self._require_driver()
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        driver.back()
+
+    @supported_on(*MOBILE)
     def get_text_element(self, element: Any) -> str:
         text = element.get_attribute("text")
         if text is None:
