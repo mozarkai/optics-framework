@@ -17,8 +17,19 @@ _VISIBLE_FLAGS_SCRIPT = """
     const rect = el.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
     if (window.getComputedStyle(el).visibility === 'hidden') return false;
-    return !onScreen || (rect.bottom > 0 && rect.right > 0
-        && rect.top < window.innerHeight && rect.left < window.innerWidth);
+    if (!onScreen) return true;
+    let [top, left, bottom, right] = [rect.top, rect.left, rect.bottom, rect.right];
+    for (let node = el.parentElement; node; node = node.parentElement) {
+        if (window.getComputedStyle(node).overflow === 'visible') continue;
+        const clip = node.getBoundingClientRect();
+        [top, left] = [Math.max(top, clip.top), Math.max(left, clip.left)];
+        [bottom, right] = [Math.min(bottom, clip.bottom), Math.min(right, clip.right)];
+    }
+    top = Math.max(top, 0);
+    left = Math.max(left, 0);
+    bottom = Math.min(bottom, window.innerHeight);
+    right = Math.min(right, window.innerWidth);
+    return bottom > top && right > left;
 })
 """
 

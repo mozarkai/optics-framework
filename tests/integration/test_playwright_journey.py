@@ -114,6 +114,15 @@ def test_pressing_a_disabled_button_fails(tmp_path):
     assert run_project(project, use_printer=False) is False
 
 
+def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):
+    orders = (FIXTURE / "orders.html").as_uri()
+    visible = _project(tmp_path / "visible", [f"Launch App,{orders}", "Assert Visibility,Your orders,2"])
+    clipped = _project(tmp_path / "clipped", [f"Launch App,{orders}", "Assert Visibility,Gift wrap,2"])
+
+    assert run_project(visible, use_printer=False) is True
+    assert run_project(clipped, use_printer=False) is False
+
+
 async def test_mcp_session_offers_unique_locators_for_the_suite():
     fastmcp = pytest.importorskip("fastmcp")
     from optics_framework.helper.mcp_server import build_server
