@@ -7,6 +7,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common import utils
 from optics_framework.common.async_utils import run_async
+from optics_framework.engines.drivers import playwright_locator
 
 
 PLAYWRIGHT_NOT_INITIALISED_MSG = (
@@ -1118,63 +1119,15 @@ class PlaywrightPageSource(ElementSourceInterface):
         except AttributeError:
             return False
 
-    def _build_playwright_locator(self, page: Any, element: str, element_type: str) -> Any:
-        """
-        Build Playwright locator based on element type.
-
-        :param page: Playwright page object
-        :param element: Element selector string
-        :param element_type: Type of element (Text, XPath, CSS)
-        :return: Playwright locator
-        """
-        if element_type == "Text":
-            text_value = self._strip_prefix_for_page_source(element, "text=")
-            return page.get_by_text(text_value, exact=self._strict_element_match())
-
-        if element_type == "XPath":
-            xpath_value = self._strip_prefix_for_page_source(element, "xpath=")
-            return page.locator(f"xpath={xpath_value}")
-
-        # CSS / default
-        css_value = self._strip_prefix_for_page_source(element, "css=")
-        return page.locator(css_value)
-
-    def _strip_prefix_for_page_source(self, element: str, prefix: str) -> str:
-        """
-        Strip prefix from element string if present (case-insensitive).
-
-        :param element: Element string
-        :param prefix: Prefix to strip (e.g., "xpath=", "text=", "css=")
-        :return: Element string without prefix
-        """
-        if element.lower().startswith(prefix.lower()):
-            eq_index = element.find("=")
-            return element[eq_index + 1:] if eq_index >= 0 else element
-        return element
-
     def locate(self, element: str, index: Optional[int] = None) -> Any:
+        """Locate without waiting; PlaywrightFindElement is the source that waits."""
         page = self._require_page()
 
         original_element, element = self._resolve_optics_element(element)
-        element_type = utils.determine_element_type(element)
-
         try:
-            locator = self._build_playwright_locator(page, element, element_type)
-
-            if index is not None:
-                locator = locator.nth(index)
-
-            count = run_async(locator.count())
-            internal_logger.debug(
-                "[PlaywrightLocate] Locator '%s' found %d elements",
-                element, count
+            return playwright_locator.find(
+                page, element, index=int(index or 0), exact=self._strict_element_match()
             )
-
-            if count == 0:
-                return None
-
-            return locator.first
-
         except Exception as e:
             internal_logger.error(
                 "[PlaywrightLocate] Error locating element '%s' (resolved='%s')",
@@ -1193,29 +1146,8 @@ class PlaywrightPageSource(ElementSourceInterface):
     # ---------------------------------------------------------
 
     def _check_single_element_presence(self, page: Any, element: str) -> bool:
-        """
-        Check if a single element is present on the page.
-
-        :param page: Playwright page object
-        :param element: Element selector string
-        :return: True if element is found, False otherwise
-        """
         try:
-            internal_logger.debug(
-                "[PlaywrightPageSource] Element '%s'",
-                element
-            )
-            element_type = utils.determine_element_type(element)
-            if element_type == "Text":
-                locator = page.get_by_text(element, exact=self._strict_element_match())
-            elif element_type == "XPath":
-                locator = page.locator(f"xpath={element}")
-            else:
-                # CSS selector
-                locator = page.locator(element)
-
-            count = run_async(locator.count())
-            return count > 0
+            return playwright_locator.is_present(page, element, exact=self._strict_element_match())
         except Exception as e:
             internal_logger.debug(
                 "[PlaywrightPageSource] Error checking '%s': %s",
