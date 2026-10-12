@@ -1000,6 +1000,13 @@ class Optics:
             keycode=cast(str, keycode), event_name=cast(Optional[str], event_name)
         )
 
+    @keyword("Go Back")
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        """Go back one screen."""
+        if not self.action_keyword:
+            raise ValueError(INVALID_SETUP)
+        self.action_keyword.go_back(event_name=event_name)
+
     @keyword("Clear Element Text")
     @fallback_params
     def clear_element_text(

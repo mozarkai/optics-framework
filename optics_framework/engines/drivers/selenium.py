@@ -366,6 +366,13 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to scroll {direction}: {e}")
             raise
 
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        if self.driver is None:
+            raise RuntimeError(self.SETUP_NOT_INITIALIZED)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        self.driver.back()
+
     def get_text_element(self, element) -> str:
         try:
             text = element.text

@@ -1062,6 +1062,12 @@ class ActionKeyword:
         internal_logger.info(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(keycode, event_name=event_name)
 
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        """Go back one screen: browser history on the web, the back button on a phone."""
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "go_back")
+        internal_logger.info("Going back")
+        self.driver.go_back(event_name=event_name)
+
 
     def clear_element_text(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
                            aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
