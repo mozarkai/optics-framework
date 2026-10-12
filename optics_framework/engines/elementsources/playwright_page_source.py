@@ -537,7 +537,18 @@ class PlaywrightPageSource(ElementSourceInterface):
             val = (attrs.get(key) or "").strip()
             if val:
                 return val
-        return ""
+        return self._label_for(node)
+
+    def _label_for(self, node: etree.Element) -> str:
+        cache = getattr(self, "_label_cache", None)
+        if cache is None or cache[0] is not self.tree:
+            labels: Dict[str, str] = {}
+            for label in self.tree.iter("label") if self.tree is not None else ():
+                target = label.attrib.get("for")
+                if target and target not in labels:
+                    labels[target] = " ".join("".join(label.itertext()).split())
+            cache = self._label_cache = (self.tree, labels)
+        return cache[1].get(node.attrib.get("id") or "", "")
 
     def _web_folded_label(self, node: etree.Element) -> str:
         # An attribute label wins when the node has no direct text of its own; otherwise
@@ -580,13 +591,24 @@ class PlaywrightPageSource(ElementSourceInterface):
         )
 
     def _compact_web_entry(
-        self, node: etree.Element, label: str, actions: List[str], bounds: Dict
+        self, node: etree.Element, label: str, actions: List[str], bounds: Dict,
+        locator: Optional[str] = None,
     ) -> Dict:
         extra = {"class": (node.tag or "").lower()}
         rid = node.attrib.get("id")
         if rid:
             extra["resource-id"] = rid
-        return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        if locator:
+            entry["loc"] = locator
+        return entry
+
+    def _suggest_locators(self, page: Any, xpaths: List[Optional[str]]) -> List[Optional[str]]:
+        try:
+            return playwright_locator.suggest_locators(page, xpaths)
+        except Exception as e:
+            internal_logger.debug("[PlaywrightPageSource] Locator suggestions failed: %s", e)
+            return [None] * len(xpaths)
 
     def _compact_web_candidate(
         self, node: etree.Element
@@ -621,9 +643,8 @@ class PlaywrightPageSource(ElementSourceInterface):
             for node in self.tree.iter()
             if (candidate := self._compact_web_candidate(node)) is not None
         ]
-        rects = self._resolve_bounds_batch(
-            page, [self._build_simple_xpath(node) for node, _ in candidates]
-        )
+        xpaths = [self._build_simple_xpath(node) for node, _ in candidates]
+        rects = self._resolve_bounds_batch(page, xpaths)
         if rects is None:
             # Every entry needs bounds, so a failed batch would collapse to an empty list
             # indistinguishable from a genuinely empty screen. Consumers such as the live
@@ -633,11 +654,12 @@ class PlaywrightPageSource(ElementSourceInterface):
                 Code.E0202,
                 message="Batched bounds lookup failed; compact elements unavailable.",
             )
+        locators = self._suggest_locators(page, xpaths) if xpaths else []
         entries = []
-        for (node, (label, actions)), rect in zip(candidates, rects):
+        for (node, (label, actions)), rect, locator in zip(candidates, rects, locators):
             bounds = self._rect_to_bounds(rect)
             if bounds:
-                entries.append(self._compact_web_entry(node, label, actions, bounds))
+                entries.append(self._compact_web_entry(node, label, actions, bounds, locator))
         return entries
 
     def _check_filter_type(self, node: etree.Element, filter_type: str) -> bool:

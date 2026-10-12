@@ -57,7 +57,7 @@ class TestBatchedEvaluateCallCount:
 
         elements = src.get_interactive_elements(None, compact=True)
 
-        assert page.evaluate.call_count == 1
+        assert page.evaluate.call_count == 2  # bounds, then locator suggestions
         assert [el["text"] for el in elements] == [f"Item {i}" for i in range(n)]
 
     def test_evaluate_not_called_when_there_are_no_candidate_nodes(self, monkeypatch):
