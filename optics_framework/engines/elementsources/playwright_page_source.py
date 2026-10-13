@@ -109,6 +109,7 @@ class PlaywrightPageSource(ElementSourceInterface):
             Tuple[str, str]: (page_source, timestamp)
         """
         page = self._require_page()
+        self.driver.wait_for_page_settled()
         timestamp = utils.get_timestamp()
 
         html: str = run_async(page.content())

@@ -36,6 +36,17 @@ def _uniform_rects(width=20, height=20):
     return _side_effect
 
 
+def test_page_source_waits_for_the_page_to_settle_before_reading(monkeypatch):
+    src, page = _source("<html><body></body></html>", monkeypatch)
+    order = []
+    src.driver.wait_for_page_settled.side_effect = lambda: order.append("settle")
+    page.content.side_effect = lambda: order.append("read") or "<html><body></body></html>"
+
+    src.get_page_source()
+
+    assert order == ["settle", "read"]
+
+
 class TestBatchedEvaluateCallCount:
     @pytest.mark.parametrize("n", [1, 50])
     def test_evaluate_called_once_regardless_of_node_count(self, n, monkeypatch):

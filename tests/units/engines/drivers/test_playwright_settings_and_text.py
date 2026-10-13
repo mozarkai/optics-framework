@@ -1,3 +1,5 @@
+import itertools
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -167,3 +169,53 @@ def test_go_back_uses_browser_history():
     driver.go_back()
 
     driver.page.go_back.assert_awaited_once()
+
+
+def _settling_driver(monkeypatch, fingerprints, config=None):
+    monkeypatch.setattr(Playwright, "SETTLE_QUIET_S", 0.03)
+    monkeypatch.setattr(Playwright, "SETTLE_POLL_S", 0.01)
+    driver = _driver(config)
+    driver.page.evaluate = AsyncMock(side_effect=fingerprints)
+    return driver
+
+
+def test_settle_returns_once_the_dom_stops_changing(monkeypatch):
+    driver = _settling_driver(monkeypatch, itertools.chain(["shell", "form"], itertools.repeat("form")))
+
+    started = time.monotonic()
+    driver.wait_for_page_settled()
+
+    assert time.monotonic() - started < 1
+    assert driver.page.evaluate.await_count >= 4
+
+
+@pytest.mark.parametrize(
+    "unsettled",
+    [pw_driver.PlaywrightError("Execution context was destroyed"), None],
+    ids=["mid-navigation", "still-parsing"],
+)
+def test_settle_keeps_waiting_while_the_page_is_unreadable(monkeypatch, unsettled):
+    driver = _settling_driver(monkeypatch, itertools.chain([unsettled] * 5, itertools.repeat("form")))
+
+    driver.wait_for_page_settled()
+
+    # Five unreadable polls, then "form" seen at least twice across the quiet window.
+    assert driver.page.evaluate.await_count >= 7
+
+
+def test_settle_gives_up_without_error_on_a_page_that_never_goes_quiet(monkeypatch):
+    ticking = (str(n) for n in itertools.count())
+    driver = _settling_driver(monkeypatch, ticking, config={"settle_timeout_ms": 100})
+
+    started = time.monotonic()
+    driver.wait_for_page_settled()
+
+    assert 0.1 <= time.monotonic() - started < 1
+
+
+def test_settle_timeout_of_zero_skips_the_wait(monkeypatch):
+    driver = _settling_driver(monkeypatch, itertools.repeat("form"), config={"settle_timeout_ms": 0})
+
+    driver.wait_for_page_settled()
+
+    driver.page.evaluate.assert_not_awaited()
