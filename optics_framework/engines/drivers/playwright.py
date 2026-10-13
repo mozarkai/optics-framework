@@ -20,6 +20,15 @@ class Playwright(DriverInterface):
     NAME = "playwright"
     PAGE_NOT_INITIALIZED_MSG = "Playwright page not initialized"
     DEFAULT_ELEMENT_TIMEOUT_MS = 10000
+    DEFAULT_SETTLE_TIMEOUT_MS = 3000
+    SETTLE_QUIET_S = 0.5
+    SETTLE_POLL_S = 0.1
+    # None while the document is still parsing, so "loading" never counts as stable.
+    _DOM_FINGERPRINT_SCRIPT = """() => {
+        if (document.readyState === 'loading' || !document.body) return null;
+        const body = document.body;
+        return [location.href, body.getElementsByTagName('*').length, body.textContent.length].join('|');
+    }"""
 
     _SPECIAL_KEYS = {
         SpecialKey.ENTER: "Enter",
@@ -76,6 +85,44 @@ class Playwright(DriverInterface):
 
     def _call_budget_s(self, operation_timeout_s: float) -> float:
         return operation_timeout_s + DEFAULT_TIMEOUT_S
+
+    def _settle_timeout_s(self) -> float:
+        return int(self._setting("settle_timeout_ms", self.DEFAULT_SETTLE_TIMEOUT_MS)) / 1000
+
+    def wait_for_page_settled(self) -> None:
+        """Wait, at most ``settle_timeout_ms``, until the page stops navigating and its
+        DOM stops changing.
+
+        ``goto`` returns at ``domcontentloaded``, before a single-page app renders or
+        runs its client-side redirects, so a snapshot taken straight after it can see
+        an empty shell or hit a page mid-navigation. Appium's page source already waits
+        for UI idle and Selenium's ``get`` waits for load; this gives Playwright reads
+        the same footing. Reaching the cap is not an error: a page that never goes
+        quiet (a live stream, a ticking clock) is read as it is.
+        """
+        budget_s = self._settle_timeout_s()
+        if budget_s <= 0 or self.page is None:
+            return
+        run_async(self._wait_for_page_settled_async(budget_s), timeout=self._call_budget_s(budget_s))
+
+    async def _wait_for_page_settled_async(self, budget_s: float) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + budget_s
+        last: str | None = None
+        stable_since = loop.time()
+        while loop.time() < deadline:
+            try:
+                current = await self.page.evaluate(self._DOM_FINGERPRINT_SCRIPT)
+            except PlaywrightError:
+                # The document is being replaced; there is nothing stable to read yet.
+                current = None
+            now = loop.time()
+            if current is None or current != last:
+                last, stable_since = current, now
+            elif now - stable_since >= self.SETTLE_QUIET_S:
+                return
+            await asyncio.sleep(self.SETTLE_POLL_S)
+        internal_logger.debug("[Playwright] Page still changing after %.1fs; reading it anyway", budget_s)
 
     # =====================================================
     # APP / SESSION
