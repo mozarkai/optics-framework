@@ -1084,7 +1084,7 @@ class Appium(DriverInterface):
     def _is_ios(self) -> bool:
         return self._active_platform() == self.PLATFORM_IOS
 
-    def _enter_text_ios(self, driver: WebDriver, text: Union[str, SpecialKey]) -> None:
+    def _enter_text_ios(self, driver: WebDriver, text: str | SpecialKey) -> None:
         """XCUITest has no 'mobile: type' or keycodes; 'mobile: keys' types into the focused field."""
         if isinstance(text, SpecialKey):
             keys = self.IOS_SPECIAL_KEYS.get(text)
