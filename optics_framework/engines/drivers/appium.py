@@ -81,6 +81,13 @@ class Appium(DriverInterface):
     NAME = "appium"
     NOT_INITIALIZED = "Appium driver is not initialized. Please start the session first."
     MOBILE_TYPE_COMMAND = "mobile: type"
+    MOBILE_KEYS_COMMAND = "mobile: keys"
+    IOS_SPECIAL_KEYS = {
+        SpecialKey.ENTER: "\n",
+        SpecialKey.TAB: "\t",
+        SpecialKey.BACKSPACE: "\b",
+        SpecialKey.SPACE: " ",
+    }
     MOBILE_PREFIX = "mobile:"
     MOBILE_CLEAR = "mobile: clear"
     CAP_APP_PACKAGE = "appium:appPackage"
@@ -1074,11 +1081,28 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Clearing text in element: {element}")
         element.clear()
 
+    def _is_ios(self) -> bool:
+        return self._active_platform() == self.PLATFORM_IOS
+
+    def _enter_text_ios(self, driver: WebDriver, text: Union[str, SpecialKey]) -> None:
+        """XCUITest has no 'mobile: type' or keycodes; 'mobile: keys' types into the focused field."""
+        if isinstance(text, SpecialKey):
+            keys = self.IOS_SPECIAL_KEYS.get(text)
+            if keys is None:
+                raise OpticsError(Code.E0401, message=f"Special key '{text.value}' is not supported on iOS")
+        else:
+            keys = utils.strip_sensitive_prefix(str(text))
+        driver.execute_script(self.MOBILE_KEYS_COMMAND, {"keys": list(keys)})
+
     @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
             self.event_sdk.capture_event(event_name)
+
+        if self._is_ios():
+            self._enter_text_ios(driver, text)
+            return
 
         if isinstance(text, SpecialKey):
             keycode = self.KEYCODE_MAP.get(text)
@@ -1182,7 +1206,9 @@ class Appium(DriverInterface):
         driver = self._require_driver()
         try:
             timestamp = self.event_sdk.get_current_time_for_events()
-            if isinstance(text, SpecialKey):
+            if self._is_ios():
+                self._enter_text_ios(driver, text)
+            elif isinstance(text, SpecialKey):
                 self._handle_special_key_keyboard_input(driver, text)
             else:
                 self._handle_string_keyboard_input(driver, str(text))
