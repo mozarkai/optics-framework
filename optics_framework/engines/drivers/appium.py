@@ -1085,14 +1085,18 @@ class Appium(DriverInterface):
         return self._active_platform() == self.PLATFORM_IOS
 
     def _enter_text_ios(self, driver: WebDriver, text: str | SpecialKey) -> None:
-        """XCUITest has no 'mobile: type' or keycodes; 'mobile: keys' types into the focused field."""
+        """XCUITest has no 'mobile: type' or keycodes; type into the focused element, else 'mobile: keys'."""
         if isinstance(text, SpecialKey):
             keys = self.IOS_SPECIAL_KEYS.get(text)
             if keys is None:
                 raise OpticsError(Code.E0401, message=f"Special key '{text.value}' is not supported on iOS")
         else:
             keys = utils.strip_sensitive_prefix(str(text))
-        driver.execute_script(self.MOBILE_KEYS_COMMAND, {"keys": list(keys)})
+        try:
+            driver.switch_to.active_element.send_keys(keys)
+        except Exception as e:
+            internal_logger.debug(f"No focused element to type into ({e}); falling back to mobile: keys")
+            driver.execute_script(self.MOBILE_KEYS_COMMAND, {"keys": list(keys)})
 
     @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
