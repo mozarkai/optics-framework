@@ -81,7 +81,6 @@ class Appium(DriverInterface):
     NAME = "appium"
     NOT_INITIALIZED = "Appium driver is not initialized. Please start the session first."
     MOBILE_TYPE_COMMAND = "mobile: type"
-    MOBILE_KEYS_COMMAND = "mobile: keys"
     IOS_SPECIAL_KEYS = {
         SpecialKey.ENTER: "\n",
         SpecialKey.TAB: "\t",
@@ -1085,7 +1084,11 @@ class Appium(DriverInterface):
         return self._active_platform() == self.PLATFORM_IOS
 
     def _enter_text_ios(self, driver: WebDriver, text: str | SpecialKey) -> None:
-        """XCUITest has no 'mobile: type' or keycodes; type into the focused element, else 'mobile: keys'."""
+        """XCUITest has no 'mobile: type' or keycodes; type into the element that has keyboard focus.
+
+        With nothing focused this raises: 'mobile: keys' answers 200 there but types nothing, which
+        would let the keyword pass without entering any text.
+        """
         if isinstance(text, SpecialKey):
             keys = self.IOS_SPECIAL_KEYS.get(text)
             if keys is None:
@@ -1093,10 +1096,12 @@ class Appium(DriverInterface):
         else:
             keys = utils.strip_sensitive_prefix(str(text))
         try:
-            driver.switch_to.active_element.send_keys(keys)
-        except Exception as e:
-            internal_logger.debug(f"No focused element to type into ({e}); falling back to mobile: keys")
-            driver.execute_script(self.MOBILE_KEYS_COMMAND, {"keys": list(keys)})
+            focused = driver.switch_to.active_element
+        except WebDriverException as e:
+            raise OpticsError(
+                Code.E0401, message="No element has keyboard focus on iOS; tap the field before entering text", cause=e
+            ) from e
+        focused.send_keys(keys)
 
     @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
