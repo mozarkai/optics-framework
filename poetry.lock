@@ -5689,14 +5689,14 @@ scipy = ["scipy"]
 
 [[package]]
 name = "tox"
-version = "4.61.5"
+version = "4.65.1"
 description = "tox is a generic virtualenv management and test command line tool"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "tox-4.61.5-py3-none-any.whl", hash = "sha256:5f9b109fa0a60b7ccb812e8dacbcf7a06b9a633fa90ae97198334b3464b2f133"},
-    {file = "tox-4.61.5.tar.gz", hash = "sha256:d1f535a6ca4827c087e0a2a173dd74621d6e1688c740c8dd44e0377480020431"},
+    {file = "tox-4.65.1-py3-none-any.whl", hash = "sha256:cff962337c04c975024dbd9186a2b3f3d64b0b39b43ba4be7662ef9b37a6a945"},
+    {file = "tox-4.65.1.tar.gz", hash = "sha256:bdbb7bd715a638f6a3f9eb6ffabd91c870db12de7ee2ba4d2c7c9af632f016ca"},
 ]
 
 [package.dependencies]
@@ -6326,4 +6326,4 @@ web = ["playwright", "selenium"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "4e6b9c029964e4b4ff5ac58e32daba2a68b91435faf10e7b922e76f608ce58a3"
+content-hash = "43f6dd98579d75e02ae60483e4ec76bd29e38d6ed9007bef6622b3a9ac33ba3b"
