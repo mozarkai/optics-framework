@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, NoReturn
 from pydantic import BaseModel
 from rich import get_console
 from rich.panel import Panel
@@ -538,6 +538,18 @@ class OpticsError(Exception):
         )
         # return primitive dict for downstream compatibility
         return payload.model_dump()
+
+
+def raise_fallback_failure(subject: str, errors: list[tuple[Any, Exception]]) -> NoReturn:
+    """Re-raise a lone attempt's error as is; for several, list each under the last one's code."""
+    if not errors:
+        raise RuntimeError(f"No valid fallback values provided for {subject}")
+    if len(errors) == 1:
+        raise errors[0][1]
+    last = errors[-1][1]
+    tried = "\n".join(f"{values} -> {error}" for values, error in errors)
+    code = last.code if isinstance(last, OpticsError) else Code.E0401
+    raise OpticsError(code, message=f"All fallback values failed for {subject}:\n{tried}") from last
 
 
 def register_error(spec: ErrorSpec) -> None:

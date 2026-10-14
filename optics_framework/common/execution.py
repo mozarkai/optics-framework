@@ -201,6 +201,8 @@ class KeywordExecutor(Executor):
                     message="Keyword execution failed: %s" % str(e),
                     extra={"session_id": session.session_id}
                 ))
+                if isinstance(e, OpticsError):
+                    raise
                 raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
             extra = {"session_id": session.session_id}
             if heal_info:
@@ -368,6 +370,8 @@ class ExecutionEngine:
             await event_manager.publish_event(
                 _execution_event(params.session_id, EventStatus.ERROR, f"Execution failed: {str(e)}")
             )
+            if isinstance(e, OpticsError):
+                raise
             raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
 
     async def _drain_events_and_shutdown(self, event_manager: EventManager) -> None:
@@ -423,6 +427,8 @@ class ExecutionEngine:
                     _execution_event(params.session_id, EventStatus.FAIL, f"Execution failed: {str(e)}")
                 )
                 internal_logger.error("Execution error in session %s: %s", params.session_id, e)
+                if isinstance(e, OpticsError):
+                    raise
                 raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
             finally:
                 if hasattr(runner, "result_printer") and runner.result_printer:
