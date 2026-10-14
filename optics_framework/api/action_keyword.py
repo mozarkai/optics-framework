@@ -1065,7 +1065,7 @@ class ActionKeyword:
     def go_back(self, event_name: Optional[str] = None) -> None:
         """Go back one screen: browser history on the web, the back button on a phone."""
         self._save_screenshot_if_available(self._capture_screenshot_safe(), "go_back")
-        internal_logger.info("Going back")
+        internal_logger.info(f"Going back one screen with the {type(self.driver).__name__} driver (event: {event_name})")
         self.driver.go_back(event_name=event_name)
 
 
