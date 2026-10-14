@@ -26,19 +26,18 @@ from urllib.parse import urlparse
 
 import yaml
 from rich.cells import cell_len
-from rich.console import Console
 from rich.text import Text
 
+from optics_framework.helper.console import can_encode, safe_console
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
 
-_console = Console()
+_console = safe_console()
 
 _SOCKET_TIMEOUT_S = 3.0
 _ADB_TIMEOUT_S = 10.0
 
-_STATUS_GLYPH = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
 _STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
 _MAX_NAME_COLUMN = 32
 
@@ -49,6 +48,16 @@ _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
 
 
+class _Glyphs(NamedTuple):
+    status: dict[str, str]
+    width: int
+    title: str
+    arrow: str
+_EMOJI_GLYPHS = _Glyphs({"ok": "✅", "warn": "⚠️", "fail": "❌"}, 3, "🩺 optics doctor", "→")
+_PLAIN_GLYPHS = _Glyphs({"ok": "OK", "warn": "WARN", "fail": "FAIL"}, 5, "optics doctor", "->")
+def _glyphs() -> _Glyphs:
+    emoji = "".join(_EMOJI_GLYPHS.status.values()) + _EMOJI_GLYPHS.title + _EMOJI_GLYPHS.arrow
+    return _EMOJI_GLYPHS if can_encode(_console, emoji) else _PLAIN_GLYPHS
 class Check(NamedTuple):
     """One row of the doctor report."""
     name: str
@@ -448,34 +457,34 @@ def _split_host_port(url: object) -> tuple[str, int] | None:
         return None
 
 
-def _row_text(row: Check, name_width: int) -> Text:
+def _row_text(row: Check, name_width: int, glyphs: _Glyphs) -> Text:
     """One check as a single line: glyph, padded name, detail — no table
     borders to break when a narrow terminal wraps a long detail string."""
-    glyph = _STATUS_GLYPH.get(row.status, "•")
+    glyph = glyphs.status.get(row.status, "•")
     style = _STATUS_STYLE.get(row.status, "")
     text = Text("  ")
     text.append(glyph, style=style)
-    text.append(" " * max(1, 3 - cell_len(glyph)))
+    text.append(" " * max(1, glyphs.width - cell_len(glyph)))
     text.append(row.name.ljust(name_width))
     text.append("  ")
     text.append(row.detail)
     return text
 
 
-def _hint_text(hint: str) -> Text:
-    text = Text("      → ", style="dim")
+def _hint_text(hint: str, arrow: str) -> Text:
+    text = Text(f"      {arrow} ", style="dim")
     text.append(hint, style="dim")
     return text
 
 
-def _print_section(title: str, rows: list[Check], name_width: int) -> None:
+def _print_section(title: str, rows: list[Check], name_width: int, glyphs: _Glyphs) -> None:
     if not rows:
         return
     _console.print(f"[bold]{title}[/bold]")
     for row in rows:
-        _console.print(_row_text(row, name_width))
+        _console.print(_row_text(row, name_width, glyphs))
         if row.hint:
-            _console.print(_hint_text(row.hint))
+            _console.print(_hint_text(row.hint, glyphs.arrow))
     _console.print()
 
 
@@ -495,24 +504,25 @@ def print_report(sections: list[tuple[str, list[Check]]],
     name_width = min(max((len(row.name) for row in rows), default=0),
                       _MAX_NAME_COLUMN)
 
-    _console.print("[bold]🩺 optics doctor[/bold]\n")
+    glyphs = _glyphs()
+    _console.print(f"[bold]{glyphs.title}[/bold]\n")
     for title, section_rows in sections:
-        _print_section(title, section_rows, name_width)
+        _print_section(title, section_rows, name_width, glyphs)
 
     counts = {status: sum(1 for r in rows if r.status == status)
               for status in ("ok", "warn", "fail")}
     _console.print(
         f"{counts['ok']} ok, {counts['warn']} warning(s), {counts['fail']} failure(s)")
     if counts["fail"]:
-        _console.print("[red]Fix the ❌ rows above, then re-run optics doctor.[/red]")
+        _console.print(f"[red]Fix the {glyphs.status['fail']} rows above, then re-run optics doctor.[/red]")
     elif counts["warn"]:
         if mandatory_hints:
-            _console.print("[yellow]⚠️ Before your first real run:[/yellow]")
+            _console.print(f"[yellow]{glyphs.status['warn']} Before your first real run:[/yellow]")
             for hint in mandatory_hints:
                 _console.print(f"  • {hint}")
         else:
             _console.print(
-                "Good enough to start — ⚠️ rows are optional extras you can add later.")
+                f"Good enough to start — {glyphs.status['warn']} rows are optional extras you can add later.")
     else:
         _console.print("[green]Everything looks good — happy testing![/green]")
 
