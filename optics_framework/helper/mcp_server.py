@@ -158,6 +158,8 @@ def _http_detail(detail: Any) -> str:
     if isinstance(detail, dict):
         # OpticsError.to_payload(include_status=True) shape: prefer message/code.
         msg = detail.get("message") or detail.get("detail") or detail
+        if detail.get("cause"):
+            msg = f"{msg} (cause: {detail['cause']})"
         code = detail.get("code")
         return f"[{code}] {msg}" if code else str(msg)
     return str(detail)
