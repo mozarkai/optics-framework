@@ -630,6 +630,22 @@ class TestGetInteractiveElementsStrategyScreening:
         assert exc_info.value.code == Code.E0202
 
 
+    def test_failure_names_the_underlying_error(self, monkeypatch):
+        monkeypatch.setattr(
+            LocatorStrategy, "_is_method_implemented", staticmethod(lambda src, name: True)
+        )
+        strategy = MagicMock()
+        strategy.get_interactive_elements.side_effect = RuntimeError(
+            "Page.content: the page is navigating"
+        )
+        manager = _sm(MagicMock())
+        manager.pagesource_strategies = [strategy]
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.get_interactive_elements()
+        assert exc_info.value.code == Code.E0202
+        assert "the page is navigating" in str(exc_info.value)
+
 # --- PagesourceStrategy compact-forwarding compatibility ---
 
 
