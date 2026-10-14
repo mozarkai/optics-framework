@@ -121,36 +121,32 @@ class LocatorStrategy(ABC):
         screenshot. Visibility calls are only routed to sources that genuinely implement it --
         see StrategyManager._can_strategy_assert_elements.
         """
-        try:
-            getattr(self.element_source, method_name)(elements, timeout, rule)
-            timestamp = utils.get_timestamp()
-            frame = None
-            strategy_manager = getattr(self, '_strategy_manager', None)
-            if strategy_manager is not None:
-                try:
-                    frame = strategy_manager.capture_screenshot()
-                except Exception as e:
-                    internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
-                    frame = None
-            bboxes = []
-            if hasattr(self.element_source, 'get_element_bboxes'):
-                bboxes = [
-                    b for b in self.element_source.get_element_bboxes(elements)
-                    if b is not None
-                ]
-            if frame is not None:
-                if bboxes:
-                    # Element bboxes are in the driver's window coordinate space;
-                    # scale them to the screenshot's pixel space before drawing
-                    # (no-op when the two resolutions already match).
-                    bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
-                    annotated_frame = utils.annotate(frame.copy(), bboxes)
-                    return True, timestamp, annotated_frame
-                return True, timestamp, frame.copy()
-            return True, timestamp, None
-        except Exception as e:
-            raise_if_session_dead(e)
-            return False, None, None
+        getattr(self.element_source, method_name)(elements, timeout, rule)
+        timestamp = utils.get_timestamp()
+        frame = None
+        strategy_manager = getattr(self, '_strategy_manager', None)
+        if strategy_manager is not None:
+            try:
+                frame = strategy_manager.capture_screenshot()
+            except Exception as e:
+                internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
+                frame = None
+        bboxes = []
+        if hasattr(self.element_source, 'get_element_bboxes'):
+            bboxes = [
+                b for b in self.element_source.get_element_bboxes(elements)
+                if b is not None
+            ]
+        if frame is not None:
+            if bboxes:
+                # Element bboxes are in the driver's window coordinate space;
+                # scale them to the screenshot's pixel space before drawing
+                # (no-op when the two resolutions already match).
+                bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
+                annotated_frame = utils.annotate(frame.copy(), bboxes)
+                return True, timestamp, annotated_frame
+            return True, timestamp, frame.copy()
+        return True, timestamp, None
 
 
 class XPathStrategy(LocatorStrategy):
@@ -839,8 +835,7 @@ class StrategyManager:
                 return False, None, None
         except Exception as e:
             execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-            raise_if_session_dead(e)
-            return False, None, None
+            raise
 
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
