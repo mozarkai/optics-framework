@@ -369,7 +369,7 @@ def _first_line(error: BaseException) -> str:
 def describe_cause(error: BaseException) -> str:
     """One line naming an exception: an OpticsError's own text, else its type and message."""
     if isinstance(error, OpticsError):
-        return str(error)
+        return _first_line(error)
     line = _first_line(error)
     return f"{type(error).__name__}: {line}" if line else type(error).__name__
 
@@ -427,7 +427,8 @@ class OpticsError(Exception):
             return None
         while cause.__cause__ is not None:
             cause = cause.__cause__
-        if (cause.message if isinstance(cause, OpticsError) else _first_line(cause)) in self.message:
+        cause_message = cause.message if isinstance(cause, OpticsError) else _first_line(cause)
+        if cause_message and cause_message in self.message:
             return None
         return describe_cause(cause)
 
