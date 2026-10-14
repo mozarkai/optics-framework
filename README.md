@@ -361,6 +361,6 @@ Security issues follow [SECURITY.md](SECURITY.md) rather than public issues.
 
 Apache 2.0 — see [LICENSE](LICENSE).
 
-Questions and bugs: [GitHub Issues](https://github.com/mozarkai/optics-framework/issues). Anything else: [lalit@mozark.ai](mailto:lalit@mozark.ai).
+Questions and bugs: [GitHub Issues](https://github.com/mozarkai/optics-framework/issues).
 
-<div align="center"><sub>Built by <a href="https://mozark.ai">Mozark AI</a>.</sub></div>
+<div align="center"><sub>Built by the community.</sub></div>
