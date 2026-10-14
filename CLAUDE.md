@@ -30,10 +30,10 @@ The full chain when a user types `optics execute <folder>`:
    - `_parse_aoi_param` (`:37`) normalises the `aoi` tuple (`aoi_x/y/width/height`); `index` is passed alongside it.
    - `_locate_element` (`:53`) calls `strategy_manager.locate(element, ...)` which is a **generator** (`strategies.py:705`).
    - `_act_until_success` (`:442`) consumes the generator: for each `LocateResult` yielded, saves an annotated screenshot then calls `act(result.value)`. First success returns; if every yielded result raises **and** AI self-heal (see below) can't recover, it wraps the last as `OpticsError(Code.X0201, ...)`; if the generator yielded nothing and self-heal can't recover, the strategies layer's `Code.E0201` propagates.
-8. `StrategyManager.locate` (`strategies.py:705`) is the **self-healing element location** layer (**fallback level 2**):
+8. `StrategyManager.locate` (`strategies.py:700`) is the **self-healing element location** layer (**fallback level 2**):
    - `utils.parse_text_only_prefix(element)` (`common/utils.py:195`) strips the optional `TEXT_ONLY:` prefix that forces vision-based search.
    - `utils.determine_element_type(element)` (`utils.py:166`) classifies the locator string: `.png/.jpg/.jpeg/.bmp` → `"Image"`; `text=` / `TEXT_ONLY:` → `"Text"`; `css=` → `"CSS"`; `xpath=`, `/`, `//`, `(` → `"XPath"`; else `"Text"`.
-   - Iterates `self.locator_strategies` — built by `StrategyFactory` (`strategies.py:525`) from a priority-ordered registry (`:531`):
+   - Iterates `self.locator_strategies` — built by `StrategyFactory` (`strategies.py:521`) from a priority-ordered registry (`:531`):
      1. `XPathStrategy` (`:156`) — delegates to `element_source.locate(element)` (e.g. Appium's `find_element` by XPath).
      2. `TextElementStrategy` (`:185`) — same `element_source.locate` call but for `"Text"` / `"CSS"` / `"Class"` types.
      3. `TextDetectionStrategy` (`:214`) — captures a screenshot via the element source and runs OCR through `self.text_detection.find_element` (the `TextInterface` instance configured in `text_detection` block of config.yaml).
@@ -98,14 +98,14 @@ The element-location subsystem is spread across four layers; all of them live in
 - **`StrategyManager.assert_presence(elements, element_type, timeout, rule)`** (`:743`) is the parallel path used by `Verifier.assert_presence` (`api/verifier.py:127`). It allocates the total `timeout` across applicable strategies via `_alloc_time_for_strategy` (`:725`, even division of remaining time) and short-circuits on the first one that satisfies the rule (`any` / `all`).
 - **`LocateValueWithFrame`** (`:21`) is the vision-strategy return shape: `(value, annotated_frame)`. The `LocateResult` wrapper (`:563`) normalises both shapes for callers; `annotated_frame` ends up in screenshots saved by `_save_annotated_for_result` (`action_keyword.py:65`).
 - **AOI variants** — `TextDetectionStrategy.locate_with_aoi` (`:244`) and `ImageDetectionStrategy.locate_with_aoi` (`:361`) crop the screenshot to an Area-of-Interest first via `utils.crop_screenshot_to_aoi`, then adjust coordinates back via `utils.adjust_coordinates_for_aoi`. Only triggered when any of `aoi_x/y/width/height` differs from the `0/0/100/100` default (`action_keyword.py:427`).
-- **`execution_tracer`** (`common/execution_tracer.py`, `ExecutionTracer` class) is called from `_try_strategy_locate` (`strategies.py:662`, log calls at `:697`/`:700`) and `_try_assert_with_strategy` (`:816`, log calls at `:825`/`:828`/`:833`) to record success/fail per strategy — read it to build the per-keyword "which strategy actually worked" report.
+- **`execution_tracer`** (`common/execution_tracer.py`, `ExecutionTracer` class) is called from `_try_strategy_locate` (`strategies.py:658`, log calls at `:697`/`:700`) and `_try_assert_with_strategy` (`:816`, log calls at `:825`/`:828`/`:833`) to record success/fail per strategy — read it to build the per-keyword "which strategy actually worked" report.
 
 ### Four fallback layers — keep them straight
 
 | Level | Where | Iterates over | Trigger to advance | When exhausted |
 |------|-------|---------------|---------------------|----------------|
 | 1 — param | `TestRunner._try_execute_with_fallback` (`test_runnner.py:470`) | Cartesian product of `${name}` value lists from `ElementData` | `OpticsError` with code starting `E02` or `== X0201` | `_handle_fallback_exhausted` (`:526`) |
-| 2 — strategy | `StrategyManager.locate` (`strategies.py:705`) generator | XPath → Text → OCR → Image (sorted by priority in `StrategyFactory`) | strategy yields no result (returns `None` or raises) | raises `OpticsError(Code.E0201, ...)` (`:723`) |
+| 2 — strategy | `StrategyManager.locate` (`strategies.py:700`) generator | XPath → Text → OCR → Image (sorted by priority in `StrategyFactory`) | strategy yields no result (returns `None` or raises) | raises `OpticsError(Code.E0201, ...)` (`:723`) |
 | 3 — driver / source | `InstanceFallback.instances` (`base_factory.py:207`) | Enabled instances in `config.yaml` order | call-site `try/except` per instance | call-site raises (varies) |
 | 4 — AI self-heal | `ActionKeyword._ai_self_heal` (`action_keyword.py:233`), backed by `AISelfHealHandler` (`common/ai_self_heal.py:188`) | Up to `max_steps` (default 5) LLM-driven keyword calls | LLM emits `action: "keyword"` and the call doesn't complete the goal | LLM emits `give_up`, an error, or the step budget is exhausted — original `E0201`/`X0201` is (re-)raised |
 
@@ -165,7 +165,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
   - `E0201` element not found in one source → triggers fallback **levels 1 and 2**.
   - `X0201` element not found after all fallbacks → also keeps fallback ladder going.
   - `E0205` invalid element type.
-  - `E0303` screenshot empty/black → `ScreenshotStrategy.capture` (`strategies.py:502`).
+  - `E0303` screenshot empty/black → `ScreenshotStrategy.capture` (`strategies.py:498`).
   - `E0402` keyword name not in `keyword_map`.
   - `E0501` config / required-files missing.
   - `E0701` execution failed (top-level wrap in `ExecutionEngine`).
