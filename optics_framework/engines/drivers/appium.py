@@ -1274,7 +1274,16 @@ class Appium(DriverInterface):
 
     @supported_on(*MOBILE)
     def go_back(self, event_name: Optional[str] = None) -> None:
+        """iOS has no system back: XCUITest taps a navigation bar button, and when the screen has
+        none it only logs, which would let the keyword pass without going back.
+        """
         driver = self._require_driver()
+        if self._is_ios() and not driver.find_elements(
+            AppiumBy.IOS_CLASS_CHAIN, "**/XCUIElementTypeNavigationBar/XCUIElementTypeButton"
+        ):
+            raise OpticsError(
+                Code.E0401, message="No navigation bar back button on this iOS screen; Go Back has nothing to tap"
+            )
         if event_name:
             self.event_sdk.capture_event(event_name)
         driver.back()
