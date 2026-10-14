@@ -354,15 +354,19 @@ def test_fallback_positional_tries_next_value_on_failure():
     assert engine.execute.await_count == 2
 
 
-def test_fallback_positional_all_fail_raises_runtime_error():
+def test_fallback_positional_all_fail_lists_each_attempt_under_the_last_code():
     engine = MagicMock()
-    engine.execute = AsyncMock(side_effect=RuntimeError("boom"))
-    with pytest.raises(RuntimeError, match="All fallback attempts failed"):
-        _run(
-            expose_api._execute_keyword_with_fallback(
-                engine, "sess", "press_element", [["a", "b"]], _dummy_method, MagicMock()
-            )
-        )
+    engine.execute = AsyncMock(side_effect=[
+        OpticsError(Code.E0201, message="no a"), OpticsError(Code.E0201, message="no b"),
+    ])
+    attempt = expose_api._execute_keyword_with_fallback(
+        engine, "sess", "press_element", [["a", "b"]], _dummy_method, MagicMock()
+    )
+    with pytest.raises(OpticsError) as exc_info:
+        _run(attempt)
+    assert exc_info.value.code == Code.E0201
+    assert "no a" in exc_info.value.message
+    assert "no b" in exc_info.value.message
     assert engine.execute.await_count == 2
 
 
@@ -459,15 +463,14 @@ def test_resolve_named_to_positional_skips_keyword_only():
     assert out == [["x"]]
 
 
-def test_fallback_no_params_wraps_engine_failure():
+def test_fallback_no_params_surfaces_engine_failure_as_is():
     engine = MagicMock()
     engine.execute = AsyncMock(side_effect=RuntimeError("driver down"))
-    with pytest.raises(RuntimeError, match="Keyword execution failed"):
-        _run(
-            expose_api._execute_keyword_with_fallback(
-                engine, "sess", "capture_screenshot", [], _dummy_method, MagicMock()
-            )
-        )
+    attempt = expose_api._execute_keyword_with_fallback(
+        engine, "sess", "capture_screenshot", [], _dummy_method, MagicMock()
+    )
+    with pytest.raises(RuntimeError, match="^driver down$"):
+        _run(attempt)
 
 
 def test_fallback_reraises_control_flow_exception():

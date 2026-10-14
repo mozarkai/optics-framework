@@ -19,7 +19,7 @@ from pathlib import Path
 from itertools import product
 import yaml
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
 from optics_framework.common.config_handler import (
     ConfigHandler,
     DependencyConfig,
@@ -114,7 +114,7 @@ def fallback_params(func: Callable[..., Any]) -> Callable[..., Any]:
             for k in sig.parameters
             if k not in fallback_keys and k != "self"
         }
-        errors: List[tuple[Dict[str, str], str]] = []
+        errors: List[tuple[Dict[str, str], Exception]] = []
         keys = list(fallback_lists.keys())
 
         if not keys:
@@ -131,14 +131,9 @@ def fallback_params(func: Callable[..., Any]) -> Callable[..., Any]:
             except Exception as e:
                 if isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit)):
                     raise
-                errors.append((combo_kwargs, repr(e)))
+                errors.append((combo_kwargs, e))
 
-        if errors:
-            msg = "\n".join([f"{c} -> {err}" for c, err in errors])
-            raise RuntimeError(
-                f"All fallback attempts failed in {func.__name__}:\n{msg}"
-            )
-        raise RuntimeError(f"No valid fallback values provided for {func.__name__}")
+        raise_fallback_failure(func.__name__, errors)
 
     return wrapper
 
