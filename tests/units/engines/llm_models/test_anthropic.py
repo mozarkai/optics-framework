@@ -125,14 +125,16 @@ def test_temperature_precedence(fake_sdk):
 
 def test_truncated_reply_raises(fake_sdk):
     fake_sdk.stop_reason = "max_tokens"
+    llm = _llm(max_tokens=10)
     with pytest.raises(OpticsError, match="max_tokens"):
-        _llm(max_tokens=10).generate("hi", response_schema=SCHEMA)
+        llm.generate("hi", response_schema=SCHEMA)
 
 
 def test_missing_tool_call_raises(fake_sdk):
     fake_sdk.content = [_text("sorry")]
+    llm = _llm()
     with pytest.raises(OpticsError, match="no structured response"):
-        _llm().generate("hi", response_schema=SCHEMA)
+        llm.generate("hi", response_schema=SCHEMA)
 
 
 def test_generate_json_parses_the_tool_input(fake_sdk):

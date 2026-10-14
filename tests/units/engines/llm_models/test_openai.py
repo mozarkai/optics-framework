@@ -138,14 +138,16 @@ def test_max_tokens_is_sent_only_when_configured(fake_client):
 
 def test_truncated_reply_raises(fake_client):
     fake_client.finish_reason = "length"
+    llm = _llm()
     with pytest.raises(OpticsError, match="max_tokens"):
-        _llm().generate("hi", response_schema=SCHEMA)
+        llm.generate("hi", response_schema=SCHEMA)
 
 
 def test_refusal_raises(fake_client):
     fake_client.message = SimpleNamespace(content=None, refusal="no")
+    llm = _llm()
     with pytest.raises(OpticsError, match="refused"):
-        _llm().generate("hi", response_schema=SCHEMA)
+        llm.generate("hi", response_schema=SCHEMA)
 
 
 def test_generate_json_parses_the_reply(fake_client):
@@ -159,8 +161,9 @@ def test_strict_mode_nulls_for_optional_properties_are_dropped(fake_client):
 
 def test_undecodable_reply_surfaces_from_generate_json(fake_client):
     fake_client.message = SimpleNamespace(content="not json", refusal=None)
+    llm = _llm()
     with pytest.raises(OpticsError, match="non-JSON"):
-        _llm().generate_json("hi", SCHEMA)
+        llm.generate_json("hi", SCHEMA)
 
 
 class TestStrictSchema:
