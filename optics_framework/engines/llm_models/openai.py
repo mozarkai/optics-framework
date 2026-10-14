@@ -83,6 +83,23 @@ class OpenAILLM(LLMInterface):
         *,
         temperature: float | None = None,
     ) -> str:
+        request, response_format = self._build_request(prompt, images, system, response_schema, temperature)
+        try:
+            response = self.client.chat.completions.create(**request)
+        except Exception as exc:  # noqa: BLE001 - normalize all SDK/transport errors
+            raise OpticsError(
+                Code.E0801, message=f"OpenAI-compatible request failed: {exc}"
+            ) from exc
+        return self._read_reply(response, response_format, response_schema)
+
+    def _build_request(
+        self,
+        prompt: str,
+        images: list[bytes] | None,
+        system: str | None,
+        response_schema: dict[str, Any] | None,
+        temperature: float | None,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
         response_format: dict[str, Any] | None = None
         if response_schema is not None and self.response_format == "json_object":
             system = _with_schema_instruction(system, response_schema)
@@ -106,14 +123,14 @@ class OpenAILLM(LLMInterface):
             request["max_completion_tokens"] = self.max_tokens
         if response_format is not None:
             request["response_format"] = response_format
+        return request, response_format
 
-        try:
-            response = self.client.chat.completions.create(**request)
-        except Exception as exc:  # noqa: BLE001 - normalize all SDK/transport errors
-            raise OpticsError(
-                Code.E0801, message=f"OpenAI-compatible request failed: {exc}"
-            ) from exc
-
+    def _read_reply(
+        self,
+        response: Any,
+        response_format: dict[str, Any] | None,
+        response_schema: dict[str, Any] | None,
+    ) -> str:
         if response.usage is not None:
             internal_logger.debug(
                 "OpenAI usage (%s): prompt=%s output=%s",
