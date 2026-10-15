@@ -1,3 +1,5 @@
+import itertools
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -125,3 +127,95 @@ async def test_launch_falls_back_to_top_level_settings(monkeypatch):
     pw.webkit.launch.assert_awaited_once_with(headless=False)
     browser.new_context.assert_awaited_once_with(viewport={"width": 1280, "height": 800})
     page.goto.assert_awaited_once_with("https://example.com", timeout=1000, wait_until="load")
+
+
+async def test_a_second_launch_navigates_the_open_browser(monkeypatch):
+    pw, browser, page = _fake_playwright(monkeypatch)
+    page.is_closed = MagicMock(return_value=False)
+    driver = Playwright(CONFLICTING)
+
+    await driver._launch_app_async("https://example.com", event_name=None)
+    await driver._launch_app_async("https://example.com/cart", event_name=None)
+
+    pw.firefox.launch.assert_awaited_once()
+    assert page.goto.await_count == 2
+
+
+def test_special_keys_are_pressed_not_typed():
+    driver = _driver()
+    driver.page.keyboard.press = AsyncMock()
+    driver.page.keyboard.type = AsyncMock()
+
+    driver.enter_text_using_keyboard(pw_driver.SpecialKey.ENTER)
+
+    driver.page.keyboard.press.assert_awaited_once_with("Enter")
+    driver.page.keyboard.type.assert_not_awaited()
+
+
+def test_secret_prefix_is_not_typed():
+    driver = _driver()
+    located = MagicMock()
+    located.fill = AsyncMock()
+
+    driver.enter_text_element(located, "@:secret")
+
+    located.fill.assert_awaited_once_with("secret")
+
+
+def test_go_back_uses_browser_history():
+    driver = _driver()
+    driver.page.go_back = AsyncMock()
+
+    driver.go_back()
+
+    driver.page.go_back.assert_awaited_once()
+
+
+def _settling_driver(monkeypatch, fingerprints, config=None):
+    monkeypatch.setattr(Playwright, "SETTLE_QUIET_S", 0.03)
+    monkeypatch.setattr(Playwright, "SETTLE_POLL_S", 0.01)
+    driver = _driver(config)
+    driver.page.evaluate = AsyncMock(side_effect=fingerprints)
+    return driver
+
+
+def test_settle_returns_once_the_dom_stops_changing(monkeypatch):
+    driver = _settling_driver(monkeypatch, itertools.chain(["shell", "form"], itertools.repeat("form")))
+
+    started = time.monotonic()
+    driver.wait_for_page_settled()
+
+    assert time.monotonic() - started < 1
+    assert driver.page.evaluate.await_count >= 4
+
+
+@pytest.mark.parametrize(
+    "unsettled",
+    [pw_driver.PlaywrightError("Execution context was destroyed"), None],
+    ids=["mid-navigation", "still-parsing"],
+)
+def test_settle_keeps_waiting_while_the_page_is_unreadable(monkeypatch, unsettled):
+    driver = _settling_driver(monkeypatch, itertools.chain([unsettled] * 5, itertools.repeat("form")))
+
+    driver.wait_for_page_settled()
+
+    # Five unreadable polls, then "form" seen at least twice across the quiet window.
+    assert driver.page.evaluate.await_count >= 7
+
+
+def test_settle_gives_up_without_error_on_a_page_that_never_goes_quiet(monkeypatch):
+    ticking = (str(n) for n in itertools.count())
+    driver = _settling_driver(monkeypatch, ticking, config={"settle_timeout_ms": 100})
+
+    started = time.monotonic()
+    driver.wait_for_page_settled()
+
+    assert 0.1 <= time.monotonic() - started < 1
+
+
+def test_settle_timeout_of_zero_skips_the_wait(monkeypatch):
+    driver = _settling_driver(monkeypatch, itertools.repeat("form"), config={"settle_timeout_ms": 0})
+
+    driver.wait_for_page_settled()
+
+    driver.page.evaluate.assert_not_awaited()

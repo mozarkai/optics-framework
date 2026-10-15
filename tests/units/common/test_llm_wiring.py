@@ -25,10 +25,11 @@ pytestmark = pytest.mark.white_box
 
 
 class TestConfigWiring:
-    def test_default_has_disabled_gemini(self):
+    def test_default_lists_every_engine_disabled(self):
         cfg = Config()
         assert cfg.llm_models == [
-            {"gemini": DependencyConfig(enabled=False, url=None, capabilities={})}
+            {name: DependencyConfig(enabled=False, url=None, capabilities={})}
+            for name in ("gemini", "openai", "anthropic")
         ]
 
     def test_enabled_filtering(self):

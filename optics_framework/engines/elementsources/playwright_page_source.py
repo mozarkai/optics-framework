@@ -7,6 +7,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common import utils
 from optics_framework.common.async_utils import run_async
+from optics_framework.engines.drivers import playwright_locator
 
 
 PLAYWRIGHT_NOT_INITIALISED_MSG = (
@@ -108,6 +109,7 @@ class PlaywrightPageSource(ElementSourceInterface):
             Tuple[str, str]: (page_source, timestamp)
         """
         page = self._require_page()
+        self.driver.wait_for_page_settled()
         timestamp = utils.get_timestamp()
 
         html: str = run_async(page.content())
@@ -536,7 +538,18 @@ class PlaywrightPageSource(ElementSourceInterface):
             val = (attrs.get(key) or "").strip()
             if val:
                 return val
-        return ""
+        return self._label_for(node)
+
+    def _label_for(self, node: etree.Element) -> str:
+        cache = getattr(self, "_label_cache", None)
+        if cache is None or cache[0] is not self.tree:
+            labels: dict[str, str] = {}
+            for label in self.tree.iter("label") if self.tree is not None else ():
+                target = label.attrib.get("for")
+                if target and target not in labels:
+                    labels[target] = " ".join("".join(label.itertext()).split())
+            cache = self._label_cache = (self.tree, labels)
+        return cache[1].get(node.attrib.get("id") or "", "")
 
     def _web_folded_label(self, node: etree.Element) -> str:
         # An attribute label wins when the node has no direct text of its own; otherwise
@@ -579,13 +592,24 @@ class PlaywrightPageSource(ElementSourceInterface):
         )
 
     def _compact_web_entry(
-        self, node: etree.Element, label: str, actions: List[str], bounds: Dict
+        self, node: etree.Element, label: str, actions: List[str], bounds: Dict,
+        locator: str | None = None,
     ) -> Dict:
         extra = {"class": (node.tag or "").lower()}
         rid = node.attrib.get("id")
         if rid:
             extra["resource-id"] = rid
-        return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        if locator:
+            entry["loc"] = locator
+        return entry
+
+    def _suggest_locators(self, page: Any, xpaths: list[str | None]) -> list[str | None]:
+        try:
+            return playwright_locator.suggest_locators(page, xpaths)
+        except Exception as e:
+            internal_logger.debug("[PlaywrightPageSource] Locator suggestions failed: %s", e)
+            return [None] * len(xpaths)
 
     def _compact_web_candidate(
         self, node: etree.Element
@@ -620,9 +644,8 @@ class PlaywrightPageSource(ElementSourceInterface):
             for node in self.tree.iter()
             if (candidate := self._compact_web_candidate(node)) is not None
         ]
-        rects = self._resolve_bounds_batch(
-            page, [self._build_simple_xpath(node) for node, _ in candidates]
-        )
+        xpaths = [self._build_simple_xpath(node) for node, _ in candidates]
+        rects = self._resolve_bounds_batch(page, xpaths)
         if rects is None:
             # Every entry needs bounds, so a failed batch would collapse to an empty list
             # indistinguishable from a genuinely empty screen. Consumers such as the live
@@ -632,11 +655,12 @@ class PlaywrightPageSource(ElementSourceInterface):
                 Code.E0202,
                 message="Batched bounds lookup failed; compact elements unavailable.",
             )
+        locators = self._suggest_locators(page, xpaths) if xpaths else []
         entries = []
-        for (node, (label, actions)), rect in zip(candidates, rects):
+        for (node, (label, actions)), rect, locator in zip(candidates, rects, locators):
             bounds = self._rect_to_bounds(rect)
             if bounds:
-                entries.append(self._compact_web_entry(node, label, actions, bounds))
+                entries.append(self._compact_web_entry(node, label, actions, bounds, locator))
         return entries
 
     def _check_filter_type(self, node: etree.Element, filter_type: str) -> bool:
@@ -1118,63 +1142,15 @@ class PlaywrightPageSource(ElementSourceInterface):
         except AttributeError:
             return False
 
-    def _build_playwright_locator(self, page: Any, element: str, element_type: str) -> Any:
-        """
-        Build Playwright locator based on element type.
-
-        :param page: Playwright page object
-        :param element: Element selector string
-        :param element_type: Type of element (Text, XPath, CSS)
-        :return: Playwright locator
-        """
-        if element_type == "Text":
-            text_value = self._strip_prefix_for_page_source(element, "text=")
-            return page.get_by_text(text_value, exact=self._strict_element_match())
-
-        if element_type == "XPath":
-            xpath_value = self._strip_prefix_for_page_source(element, "xpath=")
-            return page.locator(f"xpath={xpath_value}")
-
-        # CSS / default
-        css_value = self._strip_prefix_for_page_source(element, "css=")
-        return page.locator(css_value)
-
-    def _strip_prefix_for_page_source(self, element: str, prefix: str) -> str:
-        """
-        Strip prefix from element string if present (case-insensitive).
-
-        :param element: Element string
-        :param prefix: Prefix to strip (e.g., "xpath=", "text=", "css=")
-        :return: Element string without prefix
-        """
-        if element.lower().startswith(prefix.lower()):
-            eq_index = element.find("=")
-            return element[eq_index + 1:] if eq_index >= 0 else element
-        return element
-
     def locate(self, element: str, index: Optional[int] = None) -> Any:
+        """Locate without waiting; PlaywrightFindElement is the source that waits."""
         page = self._require_page()
 
         original_element, element = self._resolve_optics_element(element)
-        element_type = utils.determine_element_type(element)
-
         try:
-            locator = self._build_playwright_locator(page, element, element_type)
-
-            if index is not None:
-                locator = locator.nth(index)
-
-            count = run_async(locator.count())
-            internal_logger.debug(
-                "[PlaywrightLocate] Locator '%s' found %d elements",
-                element, count
+            return playwright_locator.find(
+                page, element, index=int(index or 0), exact=self._strict_element_match()
             )
-
-            if count == 0:
-                return None
-
-            return locator.first
-
         except Exception as e:
             internal_logger.error(
                 "[PlaywrightLocate] Error locating element '%s' (resolved='%s')",
@@ -1193,29 +1169,8 @@ class PlaywrightPageSource(ElementSourceInterface):
     # ---------------------------------------------------------
 
     def _check_single_element_presence(self, page: Any, element: str) -> bool:
-        """
-        Check if a single element is present on the page.
-
-        :param page: Playwright page object
-        :param element: Element selector string
-        :return: True if element is found, False otherwise
-        """
         try:
-            internal_logger.debug(
-                "[PlaywrightPageSource] Element '%s'",
-                element
-            )
-            element_type = utils.determine_element_type(element)
-            if element_type == "Text":
-                locator = page.get_by_text(element, exact=self._strict_element_match())
-            elif element_type == "XPath":
-                locator = page.locator(f"xpath={element}")
-            else:
-                # CSS selector
-                locator = page.locator(element)
-
-            count = run_async(locator.count())
-            return count > 0
+            return playwright_locator.is_present(page, element, exact=self._strict_element_match())
         except Exception as e:
             internal_logger.debug(
                 "[PlaywrightPageSource] Error checking '%s': %s",

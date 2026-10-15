@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Optics Store</title></head>
+<body>
+  <h1>Optics Store</h1>
+  <form id="sign-in" onsubmit="event.preventDefault(); signIn();">
+    <label for="email">Email</label>
+    <input id="email" type="email">
+    <label for="password">Password</label>
+    <input id="password" type="password" placeholder="Password" data-testid="password">
+    <p>Password for all users: secret</p>
+    <button type="submit">Sign in</button>
+  </form>
+  <script>
+    function signIn() {
+      const email = document.getElementById("email").value;
+      const password = document.querySelector("[data-testid=password]").value;
+      setTimeout(() => {
+        const welcome = document.createElement("section");
+        welcome.id = "welcome";
+        welcome.innerHTML = password === "secret"
+          ? `<p>Welcome, ${email}</p><a href="orders.html">Orders</a>`
+          : "<p>Wrong password</p>";
+        document.body.append(welcome);
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

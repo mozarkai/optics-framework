@@ -26,7 +26,7 @@ from optics_framework.common.execution import (
     ExecutionParams,
 )
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64
@@ -432,9 +432,8 @@ def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[
     default > built-in default. A single serve/mcp process is multi-tenant, so a
     caller can enable/disable self-heal and choose its own LLM provider/model per
     session rather than being locked to the operator's choice. LLM credentials never
-    flow through here — the provider reads its own environment variables (e.g.
-    GeminiLLM reads GOOGLE_API_KEY/GEMINI_API_KEY) — so exposing provider/model per
-    session adds no credential surface.
+    flow through here — each engine reads its own credentials and endpoint from the
+    process environment — so exposing provider/model per session adds no credential surface.
     """
     env_enabled, env_provider, env_model = _env_self_heal_defaults()
     enabled = config.ai_self_heal if config.ai_self_heal is not None else env_enabled
@@ -745,13 +744,8 @@ def _combo_to_positional_named(
 async def _execute_no_params(
     engine: ExecutionEngine, session_id: str, keyword: str
 ) -> Any:
-    """Run keyword with no params; raise RuntimeError on failure, re-raise SystemExit etc."""
-    try:
-        return await engine.execute(_keyword_execution_params(session_id, keyword, []))
-    except Exception as e:
-        if _should_reraise(e):
-            raise
-        raise RuntimeError(f"Keyword execution failed: {e}") from e
+    """Run keyword with no params."""
+    return await engine.execute(_keyword_execution_params(session_id, keyword, []))
 
 
 async def _try_combos_named(
@@ -760,8 +754,8 @@ async def _try_combos_named(
     keyword: str,
     ctx: _NamedParamsContext,
 ) -> Any:
-    """Try each named-param combo; return first success or raise RuntimeError."""
-    errors: List[Tuple[tuple, str]] = []
+    """Try each named-param combo; return the first success."""
+    errors: List[Tuple[tuple, Exception]] = []
     for combo in product(*ctx.normalized_param_lists):
         try:
             args = _combo_to_positional_named(combo, ctx)
@@ -769,11 +763,8 @@ async def _try_combos_named(
         except Exception as e:
             if _should_reraise(e):
                 raise
-            errors.append((combo, repr(e)))
-    if not errors:
-        raise RuntimeError(f"No valid fallback values provided for keyword '{keyword}'")
-    msg = "\n".join([f"{c} -> {err}" for c, err in errors])
-    raise RuntimeError(f"All fallback attempts failed for keyword '{keyword}':\n{msg}")
+            errors.append((combo, e))
+    raise_fallback_failure(f"keyword '{keyword}'", errors)
 
 
 async def _try_combos_positional(
@@ -782,8 +773,8 @@ async def _try_combos_positional(
     keyword: str,
     normalized_param_lists: List[List[str]],
 ) -> Any:
-    """Try each positional combo; return first success or raise RuntimeError."""
-    errors: List[Tuple[tuple, str]] = []
+    """Try each positional combo; return the first success."""
+    errors: List[Tuple[tuple, Exception]] = []
     for combo in product(*normalized_param_lists):
         try:
             return await engine.execute(
@@ -792,11 +783,8 @@ async def _try_combos_positional(
         except Exception as e:
             if _should_reraise(e):
                 raise
-            errors.append((combo, repr(e)))
-    if not errors:
-        raise RuntimeError(f"No valid fallback values provided for keyword '{keyword}'")
-    msg = "\n".join([f"{c} -> {err}" for c, err in errors])
-    raise RuntimeError(f"All fallback attempts failed for keyword '{keyword}':\n{msg}")
+            errors.append((combo, e))
+    raise_fallback_failure(f"keyword '{keyword}'", errors)
 
 
 async def _execute_keyword_with_fallback(
@@ -823,7 +811,8 @@ async def _execute_keyword_with_fallback(
         Any: Result from the first successful execution
 
     Raises:
-        RuntimeError: If all fallback attempts fail
+        Exception: The failing attempt's own error, or an OpticsError listing every
+            attempt under the last one's code when several values were tried
     """
     if isinstance(params, dict):
         ctx = _build_named_param_context(method, params)

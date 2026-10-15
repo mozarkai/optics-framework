@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, NoReturn
 from pydantic import BaseModel
 from rich import get_console
 from rich.panel import Panel
@@ -354,6 +354,24 @@ class ErrorPayload(BaseModel):
     message: str
     details: Optional[Any] = None
     meta: Optional[Dict[str, Any]] = None
+    cause: Optional[str] = None
+
+
+_CAUSE_MAX_CHARS = 300
+
+
+def _first_line(error: BaseException) -> str:
+    # Driver errors append stack traces and call logs after the first line.
+    text = next((line.strip() for line in str(error).splitlines() if line.strip()), "")
+    return text.removeprefix("Message: ")[:_CAUSE_MAX_CHARS]
+
+
+def describe_cause(error: BaseException) -> str:
+    """One line naming an exception: an OpticsError's own text, else its type and message."""
+    if isinstance(error, OpticsError):
+        return _first_line(error)
+    line = _first_line(error)
+    return f"{type(error).__name__}: {line}" if line else type(error).__name__
 
 
 class OpticsError(Exception):
@@ -397,6 +415,27 @@ class OpticsError(Exception):
         self.meta = meta or getattr(spec, "meta", None)
         super().__init__(f"{self.code}: {self.message}")
 
+    @property
+    def cause_text(self) -> str | None:
+        """The root of the cause chain as one line, unless the message already carries it.
+
+        Intermediate OpticsErrors mostly restate the outer message ("not found"), so only
+        the innermost error, the one that says why, is shown.
+        """
+        cause = self.__cause__
+        if cause is None:
+            return None
+        while cause.__cause__ is not None:
+            cause = cause.__cause__
+        cause_message = cause.message if isinstance(cause, OpticsError) else _first_line(cause)
+        if cause_message and cause_message in self.message:
+            return None
+        return describe_cause(cause)
+
+    def __str__(self) -> str:
+        cause = self.cause_text
+        return f"{self.code}: {self.message} (cause: {cause})" if cause else f"{self.code}: {self.message}"
+
     def log(self, logger=None, level=None, extra=None, use_rich: bool = True):
         """
         Log the error using the provided logger (defaults to internal_logger), or print a rich, colored message if use_rich is True.
@@ -423,6 +462,8 @@ class OpticsError(Exception):
 
     def _build_log_message(self, extra):
         log_msg = f"[{self.code}] {self.message} (category: {self.category}, status: {self.status_code})"
+        if self.cause_text:
+            log_msg += f" caused by: {self.cause_text}"
         log_extra = {
             "code": str(self.code),
             "category": str(self.category),
@@ -445,6 +486,8 @@ class OpticsError(Exception):
             details = payload.get("details")
             meta = payload.get("meta")
             body = message
+            if payload.get("cause"):
+                body += Text(f"\nCaused by: {payload['cause']}")
             if details:
                 body += Text(f"\n[dim]Details:[/dim] {details}")
             if meta:
@@ -481,7 +524,8 @@ class OpticsError(Exception):
             "status": 500,
             "message": "...",
             "details": {...},
-            "meta": {...}
+            "meta": {...},
+            "cause": "..."
         }
         """
         payload = ErrorPayload(
@@ -491,9 +535,22 @@ class OpticsError(Exception):
             message=self.message,
             details=self.details,
             meta=meta or self.meta,
+            cause=self.cause_text,
         )
         # return primitive dict for downstream compatibility
         return payload.model_dump()
+
+
+def raise_fallback_failure(subject: str, errors: list[tuple[Any, Exception]]) -> NoReturn:
+    """Re-raise a lone attempt's error as is; for several, list each under the last one's code."""
+    if not errors:
+        raise RuntimeError(f"No valid fallback values provided for {subject}")
+    if len(errors) == 1:
+        raise errors[0][1]
+    last = errors[-1][1]
+    tried = "\n".join(f"{values} -> {error}" for values, error in errors)
+    code = last.code if isinstance(last, OpticsError) else Code.E0401
+    raise OpticsError(code, message=f"All fallback values failed for {subject}:\n{tried}") from last
 
 
 def register_error(spec: ErrorSpec) -> None:

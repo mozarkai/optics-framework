@@ -121,36 +121,32 @@ class LocatorStrategy(ABC):
         screenshot. Visibility calls are only routed to sources that genuinely implement it --
         see StrategyManager._can_strategy_assert_elements.
         """
-        try:
-            getattr(self.element_source, method_name)(elements, timeout, rule)
-            timestamp = utils.get_timestamp()
-            frame = None
-            strategy_manager = getattr(self, '_strategy_manager', None)
-            if strategy_manager is not None:
-                try:
-                    frame = strategy_manager.capture_screenshot()
-                except Exception as e:
-                    internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
-                    frame = None
-            bboxes = []
-            if hasattr(self.element_source, 'get_element_bboxes'):
-                bboxes = [
-                    b for b in self.element_source.get_element_bboxes(elements)
-                    if b is not None
-                ]
-            if frame is not None:
-                if bboxes:
-                    # Element bboxes are in the driver's window coordinate space;
-                    # scale them to the screenshot's pixel space before drawing
-                    # (no-op when the two resolutions already match).
-                    bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
-                    annotated_frame = utils.annotate(frame.copy(), bboxes)
-                    return True, timestamp, annotated_frame
-                return True, timestamp, frame.copy()
-            return True, timestamp, None
-        except Exception as e:
-            raise_if_session_dead(e)
-            return False, None, None
+        getattr(self.element_source, method_name)(elements, timeout, rule)
+        timestamp = utils.get_timestamp()
+        frame = None
+        strategy_manager = getattr(self, '_strategy_manager', None)
+        if strategy_manager is not None:
+            try:
+                frame = strategy_manager.capture_screenshot()
+            except Exception as e:
+                internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
+                frame = None
+        bboxes = []
+        if hasattr(self.element_source, 'get_element_bboxes'):
+            bboxes = [
+                b for b in self.element_source.get_element_bboxes(elements)
+                if b is not None
+            ]
+        if frame is not None:
+            if bboxes:
+                # Element bboxes are in the driver's window coordinate space;
+                # scale them to the screenshot's pixel space before drawing
+                # (no-op when the two resolutions already match).
+                bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
+                annotated_frame = utils.annotate(frame.copy(), bboxes)
+                return True, timestamp, annotated_frame
+            return True, timestamp, frame.copy()
+        return True, timestamp, None
 
 
 class XPathStrategy(LocatorStrategy):
@@ -671,7 +667,7 @@ class StrategyManager:
         aoi_height: Optional[float],
         index: int,
     ) -> Optional[LocateResult]:
-        """Run one strategy; return LocateResult on success, None on skip/fail."""
+        """Run one strategy; return LocateResult on success, None on skip; raise on failure."""
         if not strategy.supports(element_type, strategy.element_source):
             return None
         try:
@@ -699,8 +695,7 @@ class StrategyManager:
         except Exception as e:
             execution_tracer.log_attempt(strategy, element, "fail", error=str(e))
             internal_logger.debug(f"Strategy {strategy.__class__.__name__} failed: {e}")
-            raise_if_session_dead(e)
-        return None
+            raise
 
     def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None, index: int = 0) -> Generator[LocateResult, None, None]:
         effective_element, text_only = utils.parse_text_only_prefix(element)
@@ -709,18 +704,27 @@ class StrategyManager:
         use_aoi = self._validate_aoi(aoi_x, aoi_y, aoi_width, aoi_height)
 
         yielded = False
+        last_error: Exception | None = None
         for strategy in self.locator_strategies:
             if text_only and type(strategy).__name__ == "TextElementStrategy":
                 continue
             execution_logger.debug(f"Trying strategy: {type(strategy).__name__} for element: {effective_element}")
-            locate_result = self._try_strategy_locate(
-                strategy, effective_element, element_type, use_aoi, aoi_x, aoi_y, aoi_width, aoi_height, index
-            )
+            try:
+                locate_result = self._try_strategy_locate(
+                    strategy, effective_element, element_type, use_aoi, aoi_x, aoi_y, aoi_width, aoi_height, index
+                )
+            except Exception as e:
+                raise_if_session_dead(e)
+                # A missing OCR engine explains nothing when a native lookup also ran.
+                ocr_unconfigured = isinstance(strategy, TextDetectionStrategy) and strategy.text_detection is None
+                if text_only or not ocr_unconfigured:
+                    last_error = e
+                continue
             if locate_result:
                 yielded = True
                 yield locate_result
         if not yielded:
-            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.", cause=last_error)
 
     def _alloc_time_for_strategy(
         self, deadline: float, idx: int, applicable_strategies: List[Any]
@@ -792,7 +796,7 @@ class StrategyManager:
 
         if last_exception:
             internal_logger.debug(f"{method_name} ended with last exception: {last_exception}")
-        raise OpticsError(Code.E0201, message=f"{elements} not found based on rule '{rule}'.")
+        raise OpticsError(Code.E0201, message=f"{elements} not found based on rule '{rule}'.", cause=last_exception)
 
     def _validate_rule(self, rule: str):
         """Validate the rule parameter."""
@@ -831,13 +835,13 @@ class StrategyManager:
                 return False, None, None
         except Exception as e:
             execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-            raise_if_session_dead(e)
-            return False, None, None
+            raise
 
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""
         execution_logger.debug("Capturing screenshot using available strategies.")
+        last_error: Exception | None = None
         for strategy in self.screenshot_strategies:
             try:
                 img = strategy.capture()
@@ -846,8 +850,9 @@ class StrategyManager:
             except Exception as e:
                 execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
                 raise_if_session_dead(e)
+                last_error = e
         internal_logger.debug("No screenshot captured.")
-        raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.")
+        raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.", cause=last_error)
 
     def capture_screenshot_bytes(self) -> bytes:
         """Return the current screen as encoded PNG bytes.
@@ -857,6 +862,7 @@ class StrategyManager:
         Selenium) override that method for efficiency; others encode the numpy frame
         via the default base-class implementation.
         """
+        last_error: Exception | None = None
         for strategy in self.screenshot_strategies:
             source = strategy.element_source
             try:
@@ -869,7 +875,10 @@ class StrategyManager:
                 internal_logger.debug(
                     "Screenshot bytes via %s failed: %s", source.__class__.__name__, e)
                 raise_if_session_dead(e)
-        raise OpticsError(Code.E0303, message="No screenshot bytes captured using available strategies.")
+                last_error = e
+        raise OpticsError(
+            Code.E0303, message="No screenshot bytes captured using available strategies.", cause=last_error
+        )
 
     def capture_screenshot_stream(self, timeout: int = 30):
         """Capture a screenshot stream using the available strategies."""
@@ -896,6 +905,7 @@ class StrategyManager:
             raise OpticsError(Code.E0301, message="No active screenshot stream to stop.")
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:
+        last_error: Exception | None = None
         for strategy in self.pagesource_strategies:
             try:
                 return strategy.capture_pagesource()
@@ -903,8 +913,9 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
                 raise_if_session_dead(e)
+                last_error = e
         internal_logger.debug("No pagesource captured.")
-        raise OpticsError(Code.E0403, message="No pagesource captured using available strategies.")
+        raise OpticsError(Code.E0403, message="No pagesource captured using available strategies.", cause=last_error)
 
     @staticmethod
     def _can_strategy_get_interactive_elements(strategy: "PagesourceStrategy") -> bool:
@@ -926,6 +937,7 @@ class StrategyManager:
             s for s in self.pagesource_strategies
             if self._can_strategy_get_interactive_elements(s)
         ]
+        last_error: Exception | None = None
         for strategy in applicable_strategies:
             try:
                 return strategy.get_interactive_elements(filter_config, compact=compact)
@@ -933,5 +945,8 @@ class StrategyManager:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
                 raise_if_session_dead(e)
+                last_error = e
         internal_logger.debug("No interactive elements retrieved.")
-        raise OpticsError(Code.E0202, message="No interactive elements retrieved using available strategies.")
+        raise OpticsError(
+            Code.E0202, message="No interactive elements retrieved using available strategies.", cause=last_error
+        )

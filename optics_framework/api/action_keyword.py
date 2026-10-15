@@ -203,7 +203,7 @@ class ActionKeyword:
         self.execution_dir = builder.session_config.execution_output_path
         # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
         # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
-        # (e.g. the optics-framework[llm] extra missing) must disable the feature, not
+        # (e.g. the engine's optional extra missing) must disable the feature, not
         # crash the run.
         self.ai_self_heal_enabled = bool(getattr(builder.session_config, "ai_self_heal", False))
         self._llm = None
@@ -1061,6 +1061,12 @@ class ActionKeyword:
 
         internal_logger.info(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(keycode, event_name=event_name)
+
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        """Go back one screen: browser history on the web, the back button on a phone."""
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "go_back")
+        internal_logger.info(f"Going back one screen with the {type(self.driver).__name__} driver (event: {event_name})")
+        self.driver.go_back(event_name=event_name)
 
 
     def clear_element_text(self, element: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",

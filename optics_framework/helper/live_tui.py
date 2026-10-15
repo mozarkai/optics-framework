@@ -75,7 +75,7 @@ Natural-language mode (Ctrl-N)
       click the home button
   An LLM reads the screen and drives keywords step-by-step until the goal is reached.
   Each executed keyword is recorded (so a successful run is /save-able). Ctrl-X aborts.
-  Requires an enabled 'llm_models' entry (e.g. gemini) in config.yaml.
+  Requires an enabled 'llm_models' entry (gemini, openai or anthropic) in config.yaml.
 
 Slash commands (work in both modes)
   /save <test_case> <module_name>
@@ -704,7 +704,7 @@ class LiveTUI:
             self._info("Natural-language mode ON — describe an action in English. Ctrl-N to exit.")
             if not self.controller.natural_language_available():
                 self._info(
-                    "No LLM engine is enabled. Add an enabled 'llm_models' entry (e.g. gemini) "
+                    "No LLM engine is enabled. Add an enabled 'llm_models' entry (gemini, openai or anthropic) "
                     "to your config.yaml and restart optics live."
                 )
         else:

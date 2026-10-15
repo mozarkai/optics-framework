@@ -118,3 +118,13 @@ class TestAssertCommonElementGrouping:
         verifier.strategy_manager.assert_visibility.assert_called_once_with(
             ["TEXT_ONLY:Submit"], "Text", 3, "any"
         )
+
+
+class TestCssLocators:
+    def test_a_css_locator_is_asserted_instead_of_skipped(self, verifier):
+        verifier.strategy_manager.assert_presence = MagicMock(return_value=(False, None, None))
+
+        with pytest.raises(AssertionError):
+            verifier.assert_presence("#missing", timeout_str="1")
+
+        verifier.strategy_manager.assert_presence.assert_called_once_with(["#missing"], "Text", 1, "any")

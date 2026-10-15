@@ -403,7 +403,6 @@ class TestRunner(Runner):
             if result is not None:
                 return result
 
-            await self._handle_fallback_exhausted(keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler)
             await asyncio.sleep(self.config.halt_duration)
             should_retry = await self._process_commands(keyword_node, module_node)
         finally:
@@ -473,6 +472,7 @@ class TestRunner(Runner):
         # Try all combinations of param candidates (for fallback)
         MAX_ATTEMPTS = 20
         attempts = 0
+        last_error: OpticsError | None = None
         for candidate_args in product(*param_candidates):
             attempts += 1
             if attempts > MAX_ATTEMPTS:
@@ -496,6 +496,7 @@ class TestRunner(Runner):
             except OpticsError as oe:
                 if oe.code.value.startswith("E02") or oe.code == Code.X0201:
                     internal_logger.debug(f"Keyword fallback: tried {candidate_args}, error: {oe}")
+                    last_error = oe
                     continue
                 else:
                     await self._handle_keyword_exception(keyword_node, module_node, keyword_result, start_time, test_case_result, oe, capture_handler)
@@ -503,6 +504,9 @@ class TestRunner(Runner):
             except Exception as e:
                 await self._handle_keyword_exception(keyword_node, module_node, keyword_result, start_time, test_case_result, e, capture_handler)
                 return False
+        await self._handle_fallback_exhausted(
+            keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler, last_error
+        )
         return None
 
     async def _handle_keyword_exception(self, keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler):
@@ -523,9 +527,13 @@ class TestRunner(Runner):
         )
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
 
-    async def _handle_fallback_exhausted(self, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler):
+    async def _handle_fallback_exhausted(
+        self, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler, last_error
+    ):
         keyword_node.state = State.COMPLETED_FAILED
         reason = f"Keyword '{keyword_node.name}' failed after fallback attempts"
+        if last_error is not None:
+            reason += f"; last error: {last_error}"
         self._note_failure(reason)
         keyword_result.reason = reason
         await self._send_event(

@@ -52,3 +52,12 @@ def test_token_usage_is_logged(fake_client, monkeypatch):
     monkeypatch.setattr(gemini.internal_logger, "debug", lambda msg, *args: logged.append(msg % args))
     gemini.GeminiLLM({"capabilities": {"model": "m"}}).generate("hi")
     assert "Gemini usage (m): prompt=120 cached=100 output=15 thoughts=40" in logged
+
+
+def test_response_schema_is_sent_as_json_schema(fake_client):
+    schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+    gemini.GeminiLLM({"capabilities": {}}).generate("hi", response_schema=schema)
+    config = fake_client.configs[-1]
+    assert config.response_json_schema == schema
+    assert config.response_schema is None
+    assert config.response_mime_type == "application/json"

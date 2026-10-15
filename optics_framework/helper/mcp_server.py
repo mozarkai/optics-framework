@@ -81,14 +81,21 @@ SERVER_INSTRUCTIONS = (
     "a `session_id`; pass it to every keyword tool and resource. Element sources "
     "default per driver, so `start_session(driver=\"appium\")` just works — supply "
     "`url`/`capabilities` for your target (device id goes in capabilities, e.g. "
-    "deviceName/udid; the MCP itself needs no adb).\n"
+    "deviceName/udid; the MCP itself needs no adb). For a website use "
+    "`start_session(driver=\"playwright\", capabilities={\"headless\": false})`, then "
+    "`launch_app(app_identifier=\"<url>\")`; calling `launch_app` again navigates the "
+    "same browser.\n"
     "2. Act with the keyword tools (press_element, enter_text, swipe, assert_presence, "
     "...). First read the `optics://session/{id}/elements` resource (or call "
     "`get_interactive_elements`): it returns a compact list of every actionable element "
     "with a label, its `act` (tap/long/toggle/input/scroll) and bounds, plus read-only "
     "text (`act: []`) for asserting screen state. Tap with `press_element`, passing a "
     "locator (`xpath=`/`text=`/an id/an image) or an element's visible label from that "
-    "list; it raises when the target is not found. `detect_and_press` is for optional "
+    "list; it raises when the target is not found. On the web an element can also carry "
+    "`loc`, a locator checked to match exactly that element: prefer it over the label, "
+    "and store it in the suite's elements file so a replay finds the same element. Web "
+    "keywords wait for an element to appear, so no `sleep` is needed after a page load. "
+    "`detect_and_press` is for optional "
     "taps only: it skips the press and still succeeds when the target never appears. "
     "Ground every tap in the elements list or a locator rather than pixel/percentage "
     "coordinates, which misfire on the wrong element. Observe with the `screenshot` "
@@ -151,6 +158,8 @@ def _http_detail(detail: Any) -> str:
     if isinstance(detail, dict):
         # OpticsError.to_payload(include_status=True) shape: prefer message/code.
         msg = detail.get("message") or detail.get("detail") or detail
+        if detail.get("cause"):
+            msg = f"{msg} (cause: {detail['cause']})"
         code = detail.get("code")
         return f"[{code}] {msg}" if code else str(msg)
     return str(detail)

@@ -152,7 +152,6 @@ HEAL_ACTION_SCHEMA: Dict[str, Any] = {
         },
     },
     "required": ["reason", "action"],
-    "propertyOrdering": ["reason", "action", "keyword", "params", "completed"],
 }
 
 
