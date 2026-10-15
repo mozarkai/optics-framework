@@ -327,6 +327,7 @@ class CSVDataReader(DataReader):
         """
         with open(file_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
+            reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
             return list(reader)
 
     def read_test_cases(self, file_path: str) -> dict:
@@ -411,7 +412,7 @@ class CSVDataReader(DataReader):
         rows = self.read_file(file_path)
         elements = {}
         for row in rows:
-            element_name = row.get("Element_Name", "").strip()
+            element_name = row.get("element_name", "").strip()
             # Support multiple element IDs for fallback: look for all keys starting with "Element_ID"
             element_ids = [
                 unescape_csv_value(str(row[key]).strip())
