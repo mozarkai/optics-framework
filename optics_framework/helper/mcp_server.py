@@ -41,11 +41,11 @@ from optics_framework.helper.version import VERSION
 
 # Unrelated to StrategyFactory's locate-strategy priority in strategies.py —
 # this ranks element-source modules, not locate techniques.
-_SOURCE_RANK = {"find_element": 0, "page_source": 1, "screenshot": 2}
+_SOURCE_RANK = {"find_element": 0, "page_source": 1, "web": 2, "screenshot": 3}
 
 
 def _default_sources_for_driver(driver: str) -> list[str]:
-    """The driver's canonical elements_sources trio, found by reflection.
+    """The driver's elements_sources, found by reflection and ranked by role.
 
     Returns ``[]`` for an unmatched driver name; ``start_session`` then fails
     with the usual "Element source configuration must be set" error.
