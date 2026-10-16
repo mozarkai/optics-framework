@@ -354,10 +354,16 @@ async def test_percentages_use_the_window_size_when_no_viewport_is_emulated():
     driver.page.mouse.click.assert_awaited_once_with(200, 200)
 
 
-def test_a_token_in_the_url_path_is_masked():
+@pytest.mark.parametrize(
+    "echoed",
+    ["wss://hub.example:443/session/SECRET", "wss://hub.example/session/SECRET", "http://hub.example/session/SECRET/json/version/"],
+)
+def test_a_token_in_the_url_path_is_masked_however_the_endpoint_is_echoed(echoed):
     from optics_framework.engines.drivers.playwright import RemoteBrowser
 
-    remote = RemoteBrowser("wss://grid.example.com:443/tok-123")
-    message = "WebSocket error: wss://grid.example.com:443/tok-123 401 Unauthorized"
+    remote = RemoteBrowser("wss://hub.example:443/session/SECRET")
 
-    assert remote.mask(message) == "WebSocket error: wss://grid.example.com:443/*** 401 Unauthorized"
+    masked = remote.mask(f"WebSocket error: {echoed} 401 Unauthorized")
+
+    assert "SECRET" not in masked
+    assert "hub.example" in masked

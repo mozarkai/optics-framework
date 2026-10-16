@@ -47,8 +47,7 @@ class RemoteBrowser:
         names = {name for template in templates for name in utils.env_names(template)}
         url = urlsplit(utils.expand_env(self.url))
         if url.path.strip("/"):
-            host = url.netloc.rpartition("@")[2]
-            message = message.replace(f"{host}{url.path}", f"{host}/***")
+            message = message.replace(url.path, "/***")
         secrets = [os.environ.get(name) for name in names]
         secrets += [url.password, url.query, *(self.expanded_headers() or {}).values()]
         for secret in sorted(filter(None, secrets), key=len, reverse=True):
