@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,6 +8,11 @@ from playwright.async_api import Error as PlaywrightError
 from optics_framework.engines.drivers import playwright_locator
 
 pytestmark = pytest.mark.white_box
+
+
+def _driver(page):
+    # The fake page returns plain values, not coroutines.
+    return SimpleNamespace(page=page, run=lambda coro: coro)
 
 
 @pytest.mark.parametrize(
@@ -63,49 +69,44 @@ def test_strict_matching_drops_partial_meanings():
     page.get_by_text.assert_called_once_with("Products", exact=True)
 
 
-def test_find_skips_hidden_matches(monkeypatch):
-    monkeypatch.setattr(playwright_locator, "run_async", lambda coro, **_: coro)
+def test_find_skips_hidden_matches():
     page = MagicMock()
     locator = page.locator.return_value
     locator.evaluate_all.return_value = [False, True]
 
-    found = playwright_locator.find(page, "#go")
+    found = playwright_locator.find(_driver(page), "#go")
 
     assert found is locator.nth.return_value
     locator.nth.assert_called_once_with(1)
 
 
-def test_find_gives_up_after_the_timeout(monkeypatch):
-    monkeypatch.setattr(playwright_locator, "run_async", lambda coro, **_: coro)
+def test_find_gives_up_after_the_timeout():
     page = MagicMock()
     page.locator.return_value.evaluate_all.return_value = []
 
-    assert playwright_locator.find(page, "#late", timeout_s=0.3) is None
+    assert playwright_locator.find(_driver(page), "#late", timeout_s=0.3) is None
     assert page.locator.return_value.evaluate_all.call_count > 1
 
 
-def test_an_unparsable_selector_matches_nothing(monkeypatch):
-    monkeypatch.setattr(playwright_locator, "run_async", lambda coro, **_: coro)
+def test_an_unparsable_selector_matches_nothing():
     page = MagicMock()
     page.locator.return_value.evaluate_all.side_effect = PlaywrightError("Unexpected token")
     page.get_by_text.return_value.evaluate_all.return_value = [True]
 
-    assert playwright_locator.find(page, "p.m.") is page.get_by_text.return_value.nth.return_value
+    assert playwright_locator.find(_driver(page), "p.m.") is page.get_by_text.return_value.nth.return_value
 
 
-def test_a_closed_browser_is_not_mistaken_for_a_missing_element(monkeypatch):
-    monkeypatch.setattr(playwright_locator, "run_async", lambda coro, **_: coro)
+def test_a_closed_browser_is_not_mistaken_for_a_missing_element():
     page = MagicMock()
     page.locator.return_value.evaluate_all.side_effect = PlaywrightError("Target closed")
 
     with pytest.raises(PlaywrightError):
-        playwright_locator.find(page, "#go")
+        playwright_locator.find(_driver(page), "#go")
 
 
-def test_visibility_asks_for_elements_on_screen(monkeypatch):
-    monkeypatch.setattr(playwright_locator, "run_async", lambda coro, **_: coro)
+def test_visibility_asks_for_elements_on_screen():
     page = MagicMock()
     page.locator.return_value.evaluate_all.return_value = [True]
 
-    assert playwright_locator.is_visible(page, "xpath=//h1")
+    assert playwright_locator.is_visible(_driver(page), "xpath=//h1")
     assert page.locator.return_value.evaluate_all.call_args[0][1] is True

@@ -37,10 +37,7 @@ def _get_or_create_persistent_loop() -> asyncio.AbstractEventLoop:
     return _persistent_loop
 
 
-DEFAULT_TIMEOUT_S = 15.0
-
-
-def run_async(coro: Coroutine[Any, Any, Any], timeout: float = DEFAULT_TIMEOUT_S):
+def run_async(coro: Coroutine[Any, Any, Any], timeout: float):
     """
     Safely run async coroutine from sync code.
     - Works with pytest / nested loops
