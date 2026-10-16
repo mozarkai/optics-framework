@@ -148,18 +148,22 @@ class JUnitEventHandler(EventSubscriber):
         if event.entity_type == "test_case":
             if session_id is None:
                 return
-            if session_id not in self.session_suites:
-                session_suite = ET.SubElement(
-                    self.testsuites, "testsuite",
-                    name=f"session_{session_id}",
-                    tests="0", failures="0", errors="0", skipped="0", time="0"
-                )
-                self.session_suites[session_id] = session_suite
-            self._handle_test_case_event(event, self.session_suites[session_id], session_id)
+            self._handle_test_case_event(event, self._session_suite(session_id), session_id)
         elif event.entity_type == "module":
             self._handle_module_event(event)
         elif event.entity_type == "keyword":
             self._handle_keyword_event(event)
+
+    def _session_suite(self, session_id: str) -> ET.Element:
+        session_suite = self.session_suites.get(session_id)
+        if session_suite is None:
+            session_suite = ET.SubElement(
+                self.testsuites, "testsuite",
+                name=f"session_{session_id}",
+                tests="0", failures="0", errors="0", skipped="0", time="0"
+            )
+            self.session_suites[session_id] = session_suite
+        return session_suite
 
     def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
         event_time = getattr(event, 'timestamp', time.time())
@@ -261,10 +265,14 @@ class JUnitEventHandler(EventSubscriber):
         Using a real testcase (rather than <properties>) means standard CI tools
         (Jenkins, GitLab CI, GitHub Actions) will surface the failures and mark
         the build accordingly.
+
+        The run's test-case events may still be queued when this is called, so
+        the session suite is created here if needed and those events attach to
+        it once they are processed.
         """
-        session_suite = self.session_suites.get(session_id)
-        if session_suite is None or not detected:
+        if not detected:
             return
+        session_suite = self._session_suite(session_id)
         testcase = ET.SubElement(
             session_suite, "testcase",
             name="on-screen-error-detection",

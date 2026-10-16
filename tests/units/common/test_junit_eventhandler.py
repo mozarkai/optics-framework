@@ -212,3 +212,47 @@ class TestKeywordFailureMessage:
         failed = [e for e in root.iter("kw") if e.get("name") == "Bogus Keyword"]
         assert failed
         assert "Did you mean 'Launch App'" in (failed[0].get("message") or "")
+
+
+class TestDetectedErrorsBeforeTestCaseEvents:
+    """End-of-run detection can run while the run's test-case events are still queued."""
+
+    async def test_detected_error_reaches_report_when_all_cases_pass(self, tmp_path):
+        registry = JUnitHandlerRegistry()
+        sid = "allpass"
+        registry.setup_junit_for_session(sid, _config(tmp_path))
+        handler = registry.get_handler(sid)
+
+        handler.add_detected_errors(sid, [{
+            "error_code": "ERR_SESSION",
+            "severity": "high",
+            "match_string": "session expired",
+            "description": "Session expired banner",
+        }])
+        await _run_testcase(handler, sid, "tc-1", "Login")
+        await _run_testcase(handler, sid, "tc-2", "Checkout")
+        registry.cleanup_session(sid)
+
+        root = ET.parse(tmp_path / "junit_output.xml").getroot()
+        suites = root.findall("testsuite")
+        assert len(suites) == 1
+        suite = suites[0]
+        assert suite.get("tests") == "3"
+        assert suite.get("failures") == "1"
+
+        cases = {tc.get("name"): tc for tc in suite.iter("testcase")}
+        assert set(cases) == {"on-screen-error-detection", "Login", "Checkout"}
+        failures = cases["on-screen-error-detection"].findall("failure")
+        assert len(failures) == 1
+        assert failures[0].get("type") == "OnScreenError"
+        assert failures[0].get("message").startswith("ERR_SESSION | high")
+        assert cases["Login"].find("failure") is None
+        assert cases["Checkout"].find("failure") is None
+
+    def test_no_detected_errors_leaves_report_untouched(self, tmp_path):
+        registry = JUnitHandlerRegistry()
+        registry.setup_junit_for_session("none", _config(tmp_path))
+        handler = registry.get_handler("none")
+        handler.add_detected_errors("none", [])
+        assert handler.session_suites == {}
+        registry.cleanup_session("none")
