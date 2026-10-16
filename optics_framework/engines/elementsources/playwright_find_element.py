@@ -7,6 +7,8 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common import utils
 from optics_framework.engines.drivers import playwright_locator
 
+_RECTS_SCRIPT = "els => els.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })"
+
 
 class PlaywrightFindElement(ElementSourceInterface):
     REQUIRED_DRIVER_TYPE = "playwright"
@@ -103,7 +105,7 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_element_bboxes(
         self, elements: List[str]
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Return bounding boxes for each element using Playwright bounding_box()."""
+        """Return a bounding box for each element (see get_bbox_for_element)."""
         result: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]] = []
         page = self._require_page()
         for element in elements:
@@ -118,20 +120,20 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_bbox_for_element(
         self, element: Any
     ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
-        """Return bounding box for an already-located Playwright element handle."""
+        """Return bounding box for an already-located Playwright element handle.
+
+        One evaluate instead of ``bounding_box()``, which costs several round trips to a
+        remote browser and waits for a missing element instead of answering None.
+        """
         if element is None:
             return None
         try:
-            bbox = self.driver.run(element.bounding_box())
-            if bbox is not None:
-                x1 = int(bbox.get("x", 0))
-                y1 = int(bbox.get("y", 0))
-                x2 = int(x1 + bbox.get("width", 0))
-                y2 = int(y1 + bbox.get("height", 0))
-                return ((x1, y1), (x2, y2))
-        except (TypeError, ValueError, AttributeError):
-            pass
-        return None
+            rects = self.driver.run(element.evaluate_all(_RECTS_SCRIPT))
+            x, y, width, height = rects[0]
+        except (IndexError, TypeError, ValueError, AttributeError):
+            return None
+        x1, y1 = int(x), int(y)
+        return ((x1, y1), (int(x1 + width), int(y1 + height)))
 
     # --------------------------------------------------
     # Assertions
