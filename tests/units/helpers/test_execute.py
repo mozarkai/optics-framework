@@ -392,9 +392,10 @@ def _project(tmp_path):
 
 
 class TestWhichFilesAreRead:
-    def test_a_venv_inside_the_project_is_not_read(self, tmp_path):
+    @pytest.mark.parametrize("venv", [".venv", "venv", "env"])
+    def test_a_venv_inside_the_project_is_not_read(self, tmp_path, venv):
         project = _project(tmp_path)
-        sample = project / ".venv" / "lib" / "site-packages" / "optics_framework" / "samples" / "gmail"
+        sample = project / venv / "lib" / "site-packages" / "optics_framework" / "samples" / "gmail"
         sample.mkdir(parents=True)
         (sample / "test_cases.csv").write_text("test_case,test_step\nGmail,Open\n")
         (sample / "modules.csv").write_text("module_name,module_step\nOpen,Launch App\n")
