@@ -11,6 +11,7 @@ import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
+from urllib.parse import urlsplit
 import inspect
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
@@ -210,6 +211,34 @@ def to_bool(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+
+_ENV_REFERENCE = re.compile(r"\$\{(\w+)\}")
+
+
+def env_names(value: str) -> list[str]:
+    """The NAMEs of the ``${NAME}`` references in ``value``."""
+    return _ENV_REFERENCE.findall(value)
+
+
+def expand_env(value: str) -> str:
+    """Replace each ``${NAME}`` with its environment variable; unset or empty fails so a missing secret is never sent."""
+    def lookup(match: re.Match) -> str:
+        name = match.group(1)
+        if not os.environ.get(name):
+            raise OpticsError(Code.E0501, f"Environment variable {name} is not set")
+        return os.environ[name]
+
+    return _ENV_REFERENCE.sub(lookup, value)
+
+
+def redact_url(url: str) -> str:
+    """``url`` cut to scheme and host for logs, since credentials can ride in the userinfo, path or query."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<unparsable url>"
+    return f"{parts.scheme}://{parts.hostname}"
 
 
 def get_timestamp():

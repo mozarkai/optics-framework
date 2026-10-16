@@ -5,7 +5,6 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
-from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers import playwright_locator
 
 
@@ -47,7 +46,7 @@ class PlaywrightFindElement(ElementSourceInterface):
             Tuple[str, str]: (page_source, timestamp)
         """
         page = self._require_page()
-        html = run_async(page.content())
+        html = self.driver.run(page.content())
         timestamp = utils.get_timestamp()
         return str(html), str(timestamp)
 
@@ -81,12 +80,12 @@ class PlaywrightFindElement(ElementSourceInterface):
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """Locate a visible element, waiting up to the driver's element timeout."""
-        page = self._require_page()
+        self._require_page()
         if utils.determine_element_type(element) == "Image":
             return None
         try:
             return playwright_locator.find(
-                page,
+                self.driver,
                 element,
                 index=int(index or 0),
                 exact=self._strict_element_match(),
@@ -105,10 +104,10 @@ class PlaywrightFindElement(ElementSourceInterface):
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """Return bounding boxes for each element using Playwright bounding_box()."""
         result: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]] = []
-        page = self._require_page()
+        self._require_page()
         for element in elements:
             try:
-                handle = playwright_locator.find(page, element, exact=self._strict_element_match())
+                handle = playwright_locator.find(self.driver, element, exact=self._strict_element_match())
             except Exception:
                 result.append(None)
                 continue
@@ -122,7 +121,7 @@ class PlaywrightFindElement(ElementSourceInterface):
         if element is None:
             return None
         try:
-            bbox = run_async(element.bounding_box())
+            bbox = self.driver.run(element.bounding_box())
             if bbox is not None:
                 x1 = int(bbox.get("x", 0))
                 y1 = int(bbox.get("y", 0))
@@ -158,12 +157,12 @@ class PlaywrightFindElement(ElementSourceInterface):
             raise OpticsError(Code.E0403, message="Invalid rule. Use 'any' or 'all'")
         if isinstance(elements, str):
             elements = [elements]
-        page = self._require_page()
+        self._require_page()
         exact = self._strict_element_match()
         deadline = time.monotonic() + float(timeout)
         while True:
             try:
-                found = [check(page, element, exact=exact) for element in elements]
+                found = [check(self.driver, element, exact=exact) for element in elements]
             except Exception as e:
                 raise OpticsError(
                     Code.E0401, message=f"Error during element assertion: {e}"
