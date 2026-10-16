@@ -510,7 +510,8 @@ def _probe_tcp(url: str | None, default_port: int,
     real fix instead of an opaque driver error minutes into the run.
 
     :param url: Server URL from config.yaml (e.g. ``http://127.0.0.1:4723``).
-    :param default_port: Port used when the URL carries none.
+    :param default_port: Port used when an ``http`` URL carries none; an ``https``
+        URL without a port means 443.
     :param timeout: Seconds to wait for the connection.
     :return: True when the TCP connection succeeds.
     """
@@ -519,7 +520,7 @@ def _probe_tcp(url: str | None, default_port: int,
     try:
         parsed = urlparse(url)
         host = parsed.hostname
-        port = parsed.port or default_port
+        port = parsed.port or (443 if parsed.scheme == "https" else default_port)
     except ValueError:
         return False
     if not host:
@@ -609,6 +610,15 @@ def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> 
         _preflight_selenium(details, folder_path)
 
 
+def _is_local_server(url: str) -> bool:
+    """Whether the server runs on this machine, so its devices are the ones adb sees here."""
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        return False
+    return host in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}  # nosec B104 - a host name compared, not bound
+
+
 def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
     """Probe the Appium server and, for Android, adb + an attached device."""
     url = details.url or _APPIUM_DEFAULT_URL
@@ -620,7 +630,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             f"Then re-run:  optics execute {folder_path}",
         ])
     platform = str(details.capabilities.get("platformName", "")).lower()
-    if platform != "android":
+    if platform != "android" or not _is_local_server(url):
         return
     device_count = _adb_device_count()
     if device_count is None:
