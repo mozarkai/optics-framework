@@ -31,6 +31,7 @@ from optics_framework.common.models import (
     TemplateData,
     ErrorDefinitions,
 )
+from optics_framework.common.utils import skip_scan_dir, walk_project
 from optics_framework.helper.abort import abort_with_panel
 
 
@@ -69,7 +70,9 @@ def discover_templates(project_path: str) -> TemplateData:
 
     # Recursively find all image files
     for image_file in project_dir.rglob('*'):
-        if image_file.is_file() and image_file.suffix.lower() in image_extensions:
+        if image_file.is_file() and image_file.suffix.lower() in image_extensions and not any(
+            skip_scan_dir(part) for part in image_file.relative_to(project_dir).parts[:-1]
+        ):
             template_data.add_template(image_file.name, str(image_file))
     return template_data
 
@@ -85,7 +88,7 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
     config_obj: Config | None = None
 
     # Walk the directory tree so files in subfolders are discovered
-    for root, _dirs, files in os.walk(folder_path):
+    for root, _dirs, files in walk_project(folder_path):
         for fname in files:
             file_path = os.path.join(root, fname)
             lname = fname.lower()
