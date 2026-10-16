@@ -5,6 +5,9 @@ from optics_framework.common.text_interface import TextInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
 
+# below this, a match is likely noise misread as containing the target substring.
+_MIN_MATCH_CONFIDENCE = 0.3
+
 
 class EasyOCRHelper(TextInterface):
     """
@@ -57,38 +60,42 @@ class EasyOCRHelper(TextInterface):
         else:
             _, ocr_results = detect_result
 
-        detected_texts = []
-
-        # Iterate over each detected text
+        # sort by confidence so a noise match can't outrank a real one.
+        candidates = []
         if ocr_results is not None:
             for bbox, detected_text, confidence in ocr_results:
                 detected_text = detected_text.strip()
-                if text in detected_text:
-                    top_left_ocr = bbox[0]  # (x1, y1)
-                    bottom_right_ocr = bbox[2]  # (x3, y3)
+                if text in detected_text and confidence >= _MIN_MATCH_CONFIDENCE:
+                    candidates.append((confidence, bbox))
+        candidates.sort(key=lambda c: c[0], reverse=True)
 
-                    x_top_left, y_top_left = int(top_left_ocr[0]), int(top_left_ocr[1])
-                    x_bottom_right, y_bottom_right = (
-                        int(bottom_right_ocr[0]),
-                        int(bottom_right_ocr[1]),
-                    )
+        detected_texts = []
+        for _confidence, bbox in candidates:
+            top_left_ocr = bbox[0]  # (x1, y1)
+            bottom_right_ocr = bbox[2]  # (x3, y3)
 
-                    # Create the (x,y) tuples for cv2.rectangle
-                    pt1 = (x_top_left, y_top_left)
-                    pt2 = (x_bottom_right, y_bottom_right)
+            x_top_left, y_top_left = int(top_left_ocr[0]), int(top_left_ocr[1])
+            x_bottom_right, y_bottom_right = (
+                int(bottom_right_ocr[0]),
+                int(bottom_right_ocr[1]),
+            )
 
-                    w = x_bottom_right - x_top_left
-                    h = y_bottom_right - y_top_left
+            # Create the (x,y) tuples for cv2.rectangle
+            pt1 = (x_top_left, y_top_left)
+            pt2 = (x_bottom_right, y_bottom_right)
 
-                    # Calculate the center coordinates
-                    center_x = x_top_left + w // 2
-                    center_y = y_top_left + h // 2
+            w = x_bottom_right - x_top_left
+            h = y_bottom_right - y_top_left
 
-                    detected_texts.append((True, (center_x, center_y), (pt1, pt2)))
+            # Calculate the center coordinates
+            center_x = x_top_left + w // 2
+            center_y = y_top_left + h // 2
 
-                    # Draw bounding box around the detected text
-                    cv2.rectangle(input_data, pt1, pt2, (0, 255, 0), 2)
-                    cv2.circle(input_data, (center_x, center_y), 5, (0, 0, 255), -1)
+            detected_texts.append((True, (center_x, center_y), (pt1, pt2)))
+
+            # Draw bounding box around the detected text
+            cv2.rectangle(input_data, pt1, pt2, (0, 255, 0), 2)
+            cv2.circle(input_data, (center_x, center_y), 5, (0, 0, 255), -1)
 
         if not detected_texts:
             return None
