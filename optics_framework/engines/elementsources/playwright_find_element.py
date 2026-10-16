@@ -7,7 +7,13 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common import utils
 from optics_framework.engines.drivers import playwright_locator
 
-_RECTS_SCRIPT = "els => els.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })"
+# Null inside an iframe, whose viewport coordinates lack the frame's offset on the page.
+_RECT_SCRIPT = """els => {
+    if (!els.length) return [];
+    if (window !== window.top) return null;
+    const r = els[0].getBoundingClientRect();
+    return [r.x, r.y, r.width, r.height];
+}"""
 
 
 class PlaywrightFindElement(ElementSourceInterface):
@@ -123,14 +129,19 @@ class PlaywrightFindElement(ElementSourceInterface):
         """Return bounding box for an already-located Playwright element handle.
 
         One evaluate instead of ``bounding_box()``, which costs several round trips to a
-        remote browser and waits for a missing element instead of answering None.
+        remote browser and waits for a missing element instead of answering None. An
+        element inside an iframe still goes through ``bounding_box()``, which adds the
+        frame's position on the page.
         """
         if element is None:
             return None
         try:
-            rects = self.driver.run(element.evaluate_all(_RECTS_SCRIPT))
-            x, y, width, height = rects[0]
-        except (IndexError, TypeError, ValueError, AttributeError):
+            rect = self.driver.run(element.evaluate_all(_RECT_SCRIPT))
+            if rect is None:
+                box = self.driver.run(element.first.bounding_box())
+                rect = [box["x"], box["y"], box["width"], box["height"]]
+            x, y, width, height = rect
+        except (TypeError, ValueError, AttributeError):
             return None
         x1, y1 = int(x), int(y)
         return ((x1, y1), (int(x1 + width), int(y1 + height)))
