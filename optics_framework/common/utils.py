@@ -1162,3 +1162,15 @@ def bboxes_from_webelements(
             continue
         result.append(bbox_from_webelement_like(obj))
     return result
+
+
+# Folders that never hold a project's own files: a project's `.venv` carries optics's bundled
+# sample suites, which would be run, linted and merged with the project's.
+SKIP_SCAN_DIRS = {"__pycache__", "generated", "execution_output"}
+
+
+def walk_project(folder_path: str):
+    """`os.walk` over a project, without its hidden folders, caches or run output."""
+    for root, dirs, files in os.walk(folder_path):
+        dirs[:] = [d for d in dirs if d not in SKIP_SCAN_DIRS and not d.startswith(".")]
+        yield root, dirs, files

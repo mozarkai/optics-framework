@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from itertools import product
 import yaml
+from optics_framework.common.utils import walk_project
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import (
@@ -342,16 +343,15 @@ class Optics:
         :return: TemplateData containing image name to path mappings.
         :rtype: TemplateData
         """
-        project_dir = Path(project_path)
         template_data = TemplateData()
 
         # Common image extensions
         image_extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
 
-        # Recursively find all image files
-        for image_file in project_dir.rglob("*"):
-            if image_file.is_file() and image_file.suffix.lower() in image_extensions:
-                template_data.add_template(image_file.name, str(image_file))
+        for root, _dirs, files in walk_project(project_path):
+            for name in files:
+                if Path(name).suffix.lower() in image_extensions:
+                    template_data.add_template(name, os.path.join(root, name))
         return template_data
 
     def _initialize_session_and_keywords(self) -> None:

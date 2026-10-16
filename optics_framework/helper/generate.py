@@ -7,7 +7,7 @@ import yaml
 import json
 import shutil
 
-from optics_framework.common.utils import unescape_csv_value
+from optics_framework.common.utils import unescape_csv_value, walk_project
 
 TestCaseKey = "Test Cases"
 
@@ -639,11 +639,6 @@ def _assign_yaml_files(yaml_files, files):
             if key in data and not files[content_type]:
                 files[content_type] = yaml_file
 
-# Directories that never hold source project files — skipped when scanning so a
-# recursive walk doesn't pick up generated code, run artefacts or caches.
-_SKIP_SCAN_DIRS = {"__pycache__", "generated", "execution_output"}
-
-
 def _iter_project_files(folder_path: str) -> Iterator[Tuple[str, str, str]]:
     """Yield ``(file_path, file_format, content_type)`` for every recognised file.
 
@@ -652,10 +647,7 @@ def _iter_project_files(folder_path: str) -> Iterator[Tuple[str, str, str]]:
     scaffolds) are discovered, not only files sitting at the project root. Caches,
     generated code and run artefacts are skipped.
     """
-    for root, dirs, files in os.walk(folder_path):
-        dirs[:] = [
-            d for d in dirs if d not in _SKIP_SCAN_DIRS and not d.startswith(".")
-        ]
+    for root, _dirs, files in walk_project(folder_path):
         for name in files:
             file_path = os.path.join(root, name)
             result = detect_file_type(file_path)
