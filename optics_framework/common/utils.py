@@ -1164,9 +1164,9 @@ def bboxes_from_webelements(
     return result
 
 
-# Folders that never hold a project's own files: a project's `.venv` carries optics's bundled
+# Folders that never hold a project's own files: a project's virtualenv carries optics's bundled
 # sample suites, which would be run, linted and merged with the project's.
-SKIP_SCAN_DIRS = {"__pycache__", "generated", "execution_output"}
+SKIP_SCAN_DIRS = {"__pycache__", "generated", "execution_output", "venv", "env"}
 
 
 def walk_project(folder_path: str):
