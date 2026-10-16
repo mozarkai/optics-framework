@@ -3,11 +3,13 @@
 import asyncio
 import json
 import pathlib
+import queue
 import re
 import socket
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 
@@ -50,15 +52,31 @@ def _require_chromium():
         pytest.skip(f"Chromium is not installed for Playwright: {e}")
 
 
-def _serve(command, ready):
-    """Start ``command`` and return it with the first match of ``ready`` in its output."""
+def _drain(stream, lines):
+    # Read to the end, or a chatty process blocks once the pipe fills.
+    for line in stream:
+        lines.put(line)
+    lines.put(None)
+
+
+def _serve(command, ready, timeout_s=60):
+    """Start ``command`` and return it with the first match of ``ready`` in its output.
+    A process that is not ready within ``timeout_s`` is killed and its output reported."""
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for line in process.stdout:
-        if found := re.search(ready, line):
-            # Keep reading, or a chatty process blocks once the pipe fills.
-            threading.Thread(target=process.stdout.read, daemon=True).start()
-            return process, found.group(1)
-    pytest.fail(f"{command[0]} exited before it was ready")
+    lines = queue.Queue()
+    threading.Thread(target=_drain, args=(process.stdout, lines), daemon=True).start()
+    output = []
+    deadline = time.monotonic() + timeout_s
+    try:
+        while (line := lines.get(timeout=max(0, deadline - time.monotonic()))) is not None:
+            output.append(line)
+            if found := re.search(ready, line):
+                return process, found.group(1)
+    except queue.Empty:
+        pass
+    process.kill()
+    process.wait()
+    pytest.fail(f"{command[0]} was not ready within {timeout_s}s:\n{''.join(output)}")
 
 
 @pytest.fixture
@@ -73,23 +91,26 @@ def remote_browser(tmp_path, monkeypatch):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
-    chromium, cdp_url = _serve(
-        [asyncio.run(executable()), "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={tmp_path / 'profile'}"],
-        r"DevTools listening on (ws://\S+)",
-    )
-    server, _ = _serve(
-        [sys.executable, "-m", "playwright", "run-server", "--host", "127.0.0.1", "--port", str(port)],
-        r"(Listening on)",
-    )
-
-    async def no_local_launch(*_args, **_kwargs):
-        raise AssertionError("the journey launched a local browser")
-
-    monkeypatch.setattr(playwright_api.BrowserType, "launch", no_local_launch)
+    processes = []
     try:
+        chromium, cdp_url = _serve(
+            [asyncio.run(executable()), "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={tmp_path / 'profile'}"],
+            r"DevTools listening on (ws://\S+)",
+        )
+        processes.append(chromium)
+        server, _ = _serve(
+            [sys.executable, "-m", "playwright", "run-server", "--host", "127.0.0.1", "--port", str(port)],
+            r"(Listening on)",
+        )
+        processes.append(server)
+
+        async def no_local_launch(*_args, **_kwargs):
+            raise AssertionError("the journey launched a local browser")
+
+        monkeypatch.setattr(playwright_api.BrowserType, "launch", no_local_launch)
         yield {"cdp": cdp_url, "playwright": f"ws://127.0.0.1:{port}/"}
     finally:
-        for process in (chromium, server):
+        for process in processes:
             process.kill()
             process.wait()
 
@@ -216,3 +237,28 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             )
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
+
+
+def test_bboxes_are_in_page_coordinates_inside_an_iframe():
+    from optics_framework.engines.drivers.playwright import Playwright
+    from optics_framework.engines.elementsources.playwright_find_element import PlaywrightFindElement
+
+    driver = Playwright({"capabilities": {"headless": True}})
+    driver.launch_app()
+    try:
+        driver.run(driver.page.set_content(
+            '<button style="position:absolute;left:10px;top:10px">Out</button>'
+            '<iframe style="position:absolute;left:200px;top:100px;border:0"'
+            ' srcdoc="<button style=&quot;position:absolute;left:10px;top:10px&quot;>In</button>"></iframe>'
+        ))
+        source = PlaywrightFindElement(driver=driver)
+
+        (out_x, out_y), _ = source.get_bbox_for_element(driver.page.locator("button"))
+        (in_x, in_y), _ = source.get_bbox_for_element(driver.page.frame_locator("iframe").locator("button"))
+        missing = source.get_bbox_for_element(driver.page.locator("#nothing"))
+    finally:
+        driver.terminate()
+
+    assert (out_x, out_y) == (10, 10)
+    assert (in_x, in_y) == (210, 110)
+    assert missing is None
