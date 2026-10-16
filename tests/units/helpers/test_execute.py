@@ -373,3 +373,45 @@ class TestPreflightWiring:
                 patch.object(execute_module, "DryRunRunner", _runner_cls({})):
             dryrun_main("proj")
         preflight.assert_not_called()
+
+
+# Which files a project run reads
+
+_CONFIG = (
+    "driver_sources:\n  - appium:\n      enabled: true\n      url: {url}\n"
+    "elements_sources:\n  - appium_find_element:\n      enabled: true\n"
+)
+
+
+def _project(tmp_path):
+    (tmp_path / "test_cases.csv").write_text("test_case,test_step\nTC,Mod\n")
+    (tmp_path / "modules.csv").write_text("module_name,module_step\nMod,Launch App\n")
+    (tmp_path / "config.yaml").write_text(_CONFIG.format(url="http://own:4723"))
+    (tmp_path / "icon.png").write_bytes(b"")
+    return tmp_path
+
+
+class TestWhichFilesAreRead:
+    def test_a_venv_inside_the_project_is_not_read(self, tmp_path):
+        project = _project(tmp_path)
+        sample = project / ".venv" / "lib" / "site-packages" / "optics_framework" / "samples" / "gmail"
+        sample.mkdir(parents=True)
+        (sample / "test_cases.csv").write_text("test_case,test_step\nGmail,Open\n")
+        (sample / "modules.csv").write_text("module_name,module_step\nOpen,Launch App\n")
+        (sample / "config.yaml").write_text(_CONFIG.format(url="http://sample:4723"))
+        (sample / "logo.png").write_bytes(b"")
+
+        tests, modules, _elements, _api, _errors, config = execute_module.find_files(str(project))
+
+        assert [p.rsplit("/", 1)[-1] for p in tests + modules] == ["test_cases.csv", "modules.csv"]
+        assert config.driver_sources[0]["appium"].url == "http://own:4723"
+        assert list(execute_module.discover_templates(str(project)).templates) == ["icon.png"]
+
+    def test_run_output_is_not_read(self, tmp_path):
+        project = _project(tmp_path)
+        (project / "execution_output").mkdir()
+        (project / "execution_output" / "test_cases.csv").write_text("test_case,test_step\nOld,Run\n")
+
+        tests = execute_module.find_files(str(project))[0]
+
+        assert len(tests) == 1
