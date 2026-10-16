@@ -5,7 +5,6 @@ import cv2
 from playwright.sync_api import Page
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.async_utils import run_async
 
 
 class PlaywrightScreenshot(ElementSourceInterface):
@@ -52,8 +51,7 @@ class PlaywrightScreenshot(ElementSourceInterface):
         page = self._require_page()
         try:
             internal_logger.debug("Capturing Playwright screenshot")
-            # Use run_async to handle async page.screenshot() if page is from async_api.
-            return run_async(page.screenshot(full_page=False))
+            return self.driver.run(page.screenshot(full_page=False))
         except Exception as e:
             internal_logger.warning(
                 "Error capturing Playwright screenshot bytes: %s", e, exc_info=True
