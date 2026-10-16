@@ -415,3 +415,12 @@ class TestWhichFilesAreRead:
         tests = execute_module.find_files(str(project))[0]
 
         assert len(tests) == 1
+
+    def test_a_second_config_is_named_in_a_warning(self, tmp_path):
+        project = _project(tmp_path)
+        (project / "other.yaml").write_text(_CONFIG.format(url="http://other:4723"))
+
+        with patch.object(execute_module.internal_logger, "warning") as warning:
+            execute_module.find_files(str(project))
+
+        assert any("More than one config file" in call.args[0] for call in warning.call_args_list)
