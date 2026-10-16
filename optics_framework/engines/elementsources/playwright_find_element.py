@@ -5,7 +5,6 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
-from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers import playwright_locator
 
 
@@ -47,7 +46,7 @@ class PlaywrightFindElement(ElementSourceInterface):
             Tuple[str, str]: (page_source, timestamp)
         """
         page = self._require_page()
-        html = run_async(page.content())
+        html = self.driver.run(page.content())
         timestamp = utils.get_timestamp()
         return str(html), str(timestamp)
 
@@ -88,6 +87,7 @@ class PlaywrightFindElement(ElementSourceInterface):
             return playwright_locator.find(
                 page,
                 element,
+                run=self.driver.run,
                 index=int(index or 0),
                 exact=self._strict_element_match(),
                 timeout_s=self._element_timeout_s(),
@@ -108,7 +108,7 @@ class PlaywrightFindElement(ElementSourceInterface):
         page = self._require_page()
         for element in elements:
             try:
-                handle = playwright_locator.find(page, element, exact=self._strict_element_match())
+                handle = playwright_locator.find(page, element, run=self.driver.run, exact=self._strict_element_match())
             except Exception:
                 result.append(None)
                 continue
@@ -122,7 +122,7 @@ class PlaywrightFindElement(ElementSourceInterface):
         if element is None:
             return None
         try:
-            bbox = run_async(element.bounding_box())
+            bbox = self.driver.run(element.bounding_box())
             if bbox is not None:
                 x1 = int(bbox.get("x", 0))
                 y1 = int(bbox.get("y", 0))
@@ -163,7 +163,7 @@ class PlaywrightFindElement(ElementSourceInterface):
         deadline = time.monotonic() + float(timeout)
         while True:
             try:
-                found = [check(page, element, exact=exact) for element in elements]
+                found = [check(page, element, run=self.driver.run, exact=exact) for element in elements]
             except Exception as e:
                 raise OpticsError(
                     Code.E0401, message=f"Error during element assertion: {e}"

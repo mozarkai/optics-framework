@@ -1,12 +1,11 @@
 """Turns an Optics element value into a Playwright locator, for every Playwright source."""
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 from playwright.async_api import Error as PlaywrightError
 
 from optics_framework.common import utils
-from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers.playwright import Playwright
 
 _ENGINE_PREFIXES = ("role=", "id=", "data-testid=", "data-test=", "data-test-id=")
@@ -78,11 +77,11 @@ def candidates(page: Any, element: str, *, exact: bool = False) -> list[Any]:
     return _semantic(page, element, text_kinds, exact)
 
 
-def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) -> Any | None:
+def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool, run: Callable) -> Any | None:
     try:
         if not visible_only:
-            return locator.nth(index) if run_async(locator.count()) > index else None
-        flags = run_async(locator.evaluate_all(_VISIBLE_FLAGS_SCRIPT, on_screen))
+            return locator.nth(index) if run(locator.count()) > index else None
+        flags = run(locator.evaluate_all(_VISIBLE_FLAGS_SCRIPT, on_screen))
     except PlaywrightError as e:
         if Playwright.is_dead_session_error(e):
             raise
@@ -95,18 +94,22 @@ def find(
     page: Any,
     element: str,
     *,
+    run: Callable,
     index: int = 0,
     exact: bool = False,
     timeout_s: float = 0.0,
     visible_only: bool = True,
     on_screen: bool = False,
 ) -> Any | None:
-    """The ``index``-th (visible) match of ``element``, or ``None`` after ``timeout_s``."""
+    """The ``index``-th (visible) match of ``element``, or ``None`` after ``timeout_s``.
+
+    ``run`` executes one Playwright call, e.g. the driver's ``run``.
+    """
     options = candidates(page, element, exact=exact)
     deadline = time.monotonic() + timeout_s
     while True:
         for locator in options:
-            match = _nth_match(locator, index, visible_only, on_screen)
+            match = _nth_match(locator, index, visible_only, on_screen, run)
             if match is not None:
                 return match
         if time.monotonic() >= deadline:
@@ -114,12 +117,12 @@ def find(
         time.sleep(_POLL_INTERVAL_S)
 
 
-def is_present(page: Any, element: str, *, exact: bool = False) -> bool:
-    return find(page, element, exact=exact, visible_only=False) is not None
+def is_present(page: Any, element: str, *, run: Callable, exact: bool = False) -> bool:
+    return find(page, element, run=run, exact=exact, visible_only=False) is not None
 
 
-def is_visible(page: Any, element: str, *, exact: bool = False) -> bool:
-    return find(page, element, exact=exact, on_screen=True) is not None
+def is_visible(page: Any, element: str, *, run: Callable, exact: bool = False) -> bool:
+    return find(page, element, run=run, exact=exact, on_screen=True) is not None
 
 
 # Per xpath: a selector matching only that node, or null. Test attributes first.
@@ -165,8 +168,8 @@ _SUGGEST_SCRIPT = r"""
 """
 
 
-def suggest_locators(page: Any, xpaths: list[str | None]) -> list[str | None]:
+def suggest_locators(page: Any, xpaths: list[str | None], *, run: Callable) -> list[str | None]:
     """A unique CSS locator per node, checked in the page, or ``None``."""
     if not xpaths:
         return []
-    return list(run_async(page.evaluate(_SUGGEST_SCRIPT, xpaths)))
+    return list(run(page.evaluate(_SUGGEST_SCRIPT, xpaths)))

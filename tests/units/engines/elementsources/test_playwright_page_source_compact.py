@@ -1,10 +1,10 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from lxml import etree
 
 from optics_framework.api.verifier import Verifier
-from optics_framework.engines.elementsources import playwright_page_source as pw
 from optics_framework.engines.elementsources.playwright_page_source import (
     PlaywrightPageSource,
 )
@@ -15,15 +15,11 @@ RECT = {"x": 1, "y": 2, "width": 2, "height": 2}
 BOUNDS = {"x1": 1, "y1": 2, "x2": 3, "y2": 4}
 
 
-@pytest.fixture(autouse=True)
-def _passthrough_run_async(monkeypatch):
-    # The fake page returns plain values, so awaiting them like real coroutines would fail.
-    monkeypatch.setattr(pw, "run_async", lambda coro: coro)
-
-
 def _source(html: str) -> PlaywrightPageSource:
     source = PlaywrightPageSource.__new__(PlaywrightPageSource)
     source.tree = etree.HTML(html)
+    # The fake page returns plain values, so awaiting them like real coroutines would fail.
+    source.driver = SimpleNamespace(run=lambda coro, **_: coro)
     return source
 
 
@@ -31,7 +27,9 @@ def _page() -> MagicMock:
     # Stub the browser boundary, not the source's own bounds helper, so these tests
     # exercise the real extraction path and a helper that disappears fails here.
     page = MagicMock()
-    page.evaluate.side_effect = lambda script, xpaths: [dict(RECT) for _ in xpaths]
+    page.evaluate.side_effect = lambda script, xpaths: [
+        dict(RECT) if script == PlaywrightPageSource._BOUNDS_BATCH_SCRIPT else None for _ in xpaths
+    ]
     return page
 
 

@@ -3,6 +3,11 @@
 import asyncio
 import json
 import pathlib
+import re
+import socket
+import subprocess
+import sys
+import threading
 
 import pytest
 
@@ -45,7 +50,51 @@ def _require_chromium():
         pytest.skip(f"Chromium is not installed for Playwright: {e}")
 
 
-def _project(tmp_path, steps):
+def _serve(command, ready):
+    """Start ``command`` and return it with the first match of ``ready`` in its output."""
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in process.stdout:
+        if found := re.search(ready, line):
+            # Keep reading, or a chatty process blocks once the pipe fills.
+            threading.Thread(target=process.stdout.read, daemon=True).start()
+            return process, found.group(1)
+    pytest.fail(f"{command[0]} exited before it was ready")
+
+
+@pytest.fixture
+def remote_browser(tmp_path, monkeypatch):
+    """Endpoints of a Chromium that answers CDP and of a Playwright server, standing in
+    for cloud browser grids. Launching a local browser is made to fail, so a journey
+    that passes ran remotely."""
+    async def executable():
+        async with playwright_api.async_playwright() as pw:
+            return pw.chromium.executable_path
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    chromium, cdp_url = _serve(
+        [asyncio.run(executable()), "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={tmp_path / 'profile'}"],
+        r"DevTools listening on (ws://\S+)",
+    )
+    server, _ = _serve(
+        [sys.executable, "-m", "playwright", "run-server", "--host", "127.0.0.1", "--port", str(port)],
+        r"(Listening on)",
+    )
+
+    async def no_local_launch(*_args, **_kwargs):
+        raise AssertionError("the journey launched a local browser")
+
+    monkeypatch.setattr(playwright_api.BrowserType, "launch", no_local_launch)
+    try:
+        yield {"cdp": cdp_url, "playwright": f"ws://127.0.0.1:{port}/"}
+    finally:
+        for process in (chromium, server):
+            process.kill()
+            process.wait()
+
+
+def _project(tmp_path, steps, config=CONFIG):
     modules = [
         "module_name,module_step,param_1,param_2",
         f"Open Store,Launch App,{STORE_URL}",
@@ -53,7 +102,7 @@ def _project(tmp_path, steps):
         "Close Store,Close And Terminate App",
     ]
     files = {
-        "config.yaml": CONFIG,
+        "config.yaml": config,
         "test_cases/test_cases.csv": TEST_CASES,
         "modules/modules.csv": "\n".join(modules) + "\n",
         "test_data/elements.csv": ELEMENTS,
@@ -95,6 +144,21 @@ def test_suite_replays_a_sign_in_journey(tmp_path):
         "Go Back",
         "Assert Presence,Sign in",
     ])
+
+    assert run_project(project, use_printer=False) is True
+
+
+@pytest.mark.parametrize("protocol", ["cdp", "playwright"])
+def test_suite_replays_on_a_remote_browser(tmp_path, remote_browser, protocol):
+    remote = CONFIG.replace(
+        "      capabilities:\n",
+        f"      url: {remote_browser[protocol]}\n      capabilities:\n        protocol: {protocol}\n",
+    )
+    project = _project(tmp_path, [
+        "Enter Text,${email_field},ava@example.com",
+        "Press Element,${sign_in}",
+        "Assert Presence,${welcome}",
+    ], config=remote)
 
     assert run_project(project, use_printer=False) is True
 

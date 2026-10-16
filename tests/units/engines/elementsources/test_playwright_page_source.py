@@ -10,11 +10,10 @@ pytestmark = pytest.mark.white_box
 
 
 def _source(html, monkeypatch):
-    # run_async is a pass-through: the fake page returns plain values, not coroutines.
-    monkeypatch.setattr(pw, "run_async", lambda coro: coro)
     page = MagicMock()
     page.content.return_value = html
-    src = pw.PlaywrightPageSource(driver=MagicMock(page=page))
+    # run is a pass-through: the fake page returns plain values, not coroutines.
+    src = pw.PlaywrightPageSource(driver=MagicMock(page=page, run=lambda coro, **_: coro))
     return src, page
 
 
