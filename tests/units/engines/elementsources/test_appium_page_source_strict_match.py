@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.engines.elementsources.appium_page_source import AppiumPageSource
 
 pytestmark = pytest.mark.white_box
@@ -80,6 +81,16 @@ class TestLocateStrictWiring:
 
         source.driver.ui_helper.find_xpath.assert_called_once_with("xpath=//x", strict=True)
 
+    def test_xpath_missing_from_the_page_source_is_not_found(self):
+        source = _source(strict_element_match=False)
+        source.driver.ui_helper.find_xpath.return_value = (None, None)
+
+        with pytest.raises(OpticsError) as err:
+            source._locate_by_xpath(source.driver, "//button[@type='submit']", "XPath")
+
+        assert err.value.code == Code.E0201
+        source.driver.find_element.assert_not_called()
+
     def test_locate_by_text_passes_config_strict_flag(self):
         source = _source(strict_element_match=True)
         source.driver.ui_helper.get_locator_and_strategy.return_value = None
@@ -95,7 +106,11 @@ class TestLocateStrictWiring:
         source = _source(strict_element_match=True)
         source.driver.ui_helper.get_locator_and_strategy_using_index.return_value = None
 
-        source._locate_by_text(source.driver, "Buy 101 devices", "Text", index=0)
+        with pytest.raises(OpticsError) as err:
+            source._locate_by_text(source.driver, "Buy 101 devices", "Text", index=0)
+
+        assert err.value.code == Code.E0201
+        source.driver.find_element.assert_not_called()
 
         source.driver.ui_helper.get_locator_and_strategy_using_index.assert_called_once_with(
             "Buy 101 devices", 0, None, strict=True
