@@ -135,6 +135,10 @@ def _try_load_config_from_yaml(file_path: str, current_config: Config | None) ->
             yaml_data = yaml.safe_load(f) or {}
 
         if _is_config_file(yaml_data):
+            if current_config is not None:
+                internal_logger.warning(
+                    f"More than one config file in the project: {file_path} replaces the one read before it."
+                )
             yaml_data = _normalize_element_sources_key(yaml_data)
             return Config(**yaml_data)
 
