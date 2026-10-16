@@ -47,8 +47,7 @@ class RemoteBrowser:
         names = {name for template in templates for name in utils.env_names(template)}
         url = urlsplit(utils.expand_env(self.url))
         if url.path.strip("/"):
-            host = url.netloc.rpartition("@")[2]
-            message = message.replace(f"{host}{url.path}", f"{host}/***")
+            message = message.replace(url.path, "/***")
         secrets = [os.environ.get(name) for name in names]
         secrets += [url.password, url.query, *(self.expanded_headers() or {}).values()]
         for secret in sorted(filter(None, secrets), key=len, reverse=True):
@@ -224,24 +223,21 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0102, str(e), cause=e)
 
     async def _start_browser(self):
-        browser = self._setting("browser", "chromium")
-        viewport = self._setting("viewport", {"width": 1280, "height": 800})
         remote = self._remote()
         self._pw = await async_playwright().start()
-        browser_type = getattr(self._pw, browser)
+        browser_type = getattr(self._pw, self._setting("browser", "chromium"))
         if remote:
-            self._browser = await self._connect(browser_type, remote)
+            await self._open_remote(browser_type, remote)
         else:
             internal_logger.info("[Playwright] Launching browser")
             self._browser = await browser_type.launch(headless=self._setting("headless", False))
-        if remote and remote.context == "existing" and self._browser.contexts:
-            self._context = self._browser.contexts[0]
-            pages = self._context.pages
-            self.page = pages[0] if pages else await self._context.new_page()
-        else:
-            self._context = await self._browser.new_context(viewport=viewport)
-            self.page = await self._context.new_page()
+            await self._open_new_context()
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
+
+    async def _open_new_context(self):
+        viewport = self._setting("viewport", {"width": 1280, "height": 800})
+        self._context = await self._browser.new_context(viewport=viewport)
+        self.page = await self._context.new_page()
 
     def _remote(self) -> RemoteBrowser | None:
         """The remote browser to connect to, or None to launch one locally.
@@ -275,16 +271,24 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0501, f'context must be "new" or "existing", not {remote.context!r}')
         return remote
 
-    async def _connect(self, browser_type, remote: RemoteBrowser):
+    async def _open_remote(self, browser_type, remote: RemoteBrowser):
         internal_logger.info(
             "[Playwright] Connecting to remote browser at %s over %s", utils.redact_url(remote.url), remote.protocol
         )
         connect = getattr(browser_type, self._CONNECT_METHODS[remote.protocol])
         # Expanded values are never bound to a local: tracebacks can be logged with locals.
+        # Any Playwright error from here on can repeat the endpoint, not only connect's.
         try:
-            return await connect(
+            self._browser = await connect(
                 utils.expand_env(remote.url), headers=remote.expanded_headers(), timeout=self._connect_timeout_ms()
             )
+            if remote.context == "existing" and self._browser.contexts:
+                self._context = self._browser.contexts[0]
+                pages = self._context.pages
+                self.page = pages[0] if pages else await self._context.new_page()
+            else:
+                await self._open_new_context()
+            return
         except PlaywrightError as e:
             message = remote.mask(str(e))
         raise OpticsError(Code.E0102, message)
