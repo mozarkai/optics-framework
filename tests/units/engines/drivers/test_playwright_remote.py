@@ -291,3 +291,73 @@ def test_literal_url_credentials_are_masked_and_kept_out_of_the_repr():
     assert "t-1" not in remote.mask(message)
     assert "pw-1" not in repr(remote)
     assert "t-1" not in repr(remote)
+
+
+async def test_an_existing_context_is_adopted_with_its_open_tab(monkeypatch):
+    pw, browser = _fake_playwright(monkeypatch)
+    tab = MagicMock()
+    default = MagicMock(pages=[tab])
+    browser.contexts = [default]
+    driver = Playwright({"url": "http://127.0.0.1:9222", "capabilities": {"context": "existing"}})
+
+    await driver._launch_app_async(None, event_name=None)
+
+    assert driver._context is default
+    assert driver.page is tab
+    browser.new_context.assert_not_awaited()
+
+
+async def test_an_existing_context_without_tabs_gets_a_new_one(monkeypatch):
+    pw, browser = _fake_playwright(monkeypatch)
+    tab = MagicMock()
+    default = MagicMock(pages=[])
+    default.new_page = AsyncMock(return_value=tab)
+    browser.contexts = [default]
+    driver = Playwright({"url": "http://127.0.0.1:9222", "capabilities": {"context": "existing"}})
+
+    await driver._launch_app_async(None, event_name=None)
+
+    assert driver.page is tab
+    browser.new_context.assert_not_awaited()
+
+
+async def test_a_browser_without_contexts_gets_a_new_one_even_when_asked_to_adopt(monkeypatch):
+    pw, browser = _fake_playwright(monkeypatch)
+    browser.contexts = []
+    driver = Playwright({"url": HUB, "capabilities": {"context": "existing"}})
+
+    await driver._launch_app_async(None, event_name=None)
+
+    browser.new_context.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "capabilities, message",
+    [({"context": "shared"}, "context must be"), ({"browser": "firefox"}, "Chromium-based browsers only")],
+)
+def test_settings_a_remote_browser_cannot_honour_are_config_errors(capabilities, message):
+    driver = Playwright({"url": HUB, "capabilities": capabilities})
+
+    with pytest.raises(OpticsError, match=message) as error:
+        driver._remote()
+    assert error.value.code == Code.E0501
+
+
+async def test_percentages_use_the_window_size_when_no_viewport_is_emulated():
+    driver = Playwright({})
+    driver.page = MagicMock(viewport_size=None)
+    driver.page.evaluate = AsyncMock(return_value={"width": 400, "height": 800})
+    driver.page.mouse.click = AsyncMock()
+
+    await driver._press_percentage_async(50, 25, 1)
+
+    driver.page.mouse.click.assert_awaited_once_with(200, 200)
+
+
+def test_a_token_in_the_url_path_is_masked():
+    from optics_framework.engines.drivers.playwright import RemoteBrowser
+
+    remote = RemoteBrowser("wss://grid.example.com:443/tok-123")
+    message = "WebSocket error: wss://grid.example.com:443/tok-123 401 Unauthorized"
+
+    assert remote.mask(message) == "WebSocket error: wss://grid.example.com:443/*** 401 Unauthorized"
