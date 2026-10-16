@@ -461,12 +461,13 @@ Driver sources define the automation frameworks used to control devices or brows
     | `viewport` | `{width, height}` | Browser viewport dimensions |
     | `headers` | `{name: value}` | HTTP headers sent when connecting to a remote browser |
     | `protocol` | `"cdp"`, `"playwright"` | How to connect to the remote browser in `url` (default `"cdp"`) |
+    | `context` | `"new"`, `"existing"` | Open a fresh context in the remote browser, or use the one it already has (default `"new"`) |
 
     **Remote browser:** set `url` to a remote browser's endpoint and Optics connects to that browser instead of launching one. It works with any browser grid or service that speaks one of Playwright's two remote protocols:
 
     | `protocol` | Playwright call | Speaks to |
     |------------|-----------------|-----------|
-    | `cdp` (default) | `connect_over_cdp` | Any Chrome DevTools Protocol endpoint (`ws://`, `wss://`, or `http://` for `/json/version` discovery). Chromium-based browsers only |
+    | `cdp` (default) | `connect_over_cdp` | Any Chrome DevTools Protocol endpoint (`ws://`, `wss://`, or `http://` for `/json/version` discovery). Chromium-based browsers only (`browser: chromium`) |
     | `playwright` | `connect` | A Playwright server (`playwright run-server`, or a grid built on one). Any `browser`; the server's Playwright version must match the client's |
 
     Use the protocol the provider documents for Playwright's `connect_over_cdp` or `connect`; a `/playwright` path in a url does not by itself mean the Playwright protocol. A mismatch shows up as a connect timeout. Whatever a provider needs, such as browser version, OS or session options, goes in the url's query string as that provider documents it, often as URL-encoded JSON. Credentials go in `headers` or in the url, written as `${NAME}` references:
@@ -487,15 +488,17 @@ Driver sources define the automation frameworks used to control devices or brows
 
     | Remote browser | `url` | `protocol` | Credentials |
     |----------------|-------|------------|-------------|
-    | Chrome started with `--remote-debugging-port=9222 --user-data-dir=<dir>` | `http://127.0.0.1:9222` | `cdp` | none |
+    | Chrome started with `--remote-debugging-port=9222 --user-data-dir=<dir>` | `http://127.0.0.1:9222` | `cdp` | none, or the profile's own sign-ins with `context: existing` |
     | A CDP grid that takes a token in the query, such as Browserless | `wss://<host>?token=${GRID_TOKEN}` | `cdp` | in the url |
     | A CDP grid that takes headers | `wss://<host>/<path>` | `cdp` | `headers` |
     | A Playwright server or grid, such as `npx playwright run-server` | `ws://<host>:<port>/` | `playwright` | `headers`, if any |
     | A Playwright grid with capabilities in the query, such as BrowserStack (`caps=`) or LambdaTest (`capabilities=`) | `wss://<host>/playwright?caps=<URL-encoded JSON with ${USER} and ${ACCESS_KEY}>` | `playwright` | inside the capabilities JSON |
 
-    `${NAME}` in `url` or in a header value is replaced with that environment variable when the browser starts, so credentials stay out of the suite. The value is substituted as is, so inside a URL-encoded query write the reference itself unencoded. An unset or empty variable fails the launch with an error that names it. Only the url's host is logged, and secret values are masked in connect errors. `Close And Terminate App`, or the end of the run, closes the connection, which is what ends the session on the provider's side. No local browser download (`playwright install`) is needed.
+    `${NAME}` in `url` or in a header value is replaced with that environment variable when the browser starts, so credentials stay out of the suite. The value is substituted as is, so inside a URL-encoded query write the reference itself unencoded. An unset or empty variable fails the launch with an error that names it. Only the url's host is logged, and secret values and the url's path and query are masked in connect errors. `Close And Terminate App`, or the end of the run, closes the connection, which is what ends the session on the provider's side. No local browser download (`playwright install`) is needed.
 
-    To run every session on a remote browser without editing a suite, for example in CI or for an `optics mcp` server, set `OPTICS_PLAYWRIGHT_REMOTE` to a JSON object with `url` and, optionally, `headers` and `protocol`. It takes precedence over the driver config; timeouts still come from `capabilities`:
+    By default Optics opens a fresh context, with the configured `viewport`, in the remote browser. Set `context: existing` to use the browser's own context and its open tab instead, when a provider documents `browser.contexts[0]` because its session settings or recording live there, when a browser cannot create new contexts, or to reuse a signed-in profile. The page then keeps the browser's own window size, `viewport` is not applied, and ending the run disconnects without closing that context's tabs.
+
+    To run every session on a remote browser without editing a suite, for example in CI or for an `optics mcp` server, set `OPTICS_PLAYWRIGHT_REMOTE` to a JSON object with `url` and, optionally, `headers`, `protocol` and `context`. It takes precedence over the driver config; timeouts still come from `capabilities`:
 
     ```bash
     export OPTICS_PLAYWRIGHT_REMOTE='{"url": "wss://grid.example.com/session", "headers": {"Authorization": "Bearer ${GRID_TOKEN}"}}'

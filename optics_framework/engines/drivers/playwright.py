@@ -26,6 +26,7 @@ class RemoteBrowser:
     url: str
     headers: dict = field(default_factory=dict)
     protocol: str = "cdp"
+    context: str = "new"
 
     def __repr__(self) -> str:
         return f"RemoteBrowser(url={utils.redact_url(self.url)!r}, protocol={self.protocol!r})"
@@ -34,11 +35,13 @@ class RemoteBrowser:
         return {name: utils.expand_env(str(value)) for name, value in self.headers.items()} or None
 
     def mask(self, message: str) -> str:
-        """``message`` with every credential this browser is reached with replaced by
-        ``***``: Playwright repeats the endpoint, query included, in connect errors."""
+        """``message`` with this browser's credentials masked; connect errors repeat the full endpoint."""
         templates = [self.url, *map(str, self.headers.values())]
         names = {name for template in templates for name in utils.env_names(template)}
         url = urlsplit(utils.expand_env(self.url))
+        if url.path.strip("/"):
+            host = url.netloc.rpartition("@")[2]
+            message = message.replace(f"{host}{url.path}", f"{host}/***")
         secrets = [os.environ.get(name) for name in names]
         secrets += [url.password, url.query, *(self.expanded_headers() or {}).values()]
         for secret in sorted(filter(None, secrets), key=len, reverse=True):
@@ -223,33 +226,40 @@ class Playwright(DriverInterface):
         else:
             internal_logger.info("[Playwright] Launching browser")
             self._browser = await browser_type.launch(headless=self._setting("headless", False))
-        self._context = await self._browser.new_context(viewport=viewport)
+        if remote and remote.context == "existing" and self._browser.contexts:
+            self._context = self._browser.contexts[0]
+            pages = self._context.pages
+            self.page = pages[0] if pages else await self._context.new_page()
+        else:
+            self._context = await self._browser.new_context(viewport=viewport)
+            self.page = await self._context.new_page()
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
-        self.page = await self._context.new_page()
 
     def _remote(self) -> RemoteBrowser | None:
-        """The remote browser to connect to, or None to launch one locally.
-
-        ``OPTICS_PLAYWRIGHT_REMOTE``, a JSON object with ``url`` and optionally
-        ``headers`` and ``protocol``, wins over the driver config, so an operator can
-        point every session at a browser grid.
-        """
+        """The remote browser to connect to, or None to launch locally; ``OPTICS_PLAYWRIGHT_REMOTE`` overrides the config."""
         from_env = os.environ.get(self.REMOTE_ENV)
         if from_env:
             try:
                 remote = RemoteBrowser(**json.loads(from_env))
             except (json.JSONDecodeError, TypeError) as e:
                 raise OpticsError(
-                    Code.E0501, f'{self.REMOTE_ENV} must be a JSON object with "url" and optionally "headers" and "protocol": {e}'
+                    Code.E0501, f'{self.REMOTE_ENV} must be a JSON object with "url" and optionally "headers", "protocol" and "context": {e}'
                 ) from None
         elif self.config.get("url"):
             remote = RemoteBrowser(
-                self.config["url"], self._setting("headers", None) or {}, self._setting("protocol", "cdp")
+                self.config["url"],
+                self._setting("headers", None) or {},
+                self._setting("protocol", "cdp"),
+                self._setting("context", "new"),
             )
         else:
             return None
         if remote.protocol not in self._CONNECT_METHODS:
             raise OpticsError(Code.E0501, f"protocol must be one of {sorted(self._CONNECT_METHODS)}, not {remote.protocol!r}")
+        if remote.protocol == "cdp" and self._setting("browser", "chromium") != "chromium":
+            raise OpticsError(Code.E0501, 'protocol "cdp" reaches Chromium-based browsers only; set browser: chromium')
+        if remote.context not in ("new", "existing"):
+            raise OpticsError(Code.E0501, f'context must be "new" or "existing", not {remote.context!r}')
         return remote
 
     async def _connect(self, browser_type, remote: RemoteBrowser):
@@ -387,8 +397,14 @@ class Playwright(DriverInterface):
     def press_percentage_coordinates(self, px, py, repeat=1, event_name=None):
         self.run(self._press_percentage_async(px, py, repeat))
 
+    async def _viewport(self) -> dict:
+        """The page's viewport; a browser's own context, adopted over CDP, emulates none."""
+        return self.page.viewport_size or await self.page.evaluate(
+            "() => ({width: window.innerWidth, height: window.innerHeight})"
+        )
+
     async def _press_percentage_async(self, px, py, repeat):
-        vp = self.page.viewport_size
+        vp = await self._viewport()
         x = int(vp["width"] * px / 100)
         y = int(vp["height"] * py / 100)
         for _ in range(repeat):
@@ -474,7 +490,7 @@ class Playwright(DriverInterface):
         self.run(self._swipe_percentage_async(direction, swipe_length_percentage))
 
     async def _swipe_percentage_async(self, direction: str, swipe_length_percentage: int):
-        vp = self.page.viewport_size
+        vp = await self._viewport()
         delta = int(vp["height"] * swipe_length_percentage / 100)
         if direction != "down":
             delta = -delta
@@ -568,11 +584,7 @@ class Playwright(DriverInterface):
         self.run(self._terminate_async())
 
     async def _cleanup_resources(self):
-        """Close the browser and stop Playwright, whatever state a launch left them in.
-
-        Closing the browser closes its contexts and pages; for a remote browser it also
-        closes the connection, which is what ends the session on the remote end.
-        """
+        """Close the browser, ending any remote session but leaving an adopted context's tabs open, then stop Playwright."""
         browser, pw = self._browser, self._pw
         self.page = self._context = self._browser = self._pw = None
         try:
