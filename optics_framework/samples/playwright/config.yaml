@@ -17,6 +17,9 @@ halt_duration: 0.2
 driver_sources:
   - playwright:
       enabled: true
+      # A remote browser's endpoint here connects to it instead of launching one,
+      # e.g. url: "wss://<grid>/<path>?<provider options>" with capabilities
+      # protocol: cdp (or playwright) and headers: {Authorization: Bearer ${GRID_TOKEN}}.
       url: null
       capabilities:
         browser: chromium
