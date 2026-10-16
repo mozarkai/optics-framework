@@ -82,6 +82,21 @@ A website, run in a local browser:
 
 and the first module step opens the site: `Open Site,Launch App,https://...`.
 
+A website on a remote browser grid: add its endpoint as `url`, with the
+provider's options in the query, plus any auth `headers`. Leave `protocol` at
+its default (`cdp`) unless the provider documents Playwright's `connect`
+(a Playwright server); a `/playwright` path alone does not mean that. Write secrets as
+`${ENV_VAR}` references, never literal values; `optics execute` reads them from
+the environment.
+    driver_sources:
+      - playwright:
+          enabled: true
+          url: "wss://<grid>/<path>?<provider options>"
+          capabilities:
+            protocol: cdp
+            headers:
+              Authorization: Bearer ${GRID_TOKEN}
+
 ## Control flow & data (author these into modules; the runner executes them)
 A module step is any keyword from the `optics://keywords` catalog — including the
 control-flow/data keywords that only run under the CSV runner, not as a live
