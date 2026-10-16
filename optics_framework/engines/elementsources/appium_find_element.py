@@ -88,6 +88,8 @@ class AppiumFindElement(ElementSourceInterface):
             'Appium Find Element does not support getting interactive elements. Please use AppiumPageSource for this functionality.'
         )
 
+    def can_locate(self, element: str) -> bool:
+        return utils.determine_element_type(element) in ("XPath", "Text", "Class")
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """

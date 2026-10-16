@@ -52,6 +52,14 @@ class LocatorStrategy(ABC):
         """Returns (result, timestamp, annotated_frame). Timestamp and annotated_frame may be None."""
         pass
 
+    def can_assert(self, elements: list, rule: str) -> bool:
+        """Whether this strategy can satisfy ``rule`` for ``elements``.
+
+        Strategies that cannot are left out before an assertion's timeout is shared out.
+        Vision strategies look for anything on screen, so the default is True.
+        """
+        return True
+
     def assert_elements_visible(
         self, elements: list, timeout: int = 30, rule: str = 'any'
     ) -> Tuple[bool, Optional[str], Optional[Any]]:
@@ -149,6 +157,11 @@ class LocatorStrategy(ABC):
         return True, timestamp, None
 
 
+def _source_can_assert(element_source: ElementSourceInterface, elements: list, rule: str) -> bool:
+    lookups = [element_source.can_locate(element) for element in elements]
+    return all(lookups) if rule == "all" else any(lookups)
+
+
 class XPathStrategy(LocatorStrategy):
     """Strategy for locating elements via XPath."""
 
@@ -162,6 +175,9 @@ class XPathStrategy(LocatorStrategy):
 
     def locate(self, element: str, index: int = 0) -> Optional[Union[object, Tuple[int, int]]]:
         return self.element_source.locate(element, index)
+
+    def can_assert(self, elements: list, rule: str) -> bool:
+        return _source_can_assert(self.element_source, elements, rule)
 
     def assert_elements(
         self, elements: list, timeout: int = 30, rule: str = 'any'
@@ -192,6 +208,9 @@ class TextElementStrategy(LocatorStrategy):
     def locate(self, element: str, index: int = 0) -> Optional[Union[object, Tuple[int, int]]]:
         return self.element_source.locate(element, index)
 
+    def can_assert(self, elements: list, rule: str) -> bool:
+        return _source_can_assert(self.element_source, elements, rule)
+
     def assert_elements(
         self, elements: list, timeout: int = 30, rule: str = 'any'
     ) -> Tuple[bool, Optional[str], Optional[Any]]:
@@ -219,6 +238,9 @@ class TextDetectionStrategy(LocatorStrategy):
     @property
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
+
+    def can_assert(self, elements: list, rule: str) -> bool:
+        return self.text_detection is not None
 
     def locate(self, element: str, index: int = 0) -> Optional[LocateValueWithFrame]:
         if self.text_detection is None:
@@ -623,30 +645,37 @@ class StrategyManager:
         self, strategy: "LocatorStrategy", value: Any,
         aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float,
     ) -> bool:
-        """True if a located WebElement's centre lies inside the AOI rectangle.
+        """True if a located WebElement's centre, or a located point, lies inside the AOI rectangle.
 
-        Filters accessibility/XPath matches (which return a WebElement and ignore the
-        AOI, unlike ``locate_with_aoi`` OCR/image strategies), comparing the centre as a
-        window percentage against the AOI. Fails open when bbox/window is unknown.
+        Filters matches from strategies that ignore the AOI (accessibility/XPath, and
+        sources returning screen coordinates), unlike ``locate_with_aoi`` OCR/image
+        strategies, comparing the centre as a window percentage against the AOI. Fails
+        open when bbox/window is unknown.
 
         Centre-point test, so it can disagree with an OCR/image crop at the AOI edge.
         """
         element_source = getattr(strategy, "element_source", None)
-        if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
-            return True
-        try:
-            bbox = element_source.get_bbox_for_element(value)
-        except Exception:  # noqa: BLE001 - best-effort; fall back to not filtering
-            return True
+        if isinstance(value, tuple):
+            centre_x, centre_y = value
+        else:
+            if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
+                return True
+            try:
+                bbox = element_source.get_bbox_for_element(value)
+            except Exception:  # noqa: BLE001 - best-effort; fall back to not filtering
+                return True
+            if bbox is None:
+                return True
+            (x1, y1), (x2, y2) = bbox
+            centre_x, centre_y = (x1 + x2) / 2, (y1 + y2) / 2
         window = utils._window_size_from_source(element_source)
-        if bbox is None or window is None:
+        if window is None:
             return True
-        (x1, y1), (x2, y2) = bbox
         win_w, win_h = window
         if win_w <= 0 or win_h <= 0:
             return True
-        cx = (x1 + x2) / 2 / win_w * 100
-        cy = (y1 + y2) / 2 / win_h * 100
+        cx = centre_x / win_w * 100
+        cy = centre_y / win_h * 100
         inside = aoi_x <= cx <= aoi_x + aoi_width and aoi_y <= cy <= aoi_y + aoi_height
         if not inside:
             internal_logger.debug(
@@ -684,8 +713,8 @@ class StrategyManager:
                 value, annotated_frame = result[0], result[1]
             else:
                 value, annotated_frame = result, None
-            if use_aoi and locate_with_aoi is None and not isinstance(value, tuple):
-                # Strategy can't scope to the AOI itself (accessibility/XPath) — enforce
+            if use_aoi and locate_with_aoi is None:
+                # Strategy can't scope to the AOI itself (accessibility/XPath/web) — enforce
                 # it here so an out-of-AOI match falls through to an AOI-capable strategy.
                 if not self._within_aoi(strategy, value, aoi_x, aoi_y, aoi_width, aoi_height):
                     execution_tracer.log_attempt(strategy, element, "fail", error="match outside AOI")
@@ -765,6 +794,7 @@ class StrategyManager:
         applicable_strategies = [
             s for s in self.locator_strategies
             if self._can_strategy_assert_elements(s, element_type, method_name)
+            and s.can_assert(effective_elements, rule.lower())
         ]
         if has_text_only:
             applicable_strategies = [

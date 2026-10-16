@@ -126,6 +126,9 @@ class AppiumPageSource(ElementSourceInterface):
             internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
             raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
 
+    def can_locate(self, element: str) -> bool:
+        return utils.determine_element_type(element) in ("Text", "XPath")
+
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
         Locate a UI element on the current page using Appium.
