@@ -47,11 +47,14 @@ class PlaywrightScreenshot(ElementSourceInterface):
 
         ``page.screenshot()`` already returns encoded PNG, so this is the cheapest
         path of all backends — no base64 decode and no OpenCV decode/encode at all.
+        It is taken at CSS scale: ``mouse.click`` takes CSS pixels, so a screenshot in
+        device pixels would put every OCR or image hit at DPR times its true position
+        on a browser whose device pixel ratio is above 1.
         """
         page = self._require_page()
         try:
             internal_logger.debug("Capturing Playwright screenshot")
-            return self.driver.run(page.screenshot(full_page=False))
+            return self.driver.run(page.screenshot(full_page=False, scale="css"))
         except Exception as e:
             internal_logger.warning(
                 "Error capturing Playwright screenshot bytes: %s", e, exc_info=True
