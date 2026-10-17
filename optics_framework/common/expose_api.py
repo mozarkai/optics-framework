@@ -31,6 +31,7 @@ from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.api.flow_control import reads_environment
 from optics_framework.helper.execute import discover_templates
 from optics_framework.helper.version import VERSION
 
@@ -787,6 +788,19 @@ async def _try_combos_positional(
     raise_fallback_failure(f"keyword '{keyword}'", errors)
 
 
+def _reject_server_env_read(keyword_slug: str, params: Any) -> None:
+    """Refuse ``Read Data`` ``ENV:NAME``: the server has no caller authentication, so
+    honouring it would return any server environment variable to whoever asks."""
+    values = params.values() if isinstance(params, dict) else params
+    candidates = [
+        item
+        for value in values
+        for item in (value if isinstance(value, list) else [value])
+    ]
+    if keyword_slug == "read_data" and any(reads_environment(item) for item in candidates):
+        raise OpticsError(Code.E0501, "Read Data ENV: is only available to project runs, not API callers")
+
+
 async def _execute_keyword_with_fallback(
     engine: ExecutionEngine,
     session_id: str,
@@ -913,6 +927,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
 
         if not method:
             raise OpticsError(Code.E0402, message=f"Keyword {request.keyword} not found")
+        _reject_server_env_read(keyword_slug, request.params)
 
         result = await _execute_keyword_with_fallback(
             engine, session_id, request.keyword, request.params, method, session
