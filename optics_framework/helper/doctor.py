@@ -125,12 +125,13 @@ def check_mobile(host: str = "127.0.0.1", port: int = 4723) -> list[Check]:
     return rows
 
 
-def check_web() -> list[Check]:
+def check_web(playwright_remote: bool = False) -> list[Check]:
     """Browser-binary presence for the web drivers, best-effort.
 
     A pip package being installed says nothing about whether its browser was
-    downloaded, so anything short of a confirmed binary is a warning."""
-    return [_playwright_row(), _selenium_row()]
+    downloaded, so anything short of a confirmed binary is a warning. Playwright
+    driving a remote browser needs no local download."""
+    return [_playwright_row(playwright_remote), _selenium_row()]
 
 
 def _adb_devices_row(adb: str) -> Check:
@@ -184,13 +185,15 @@ def _appium_row(host: str, port: int) -> Check:
     return Check(_APPIUM_SERVER, "ok", f"reachable at {host}:{port}")
 
 
-def _playwright_row() -> Check:
+def _playwright_row(remote: bool = False) -> Check:
     try:
         version("playwright")
     except PackageNotFoundError:
         return Check(_PLAYWRIGHT_BROWSER, "warn",
                      "Playwright package not installed",
                      "optics setup --install playwright")
+    if remote:
+        return Check(_PLAYWRIGHT_BROWSER, "ok", "remote browser configured; no local download needed")
     if _playwright_chromium_downloaded():
         return Check(_PLAYWRIGHT_BROWSER, "ok", "Chromium download found")
     return Check(_PLAYWRIGHT_BROWSER, "warn",
@@ -446,6 +449,18 @@ def _appium_target(folder: str) -> tuple[str, int] | None:
     return None
 
 
+def _playwright_is_remote(folder: str | None) -> bool:
+    """Whether Playwright is pointed at a remote browser, by the operator's env var
+    or by an enabled playwright driver entry that carries a url."""
+    if os.environ.get("OPTICS_PLAYWRIGHT_REMOTE"):
+        return True
+    data, _ = _load_project_yaml(folder) if folder else (None, None)
+    if data is None:
+        return False
+    cfg = _enabled_entries(data.get("driver_sources")).get("playwright")
+    return isinstance(cfg, dict) and bool(cfg.get("url"))
+
+
 def _split_host_port(url: object) -> tuple[str, int] | None:
     if not isinstance(url, str) or not url.strip():
         return None
@@ -560,7 +575,7 @@ def diagnose(folder: str | None = None) -> Diagnosis:
         ("Core", check_core()),
         ("Engines", check_engines()),
         ("Mobile", check_mobile(host, port)),
-        ("Web", check_web()),
+        ("Web", check_web(_playwright_is_remote(folder))),
     ]
     if folder:
         sections.append(("Project", validate_project(folder)))

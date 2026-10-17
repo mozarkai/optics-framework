@@ -481,7 +481,7 @@ class TestRunDoctor:
         """Replace every environment probe with one canned warning row."""
         monkeypatch.setattr(doctor, "check_core", _stub_env_rows)
         monkeypatch.setattr(doctor, "check_engines", lambda: [])
-        monkeypatch.setattr(doctor, "check_web", lambda: [])
+        monkeypatch.setattr(doctor, "check_web", lambda *_: [])
         captured = {}
 
         def fake_check_mobile(host="127.0.0.1", port=4723):
