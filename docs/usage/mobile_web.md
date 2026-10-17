@@ -101,6 +101,43 @@ left to the native sources. A web locator that matches an element hidden by the 
 page, including one scrolled off screen or hidden. `Assert Visibility` passes only for an
 element that is displayed and inside the visible part of the page.
 
+## Moving between apps and the browser
+
+Nothing in a test says which app is in front. Every lookup looks at the screen as it is
+now, so a test follows the user's path from one app to another:
+
+```csv
+module_name,module_step,param_1,param_2
+Read The Policy,Press Element,Google Play refund policy
+Read The Policy,Assert Presence,css=h1,30
+Read The Policy,Get Text,css=h1
+Read The Policy,Go Back
+Read The Policy,Assert Presence,Google Play refund policy,20
+```
+
+- **App to browser.** Tapping a link in an app opens Chrome or a Chrome Custom Tab, the
+  in-app browser most apps use. Web locators then find elements in the page in front, and
+  native locators and OCR keep working. `Go Back` closes the tab and returns to the app.
+- **Browser to app.** A web link that an app handles, such as a Play Store link, opens
+  that app. Its native elements are available as soon as it is in front.
+- **Choosing an app.** When more than one app can open a link, Android asks which one to
+  use. Answer with `Detect And Press` on the app's name, then on `Just once`.
+- **Other browsers.** Web locators read Chrome and WebViews with debugging enabled. If a
+  link opens in another browser, such as Samsung Internet, they fail with "Cannot read
+  the web page shown by …"; text locators and OCR work there. To keep a test in Chrome,
+  make Chrome the device's default browser.
+- **The same link twice.** Opening a link that an earlier tab still shows leaves two tabs
+  with the same address. When a web locator has already looked at the earlier tab, Optics
+  tells the two apart and uses the one on screen.
+- **A Custom Tab right after another.** When an app opens a Custom Tab just after one
+  closed, Chrome ignores the first tap on the new tab. Before typing into a field there,
+  press the field once.
+- **Covered elements.** When a banner, a dialog or a panel lies over the element a web
+  locator matches, Optics does not tap it, because the tap would land on whatever covers
+  it. Dismiss the cover first. `Get Text` still reads a covered element.
+
+On iOS, a link from an app opens in Safari. Text locators and OCR work there.
+
 ## Chrome's own pop-ups
 
 A fresh Chrome shows native pop-ups over the page: a notification prompt, a sign-in
@@ -130,9 +167,9 @@ locators and OCR still work on the WebView's content.
   is in the native UI tree there too.
 - Web locators search the top-level page only, not the inside of an `iframe`. Use text
   locators or OCR for content in a frame.
-- When two Chrome tabs show the same URL, Optics cannot tell which one is on screen and
-  web locators fail with "Cannot tell which browser tab is on screen". Close the extra
-  tab, or open the page once.
+- When several Chrome tabs show the same address and Optics cannot tell them apart (three
+  or more, or two it has not looked at), web locators fail with "Cannot tell which
+  browser tab is on screen". Close the extra tabs.
 - Each web lookup switches context twice and costs about one to two seconds on a
   remote device. Prefer native locators where they work, and use `css=` where they do not.
 
