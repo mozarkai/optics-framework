@@ -1097,21 +1097,23 @@ class ActionKeyword:
         """
         Get the text from a specified element.
 
-        :param element: The target element (Image template, OCR template, or XPath).
+        :param element: The target element (XPath, text, or a CSS/DOM XPath locator in a web page).
         :param index: Index of the element if multiple matches are found.
         :param aoi_x: X percentage of Area of Interest top-left corner (0-100). Default: 0.
         :param aoi_y: Y percentage of Area of Interest top-left corner (0-100). Default: 0.
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
-        :return: The text from the element or None if not supported.
+        :return: The text from the element or None for an OCR or image match.
         """
         def act(located: Any) -> Optional[str]:
             if located is None:
                 internal_logger.error('get_text: located is None, element could not be found.')
                 return None
             if isinstance(located, tuple):
-                internal_logger.error('Get Text is not supported for coordinate-based (vision) results.')
-                return None
+                text = getattr(located, "text", None)
+                if text is None:
+                    internal_logger.error('Get Text is not supported for coordinate-based (vision) results.')
+                return text
             return self.driver.get_text_element(located)
 
         return self._locate_and_act(
