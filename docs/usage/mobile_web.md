@@ -133,8 +133,6 @@ locators and OCR still work on the WebView's content.
 - When two Chrome tabs show the same URL, Optics cannot tell which one is on screen and
   web locators fail with "Cannot tell which browser tab is on screen". Close the extra
   tab, or open the page once.
-- `Get Text` does not return text for a web locator. Use a text locator, or
-  `Assert Presence`.
 - Each web lookup switches context twice and costs about one to two seconds on a
   remote device. Prefer native locators where they work, and use `css=` where they do not.
 

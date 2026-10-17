@@ -4,7 +4,7 @@ from typing import Any
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
 from optics_framework.common import utils
-from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.elementsource_interface import ElementSourceInterface, ScreenPoint
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_liveness import raise_if_session_dead
@@ -17,6 +17,10 @@ _IN_VIEWPORT_JS = (
     "const bottom = top + (v ? v.height : window.innerHeight);"
     "return r.width > 0 && r.height > 0 && r.bottom > top && r.right > left"
     " && r.top < bottom && r.left < right;"
+)
+_TEXT_JS = (
+    "const e = arguments[0];"
+    "return ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) ? e.value : e.innerText;"
 )
 _POLL_INTERVAL_S = 0.5
 _SETTLE_TIMEOUT_S = 2.0
@@ -52,7 +56,7 @@ class AppiumWeb(ElementSourceInterface):
     def can_locate(self, element: str) -> bool:
         return self._dom_query(element) is not None
 
-    def locate(self, element: str, index: int | None = None) -> tuple[int, int] | None:
+    def locate(self, element: str, index: int | None = None) -> ScreenPoint | None:
         query = self._dom_query(element)
         if query is None:
             return None
@@ -70,9 +74,10 @@ class AppiumWeb(ElementSourceInterface):
                     raise OpticsError(Code.E0201, message=f"'{element}' is in the page but not displayed.")
                 driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
                 rect = self._settled_rect(target)
+                text = driver.execute_script(_TEXT_JS, target)
         except _Unsupported:
             return None
-        return rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
+        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text)
 
     def _settled_rect(self, target: Any) -> dict:
         """Screen rect once it holds still.

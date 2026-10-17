@@ -11,6 +11,7 @@ from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Veri
 from optics_framework.api.action_keyword import _find_dropdown_container
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import LocateResult
+from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.base_factory import InstanceFallback
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -646,3 +647,35 @@ class TestMixedDrivers:
             keyword.press_element("Submit")
         assert appium.calls == [("press_coordinates", (10, 20))]
         assert playwright.calls == []
+
+
+class TestGetText:
+    @pytest.fixture(autouse=True)
+    def _no_disk_writes(self):
+        with patch('optics_framework.common.utils.save_screenshot'):
+            yield
+
+    def _mock_locate(self, action_keyword, value):
+        return patch.object(
+            action_keyword.strategy_manager, 'locate', return_value=[LocateResult(value, MagicMock())]
+        )
+
+    def test_reads_the_element_through_the_driver(self, action_keyword, mock_dependencies):
+        handle = MagicMock()
+        mock_dependencies['driver'].get_text_element.return_value = "Sign in"
+        with self._mock_locate(action_keyword, handle):
+            assert action_keyword.get_text("//button") == "Sign in"
+        mock_dependencies['driver'].get_text_element.assert_called_once_with(handle)
+
+    def test_web_point_returns_its_text(self, action_keyword, mock_dependencies):
+        with self._mock_locate(action_keyword, ScreenPoint(10, 20, "Appium")):
+            assert action_keyword.get_text("css=h1") == "Appium"
+        mock_dependencies['driver'].get_text_element.assert_not_called()
+
+    def test_empty_web_text_is_returned_as_is(self, action_keyword):
+        with self._mock_locate(action_keyword, ScreenPoint(10, 20, "")):
+            assert action_keyword.get_text("css=input") == ""
+
+    def test_vision_point_has_no_text(self, action_keyword):
+        with self._mock_locate(action_keyword, (10, 20)):
+            assert action_keyword.get_text("Sign in") is None

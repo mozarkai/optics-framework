@@ -70,7 +70,7 @@ class TestLocate:
         first, second = _element(), _element()
         driver = _Driver({("css selector", "a"): [first, second]})
         AppiumWeb(driver).locate("css=a", index=1)
-        driver.webdriver.execute_script.assert_called_once_with(appium_web._SCROLL_INTO_VIEW_JS, second)
+        driver.webdriver.execute_script.assert_any_call(appium_web._SCROLL_INTO_VIEW_JS, second)
 
     def test_index_beyond_the_matches_is_not_found(self):
         source = AppiumWeb(_Driver({("css selector", "a"): [_element()]}))
@@ -84,6 +84,14 @@ class TestLocate:
         with pytest.raises(OpticsError, match="not displayed"):
             source.locate("css=#hidden")
         driver.webdriver.execute_script.assert_not_called()
+
+    def test_point_carries_the_element_text(self):
+        target = _element()
+        driver = _Driver({("css selector", "h1"): [target]})
+        driver.webdriver.execute_script.side_effect = lambda script, _el: "Appium" if script == appium_web._TEXT_JS else None
+        point = AppiumWeb(driver).locate("css=h1")
+        assert point.text == "Appium"
+        driver.webdriver.execute_script.assert_any_call(appium_web._TEXT_JS, target)
 
     def test_waits_for_the_rect_to_settle(self):
         moving = [{"x": 0, "y": y, "width": 10, "height": 10} for y in (900, 700, 600, 600)]
