@@ -115,45 +115,38 @@ class AppiumFindElement(ElementSourceInterface):
             except (AttributeError, TypeError) as e:
                 internal_logger.error('Error finding element: %s', element, exc_info=True)
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
-        elif element_type == 'Text':
-            locator = element[len("text="):] if element.lower().startswith("text=") else element
+        elif element_type in ('Text', 'Class'):
+            by, value = AppiumBy.CLASS_NAME, element
+            if element_type == 'Text':
+                by = AppiumBy.ACCESSIBILITY_ID
+                value = element[len("text="):] if element.lower().startswith("text=") else element
+            position = 0 if index is None else index
             try:
-                found_elements = driver.find_elements(AppiumBy.ACCESSIBILITY_ID, locator)
-                index_to_use = 0 if index is None else index
-                if not found_elements or index_to_use < 0 or index_to_use >= len(found_elements):
-                    raise OpticsError(
-                        Code.E0201,
-                        message=f"Element of type {element_type} and index {index_to_use} not found using: {element}",
-                    )
-                return found_elements[index_to_use]
-            except OpticsError:
-                raise
+                found_element = self._find_nth(driver, by, value, position)
             except NoSuchElementException as e:
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
             except Exception as e:
                 internal_logger.exception(f"Unexpected error finding element {element}: {e}")
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
-        elif element_type == 'Class':
-            try:
-                found_elements = driver.find_elements(AppiumBy.CLASS_NAME, element)
-
-                index_to_use = 0 if index is None else index
-                if not found_elements or index_to_use < 0 or index_to_use >= len(found_elements):
-                    raise OpticsError(
-                        Code.E0201,
-                        message=f"Element of type {element_type} and index {index_to_use} not found using: {element}",
-                    )
-
-                found_element = found_elements[index_to_use]
-                return found_element
-            except OpticsError:
-                raise
-            except NoSuchElementException as e:
-                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
-            except Exception as e:
-                internal_logger.exception(f"Unexpected error finding class element {element}: {e}")
-                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
+            if found_element is None:
+                raise OpticsError(
+                    Code.E0201,
+                    message=f"Element of type {element_type} and index {position} not found using: {element}",
+                )
+            return found_element
         return None
+
+    @staticmethod
+    def _find_nth(driver: WebDriver, by: str, value: str, position: int) -> Any:
+        """The match at ``position``, or None when there are not that many.
+
+        The first match is fetched on its own: XCUITest resolves every match of a
+        multi-element lookup, which on a web page in Safari takes ~13 s against ~0.5 s.
+        """
+        if position == 0:
+            return driver.find_element(by, value)
+        matches = driver.find_elements(by, value)
+        return matches[position] if 0 <= position < len(matches) else None
 
     def get_element_bboxes(
         self, elements: List[str]

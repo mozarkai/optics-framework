@@ -1,7 +1,8 @@
 """Unit tests for AppiumFindElement.assert_elements_visible (visibility vs. presence)."""
 from unittest.mock import MagicMock
 import pytest
-from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, WebDriverException
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.engines.elementsources.appium_find_element import AppiumFindElement
@@ -154,11 +155,21 @@ class TestLocateIndex:
 
         assert source.locate("NEXT", index=1) is second
 
-    def test_text_index_none_selects_first_match(self, source):
-        first, second = MagicMock(name="first"), MagicMock(name="second")
-        source.driver.driver.find_elements.return_value = [first, second]
+    @pytest.mark.parametrize("index", [None, 0])
+    def test_first_text_match_is_fetched_alone(self, source, index):
+        first = MagicMock(name="first")
+        source.driver.driver.find_element.return_value = first
 
-        assert source.locate("NEXT") is first
+        assert source.locate("NEXT", index=index) is first
+        source.driver.driver.find_element.assert_called_once_with(AppiumBy.ACCESSIBILITY_ID, "NEXT")
+        source.driver.driver.find_elements.assert_not_called()
+
+    def test_first_class_match_is_fetched_alone(self, source):
+        first = MagicMock(name="first")
+        source.driver.driver.find_element.return_value = first
+
+        assert source.locate("android.widget.Button") is first
+        source.driver.driver.find_element.assert_called_once_with(AppiumBy.CLASS_NAME, "android.widget.Button")
 
     def test_text_index_out_of_range_raises_e0201(self, source):
         source.driver.driver.find_elements.return_value = [MagicMock(), MagicMock()]
@@ -168,7 +179,7 @@ class TestLocateIndex:
         assert exc.value.code == Code.E0201
 
     def test_text_no_matches_raises_e0201(self, source):
-        source.driver.driver.find_elements.return_value = []
+        source.driver.driver.find_element.side_effect = NoSuchElementException("no match")
 
         with pytest.raises(OpticsError) as exc:
             source.locate("NEXT")
