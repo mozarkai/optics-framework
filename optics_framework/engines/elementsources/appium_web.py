@@ -4,7 +4,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 from lxml import etree  # type: ignore
 from selenium.common.exceptions import WebDriverException
 from optics_framework.common import utils
-from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.elementsource_interface import ElementSourceInterface, ScreenPoint
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_liveness import raise_if_session_dead
@@ -36,6 +36,10 @@ _KEYBOARD_PENDING_JS = (
 _INSPECT_JS = (
     f"return [({BOUNDS_JS})(arguments[0]),"
     f" arguments[1] ? ({SUGGEST_LOCATORS_JS})(arguments[1]) : null];"
+)
+_TEXT_JS = (
+    "const e = arguments[0];"
+    "return ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) ? e.value : e.innerText;"
 )
 _SETTLE_TIMEOUT_S = 2.0
 _SETTLE_INTERVAL_S = 0.15
@@ -87,7 +91,7 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         # through web_context would drop it to NATIVE_APP.
         return self.driver is not None and self.driver.native_ui_platform() is not None
 
-    def locate(self, element: str, index: int | None = None) -> tuple[int, int] | None:
+    def locate(self, element: str, index: int | None = None) -> ScreenPoint | None:
         if not self.can_locate(element):
             return None
         query = self._dom_query(element)
@@ -107,7 +111,8 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
             driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
             self._uncover(driver, target)
             rect = self._settled_rect(target)
-        return rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
+            text = driver.execute_script(_TEXT_JS, target)
+        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text)
 
     @staticmethod
     def _await_keyboard(driver: Any, target: Any) -> None:
