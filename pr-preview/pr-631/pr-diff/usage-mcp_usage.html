@@ -1,0 +1,120 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/mcp_usage.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to5__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__0"></td><td class="diff_header" id="from5_139">139</td><td nowrap="nowrap">1. **`start_session`** — open a session against your driver. Returns</td><td class="diff_next"></td><td class="diff_header" id="to5_139">139</td><td nowrap="nowrap">1. **`start_session`** — open a session against your driver. Returns</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_140">140</td><td nowrap="nowrap">   `{ "session_id", "driver_id" }`. The target app is launched automatically.</td><td class="diff_next"></td><td class="diff_header" id="to5_140">140</td><td nowrap="nowrap">   `{ "session_id", "driver_id" }`. The target app is launched automatically.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_141">141</td><td nowrap="nowrap">   Capture the `session_id`; **every** other tool and resource needs it.</td><td class="diff_next"></td><td class="diff_header" id="to5_141">141</td><td nowrap="nowrap">   Capture the `session_id`; **every** other tool and resource needs it.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_142">142</td><td nowrap="nowrap">   `elements_sources` **defaults per driver** (appium →</td><td class="diff_next"></td><td class="diff_header" id="to5_142">142</td><td nowrap="nowrap">   `elements_sources` **defaults per driver** (appium →</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__1">n</a></td><td class="diff_header" id="from5_143">143</td><td nowrap="nowrap">   `appium_find_element`/`appium_page_source`/`appium_screenshot`;<span class="diff_sub"> selenium and</span></td><td class="diff_next"><a href="#difflib_chg_to5__1">n</a></td><td class="diff_header" id="to5_143">143</td><td nowrap="nowrap">   `appium_find_element`/`appium_page_source`/`appium_<span class="diff_add">web`/`appium_</span>screenshot`;</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_144">144</td><td nowrap="nowrap">   playwright analogous), so `start_session` with just a `driver` works. The device</td><td class="diff_next"></td><td class="diff_header" id="to5_144">144</td><td nowrap="nowrap">  <span class="diff_add"> selenium and</span> playwright analogous), so `start_session` with just a `driver` works. The device</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_145">145</td><td nowrap="nowrap">   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs</td><td class="diff_next"></td><td class="diff_header" id="to5_145">145</td><td nowrap="nowrap">   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_146">146</td><td nowrap="nowrap">   no `adb` of its own.</td><td class="diff_next"></td><td class="diff_header" id="to5_146">146</td><td nowrap="nowrap">   no `adb` of its own.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_147">147</td><td nowrap="nowrap">2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,</td><td class="diff_next"></td><td class="diff_header" id="to5_147">147</td><td nowrap="nowrap">2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_148">148</td><td nowrap="nowrap">   or read `optics://session/{session_id}/elements` for the compact list of</td><td class="diff_next"></td><td class="diff_header" id="to5_148">148</td><td nowrap="nowrap">   or read `optics://session/{session_id}/elements` for the compact list of</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to5__1"></td><td class="diff_header" id="from5_327">327</td><td nowrap="nowrap">## 8. Element sources decide what works</td><td class="diff_next"></td><td class="diff_header" id="to5_327">327</td><td nowrap="nowrap">## 8. Element sources decide what works</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_328">328</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_328">328</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_329">329</td><td nowrap="nowrap">The keywords you can use depend on which `elements_sources` (and detection</td><td class="diff_next"></td><td class="diff_header" id="to5_329">329</td><td nowrap="nowrap">The keywords you can use depend on which `elements_sources` (and detection</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_330">330</td><td nowrap="nowrap">sources) you enable in `start_session` — same rules as a normal optics project.</td><td class="diff_next"></td><td class="diff_header" id="to5_330">330</td><td nowrap="nowrap">sources) you enable in `start_session` — same rules as a normal optics project.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__2">n</a></td><td class="diff_header" id="from5_331">331</td><td nowrap="nowrap">When you omit `elements_sources`, `start_session` enables the driver's <span class="diff_chg">ca</span>n<span class="diff_chg">onical</span></td><td class="diff_next"><a href="#difflib_chg_to5__2">n</a></td><td class="diff_header" id="to5_331">331</td><td nowrap="nowrap">When you omit `elements_sources`, `start_session` enables the driver's <span class="diff_chg">eleme</span>n<span class="diff_chg">t</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_332">332</td><td nowrap="nowrap"><span class="diff_chg">t</span>r<span class="diff_chg">io</span> automatically (appium → `appium_find_element`/`appium_page_source`/</td><td class="diff_next"></td><td class="diff_header" id="to5_332">332</td><td nowrap="nowrap"><span class="diff_chg">sou</span>r<span class="diff_chg">ces</span> automatically (appium → `appium_find_element`/`appium_page_source`/</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_333">333</td><td nowrap="nowrap">`appium_screenshot`); pass the argument only to narrow or extend that. An</td><td class="diff_next"></td><td class="diff_header" id="to5_333">333</td><td nowrap="nowrap"><span class="diff_add">`appium_web`/</span>`appium_screenshot`); pass the argument only to narrow or extend that. An</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_334">334</td><td nowrap="nowrap">explicit **empty** list is passed through and disables element sources entirely</td><td class="diff_next"></td><td class="diff_header" id="to5_334">334</td><td nowrap="nowrap">explicit **empty** list is passed through and disables element sources entirely</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_335">335</td><td nowrap="nowrap">(the session then fails to start) — omit the argument for the defaults:</td><td class="diff_next"></td><td class="diff_header" id="to5_335">335</td><td nowrap="nowrap">(the session then fails to start) — omit the argument for the defaults:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_336">336</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_336">336</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_337">337</td><td nowrap="nowrap">| Capability | Needs |</td><td class="diff_next"></td><td class="diff_header" id="to5_337">337</td><td nowrap="nowrap">| Capability | Needs |</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to5__2"></td><td class="diff_header" id="from5_338">338</td><td nowrap="nowrap">|------------|-------|</td><td class="diff_next"></td><td class="diff_header" id="to5_338">338</td><td nowrap="nowrap">|------------|-------|</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_339">339</td><td nowrap="nowrap">| Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |</td><td class="diff_next"></td><td class="diff_header" id="to5_339">339</td><td nowrap="nowrap">| Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_340">340</td><td nowrap="nowrap">| Screenshots &amp; image-based location | `appium_screenshot` |</td><td class="diff_next"></td><td class="diff_header" id="to5_340">340</td><td nowrap="nowrap">| Screenshots &amp; image-based location | `appium_screenshot` |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_341">341</td><td nowrap="nowrap">| Page source, `get_interactive_elements`, source-based extraction | `appium_page_source` |</td><td class="diff_next"></td><td class="diff_header" id="to5_341">341</td><td nowrap="nowrap">| Page source, `get_interactive_elements`, source-based extraction | `appium_page_source` |</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to5__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to5__top">t</a></td><td class="diff_header" id="to5_342">342</td><td nowrap="nowrap"><span class="diff_add">| `css=` / DOM XPath in Chrome or a debuggable WebView (Android) | `appium_web` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_342">342</td><td nowrap="nowrap">| OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |</td><td class="diff_next"></td><td class="diff_header" id="to5_343">343</td><td nowrap="nowrap">| OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_343">343</td><td nowrap="nowrap">| Image template matching | an `image_detection` source (e.g. `templatematch`) |</td><td class="diff_next"></td><td class="diff_header" id="to5_344">344</td><td nowrap="nowrap">| Image template matching | an `image_detection` source (e.g. `templatematch`) |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_344">344</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to5_345">345</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from5_345">345</td><td nowrap="nowrap">If you enable only `appium_find_element` + `appium_screenshot` and then call</td><td class="diff_next"></td><td class="diff_header" id="to5_346">346</td><td nowrap="nowrap">If you enable only `appium_find_element` + `appium_screenshot` and then call</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
