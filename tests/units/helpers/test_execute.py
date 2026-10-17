@@ -194,6 +194,11 @@ class TestProbeTcp:
         assert execute_module._probe_tcp(
             "http://127.0.0.1:1", default_port=4723, timeout=0.5) is False
 
+    def test_https_url_without_port_probes_443(self):
+        with patch.object(execute_module.socket, "create_connection") as connect:
+            execute_module._probe_tcp("https://hub.example.com/wd/hub", default_port=4723)
+        assert connect.call_args.args[0] == ("hub.example.com", 443)
+
     @pytest.mark.parametrize("url", [None, "", "   ", "http://:4723/wd/hub"])
     def test_missing_or_unparseable_url_returns_false(self, url):
         assert execute_module._probe_tcp(url, default_port=4723) is False
@@ -284,6 +289,14 @@ class TestPreflightGate:
         err = capsys.readouterr().err
         assert "No Android device/emulator attached" in err
         assert "adb devices" in err
+
+    def test_android_on_a_remote_server_skips_the_local_adb_check(self):
+        config = _config_for("appium", url="https://hub.example.com/wd/hub",
+                             capabilities={"platformName": "Android"})
+        with patch.object(execute_module, "_probe_tcp", return_value=True), \
+                patch.object(execute_module, "_adb_device_count") as adb:
+            execute_module._preflight_or_exit(config)
+        adb.assert_not_called()
 
     def test_android_without_adb_aborts(self, capsys):
         config = _config_for("appium", capabilities={"platformName": "android"})

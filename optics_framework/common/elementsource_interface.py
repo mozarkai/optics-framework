@@ -2,6 +2,25 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Tuple
 import numpy
 
+class ScreenPoint(tuple):
+    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` that carries the text shown there.
+
+    A source that finds an element in a document it can read, yet reports it by
+    position, sets ``text`` so that Get Text still works, and ``covered`` when something
+    else lies over the element at that point, so that keywords refuse to tap it there.
+    Otherwise keywords that tap use it as any other point.
+    """
+
+    text: str | None
+    covered: bool
+
+    def __new__(cls, x: int, y: int, text: str | None = None, covered: bool = False) -> "ScreenPoint":
+        point = super().__new__(cls, (x, y))
+        point.text = text
+        point.covered = covered
+        return point
+
+
 class ElementSourceInterface(ABC):
     """
     Abstract base class for element source drivers.
@@ -48,9 +67,20 @@ class ElementSourceInterface(ABC):
         :param element: The element to search for (e.g., template image, UI component).
         :type element: Any
         :return: A tuple (x, y) representing the center of the element, or None if not found.
+            Coordinates must be in the driver's window space (``get_window_size``), which
+            AOI filtering compares them against.
         :rtype: Optional[Tuple[int, int]]
         """
         pass
+
+    def can_locate(self, element: str) -> bool:
+        """
+        Whether :meth:`locate` and :meth:`assert_elements` can look this locator up.
+
+        A source that handles only some kinds of locator overrides this, so that an
+        assertion leaves it out instead of giving it part of the timeout.
+        """
+        return True
 
     @abstractmethod
     def assert_elements(self, elements: Any, timeout: int = 30, rule: str = 'any') -> None:

@@ -1,0 +1,39 @@
+# Mobile web on Android: Chrome driven through Appium.
+# browserName starts the session in Chrome, so URLs open there whatever the device's default
+# browser is. Web locators (css=..., DOM XPath) need the appium_web element source; the
+# session stays native, so native text/ids and OCR keep working on the same page.
+console: true
+file_log: true
+json_log: false
+log_level: INFO
+
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: Android
+        automationName: UiAutomator2
+        deviceName: emulator-5554
+        browserName: Chrome
+        # Web locators need the chromedriver that matches the device's Chrome: start the
+        # server with --allow-insecure uiautomator2:chromedriver_autodownload, or set
+        # appium:chromedriverExecutableDir to a folder of chromedriver binaries.
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_web:
+      enabled: true
+  - appium_screenshot:
+      enabled: true
+
+text_detection:
+  - easyocr:
+      enabled: false
+
+image_detection:
+  - templatematch:
+      enabled: false

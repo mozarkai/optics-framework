@@ -519,6 +519,89 @@ class TestTryStrategyLocateAoiFallthrough:
         assert result is None
 
 
+class TestAoiAppliesToScreenPoints:
+    """A source that returns screen coordinates (appium_web) is held to the AOI too."""
+
+    def _locate(self, point, aoi):
+        strategy = MagicMock(spec=["supports", "locate", "element_source"])
+        strategy.supports.return_value = True
+        strategy.locate.return_value = point
+        with patch.object(utils, "_window_size_from_source", return_value=(1000, 2000)):
+            return _sm(MagicMock())._try_strategy_locate(strategy, "css=#a", "CSS", True, *aoi, index=0)
+
+    def test_point_inside_aoi_is_returned(self):
+        assert self._locate((500, 1000), (25, 25, 50, 50)).value == (500, 1000)
+
+    def test_point_outside_aoi_is_skipped(self):
+        assert self._locate((500, 1900), (25, 25, 50, 50)) is None
+
+
+class _TextOnlySource(ElementSourceInterface):
+    def __init__(self):
+        self.asserted = []
+
+    def capture(self):
+        raise NotImplementedError
+
+    def get_interactive_elements(self, filter_config=None, compact=False):
+        raise NotImplementedError
+
+    def locate(self, element, index=None):
+        return None
+
+    def can_locate(self, element):
+        return utils.determine_element_type(element) == "Text"
+
+    def assert_elements(self, elements, timeout=30, rule="any"):
+        self.asserted.append((list(elements), timeout))
+        return True, "ts"
+
+
+class _WebOnlySource(_TextOnlySource):
+    def can_locate(self, element):
+        return utils.determine_element_type(element) == "CSS"
+
+
+class _ScreenshotOnlySource(_TextOnlySource):
+    def capture(self):
+        return np.zeros((10, 10, 3), dtype=np.uint8)
+
+    def locate(self, element, index=None):
+        raise NotImplementedError
+
+
+class TestAssertSkipsSourcesThatCannotCheckTheElements:
+    def _manager(self, *sources):
+        return StrategyManager(element_source=InstanceFallback(list(sources)), text_detection=None, image_detection=None)
+
+    def test_source_that_cannot_check_any_element_gets_no_time(self):
+        native, web = _TextOnlySource(), _WebOnlySource()
+        self._manager(web, native).assert_presence(["Welcome"], "Text", timeout=20, rule="any")
+        assert web.asserted == []
+        [(elements, allotted)] = native.asserted
+        assert elements == ["Welcome"]
+        assert allotted >= 19
+
+    def test_unconfigured_ocr_gets_no_time(self):
+        native = _TextOnlySource()
+        self._manager(native, _ScreenshotOnlySource()).assert_presence(["Welcome"], "Text", timeout=20, rule="any")
+        [(_, allotted)] = native.asserted
+        assert allotted >= 19
+
+    def test_all_rule_skips_a_source_that_checks_only_some_elements(self):
+        native = _TextOnlySource()
+        manager = self._manager(native)
+        with pytest.raises(OpticsError) as err:
+            manager.assert_presence(["Welcome", "css=#search"], "Text", timeout=5, rule="all")
+        assert err.value.code == Code.E0201
+        assert native.asserted == []
+
+    def test_any_rule_keeps_a_source_that_checks_some_elements(self):
+        native = _TextOnlySource()
+        self._manager(native).assert_presence(["Welcome", "css=#search"], "Text", timeout=5, rule="any")
+        assert [elements for elements, _ in native.asserted] == [["Welcome", "css=#search"]]
+
+
 class TestImageDetectionStrategy:
     """ImageDetectionStrategy locates an image element via image_detection."""
 

@@ -97,6 +97,8 @@ class AppiumPageSource(ElementSourceInterface):
             xpath = self.find_xpath_from_text_index(locator, index, strict=strict)
         else:
             xpath = self.find_xpath_from_text(locator, strict=strict)
+        if not xpath:
+            raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found in the page source: {element}")
         try:
             execution_logger.debug(f"Finding element by text: {locator} with xpath: {xpath}")
             element_obj = driver.find_element(AppiumBy.XPATH, xpath)
@@ -110,6 +112,8 @@ class AppiumPageSource(ElementSourceInterface):
     def _locate_by_xpath(self, driver: WebDriver, element: str, element_type: str) -> Any:
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
             xpath, _ = self.driver.ui_helper.find_xpath(element, strict=self._strict_element_match())
+            if not xpath:
+                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found in the page source: {element}")
             try:
                 element_obj = driver.find_element(AppiumBy.XPATH, xpath)
                 return element_obj
@@ -121,6 +125,9 @@ class AppiumPageSource(ElementSourceInterface):
         else:
             internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
             raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
+
+    def can_locate(self, element: str) -> bool:
+        return utils.determine_element_type(element) in ("Text", "XPath")
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
