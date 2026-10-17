@@ -138,28 +138,36 @@ class ScreenshotStream:
 
         Args:
             wait_for_threads (bool): Whether to wait for threads to finish
-            timeout (int): Maximum time to wait for threads to finish
+            timeout (float): Maximum total time to wait for all threads to finish
         """
         internal_logger.debug("Stopping screenshot capture...")
         self.stop_event.set()
 
         if wait_for_threads:
-            threads_to_wait = []
-
-            if self.capture_thread and self.capture_thread.is_alive():
-                threads_to_wait.append(("Capture", self.capture_thread))
-
-            if self.dedup_thread and self.dedup_thread.is_alive():
-                threads_to_wait.append(("Deduplication", self.dedup_thread))
-
-            for thread_name, thread in threads_to_wait:
-                thread.join(timeout=timeout)
-                if thread.is_alive():
-                    internal_logger.warning(f"{thread_name} thread did not stop within {timeout} seconds")
-                else:
-                    internal_logger.debug(f"{thread_name} thread stopped successfully")
+            deadline = time.time() + timeout
+            for thread_name, thread in self._active_threads():
+                self._join_thread(thread_name, thread, deadline)
 
         internal_logger.debug("Screenshot capture stopped.")
+
+    def _active_threads(self):
+        """Return the worker threads that are still running."""
+        threads = (("Capture", self.capture_thread), ("Deduplication", self.dedup_thread))
+        return [(name, thread) for name, thread in threads if thread and thread.is_alive()]
+
+    @staticmethod
+    def _join_thread(thread_name, thread, deadline):
+        """Join one worker without exceeding the shared stop deadline."""
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            internal_logger.warning(f"{thread_name} thread not joined; stop deadline exceeded.")
+            return
+
+        thread.join(timeout=remaining)
+        if thread.is_alive():
+            internal_logger.warning(f"{thread_name} thread did not stop within the allotted time")
+        else:
+            internal_logger.debug(f"{thread_name} thread stopped successfully")
 
     def get_latest_screenshot(self, wait_time=1):
         """

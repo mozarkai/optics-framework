@@ -31,7 +31,8 @@ def _resolve(path: str) -> pathlib.Path | None:
     for candidate in (ROOT / path, PACKAGE / path):
         if candidate.is_file():
             return candidate
-    matches = [p for p in PACKAGE.rglob("*.py") if p.as_posix().endswith("/" + path)]
+    normalized_path = path.replace("\\", "/")
+    matches = [p for p in PACKAGE.rglob("*.py") if p.as_posix().endswith("/" + normalized_path)]
     return matches[0] if len(matches) == 1 else None
 
 

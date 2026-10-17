@@ -148,6 +148,29 @@ class LocatorStrategy(ABC):
             return True, timestamp, frame.copy()
         return True, timestamp, None
 
+    @staticmethod
+    def _poll_frames_within_deadline(
+        ss_stream, end_time: float, poll_interval: float
+    ) -> Generator[list, None, None]:
+        """Yield available screenshot batches until the deadline."""
+        while True:
+            remaining = end_time - time.time()
+            if remaining <= 0:
+                return
+            # Drain whatever is ready, waiting no longer than the remaining slice.
+            frames = ss_stream.get_all_available_screenshots(
+                wait_time=min(1, remaining)
+            )
+            if frames:
+                yield frames
+                continue
+
+            # Nothing ready yet; back off before polling again, never past the deadline.
+            remaining = end_time - time.time()
+            if remaining <= 0:
+                return
+            time.sleep(min(poll_interval, remaining))
+
 
 class XPathStrategy(LocatorStrategy):
     """Strategy for locating elements via XPath."""
@@ -299,12 +322,9 @@ class TextDetectionStrategy(LocatorStrategy):
         timestamp = None
         ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
         try:
-            while time.time() < end_time:
-                time.sleep(self.screenshot_timeout)  # Allow some time for screenshots to be captured
-                frames = ss_stream.get_all_available_screenshots(wait_time=1)
-                if not frames:
-                    time.sleep(self.screenshot_timeout)
-                    continue
+            for frames in self._poll_frames_within_deadline(
+                ss_stream, end_time, self.screenshot_timeout
+            ):
                 for frame, ts in frames:
                     current_frame = frame.copy()
                     _ , ocr_results = self.text_detection.detect_text(current_frame)
@@ -320,7 +340,7 @@ class TextDetectionStrategy(LocatorStrategy):
                 if result:
                     break
         finally:
-            ss_stream.stop_capture()
+            ss_stream.stop_capture(timeout=max(0.0, end_time - time.time()))
         return result, timestamp, annotated_frame
 
     @staticmethod
@@ -410,12 +430,9 @@ class ImageDetectionStrategy(LocatorStrategy):
         annotated_frame = None
         timestamp = None
         try:
-            while time.time() < end_time:
-                time.sleep(self.screenshot_timeout)  # Allow some time for screenshots to be captured
-                frames = ss_stream.get_all_available_screenshots(wait_time=1)
-                if not frames:
-                    time.sleep(self.screenshot_timeout)
-                    continue
+            for frames in self._poll_frames_within_deadline(
+                ss_stream, end_time, self.screenshot_timeout
+            ):
                 for frame, ts in frames:
                     current_frame = frame.copy()
                     result, annotated = self.image_detection.assert_elements(current_frame, elements, rule)
@@ -427,7 +444,7 @@ class ImageDetectionStrategy(LocatorStrategy):
                 if result:
                     break
         finally:
-            ss_stream.stop_capture()
+            ss_stream.stop_capture(timeout=max(0.0, end_time - time.time()))
         return result, timestamp, annotated_frame
 
     @staticmethod
