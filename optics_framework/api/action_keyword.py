@@ -470,7 +470,9 @@ class ActionKeyword:
             result_count += 1
             _save_annotated_for_result(result, screenshot_np, self.capture_output_dir, func_name)
             try:
-                ret = act(result.value)
+                # Only the driver behind this result's element source can use its element handle.
+                with self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
+                    ret = act(result.value)
             except Exception as e:  # noqa: BLE001 - try the next strategy's result
                 internal_logger.error(
                     f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
@@ -497,6 +499,7 @@ class ActionKeyword:
                 cause=last_exception,
             )
         raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+
 
     # Click actions
     def press_element(
