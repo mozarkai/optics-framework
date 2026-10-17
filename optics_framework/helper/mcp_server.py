@@ -26,6 +26,8 @@ import base64
 import inspect
 import os
 import pathlib
+import signal
+import sys
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
@@ -473,11 +475,16 @@ def run_mcp_server(
         transport,
         f", {host}:{port}" if transport != "stdio" else "",
     )
-    if transport == "stdio":
-        mcp.run(transport="stdio")
-        if not drain_console_logs():
-            # The listener is stuck writing to an unread stderr while holding the stdout
-            # buffer lock, so a normal interpreter shutdown would hang or abort.
-            os._exit(0)
-    else:
-        mcp.run(transport=transport, host=host, port=port)
+    previous_handler = signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    try:
+        if transport == "stdio":
+            mcp.run(transport="stdio")
+        else:
+            mcp.run(transport=transport, host=host, port=port)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+        expose_api.session_manager.terminate_all()
+    if transport == "stdio" and not drain_console_logs():
+        # The listener is stuck writing to an unread stderr while holding the stdout
+        # buffer lock, so a normal interpreter shutdown would hang or abort.
+        os._exit(0)

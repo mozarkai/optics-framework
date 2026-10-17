@@ -155,3 +155,19 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             )
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
+
+
+def test_stopping_serve_closes_its_browsers():
+    from fastapi.testclient import TestClient
+    from optics_framework.common import expose_api
+
+    with TestClient(expose_api.app) as client:
+        started = client.post("/v1/sessions/start", json={
+            "driver_sources": [{"playwright": {"capabilities": {"headless": True}}}],
+            "elements_sources": ["playwright_find_element"],
+        })
+        assert started.status_code == 200, started.text
+        browser = expose_api.session_manager.get_session(started.json()["session_id"]).driver.active_instance._browser
+        assert browser.is_connected()
+
+    assert not browser.is_connected()
