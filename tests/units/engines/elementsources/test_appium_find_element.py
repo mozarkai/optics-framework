@@ -142,11 +142,7 @@ class TestAssertElementsVisible:
 
 
 class TestLocateIndex:
-    """locate() must honor `index` when several elements share a locator.
-
-    The Text branch previously used find_element (singular), so it always returned
-    the first match and silently ignored index -- this locks in that index selects the
-    Nth match and that an out-of-range index raises E0201 (mirroring the Class branch)."""
+    """locate() must honor `index` when several elements share a locator."""
 
     def test_text_index_selects_nth_accessibility_id_match(self, source):
         first, second = MagicMock(name="first"), MagicMock(name="second")
@@ -155,8 +151,8 @@ class TestLocateIndex:
         assert source.locate("NEXT", index=1) is second
 
     def test_text_index_none_selects_first_match(self, source):
-        first, second = MagicMock(name="first"), MagicMock(name="second")
-        source.driver.driver.find_elements.return_value = [first, second]
+        first = MagicMock(name="first")
+        source.driver.driver.find_element.return_value = first
 
         assert source.locate("NEXT") is first
 
@@ -168,7 +164,7 @@ class TestLocateIndex:
         assert exc.value.code == Code.E0201
 
     def test_text_no_matches_raises_e0201(self, source):
-        source.driver.driver.find_elements.return_value = []
+        source.driver.driver.find_element.side_effect = NoSuchElementException("no match")
 
         with pytest.raises(OpticsError) as exc:
             source.locate("NEXT")
