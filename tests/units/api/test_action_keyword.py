@@ -11,6 +11,7 @@ from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Veri
 from optics_framework.api.action_keyword import _find_dropdown_container
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import LocateResult
+from optics_framework.common.base_factory import InstanceFallback
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -575,3 +576,73 @@ class TestLocateHonorsPositionalParams:
             action_keyword.enter_text("field", "hello", aoi_x="10", index="3")
 
         mock_locate.assert_called_once_with("field", 10.0, 0.0, 100.0, 100.0, index=3)
+
+
+class _RecordingDriver:
+    """A driver that, like Appium given a Playwright locator, 'presses' anything without raising."""
+
+    def __init__(self, name):
+        self.name = name
+        self.calls = []
+
+    def press_element(self, element, repeat, event_name=None):
+        self.calls.append(("press_element", element))
+
+    def press_coordinates(self, x, y, event_name=None):
+        self.calls.append(("press_coordinates", (x, y)))
+
+
+class TestMixedDrivers:
+    """With several drivers enabled, a locate result is acted on by the driver that found it."""
+
+    @pytest.fixture(autouse=True)
+    def _no_disk_writes(self):
+        with patch('optics_framework.common.utils.save_screenshot'):
+            yield
+
+    @pytest.fixture
+    def drivers(self):
+        return _RecordingDriver("appium"), _RecordingDriver("playwright")
+
+    @pytest.fixture
+    def keyword(self, drivers):
+        builder = MockOpticsBuilder(InstanceFallback(list(drivers)), MagicMock())
+        action_kw = ActionKeyword(builder)
+        with patch.object(action_kw.strategy_manager, 'capture_screenshot', return_value=None):
+            yield action_kw
+
+    @staticmethod
+    def _found_by(driver, value):
+        strategy = MagicMock()
+        strategy.element_source.driver = driver
+        return [LocateResult(value, strategy)]
+
+    def test_element_goes_to_the_driver_that_found_it(self, keyword, drivers):
+        appium, playwright = drivers
+        locator = object()
+        with patch.object(keyword.strategy_manager, 'locate', return_value=self._found_by(playwright, locator)):
+            keyword.press_element("css=#submit")
+        assert appium.calls == []
+        assert playwright.calls == [("press_element", locator)]
+
+    def test_screenshot_point_goes_to_the_driver_that_captured_it(self, keyword, drivers):
+        appium, playwright = drivers
+        with patch.object(keyword.strategy_manager, 'locate', return_value=self._found_by(playwright, (10, 20))):
+            keyword.press_element("Submit")
+        assert appium.calls == []
+        assert playwright.calls == [("press_coordinates", (10, 20))]
+
+    def test_fallback_order_is_restored_after_the_action(self, keyword, drivers):
+        _, playwright = drivers
+        with patch.object(keyword.strategy_manager, 'locate', return_value=self._found_by(playwright, (10, 20))):
+            keyword.press_element("Submit")
+        assert keyword.driver.instances == list(drivers)
+
+    def test_source_without_a_driver_keeps_the_fallback_order(self, keyword, drivers):
+        appium, playwright = drivers
+        strategy = MagicMock()
+        strategy.element_source.driver = None
+        with patch.object(keyword.strategy_manager, 'locate', return_value=[LocateResult((10, 20), strategy)]):
+            keyword.press_element("Submit")
+        assert appium.calls == [("press_coordinates", (10, 20))]
+        assert playwright.calls == []

@@ -1,4 +1,5 @@
-from typing import Type, Dict, Optional, TypeVar, Generic, Union, List, cast
+from contextlib import contextmanager
+from typing import Type, Dict, Iterator, Optional, TypeVar, Generic, Union, List, cast
 from types import ModuleType
 import importlib
 import pkgutil
@@ -227,6 +228,25 @@ class InstanceFallback(BaseModel, Generic[T]):
         directly would be intercepted by ``__getattr__`` and returned as a callable.
         """
         return self.current_instance or (self.instances[0] if self.instances else None)
+
+    @contextmanager
+    def routed_to(self, instance: Optional[T]) -> Iterator[None]:
+        """Send the calls made inside the block to ``instance`` alone, when it is one of these.
+
+        An element found through one driver can only be acted on by that driver. Without
+        this, a Playwright locator handed to Appium's ``press_element`` does not fail
+        over: ``click()`` returns an un-awaited coroutine and the press silently does
+        nothing. Any other ``instance`` leaves the fallback order unchanged.
+        """
+        if not any(candidate is instance for candidate in self.instances):
+            yield
+            return
+        configured = self.instances
+        self.instances = [instance]
+        try:
+            yield
+        finally:
+            self.instances = configured
 
     def __getattr__(self, attr):
         def fallback_method(*args, **kwargs):

@@ -1,9 +1,10 @@
 import collections
+import contextlib
 import inspect
 import shlex
 import time
 import json
-from typing import Callable, Optional, Any, Tuple, List, Dict
+from typing import Callable, ContextManager, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
@@ -467,7 +468,8 @@ class ActionKeyword:
             result_count += 1
             _save_annotated_for_result(result, screenshot_np, self.execution_dir, func_name)
             try:
-                ret = act(result.value)
+                with self._routed_to_owner(result):
+                    ret = act(result.value)
             except Exception as e:  # noqa: BLE001 - try the next strategy's result
                 internal_logger.error(
                     f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
@@ -494,6 +496,17 @@ class ActionKeyword:
                 cause=last_exception,
             )
         raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+
+    def _routed_to_owner(self, result: Any) -> ContextManager[None]:
+        """Act through the driver whose element source produced ``result``.
+
+        Matters only when several drivers are enabled: an element or a screenshot point
+        from one of them means nothing to the others.
+        """
+        owner = getattr(getattr(result.strategy, "element_source", None), "driver", None)
+        if owner is None or not isinstance(self.driver, InstanceFallback):
+            return contextlib.nullcontext()
+        return self.driver.routed_to(owner)
 
     # Click actions
     def press_element(
