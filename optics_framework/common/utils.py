@@ -212,6 +212,29 @@ def to_bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in ("true", "1", "yes", "on")
 
 
+_ENV_REFERENCE = re.compile(r"\$\{(\w+)\}")
+
+
+def env_names(value: str) -> list[str]:
+    """The NAMEs of the ``${NAME}`` references in ``value``."""
+    return _ENV_REFERENCE.findall(value)
+
+
+def expand_env(value: str) -> str:
+    """Replace each ``${NAME}`` in ``value`` with that environment variable.
+
+    Unlike ``os.path.expandvars``, an unset or empty variable is an error rather than
+    left in place, so a missing secret fails before anything is sent without it.
+    """
+    def lookup(match: re.Match) -> str:
+        name = match.group(1)
+        if not os.environ.get(name):
+            raise OpticsError(Code.E0501, f"Environment variable {name} is not set")
+        return os.environ[name]
+
+    return _ENV_REFERENCE.sub(lookup, value)
+
+
 def get_timestamp():
     try:
         current_utc_time = datetime.now(timezone.utc)

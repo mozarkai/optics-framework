@@ -443,7 +443,7 @@ Driver sources define the automation frameworks used to control devices or brows
     driver_sources:
       - playwright:
           enabled: true
-          url: null  # Playwright runs locally
+          url: null  # null launches a local browser; see "Remote browser" below
           capabilities:
             browser: "chromium"  # or "firefox", "webkit"
             headless: false
@@ -457,8 +457,65 @@ Driver sources define the automation frameworks used to control devices or brows
     | Capability | Values | Description |
     |------------|--------|-------------|
     | `browser` | `"chromium"`, `"firefox"`, `"webkit"` | Browser engine |
-    | `headless` | `true`, `false` | Run browser in headless mode |
+    | `headless` | `true`, `false` | Run browser in headless mode (local browser only) |
     | `viewport` | `{width, height}` | Browser viewport dimensions |
+    | `headers` | `{name: value}` | HTTP headers sent when connecting to a remote browser |
+    | `protocol` | `"cdp"`, `"playwright"` | How to connect to the remote browser in `url` (default `"cdp"`) |
+    | `context` | `"new"`, `"existing"` | Open a fresh context in the remote browser, or use the one it already has (default `"new"`) |
+
+    **Remote browser:** set `url` to a remote browser's endpoint and Optics connects to that browser instead of launching one. It works with any browser grid or service that speaks one of Playwright's two remote protocols:
+
+    | `protocol` | Playwright call | Speaks to |
+    |------------|-----------------|-----------|
+    | `cdp` (default) | `connect_over_cdp` | Any Chrome DevTools Protocol endpoint (`ws://`, `wss://`, or `http://` for `/json/version` discovery). Chromium-based browsers only (`browser: chromium`) |
+    | `playwright` | `connect` | A Playwright server (`playwright run-server`, or a grid built on one). Any `browser`; the server's Playwright version must match the client's |
+
+    Use the protocol the provider documents for Playwright's `connect_over_cdp` or `connect`; a `/playwright` path in a url does not by itself mean the Playwright protocol. A mismatch shows up as a connect timeout. Whatever a provider needs, such as browser version, OS or session options, goes in the url's query string as that provider documents it, often as URL-encoded JSON. Credentials go in `headers` or in the url, written as `${NAME}` references:
+
+    ```yaml
+    driver_sources:
+      - playwright:
+          enabled: true
+          url: "wss://grid.example.com/session?options=%7B%22browserVersion%22%3A%22latest%22%7D"
+          capabilities:
+            protocol: cdp
+            headers:
+              Authorization: Bearer ${GRID_TOKEN}
+            connect_timeout_ms: 90000
+    ```
+
+    The same keys cover the common shapes. Check each provider's docs for its current endpoint and options:
+
+    | Remote browser | `url` | `protocol` | Credentials |
+    |----------------|-------|------------|-------------|
+    | Chrome started with `--remote-debugging-port=9222 --user-data-dir=<dir>` | `http://127.0.0.1:9222` | `cdp` | none, or the profile's own sign-ins with `context: existing` |
+    | A CDP grid that takes a token in the query, such as Browserless | `wss://<host>?token=${GRID_TOKEN}` | `cdp` | in the url |
+    | A CDP grid that takes headers | `wss://<host>/<path>` | `cdp` | `headers` |
+    | A Playwright server or grid, such as `npx playwright run-server` | `ws://<host>:<port>/` | `playwright` | `headers`, if any |
+    | A Playwright grid with capabilities in the query, such as BrowserStack (`caps=`) or LambdaTest (`capabilities=`) | `wss://<host>/playwright?caps=<URL-encoded JSON with ${USER} and ${ACCESS_KEY}>` | `playwright` | inside the capabilities JSON |
+
+    `${NAME}` in `url` or in a header value is replaced with that environment variable when the browser starts, so credentials stay out of the suite. The value is substituted as is, so inside a URL-encoded query write the reference itself unencoded. An unset or empty variable fails the launch with an error that names it. Only the url's host is logged, and secret values and the url's path and query are masked in connect errors. `Close And Terminate App`, or the end of the run, closes the connection, which is what ends the session on the provider's side. No local browser download (`playwright install`) is needed.
+
+    By default Optics opens a fresh context, with the configured `viewport`, in the remote browser. Set `context: existing` to use the browser's own context and its open tab instead, when a provider documents `browser.contexts[0]` because its session settings or recording live there, when a browser cannot create new contexts, or to reuse a signed-in profile. The page then keeps the browser's own window size, `viewport` is not applied, and ending the run disconnects without closing that context's tabs.
+
+    To run every session on a remote browser without editing a suite, for example in CI or for an `optics mcp` server, set `OPTICS_PLAYWRIGHT_REMOTE` to a JSON object with `url` and, optionally, `headers`, `protocol` and `context`. It takes precedence over the driver config; timeouts still come from `capabilities`:
+
+    ```bash
+    export OPTICS_PLAYWRIGHT_REMOTE='{"url": "wss://grid.example.com/session", "headers": {"Authorization": "Bearer ${GRID_TOKEN}"}}'
+    ```
+
+    `${NAME}` references are read only from a project's `config.yaml` and from `OPTICS_PLAYWRIGHT_REMOTE`. `optics serve` and `optics mcp` reject them in a session request, so a caller cannot make the server send one of its environment variables to an endpoint the caller picked. A caller sends the values themselves, or the server's operator sets `OPTICS_PLAYWRIGHT_REMOTE`.
+
+    **Timeouts** (all in milliseconds, all under `capabilities`):
+
+    | Capability | Default | Bounds |
+    |------------|---------|--------|
+    | `connect_timeout_ms` | `90000` | Connecting to a remote browser, including the time the provider takes to start it |
+    | `navigation_timeout_ms` | `60000` | `Launch App` and `Go Back` page loads |
+    | `navigation_wait_until` | `"domcontentloaded"` | Not a timeout: the load event a navigation waits for (`load`, `domcontentloaded`, `networkidle`, `commit`) |
+    | `element_timeout_ms` | `10000` | Waiting for an element to appear before acting on it, per locator |
+    | `settle_timeout_ms` | `3000` | Waiting for the page to stop changing before reading page source or elements; `0` turns it off |
+    | `action_timeout_ms` | `15000` | Any single browser call that has no timeout of its own (click at coordinates, keys, scroll, screenshot, script). It is also the margin added on top of the other budgets |
 
 === "BLE"
 

@@ -894,3 +894,41 @@ def test_get_session_variables_session_not_found_returns_404(client):
 
     assert resp.status_code == 404
     assert resp.json()["detail"] == expose_api.SESSION_NOT_FOUND
+
+
+class TestRemoteBrowserSecrets:
+    def test_a_caller_cannot_make_the_server_expand_its_environment(self):
+        config = expose_api.SessionConfig(
+            driver_sources=[{"playwright": {
+                "url": "wss://grid.example.com",
+                "capabilities": {"headers": {"X-Api-Key": "${AWS_SECRET_ACCESS_KEY}"}},
+            }}],
+            elements_sources=["playwright_find_element"],
+        )
+
+        creating = expose_api.create_session(config)
+
+        with pytest.raises(HTTPException) as error:
+            _run(creating)
+
+        assert error.value.status_code == 400
+        assert "config.yaml" in json.dumps(error.value.detail)
+
+    def test_the_session_log_drops_header_values_and_url_secrets(self):
+        config = expose_api.SessionConfig(
+            driver_sources=[
+                {"playwright": {
+                    "url": "wss://user:pw@grid.example.com/cdp?token=t-1",
+                    "capabilities": {"headers": {"X-Api-Key": "k-1"}, "headless": True},
+                }},
+                {"selenium": {"url": "wss://[bad", "capabilities": "not-a-dict"}},
+            ],
+        )
+
+        logged = json.dumps(expose_api._loggable(config.normalize_sources()))
+
+        assert "k-1" not in logged
+        assert "t-1" not in logged
+        assert "pw" not in logged
+        assert "wss://grid.example.com/cdp" in logged
+        assert '"X-Api-Key": "***"' in logged

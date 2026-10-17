@@ -325,11 +325,10 @@ class TestPlaywrightScreenshotBytes:
     def test_returns_page_screenshot_bytes(self, monkeypatch):
         pytest.importorskip("playwright")
         import optics_framework.engines.elementsources.playwright_screenshot as pw
-        monkeypatch.setattr(pw, "run_async", lambda coro: coro)
         png = b"\x89PNG\r\n\x1a\nPLAYWRIGHT"
         page = MagicMock()
         page.screenshot.return_value = png
-        src = pw.PlaywrightScreenshot(driver=SimpleNamespace(page=page))
+        src = pw.PlaywrightScreenshot(driver=SimpleNamespace(page=page, run=lambda coro: coro))
         assert src.capture_screenshot_bytes() == png
 
 

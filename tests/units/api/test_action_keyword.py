@@ -575,3 +575,40 @@ class TestLocateHonorsPositionalParams:
             action_keyword.enter_text("field", "hello", aoi_x="10", index="3")
 
         mock_locate.assert_called_once_with("field", 10.0, 0.0, 100.0, 100.0, index=3)
+
+
+class TestCapturesOff:
+    """With save_captures off and no AI self-heal, an action makes no screenshot or
+    annotation calls: on a remote device or browser each one is a round trip."""
+
+    @pytest.fixture
+    def quiet_keyword(self, mock_dependencies):
+        builder = MockOpticsBuilder(mock_dependencies['driver'], mock_dependencies['element_source'])
+        builder.session_config.save_captures = False
+        builder.session_config.ai_self_heal = False
+        return ActionKeyword(builder)
+
+    def test_press_element_skips_screenshot_and_bbox(self, quiet_keyword, mock_dependencies):
+        source = mock_dependencies['element_source']
+        handle = MagicMock()
+        located = LocateResult(handle, MagicMock(element_source=source))
+        with patch.object(quiet_keyword.strategy_manager, 'capture_screenshot') as capture, \
+                patch.object(quiet_keyword.strategy_manager, 'locate', return_value=[located]):
+            quiet_keyword.press_element("Login")
+
+        capture.assert_not_called()
+        source.get_bbox_for_element.assert_not_called()
+        mock_dependencies['driver'].press_element.assert_called_once()
+        assert quiet_keyword.execution_dir is None
+
+    def test_self_heal_still_gets_its_screenshot(self, quiet_keyword):
+        quiet_keyword._llm = MagicMock()
+        frame = np.zeros((4, 4, 3), dtype=np.uint8)
+        with patch.object(quiet_keyword.strategy_manager, 'capture_screenshot', return_value=frame):
+            assert quiet_keyword._capture_screenshot_safe() is frame
+
+    def test_press_keycode_skips_the_screenshot(self, quiet_keyword):
+        with patch.object(quiet_keyword.strategy_manager, 'capture_screenshot') as capture:
+            quiet_keyword.press_keycode("Enter")
+
+        capture.assert_not_called()
