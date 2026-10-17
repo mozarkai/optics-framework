@@ -18,9 +18,11 @@ _IN_VIEWPORT_JS = (
     "return r.width > 0 && r.height > 0 && r.bottom > top && r.right > left"
     " && r.top < bottom && r.left < right;"
 )
-_TEXT_JS = (
-    "const e = arguments[0];"
-    "return ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) ? e.value : e.innerText;"
+_TEXT_AND_REACH_JS = (
+    "const e = arguments[0]; const r = e.getBoundingClientRect();"
+    "const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
+    "const text = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) ? e.value : e.innerText;"
+    "return [text, !hit || e.contains(hit) || hit.contains(e) || hit.control === e];"
 )
 _POLL_INTERVAL_S = 0.5
 _SETTLE_TIMEOUT_S = 2.0
@@ -74,10 +76,10 @@ class AppiumWeb(ElementSourceInterface):
                     raise OpticsError(Code.E0201, message=f"'{element}' is in the page but not displayed.")
                 driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
                 rect = self._settled_rect(target)
-                text = driver.execute_script(_TEXT_JS, target)
+                text, reachable = driver.execute_script(_TEXT_AND_REACH_JS, target)
         except _Unsupported:
             return None
-        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text)
+        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text, not reachable)
 
     def _settled_rect(self, target: Any) -> dict:
         """Screen rect once it holds still.

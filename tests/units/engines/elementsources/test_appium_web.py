@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from unittest.mock import MagicMock
+from unittest.mock import DEFAULT, MagicMock
 
 import pytest
 from appium.common.exceptions import NoSuchContextException
@@ -15,12 +15,15 @@ pytestmark = pytest.mark.white_box
 class _Driver:
     """Stands in for the Appium driver wrapper: a web context over a fake page."""
 
-    def __init__(self, page: dict, rects=None, context_error=None):
+    def __init__(self, page: dict, rects=None, context_error=None, text="", reachable=True):
         self.page = page
         self.rects = list(rects or [{"x": 100, "y": 200, "width": 50, "height": 20}])
         self.context_error = context_error
         self.webdriver = MagicMock()
         self.webdriver.find_elements.side_effect = lambda by, query: list(self.page.get((by, query), []))
+        self.webdriver.execute_script.side_effect = lambda script, *_args: (
+            [text, reachable] if script == appium_web._TEXT_AND_REACH_JS else DEFAULT
+        )
         self.entered = 0
         self.opening_errors = []
 
@@ -87,11 +90,15 @@ class TestLocate:
 
     def test_point_carries_the_element_text(self):
         target = _element()
-        driver = _Driver({("css selector", "h1"): [target]})
-        driver.webdriver.execute_script.side_effect = lambda script, _el: "Appium" if script == appium_web._TEXT_JS else None
+        driver = _Driver({("css selector", "h1"): [target]}, text="Appium")
         point = AppiumWeb(driver).locate("css=h1")
         assert point.text == "Appium"
-        driver.webdriver.execute_script.assert_any_call(appium_web._TEXT_JS, target)
+        driver.webdriver.execute_script.assert_any_call(appium_web._TEXT_AND_REACH_JS, target)
+
+    @pytest.mark.parametrize("reachable", [True, False])
+    def test_point_tells_whether_the_element_is_covered(self, reachable):
+        driver = _Driver({("css selector", "#buy"): [_element()]}, reachable=reachable)
+        assert AppiumWeb(driver).locate("css=#buy").covered is not reachable
 
     def test_waits_for_the_rect_to_settle(self):
         moving = [{"x": 0, "y": y, "width": 10, "height": 10} for y in (900, 700, 600, 600)]

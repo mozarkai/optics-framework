@@ -679,3 +679,31 @@ class TestGetText:
     def test_vision_point_has_no_text(self, action_keyword):
         with self._mock_locate(action_keyword, (10, 20)):
             assert action_keyword.get_text("Sign in") is None
+
+    def test_covered_web_point_is_still_read(self, action_keyword):
+        with self._mock_locate(action_keyword, ScreenPoint(10, 20, "Behind a banner", covered=True)):
+            assert action_keyword.get_text("css=h1") == "Behind a banner"
+
+
+class TestCoveredWebPoint:
+    @pytest.fixture(autouse=True)
+    def _no_disk_writes(self):
+        with patch('optics_framework.common.utils.save_screenshot'):
+            yield
+
+    def test_covered_point_is_not_tapped(self, action_keyword, mock_dependencies):
+        covered = [LocateResult(ScreenPoint(10, 20, "Buy", covered=True), MagicMock())]
+        with patch.object(action_keyword.strategy_manager, 'locate', return_value=covered), \
+                pytest.raises(OpticsError, match="covered") as err:
+            action_keyword.press_element("css=#buy")
+        assert err.value.code == Code.X0201
+        mock_dependencies['driver'].press_coordinates.assert_not_called()
+
+    def test_ladder_moves_on_to_the_next_result(self, action_keyword, mock_dependencies):
+        results = [
+            LocateResult(ScreenPoint(10, 20, "Buy", covered=True), MagicMock()),
+            LocateResult((30, 40), MagicMock()),
+        ]
+        with patch.object(action_keyword.strategy_manager, 'locate', return_value=results):
+            action_keyword.press_element("css=#buy")
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(30, 40, event_name=None)

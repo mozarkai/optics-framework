@@ -8,6 +8,7 @@ from typing import Callable, ContextManager, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
+from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
 from optics_framework.common.ai_self_heal import (
@@ -408,6 +409,7 @@ class ActionKeyword:
         intent_args: tuple = (),
         index: str = "0",
         aoi: Tuple[str, str, str, str] = ("0", "0", "100", "100"),
+        reads_only: bool = False,
     ) -> Any:
         """Locate ``element`` through the strategy ladder and run ``act`` on it.
 
@@ -419,6 +421,8 @@ class ActionKeyword:
 
         ``intent_args`` are the keyword's action parameters (everything after the
         element, minus locate-tuning params); they feed the self-heal breadcrumbs.
+        A point that something covers is skipped like a failed action, unless the keyword
+        ``reads_only``: tapping it would hit whatever lies on top.
         """
         screenshot_np = self._capture_screenshot_safe()
         aoi_x = _parse_aoi_param(aoi[0], 0)
@@ -437,7 +441,7 @@ class ActionKeyword:
             aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
         )
         return self._act_until_success(
-            results, act, element, func_name, intent_args, screenshot_np
+            results, act, element, func_name, intent_args, screenshot_np, reads_only=reads_only
         )
 
     def _act_until_success(
@@ -448,6 +452,7 @@ class ActionKeyword:
         func_name: str,
         intent_args: tuple,
         screenshot_np: Any,
+        reads_only: bool = False,
     ) -> Any:
         """Run ``act`` on each locate result until one succeeds; heal/wrap on failure."""
         last_exception: Optional[Exception] = None
@@ -468,6 +473,8 @@ class ActionKeyword:
             result_count += 1
             _save_annotated_for_result(result, screenshot_np, self.execution_dir, func_name)
             try:
+                if isinstance(result.value, ScreenPoint) and result.value.covered and not reads_only:
+                    raise OpticsError(Code.E0201, message=f"'{element}' is covered by another element on the page.")
                 with self._routed_to_owner(result):
                     ret = act(result.value)
             except Exception as e:  # noqa: BLE001 - try the next strategy's result
@@ -1137,7 +1144,7 @@ class ActionKeyword:
 
         return self._locate_and_act(
             element, "get_text", act,
-            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height), reads_only=True,
         )
 
     def sleep(self, duration: str) -> None:
