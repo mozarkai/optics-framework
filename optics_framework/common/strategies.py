@@ -257,7 +257,7 @@ class TextDetectionStrategy(LocatorStrategy):
         annotated_frame = None
         if bbox is not None and len(bbox) == 2 and bbox[0] is not None and bbox[1] is not None:
             annotated_frame = utils.annotate(screenshot.copy(), [bbox])
-        return LocateValueWithFrame(coor, annotated_frame)
+        return LocateValueWithFrame(utils.screenshot_point_to_window(self.element_source, screenshot, coor), annotated_frame)
 
     def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float, index: float = 0) -> Optional[LocateValueWithFrame]:
         """
@@ -268,7 +268,7 @@ class TextDetectionStrategy(LocatorStrategy):
         :param aoi_y: Y percentage of AOI top-left corner (0-100)
         :param aoi_width: Width percentage of AOI (0-100)
         :param aoi_height: Height percentage of AOI (0-100)
-        :return: Coordinates relative to the full screenshot
+        :return: Coordinates in the driver's window space
         """
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
@@ -304,7 +304,8 @@ class TextDetectionStrategy(LocatorStrategy):
                 adjusted_tl = utils.adjust_coordinates_for_aoi(bbox[0], aoi_bounds)
                 adjusted_br = utils.adjust_coordinates_for_aoi(bbox[1], aoi_bounds)
                 annotated_frame = utils.annotate(full_screenshot.copy(), [(adjusted_tl, adjusted_br)])
-            return LocateValueWithFrame(adjusted_coor, annotated_frame)
+            window_coor = utils.screenshot_point_to_window(self.element_source, full_screenshot, adjusted_coor)
+            return LocateValueWithFrame(window_coor, annotated_frame)
         except ValueError as e:
             internal_logger.debug(f"Coordinate adjustment failed for TextDetectionStrategy: {e}")
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
@@ -374,7 +375,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         annotated_frame = None
         if bbox is not None and len(bbox) == 2 and bbox[0] is not None and bbox[1] is not None:
             annotated_frame = utils.annotate(screenshot.copy(), [bbox])
-        return LocateValueWithFrame(centre, annotated_frame)
+        return LocateValueWithFrame(utils.screenshot_point_to_window(self.element_source, screenshot, centre), annotated_frame)
 
     def locate_with_aoi(self, element: str, aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float, index: int = 0) -> Optional[LocateValueWithFrame]:
         """
@@ -386,7 +387,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         :param aoi_width: Width percentage of AOI (0-100)
         :param aoi_height: Height percentage of AOI (0-100)
         :param index: Zero-based index when multiple matches exist (default 0)
-        :return: Coordinates relative to the full screenshot, or (coords, annotated_frame)
+        :return: Coordinates in the driver's window space, or (coords, annotated_frame)
         """
         # Capture full screenshot
         full_screenshot = self.element_source.capture()
@@ -418,7 +419,8 @@ class ImageDetectionStrategy(LocatorStrategy):
                 adjusted_tl = utils.adjust_coordinates_for_aoi(bbox[0], aoi_bounds)
                 adjusted_br = utils.adjust_coordinates_for_aoi(bbox[1], aoi_bounds)
                 annotated_frame = utils.annotate(full_screenshot.copy(), [(adjusted_tl, adjusted_br)])
-            return LocateValueWithFrame(adjusted_centre, annotated_frame)
+            window_centre = utils.screenshot_point_to_window(self.element_source, full_screenshot, adjusted_centre)
+            return LocateValueWithFrame(window_centre, annotated_frame)
         except ValueError as e:
             internal_logger.debug(f"Coordinate adjustment failed for ImageDetectionStrategy: {e}")
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")

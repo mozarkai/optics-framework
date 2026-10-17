@@ -1141,6 +1141,30 @@ def scale_interactive_element_bounds(
             continue
 
 
+def screenshot_point_to_window(
+    element_source: Any,
+    screenshot: Optional[np.ndarray],
+    point: Tuple[int, int],
+) -> Tuple[int, int]:
+    """
+    Map a point found in a screenshot (an OCR or image match) into the driver's window
+    coordinate space, where taps are sent. The inverse of ``scale_bboxes_for_screenshot``.
+
+    iOS screenshots are in pixels while the window is in points, so a match at pixel
+    (600, 1200) on a 3x iPhone must be tapped at point (200, 400). At a scale of 1 the
+    point is returned unchanged even when the sizes differ: there the window leaves out
+    the system bars rather than being letterboxed, and taps are already in screen pixels.
+    """
+    transform = _pixel_scale_for_source(element_source, screenshot)
+    if transform is None:
+        return point
+    scale_x, scale_y, offset_x, offset_y = transform
+    if max(abs(scale_x - 1), abs(scale_y - 1)) <= LETTERBOX_RATIO_TOLERANCE:
+        return point
+    x, y = point
+    return round((x - offset_x) / scale_x), round((y - offset_y) / scale_y)
+
+
 def bboxes_from_webelements(
     locate_fn: Callable[[str], Any],
     elements: List[str],
