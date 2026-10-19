@@ -264,8 +264,8 @@ class TextDetectionStrategy(LocatorStrategy):
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
 
     def can_assert(self, element: str) -> bool:
-        # The Verifier groups css= with text; OCR must not search the screen for a selector.
-        return utils.determine_element_type(element) != "CSS"
+        # No engine can never match; the Verifier groups css= with text, and OCR must not search the screen for a selector.
+        return self.text_detection is not None and utils.determine_element_type(element) != "CSS"
 
     def check_elements(
         self, elements: list[str], visible: bool, frame: np.ndarray | None
@@ -663,30 +663,37 @@ class StrategyManager:
         self, strategy: "LocatorStrategy", value: Any,
         aoi_x: float, aoi_y: float, aoi_width: float, aoi_height: float,
     ) -> bool:
-        """True if a located WebElement's centre lies inside the AOI rectangle.
+        """True if a located WebElement's centre, or a located point, lies inside the AOI rectangle.
 
-        Filters accessibility/XPath matches (which return a WebElement and ignore the
-        AOI, unlike ``locate_with_aoi`` OCR/image strategies), comparing the centre as a
-        window percentage against the AOI. Fails open when bbox/window is unknown.
+        Filters matches from strategies that ignore the AOI (accessibility/XPath, and
+        sources returning screen coordinates), unlike ``locate_with_aoi`` OCR/image
+        strategies, comparing the centre as a window percentage against the AOI. Fails
+        open when bbox/window is unknown.
 
         Centre-point test, so it can disagree with an OCR/image crop at the AOI edge.
         """
         element_source = getattr(strategy, "element_source", None)
-        if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
-            return True
-        try:
-            bbox = element_source.get_bbox_for_element(value)
-        except Exception:  # noqa: BLE001 - best-effort; fall back to not filtering
-            return True
+        if isinstance(value, tuple):
+            centre_x, centre_y = value
+        else:
+            if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
+                return True
+            try:
+                bbox = element_source.get_bbox_for_element(value)
+            except Exception:  # noqa: BLE001 - best-effort; fall back to not filtering
+                return True
+            if bbox is None:
+                return True
+            (x1, y1), (x2, y2) = bbox
+            centre_x, centre_y = (x1 + x2) / 2, (y1 + y2) / 2
         window = utils._window_size_from_source(element_source)
-        if bbox is None or window is None:
+        if window is None:
             return True
-        (x1, y1), (x2, y2) = bbox
         win_w, win_h = window
         if win_w <= 0 or win_h <= 0:
             return True
-        cx = (x1 + x2) / 2 / win_w * 100
-        cy = (y1 + y2) / 2 / win_h * 100
+        cx = centre_x / win_w * 100
+        cy = centre_y / win_h * 100
         inside = aoi_x <= cx <= aoi_x + aoi_width and aoi_y <= cy <= aoi_y + aoi_height
         if not inside:
             internal_logger.debug(
@@ -724,8 +731,8 @@ class StrategyManager:
                 value, annotated_frame = result[0], result[1]
             else:
                 value, annotated_frame = result, None
-            if use_aoi and locate_with_aoi is None and not isinstance(value, tuple):
-                # Strategy can't scope to the AOI itself (accessibility/XPath) — enforce
+            if use_aoi and locate_with_aoi is None:
+                # Strategy can't scope to the AOI itself (accessibility/XPath/web) — enforce
                 # it here so an out-of-AOI match falls through to an AOI-capable strategy.
                 if not self._within_aoi(strategy, value, aoi_x, aoi_y, aoi_width, aoi_height):
                     execution_tracer.log_attempt(strategy, element, "fail", error="match outside AOI")
@@ -796,6 +803,8 @@ class StrategyManager:
         ]
         covered = [e for e in effective_elements if any(s.can_assert(e) for s in strategies)]
         if not covered or (rule == "all" and len(covered) < len(effective_elements)):
+            if text_only and not any(isinstance(s, TextDetectionStrategy) for s in strategies):
+                raise OpticsError(Code.E0201, message=f"{TEXT_DETECTION_NOT_AVAILABLE_MSG} TEXT_ONLY: needs OCR: {elements}")
             raise OpticsError(Code.E0201, message=f"No strategies found for elements: {elements} with rule '{rule}'.")
 
         state = _AssertState(
