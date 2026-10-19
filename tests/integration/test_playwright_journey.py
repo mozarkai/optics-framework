@@ -158,7 +158,12 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
 
 
 @pytest.mark.parametrize("save_captures", [True, False])
-def test_a_run_saves_screenshots_only_when_captures_are_on(tmp_path, save_captures):
+def test_a_run_takes_screenshots_only_when_captures_are_on(tmp_path, monkeypatch, save_captures):
+    from optics_framework.engines.elementsources.playwright_screenshot import PlaywrightScreenshot
+
+    shots = []
+    take = PlaywrightScreenshot.capture_screenshot_bytes
+    monkeypatch.setattr(PlaywrightScreenshot, "capture_screenshot_bytes", lambda self: shots.append(1) or take(self))
     config = f"save_captures: {str(save_captures).lower()}\n{CONFIG}"
     project = _project(tmp_path, [
         "Enter Text,${email_field},ava@example.com",
@@ -169,3 +174,4 @@ def test_a_run_saves_screenshots_only_when_captures_are_on(tmp_path, save_captur
 
     assert run_project(project, use_printer=False) is True
     assert bool(list((tmp_path / "execution_output").rglob("*.jpg"))) is save_captures
+    assert bool(shots) is save_captures
