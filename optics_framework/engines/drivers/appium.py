@@ -193,6 +193,7 @@ class Appium(DriverInterface):
         self.initialized: bool = True
         self._viewport_rect_supported: bool = True
         self._app_webviews_in_front: int = 0
+        self._web_content_rect: dict[str, int] | None = None
 
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
@@ -1450,7 +1451,7 @@ class Appium(DriverInterface):
     def web_context(self) -> Iterator[WebDriver]:
         """Run the body in the front tab of the foreground app's web content, then return to native."""
         driver = self._require_driver()
-        context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver)
+        context, page_url, self._app_webviews_in_front, self._web_content_rect = self._foreground_web_context(driver)
         try:
             self._switch_to_web_context(driver, context)
             self._focus_window(driver, page_url)
@@ -1458,11 +1459,13 @@ class Appium(DriverInterface):
         finally:
             driver.switch_to.context(self.NATIVE_CONTEXT)
 
-    def _foreground_web_context(self, driver: WebDriver) -> tuple[str, str | None, int]:
-        """The foreground package's web context, the URL of its front page, and its app WebView count.
+    def _foreground_web_context(self, driver: WebDriver) -> tuple[str, str | None, int, dict[str, int] | None]:
+        """The foreground package's web context, the URL of its front page, its app WebView count,
+        and the screen rect its page is drawn in when the driver reports one.
 
         ``mobile: getContexts`` lists each web view's pages most recently used first, so
-        the first page is the one on screen.
+        the first page is the one on screen. UiAutomator2 8.6.0+ adds each web view's
+        on-screen ``rect``.
         """
         package = driver.current_package
         owned = [
@@ -1473,7 +1476,10 @@ class Appium(DriverInterface):
         ]
         if owned:
             app_webviews = sum(_is_app_webview_page(page) for webview in owned for page in webview["pages"])
-            return _context_name(owned[0]), owned[0]["pages"][0].get("url"), app_webviews
+            rect = owned[0].get("rect")
+            if not (isinstance(rect, dict) and rect.get("width") and rect.get("height")):
+                rect = None
+            return _context_name(owned[0]), owned[0]["pages"][0].get("url"), app_webviews, rect
         raise OpticsError(
             Code.E0201,
             message=f"No web content found in the foreground app '{package}'. An app's "
@@ -1551,17 +1557,32 @@ class Appium(DriverInterface):
             except UnknownMethodException:
                 self._viewport_rect_supported = False
                 internal_logger.debug("mobile: viewportElementRect unavailable; computing the rect from page geometry.")
-        left, top, width, height, ratio, offset_x, offset_y, scale = driver.execute_script(
-            _WEB_RECT_METRICS_JS, element
-        )
-        webview = self._native_webview_bounds(driver)
+        left, top, width, height, *metrics = driver.execute_script(_WEB_RECT_METRICS_JS, element)
+        return self.web_rects_to_screen([{"x": left, "y": top, "width": width, "height": height}], metrics)[0]
+
+    def web_rects_to_screen(
+        self, rects: list[dict[str, Any] | None], metrics: list[float]
+    ) -> list[dict[str, Any] | None]:
+        """Device-screen rectangles of page rectangles measured inside :meth:`web_context`.
+
+        ``rects`` are ``getBoundingClientRect`` boxes (``x``/``y``/``width``/``height``; other
+        keys are kept) and ``metrics`` is the page's ``[devicePixelRatio, visualViewport.offsetLeft,
+        visualViewport.offsetTop, visualViewport.scale]``. Unlike ``mobile: viewportElementRect``
+        the result is not clamped to the screen, so a box below the fold keeps its true place.
+        """
+        ratio, offset_x, offset_y, scale = metrics
+        origin = self._web_content_rect or self._native_webview_bounds(self._require_driver())
         factor = scale * ratio
-        return {
-            "x": round(webview["x"] + (left - offset_x) * factor),
-            "y": round(webview["y"] + (top - offset_y) * factor),
-            "width": round(width * factor),
-            "height": round(height * factor),
-        }
+        return [
+            None if rect is None else {
+                **rect,
+                "x": round(origin["x"] + (rect["x"] - offset_x) * factor),
+                "y": round(origin["y"] + (rect["y"] - offset_y) * factor),
+                "width": round(rect["width"] * factor),
+                "height": round(rect["height"] * factor),
+            }
+            for rect in rects
+        ]
 
     def _native_webview_bounds(self, driver: WebDriver) -> dict[str, int]:
         """Bounds of the on-screen native WebView, read without leaving the page.

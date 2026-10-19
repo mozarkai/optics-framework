@@ -1096,7 +1096,7 @@ async def get_elements(
             - "text": Only text elements
             Can be combined: ?filter_config=buttons&filter_config=inputs
         compact: When true, ignore filter_config and return the compact list
-            ({i, label, cls, bounds, act, rid?}) instead of the full element dump.
+            ({i, label, cls, bounds, act, rid?, loc?, offscreen?}) instead of the full element dump.
 
     Returns:
         The elements result.

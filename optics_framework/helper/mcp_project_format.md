@@ -42,9 +42,9 @@ expand `${name}` inside a larger string.
     hour_field,text=Hour
     time,22:00
 
-On the web, use the `loc` value from the elements resource where an element has
-one (it is checked to match only that element) and keep the visible label as a
-fallback; values are tried in order:
+On the web, and in Chrome or a WebView on Android, use the `loc` value from the
+elements resource where an element has one (it is checked to match only that
+element) and keep the visible label as a fallback; values are tried in order:
     Element_Name,Element_ID,Element_ID_2
     password_field,[data-test="password"],Password
     login_button,[data-test="login-button"],Login

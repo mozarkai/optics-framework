@@ -29,6 +29,8 @@ def _candidate_count(html):
 
 def _uniform_rects(width=20, height=20):
     def _side_effect(script, xpaths):
+        if script != pw.BOUNDS_JS:
+            return [None] * len(xpaths)
         return [{"x": i, "y": i, "width": width, "height": height} for i, _ in enumerate(xpaths)]
     return _side_effect
 
@@ -43,20 +45,12 @@ def test_page_source_waits_for_the_page_to_settle_before_reading():
 
 
 class TestBatchedEvaluateCallCount:
+    @pytest.mark.parametrize("compact", [False, True])
     @pytest.mark.parametrize("n", [1, 50])
-    def test_evaluate_called_once_regardless_of_node_count(self, n):
-        html = _grid_html(n)
-        src, page = _source(html)
-        page.evaluate.side_effect = _uniform_rects()
-        elements = src.get_interactive_elements(None)
-        assert page.evaluate.call_count == 1
-        assert len(elements) == _candidate_count(html)
-
-    @pytest.mark.parametrize("n", [1, 50])
-    def test_compact_path_also_batches(self, n):
+    def test_evaluate_calls_do_not_grow_with_node_count(self, n, compact):
         src, page = _source(_grid_html(n))
         page.evaluate.side_effect = _uniform_rects()
-        elements = src.get_interactive_elements(None, compact=True)
+        elements = src.get_interactive_elements(None, compact=compact)
         assert page.evaluate.call_count == 2  # bounds, then locator suggestions
         assert [el["text"] for el in elements] == [f"Item {i}" for i in range(n)]
 
@@ -80,6 +74,8 @@ class TestOutputShapeAndFiltering:
         src, page = _source(html)
         def side_effect(script, xpaths):
             # btn-b gets no bounds, so it is dropped.
+            if script != pw.BOUNDS_JS:
+                return [None] * len(xpaths)
             rects = []
             for xp in xpaths:
                 if xp and "btn-a" in xp:
@@ -91,7 +87,8 @@ class TestOutputShapeAndFiltering:
             return rects
         page.evaluate.side_effect = side_effect
         elements = src.get_interactive_elements(None)
-        assert page.evaluate.call_count == 1
+
+        assert page.evaluate.call_count == 2  # bounds, then locator suggestions
         texts = {el["text"] for el in elements}
         assert texts == {"Alpha", "Gamma"}
         alpha = next(el for el in elements if el["text"] == "Alpha")
@@ -126,11 +123,13 @@ class TestOutputShapeAndFiltering:
         elements = src.get_interactive_elements(["buttons"])
         assert [el["text"] for el in elements] == ["Alpha"]
 
-    def test_no_filter_config_returns_all_bounded_elements(self):
+    def test_all_filter_returns_every_bounded_element(self):
         html = _grid_html(5)
         src, page = _source(html)
         page.evaluate.side_effect = _uniform_rects()
-        elements = src.get_interactive_elements(None)
+
+        elements = src.get_interactive_elements(["all"])
+
         assert len(elements) == _candidate_count(html)
 
 

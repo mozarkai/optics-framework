@@ -138,9 +138,17 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
                 "launch_app", {"session_id": session_id, "app_identifier": STORE_URL}
             )
             resource = await client.read_resource(f"optics://session/{session_id}/elements")
-            locators = {el["label"]: el.get("loc") for el in json.loads(resource[0].text)}
-            assert locators["Email"] == "#email"
-            assert locators["Password"] == '[data-testid="password"]'
+            compact = json.loads(resource[0].text)
+            locators = {el["label"]: el.get("loc") for el in compact}
+
+            assert locators["Email"] == "css=#email"
+            assert locators["Password"] == 'css=[data-testid="password"]'
+            # The full list that screenshot inspectors read has the same rows and locators.
+            screen = await client.read_resource(f"optics://session/{session_id}/screen_elements")
+            full = json.loads(screen[0].text)["elements"]
+            assert len(full) == len(compact)
+            assert {el.get("loc") for el in full} == {el.get("loc") for el in compact}
+
             for element, text in ((locators["Email"], "ava@example.com"), ("Password", "secret")):
                 await client.call_tool(
                     "enter_text", {"session_id": session_id, "element": element, "text": text}

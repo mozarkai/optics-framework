@@ -165,7 +165,10 @@ the client at the URL:
 2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,
    or read `optics://session/{session_id}/elements` for the compact list of
    actionable elements (labels, `act`, `bounds`) plus read-only text. These work
-   the same across drivers via the session's own element sources.
+   the same across drivers via the session's own element sources. A web element
+   (Playwright, or Chrome and debuggable WebViews through `appium_web`) also carries
+   `loc`, a locator that matches only that element, and `offscreen: true` when it is
+   on the page but scrolled out of view.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
    `assert_presence`, …) with the `session_id`. **Target elements by locator**
    (`xpath=`/`text=`/an id/an image) or by an element's visible label with
@@ -384,7 +387,7 @@ explicit **empty** list is passed through and disables element sources entirely
 | Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |
 | Screenshots & image-based location | `appium_screenshot` |
 | Page source, `get_interactive_elements`, source-based extraction | `appium_page_source` |
-| `css=` / DOM XPath in Chrome or a debuggable WebView (Android) | `appium_web` |
+| `css=` / DOM XPath in Chrome or a debuggable WebView (Android), and that page's elements in `get_interactive_elements` | `appium_web` |
 | OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |
 | Image template matching | an `image_detection` source (e.g. `templatematch`) |
 
