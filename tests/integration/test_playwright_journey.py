@@ -154,10 +154,12 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             await client.call_tool("terminate_session", {"session_id": session_id})
 
 
-def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path):
+# A page without a meta viewport is zoomed out to fit the phone.
+@pytest.mark.parametrize("page", ["phone.html", "desktop_site.html"])
+def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path, page):
     config = CONFIG.replace("headless: true\n", "headless: true\n        device: Pixel 7\n")
     project = _project(tmp_path, [
-        f"Launch App,{(FIXTURE / 'phone.html').as_uri()}",
+        f"Launch App,{(FIXTURE / page).as_uri()}",
         "Assert Presence,Phone layout",
         "Press By Percentage,50,50",
         "Assert Presence,Touched",
