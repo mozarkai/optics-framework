@@ -79,6 +79,14 @@ elements_sources:
       capabilities: {}
 ```
 
+### appium_web
+- What it does: Finds `css=` and DOM XPath locators in Chrome or a debuggable WebView on Android, then acts natively.
+```bash
+elements_sources:
+  - appium_web:
+      enabled: true
+```
+
 ### appium_screenshot
 - What it does: Captures screenshots through Appium.
 ```bash

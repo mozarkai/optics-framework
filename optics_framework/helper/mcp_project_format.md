@@ -57,7 +57,8 @@ link name).
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
 `{driver}_page_source`, `{driver}_screenshot`. appium is only an example here —
-selenium and playwright follow the same shape.
+selenium and playwright follow the same shape. appium adds `appium_web`, which
+resolves `css=` and DOM XPath locators in Chrome or a debuggable WebView on Android.
     driver_sources:
       - appium:            # or selenium / playwright / ...
           enabled: true
@@ -66,6 +67,7 @@ selenium and playwright follow the same shape.
     elements_sources:
       - appium_find_element: { enabled: true }
       - appium_page_source: { enabled: true }
+      - appium_web: { enabled: true }
       - appium_screenshot: { enabled: true }
 
 A website, run in a local browser:
