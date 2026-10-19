@@ -4,6 +4,10 @@ import asyncio
 import json
 import os
 import pathlib
+import signal
+import socket
+import subprocess
+import sys
 
 import pytest
 
@@ -171,3 +175,29 @@ def test_stopping_serve_closes_its_browsers():
         assert browser.is_connected()
 
     assert not browser.is_connected()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows ends a process without a SIGTERM to handle")
+async def test_stopping_mcp_closes_its_browsers():
+    fastmcp = pytest.importorskip("fastmcp")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = subprocess.Popen(
+        [sys.executable, "-m", "optics_framework.helper.cli", "mcp", "--transport", "http", "--port", str(port)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        for _ in range(100):
+            with socket.socket() as ready:
+                if ready.connect_ex(("127.0.0.1", port)) == 0:
+                    break
+            await asyncio.sleep(0.2)
+        async with fastmcp.Client(f"http://127.0.0.1:{port}/mcp") as client:
+            await client.call_tool("start_session", {"driver": "playwright", "capabilities": {"headless": True}})
+        server.send_signal(signal.SIGTERM)
+        output, _ = server.communicate(timeout=60)
+    finally:
+        server.kill()
+
+    assert "Session terminated successfully" in output
