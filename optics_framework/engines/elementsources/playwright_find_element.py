@@ -8,6 +8,14 @@ from optics_framework.common import utils
 from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers import playwright_locator
 
+# Null inside an iframe, whose viewport coordinates lack the frame's offset on the page.
+_RECT_SCRIPT = """els => {
+    if (!els.length) return [];
+    if (window !== window.top) return null;
+    const r = els[0].getBoundingClientRect();
+    return [r.x, r.y, r.width, r.height];
+}"""
+
 
 class PlaywrightFindElement(ElementSourceInterface):
     REQUIRED_DRIVER_TYPE = "playwright"
@@ -103,7 +111,7 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_element_bboxes(
         self, elements: List[str]
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Return bounding boxes for each element using Playwright bounding_box()."""
+        """Return a bounding box for each element (see get_bbox_for_element)."""
         result: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]] = []
         page = self._require_page()
         for element in elements:
@@ -118,20 +126,19 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_bbox_for_element(
         self, element: Any
     ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
-        """Return bounding box for an already-located Playwright element handle."""
+        """One evaluate, since ``bounding_box()`` costs several remote round trips and waits on a missing element."""
         if element is None:
             return None
         try:
-            bbox = run_async(element.bounding_box())
-            if bbox is not None:
-                x1 = int(bbox.get("x", 0))
-                y1 = int(bbox.get("y", 0))
-                x2 = int(x1 + bbox.get("width", 0))
-                y2 = int(y1 + bbox.get("height", 0))
-                return ((x1, y1), (x2, y2))
+            rect = run_async(element.evaluate_all(_RECT_SCRIPT))
+            if rect is None:
+                box = run_async(element.first.bounding_box())
+                rect = [box["x"], box["y"], box["width"], box["height"]]
+            x, y, width, height = rect
         except (TypeError, ValueError, AttributeError):
-            pass
-        return None
+            return None
+        x1, y1 = int(x), int(y)
+        return ((x1, y1), (int(x1 + width), int(y1 + height)))
 
     # --------------------------------------------------
     # Assertions

@@ -273,16 +273,14 @@ class Playwright(DriverInterface):
         timeout_s = self.element_timeout_s()
         run_async(
             self._press_element_async(element, repeat, timeout_s, event_name=event_name),
-            timeout=self._call_budget_s(timeout_s * (int(repeat) + 1)),
+            timeout=self._call_budget_s(timeout_s * int(repeat)),
         )
 
     async def _press_element_async(self, element, repeat, timeout_s, event_name):
+        # click() itself waits for the element to be visible, enabled and still.
         locator = self._as_locator(element)
-        timeout_ms = timeout_s * 1000
-        await locator.wait_for(state="visible", timeout=timeout_ms)
-
         for _ in range(int(repeat)):
-            await locator.click(timeout=timeout_ms)
+            await locator.click(timeout=timeout_s * 1000)
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)

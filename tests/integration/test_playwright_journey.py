@@ -48,7 +48,7 @@ def _require_chromium():
         pytest.skip(f"Chromium is not installed for Playwright: {e}")
 
 
-def _project(tmp_path, steps):
+def _project(tmp_path, steps, config=CONFIG):
     modules = [
         "module_name,module_step,param_1,param_2",
         f"Open Store,Launch App,{STORE_URL}",
@@ -56,7 +56,7 @@ def _project(tmp_path, steps):
         "Close Store,Close And Terminate App",
     ]
     files = {
-        "config.yaml": CONFIG,
+        "config.yaml": config,
         "test_cases/test_cases.csv": TEST_CASES,
         "modules/modules.csv": "\n".join(modules) + "\n",
         "test_data/elements.csv": ELEMENTS,
@@ -155,3 +155,17 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             )
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
+
+
+@pytest.mark.parametrize("save_captures", [True, False])
+def test_a_run_saves_screenshots_only_when_captures_are_on(tmp_path, save_captures):
+    config = f"save_captures: {str(save_captures).lower()}\n{CONFIG}"
+    project = _project(tmp_path, [
+        "Enter Text,${email_field},ava@example.com",
+        "Enter Text,${password_field},@:secret",
+        "Press Element,${sign_in}",
+        "Assert Presence,${welcome}",
+    ], config=config)
+
+    assert run_project(project, use_printer=False) is True
+    assert bool(list((tmp_path / "execution_output").rglob("*.jpg"))) is save_captures
