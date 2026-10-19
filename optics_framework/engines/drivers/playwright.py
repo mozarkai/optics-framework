@@ -104,6 +104,7 @@ class Playwright(DriverInterface):
         self._browser = None
         self._context = None
         self.page: Optional[Page] = None
+        self._touch = False
 
         internal_logger.info("[Playwright] Driver initialized")
 
@@ -227,8 +228,16 @@ class Playwright(DriverInterface):
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
 
     async def _open_new_context(self):
-        viewport = self._setting("viewport", {"width": 1280, "height": 800})
-        self._context = await self._browser.new_context(viewport=viewport)
+        options = {"viewport": {"width": 1280, "height": 800}}
+        device = self._setting("device", None)
+        if device:
+            if device not in self._pw.devices:
+                raise OpticsError(Code.E0501, f"Unknown device {device!r}: use a Playwright device name such as 'iPhone 15' or 'Pixel 7'")
+            options = {k: v for k, v in self._pw.devices[device].items() if k != "default_browser_type"}
+        if self._setting("viewport", None):
+            options["viewport"] = self._setting("viewport", None)
+        self._touch = bool(options.get("has_touch"))
+        self._context = await self._browser.new_context(**options)
         self.page = await self._context.new_page()
 
     def _remote(self) -> RemoteBrowser | None:
@@ -256,6 +265,8 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0501, 'protocol "cdp" reaches Chromium-based browsers only; set browser: chromium')
         if remote.context not in ("new", "existing"):
             raise OpticsError(Code.E0501, f'context must be "new" or "existing", not {remote.context!r}')
+        if remote.context == "existing" and self._setting("device", None):
+            raise OpticsError(Code.E0501, 'device applies to a new context; it cannot change the browser\'s own (context: existing)')
         return remote
 
     async def _open_remote(self, browser_type, remote: RemoteBrowser):
@@ -389,14 +400,35 @@ class Playwright(DriverInterface):
         timeout_ms = timeout_s * 1000
         await locator.wait_for(state="visible", timeout=timeout_ms)
 
+        # Tapping misses on a page zoomed out to fit a phone (no meta viewport), but clicking hits.
+        tap = self._touch and await self._zoom() == 1
         for _ in range(int(repeat)):
-            await locator.click(timeout=timeout_ms)
+            await (locator.tap if tap else locator.click)(timeout=timeout_ms)
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
 
+    def _zoom(self):
+        return self.page.evaluate("visualViewport.scale")
+
+    async def _press_at(self, x, y):
+        # A phone gets touch events; mobile WebKit ignores mouse clicks entirely.
+        if not self._touch:
+            return await self.page.mouse.click(x, y)
+        # Chromium places touches in page pixels, which a zoomed page's screenshot does not use.
+        if self._browser.browser_type.name == "chromium":
+            zoom = await self._zoom()
+            x, y = x / zoom, y / zoom
+        await self.page.touchscreen.tap(x, y)
+
+    def _scroll_by(self, delta):
+        # Mobile WebKit has no mouse wheel.
+        if self._touch:
+            return self.page.evaluate("delta => window.scrollBy(0, delta)", delta)
+        return self.page.mouse.wheel(0, delta)
+
     def press_coordinates(self, x: int, y: int, event_name=None):
-        self.run(self.page.mouse.click(x, y))
+        self.run(self._press_at(x, y))
 
     def press_percentage_coordinates(self, px, py, repeat=1, event_name=None):
         self.run(self._press_percentage_async(px, py, repeat))
@@ -412,7 +444,7 @@ class Playwright(DriverInterface):
         x = int(vp["width"] * px / 100)
         y = int(vp["height"] * py / 100)
         for _ in range(repeat):
-            await self.page.mouse.click(x, y)
+            await self._press_at(x, y)
 
     def press_keycode(self, keycode: str, event_name=None):
         """
@@ -488,7 +520,7 @@ class Playwright(DriverInterface):
 
     def swipe(self, x, y, direction, swipe_length, event_name=None):
         delta = swipe_length if direction == "down" else -swipe_length
-        self.run(self.page.mouse.wheel(0, delta))
+        self.run(self._scroll_by(delta))
 
     def swipe_percentage(self, x_per: int, y_per: int, direction: str, swipe_length_percentage: int, event_name=None):
         self.run(self._swipe_percentage_async(direction, swipe_length_percentage))
@@ -498,7 +530,7 @@ class Playwright(DriverInterface):
         delta = int(vp["height"] * swipe_length_percentage / 100)
         if direction != "down":
             delta = -delta
-        await self.page.mouse.wheel(0, delta)
+        await self._scroll_by(delta)
 
     def swipe_element(self, element: str, direction: str, swipe_length: int, event_name=None):
         """
@@ -551,7 +583,7 @@ class Playwright(DriverInterface):
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
         for _ in range(2):
-            self.run(self.page.mouse.wheel(0, pixels if direction == "down" else -pixels))
+            self.run(self._scroll_by(pixels if direction == "down" else -pixels))
             self.run(self.page.wait_for_timeout(120))
 
 

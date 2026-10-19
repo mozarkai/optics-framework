@@ -459,6 +459,7 @@ Driver sources define the automation frameworks used to control devices or brows
     | `browser` | `"chromium"`, `"firefox"`, `"webkit"` | Browser engine |
     | `headless` | `true`, `false` | Run browser in headless mode (local browser only) |
     | `viewport` | `{width, height}` | Browser viewport dimensions |
+    | `device` | A Playwright device name, e.g. `"Pixel 7"`, `"iPhone 15"` | Emulate that phone or tablet: its screen, user agent and touch input. Pair an iPhone with `browser: webkit` for the Safari engine. Not with `context: existing` |
     | `headers` | `{name: value}` | HTTP headers sent when connecting to a remote browser |
     | `protocol` | `"cdp"`, `"playwright"` | How to connect to the remote browser in `url` (default `"cdp"`) |
     | `context` | `"new"`, `"existing"` | Open a fresh context in the remote browser, or use the one it already has (default `"new"`) |
