@@ -74,6 +74,29 @@ Native iOS sessions start with `includeSafariInWebviews: true`,
 `webviewAtomWaitTimeout: 5000`, so Optics sees every app's web content and a page that
 cannot answer costs seconds, not minutes. Values in your `capabilities` take precedence.
 
+## Opening pages
+
+`Launch App` and `Launch Other App` open a URL in the app that handles it, a browser
+for web addresses:
+
+```csv
+module_name,module_step,param_1
+Open Shop,Launch App,https://shop.example.com/
+Back To The App,Launch App,com.example.shop
+```
+
+To open a web page in Chrome even when another browser is the default, call the deep link
+with Chrome's package:
+
+```csv
+module_name,module_step,param_1
+Open Shop In Chrome,Execute Script,"{""script"": ""mobile: deepLink"", ""args"": {""url"": ""https://shop.example.com/"", ""package"": ""com.android.chrome""}}"
+```
+
+To test only the browser on Android, add `browserName: Chrome` to the capabilities: the
+session starts in Chrome, web addresses open there whatever the default browser is, and
+every keyword works as in an app session.
+
 ## Locators
 
 | Locator | Example | Resolved by |
@@ -123,6 +146,7 @@ now, so a test follows the user's path from one app to another:
 module_name,module_step,param_1,param_2
 Read The Policy,Press Element,Google Play refund policy
 Read The Policy,Assert Presence,css=h1,30
+Read The Policy,Get Text,css=h1
 Read The Policy,Go Back
 Read The Policy,Assert Presence,Google Play refund policy,20
 ```
@@ -140,6 +164,9 @@ Read The Policy,Assert Presence,Google Play refund policy,20
 - **A Custom Tab right after another.** When an app opens a Custom Tab just after one
   closed, Chrome ignores the first tap on the new tab. Before typing into a field there,
   press the field once.
+- **Covered elements.** When a banner, a dialog or a panel lies over the element a web
+  locator matches, Optics does not tap it, because the tap would land on whatever covers
+  it. Dismiss the cover first. `Get Text` still reads a covered element.
 
 On iOS, when several web views are on screen, web locators use the one that holds the
 element. To return from Safari to the app, use `Launch App` with the app's bundle id.
@@ -183,3 +210,6 @@ debugging on adds at most 2 s to a web lookup. Values in your `capabilities` tak
   they work.
 - iOS sign-in sheets (`ASWebAuthenticationSession`) cannot be inspected. Use text
   locators and OCR there.
+
+The `mobile_web` sample (`optics init --template mobile_web`) runs a Wikipedia search in
+Chrome with these steps.
