@@ -123,14 +123,14 @@ class LocatorStrategy(ABC):
         """
         getattr(self.element_source, method_name)(elements, timeout, rule)
         timestamp = utils.get_timestamp()
-        frame = None
         strategy_manager = getattr(self, '_strategy_manager', None)
-        if strategy_manager is not None:
-            try:
-                frame = strategy_manager.capture_screenshot()
-            except Exception as e:
-                internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
-                frame = None
+        if strategy_manager is None or not strategy_manager.annotate_assertions:
+            return True, timestamp, None
+        try:
+            frame = strategy_manager.capture_screenshot()
+        except Exception as e:
+            internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
+            frame = None
         bboxes = []
         if hasattr(self.element_source, 'get_element_bboxes'):
             bboxes = [
@@ -572,11 +572,16 @@ class LocateResult:
 
 
 class StrategyManager:
-    def __init__(self, element_source: InstanceFallback[ElementSourceInterface], text_detection, image_detection):
+    def __init__(
+        self, element_source: InstanceFallback[ElementSourceInterface], text_detection, image_detection,
+        annotate_assertions: bool = True,
+    ):
         # Defensive: always wrap in InstanceFallback if not already
         if not isinstance(element_source, InstanceFallback):
             element_source = InstanceFallback([element_source])
         self.element_source = element_source
+        # A screenshot per passed assertion is only worth its transfer when it gets saved.
+        self.annotate_assertions = annotate_assertions
         self.locator_factory = StrategyFactory(text_detection, image_detection, strategy_manager=self)
         self.screenshot_factory = ScreenshotFactory()
         self.pagesource_factory = PagesourceFactory()
