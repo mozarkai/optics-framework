@@ -9,7 +9,7 @@ from appium.webdriver.appium_connection import AppiumConnection
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
-from selenium.common.exceptions import InvalidSessionIdException, NoSuchWindowException, UnknownMethodException
+from selenium.common.exceptions import InvalidSessionIdException, NoSuchWindowException
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
@@ -34,6 +34,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     KEYCODE_RC_NAMED,
 )
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 _MAX_ERROR_OUTPUT_LINES = 20
 
@@ -41,7 +42,8 @@ _CDP_EXECUTE = "opticsExecuteCdp"
 _WEB_RECT_METRICS_JS = (
     "const r = arguments[0].getBoundingClientRect(); const v = window.visualViewport;"
     "return [r.left, r.top, r.width, r.height, window.devicePixelRatio,"
-    " v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1];"
+    " v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1,"
+    " v ? v.width : window.innerWidth, v ? v.height : window.innerHeight];"
 )
 
 
@@ -191,9 +193,8 @@ class Appium(DriverInterface):
         # UI Tree handling
         self.ui_helper: Optional[UIHelper] = None
         self.initialized: bool = True
-        self._viewport_rect_supported: bool = True
         self._app_webviews_in_front: int = 0
-        self._web_content_rect: dict[str, int] | None = None
+        self._known_web_contexts: dict[tuple[str, str], tuple[str, int]] = {}
 
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
@@ -1451,23 +1452,44 @@ class Appium(DriverInterface):
     def web_context(self) -> Iterator[WebDriver]:
         """Run the body in the front tab of the foreground app's web content, then return to native."""
         driver = self._require_driver()
-        context, page_url, self._app_webviews_in_front, self._web_content_rect = self._foreground_web_context(driver)
+        package = driver.current_package
         try:
-            self._switch_to_web_context(driver, context)
-            self._focus_window(driver, page_url)
+            if not self._reenter_web_context(driver, package):
+                context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver, package)
+                self._switch_to_web_context(driver, context)
+                self._focus_window(driver, page_url)
+                self._known_web_contexts[(driver.session_id, package)] = (context, self._app_webviews_in_front)
             yield driver
         finally:
-            driver.switch_to.context(self.NATIVE_CONTEXT)
+            try:
+                driver.switch_to.context(self.NATIVE_CONTEXT)
+            except WebDriverException as e:
+                raise_if_session_dead(e)
+                raise OpticsError(
+                    Code.E0106,
+                    message="The session could not return to the native context after reading the web page; "
+                            "start a new session.",
+                    cause=e,
+                ) from e
 
-    def _foreground_web_context(self, driver: WebDriver) -> tuple[str, str | None, int, dict[str, int] | None]:
-        """The foreground package's web context, the URL of its front page, its app WebView count,
-        and the screen rect its page is drawn in when the driver reports one.
+    def _reenter_web_context(self, driver: WebDriver, package: str) -> bool:
+        """Re-enter ``package``'s known web context, skipping ``mobile: getContexts``, which hangs on frozen apps."""
+        known = self._known_web_contexts.get((driver.session_id, package))
+        if known is None:
+            return False
+        context, app_webviews = known
+        try:
+            driver.switch_to.context(context)
+            handles = driver.window_handles
+            if len(handles) > 1 and (app_webviews or not self._attached_tab_visible(driver)):
+                return False
+        except WebDriverException:
+            return False
+        self._app_webviews_in_front = min(app_webviews, len(handles))
+        return True
 
-        ``mobile: getContexts`` lists each web view's pages most recently used first, so
-        the first page is the one on screen. UiAutomator2 8.6.0+ adds each web view's
-        on-screen ``rect``.
-        """
-        package = driver.current_package
+    def _foreground_web_context(self, driver: WebDriver, package: str) -> tuple[str, str | None, int]:
+        """The foreground package's web context, its front page URL (pages list most recent first), and app WebView count."""
         owned = [
             webview for webview in driver.execute_script("mobile: getContexts") or []
             if _context_name(webview) and webview.get("pages")
@@ -1476,10 +1498,7 @@ class Appium(DriverInterface):
         ]
         if owned:
             app_webviews = sum(_is_app_webview_page(page) for webview in owned for page in webview["pages"])
-            rect = owned[0].get("rect")
-            if not (isinstance(rect, dict) and rect.get("width") and rect.get("height")):
-                rect = None
-            return _context_name(owned[0]), owned[0]["pages"][0].get("url"), app_webviews, rect
+            return _context_name(owned[0]), owned[0]["pages"][0].get("url"), app_webviews
         raise OpticsError(
             Code.E0201,
             message=f"No web content found in the foreground app '{package}'. An app's "
@@ -1539,40 +1558,29 @@ class Appium(DriverInterface):
         """Narrow same-URL tabs (a reopened Custom Tab link) by whether the attached tab is visible."""
         if current not in handles:
             return handles
-        if driver.execute_script("return document.visibilityState") == "visible":
+        if Appium._attached_tab_visible(driver):
             return [current]
         return [handle for handle in handles if handle != current]
 
-    def web_element_screen_rect(self, element: Any) -> dict[str, int]:
-        """Device-screen rectangle of an element found inside :meth:`web_context`.
+    @staticmethod
+    def _attached_tab_visible(driver: WebDriver) -> bool:
+        return driver.execute_script("return document.visibilityState") == "visible"
 
-        Uses UiAutomator2's ``mobile: viewportElementRect`` (driver 8.6.0+). Older drivers
-        get the same rectangle from the page's own geometry offset by the on-screen
-        bounds of the native WebView.
-        """
-        driver = self._require_driver()
-        if self._viewport_rect_supported:
-            try:
-                return driver.execute_script("mobile: viewportElementRect", {"elementId": element.id})
-            except UnknownMethodException:
-                self._viewport_rect_supported = False
-                internal_logger.debug("mobile: viewportElementRect unavailable; computing the rect from page geometry.")
-        left, top, width, height, *metrics = driver.execute_script(_WEB_RECT_METRICS_JS, element)
+    def web_element_screen_rect(self, element: Any) -> dict[str, int]:
+        """Device-screen rectangle of an element found inside :meth:`web_context`."""
+        left, top, width, height, *metrics = self._require_driver().execute_script(_WEB_RECT_METRICS_JS, element)
         return self.web_rects_to_screen([{"x": left, "y": top, "width": width, "height": height}], metrics)[0]
 
     def web_rects_to_screen(
         self, rects: list[dict[str, Any] | None], metrics: list[float]
     ) -> list[dict[str, Any] | None]:
-        """Device-screen rectangles of page rectangles measured inside :meth:`web_context`.
+        """Unclamped device-screen rectangles of ``getBoundingClientRect`` boxes measured inside :meth:`web_context`.
 
-        ``rects`` are ``getBoundingClientRect`` boxes (``x``/``y``/``width``/``height``; other
-        keys are kept) and ``metrics`` is the page's ``[devicePixelRatio, visualViewport.offsetLeft,
-        visualViewport.offsetTop, visualViewport.scale]``. Unlike ``mobile: viewportElementRect``
-        the result is not clamped to the screen, so a box below the fold keeps its true place.
+        ``metrics`` is ``[devicePixelRatio, visualViewport offsetLeft, offsetTop, scale, width, height]``.
         """
-        ratio, offset_x, offset_y, scale = metrics
-        origin = self._web_content_rect or self._native_webview_bounds(self._require_driver())
+        ratio, offset_x, offset_y, scale, view_width, view_height = metrics
         factor = scale * ratio
+        origin = self._web_view_rect(self._require_driver(), view_width * factor, view_height * factor)
         return [
             None if rect is None else {
                 **rect,
@@ -1584,12 +1592,27 @@ class Appium(DriverInterface):
             for rect in rects
         ]
 
-    def _native_webview_bounds(self, driver: WebDriver) -> dict[str, int]:
-        """Bounds of the on-screen native WebView, read without leaving the page.
+    def _web_view_rect(self, driver: WebDriver, width: float, height: float) -> dict[str, int]:
+        """Screen rect of the WebView drawing a ``width`` x ``height`` viewport.
 
-        With several WebViews on screen, or several in the app, the one showing the page
-        cannot be told apart.
+        Native bounds are clipped to the screen, so they count only when they hold the whole viewport.
         """
+        native = self._native_webview_bounds(driver)
+        if native and abs(native["width"] - width) <= 2 and abs(native["height"] - height) <= 2:
+            return native
+        current = driver.current_context
+        for webview in driver.execute_script("mobile: getContexts") or []:
+            rect = webview.get("rect")
+            if _context_name(webview) == current and isinstance(rect, dict) and rect.get("width") and rect.get("height"):
+                return rect
+        raise OpticsError(
+            Code.E0201,
+            message="Cannot place the web element: no single native WebView shows the whole page, "
+                    "and the driver reports no rect for it. UiAutomator2 driver 8.6.0 or later reports one.",
+        )
+
+    def _native_webview_bounds(self, driver: WebDriver) -> dict[str, int] | None:
+        """Bounds of the one on-screen native WebView, or None when several could show the page."""
         context, window = driver.current_context, driver.current_window_handle
         driver.switch_to.context(self.NATIVE_CONTEXT)
         try:
@@ -1598,15 +1621,8 @@ class Appium(DriverInterface):
             driver.switch_to.context(context)
             driver.switch_to.window(window)
         webviews = [rect for rect in rects if rect["width"] and rect["height"]]
-        if not webviews:
-            raise OpticsError(Code.E0201, message="No native WebView is on screen to place the web element.")
-        if len(webviews) > 1 or self._app_webviews_in_front > 1:
-            raise OpticsError(
-                Code.E0201,
-                message=f"Cannot place the web element: the app shows "
-                        f"{max(len(webviews), self._app_webviews_in_front)} WebViews. "
-                        "UiAutomator2 driver 8.6.0 or later places web elements directly.",
-            )
+        if len(webviews) != 1 or self._app_webviews_in_front > 1:
+            return None
         return webviews[0]
 
     def _open_deeplink(

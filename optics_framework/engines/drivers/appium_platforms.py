@@ -44,6 +44,13 @@ _MOBILE_DEFAULT_OPTIONS: dict[str, Any] = {
     "connectHardwareKeyboard": True,
 }
 
+# A context switch asks every app's DevTools socket for its pages, and a frozen app's never answers. Version
+# details stay on (one parallel 2 s wait at most): without them chromedriver is matched to the WebView, not Chrome.
+_ANDROID_CONTEXT_OPTIONS: dict[str, Any] = {
+    "ensureWebviewsHavePages": False,
+    "extractChromeAndroidPackageFromContextName": True,
+}
+
 
 @dataclass(frozen=True)
 class PlatformProfile:
@@ -125,7 +132,7 @@ register_profile(PlatformProfile(
     options_factory=UiAutomator2Options,
     app_id_caps=("appPackage", "appium:appPackage"),
     keycode_strategy=KEYCODE_ANDROID_INT,
-    default_options={**_MOBILE_DEFAULT_OPTIONS, "ignoreHiddenApiPolicyError": True},
+    default_options={**_MOBILE_DEFAULT_OPTIONS, **_ANDROID_CONTEXT_OPTIONS, "ignoreHiddenApiPolicyError": True},
 ))
 
 register_profile(PlatformProfile(
