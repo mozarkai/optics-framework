@@ -1,4 +1,7 @@
+import json
 import subprocess  # nosec
+from contextlib import contextmanager
+from collections.abc import Iterator
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
@@ -6,7 +9,7 @@ from appium.webdriver.appium_connection import AppiumConnection
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
-from selenium.common.exceptions import InvalidSessionIdException
+from selenium.common.exceptions import InvalidSessionIdException, NoSuchWindowException, UnknownMethodException
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
@@ -26,12 +29,36 @@ from optics_framework.engines.drivers.appium_platforms import (
     normalize_platform,
     supported_platforms,
     supported_on,
+    ANDROID,
     MOBILE,
     KEYCODE_RC_NAMED,
 )
 from optics_framework.common.error import OpticsError, Code
 
 _MAX_ERROR_OUTPUT_LINES = 20
+
+_CDP_EXECUTE = "opticsExecuteCdp"
+_WEB_RECT_METRICS_JS = (
+    "const r = arguments[0].getBoundingClientRect(); const v = window.visualViewport;"
+    "return [r.left, r.top, r.width, r.height, window.devicePixelRatio,"
+    " v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1];"
+)
+
+
+def _is_app_webview_page(page: dict[str, Any]) -> bool:
+    """An Android WebView describes its page in JSON (attached, visible, bounds); a browser tab does not."""
+    description = page.get("description")
+    if isinstance(description, str):
+        try:
+            description = json.loads(description)
+        except ValueError:
+            return False
+    return isinstance(description, dict) and "attached" in description
+
+
+def _context_name(webview: dict[str, Any]) -> str | None:
+    """Switchable context name of a ``mobile: getContexts`` entry; ``webview`` can be a pid (``WEBVIEW_28005``)."""
+    return webview.get("webviewName") or webview.get("webview")
 
 
 def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LINES) -> str:
@@ -88,6 +115,7 @@ class Appium(DriverInterface):
         SpecialKey.SPACE: " ",
     }
     MOBILE_PREFIX = "mobile:"
+    NATIVE_CONTEXT = "NATIVE_APP"
     MOBILE_CLEAR = "mobile: clear"
     CAP_APP_PACKAGE = "appium:appPackage"
     CAP_APP_PACKAGE_LEGACY = "appPackage"
@@ -163,6 +191,8 @@ class Appium(DriverInterface):
         # UI Tree handling
         self.ui_helper: Optional[UIHelper] = None
         self.initialized: bool = True
+        self._viewport_rect_supported: bool = True
+        self._app_webviews_in_front: int = 0
 
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
@@ -1414,6 +1444,149 @@ class Appium(DriverInterface):
 
     def _is_deeplink(self, value: str) -> bool:
         return isinstance(value, str) and "://" in value
+
+    @supported_on(ANDROID)
+    @contextmanager
+    def web_context(self) -> Iterator[WebDriver]:
+        """Run the body in the front tab of the foreground app's web content, then return to native."""
+        driver = self._require_driver()
+        context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver)
+        try:
+            self._switch_to_web_context(driver, context)
+            self._focus_window(driver, page_url)
+            yield driver
+        finally:
+            driver.switch_to.context(self.NATIVE_CONTEXT)
+
+    def _foreground_web_context(self, driver: WebDriver) -> tuple[str, str | None, int]:
+        """The foreground package's web context, the URL of its front page, and its app WebView count.
+
+        ``mobile: getContexts`` lists each web view's pages most recently used first, so
+        the first page is the one on screen.
+        """
+        package = driver.current_package
+        owned = [
+            webview for webview in driver.execute_script("mobile: getContexts") or []
+            if _context_name(webview) and webview.get("pages")
+            and ((webview.get("info") or {}).get("Android-Package") == package
+                 or _context_name(webview) == f"WEBVIEW_{package}")
+        ]
+        if owned:
+            app_webviews = sum(_is_app_webview_page(page) for webview in owned for page in webview["pages"])
+            return _context_name(owned[0]), owned[0]["pages"][0].get("url"), app_webviews
+        raise OpticsError(
+            Code.E0201,
+            message=f"No web content found in the foreground app '{package}'. An app's "
+                    "WebView is automatable only when the app enables WebView debugging.",
+        )
+
+    def _switch_to_web_context(self, driver: WebDriver, context: str) -> None:
+        try:
+            driver.switch_to.context(context)
+        except WebDriverException as e:
+            # Seen with Samsung Internet, whose DevTools socket chromedriver cannot attach to.
+            reason = e.msg.splitlines()[0] if e.msg else type(e).__name__
+            raise OpticsError(
+                Code.E0201,
+                message=f"Cannot read the web page shown by '{driver.current_package}': {reason}. Web locators work "
+                        "in Chrome and in WebViews with debugging enabled; use text locators or OCR here.",
+                cause=e,
+            ) from e
+
+    @staticmethod
+    def _focus_window(driver: WebDriver, page_url: str | None) -> None:
+        """Focus the window showing the front page, matched by URL in the DevTools target list.
+
+        Switching windows would bring each tab to the front, and that list carries no tab order.
+        """
+        handles = driver.window_handles
+        if len(handles) < 2 or not page_url:
+            return
+        driver.command_executor.add_command(_CDP_EXECUTE, "POST", "/session/$sessionId/goog/cdp/execute")
+        targets = driver.execute(_CDP_EXECUTE, {"cmd": "Target.getTargets", "params": {}})["value"]["targetInfos"]
+        matches = [
+            target["targetId"] for target in targets
+            if target.get("url") == page_url and target.get("targetId") in handles
+        ]
+        attached = Appium._attached_window(driver)
+        if len(matches) > 1:
+            matches = Appium._narrow_by_attached_tab(driver, matches, attached)
+        if len(matches) != 1:
+            reason = "several tabs show" if matches else "no tab shows"
+            raise OpticsError(
+                Code.E0201,
+                message=f"Cannot tell which browser tab is on screen: {reason} '{page_url}'. "
+                        "Close the other tabs, or open the page once.",
+            )
+        if matches[0] != attached:
+            driver.switch_to.window(matches[0])
+
+    @staticmethod
+    def _attached_window(driver: WebDriver) -> str | None:
+        try:
+            return driver.current_window_handle
+        except NoSuchWindowException:
+            return None
+
+    @staticmethod
+    def _narrow_by_attached_tab(driver: WebDriver, handles: list[str], current: str | None) -> list[str]:
+        """Narrow same-URL tabs (a reopened Custom Tab link) by whether the attached tab is visible."""
+        if current not in handles:
+            return handles
+        if driver.execute_script("return document.visibilityState") == "visible":
+            return [current]
+        return [handle for handle in handles if handle != current]
+
+    def web_element_screen_rect(self, element: Any) -> dict[str, int]:
+        """Device-screen rectangle of an element found inside :meth:`web_context`.
+
+        Uses UiAutomator2's ``mobile: viewportElementRect`` (driver 8.6.0+). Older drivers
+        get the same rectangle from the page's own geometry offset by the on-screen
+        bounds of the native WebView.
+        """
+        driver = self._require_driver()
+        if self._viewport_rect_supported:
+            try:
+                return driver.execute_script("mobile: viewportElementRect", {"elementId": element.id})
+            except UnknownMethodException:
+                self._viewport_rect_supported = False
+                internal_logger.debug("mobile: viewportElementRect unavailable; computing the rect from page geometry.")
+        left, top, width, height, ratio, offset_x, offset_y, scale = driver.execute_script(
+            _WEB_RECT_METRICS_JS, element
+        )
+        webview = self._native_webview_bounds(driver)
+        factor = scale * ratio
+        return {
+            "x": round(webview["x"] + (left - offset_x) * factor),
+            "y": round(webview["y"] + (top - offset_y) * factor),
+            "width": round(width * factor),
+            "height": round(height * factor),
+        }
+
+    def _native_webview_bounds(self, driver: WebDriver) -> dict[str, int]:
+        """Bounds of the on-screen native WebView, read without leaving the page.
+
+        With several WebViews on screen, or several in the app, the one showing the page
+        cannot be told apart.
+        """
+        context, window = driver.current_context, driver.current_window_handle
+        driver.switch_to.context(self.NATIVE_CONTEXT)
+        try:
+            rects = [el.rect for el in driver.find_elements(AppiumBy.CLASS_NAME, "android.webkit.WebView")]
+        finally:
+            driver.switch_to.context(context)
+            driver.switch_to.window(window)
+        webviews = [rect for rect in rects if rect["width"] and rect["height"]]
+        if not webviews:
+            raise OpticsError(Code.E0201, message="No native WebView is on screen to place the web element.")
+        if len(webviews) > 1 or self._app_webviews_in_front > 1:
+            raise OpticsError(
+                Code.E0201,
+                message=f"Cannot place the web element: the app shows "
+                        f"{max(len(webviews), self._app_webviews_in_front)} WebViews. "
+                        "UiAutomator2 driver 8.6.0 or later places web elements directly.",
+            )
+        return webviews[0]
 
     def _open_deeplink(
             self,
