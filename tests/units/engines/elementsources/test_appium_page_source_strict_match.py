@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from optics_framework.common.error import OpticsError
 from optics_framework.engines.elementsources.appium_page_source import AppiumPageSource
 
 pytestmark = pytest.mark.white_box
@@ -95,8 +96,15 @@ class TestLocateStrictWiring:
         source = _source(strict_element_match=True)
         source.driver.ui_helper.get_locator_and_strategy_using_index.return_value = None
 
-        source._locate_by_text(source.driver, "Buy 101 devices", "Text", index=0)
+        with pytest.raises(OpticsError):
+            source._locate_by_text(source.driver, "Buy 101 devices", "Text", index=0)
 
         source.driver.ui_helper.get_locator_and_strategy_using_index.assert_called_once_with(
             "Buy 101 devices", 0, None, strict=True
         )
+
+
+def test_check_elements_answers_each_element_from_one_page_source():
+    source = _source()
+
+    assert source.check_elements(["Buy 101 devices", "Checkout"]) == [True, False]

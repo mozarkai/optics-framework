@@ -213,9 +213,7 @@ class SeleniumPageSource(ElementSourceInterface):
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            found_elements = [
-                self.locate(element) is not None for element in elements
-            ]
+            found_elements = self.check_elements(elements)
 
             if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
                 internal_logger.debug(f"Assertion passed with rule '{rule}' for elements: {elements}")
@@ -226,6 +224,9 @@ class SeleniumPageSource(ElementSourceInterface):
         raise TimeoutError(
             f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
         )
+
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        return [self.locate(element) is not None for element in elements]
 
     # ----- Supporting Methods -----
     def _is_text_found(self, text: str) -> bool:

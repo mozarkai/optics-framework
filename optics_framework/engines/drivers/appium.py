@@ -171,16 +171,19 @@ class Appium(DriverInterface):
             raise OpticsError(Code.E0101, message=self.NOT_INITIALIZED)
         return self.driver
 
-    def _active_platform(self) -> str:
-        """Normalized platformName from live or configured capabilities."""
-        caps: Dict[str, Any] = {}
+    def _session_capabilities(self) -> dict[str, Any]:
+        """Live session capabilities, falling back to the configured ones."""
+        caps: dict[str, Any] = {}
         if self.driver is not None:
             try:
                 caps = self.driver.capabilities or {}
             except Exception:
                 caps = {}
-        if not caps:
-            caps = self.capabilities or {}
+        return caps or self.capabilities or {}
+
+    def _active_platform(self) -> str:
+        """Normalized platformName from live or configured capabilities."""
+        caps = self._session_capabilities()
         platform = caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)
         if not platform:
             for key, value in caps.items():
@@ -188,6 +191,13 @@ class Appium(DriverInterface):
                     platform = value
                     break
         return normalize_platform(platform)
+
+    def native_ui_platform(self) -> str | None:
+        """``android`` or ``ios`` while the session reads that phone's native UI tree; None on TVs and in browser or web view sessions."""
+        caps = self._session_capabilities()
+        platform = self._active_platform()
+        web_start = caps.get("browserName") or caps.get("autoWebview") or caps.get("appium:autoWebview")
+        return platform if platform in MOBILE and not web_start else None
 
     def _require_profile(self) -> PlatformProfile:
         profile = get_profile(self._active_platform())
