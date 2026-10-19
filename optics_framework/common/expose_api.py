@@ -791,13 +791,14 @@ async def _try_combos_positional(
 def _reject_server_env_read(keyword_slug: str, params: Any) -> None:
     """Refuse ``Read Data`` ``ENV:NAME``: the server has no caller authentication, so
     honouring it would return any server environment variable to whoever asks."""
-    values = params.values() if isinstance(params, dict) else params
-    candidates = [
-        item
-        for value in values
-        for item in (value if isinstance(value, list) else [value])
-    ]
-    if keyword_slug == "read_data" and any(reads_environment(item) for item in candidates):
+    if keyword_slug != "read_data":
+        return
+    if isinstance(params, dict):
+        file_path = params.get("file_path")
+    else:
+        file_path = params[1] if len(params) > 1 else None
+    candidates = file_path if isinstance(file_path, list) else [file_path]
+    if any(reads_environment(item) for item in candidates):
         raise OpticsError(Code.E0501, "Read Data ENV: is only available to project runs, not API callers")
 
 
