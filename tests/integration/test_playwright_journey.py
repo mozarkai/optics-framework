@@ -45,7 +45,7 @@ def _require_chromium():
         pytest.skip(f"Chromium is not installed for Playwright: {e}")
 
 
-def _project(tmp_path, steps):
+def _project(tmp_path, steps, config=CONFIG):
     modules = [
         "module_name,module_step,param_1,param_2",
         f"Open Store,Launch App,{STORE_URL}",
@@ -53,7 +53,7 @@ def _project(tmp_path, steps):
         "Close Store,Close And Terminate App",
     ]
     files = {
-        "config.yaml": CONFIG,
+        "config.yaml": config,
         "test_cases/test_cases.csv": TEST_CASES,
         "modules/modules.csv": "\n".join(modules) + "\n",
         "test_data/elements.csv": ELEMENTS,
@@ -152,3 +152,19 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             )
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
+
+
+def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path):
+    config = CONFIG.replace("headless: true\n", "headless: true\n        device: Pixel 7\n")
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / 'phone.html').as_uri()}",
+        "Assert Presence,Phone layout",
+        "Press By Percentage,50,50",
+        "Assert Presence,Touched",
+        "Scroll,down",
+        "Assert Presence,Scrolled",
+        "Press Element,Buy",
+        "Assert Presence,Bought",
+    ], config=config)
+
+    assert run_project(project, use_printer=False) is True
