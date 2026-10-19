@@ -102,3 +102,9 @@ class TestLocateStrictWiring:
         source.driver.ui_helper.get_locator_and_strategy_using_index.assert_called_once_with(
             "Buy 101 devices", 0, None, strict=True
         )
+
+
+def test_check_elements_answers_each_element_from_one_page_source():
+    source = _source()
+
+    assert source.check_elements(["Buy 101 devices", "Checkout"]) == [True, False]
