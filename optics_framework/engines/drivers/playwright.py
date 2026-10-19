@@ -400,16 +400,29 @@ class Playwright(DriverInterface):
         timeout_ms = timeout_s * 1000
         await locator.wait_for(state="visible", timeout=timeout_ms)
 
-        # Tapping misses on a page zoomed out to fit a phone (no meta viewport), but clicking hits.
-        tap = self._touch and await self._zoom() == 1
+        zoomed = self._touch and await self._zoom() != 1
         for _ in range(int(repeat)):
-            await (locator.tap if tap else locator.click)(timeout=timeout_ms)
+            if zoomed:
+                await self._tap_on_screen(locator, timeout_ms)
+            else:
+                await (locator.tap if self._touch else locator.click)(timeout=timeout_ms)
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
 
     def _zoom(self):
         return self.page.evaluate("visualViewport.scale")
+
+    async def _tap_on_screen(self, locator, timeout_ms):
+        # Playwright's tap misses on a page zoomed out to fit a phone, so tap the centre where the screen shows it.
+        await locator.scroll_into_view_if_needed(timeout=timeout_ms)
+        box = await locator.bounding_box(timeout=timeout_ms)
+        zoom, left, top = await self.page.evaluate(
+            "[visualViewport.scale, visualViewport.offsetLeft, visualViewport.offsetTop]"
+        )
+        await self._press_at(
+            (box["x"] + box["width"] / 2 - left) * zoom, (box["y"] + box["height"] / 2 - top) * zoom
+        )
 
     async def _press_at(self, x, y):
         # A phone gets touch events; mobile WebKit ignores mouse clicks entirely.
