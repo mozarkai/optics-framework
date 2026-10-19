@@ -173,8 +173,12 @@ class SessionManager(SessionHandler):
         """Terminates a session and cleans up resources."""
         session: Session | None = self.sessions.pop(session_id, None)
         if session:
-            if session.driver:
-                session.driver.terminate()
+            # Every fallback driver, not just the first that answers: a later one may have a browser open.
+            for driver in getattr(session.driver, "instances", [session.driver] if session.driver else []):
+                try:
+                    driver.terminate()
+                except Exception as e:
+                    internal_logger.warning("Failed to terminate driver %s: %s", driver, e)
             session.inline_templates.clear()
             base_dir = getattr(session, "_inline_templates_dir", None)
             if base_dir:
