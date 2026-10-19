@@ -625,10 +625,13 @@ class TestInterleavedAssert:
         assert exc_info.value.code == Code.E0106
 
     def test_ocr_does_not_search_for_css_selectors(self):
-        strategy = TextDetectionStrategy(MagicMock(), None, None)
+        strategy = TextDetectionStrategy(MagicMock(), MagicMock(), None)
 
         assert strategy.can_assert("css=#q") is False
         assert strategy.can_assert("Login") is True
+
+    def test_ocr_sits_out_without_an_engine(self):
+        assert TextDetectionStrategy(MagicMock(), None, None).can_assert("Login") is False
 
 
 class TestGetInteractiveElementsStrategyScreening:
