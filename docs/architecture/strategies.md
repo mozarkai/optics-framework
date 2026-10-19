@@ -620,13 +620,13 @@ if is_aoi_used:
     utils.save_screenshot(
         annotated_screenshot,
         f"{func.__name__}_with_aoi",
-        output_dir=self.execution_dir
+        output_dir=self.capture_output_dir
     )
 else:
     utils.save_screenshot(
         screenshot_np,
         func.__name__,
-        output_dir=self.execution_dir
+        output_dir=self.capture_output_dir
     )
 ```
 

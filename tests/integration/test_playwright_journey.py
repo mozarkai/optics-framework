@@ -210,3 +210,17 @@ def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path, page):
         "Assert Presence,Bought",
     ], config=config)
     assert run_project(project, use_printer=False) is True
+
+
+@pytest.mark.parametrize("save_captures", [True, False])
+def test_a_run_saves_screenshots_only_when_captures_are_on(tmp_path, save_captures):
+    config = f"save_captures: {str(save_captures).lower()}\n{CONFIG}"
+    project = _project(tmp_path, [
+        "Enter Text,${email_field},ava@example.com",
+        "Enter Text,${password_field},@:secret",
+        "Press Element,${sign_in}",
+        "Assert Presence,${welcome}",
+    ], config=config)
+
+    assert run_project(project, use_printer=False) is True
+    assert bool(list((tmp_path / "execution_output").rglob("*.jpg"))) is save_captures
