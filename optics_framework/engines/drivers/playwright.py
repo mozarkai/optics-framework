@@ -387,9 +387,11 @@ class Playwright(DriverInterface):
     async def _press_element_async(self, element, repeat, timeout_s, event_name):
         locator = self._as_locator(element)
         timeout_ms = timeout_s * 1000
-        await locator.wait_for(state="visible", timeout=timeout_ms)
-
         zoomed = self._touch and await self._zoom() != 1
+        if zoomed:
+            # click() and tap() wait for visibility themselves; the hand-computed tap reads a bounding box.
+            await locator.wait_for(state="visible", timeout=timeout_ms)
+
         for _ in range(int(repeat)):
             if zoomed:
                 await self._tap_on_screen(locator, timeout_ms)
