@@ -1177,6 +1177,10 @@ class PlaywrightPageSource(ElementSourceInterface):
             )
             return False
 
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        self._require_page()
+        return [self._check_single_element_presence(element) for element in elements]
+
     def _check_elements_batch(self, elements: List[str], rule: str) -> Tuple[bool, List[bool]]:
         """
         Check a batch of elements and return results.
