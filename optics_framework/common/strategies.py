@@ -378,6 +378,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         return element_type == "Image" and LocatorStrategy._is_method_implemented(element_source, "capture")
 
 
+_SAME_ELEMENT_OVERLAP = 0.6
 _ASSERT_POLL_INTERVAL_S = 0.5
 _VISION_INTERVAL_S = 2.0
 
@@ -402,6 +403,53 @@ class _AssertState:
     vision_due: bool = True
     frame: np.ndarray | None = None
     frame_ts: str | None = None
+
+
+def _supplements_screen_elements(element_source: Any) -> bool:
+    # ``is True``: a mocked or duck-typed source answers any attribute with something truthy.
+    return getattr(element_source, "SUPPLEMENTS_SCREEN_ELEMENTS", False) is True
+
+
+def _overlap(a: dict, b: dict) -> float:
+    """Intersection over union of two ``{x1, y1, x2, y2}`` boxes."""
+    width = min(a["x2"], b["x2"]) - max(a["x1"], b["x1"])
+    height = min(a["y2"], b["y2"]) - max(a["y1"], b["y1"])
+    if width <= 0 or height <= 0:
+        return 0.0
+    shared = width * height
+    union = (a["x2"] - a["x1"]) * (a["y2"] - a["y1"]) + (b["x2"] - b["x1"]) * (b["y2"] - b["y1"]) - shared
+    return shared / union if union > 0 else 0.0
+
+
+def _native_container(entry: dict) -> bool:
+    """A compact entry says so in ``act``; a full one only in its native attributes."""
+    extra = entry.get("extra") if isinstance(entry.get("extra"), dict) else {}
+    native_class = str(entry.get("cls") or extra.get("class") or "")
+    return (
+        "scroll" in (entry.get("act") or [])
+        or str(extra.get("scrollable")).lower() == "true"
+        or native_class.endswith("WebView")
+    )
+
+
+def merge_screen_elements(base: List[dict], added: List[dict]) -> List[dict]:
+    """``base`` plus ``added``, dropping ``base`` entries an ``added`` one mirrors; native scroll containers stay.
+
+    UiAutomator2 mirrors a page's accessibility nodes, so one button can arrive from both sources.
+    """
+    boxes = [
+        entry["bounds"] for entry in added
+        if isinstance(entry, dict) and isinstance(entry.get("bounds"), dict) and not entry.get("offscreen")
+    ]
+
+    def mirrored(entry: Any) -> bool:
+        if not isinstance(entry, dict) or not isinstance(entry.get("bounds"), dict):
+            return False
+        if _native_container(entry):
+            return False
+        return any(_overlap(entry["bounds"], box) >= _SAME_ELEMENT_OVERLAP for box in boxes)
+
+    return [entry for entry in base if not mirrored(entry)] + list(added)
 
 
 class PagesourceStrategy:
@@ -552,6 +600,7 @@ class StrategyManager:
         self.locator_strategies = self._build_locator_strategies()
         self.screenshot_strategies = self._build_screenshot_strategies()
         self.pagesource_strategies = self._build_pagesource_strategies()
+        self.screen_element_supplements = self._build_screen_element_supplements()
 
     def _build_locator_strategies(self) -> List[LocatorStrategy]:
         strategies = []
@@ -568,8 +617,17 @@ class StrategyManager:
     def _build_pagesource_strategies(self) -> Set[PagesourceStrategy]:
         strategies = set()
         for instance in self.element_source.instances:
-            strategies.update(self.pagesource_factory.create_strategies(instance))
+            if not _supplements_screen_elements(instance):
+                strategies.update(self.pagesource_factory.create_strategies(instance))
         return strategies
+
+    def _build_screen_element_supplements(self) -> List[PagesourceStrategy]:
+        return [
+            PagesourceStrategy(instance)
+            for instance in self.element_source.instances
+            if _supplements_screen_elements(instance)
+            and LocatorStrategy._is_method_implemented(instance, "get_interactive_elements")
+        ]
 
     def _validate_aoi(
         self, aoi_x: Optional[float], aoi_y: Optional[float],
@@ -920,20 +978,35 @@ class StrategyManager:
         )
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
-        """Retrieve interactive elements from the element source."""
+        """Interactive elements of the screen: the first source that lists them, plus
+        what every supplementing source adds (see ``SUPPLEMENTS_SCREEN_ELEMENTS``)."""
         applicable_strategies = [
             s for s in self.pagesource_strategies
             if self._can_strategy_get_interactive_elements(s)
         ]
+        elements: Optional[List[dict]] = None
         last_error: Exception | None = None
         for strategy in applicable_strategies:
             try:
-                return strategy.get_interactive_elements(filter_config, compact=compact)
+                elements = strategy.get_interactive_elements(filter_config, compact=compact)
+                break
             except Exception as e:
                 internal_logger.debug(
                     f"Failed to retrieve interactive elements with {strategy.__class__.__name__}: {e}")
                 raise_if_session_dead(e)
                 last_error = e
+        for supplement in self.screen_element_supplements:
+            try:
+                added = supplement.get_interactive_elements(filter_config, compact=compact)
+            except Exception as e:
+                internal_logger.debug(
+                    f"{supplement.element_source.__class__.__name__} added no screen elements: {e}")
+                raise_if_session_dead(e)
+                continue
+            if elements is not None or added:
+                elements = merge_screen_elements(elements or [], added)
+        if elements is not None:
+            return elements
         internal_logger.debug("No interactive elements retrieved.")
         raise OpticsError(
             Code.E0202, message="No interactive elements retrieved using available strategies.", cause=last_error
