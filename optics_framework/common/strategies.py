@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import inspect
 import time
-import math
 from typing import List, NamedTuple, Union, Tuple, Generator, Set, Optional, Any
 import numpy as np
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
-from optics_framework.common.screenshot_stream import ScreenshotStream
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
@@ -47,24 +46,14 @@ class LocatorStrategy(ABC):
         pass
 
     @abstractmethod
-    def assert_elements(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        """Returns (result, timestamp, annotated_frame). Timestamp and annotated_frame may be None."""
-        pass
+    def check_elements(
+        self, elements: list[str], visible: bool, frame: np.ndarray | None
+    ) -> tuple[list[bool], np.ndarray | None]:
+        """One look per element, no waiting; returns the hits and an annotated frame when the strategy drew one."""
 
-    def assert_elements_visible(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        """Assert elements are actually rendered/visible on screen, not merely present.
-
-        Default falls back to :meth:`assert_elements` Correct as-is for vision-based
-        strategies (OCR/image detection), where anything found is inherently on-screen.
-        Native locator strategies (XPath/Text) override this to layer in a real
-        visibility check via the element source.
-        """
-        return self.assert_elements(elements, timeout, rule)
-
+    def can_assert(self, element: str) -> bool:
+        """Whether this strategy can look ``element`` up; vision strategies always can."""
+        return True
 
     @staticmethod
     @abstractmethod
@@ -114,23 +103,15 @@ class LocatorStrategy(ABC):
         except (OSError, TypeError):
             return True
 
-    def _assert_elements_locator_style(
-        self, elements: list, timeout: int = 30, rule: str = 'any', method_name: str = 'assert_elements'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        """Shared implementation delegating to element_source.assert_elements or
-        assert_elements_visible (picked via method_name), optionally attaching an annotated
-        screenshot. Visibility calls are only routed to sources that genuinely implement it --
-        see StrategyManager._can_strategy_assert_elements.
-        """
-        getattr(self.element_source, method_name)(elements, timeout, rule)
-        timestamp = utils.get_timestamp()
+    def _annotated_screen(self, elements: list[str]) -> np.ndarray | None:
+        """The current screen with ``elements`` boxed, when a screenshot can be taken."""
         frame = None
         strategy_manager = getattr(self, '_strategy_manager', None)
         if strategy_manager is not None:
             try:
                 frame = strategy_manager.capture_screenshot()
             except Exception as e:
-                internal_logger.exception("Failed to capture screenshot for %s: %s", method_name, e)
+                internal_logger.exception("Failed to capture screenshot for an assertion: %s", e)
                 frame = None
         bboxes = []
         if hasattr(self.element_source, 'get_element_bboxes'):
@@ -144,10 +125,9 @@ class LocatorStrategy(ABC):
                 # scale them to the screenshot's pixel space before drawing
                 # (no-op when the two resolutions already match).
                 bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
-                annotated_frame = utils.annotate(frame.copy(), bboxes)
-                return True, timestamp, annotated_frame
-            return True, timestamp, frame.copy()
-        return True, timestamp, None
+                return utils.annotate(frame.copy(), bboxes)
+            return frame.copy()
+        return None
 
 
 class XPathStrategy(LocatorStrategy):
@@ -164,15 +144,13 @@ class XPathStrategy(LocatorStrategy):
     def locate(self, element: str, index: int = 0) -> Optional[Union[object, Tuple[int, int]]]:
         return self.element_source.locate(element, index)
 
-    def assert_elements(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        return self._assert_elements_locator_style(elements, timeout, rule)
+    def can_assert(self, element: str) -> bool:
+        return self.element_source.can_locate(element)
 
-    def assert_elements_visible(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        return self._assert_elements_locator_style(elements, timeout, rule, method_name='assert_elements_visible')
+    def check_elements(
+        self, elements: list[str], visible: bool, frame: np.ndarray | None
+    ) -> tuple[list[bool], np.ndarray | None]:
+        return self.element_source.check_elements(elements, visible), None
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -193,15 +171,13 @@ class TextElementStrategy(LocatorStrategy):
     def locate(self, element: str, index: int = 0) -> Optional[Union[object, Tuple[int, int]]]:
         return self.element_source.locate(element, index)
 
-    def assert_elements(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        return self._assert_elements_locator_style(elements, timeout, rule)
+    def can_assert(self, element: str) -> bool:
+        return self.element_source.can_locate(element)
 
-    def assert_elements_visible(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        return self._assert_elements_locator_style(elements, timeout, rule, method_name='assert_elements_visible')
+    def check_elements(
+        self, elements: list[str], visible: bool, frame: np.ndarray | None
+    ) -> tuple[list[bool], np.ndarray | None]:
+        return self.element_source.check_elements(elements, visible), None
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -215,7 +191,6 @@ class TextDetectionStrategy(LocatorStrategy):
         self._element_source = element_source
         self.text_detection = text_detection
         self.strategy_manager = strategy_manager
-        self.screenshot_timeout = 1.5
 
     @property
     def element_source(self) -> ElementSourceInterface:
@@ -288,41 +263,19 @@ class TextDetectionStrategy(LocatorStrategy):
             internal_logger.debug(f"Coordinate adjustment failed for TextDetectionStrategy: {e}")
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
 
-    def assert_elements(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
+    def can_assert(self, element: str) -> bool:
+        # The Verifier groups css= with text; OCR must not search the screen for a selector.
+        return utils.determine_element_type(element) != "CSS"
+
+    def check_elements(
+        self, elements: list[str], visible: bool, frame: np.ndarray | None
+    ) -> tuple[list[bool], np.ndarray | None]:
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
-        end_time = time.time() + timeout
-        found_status = dict.fromkeys(elements, False)
-        result = False
-        annotated_frame = None
-        timestamp = None
-        ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
-        try:
-            while time.time() < end_time:
-                time.sleep(self.screenshot_timeout)  # Allow some time for screenshots to be captured
-                frames = ss_stream.get_all_available_screenshots(wait_time=1)
-                if not frames:
-                    time.sleep(self.screenshot_timeout)
-                    continue
-                for frame, ts in frames:
-                    current_frame = frame.copy()
-                    _ , ocr_results = self.text_detection.detect_text(current_frame)
-                    annotated_frame = match_and_annotate(ocr_results, elements, found_status, current_frame)
-
-                    if (rule == "any" and any(found_status.values())) or (rule == "all" and all(found_status.values())):
-                        result = True
-                        timestamp = ts
-                        execution_logger.info(f"Elements found: {found_status} on screenshot taken at {timestamp}")
-
-                        break
-
-                if result:
-                    break
-        finally:
-            ss_stream.stop_capture()
-        return result, timestamp, annotated_frame
+        found = dict.fromkeys(elements, False)
+        _, ocr_results = self.text_detection.detect_text(frame.copy())
+        annotated_frame = match_and_annotate(ocr_results, elements, found, frame.copy())
+        return [found[element] for element in elements], annotated_frame
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
@@ -340,7 +293,6 @@ class ImageDetectionStrategy(LocatorStrategy):
         self._element_source = element_source
         self.image_detection = image_detection
         self.strategy_manager = strategy_manager
-        self.screenshot_timeout = 1.5
 
     @property
     def element_source(self) -> ElementSourceInterface:
@@ -406,38 +358,49 @@ class ImageDetectionStrategy(LocatorStrategy):
             internal_logger.debug(f"Coordinate adjustment failed for ImageDetectionStrategy: {e}")
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
 
-    def assert_elements(
-        self, elements: list, timeout: int = 30, rule: str = 'any'
-    ) -> Tuple[bool, Optional[str], Optional[Any]]:
-        end_time = time.time() + timeout
-        result = False
-        ss_stream = self.strategy_manager.capture_screenshot_stream(timeout=timeout)
+    def check_elements(
+        self, elements: list[str], visible: bool, frame: np.ndarray | None
+    ) -> tuple[list[bool], np.ndarray | None]:
+        hits = []
         annotated_frame = None
-        timestamp = None
-        try:
-            while time.time() < end_time:
-                time.sleep(self.screenshot_timeout)  # Allow some time for screenshots to be captured
-                frames = ss_stream.get_all_available_screenshots(wait_time=1)
-                if not frames:
-                    time.sleep(self.screenshot_timeout)
-                    continue
-                for frame, ts in frames:
-                    current_frame = frame.copy()
-                    result, annotated = self.image_detection.assert_elements(current_frame, elements, rule)
-                    if result:
-                        timestamp = ts
-                        annotated_frame = annotated  # assuming assert_elements returns the annotated image
-                        execution_logger.info(f"Image elements found on screenshot taken at {timestamp}")
-                        break
-                if result:
-                    break
-        finally:
-            ss_stream.stop_capture()
-        return result, timestamp, annotated_frame
+        for element in elements:
+            try:
+                found, marked = self.image_detection.assert_elements(frame.copy(), [element], "any")
+            except RuntimeError:  # TemplateMatch reports a miss by raising
+                found, marked = False, None
+            hits.append(bool(found))
+            if found and marked is not None:
+                annotated_frame = marked
+        return hits, annotated_frame
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Image" and LocatorStrategy._is_method_implemented(element_source, "capture")
+
+
+_ASSERT_POLL_INTERVAL_S = 0.5
+_VISION_INTERVAL_S = 2.0
+
+
+def _is_vision(strategy: LocatorStrategy) -> bool:
+    return isinstance(strategy, (TextDetectionStrategy, ImageDetectionStrategy))
+
+
+@dataclass
+class _AssertState:
+    elements: list[str]
+    found: dict[str, bool]
+    strategies: list[LocatorStrategy]
+    visible: bool
+    rule: str
+    deadline: float
+    first_round: bool = True
+    last_vision: float | None = None
+    last_exception: Exception | None = None
+    vision_due: bool = True
+    frame: np.ndarray | None = None
+    frame_ts: str | None = None
+
 
 class PagesourceStrategy:
     def __init__(self, element_source: ElementSourceInterface):
@@ -513,12 +476,6 @@ class ScreenshotStrategy:
             Code.E0303, message="Invalid screenshot captured, black screen detected."
         )
 
-    def capture_stream(self, timeout: int = 30):
-        """Capture a screenshot stream from the element source."""
-        if hasattr(self.element_source, "capture_stream"):
-            return self.element_source.capture_stream(timeout=timeout)
-        raise NotImplementedError("Element source does not support screenshot streaming.")
-
     @staticmethod
     def supports(element_source: ElementSourceInterface) -> bool:
         return LocatorStrategy._is_method_implemented(element_source, "capture")
@@ -588,7 +545,6 @@ class StrategyManager:
         self.locator_strategies = self._build_locator_strategies()
         self.screenshot_strategies = self._build_screenshot_strategies()
         self.pagesource_strategies = self._build_pagesource_strategies()
-        self.screenshot_stream = None
 
     def _build_locator_strategies(self) -> List[LocatorStrategy]:
         strategies = []
@@ -737,24 +693,6 @@ class StrategyManager:
         )
         return OCR_NOT_TRIED_MSG if skipped else ""
 
-    def _alloc_time_for_strategy(
-        self, deadline: float, idx: int, applicable_strategies: List[Any]
-    ) -> Optional[Tuple[int, float, int]]:
-        """Compute seconds to allocate for this strategy. Returns (alloc, remaining_total, remaining_strategies) or None to break."""
-        remaining_total = max(0.0, deadline - time.time())
-        remaining_strategies = len(applicable_strategies) - idx
-        if remaining_total <= 0:
-            internal_logger.debug("No remaining time left to try further strategies.")
-            return None
-        alloc = int(math.ceil(remaining_total / remaining_strategies))
-        alloc = min(alloc, int(math.floor(remaining_total)))
-        if alloc <= 0:
-            if idx == len(applicable_strategies) - 1:
-                return (0, remaining_total, remaining_strategies)
-            internal_logger.debug("Insufficient time to allocate to next strategies.")
-            return None
-        return (alloc, remaining_total, remaining_strategies)
-
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         """Assert elements are present -- possibly off-screen, anywhere in the page/DOM."""
         return self._assert(elements, element_type, timeout, rule, method_name="assert_elements")
@@ -764,56 +702,138 @@ class StrategyManager:
         return self._assert(elements, element_type, timeout, rule, method_name="assert_elements_visible")
 
     def _assert(self, elements: list, element_type: str, timeout: int, rule: str, method_name: str):
+        """Poll every applicable strategy once per round until the rule is met or ``timeout`` runs out."""
         self._validate_rule(rule)
+        rule = rule.lower()
         execution_logger.info(
             f"Asserting ({method_name}) elements: {elements} with rule: {rule} and timeout: {timeout}s")
 
-        effective_elements = [utils.parse_text_only_prefix(el)[0] for el in elements]
-        has_text_only = any(utils.parse_text_only_prefix(el)[1] for el in elements)
+        parsed = [utils.parse_text_only_prefix(el) for el in elements]
+        effective_elements = [element for element, _ in parsed]
+        text_only = any(flag for _, flag in parsed)
+        strategies = [
+            s for s in self._assertion_strategies(element_type, method_name, text_only)
+            if any(s.can_assert(e) for e in effective_elements)
+        ]
+        covered = [e for e in effective_elements if any(s.can_assert(e) for s in strategies)]
+        if not covered or (rule == "all" and len(covered) < len(effective_elements)):
+            raise OpticsError(Code.E0201, message=f"No strategies found for elements: {elements} with rule '{rule}'.")
+        native = [s for s in strategies if not _is_unconfigured_ocr(s)]
+        ocr_skipped = not text_only and 0 < len(native) < len(strategies)
+        if ocr_skipped:
+            # OCR with no engine fails at once, and its error would hide the native lookups' miss.
+            strategies = native
 
-        deadline = time.time() + timeout
-        last_exception = None
-        applicable_strategies = [
+        state = _AssertState(
+            elements, dict.fromkeys(effective_elements, False), strategies,
+            visible=method_name == "assert_elements_visible", rule=rule, deadline=time.monotonic() + timeout,
+        )
+        while state.strategies:
+            round_start = time.monotonic()
+            result = self._assert_round(state)
+            if result is not None:
+                return result
+            state.first_round = False
+            now = time.monotonic()
+            if now >= state.deadline:
+                break
+            time.sleep(min(max(0.0, round_start + _ASSERT_POLL_INTERVAL_S - now), state.deadline - now))
+
+        for strategy in state.strategies:
+            execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
+        hint = OCR_NOT_TRIED_MSG if ocr_skipped else ""
+        raise OpticsError(
+            Code.E0201, message=f"{elements} not found based on rule '{rule}'.{hint}", cause=state.last_exception
+        )
+
+    def _assertion_strategies(self, element_type: str, method_name: str, text_only: bool) -> list[LocatorStrategy]:
+        """Locator strategies in config order, then one vision strategy per kind: they all read the same frame."""
+        usable = [
             s for s in self.locator_strategies
             if self._can_strategy_assert_elements(s, element_type, method_name)
+            and not (text_only and isinstance(s, TextElementStrategy))
         ]
-        if has_text_only:
-            applicable_strategies = [
-                s for s in applicable_strategies
-                if type(s).__name__ != "TextElementStrategy"
-            ]
-        if not applicable_strategies:
-            raise OpticsError(Code.E0201, message=f"No strategies found for elements: {elements} with rule '{rule}'.")
-        native = [s for s in applicable_strategies if not _is_unconfigured_ocr(s)]
-        ocr_skipped = not has_text_only and 0 < len(native) < len(applicable_strategies)
-        if ocr_skipped:
-            # OCR with no engine fails at once; its even share of the timeout belongs to the native lookups.
-            applicable_strategies = native
+        vision: dict[type, LocatorStrategy] = {}
+        for strategy in usable:
+            if _is_vision(strategy):
+                vision.setdefault(type(strategy), strategy)
+        return [s for s in usable if not _is_vision(s)] + list(vision.values())
 
-        for idx, strategy in enumerate(applicable_strategies):
-            internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
-            alloc_result = self._alloc_time_for_strategy(deadline, idx, applicable_strategies)
-            if alloc_result is None:
-                break
-            alloc, remaining_total, remaining_strategies = alloc_result
-            internal_logger.debug(
-                f"Allocating {alloc}s to strategy {type(strategy).__name__} "
-                f"(remaining_total={remaining_total}s, remaining_strategies={remaining_strategies})"
-            )
-            try:
-                result, timestamp, annotated_frame = self._try_assert_with_strategy(
-                    strategy, effective_elements, alloc, rule, method_name
-                )
-                if result:
-                    return result, timestamp, annotated_frame
-            except Exception as e:
-                raise_if_session_dead(e)
-                last_exception = e
+    def _assert_round(self, state: _AssertState) -> tuple[bool, str, np.ndarray | None] | None:
+        """Give each strategy one look at the elements still pending; the result once the rule is met."""
+        state.frame = None
+        state.vision_due = self._vision_due(state)
+        checked = False
+        for strategy in state.strategies.copy():
+            pending = self._due_pending(strategy, state)
+            if not pending:
+                continue
+            if checked and not state.first_round and time.monotonic() >= state.deadline:
+                return None
+            vision = _is_vision(strategy)
+            frame = self._round_frame(state) if vision else None
+            if vision and frame is None:
+                continue
+            checked = True
+            result = self._check_with(strategy, pending, frame, state)
+            if result is not None:
+                return result
+        return None
 
-        if last_exception:
-            internal_logger.debug(f"{method_name} ended with last exception: {last_exception}")
-        hint = OCR_NOT_TRIED_MSG if ocr_skipped else ""
-        raise OpticsError(Code.E0201, message=f"{elements} not found based on rule '{rule}'.{hint}", cause=last_exception)
+    @staticmethod
+    def _due_pending(strategy: LocatorStrategy, state: _AssertState) -> list[str]:
+        if _is_vision(strategy) and not state.vision_due:
+            return []
+        return [e for e, hit in state.found.items() if not hit and strategy.can_assert(e)]
+
+    @staticmethod
+    def _vision_due(state: _AssertState) -> bool:
+        """Vision waits out its interval only while a cheaper strategy still looks for every pending element."""
+        if state.last_vision is None or time.monotonic() - state.last_vision >= _VISION_INTERVAL_S:
+            return True
+        cheap = [s for s in state.strategies if not _is_vision(s)]
+        return any(not any(s.can_assert(e) for s in cheap) for e, hit in state.found.items() if not hit)
+
+    def _round_frame(self, state: _AssertState) -> np.ndarray | None:
+        """The screenshot all vision strategies share this round; None when it cannot be taken."""
+        if state.frame is None:
+            started, timestamp = time.monotonic(), utils.get_timestamp()
+            state.frame = self._vision_frame()
+            if state.frame is None:
+                state.vision_due = False
+            else:
+                state.last_vision, state.frame_ts = started, timestamp
+        return state.frame
+
+    def _vision_frame(self) -> np.ndarray | None:
+        try:
+            return self.capture_screenshot()
+        except OpticsError as e:
+            if e.code == Code.E0106:
+                raise
+            return None
+
+    def _check_with(
+        self, strategy: LocatorStrategy, pending: list[str], frame: np.ndarray | None, state: _AssertState
+    ) -> tuple[bool, str, np.ndarray | None] | None:
+        try:
+            hits, annotated_frame = strategy.check_elements(pending, state.visible, frame)
+        except Exception as e:
+            raise_if_session_dead(e)
+            execution_tracer.log_attempt(strategy, str(state.elements), "fail", error=str(e))
+            state.last_exception = e
+            state.strategies.remove(strategy)
+            return None
+        timestamp = state.frame_ts if frame is not None else utils.get_timestamp()
+        hit_elements = [element for element, hit in zip(pending, hits) if hit]
+        for element in hit_elements:
+            state.found[element] = True
+        if not (any if state.rule == "any" else all)(state.found.values()):
+            return None
+        execution_tracer.log_attempt(strategy, str(state.elements), "success")
+        if annotated_frame is None:
+            annotated_frame = strategy._annotated_screen(hit_elements)
+        return True, timestamp, annotated_frame
 
     def _validate_rule(self, rule: str):
         """Validate the rule parameter."""
@@ -823,37 +843,11 @@ class StrategyManager:
 
     def _can_strategy_assert_elements(self, strategy, element_type: str, method_name: str = "assert_elements") -> bool:
         """Check if strategy can assert elements for the given element type."""
-        if not (hasattr(strategy, method_name) and
-                strategy.supports(element_type, strategy.element_source)):
+        if not strategy.supports(element_type, strategy.element_source):
             return False
-        delegates_to_source = (
-            method_name == "assert_elements_visible"
-            and type(strategy).assert_elements_visible is not LocatorStrategy.assert_elements_visible
-        )
-        if delegates_to_source:
+        if method_name == "assert_elements_visible" and isinstance(strategy, (XPathStrategy, TextElementStrategy)):
             return LocatorStrategy._is_method_implemented(strategy.element_source, "assert_elements_visible")
         return True
-
-    def _try_assert_with_strategy(self, strategy, elements: list, timeout: int, rule: str, method_name: str = "assert_elements"):
-        """Try to assert elements using a specific strategy.
-
-        Strategies are required to return (result, timestamp, annotated_frame).
-        """
-        try:
-            result, timestamp, annotated_frame = getattr(strategy, method_name)(elements, timeout, rule)
-
-            if result:
-                execution_tracer.log_attempt(strategy, str(elements), "success")
-                return result, timestamp, annotated_frame
-            else:
-                execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
-                internal_logger.debug(
-                    f"Strategy {strategy.__class__.__name__} did not find elements: {elements}")
-                return False, None, None
-        except Exception as e:
-            execution_tracer.log_attempt(strategy, str(elements), "fail", error=str(e))
-            raise
-
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""
@@ -896,30 +890,6 @@ class StrategyManager:
         raise OpticsError(
             Code.E0303, message="No screenshot bytes captured using available strategies.", cause=last_error
         )
-
-    def capture_screenshot_stream(self, timeout: int = 30):
-        """Capture a screenshot stream using the available strategies."""
-        execution_logger.debug("Starting screenshot stream with available strategies.")
-        for strategy in self.screenshot_strategies:
-            try:
-                self.screenshot_stream = ScreenshotStream(strategy.capture, max_queue_size=10)
-                self.screenshot_stream.start_capture(timeout, deduplication=True)
-            except NotImplementedError as e:
-                execution_logger.debug(
-                    f"Screenshot streaming not supported by {strategy.__class__.__name__}: {e}")
-            except Exception as e:
-                execution_logger.error(
-                    f"Screenshot streaming failed with {strategy.__class__.__name__}: {e}")
-        return self.screenshot_stream
-
-    def stop_screenshot_stream(self):
-        if self.screenshot_stream:
-            self.screenshot_stream.stop_capture()
-            execution_logger.debug("Screenshot stream stopped successfully.")
-            self.screenshot_stream = None
-        else:
-            execution_logger.warning("No active screenshot stream to stop.")
-            raise OpticsError(Code.E0301, message="No active screenshot stream to stop.")
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:
         last_error: Exception | None = None
