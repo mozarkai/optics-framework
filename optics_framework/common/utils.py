@@ -19,6 +19,7 @@ from optics_framework.common.models import ElementData
 
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 TEXT_ONLY_PREFIX = "text_only:"
+XPATH_PREFIX = "xpath="
 WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
 
 
@@ -246,7 +247,7 @@ def determine_element_type(element):
         return "Image"
     if el.startswith("css="):
         return "CSS"
-    if el.startswith("xpath=") or element.startswith(("/", "//", "(")):
+    if el.startswith(XPATH_PREFIX) or element.startswith(("/", "//", "(")):
         return "XPath"
     if el.startswith("id:"):
         return "ID"
@@ -263,6 +264,49 @@ def determine_element_type(element):
         return "CSS"
 
     return "Text"
+
+
+_NATIVE_CLASS = re.compile(r"\bandroidx?(?:\.[a-z0-9_]+)+\.[A-Z]|XCUIElementType")
+_NATIVE_ATTRIBUTE = re.compile(
+    r"@(?:resource-id|content-desc|text|package|bounds"
+    r"|clickable|long-clickable|checkable|focusable|focused|scrollable"
+    r"|displayed|enabled|password|hint|visible|accessible)(?![\w.-])"
+)
+_STRING_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
+_DOM_TAGS = frozenset({
+    "a", "abbr", "article", "aside", "audio", "b", "body", "button", "canvas", "circle", "code", "dd",
+    "details", "dialog", "div", "dl", "dt", "em", "fieldset", "figure", "footer", "form", "g",
+    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "html", "i", "iframe", "img", "input", "label",
+    "legend", "li", "main", "nav", "ol", "optgroup", "option", "p", "path", "picture", "pre", "rect",
+    "section", "select", "small", "source", "span", "strong", "summary", "svg", "table", "tbody", "td",
+    "textarea", "tfoot", "th", "thead", "tr", "u", "ul", "use", "video",
+})
+_XPATH_PREDICATE = re.compile(r"\[[^\[\]]*\]")
+_XPATH_TOKEN = re.compile(r"[@$][\w.:-]+|[\w.-]+|::|\S")
+_XPATH_NAME = re.compile(r"[A-Za-z_][\w.-]*")
+
+
+def _name_tests(branch: str) -> set[str]:
+    tokens = _XPATH_TOKEN.findall(branch)
+    return {t for t, after in zip(tokens, tokens[1:] + [""]) if after not in ("::", "(") and _XPATH_NAME.fullmatch(t)}
+
+
+def is_native_xpath(xpath: str) -> bool:
+    """Whether ``xpath`` names an Android or iOS class or attribute outside its string literals."""
+    if _NATIVE_CLASS.search(xpath):
+        return True
+    outside_literals = _STRING_LITERAL.sub("", xpath)
+    return _NATIVE_ATTRIBUTE.search(outside_literals) is not None
+
+
+def is_dom_only_xpath(xpath: str) -> bool:
+    """Whether every branch of ``xpath`` names an HTML element, so only a web page's DOM can match it."""
+    if is_native_xpath(xpath):
+        return False
+    spine = _STRING_LITERAL.sub("''", xpath[len(XPATH_PREFIX):] if xpath.lower().startswith(XPATH_PREFIX) else xpath)
+    while (stripped := _XPATH_PREDICATE.sub("", spine)) != spine:
+        spine = stripped
+    return all(_DOM_TAGS & _name_tests(branch) for branch in spine.split("|"))
 
 
 def parse_text_only_prefix(element: str) -> Tuple[str, bool]:

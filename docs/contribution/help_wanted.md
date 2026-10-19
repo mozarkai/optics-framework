@@ -1054,7 +1054,6 @@ Current test structure shows limited coverage. Many core components lack compreh
 - Session management edge cases
 - Error handling scenarios
 - Factory pattern implementations
-- Screenshot streaming
 - API layer endpoints
 - CLI commands
 
@@ -1070,7 +1069,6 @@ Current test structure shows limited coverage. Many core components lack compreh
 - `tests/units/engines/elementsources/test_playwright_screenshot.py`
 - `tests/units/common/test_strategies.py` - Strategy manager tests
 - `tests/units/common/test_session_manager.py` - Session management tests
-- `tests/units/common/test_screenshot_stream.py` - Screenshot streaming tests
 - `tests/units/api/test_verifier.py` - Verifier API tests
 - `tests/units/common/test_factories.py` - Factory pattern tests
 
@@ -1235,18 +1233,6 @@ app.add_middleware(
 **Priority**: Medium | **Difficulty**: Intermediate
 
 ### Areas Identified
-
-#### Screenshot Streaming
-
-**Current**: SSIM computation overhead could be optimized
-
-**Opportunities**:
-- Parallel SSIM computation
-- Optimize image comparison algorithms
-- Cache comparison results
-- Use faster similarity metrics where appropriate
-
-**File**: `optics_framework/common/screenshot_stream.py`
 
 #### Strategy Execution
 
