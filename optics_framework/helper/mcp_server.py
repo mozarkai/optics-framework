@@ -36,7 +36,10 @@ from optics_framework.api.verifier import Verifier
 from optics_framework.common import expose_api
 from optics_framework.common.error import OpticsError
 from optics_framework.common.factories import ElementSourceFactory
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import (
+    decouple_console_logs,
+    internal_logger,
+)
 from optics_framework.helper.version import VERSION
 
 # Unrelated to StrategyFactory's locate-strategy priority in strategies.py —
@@ -460,6 +463,9 @@ def run_mcp_server(
         port: Bind port for the http transport (ignored for stdio).
     """
     _require_fastmcp()
+    if transport == "stdio":
+        # A stdio client may never read stderr; a full pipe must not block the logger.
+        decouple_console_logs()
     mcp = build_server()
     internal_logger.info(
         "Starting Optics MCP server (transport=%s%s)",

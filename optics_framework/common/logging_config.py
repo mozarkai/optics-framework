@@ -3,7 +3,7 @@ import queue
 import time
 import re
 import atexit
-from logging.handlers import QueueHandler, RotatingFileHandler
+from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from rich.logging import RichHandler
 from pydantic import BaseModel
 from typing import Optional, Tuple
@@ -291,6 +291,23 @@ def quiet_console_logs():
     logging_manager.execution_console_handler.setLevel(logging.WARNING)
 
 
+def decouple_console_logs():
+    """Write console records from a background thread, so an unread stderr cannot block the logger."""
+    manager = logging_manager
+    if manager.internal_listener is not None:
+        return
+    # shortcut: the queue is unbounded, so records pile up in memory while stderr
+    # goes unread; bound it if a long-lived server ever logs enough to matter.
+    manager.internal_logger.removeHandler(manager.internal_console_handler)
+    manager.internal_logger.addHandler(QueueHandler(manager.internal_log_queue))
+    manager.internal_listener = QueueListener(
+        manager.internal_log_queue,
+        manager.internal_console_handler,
+        respect_handler_level=True,
+    )
+    manager.internal_listener.start()
+
+
 def restore_console_logs():
     """
     Restore console handler levels (used when a new live render starts so
@@ -302,4 +319,5 @@ def restore_console_logs():
 
 __all__ = ["internal_logger","execution_logger",
            "reconfigure_logging", "quiet_console_logs", "restore_console_logs",
+           "decouple_console_logs",
            "LoggerContext", "SessionLoggerAdapter"]

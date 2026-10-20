@@ -13,6 +13,8 @@ import asyncio
 import base64
 import inspect
 import json
+import os
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,6 +26,10 @@ from fastmcp.exceptions import ToolError  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 
 from optics_framework.common import expose_api  # noqa: E402
+from optics_framework.common.logging_config import (  # noqa: E402
+    internal_logger,
+    logging_manager,
+)
 from optics_framework.helper import mcp_server  # noqa: E402
 
 pytestmark = pytest.mark.white_box
@@ -299,3 +305,35 @@ def test_require_fastmcp_raises_when_missing():
     with patch.object(mcp_server, "_FASTMCP_IMPORT_ERROR", ImportError("no fastmcp")):
         with pytest.raises(RuntimeError, match="optics-framework\\[mcp\\]"):
             mcp_server._require_fastmcp()
+
+
+def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
+    from rich.console import Console
+
+    read_fd, write_fd = os.pipe()
+    handler = logging_manager.internal_console_handler
+    monkeypatch.setattr(handler, "console", Console(file=os.fdopen(write_fd, "w")))
+    monkeypatch.setattr(mcp_server, "build_server", lambda: MagicMock())
+    original_handlers = list(internal_logger.handlers)
+    try:
+        mcp_server.run_mcp_server("stdio")
+        flood = threading.Thread(
+            target=lambda: [internal_logger.warning("x" * 1024) for _ in range(256)],
+            daemon=True,
+        )
+        flood.start()
+        flood.join(timeout=5)
+        assert not flood.is_alive(), "logging blocked on a full stderr pipe"
+    finally:
+
+        def drain():
+            while os.read(read_fd, 65536):
+                pass
+
+        drainer = threading.Thread(target=drain, daemon=True)
+        drainer.start()  # releases whichever writer is blocked on the pipe
+        logging_manager.stop_listeners()
+        internal_logger.handlers[:] = original_handlers
+        handler.console.file.close()
+        drainer.join(timeout=5)
+        os.close(read_fd)
