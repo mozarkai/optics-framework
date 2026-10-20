@@ -50,3 +50,58 @@ jobs:
         uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
         with:
           packages-dir: dist/
+
+  mcp-registry-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - pypi-publish
+    permissions:
+      contents: read
+    env:
+      MCP_PUBLISHER_VERSION: "1.8.1"
+      MCP_PUBLISHER_SHA256: "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Resolve release version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      # The registry checks the PyPI README for the mcp-name marker, so the new
+      # version must be live on PyPI before publishing.
+      - name: Wait for the release on PyPI
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null "https://pypi.org/pypi/optics-framework/${VERSION}/json"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "optics-framework ${VERSION} not visible on PyPI after 10 minutes" >&2
+          exit 1
+
+      - name: Set server.json version
+        run: |
+          jq --arg v "$VERSION" '
+            .version = $v
+            | .packages |= map(
+                .version = $v
+                | .runtimeArguments |= map(if .name == "--from" then .value = "optics-framework[mcp]==\($v)" else . end)
+              )
+          ' server.json > server.tmp && mv server.tmp server.json
+          cat server.json
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain optics-framework.org --private-key "$MCP_PRIVATE_KEY"
+
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish
