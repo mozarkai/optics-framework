@@ -197,3 +197,7 @@ MagicMock/
 # Local SonarQube scan — scanner workdir and any local token
 .sonar-local/
 .scannerwork/
+
+# MCP Registry and Glama metadata at the repo root.
+!/server.json
+!/glama.json

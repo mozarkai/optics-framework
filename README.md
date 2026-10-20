@@ -214,6 +214,8 @@ optics.quit()
 
 </details>
 
+<!-- mcp-name: org.optics-framework/optics -->
+
 <details>
 <summary><b>MCP client config</b></summary>
 
