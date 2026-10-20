@@ -13,6 +13,6 @@ Save_Button,Save
 First_Name,John
 Last_Name,Doe
 Phone,1234567890
-Company,Mozark
+Company,Acme
 Contact_Name,//android.widget.TextView[@resource-id="com.google.android.contacts:id/title" and @text="Contact info"]
 Contact_Name_Class,android.widget.TextView
