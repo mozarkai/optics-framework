@@ -38,6 +38,7 @@ from optics_framework.common.error import OpticsError
 from optics_framework.common.factories import ElementSourceFactory
 from optics_framework.common.logging_config import (
     decouple_console_logs,
+    drain_console_logs,
     internal_logger,
 )
 from optics_framework.helper.version import VERSION
@@ -474,5 +475,9 @@ def run_mcp_server(
     )
     if transport == "stdio":
         mcp.run(transport="stdio")
+        if not drain_console_logs():
+            # The listener is stuck writing to an unread stderr while holding the stdout
+            # buffer lock, so a normal interpreter shutdown would hang or abort.
+            os._exit(0)
     else:
         mcp.run(transport=transport, host=host, port=port)

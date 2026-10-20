@@ -308,6 +308,14 @@ def decouple_console_logs():
     manager.internal_listener.start()
 
 
+def drain_console_logs() -> bool:
+    """Stop the decoupled listener; False when it is still blocked on a full stderr."""
+    listener = logging_manager.internal_listener
+    thread = getattr(listener, "_thread", None)
+    logging_manager.stop_listeners()
+    return thread is None or not thread.is_alive()
+
+
 def restore_console_logs():
     """
     Restore console handler levels (used when a new live render starts so
@@ -319,5 +327,5 @@ def restore_console_logs():
 
 __all__ = ["internal_logger","execution_logger",
            "reconfigure_logging", "quiet_console_logs", "restore_console_logs",
-           "decouple_console_logs",
+           "decouple_console_logs", "drain_console_logs",
            "LoggerContext", "SessionLoggerAdapter"]

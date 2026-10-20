@@ -14,6 +14,8 @@ import base64
 import inspect
 import json
 import os
+import subprocess
+import sys
 import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -313,7 +315,7 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
     read_fd, write_fd = os.pipe()
     handler = logging_manager.internal_console_handler
     monkeypatch.setattr(handler, "console", Console(file=os.fdopen(write_fd, "w")))
-    monkeypatch.setattr(mcp_server, "build_server", lambda: MagicMock())
+    monkeypatch.setattr(mcp_server, "build_server", MagicMock)
     original_handlers = list(internal_logger.handlers)
     try:
         mcp_server.run_mcp_server("stdio")
@@ -337,3 +339,29 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
         handler.console.file.close()
         drainer.join(timeout=5)
         os.close(read_fd)
+
+
+_EXIT_CHILD = """
+from unittest.mock import MagicMock
+from optics_framework.common.logging_config import internal_logger
+from optics_framework.helper import mcp_server
+
+server = MagicMock()
+server.run.side_effect = lambda **_: [internal_logger.warning("x" * 1024) for _ in range(256)]
+mcp_server.build_server = lambda: server
+mcp_server.run_mcp_server("stdio")
+"""
+
+
+def test_stdio_server_exits_with_unread_stderr():
+    child = subprocess.Popen(
+        [sys.executable, "-c", _EXIT_CHILD],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert child.wait(timeout=60) == 0
+    finally:
+        child.kill()
+        child.communicate()
