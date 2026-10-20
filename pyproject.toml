@@ -113,6 +113,8 @@ mkdocs-minify-plugin = "^0.8.0"
 
 [tool.poetry.scripts]
 optics = "optics_framework.helper.cli:main"
+# Same CLI under the package name, so `uvx optics-framework@<ver> mcp` (MCP Registry clients) resolves.
+optics-framework = "optics_framework.helper.cli:main"
 
 [tool.pylint.main]
 disable = ["C0114", "C0115", "C0116"]

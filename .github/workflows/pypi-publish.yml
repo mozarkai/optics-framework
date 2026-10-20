@@ -87,7 +87,7 @@ jobs:
             .version = $v
             | .packages |= map(
                 .version = $v
-                | .runtimeArguments |= map(if .name == "--from" then .value = "optics-framework[mcp]==\($v)" else . end)
+                | .runtimeArguments |= map(if .name == "--with" then .value = "optics-framework[mcp]==\($v)" else . end)
               )
           ' server.json > server.tmp && mv server.tmp server.json
           cat server.json

@@ -19,7 +19,7 @@
       "runtimeArguments": [
         {
           "type": "named",
-          "name": "--from",
+          "name": "--with",
           "value": "optics-framework[mcp]==1.11.0"
         }
       ],
