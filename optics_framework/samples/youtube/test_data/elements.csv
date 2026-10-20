@@ -14,7 +14,7 @@ Search_text,          Search
 Search_xpath,          //android.widget.ImageView[@content-desc="Search"]
 Search_input_field_text,Search
 Search_input_field_xpath,//android.widget.EditText[@resource-id="com.google.android.youtube:id/search_edit_text"]
-text_to_search,       mozark
+text_to_search,       optics framework
 you_text,              Library
 Subscriptions_image,           sub.jpeg
 Youtube_image,             youtube.jpeg
