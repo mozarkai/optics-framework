@@ -42,6 +42,11 @@ def _exec_response(result):
 # --- registration ----------------------------------------------------------
 
 
+def test_server_name_matches_registry_server_card():
+    # serverInfo.name is what clients show; the published server card pins it.
+    assert mcp_server.build_server().name == "optics-framework"
+
+
 def test_action_keywords_registered_as_tools():
     server = mcp_server.build_server()
     names = {t.name for t in _run(server._list_tools())}

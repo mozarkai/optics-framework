@@ -74,7 +74,7 @@ except ImportError as _e:  # pragma: no cover - exercised only without the extra
     Image = None  # type: ignore[assignment,misc]
     _FASTMCP_IMPORT_ERROR = _e
 
-SERVER_NAME = "Optics MCP"
+SERVER_NAME = "optics-framework"
 SERVER_INSTRUCTIONS = (
     "Drive a live device or browser through the optics-framework under agent control.\n"
     "1. `start_session` opens a session against your driver (e.g. appium) and returns "
