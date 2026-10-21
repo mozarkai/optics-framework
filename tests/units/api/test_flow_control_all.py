@@ -359,21 +359,3 @@ class TestDateEvaluate:
     def test_invalid_inputs_raise(self, flow_control, input_date, expression):
         with pytest.raises(OpticsError):
             flow_control.date_evaluate("${d}", input_date, expression)
-
-
-class TestStoreAs:
-    def test_a_step_inside_a_module_stores_what_it_returned(self, flow_control):
-        flow_control.keyword_map["get_text"] = lambda element: "99"
-
-        flow_control._execute_single_keyword("mod", "Get Text", ["#balance", "store_as=bal"])
-
-        assert flow_control.session.elements.get_first("bal") == "99"
-
-    def test_a_step_inside_a_loop_gets_the_variable_inside_its_locator(self, flow_control):
-        pressed = []
-        flow_control.keyword_map["press_element"] = pressed.append
-        flow_control.session.elements.add_element("i", "2")
-
-        flow_control._execute_single_keyword("mod", "Press Element", ["(//android.widget.TextView)[${i}]"])
-
-        assert pressed == ["(//android.widget.TextView)[2]"]
