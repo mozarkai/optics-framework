@@ -917,3 +917,18 @@ class TestSignatureAwareParamSplit:
             self._validate_like, ("text=OK", "event_name=tap"))
         assert pos == ["text=OK"]
         assert kw == {"event_name": "tap"}
+
+
+class TestRawParams:
+    async def test_a_name_param_reaches_the_keyword_unresolved(self):
+        received = []
+
+        def run_loop(target, *args):
+            received.append((target, *args))
+        run_loop._raw_param_indices = (1,)
+        runner = _make_runner(keyword_map={"run_loop": run_loop})
+        kw_node = _kw_node(name="Run Loop", params=["Body", "${i}", "1|2"], node_id="k1")
+        tc_result, _ = _wire_execute_context(runner, kw_node)
+
+        assert await runner._execute_keyword(kw_node, _mod_node(name="mod"), tc_result, {}) is True
+        assert received == [("Body", "${i}", "1|2")]
