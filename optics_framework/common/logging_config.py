@@ -3,6 +3,8 @@ import queue
 import time
 import re
 import atexit
+from contextlib import contextmanager
+from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from rich.logging import RichHandler
 from pydantic import BaseModel
@@ -96,6 +98,8 @@ class LoggingManager:
         self.internal_logger.propagate = False
         self.execution_logger = logging.getLogger("optics.execution")
         self.execution_logger.propagate = True
+        self.internal_logger.addFilter(SecretMaskingFilter())
+        self.execution_logger.addFilter(SecretMaskingFilter())
         self.internal_console_handler = RichHandler(
             rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
         self.internal_console_handler.setFormatter(SensitiveDataFormatter(
@@ -109,6 +113,59 @@ class LoggingManager:
         self.internal_listener = None
         self.execution_listener = None
         self.junit_handler = None
+
+SENSITIVE_NAME = re.compile(r"pass|pwd|pin|otp|secret|token|api|key", re.IGNORECASE)
+# password_field names a locator, not a secret.
+LOCATOR_SHAPE = re.compile(r"^(/|\(|xpath=|id:|css=|text=)|\.(png|jpe?g|bmp)$", re.IGNORECASE)
+_secret_values: set = set()
+
+
+def register_secret(name: str, value) -> None:
+    text = str(value)
+    if text.startswith("@:"):
+        text = text[2:]
+    if text and SENSITIVE_NAME.search(name) and not LOCATOR_SHAPE.search(text):
+        _secret_values.add(text)
+
+
+def mask_secrets(text: str) -> str:
+    # Longest first, so overlapping secrets mask whole.
+    for secret in sorted(_secret_values, key=len, reverse=True):
+        text = text.replace(secret, "****")
+    return re.sub(r"@:([^\s,\)\]]+)", "****", text)
+
+
+_held_records: ContextVar[Optional[list]] = ContextVar("_held_records", default=None)
+
+
+@contextmanager
+def holding_logs_for_secret(name: Optional[str]):
+    """Get Text logs what it read before store_as registers it; hold those lines until then."""
+    if not name or not SENSITIVE_NAME.search(name):
+        yield
+        return
+    held: list = []
+    token = _held_records.set(held)
+    try:
+        yield
+    finally:
+        _held_records.reset(token)
+        for record in held:
+            logging.getLogger(record.name).handle(record)
+
+
+class SecretMaskingFilter(logging.Filter):
+    """On the logger, so plain file handlers get masked lines too."""
+
+    def filter(self, record):
+        held = _held_records.get()
+        if held is not None:
+            held.append(record)
+            return False
+        record.msg = mask_secrets(record.getMessage())
+        record.args = None
+        return True
+
 
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):

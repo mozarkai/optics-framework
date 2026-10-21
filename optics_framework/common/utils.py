@@ -4,6 +4,7 @@ from fuzzywuzzy import fuzz
 import re
 import os
 import cv2
+import copy
 import json
 import base64
 import time
@@ -13,17 +14,13 @@ from datetime import timezone, timedelta
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
 import inspect
 from skimage.metrics import structural_similarity as ssim
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, register_secret
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import ElementData
 
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 TEXT_ONLY_PREFIX = "text_only:"
 WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
-
-
-def raw_param_indices(method: Any) -> set:
-    return set(getattr(method, "_raw_param_indices", ()))
 
 
 def resolve_scalar_param(session: Any, param: str) -> str:
@@ -51,6 +48,64 @@ def resolve_scalar_param(session: Any, param: str) -> str:
     if not value:
         raise OpticsError(Code.E0201, message=f"Variable '{param}' is an empty list.")
     return str(value[0])
+
+
+INLINE_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+# They substitute ${name} themselves.
+SELF_SUBSTITUTING_KEYWORDS = {"condition", "evaluate", "date_evaluate"}
+
+
+def raw_param_indices(method: Any) -> set:
+    return set(getattr(method, "_raw_param_indices", ()))
+
+
+def substitute_inline(method: Any, params: list, elements: ElementData) -> list:
+    """A whole-param ${name} is left for the fallback expansion; an unknown name fails the step."""
+    if getattr(method, "__name__", "") in SELF_SUBSTITUTING_KEYWORDS:
+        return params
+    raw = raw_param_indices(method)
+
+    def substitute(param: str) -> str:
+        def value(match: re.Match) -> str:
+            values = elements.get_element(match.group(1).strip())
+            if not values:
+                raise OpticsError(Code.E0403, message=f"Variable '{match.group(0)}' in '{param}' is not defined.")
+            return str(values[0])
+        return INLINE_VAR_PATTERN.sub(value, param)
+
+    return [
+        substitute(p) if i not in raw and isinstance(p, str) and "${" in p and not WHOLE_VAR_PATTERN.match(p.strip()) else p
+        for i, p in enumerate(params)
+    ]
+
+
+def suite_snapshot(elements: ElementData) -> dict:
+    for name, values in elements.elements.items():
+        for value in values:
+            register_secret(name, value)
+    return copy.deepcopy(elements.elements)
+
+
+STORE_AS_PREFIX = "store_as="
+
+
+def split_store_as(params: list) -> tuple[list, Optional[str]]:
+    rest, name = [], None
+    for param in params:
+        if isinstance(param, str) and param.strip().startswith(STORE_AS_PREFIX):
+            name = WHOLE_VAR_PATTERN.sub(r"\1", param.strip()[len(STORE_AS_PREFIX):].strip()).strip()
+        else:
+            rest.append(param)
+    return rest, name
+
+
+def store_result(elements: ElementData, name: str, result: Any) -> None:
+    if not name:
+        raise OpticsError(Code.E0403, message="store_as needs a name, e.g. store_as=balance.")
+    if result is None:
+        raise OpticsError(Code.E0403, message=f"Cannot store '{name}': the keyword returned no value.")
+    elements.remove_element(name)
+    elements.add_element(name, json.dumps(result) if isinstance(result, (dict, list)) else str(result))
 
 
 class SpecialKey(Enum):

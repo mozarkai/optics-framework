@@ -12,7 +12,7 @@ from io import StringIO
 from jsonpath_ng import parse as jsonpath_parse
 import requests
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger, holding_logs_for_secret
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.error import OpticsError, Code
@@ -99,14 +99,20 @@ class FlowControl:
         self, method: Callable[..., Any], keyword: str, params: List[Any]
     ) -> Any:
         """Resolve params, log, and call the keyword method; raise on error."""
-        raw_indices = getattr(method, "_raw_param_indices", [])
+        params, store_as = utils.split_store_as(params)
+        params = utils.substitute_inline(method, params, self._get_or_create_session_elements())
+        raw_indices = utils.raw_param_indices(method)
         resolved_params = [
             p if i in raw_indices else self._resolve_param(p)
             for i, p in enumerate(params)
         ]
         execution_logger.info(f"Executing {keyword} with params: {resolved_params}")
         try:
-            return method(*resolved_params)
+            with holding_logs_for_secret(store_as):
+                returned = method(*resolved_params)
+                if store_as is not None:
+                    utils.store_result(self._get_or_create_session_elements(), store_as, returned)
+            return returned
         except Exception as e:
             internal_logger.error(f"Error executing keyword '{keyword}': {e}")
             raise OpticsError(Code.E0401, message=f"Error executing keyword '{keyword}': {e}", cause=e)
