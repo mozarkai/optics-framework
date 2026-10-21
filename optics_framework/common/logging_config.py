@@ -116,7 +116,8 @@ class LoggingManager:
 
 SENSITIVE_NAME = re.compile(r"pass|pwd|pin|otp|secret|token|api|key", re.IGNORECASE)
 # password_field names a locator, not a secret.
-LOCATOR_SHAPE = re.compile(r"^(/|\(|xpath=|id:|css=|text=)|\.(png|jpe?g|bmp)$", re.IGNORECASE)
+LOCATOR_PREFIXES = ("/", "(", "xpath=", "id:", "css=", "text=")
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp")
 _secret_values: set = set()
 
 
@@ -124,7 +125,8 @@ def register_secret(name: str, value) -> None:
     text = str(value)
     if text.startswith("@:"):
         text = text[2:]
-    if text and SENSITIVE_NAME.search(name) and not LOCATOR_SHAPE.search(text):
+    lowered = text.lower()
+    if text and SENSITIVE_NAME.search(name) and not (lowered.startswith(LOCATOR_PREFIXES) or lowered.endswith(IMAGE_SUFFIXES)):
         _secret_values.add(text)
 
 
