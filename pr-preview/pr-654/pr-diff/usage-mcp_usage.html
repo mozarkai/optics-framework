@@ -1,0 +1,208 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/mcp_usage.md – docs diff</title>
+    <style type="text/css">
+        :root {color-scheme: light dark}
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:palegreen}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+
+        @media (prefers-color-scheme: dark) {
+            .diff_header {background-color:#666}
+            .diff_next {background-color:#393939}
+            .diff_add {background-color:darkgreen}
+            .diff_chg {background-color:#847415}
+            .diff_sub {background-color:darkred}
+        }
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_27">27</td><td nowrap="nowrap">- **Python 3.12+** and optics-framework installed.</td><td class="diff_next"></td><td class="diff_header" id="to1_27">27</td><td nowrap="nowrap">- **Python 3.12+** and optics-framework installed.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_28">28</td><td nowrap="nowrap">- **A driver target** that optics can reach — e.g. a local</td><td class="diff_next"></td><td class="diff_header" id="to1_28">28</td><td nowrap="nowrap">- **A driver target** that optics can reach — e.g. a local</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_29">29</td><td nowrap="nowrap">  [Appium](https://appium.io) server with a connected device/emulator, or a</td><td class="diff_next"></td><td class="diff_header" id="to1_29">29</td><td nowrap="nowrap">  [Appium](https://appium.io) server with a connected device/emulator, or a</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_30">30</td><td nowrap="nowrap">  remote Appium hub. You provide its URL and capabilities to `start_session`.</td><td class="diff_next"></td><td class="diff_header" id="to1_30">30</td><td nowrap="nowrap">  remote Appium hub. You provide its URL and capabilities to `start_session`.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="to1_31">31</td><td nowrap="nowrap"><span class="diff_add">  For websites, Playwright launches its own browser, so there is nothing to run.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_31">31</td><td nowrap="nowrap">- An MCP-capable client (Claude Desktop/Code, Cursor, or the `fastmcp` Python</td><td class="diff_next"></td><td class="diff_header" id="to1_32">32</td><td nowrap="nowrap">- An MCP-capable client (Claude Desktop/Code, Cursor, or the `fastmcp` Python</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_32">32</td><td nowrap="nowrap">  client for scripting).</td><td class="diff_next"></td><td class="diff_header" id="to1_33">33</td><td nowrap="nowrap">  client for scripting).</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_33">33</td><td nowrap="nowrap">- *(Optional)* extras for richer element location: text detection</td><td class="diff_next"></td><td class="diff_header" id="to1_34">34</td><td nowrap="nowrap">- *(Optional)* extras for richer element location: text detection</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_34">34</td><td nowrap="nowrap">  (`googlevision`) and image detection (`templatematch`) require their own</td><td class="diff_next"></td><td class="diff_header" id="to1_35">35</td><td nowrap="nowrap">  (`googlevision`) and image detection (`templatematch`) require their own</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__1"></td><td class="diff_header" id="from1_36">36</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_37">37</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_37">37</td><td nowrap="nowrap">## 2. Install</td><td class="diff_next"></td><td class="diff_header" id="to1_38">38</td><td nowrap="nowrap">## 2. Install</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_38">38</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_39">39</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_39">39</td><td nowrap="nowrap">The MCP server depends on [`fastmcp`](https://github.com/PrefectHQ/fastmcp),</td><td class="diff_next"></td><td class="diff_header" id="to1_40">40</td><td nowrap="nowrap">The MCP server depends on [`fastmcp`](https://github.com/PrefectHQ/fastmcp),</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__2"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="from1_40">40</td><td nowrap="nowrap"><span class="diff_sub">shipped as an **optional extra**:</span></td><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="to1_41">41</td><td nowrap="nowrap"><span class="diff_add">shipped as the `mcp` extra. The installer always includes it, finds a Python 3.12+</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_42">42</td><td nowrap="nowrap"><span class="diff_add">on its own and puts `optics` on your PATH. Then add the engine for your target:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_41">41</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_43">43</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_42">42</td><td nowrap="nowrap">```bash</td><td class="diff_next"></td><td class="diff_header" id="to1_44">44</td><td nowrap="nowrap">```bash</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="from1_43">43</td><td nowrap="nowrap"><span class="diff_sub">pip install 'optics-framework[mcp]'</span></td><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="to1_45">45</td><td nowrap="nowrap"><span class="diff_add">curl -fsSL https://optics-framework.org/install | sh    # macOS, Linux</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_46">46</td><td nowrap="nowrap"><span class="diff_add">optics setup --install playwright    # websites (also downloads Chromium), or: appium</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_47">47</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_48">48</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_49">49</td><td nowrap="nowrap"><span class="diff_add">```powershell</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_50">50</td><td nowrap="nowrap"><span class="diff_add">irm https://optics-framework.org/install.ps1 | iex     # Windows</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_51">51</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_52">52</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_53">53</td><td nowrap="nowrap"><span class="diff_add">With pip, Optics needs **Python 3.12+** (an older Python fails or resolves an old</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_54">54</td><td nowrap="nowrap"><span class="diff_add">release) and you add the extra yourself:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_55">55</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_56">56</td><td nowrap="nowrap"><span class="diff_add">```bash</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_57">57</td><td nowrap="nowrap"><span class="diff_add">python3.12 -m venv .venv &amp;&amp; source .venv/bin/activate</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_58">58</td><td nowrap="nowrap"><span class="diff_add">pip install 'optics-framework[mcp,playwright]' &amp;&amp; playwright install chromium</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_44">44</td><td nowrap="nowrap"># from source:</td><td class="diff_next"></td><td class="diff_header" id="to1_59">59</td><td nowrap="nowrap"># from source:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_45">45</td><td nowrap="nowrap">poetry install --extras mcp</td><td class="diff_next"></td><td class="diff_header" id="to1_60">60</td><td nowrap="nowrap">poetry install --extras mcp</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_46">46</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_61">61</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_47">47</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_62">62</td><td nowrap="nowrap"></td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__3"></td><td class="diff_header" id="from1_117">117</td><td nowrap="nowrap">    }</td><td class="diff_next"></td><td class="diff_header" id="to1_132">132</td><td nowrap="nowrap">    }</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_118">118</td><td nowrap="nowrap">  }</td><td class="diff_next"></td><td class="diff_header" id="to1_133">133</td><td nowrap="nowrap">  }</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_119">119</td><td nowrap="nowrap">}</td><td class="diff_next"></td><td class="diff_header" id="to1_134">134</td><td nowrap="nowrap">}</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_120">120</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to1_135">135</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__4">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__4">n</a></td><td class="diff_header" id="to1_136">136</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_137">137</td><td nowrap="nowrap"><span class="diff_add">In the Claude Code CLI, `claude mcp add optics -- optics mcp` writes the same entry.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_121">121</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_138">138</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_122">122</td><td nowrap="nowrap">If `optics` isn't on the client's `PATH`, use the absolute path (e.g.</td><td class="diff_next"></td><td class="diff_header" id="to1_139">139</td><td nowrap="nowrap">If `optics` isn't on the client's `PATH`, use the absolute path (e.g.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_123">123</td><td nowrap="nowrap">`/path/to/.venv/bin/optics`) or `"command": "python", "args": ["-m",</td><td class="diff_next"></td><td class="diff_header" id="to1_140">140</td><td nowrap="nowrap">`/path/to/.venv/bin/optics`) or `"command": "python", "args": ["-m",</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_124">124</td><td nowrap="nowrap">"optics_framework.helper.cli", "mcp"]`.</td><td class="diff_next"></td><td class="diff_header" id="to1_141">141</td><td nowrap="nowrap">"optics_framework.helper.cli", "mcp"]`.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__4"></td><td class="diff_header" id="from1_142">142</td><td nowrap="nowrap">   `elements_sources` **defaults per driver** (appium →</td><td class="diff_next"></td><td class="diff_header" id="to1_159">159</td><td nowrap="nowrap">   `elements_sources` **defaults per driver** (appium →</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_143">143</td><td nowrap="nowrap">   `appium_find_element`/`appium_page_source`/`appium_screenshot`; selenium and</td><td class="diff_next"></td><td class="diff_header" id="to1_160">160</td><td nowrap="nowrap">   `appium_find_element`/`appium_page_source`/`appium_screenshot`; selenium and</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_144">144</td><td nowrap="nowrap">   playwright analogous), so `start_session` with just a `driver` works. The device</td><td class="diff_next"></td><td class="diff_header" id="to1_161">161</td><td nowrap="nowrap">   playwright analogous), so `start_session` with just a `driver` works. The device</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_145">145</td><td nowrap="nowrap">   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs</td><td class="diff_next"></td><td class="diff_header" id="to1_162">162</td><td nowrap="nowrap">   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__5">n</a></td><td class="diff_header" id="from1_146">146</td><td nowrap="nowrap"><span class="diff_sub">   no `adb` of its own.</span></td><td class="diff_next"><a href="#difflib_chg_to1__5">n</a></td><td class="diff_header" id="to1_163">163</td><td nowrap="nowrap"><span class="diff_add">   no `adb` of its own. A Playwright session starts on a blank page: open a site with</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_164">164</td><td nowrap="nowrap"><span class="diff_add">   `launch_app` and its URL (see the example below).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_147">147</td><td nowrap="nowrap">2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,</td><td class="diff_next"></td><td class="diff_header" id="to1_165">165</td><td nowrap="nowrap">2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_148">148</td><td nowrap="nowrap">   or read `optics://session/{session_id}/elements` for the compact list of</td><td class="diff_next"></td><td class="diff_header" id="to1_166">166</td><td nowrap="nowrap">   or read `optics://session/{session_id}/elements` for the compact list of</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_149">149</td><td nowrap="nowrap">   actionable elements (labels, `act`, `bounds`) plus read-only text. These work</td><td class="diff_next"></td><td class="diff_header" id="to1_167">167</td><td nowrap="nowrap">   actionable elements (labels, `act`, `bounds`) plus read-only text. These work</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_150">150</td><td nowrap="nowrap">   the same across drivers via the session's own element sources.</td><td class="diff_next"></td><td class="diff_header" id="to1_168">168</td><td nowrap="nowrap">   the same across drivers via the session's own element sources.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__5"></td><td class="diff_header" id="from1_153">153</td><td nowrap="nowrap">   (`xpath=`/`text=`/an id/an image) or by an element's visible label with</td><td class="diff_next"></td><td class="diff_header" id="to1_171">171</td><td nowrap="nowrap">   (`xpath=`/`text=`/an id/an image) or by an element's visible label with</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_154">154</td><td nowrap="nowrap">   `press_element`, which raises when the target is not found. `detect_and_press`</td><td class="diff_next"></td><td class="diff_header" id="to1_172">172</td><td nowrap="nowrap">   `press_element`, which raises when the target is not found. `detect_and_press`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_155">155</td><td nowrap="nowrap">   is for optional taps only: it skips the press and still succeeds when the target</td><td class="diff_next"></td><td class="diff_header" id="to1_173">173</td><td nowrap="nowrap">   is for optional taps only: it skips the press and still succeeds when the target</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_156">156</td><td nowrap="nowrap">   never appears. Do not tap raw pixel coordinates guessed off a screenshot; those</td><td class="diff_next"></td><td class="diff_header" id="to1_174">174</td><td nowrap="nowrap">   never appears. Do not tap raw pixel coordinates guessed off a screenshot; those</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__6">n</a></td><td class="diff_header" id="from1_157">157</td><td nowrap="nowrap"><span class="diff_sub">   misfire.</span></td><td class="diff_next"><a href="#difflib_chg_to1__6">n</a></td><td class="diff_header" id="to1_175">175</td><td nowrap="nowrap"><span class="diff_add">   misfire. Keywords wait for their target, so a miss costs that wait:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_176">176</td><td nowrap="nowrap"><span class="diff_add">   `assert_presence` waits up to `timeout_str` (30 s by default), and an action waits</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_177">177</td><td nowrap="nowrap"><span class="diff_add">   for the driver's element timeout (10 s on Playwright, `element_timeout_ms`). To see</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_178">178</td><td nowrap="nowrap"><span class="diff_add">   what is on screen right now, read the elements resource or pass a short `timeout_str`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_158">158</td><td nowrap="nowrap">4. **Build a reusable suite** — see below.</td><td class="diff_next"></td><td class="diff_header" id="to1_179">179</td><td nowrap="nowrap">4. **Build a reusable suite** — see below.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_159">159</td><td nowrap="nowrap">5. **`terminate_session`** — release the driver when done.</td><td class="diff_next"></td><td class="diff_header" id="to1_180">180</td><td nowrap="nowrap">5. **`terminate_session`** — release the driver when done.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_160">160</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_181">181</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_161">161</td><td nowrap="nowrap">### Build a reusable suite (author it — there's no save tool)</td><td class="diff_next"></td><td class="diff_header" id="to1_182">182</td><td nowrap="nowrap">### Build a reusable suite (author it — there's no save tool)</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__6"></td><td class="diff_header" id="from1_175">175</td><td nowrap="nowrap">   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)</td><td class="diff_next"></td><td class="diff_header" id="to1_196">196</td><td nowrap="nowrap">   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_176">176</td><td nowrap="nowrap">   into the modules — they run under `optics execute`. Live, you drive that logic</td><td class="diff_next"></td><td class="diff_header" id="to1_197">197</td><td nowrap="nowrap">   into the modules — they run under `optics execute`. Live, you drive that logic</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_177">177</td><td nowrap="nowrap">   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP</td><td class="diff_next"></td><td class="diff_header" id="to1_198">198</td><td nowrap="nowrap">   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_178">178</td><td nowrap="nowrap">   tools because they need the runner's module/data context.</td><td class="diff_next"></td><td class="diff_header" id="to1_199">199</td><td nowrap="nowrap">   tools because they need the runner's module/data context.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__7">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__7">n</a></td><td class="diff_header" id="to1_200">200</td><td nowrap="nowrap"><span class="diff_add">4. Optionally lint it first: the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_201">201</td><td nowrap="nowrap"><span class="diff_add">   [optics-framework-lsp](https://github.com/mozarkai/optics-framework-lsp) language</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_202">202</td><td nowrap="nowrap"><span class="diff_add">   server (`uv tool install optics-framework-lsp`) reports every problem in a suite in</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_203">203</td><td nowrap="nowrap"><span class="diff_add">   one pass with `optics-lsp lint &lt;folder&gt; --json`. Its VS Code and JetBrains</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_204">204</td><td nowrap="nowrap"><span class="diff_add">   extensions also offer it to agents as a separate MCP server, `optics-lsp`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_179">179</td><td nowrap="nowrap"><span class="diff_chg">4</span>. Run it with the CLI: `optics execute &lt;folder&gt;` (results land in</td><td class="diff_next"></td><td class="diff_header" id="to1_205">205</td><td nowrap="nowrap"><span class="diff_chg">5</span>. Run it with the CLI: `optics execute &lt;folder&gt;` (results land in</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_180">180</td><td nowrap="nowrap">   `execution_output/`). To replay interactively instead, just call the keyword</td><td class="diff_next"></td><td class="diff_header" id="to1_206">206</td><td nowrap="nowrap">   `execution_output/`). To replay interactively instead, just call the keyword</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_181">181</td><td nowrap="nowrap">   tools again in sequence — the agent is the runner.</td><td class="diff_next"></td><td class="diff_header" id="to1_207">207</td><td nowrap="nowrap">   tools again in sequence — the agent is the runner.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_182">182</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_208">208</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_183">183</td><td nowrap="nowrap">### `start_session` arguments</td><td class="diff_next"></td><td class="diff_header" id="to1_209">209</td><td nowrap="nowrap">### `start_session` arguments</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__7"></td><td class="diff_header" id="from1_214">214</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_240">240</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_215">215</td><td nowrap="nowrap">Omit `appPackage`/`appActivity` to attach to whatever is already on screen. For</td><td class="diff_next"></td><td class="diff_header" id="to1_241">241</td><td nowrap="nowrap">Omit `appPackage`/`appActivity` to attach to whatever is already on screen. For</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_216">216</td><td nowrap="nowrap">a remote/managed hub, set `url` to the hub and include any hub-specific</td><td class="diff_next"></td><td class="diff_header" id="to1_242">242</td><td nowrap="nowrap">a remote/managed hub, set `url` to the hub and include any hub-specific</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_217">217</td><td nowrap="nowrap">capabilities (auth token, device id) just as you would in `config.yaml`.</td><td class="diff_next"></td><td class="diff_header" id="to1_243">243</td><td nowrap="nowrap">capabilities (auth token, device id) just as you would in `config.yaml`.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_244">244</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_245">245</td><td nowrap="nowrap"><span class="diff_add">**Example — a website with Playwright:**</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_246">246</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_247">247</td><td nowrap="nowrap"><span class="diff_add">```json</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_248">248</td><td nowrap="nowrap"><span class="diff_add">{</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_249">249</td><td nowrap="nowrap"><span class="diff_add">  "driver": "playwright",</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_250">250</td><td nowrap="nowrap"><span class="diff_add">  "capabilities": { "browser": "chromium", "headless": false }</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_251">251</td><td nowrap="nowrap"><span class="diff_add">}</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_252">252</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_253">253</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_254">254</td><td nowrap="nowrap"><span class="diff_add">Then open the page with `launch_app`:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_255">255</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_256">256</td><td nowrap="nowrap"><span class="diff_add">```json</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_257">257</td><td nowrap="nowrap"><span class="diff_add">{ "session_id": "&lt;session_id&gt;", "app_identifier": "https://www.saucedemo.com" }</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_258">258</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_259">259</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_260">260</td><td nowrap="nowrap"><span class="diff_add">Calling `launch_app` again navigates the same browser. The capabilities are the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_261">261</td><td nowrap="nowrap"><span class="diff_add">Playwright driver's `config.yaml` capabilities (`browser`, `headless`, `viewport`,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_262">262</td><td nowrap="nowrap"><span class="diff_add">`element_timeout_ms`, …; see [Configuration](../configuration.md#driver-sources)).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_218">218</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_263">263</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_219">219</td><td nowrap="nowrap">### AI self-heal</td><td class="diff_next"></td><td class="diff_header" id="to1_264">264</td><td nowrap="nowrap">### AI self-heal</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_220">220</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_265">265</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_221">221</td><td nowrap="nowrap">Self-heal has two layers. Whoever starts `optics mcp` (or `optics serve`) can</td><td class="diff_next"></td><td class="diff_header" id="to1_266">266</td><td nowrap="nowrap">Self-heal has two layers. Whoever starts `optics mcp` (or `optics serve`) can</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
