@@ -181,7 +181,7 @@ Expose Optics keywords as Model Context Protocol tools so an LLM client (Claude 
 optics mcp [--transport {stdio,http}] [--host <host>] [--port <port>]
 ```
 
-Requires the optional extra: `pip install "optics-framework[mcp]"`.
+Requires the `mcp` extra, which the installer always includes. With pip: `pip install "optics-framework[mcp]"`.
 
 For setup and client configuration, see [MCP Usage](mcp_usage.md).
 
