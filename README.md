@@ -13,6 +13,7 @@ One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Fr
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=coverage)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10842/badge)](https://www.bestpractices.dev/projects/10842)
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/mozarkai/optics-framework)
 
 ![Optics demo](https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/optics-demo.gif)
 
