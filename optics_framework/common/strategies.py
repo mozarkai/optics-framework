@@ -16,6 +16,7 @@ from optics_framework.common.session_liveness import raise_if_session_dead
 
 # Constants
 TEXT_DETECTION_NOT_AVAILABLE_MSG = "Text detection is not available."
+OCR_NOT_TRIED_MSG = " OCR was not tried: no text_detection engine is configured."
 
 
 class LocateValueWithFrame(NamedTuple):
@@ -326,6 +327,10 @@ class TextDetectionStrategy(LocatorStrategy):
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
+
+
+def _is_unconfigured_ocr(strategy: LocatorStrategy) -> bool:
+    return isinstance(strategy, TextDetectionStrategy) and strategy.text_detection is None
 
 
 class ImageDetectionStrategy(LocatorStrategy):
@@ -716,15 +721,21 @@ class StrategyManager:
             except Exception as e:
                 raise_if_session_dead(e)
                 # A missing OCR engine explains nothing when a native lookup also ran.
-                ocr_unconfigured = isinstance(strategy, TextDetectionStrategy) and strategy.text_detection is None
-                if text_only or not ocr_unconfigured:
+                if text_only or not _is_unconfigured_ocr(strategy):
                     last_error = e
                 continue
             if locate_result:
                 yielded = True
                 yield locate_result
         if not yielded:
-            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.", cause=last_error)
+            hint = self._ocr_not_tried_hint(element_type, text_only)
+            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.{hint}", cause=last_error)
+
+    def _ocr_not_tried_hint(self, element_type: str, text_only: bool) -> str:
+        skipped = not text_only and any(
+            _is_unconfigured_ocr(s) and s.supports(element_type, s.element_source) for s in self.locator_strategies
+        )
+        return OCR_NOT_TRIED_MSG if skipped else ""
 
     def _alloc_time_for_strategy(
         self, deadline: float, idx: int, applicable_strategies: List[Any]
@@ -773,6 +784,11 @@ class StrategyManager:
             ]
         if not applicable_strategies:
             raise OpticsError(Code.E0201, message=f"No strategies found for elements: {elements} with rule '{rule}'.")
+        native = [s for s in applicable_strategies if not _is_unconfigured_ocr(s)]
+        ocr_skipped = not has_text_only and 0 < len(native) < len(applicable_strategies)
+        if ocr_skipped:
+            # OCR with no engine fails at once; its even share of the timeout belongs to the native lookups.
+            applicable_strategies = native
 
         for idx, strategy in enumerate(applicable_strategies):
             internal_logger.debug(f"Trying strategy: {type(strategy).__name__} for elements: {elements}")
@@ -796,7 +812,8 @@ class StrategyManager:
 
         if last_exception:
             internal_logger.debug(f"{method_name} ended with last exception: {last_exception}")
-        raise OpticsError(Code.E0201, message=f"{elements} not found based on rule '{rule}'.", cause=last_exception)
+        hint = OCR_NOT_TRIED_MSG if ocr_skipped else ""
+        raise OpticsError(Code.E0201, message=f"{elements} not found based on rule '{rule}'.{hint}", cause=last_exception)
 
     def _validate_rule(self, rule: str):
         """Validate the rule parameter."""

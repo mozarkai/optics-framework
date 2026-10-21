@@ -543,6 +543,20 @@ class TestImageDetectionStrategy:
         assert exc_info.value.code == Code.E0201
 
 
+class _MissingTextSource(_PresenceOnlySource):
+    """A native source that never finds the element, and can capture (so OCR applies)."""
+
+    def __init__(self):
+        self.timeouts = []
+
+    def capture(self):
+        return None
+
+    def assert_elements(self, elements, timeout=30, rule='any'):
+        self.timeouts.append(timeout)
+        raise OpticsError(Code.E0201, message="Timeout reached")
+
+
 class TestAssertPresenceContract:
     """assert_presence input validation."""
 
@@ -551,6 +565,16 @@ class TestAssertPresenceContract:
         with pytest.raises(OpticsError) as exc_info:
             _sm(MagicMock()).assert_presence(["Submit"], "Text", timeout=1, rule=rule)
         assert exc_info.value.code == Code.E0205
+
+    def test_unconfigured_ocr_neither_takes_a_timeout_share_nor_masks_the_miss(self, monkeypatch):
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
+        source = _MissingTextSource()
+        manager = _sm(source)
+        with pytest.raises(OpticsError) as exc_info:
+            manager.assert_presence(["Submit"], "Text", timeout=10, rule="any")
+        assert source.timeouts == [10]
+        assert "OCR was not tried" in exc_info.value.message
+        assert exc_info.value.__cause__.message == "Timeout reached"
 
 
 class TestAllocTimeForStrategy:
