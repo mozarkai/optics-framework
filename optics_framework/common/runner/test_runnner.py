@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import time
@@ -15,6 +16,8 @@ from optics_framework.common.session_manager import Session
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
+    holding_logs_for_secret,
+    mask_secrets,
     internal_logger,
     execution_logger,
     LogCaptureBuffer,
@@ -58,6 +61,21 @@ class Runner:
     keyword_map: Dict[str, Callable[..., Any]]
     apis: ApiData
     elements: ElementData
+
+    def _resolve_candidate_params(self, method, candidate_args):
+        candidate_args = utils.substitute_inline(method, list(candidate_args), self.elements)
+        positional_params, kw_params = DataReader.split_params_by_signature(
+            method, candidate_args)
+        raw = utils.raw_param_indices(method)
+        resolved_positional_params = [
+            param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
+        ]
+        resolved_kw_params = {}
+        for key, value in kw_params.items():
+            if value.startswith("${") and value.endswith("}"):
+                value = self.resolve_param(value)
+            resolved_kw_params[key] = value
+        return resolved_positional_params, resolved_kw_params
 
     def execute_test_case(self, test_case: str) -> Optional[TestCaseResult]:
         """Empty implementation to satisfy the interface contract.
@@ -109,6 +127,7 @@ class TestRunner(Runner):
         self.test_cases = self.session.test_cases
         self.modules = self.session.modules
         self.elements = self.session.elements if self.session.elements is not None else ElementData()
+        self._suite_elements = utils.suite_snapshot(self.elements)
         self.apis = self.session.apis if self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
         self.result_printer = result_printer
@@ -158,7 +177,7 @@ class TestRunner(Runner):
                 resolved_params = [
                     self._safe_resolve_param(param) for param in current_keyword.params
                 ]
-                resolved_name = (
+                resolved_name = mask_secrets(
                     f"{current_keyword.name} ({', '.join(str(p) for p in resolved_params)})"
                     if resolved_params
                     else current_keyword.name
@@ -393,12 +412,14 @@ class TestRunner(Runner):
                 await self._handle_keyword_not_found(keyword_node, module_node, keyword_result, start_time, test_case_result)
                 return False
 
-            param_candidates = await self._build_param_candidates(keyword_node, keyword_node.params, module_node, keyword_result, start_time, test_case_result, capture_handler, utils.raw_param_indices(method))
+            params, store_as = utils.split_store_as(keyword_node.params)
+            param_candidates = await self._build_param_candidates(keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler, utils.raw_param_indices(method))
             if param_candidates is None:
                 return False
 
             result = await self._try_execute_with_fallback(
-                method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler
+                method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler,
+                store_as=store_as,
             )
             if result is not None:
                 return result
@@ -467,7 +488,8 @@ class TestRunner(Runner):
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
 
     async def _try_execute_with_fallback(
-        self, method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler
+        self, method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler,
+        store_as=None,
     ):
         # Try all combinations of param candidates (for fallback)
         MAX_ATTEMPTS = 20
@@ -479,7 +501,10 @@ class TestRunner(Runner):
                 break
             try:
                 resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(method, candidate_args)
-                method(*resolved_positional_params, **resolved_kw_params)
+                with holding_logs_for_secret(store_as):
+                    returned = method(*resolved_positional_params, **resolved_kw_params)
+                    if store_as is not None:
+                        utils.store_result(self.elements, store_as, returned)
                 keyword_node.state = State.COMPLETED_PASSED
                 await self._send_event(
                     "keyword",
@@ -726,6 +751,8 @@ class TestRunner(Runner):
     ) -> TestCaseResult:
         start_time = time.time()
         self._last_failure_reason = None
+        # Stored values must not leak into the next test case.
+        self.elements.elements = copy.deepcopy(self._suite_elements)
         testcase_id = str(uuid.uuid4())
         extra = self._extra(test_case)
         test_case_result = self._init_test_case(test_case)
@@ -878,12 +905,16 @@ class TestRunner(Runner):
             self._update_status(keyword_result, "RUNNING", 0.0, test_case_result.name)
 
             try:
-                raw = utils.raw_param_indices(self.keyword_map.get("_".join(keyword_current.name.split()).lower()))
-                resolved_params = [
-                    param if i in raw else self.resolve_param(param) for i, param in enumerate(keyword_current.params)
-                ]
+                params, store_as = utils.split_store_as(keyword_current.params)
+                method = self.keyword_map.get("_".join(keyword_current.name.split()).lower())
+                params = utils.substitute_inline(method, params, self.elements)
+                raw = utils.raw_param_indices(method)
+                resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
+                if store_as is not None:
+                    # Nothing runs here, so define the name for later steps.
+                    utils.store_result(self.elements, store_as, f"<{store_as}>")
                 if isinstance(keyword_result, KeywordResult):
-                    keyword_result.resolved_name = (
+                    keyword_result.resolved_name = mask_secrets(
                         f"{keyword_current.name} ({', '.join(resolved_params)})"
                         if resolved_params
                         else keyword_current.name
@@ -957,20 +988,6 @@ class TestRunner(Runner):
             current = current.next
         self.result_printer.stop_live()
 
-    def _resolve_candidate_params(self, method, candidate_args):
-        positional_params, kw_params = DataReader.split_params_by_signature(
-            method, list(candidate_args))
-        raw = utils.raw_param_indices(method)
-        resolved_positional_params = [
-            param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
-        ]
-        resolved_kw_params = {}
-        for key, value in kw_params.items():
-            if value.startswith("${") and value.endswith("}"):
-                value = self.resolve_param(value)
-            resolved_kw_params[key] = value
-        return resolved_positional_params, resolved_kw_params
-
 
 class PytestRunner(Runner):
     instance = None
@@ -988,6 +1005,7 @@ class PytestRunner(Runner):
             self.session.elements if self.session and isinstance(self.session.elements, ElementData)
             else ElementData()
         )
+        self._suite_elements = utils.suite_snapshot(self.elements)
         self.apis = self.session.apis if self.session and hasattr(self.session, "apis") and self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
         self.result_printer = NullResultPrinter()
@@ -1025,12 +1043,13 @@ class PytestRunner(Runner):
             self._queue_event_fail(keyword, keyword_id, module_id, f"Keyword not found: {keyword}")
             pytest.fail(f"Keyword not found: {keyword}")
 
+        params, store_as = utils.split_store_as(params)
         param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id, utils.raw_param_indices(method))
         if param_candidates is None:
             return False
 
         return self._try_execute_with_fallback_pytest(
-            method, param_candidates, keyword, keyword_id, module_id
+            method, param_candidates, keyword, keyword_id, module_id, store_as=store_as
         )
 
     def _execute_keyword_dry_run(self, keyword, func_name, keyword_id, module_id):
@@ -1115,7 +1134,7 @@ class PytestRunner(Runner):
                 param_candidates.append([param])
         return param_candidates
 
-    def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id):
+    def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id, store_as=None):
         MAX_ATTEMPTS = 20
         attempts = 0
         last_exc = None
@@ -1126,7 +1145,10 @@ class PytestRunner(Runner):
                 break
             try:
                 resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(method, candidate_args)
-                method(*resolved_positional_params, **resolved_kw_params)
+                with holding_logs_for_secret(store_as):
+                    returned = method(*resolved_positional_params, **resolved_kw_params)
+                    if store_as is not None:
+                        utils.store_result(self.elements, store_as, returned)
                 self._queue_keyword_pass_event(keyword, keyword_id, module_id)
                 return True
             except OpticsError as oe:
@@ -1164,20 +1186,6 @@ class PytestRunner(Runner):
     def _handle_keyword_fail(self, keyword, keyword_id, module_id, msg):
         self._queue_event_fail(keyword, keyword_id, module_id, msg)
         pytest.fail(msg)
-
-    def _resolve_candidate_params(self, method, candidate_args):
-        positional_params, kw_params = DataReader.split_params_by_signature(
-            method, list(candidate_args))
-        raw = utils.raw_param_indices(method)
-        resolved_positional_params = [
-            param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
-        ]
-        resolved_kw_params = {}
-        for key, value in kw_params.items():
-            if value.startswith("${") and value.endswith("}"):
-                value = self.resolve_param(value)
-            resolved_kw_params[key] = value
-        return resolved_positional_params, resolved_kw_params
 
     def _process_module(
         self, module_name: str, dry_run: bool = False, testcase_id: str = "unknown"
@@ -1255,6 +1263,7 @@ class PytestRunner(Runner):
         self, test_case: str, dry_run: bool = False
     ) -> TestCaseResult:
         start_time = time.time()
+        self.elements.elements = copy.deepcopy(self._suite_elements)
         testcase_id = str(uuid.uuid4())
         result = TestCaseResult(
             id=testcase_id, name=test_case, elapsed="0.00s", status="NOT_RUN"

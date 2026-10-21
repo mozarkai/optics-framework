@@ -2,7 +2,7 @@ from uuid import uuid4
 from enum import Enum
 from typing import Optional, Dict, List, Callable, Any
 from pydantic import BaseModel, Field
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, register_secret
 from optics_framework.common.error import OpticsError, Code
 
 # State Enum
@@ -170,6 +170,7 @@ class ElementData(BaseModel):
         if name not in self.elements:
             self.elements[name] = []
         self.elements[name].append(value)
+        register_secret(name, value)
 
     def remove_element(self, name: str):
         """Remove all values for a key."""
