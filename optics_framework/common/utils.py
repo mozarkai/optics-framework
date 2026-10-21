@@ -22,6 +22,10 @@ TEXT_ONLY_PREFIX = "text_only:"
 WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
 
 
+def raw_param_indices(method: Any) -> set:
+    return set(getattr(method, "_raw_param_indices", ()))
+
+
 def resolve_scalar_param(session: Any, param: str) -> str:
     """
     Resolve a `${name}` reference from `session.elements`, returning its first value as a string.

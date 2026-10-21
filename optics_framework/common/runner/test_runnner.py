@@ -393,7 +393,7 @@ class TestRunner(Runner):
                 await self._handle_keyword_not_found(keyword_node, module_node, keyword_result, start_time, test_case_result)
                 return False
 
-            param_candidates = await self._build_param_candidates(keyword_node, keyword_node.params, module_node, keyword_result, start_time, test_case_result, capture_handler)
+            param_candidates = await self._build_param_candidates(keyword_node, keyword_node.params, module_node, keyword_result, start_time, test_case_result, capture_handler, utils.raw_param_indices(method))
             if param_candidates is None:
                 return False
 
@@ -431,10 +431,10 @@ class TestRunner(Runner):
         )
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
 
-    async def _build_param_candidates(self, keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler):
+    async def _build_param_candidates(self, keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler, raw=frozenset()):
         param_candidates = []
-        for param in params:
-            if isinstance(param, str) and param.startswith("${") and param.endswith("}"):
+        for i, param in enumerate(params):
+            if i not in raw and isinstance(param, str) and param.startswith("${") and param.endswith("}"):
                 var_name = param[2:-1].strip()
                 values = self.elements.get_element(var_name)
                 if not values:
@@ -878,8 +878,9 @@ class TestRunner(Runner):
             self._update_status(keyword_result, "RUNNING", 0.0, test_case_result.name)
 
             try:
+                raw = utils.raw_param_indices(self.keyword_map.get("_".join(keyword_current.name.split()).lower()))
                 resolved_params = [
-                    self.resolve_param(param) for param in keyword_current.params
+                    param if i in raw else self.resolve_param(param) for i, param in enumerate(keyword_current.params)
                 ]
                 if isinstance(keyword_result, KeywordResult):
                     keyword_result.resolved_name = (
@@ -959,7 +960,10 @@ class TestRunner(Runner):
     def _resolve_candidate_params(self, method, candidate_args):
         positional_params, kw_params = DataReader.split_params_by_signature(
             method, list(candidate_args))
-        resolved_positional_params = [self.resolve_param(param) for param in positional_params]
+        raw = utils.raw_param_indices(method)
+        resolved_positional_params = [
+            param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
+        ]
         resolved_kw_params = {}
         for key, value in kw_params.items():
             if value.startswith("${") and value.endswith("}"):
@@ -1021,7 +1025,7 @@ class PytestRunner(Runner):
             self._queue_event_fail(keyword, keyword_id, module_id, f"Keyword not found: {keyword}")
             pytest.fail(f"Keyword not found: {keyword}")
 
-        param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id)
+        param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id, utils.raw_param_indices(method))
         if param_candidates is None:
             return False
 
@@ -1085,10 +1089,10 @@ class PytestRunner(Runner):
             self.event_manager
         )
 
-    def _build_param_candidates_pytest(self, params, keyword_id, keyword, module_id):
+    def _build_param_candidates_pytest(self, params, keyword_id, keyword, module_id, raw=frozenset()):
         param_candidates = []
-        for param in params:
-            if isinstance(param, str) and param.startswith("${") and param.endswith("}"):
+        for i, param in enumerate(params):
+            if i not in raw and isinstance(param, str) and param.startswith("${") and param.endswith("}"):
                 var_name = param[2:-1].strip()
                 values = self.elements.get_element(var_name)
                 if not values:
@@ -1164,7 +1168,10 @@ class PytestRunner(Runner):
     def _resolve_candidate_params(self, method, candidate_args):
         positional_params, kw_params = DataReader.split_params_by_signature(
             method, list(candidate_args))
-        resolved_positional_params = [self.resolve_param(param) for param in positional_params]
+        raw = utils.raw_param_indices(method)
+        resolved_positional_params = [
+            param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
+        ]
         resolved_kw_params = {}
         for key, value in kw_params.items():
             if value.startswith("${") and value.endswith("}"):
