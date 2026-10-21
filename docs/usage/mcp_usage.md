@@ -28,6 +28,7 @@ nothing is hard-coded.
 - **A driver target** that optics can reach — e.g. a local
   [Appium](https://appium.io) server with a connected device/emulator, or a
   remote Appium hub. You provide its URL and capabilities to `start_session`.
+  For websites, Playwright launches its own browser, so there is nothing to run.
 - An MCP-capable client (Claude Desktop/Code, Cursor, or the `fastmcp` Python
   client for scripting).
 - *(Optional)* extras for richer element location: text detection
@@ -37,10 +38,24 @@ nothing is hard-coded.
 ## 2. Install
 
 The MCP server depends on [`fastmcp`](https://github.com/PrefectHQ/fastmcp),
-shipped as an **optional extra**:
+shipped as the `mcp` extra. The installer always includes it, finds a Python 3.12+
+on its own and puts `optics` on your PATH. Then add the engine for your target:
 
 ```bash
-pip install 'optics-framework[mcp]'
+curl -fsSL https://optics-framework.org/install | sh    # macOS, Linux
+optics setup --install playwright    # websites (also downloads Chromium), or: appium
+```
+
+```powershell
+irm https://optics-framework.org/install.ps1 | iex     # Windows
+```
+
+With pip, Optics needs **Python 3.12+** (an older Python fails or resolves an old
+release) and you add the extra yourself:
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install 'optics-framework[mcp,playwright]' && playwright install chromium
 # from source:
 poetry install --extras mcp
 ```
