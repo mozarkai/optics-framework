@@ -284,6 +284,8 @@ class Playwright(DriverInterface):
                 self._context = self._browser.contexts[0]
                 pages = self._context.pages
                 self.page = pages[0] if pages else await self._context.new_page()
+                # A tab the browser never activated draws no frames, so screenshots of it time out.
+                await self.page.bring_to_front()
             else:
                 await self._open_new_context()
             return
