@@ -1,5 +1,7 @@
 import asyncio
+import json
 import os
+import pathlib
 from dataclasses import dataclass, field
 from typing import Optional, Any
 from urllib.parse import urlsplit
@@ -234,9 +236,28 @@ class Playwright(DriverInterface):
             options = {k: v for k, v in self._pw.devices[device].items() if k != "default_browser_type"}
         if self._setting("viewport", None):
             options["viewport"] = self._setting("viewport", None)
+        if self._setting("storage_state", None):
+            options["storage_state"] = self._storage_state()
         self._touch = bool(options.get("has_touch"))
         self._context = await self._browser.new_context(**options)
         self.page = await self._context.new_page()
+
+    def _storage_state(self) -> dict:
+        """The ``storage_state`` setting: a state object, or a file path read from the project folder."""
+        state = self._setting("storage_state", None)
+        if not isinstance(state, dict):
+            try:
+                project = self.event_sdk.config_handler.config.project_path or ""
+            except AttributeError:
+                project = ""
+            path = pathlib.Path(project, pathlib.Path(state).expanduser())
+            try:
+                state = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError) as e:
+                raise OpticsError(Code.E0501, f"storage_state must be a state file saved by Playwright: {e}") from None
+        # A profile export carries cookies partitioned under an extension, which Chromium refuses to set.
+        cookies = [c for c in state.get("cookies", []) if not str(c.get("partitionKey", "")).startswith("chrome-extension://")]
+        return {**state, "cookies": cookies}
 
     def _remote(self) -> RemoteBrowser | None:
         """The remote browser to connect to, or None to launch locally."""
@@ -254,8 +275,10 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0501, 'protocol "cdp" reaches Chromium-based browsers only; set browser: chromium')
         if remote.context not in ("new", "existing"):
             raise OpticsError(Code.E0501, f'context must be "new" or "existing", not {remote.context!r}')
-        if remote.context == "existing" and self._setting("device", None):
-            raise OpticsError(Code.E0501, 'device applies to a new context; it cannot change the browser\'s own (context: existing)')
+        if remote.context == "existing":
+            for key in ("device", "storage_state"):
+                if self._setting(key, None):
+                    raise OpticsError(Code.E0501, f'{key} applies to a new context; it cannot change the browser\'s own (context: existing)')
         return remote
 
     async def _open_remote(self, browser_type, remote: RemoteBrowser):

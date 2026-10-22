@@ -257,6 +257,9 @@ def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = N
     if any(env_names(str(value)) for value in values if value):
         # A remote caller must not choose which server env var is read and where it is sent.
         raise OpticsError(Code.E0501, f"{name}: ${{NAME}} references are only read from a project's config.yaml; send the value")
+    if isinstance(capabilities.get("storage_state"), str):
+        # A path would let a remote caller load any server file into the browser.
+        raise OpticsError(Code.E0501, f"{name}: storage_state must be sent as the state object, not a file path")
     return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
 
 

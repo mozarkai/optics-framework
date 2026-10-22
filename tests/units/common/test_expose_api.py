@@ -151,6 +151,16 @@ def test_make_dependency_entry_top_level_url_ignored_for_non_appium():
     assert entry["selenium"].url is None
 
 
+def test_make_dependency_entry_refuses_a_storage_state_path():
+    with pytest.raises(OpticsError) as err:
+        expose_api._make_dependency_entry("playwright", {"capabilities": {"storage_state": "/etc/auth.json"}})
+    assert err.value.code == Code.E0501
+
+    state = {"cookies": [], "origins": []}
+    entry = expose_api._make_dependency_entry("playwright", {"capabilities": {"storage_state": state}})
+    assert entry["playwright"].capabilities["storage_state"] == state
+
+
 def test_make_dependency_entry_dict_falls_back_to_top_level_url_for_appium():
     entry = expose_api._make_dependency_entry(
         "appium", {"enabled": True}, top_level_url="http://hub"
