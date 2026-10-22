@@ -460,6 +460,7 @@ Driver sources define the automation frameworks used to control devices or brows
     | `headless` | `true`, `false` | Run browser in headless mode (local browser only) |
     | `viewport` | `{width, height}` | Browser viewport dimensions |
     | `device` | A Playwright device name, e.g. `"Pixel 7"`, `"iPhone 15"` | Emulate that phone or tablet: its screen, user agent and touch input. Pair an iPhone with `browser: webkit` for the Safari engine. Not with `context: existing` |
+    | `storage_state` | Path to a file saved by Playwright, relative to the project folder | Start signed in, with the file's cookies and local storage. Works with `device` and `viewport`. Not with `context: existing` |
     | `headers` | `{name: value}` | HTTP headers sent when connecting to a remote browser |
     | `protocol` | `"cdp"`, `"playwright"` | How to connect to the remote browser in `url` (default `"cdp"`) |
     | `context` | `"new"`, `"existing"` | Open a fresh context in the remote browser, or use the one it already has (default `"new"`) |
@@ -498,6 +499,23 @@ Driver sources define the automation frameworks used to control devices or brows
     `${NAME}` in `url` or in a header value is replaced with that environment variable when the browser starts, so credentials stay out of the suite. The value is substituted as is, so inside a URL-encoded query write the reference itself unencoded. An unset or empty variable fails the launch with an error that names it. Only the url's host is logged, and secret values and the url's path and query are masked in connect errors. `Close And Terminate App`, or the end of the run, closes the connection, which is what ends the session on the provider's side. No local browser download (`playwright install`) is needed.
 
     By default Optics opens a fresh context, with the configured `viewport`, in the remote browser. Set `context: existing` to use the browser's own context and its open tab instead, when a provider documents `browser.contexts[0]` because its session settings or recording live there, when a browser cannot create new contexts, or to reuse a signed-in profile. The page then keeps the browser's own window size, `viewport` is not applied, and ending the run disconnects without closing that context's tabs.
+
+    To be signed in and still emulate a `device` or `viewport`, save the sign-ins to a file once and set `storage_state` to it. Every run then opens a fresh context with them, locally or in a remote browser. Sign in by hand in a browser that saves its state when you close it:
+
+    ```bash
+    python -m playwright open --save-storage=auth.json https://example.com
+    ```
+
+    or save the state of a Chrome profile you are already signed in with, started with `--remote-debugging-port=9222 --user-data-dir=<dir>`:
+
+    ```python
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        p.chromium.connect_over_cdp("http://127.0.0.1:9222").contexts[0].storage_state(path="auth.json")
+    ```
+
+    The file holds live session cookies, so keep it out of version control. Cookies that belong to a browser extension are left out, because Chromium refuses to set them in a new context. Some sites end a session when the user agent changes, so a `device` can sign you out of them. Through `optics serve` or `optics mcp`, send the state's JSON object as `storage_state` instead of a path.
 
     `${NAME}` references are read only from a project's `config.yaml`. `optics serve` and `optics mcp` reject them in a session request, so a caller cannot make the server send one of its environment variables to an endpoint the caller picked. A caller sends the values themselves in `url` and `capabilities.headers`.
 
