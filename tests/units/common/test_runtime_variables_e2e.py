@@ -6,7 +6,6 @@ import pytest
 
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
-from optics_framework.common import logging_config
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -60,8 +59,6 @@ class Device:
 def device(monkeypatch):
     fake = Device()
     monkeypatch.setattr(OpticsBuilder, "build", lambda self, cls: fake if cls in (ActionKeyword, Verifier) else object())
-    # Secrets registered by one test would otherwise mask text in the next.
-    monkeypatch.setattr(logging_config, "_secret_values", set())
     return fake
 
 
@@ -203,13 +200,36 @@ def test_a_secret_read_from_the_screen_is_masked_in_every_log_line(run, device, 
     assert "Text of element: ****" in _logs(tmp_path)
 
 
-def test_a_password_from_the_elements_file_is_masked_but_its_locator_is_not(run, device, tmp_path):
-    results = run({"M": [("Enter Text", "${password_field}", "${login_password}")]}, {"TC": ["M"]},
-                  elements={"password_field": "//*[@id='pw']", "login_password": "10203040"})
+def test_an_elements_file_value_is_not_masked_whatever_its_name(run, tmp_path):
+    run({"M": [("Get Text", "${pin_tab}"), ("Sleep", "${otp_length}")]}, {"TC": ["M"]},
+        elements={"pin_tab": "#title", "otp_length": "6"})
 
-    assert ("enter_text", "//*[@id='pw']", "10203040") in device.calls
-    assert "10203040" not in _logs(tmp_path)
-    assert results["TC"].modules[0].keywords[0].resolved_name == "Enter Text (//*[@id='pw'], ****)"
+    assert "Text of element: Backpack" in _logs(tmp_path)
+    assert "****" not in _logs(tmp_path)
+
+
+def test_a_short_value_or_a_name_that_only_mentions_api_stays_readable(run, device, tmp_path):
+    SCREEN["#code"] = "42"
+    run({"M": [("Get Text", "#code", "store_as=pin"), ("Get Text", "${price_label}", "store_as=api_bal")]}, {"TC": ["M"]})
+    del SCREEN["#code"]
+
+    assert "Text of element: 42" in _logs(tmp_path)
+    assert "Text of element: $ 29.99" in _logs(tmp_path)
+
+
+def test_one_sessions_secret_does_not_mask_another_sessions_logs(run, tmp_path):
+    run({"M": [("Get Text", "#user", "store_as=user_api_key")]}, {"TC": ["M"]})
+    run({"M": [("Get Text", "#user", "store_as=user")]}, {"TC": ["M"]})
+
+    assert _logs(tmp_path).count("Text of element: bob@example.com") == 1
+
+
+def test_the_report_shows_what_each_step_stored_with_secrets_masked(run):
+    results = run({"M": [("Get Text", "${price_label}", "store_as=price"),
+                         ("Get Text", "#user", "store_as=user_api_key")]}, {"TC": ["M"]})
+
+    stored = [k.stored for k in results["TC"].modules[0].keywords]
+    assert stored == [{"price": "$ 29.99"}, {"user_api_key": "****"}]
 
 
 def test_a_value_under_a_plain_name_stays_readable(run, tmp_path):
@@ -228,3 +248,52 @@ def test_a_dry_run_resolves_stored_names_and_catches_the_two_mistakes(run, devic
     assert "'${pirce}'" in _reasons(results, "TC2")[0]
     assert "store_as needs a name" in _reasons(results, "TC3")[0]
     assert device.calls == []
+
+
+def test_a_read_data_query_quotes_a_variable_itself(run, device, tmp_path):
+    (tmp_path / "people.csv").write_text("name,city\nalice,Pune\nbob,Delhi\n")
+    results = run({"M": [("Read Data", "${city}", (tmp_path / "people.csv").as_posix(), "name == ${user};select=city"),
+                         ("Press Element", "${city}")]}, {"TC": ["M"]},
+                  elements={**ELEMENTS, "user": "alice"})
+
+    assert results["TC"].status == "PASS"
+    assert ("press_element", "Pune") in device.calls
+
+
+def test_a_value_set_in_suite_setup_or_by_evaluate_reaches_later_test_cases(run, device):
+    results = run({"Setup": [("Get Text", "${title_label}", "store_as=product")],
+                   "Count": [("Evaluate", "${total}", "1 + 1")],
+                   "Use": [("Press Element", "${product}"), ("Press Element", "${total}")]},
+                  {"Suite Setup": ["Setup"], "TC1": ["Count"], "TC2": ["Use"]})
+
+    assert results["TC2"].status == "PASS"
+    assert device.calls[-2:] == [("press_element", "Backpack"), ("press_element", "2")]
+
+
+def test_a_doubled_dollar_passes_a_literal_placeholder(run, device):
+    results = run({"M": [("Press Element", "//*[@text='$${literal}']")]}, {"TC": ["M"]})
+
+    assert results["TC"].status == "PASS"
+    assert ("press_element", "//*[@text='${literal}']") in device.calls
+
+
+def test_store_as_may_have_spaces_around_the_equals_sign(run, device):
+    run({"M": [("Get Text", "${price_label}", "store_as = price"), ("Press Element", "${price}")]}, {"TC": ["M"]})
+
+    assert device.calls[-1] == ("press_element", "$ 29.99")
+
+
+def test_date_evaluate_takes_a_stored_number_inside_its_expression(run, device):
+    results = run({"M": [("Date Evaluate", "${due}", "2025-04-25", "+${days} days", "%d %B"), ("Press Element", "${due}")]},
+                  {"TC": ["M"]}, elements={**ELEMENTS, "days": "2"})
+
+    assert results["TC"].status == "PASS"
+    assert device.calls[-1] == ("press_element", "27 April")
+
+
+def test_a_dry_run_counts_names_that_evaluate_and_read_data_define(run, tmp_path):
+    (tmp_path / "people.csv").write_text("name,city\nalice,Pune\n")
+    results = run({"M": [("Evaluate", "${total}", "1 + 1"), ("Read Data", "${city}", (tmp_path / "people.csv").as_posix(), "select=city"),
+                         ("Press Element", "//row[@n='${total}' and @city='${city}']")]}, {"TC": ["M"]}, dry=True)
+
+    assert results["TC"].status == "PASS"
