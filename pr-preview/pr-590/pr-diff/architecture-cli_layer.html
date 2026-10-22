@@ -9,22 +9,13 @@
           content="text/html; charset=utf-8" />
     <title>docs/architecture/cli_layer.md – docs diff</title>
     <style type="text/css">
-        :root {color-scheme: light dark}
         table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
         .diff_header {background-color:#e0e0e0}
         td.diff_header {text-align:right}
         .diff_next {background-color:#c0c0c0}
-        .diff_add {background-color:palegreen}
+        .diff_add {background-color:#aaffaa}
         .diff_chg {background-color:#ffff77}
         .diff_sub {background-color:#ffaaaa}
-
-        @media (prefers-color-scheme: dark) {
-            .diff_header {background-color:#666}
-            .diff_next {background-color:#393939}
-            .diff_add {background-color:darkgreen}
-            .diff_chg {background-color:#847415}
-            .diff_sub {background-color:darkred}
-        }
     </style>
 <style>
         body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
@@ -69,7 +60,7 @@
             <tr><td class="diff_next"></td><td class="diff_header" id="from0_301">301</td><td nowrap="nowrap">optics live my_project     # uses that project's config.yaml</td><td class="diff_next"></td><td class="diff_header" id="to0_301">301</td><td nowrap="nowrap">optics live my_project     # uses that project's config.yaml</td></tr>
             <tr><td class="diff_next"></td><td class="diff_header" id="from0_302">302</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to0_302">302</td><td nowrap="nowrap">```</td></tr>
             <tr><td class="diff_next"></td><td class="diff_header" id="from0_303">303</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_303">303</td><td nowrap="nowrap"></td></tr>
-            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_304">304</td><td nowrap="nowrap"><span class="diff_sub">**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save &lt;test_case&gt; &lt;module_name&gt;` appends the recording to `modules/modules.csv`, `test_cases/test_cases.csv`, and `elements/elements.csv`. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs the `llm` extra). See [Live Usage](../usage/live_usage.md).</span></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_304">304</td><td nowrap="nowrap"><span class="diff_add">**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save &lt;test_case&gt; &lt;module_name&gt; [csv|yaml]` appends the recording to `modules/modules.&lt;ext&gt;` and `test_cases/test_cases.&lt;ext&gt;`, merging elements into the project's elements file of that format. The format follows the project (YAML only when every suite file is YAML) unless given explicitly. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs the `llm` extra). See [Live Usage](../usage/live_usage.md).</span></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_304">304</td><td nowrap="nowrap"><span class="diff_sub">**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save &lt;test_case&gt; &lt;module_name&gt;` appends the recording to `modules/modules.csv`, `test_cases/test_cases.csv`, and `elements/elements.csv`. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs an LLM extra: `gemini`, `openai` or `anthropic`). See [Live Usage](../usage/live_usage.md).</span></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_304">304</td><td nowrap="nowrap"><span class="diff_add">**Behavior:** Driver-agnostic and config-driven — the single enabled driver in `config.yaml` is the target. Each successful keyword is buffered; `/save &lt;test_case&gt; &lt;module_name&gt; [csv|yaml]` appends the recording to `modules/modules.&lt;ext&gt;` and `test_cases/test_cases.&lt;ext&gt;`, merging elements into the project's elements file of that format. The format follows the project (YAML only when every suite file is YAML) unless given explicitly. `Ctrl-N` toggles a natural-language mode where an LLM drives the keywords from a plain-English goal (needs an LLM extra: `gemini`, `openai` or `anthropic`). See [Live Usage](../usage/live_usage.md).</span></td></tr>
             <tr><td class="diff_next"></td><td class="diff_header" id="from0_305">305</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_305">305</td><td nowrap="nowrap"></td></tr>
             <tr><td class="diff_next"></td><td class="diff_header" id="from0_306">306</td><td nowrap="nowrap">### 13. MCP Command</td><td class="diff_next"></td><td class="diff_header" id="to0_306">306</td><td nowrap="nowrap">### 13. MCP Command</td></tr>
             <tr><td class="diff_next"></td><td class="diff_header" id="from0_307">307</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_307">307</td><td nowrap="nowrap"></td></tr>
