@@ -28,6 +28,8 @@ from datetime import datetime
 from itertools import product
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+import cv2
+import numpy as np
 import yaml
 
 from optics_framework.common import utils
@@ -1254,7 +1256,7 @@ class LiveController:
     def natural_language_available(self) -> bool:
         """True if an LLM engine is enabled in config (an ``llm_models`` entry).
 
-        Instantiation errors (missing ``[llm]`` extra, bad credentials) are not probed
+        Instantiation errors (missing engine extra, bad credentials) are not probed
         here — they surface with an actionable message in :meth:`run_natural_language`.
         """
         if self._nl_available is None:
@@ -1286,6 +1288,35 @@ class LiveController:
         xml_source = result[0]
         return utils.strip_page_source(xml_source) or None
 
+    def screen_elements(self, png: bytes) -> Optional[List[dict]]:
+        """Compact interactive elements for the current screen, with bounds.
+
+        Best-effort: returns ``None`` when the active element source cannot extract
+        elements, so the NL agent falls back to ``page_source``. Bounds are scaled
+        against ``png`` -- the screenshot the agent already captured for the LLM this
+        step -- rather than a second device capture; the decode is skipped for
+        non-Appium sources, where the scaling is a no-op anyway.
+        """
+        if self._action_keyword is None:  # pragma: no cover - defensive
+            return None
+        try:
+            elements = self._action_keyword.strategy_manager.get_interactive_elements(
+                None, compact=True
+            )
+        except OpticsError as exc:
+            internal_logger.debug("Structured screen elements unavailable: %s", exc)
+            return None
+        element_source = self._action_keyword.element_source
+        active_source = getattr(element_source, "active_instance", None) or element_source
+        screenshot_np = None
+        if getattr(active_source, "REQUIRED_DRIVER_TYPE", None) == "appium":
+            try:
+                screenshot_np = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
+            except Exception as exc:  # noqa: BLE001
+                internal_logger.debug("Screenshot decode for bounds scaling failed: %s", exc)
+        utils.scale_interactive_element_bounds(elements, element_source, screenshot_np)
+        return elements
+
     def _nl_execute(self, raw: str) -> ExecResult:
         """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
         result = self._execute_line(raw, record=False)
@@ -1300,11 +1331,12 @@ class LiveController:
         """Build (and cache) the NL agent. Raises OpticsError if no LLM is usable."""
         if self._nl_agent is not None:
             return self._nl_agent
-        llm = self.session.optics.get_llm()  # may raise E0601 if the [llm] extra is missing
+        llm = self.session.optics.get_llm()  # may raise E0601 if the engine's extra is missing
         if llm is None or not getattr(llm, "instances", None):
             raise OpticsError(
                 Code.E0501,
-                message="No LLM engine enabled. Enable a 'gemini' entry under llm_models in config.yaml.",
+                message="No LLM engine enabled. Enable a gemini, openai or anthropic entry "
+                "under llm_models in config.yaml.",
             )
         self._nl_agent = NaturalLanguageAgent(
             llm=llm,
@@ -1313,6 +1345,7 @@ class LiveController:
             keyword_catalog=self._nl_catalog,
             element_names=self.element_names,
             pagesource_provider=self.page_source,
+            screen_elements_provider=self.screen_elements,
             curate_on_done=True,
         )
         return self._nl_agent

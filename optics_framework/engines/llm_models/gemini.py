@@ -1,10 +1,10 @@
 from typing import Optional, List, Dict, Any
 
-from optics_framework.common.llm_interface import LLMInterface
+from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
-# The google-genai SDK is an optional extra (``optics-framework[llm]``). Import is guarded
+# The google-genai SDK is an optional extra (``optics-framework[gemini]``). Import is guarded
 # so merely importing this module never fails when the extra is absent; the actionable error
 # is raised on instantiation, i.e. only when a 'gemini' engine is actually enabled in config.
 try:
@@ -21,27 +21,6 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
 _DEFAULT_MODEL = "gemini-2.5-flash"
 
 
-def _image_mime_type(data: bytes) -> str:
-    """Sniff a common image mime type from magic bytes.
-
-    The interface passes raw image bytes (callers may send PNG, JPEG, WebP, GIF);
-    we detect rather than assume so the engine isn't tied to one encoding.
-    Raises ``ValueError`` when the format cannot be identified.
-    """
-    if data[:8] == b"\x89PNG\r\n\x1a\n":
-        return "image/png"
-    if data[:3] == b"\xff\xd8\xff":
-        return "image/jpeg"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return "image/gif"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    raise ValueError(
-        f"Unrecognised image format (first 8 bytes: {data[:8]!r}). "
-        "Supported formats: PNG, JPEG, GIF, WebP."
-    )
-
-
 class GeminiLLM(LLMInterface):
     """
     Google Gemini engine (``google-genai`` SDK), supporting both the Gemini Developer API
@@ -54,19 +33,13 @@ class GeminiLLM(LLMInterface):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         if genai is None:
-            raise OpticsError(
-                Code.E0601,
-                message=(
-                    "The 'gemini' LLM engine requires the optional dependency 'google-genai'. "
-                    "Install it with: pip install 'optics-framework[llm]' "
-                    "(or: poetry install --extras llm). "
-                    f"Underlying import error: {_IMPORT_ERROR}"
-                ),
-            )
+            raise missing_extra_error("gemini", "google-genai", _IMPORT_ERROR)
 
         caps: Dict[str, Any] = (config or {}).get("capabilities") or {}
         self.model_name: str = caps.get("model", _DEFAULT_MODEL)
-        self.temperature: float = caps.get("temperature", 0.0)
+        # Unset means the model's own default: Gemini 3 documents looping and degraded
+        # output below 1.0, so pinning 0.0 is an explicit capabilities opt-in.
+        self.temperature: Optional[float] = caps.get("temperature")
 
         client_kwargs: Dict[str, Any] = {}
         # Explicit overrides win over env vars; absent kwargs fall back to SDK env auto-config.
@@ -106,17 +79,18 @@ class GeminiLLM(LLMInterface):
         if images:
             for img in images:
                 contents.append(
-                    genai_types.Part.from_bytes(data=img, mime_type=_image_mime_type(img))
+                    genai_types.Part.from_bytes(data=img, mime_type=image_mime_type(img))
                 )
 
-        config_kwargs: Dict[str, Any] = {
-            "temperature": self.temperature if temperature is None else temperature,
-        }
+        config_kwargs: Dict[str, Any] = {}
+        effective_temperature = self.temperature if temperature is None else temperature
+        if effective_temperature is not None:
+            config_kwargs["temperature"] = effective_temperature
         if system:
             config_kwargs["system_instruction"] = system
         if response_schema is not None:
             config_kwargs["response_mime_type"] = "application/json"
-            config_kwargs["response_schema"] = response_schema
+            config_kwargs["response_json_schema"] = response_schema
         gen_config = genai_types.GenerateContentConfig(**config_kwargs)
 
         try:
@@ -127,4 +101,11 @@ class GeminiLLM(LLMInterface):
             raise OpticsError(
                 Code.E0801, message=f"Gemini request failed: {exc}"
             ) from exc
+        usage = getattr(response, "usage_metadata", None)
+        if usage is not None:
+            internal_logger.debug(
+                "Gemini usage (%s): prompt=%s cached=%s output=%s thoughts=%s",
+                self.model_name, usage.prompt_token_count, usage.cached_content_token_count,
+                usage.candidates_token_count, usage.thoughts_token_count,
+            )
         return response.text or ""

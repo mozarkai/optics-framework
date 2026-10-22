@@ -171,6 +171,8 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
 | **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |
 | **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |
 | **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |
+| **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |
+| **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |
 
 ## Configuration Structure
 
@@ -181,6 +183,7 @@ All configurations are defined in YAML format. The main configuration file (`con
 - **Element sources** - Element detection methods
 - **Text detection engines** - OCR capabilities
 - **Image detection engines** - Template matching
+- **LLM models** - Optional LLM backend for AI self-healing and `optics live`'s natural-language mode
 
 ---
 
@@ -325,6 +328,30 @@ All configurations are defined in YAML format. The main configuration file (`con
     ```yaml
     event_attributes_json: "./config/event_attributes.json"
     ```
+
+=== "AI Self-Healing"
+
+    ### `ai_self_heal`
+
+    **Type:** `bool` | **Default:** `false`
+
+    Last-resort recovery for element location. When every locator strategy (XPath, text,
+    OCR, image) fails for a self-healing-capable keyword (e.g. `Press Element`, `Enter Text`),
+    a bounded LLM-driven loop reads the screen and attempts to recover before the keyword
+    fails outright.
+
+    Opt-in and inert unless an entry under `llm_models` is also enabled — a missing or
+    misconfigured LLM degrades this to a no-op rather than a failure:
+
+    ```yaml
+    ai_self_heal: true
+
+    llm_models:
+      - gemini:
+          enabled: true
+    ```
+
+    See [LLM Models](#llm-models) below for backend configuration.
 
 ---
 
@@ -774,6 +801,113 @@ Image detection engines provide template matching capabilities for locating UI e
           url: "https://your-oir-service.com/api/match"
           capabilities: {}
     ```
+
+---
+
+## LLM Models
+
+LLM backends power two opt-in features: the [`ai_self_heal`](#ai_self_heal) recovery path
+above, and `optics live`'s natural-language mode (`Ctrl-N`). Both stay inert until an entry
+below is enabled — the backend SDK is only imported when its engine is enabled, so leaving
+this section out has no cost for projects that don't use either feature.
+
+Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the
+`llm` extra installs all three. Keys are read from environment variables only. If you enable
+more than one entry, a failed call falls through to the next one in list order.
+
+| You have | Engine |
+|----------|--------|
+| A Gemini API key, or Vertex AI | `gemini` |
+| An OpenAI key, OpenRouter, Azure OpenAI, or a local server (Ollama, vLLM, LM Studio) | `openai` |
+| A Claude key, or Claude on Amazon Bedrock / Google Vertex AI | `anthropic` |
+
+=== "Gemini"
+
+    **Purpose:** Google Gemini via the `google-genai` SDK, supporting both the Gemini
+    Developer API and Vertex AI. Install: `pip install 'optics-framework[gemini]'`.
+
+    ```yaml
+    llm_models:
+      - gemini:
+          enabled: true
+          capabilities:
+            model: gemini-3.8-flash    # optional; framework default is gemini-2.5-flash
+            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)
+            # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI
+            # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT
+            # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION
+    ```
+
+    With no `capabilities` set, the SDK auto-detects everything from environment variables:
+
+    | Variable | Purpose |
+    |----------|---------|
+    | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Gemini Developer API key |
+    | `GOOGLE_GENAI_USE_VERTEXAI` | Switch to Vertex AI |
+    | `GOOGLE_CLOUD_PROJECT` | Vertex AI project |
+    | `GOOGLE_CLOUD_LOCATION` | Vertex AI location |
+    | `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI service account credentials |
+
+    !!! warning "Don't hardcode credentials"
+        `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a
+        warning when used — prefer the environment variables above so keys never end up in
+        a committed `config.yaml`.
+
+=== "OpenAI-compatible"
+
+    **Purpose:** any server that speaks the OpenAI Chat Completions API, via the `openai`
+    SDK. Without `url` it calls OpenAI; with one it calls that server instead.
+    Install: `pip install 'optics-framework[openai]'`.
+
+    ```yaml
+    llm_models:
+      - openai:
+          enabled: true
+          url: https://openrouter.ai/api/v1   # omit for OpenAI; or OPENAI_BASE_URL
+          capabilities:
+            model: anthropic/claude-sonnet-5-5  # required; the name the server uses
+            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY
+            # response_format: json_object     # for servers without JSON-schema output
+            # max_tokens: 4096                  # optional cap per reply; unset = server default
+            # temperature: 0.0
+    ```
+
+    | Server | `url` | Key |
+    |--------|-------|-----|
+    | OpenAI | (omit) | `OPENAI_API_KEY` |
+    | OpenRouter | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` via `api_key_env` |
+    | Azure OpenAI | `https://<resource>.openai.azure.com/openai/v1/` | your Azure key via `api_key_env` |
+    | Ollama | `http://localhost:11434/v1` | none |
+    | vLLM / LM Studio | the server's `/v1` URL | none |
+
+    Natural-language mode and self-heal send screenshots, so pick a model that accepts
+    images. Responses use strict JSON-schema output by default; if the server rejects it,
+    set `response_format: json_object` and the schema is sent in the prompt instead.
+
+=== "Anthropic"
+
+    **Purpose:** Claude via the `anthropic` SDK, on the Claude API, Amazon Bedrock, or
+    Google Vertex AI. Install: `pip install 'optics-framework[anthropic]'` (for Bedrock
+    or Vertex, also `pip install 'anthropic[bedrock]'` or `'anthropic[vertex]'`).
+
+    ```yaml
+    llm_models:
+      - anthropic:
+          enabled: true
+          capabilities:
+            model: claude-sonnet-5-5   # required; Bedrock/Vertex use their own model IDs
+            # platform: bedrock        # anthropic (default) | bedrock | vertex
+            # region: us-east-1        # Bedrock or Vertex region
+            # project: your-project    # Vertex project
+            # max_tokens: 4096
+            # temperature: 0.0
+    ```
+
+    | Platform | Credentials |
+    |----------|-------------|
+    | `anthropic` | `ANTHROPIC_API_KEY`, or the variable named by `api_key_env` |
+    | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |
+    | `vertex` | Google application default credentials |
 
 ---
 

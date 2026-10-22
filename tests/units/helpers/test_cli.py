@@ -9,11 +9,16 @@ patched at cli's import-time bindings; nothing real runs.
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
 from unittest.mock import patch
 
 import pytest
 
-from optics_framework.helper import cli
+from optics_framework.helper import abort, cli
+from optics_framework.helper.environment import EnvKind, Environment
 
 pytestmark = pytest.mark.white_box
 
@@ -114,6 +119,82 @@ class TestSetupInstallErrors:
             _run(["setup", "--install", "appium=4.2"])
         assert exc.value.code == 1
         assert "invalid version" in capsys.readouterr().out
+
+
+def _env(kind, *, manager=None, has_pip=True):
+    return Environment(kind=kind, python="/py", prefix="/prefix",
+                       has_pip=has_pip, writable=True, manager=manager,
+                       uv="/usr/bin/uv")
+
+
+class TestReinstallGuidance:
+    """A broken install is where a hardcoded ``pip install`` is most likely to
+    be wrong, so the advice follows the environment actually in use."""
+
+    @pytest.mark.parametrize("env, expected", [
+        (_env(EnvKind.VENV), "pip install --force-reinstall"),
+        (_env(EnvKind.VENV, has_pip=False), "uv pip install"),
+        (_env(EnvKind.TOOL, manager="pipx", has_pip=False), "pipx reinstall"),
+        (_env(EnvKind.TOOL, manager="uv", has_pip=False), "uv tool install --reinstall"),
+        (_env(EnvKind.PROJECT, manager="poetry"), "poetry add"),
+    ])
+    def test_command_matches_the_environment(self, monkeypatch, env, expected):
+        monkeypatch.setattr(abort, "detect", lambda: env)
+        assert abort.reinstall_guidance()[-1].strip().startswith(expected)
+
+
+class TestStartupImportGuard:
+    """A dependency that fails to load must surface as guidance rather than an
+    import-time traceback from the ``optics`` console script."""
+
+    def test_failure_shows_the_real_error_and_how_to_recover(self, capsys):
+        error = ImportError("No module named 'pydantic'")
+        with pytest.raises(SystemExit) as exc:
+            cli._abort_on_import_error(error)
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "pydantic" in err
+        assert "Reinstall the package" in err
+        assert "optics-framework" in err
+
+    def test_importing_cli_without_cv2_exits_instead_of_raising(self):
+        # End-to-end over the console-script path, in a subprocess so the
+        # already-imported cli module can't mask the failure. The package
+        # __init__ must stay importable (lazy re-export) for cli's own
+        # try/except to be reachable at all. A star import is the one package
+        # import that still resolves Optics eagerly, because it asks for the
+        # facade by name; it fails here exactly like the documented
+        # ``from optics_framework import Optics`` would, and that is separate
+        # from the console-script path this guard protects.
+        script = textwrap.dedent(
+            """
+            import importlib, sys
+
+            class BlockCv2:
+                def find_spec(self, fullname, path=None, target=None):
+                    if fullname == "cv2" or fullname.startswith("cv2."):
+                        raise ImportError("cv2 is unimportable in this test")
+                    return None
+
+            sys.meta_path.insert(0, BlockCv2())
+            importlib.import_module("optics_framework")
+            print("PACKAGE_IMPORT_OK")
+            try:
+                exec("from optics_framework import *", {})
+            except ImportError:
+                print("STAR_IMPORT_NEEDS_CV2")
+            importlib.import_module("optics_framework.helper.cli")
+            """
+        )
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True, text=True, env=env, check=False)
+        assert "PACKAGE_IMPORT_OK" in result.stdout
+        assert "STAR_IMPORT_NEEDS_CV2" in result.stdout
+        assert result.returncode == 1
+        assert "Traceback" not in result.stderr
+        assert "Reinstall the package" in result.stderr
 
 
 class TestCommandForwarding:

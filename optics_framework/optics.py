@@ -19,7 +19,7 @@ from pathlib import Path
 from itertools import product
 import yaml
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
 from optics_framework.common.config_handler import (
     ConfigHandler,
     DependencyConfig,
@@ -114,7 +114,7 @@ def fallback_params(func: Callable[..., Any]) -> Callable[..., Any]:
             for k in sig.parameters
             if k not in fallback_keys and k != "self"
         }
-        errors: List[tuple[Dict[str, str], str]] = []
+        errors: List[tuple[Dict[str, str], Exception]] = []
         keys = list(fallback_lists.keys())
 
         if not keys:
@@ -131,14 +131,9 @@ def fallback_params(func: Callable[..., Any]) -> Callable[..., Any]:
             except Exception as e:
                 if isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit)):
                     raise
-                errors.append((combo_kwargs, repr(e)))
+                errors.append((combo_kwargs, e))
 
-        if errors:
-            msg = "\n".join([f"{c} -> {err}" for c, err in errors])
-            raise RuntimeError(
-                f"All fallback attempts failed in {func.__name__}:\n{msg}"
-            )
-        raise RuntimeError(f"No valid fallback values provided for {func.__name__}")
+        raise_fallback_failure(func.__name__, errors)
 
     return wrapper
 
@@ -793,7 +788,9 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.detect_and_press(
-            cast(str, element), cast(str, timeout), cast(Optional[str], event_name)
+            element=cast(str, element),
+            timeout=cast(str, timeout),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe")
@@ -810,11 +807,11 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe(
-            cast(str, coor_x),
-            cast(str, coor_y),
-            cast(str, direction),
-            cast(str, swipe_length),
-            cast(Optional[str], event_name),
+            coor_x=cast(str, coor_x),
+            coor_y=cast(str, coor_y),
+            direction=cast(str, direction),
+            swipe_length=cast(str, swipe_length),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe By Percentage")
@@ -831,11 +828,11 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe_by_percentage(
-            cast(str, percent_x),
-            cast(str, percent_y),
-            cast(str, direction),
-            cast(str, swipe_length),
-            cast(Optional[str], event_name),
+            percent_x=cast(str, percent_x),
+            percent_y=cast(str, percent_y),
+            direction=cast(str, direction),
+            swipe_length=cast(str, swipe_length),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe Until Element Appears")
@@ -851,10 +848,10 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe_until_element_appears(
-            cast(str, element),
-            cast(str, direction),
-            cast(str, timeout),
-            cast(Optional[str], event_name),
+            element=cast(str, element),
+            direction=cast(str, direction),
+            timeout=cast(str, timeout),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Swipe From Element")
@@ -870,10 +867,10 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.swipe_from_element(
-            cast(str, element),
-            cast(str, direction),
-            cast(str, swipe_length),
-            cast(Optional[str], event_name),
+            element=cast(str, element),
+            direction=cast(str, direction),
+            swipe_length=cast(str, swipe_length),
+            event_name=cast(Optional[str], event_name),
         )
 
     @keyword("Scroll")
@@ -887,7 +884,7 @@ class Optics:
         if not self.action_keyword:
             raise ValueError(INVALID_SETUP)
         self.action_keyword.scroll(
-            cast(str, direction), cast(Optional[str], event_name)
+            direction=cast(str, direction), event_name=cast(Optional[str], event_name)
         )
 
     @keyword("Scroll Until Element Appears")
@@ -997,6 +994,13 @@ class Optics:
         self.action_keyword.press_keycode(
             keycode=cast(str, keycode), event_name=cast(Optional[str], event_name)
         )
+
+    @keyword("Go Back")
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        """Go back one screen."""
+        if not self.action_keyword:
+            raise ValueError(INVALID_SETUP)
+        self.action_keyword.go_back(event_name=event_name)
 
     @keyword("Clear Element Text")
     @fallback_params
@@ -1194,7 +1198,7 @@ class Optics:
         )
 
     @keyword("Get Interactive Elements")
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List:
         """
         Get interactive elements on the screen.
 
@@ -1206,10 +1210,14 @@ class Optics:
             - "images": Only image elements
             - "text": Only text elements
             Can be combined: ["buttons", "inputs"]
+        :param compact: When True, return only actionable elements (folded labels,
+            with an ``act`` list) plus read-only text, as
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}``. Implemented for the
+            Appium and Playwright page sources.
         """
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
-        return self.verifier.get_interactive_elements(filter_config)
+        return self.verifier.get_interactive_elements(filter_config, compact=compact)
 
     @keyword("Capture Screenshot")
     def capture_screenshot(self):

@@ -1,16 +1,15 @@
+import inspect
 import os
 import shutil
 import socket
 import subprocess  # nosec B404
 import sys
 import asyncio
-from typing import NoReturn, Optional, Tuple, List, Dict, Set, Any
+from typing import Optional, Tuple, List, Dict, Set, Any
 from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
-from rich.console import Console
-from rich.panel import Panel
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
@@ -32,6 +31,24 @@ from optics_framework.common.models import (
     TemplateData,
     ErrorDefinitions,
 )
+from optics_framework.helper.abort import abort_with_panel
+
+
+def _reader_accepts_module_names(reader) -> bool:
+    try:
+        parameters = inspect.signature(reader.read_modules).parameters
+    except (TypeError, ValueError):
+        return False
+    return "module_names" in parameters
+
+
+def _read_module_names(reader, file_path) -> Set[str]:
+    read_names = getattr(reader, "read_module_names", None)
+    if read_names is not None:
+        return read_names(file_path)
+    if _reader_accepts_module_names(reader):
+        return set(reader.read_modules(file_path, None))
+    return set(reader.read_modules(file_path))
 
 
 def discover_templates(project_path: str) -> TemplateData:
@@ -547,14 +564,6 @@ def _adb_device_count() -> int | None:
     return count if in_list else 0
 
 
-def _abort_preflight(lines: List[str]) -> NoReturn:
-    """Print a friendly rich block explaining the failure and exit non-zero."""
-    console = Console(file=sys.stderr)
-    console.print(Panel("\n".join(lines), title="Cannot start",
-                        border_style="red"))
-    sys.exit(1)
-
-
 def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> None:
     """
     Beginner-facing environment gate for ``optics execute``, run before any
@@ -604,7 +613,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
     """Probe the Appium server and, for Android, adb + an attached device."""
     url = details.url or _APPIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4723):
-        _abort_preflight([
+        abort_with_panel([
             f"No Appium server reachable at {url}.",
             "",
             "Start one in another terminal:  appium",
@@ -615,7 +624,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
         return
     device_count = _adb_device_count()
     if device_count is None:
-        _abort_preflight([
+        abort_with_panel([
             "Android run requested, but the adb tool was not found.",
             "",
             "Install Android platform-tools (any option that puts adb on PATH),",
@@ -623,7 +632,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             f"Then re-run:  optics execute {folder_path}",
         ])
     if device_count == 0:
-        _abort_preflight([
+        abort_with_panel([
             "No Android device/emulator attached (adb reports none).",
             "",
             "Connect a device (USB debugging on) or start an emulator,",
@@ -636,7 +645,7 @@ def _preflight_selenium(details: DependencyConfig, folder_path: str) -> None:
     """Probe the configured Selenium/WebDriver URL."""
     url = details.url or _SELENIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4444):
-        _abort_preflight([
+        abort_with_panel([
             f"No Selenium/WebDriver server reachable at {url}.",
             "",
             "Start one, e.g.:  docker run -d -p 4444:4444 selenium/standalone",
@@ -726,9 +735,19 @@ class BaseRunner:
 
     def _load_modules(self, module_files):
         self.modules_data: ModuleData = ModuleData()
+        # Every module name first, across every file: a YAML step referencing a module is told
+        # from a keyword call by name, and the module it names may be defined in another file.
+        module_names = set()
         for file_path in module_files:
             reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            modules = reader.read_modules(file_path)
+            module_names |= _read_module_names(reader, file_path)
+        for file_path in module_files:
+            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
+            modules = (
+                reader.read_modules(file_path, module_names)
+                if _reader_accepts_module_names(reader)
+                else reader.read_modules(file_path)
+            )
             for name, definition in modules.items():
                 if self.modules_data.get_module_definition(name):
                     internal_logger.warning(
@@ -890,12 +909,22 @@ def execute_main(
     folder_path: str, runner: str = "test_runner", use_printer: bool = True
 ):
     """Entry point for execute command."""
+    if not run_project(folder_path, runner, use_printer):
+        sys.exit(1)
+
+
+def run_project(
+    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+) -> bool:
+    """Execute a project; True when nothing failed.
+
+    Split out of ``execute_main`` so an in-process caller can read the outcome
+    instead of catching the ``SystemExit`` the CLI reports failure with."""
     args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
     runner_instance = ExecuteRunner(args)
     _preflight_or_exit(getattr(runner_instance, "config", None), folder_path)
     results = asyncio.run(runner_instance.execute())
-    if _has_failed_results(results):
-        sys.exit(1)
+    return not _has_failed_results(results)
 
 
 def dryrun_main(

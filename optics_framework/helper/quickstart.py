@@ -4,9 +4,10 @@ One command walks a newcomer from "nothing installed" to a runnable project:
 welcome → pick a domain → install the right engine → scaffold the project →
 answer a short config Q&A → doctor verifies everything → next steps.
 
-The wizard scaffolds and explains; it deliberately NEVER runs ``dry_run`` or
-``execute`` itself — those are printed as the user's next moves so the first
-execution is always an intentional, visible act.
+The wizard offers to run the new project once, but only after doctor reports
+nothing blocking and only behind a yes/no — the first execution stays an
+intentional, visible act, it just no longer has to be typed out by hand.
+``dry_run`` is never invoked; it stays a printed next move.
 """
 import os
 import types
@@ -14,12 +15,17 @@ import types
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from optics_framework.helper import doctor, initialize, onboarding, project_config
+from optics_framework.helper import (doctor, execute, initialize, onboarding,
+                                     project_config)
 from optics_framework.helper.setup import install_extras, resolve_engines
 
 _console = Console()
 
 _DEFAULT_NAME = "my-optics-project"
+
+# Playwright needs only a browser, so a web user reaches a passing test with no
+# hardware at all.
+_DOMAIN_SAMPLE = {"mobile": "contact", "web": "playwright"}
 
 _TEMPLATE_DOMAINS = {
     "calendar": "mobile",
@@ -36,7 +42,7 @@ def run_quickstart() -> None:
     onboarding.welcome(first_run=onboarding.is_first_run())
     domain = _ask_domain()
     _offer_engine_install(domain)
-    template = _choose_template()
+    template = _choose_start(domain)
     while template is not None and _TEMPLATE_DOMAINS.get(template, domain) != domain:
         target_domain = _TEMPLATE_DOMAINS[template]
         onboarding.blank_line()
@@ -78,8 +84,36 @@ def run_quickstart() -> None:
         show_next_steps=False, pick_template=False)
 
     _build_config(project_path, template, domain)
-    doctor.run_doctor(folder=project_path)
-    onboarding.print_next_steps(project_path, configured=True)
+    diagnosis = doctor.diagnose(project_path)
+    doctor.print_diagnosis(diagnosis)
+    if diagnosis.ready and _offer_first_run(project_path):
+        onboarding.print_what_next(project_path)
+    else:
+        onboarding.print_next_steps(project_path, configured=True)
+
+
+def _offer_first_run(project_path: str) -> bool:
+    """Offer to run the new project once; True when the run passed.
+
+    Only reached when doctor found nothing blocking, so the wizard never
+    invites a run it already knows will fail."""
+    onboarding.blank_line()
+    if not Confirm.ask("Run your first test now?", default=True):
+        return False
+    return _run_project(project_path)
+
+
+def _run_project(project_path: str) -> bool:
+    """Run the project, surviving a run that goes wrong.
+
+    A device dropping mid-test raises out of the runner, which would take the
+    wizard's closing guidance down with it — and a failed first run is when a
+    newcomer most needs to be told what to do next."""
+    try:
+        return execute.run_project(project_path)
+    except Exception as error:
+        _console.print(f"The run stopped early: {error}")
+        return False
 
 
 def _suggest_free_name(base_path: str, name: str) -> str:
@@ -104,8 +138,9 @@ def _offer_engine_install(domain: str) -> None:
     resolution keeps a single source of truth in setup.py's bundles — this
     module never re-lists engines.
 
-    A failed install never aborts the wizard — the most common cause (PEP 668
-    externally-managed Python) just needs a virtualenv, so say that plainly."""
+    A failed install never aborts the wizard. ``install_extras`` already
+    explains an environment that refuses the install and names the command that
+    would work there, so this only adds that the wizard is carrying on."""
     requests, invalid = resolve_engines([domain])
     if invalid or not requests:  # defensive: the domain is a fixed bundle token
         return
@@ -119,12 +154,22 @@ def _offer_engine_install(domain: str) -> None:
     _console.print(message)
     if not success:
         _console.print(
-            "\nIf pip complained about an [bold]externally managed environment"
-            "[/bold], put optics in a virtualenv first:\n"
-            "  python3 -m venv .venv\n"
-            "  source .venv/bin/activate\n"
-            "  pip install optics-framework\n"
-            "Then re-run this step — your answers so far are kept.")
+            "\nCarrying on — your answers so far are kept, and the project is "
+            "still created.")
+
+
+def _choose_start(domain: str) -> str | None:
+    """Sample to start from, or None for a blank project.
+
+    Offering the domain's own sample as a yes/no keeps the common path to one
+    keystroke; the full list is shown only to whoever declines it."""
+    sample = _DOMAIN_SAMPLE.get(domain)
+    if sample and sample in initialize.available_templates():
+        onboarding.blank_line()
+        if Confirm.ask(f"Start from the '{sample}' example, so you have a test "
+                       "that runs straight away?", default=True):
+            return sample
+    return _choose_template()
 
 
 def _choose_template() -> str | None:
@@ -134,7 +179,7 @@ def _choose_template() -> str | None:
     onboarding.blank_line()
     _console.print("Pick a starting point:")
     for number, option in enumerate(options, start=1):
-        label = ("An empty project (recommended)" if option == "blank"
+        label = ("An empty project" if option == "blank"
                  else f"The '{option}' sample project")
         _console.print(f"  {number}. {label}")
     choice = Prompt.ask(
@@ -157,9 +202,11 @@ def _build_config(project_path: str, template: str | None, domain: str) -> None:
     config_path = os.path.join(project_path, "config.yaml")
     if template is not None and os.path.isfile(config_path):
         onboarding.blank_line()
+        # A mobile sample pins one particular emulator, so its config almost
+        # always needs replacing; the browser sample runs exactly as shipped.
         if not Confirm.ask(
             f"'{template}' ships its own working config.yaml. Overwrite it "
-            "with your own answers?", default=False):
+            "with your own answers?", default=domain == "mobile"):
             _console.print(f"Keeping the template's config at {config_path}.")
             return
     answers = project_config.prompt_project_config(domain=domain)

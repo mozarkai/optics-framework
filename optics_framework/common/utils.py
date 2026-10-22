@@ -199,6 +199,19 @@ def parse_text_only_prefix(element: str) -> Tuple[str, bool]:
     return (element, False)
 
 
+def to_bool(value: Any, default: bool = False) -> bool:
+    """Coerce a flag that may cross the keyword boundary as a string to a bool.
+
+    Recognizes true/1/yes/on case-insensitively; ``None`` yields ``default``. Needed
+    because ``"false"`` is otherwise a truthy non-empty string.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+
 def get_timestamp():
     try:
         current_utc_time = datetime.now(timezone.utc)
@@ -354,10 +367,11 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
     name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
     if time_stamp is None:
         time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    screenshot_file_path = os.path.join(output_dir, f"{time_stamp}-{name}.jpg")
+    file_stamp = str(time_stamp).replace(":", "-")
+    screenshot_file_path = os.path.join(output_dir, f"{file_stamp}-{name}.jpg")
     try:
         cv2.imwrite(screenshot_file_path, img)
-        internal_logger.debug(f'Screenshot saved as : {time_stamp}-{name}.jpg')
+        internal_logger.debug(f'Screenshot saved as : {file_stamp}-{name}.jpg')
         internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
 
     except Exception as e:

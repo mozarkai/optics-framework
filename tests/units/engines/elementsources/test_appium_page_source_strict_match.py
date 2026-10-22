@@ -1,8 +1,8 @@
-"""AppiumPageSource text-presence checks must be exact -- regression cover for a
-Condition's "element exists" probe reporting true for a value that only fuzzy-matched
-what was actually on screen (e.g. "Buy 102 devices" against an on-screen "Buy 101
-devices"), which meant the ELSE branch could never be reached. Mirrors the strict
-treatment find_xpath already gives XPath-type presence checks.
+"""AppiumPageSource presence checks honour Config.strict_element_match, uniform with the
+locate path. Strict mode rejects a value that only fuzzy-matched what is on screen (e.g.
+"Buy 102 devices" against an on-screen "Buy 101 devices" -- the near-miss that let a
+Condition's "element exists" probe report true and skip its ELSE branch); the default
+fuzzy mode accepts it. Both text- and XPath-type presence follow the same flag.
 """
 from unittest.mock import MagicMock
 
@@ -44,11 +44,31 @@ class TestAssertElementsTextPresence:
 
         source.assert_elements(["Buy 101 devices"], timeout=1, rule="any")
 
-    def test_fuzzy_near_miss_is_not_reported_as_present(self):
-        source = _source()
+    def test_fuzzy_near_miss_rejected_when_strict(self):
+        source = _source(strict_element_match=True)
 
         with pytest.raises(TimeoutError):
             source.assert_elements(["Buy 102 devices"], timeout=0.05, rule="any")
+
+    def test_fuzzy_near_miss_matches_when_not_strict(self):
+        # Default (fuzzy) mode: presence follows the flag, uniform with locate, so a
+        # near-miss fuzzy-matches instead of being rejected.
+        source = _source(strict_element_match=False)
+
+        source.assert_elements(["Buy 102 devices"], timeout=1, rule="any")
+
+
+class TestAssertElementsXPathStrictWiring:
+    @pytest.mark.parametrize("flag", [True, False])
+    def test_assert_forwards_config_strict_flag_to_find_xpath(self, flag):
+        source = _source(strict_element_match=flag)
+        source.driver.ui_helper.find_xpath.return_value = ("//android.widget.RadioButton", "ts")
+
+        source.assert_elements(["//android.widget.RadioButton"], timeout=1, rule="any")
+
+        source.driver.ui_helper.find_xpath.assert_called_with(
+            "//android.widget.RadioButton", strict=flag
+        )
 
 
 class TestLocateStrictWiring:

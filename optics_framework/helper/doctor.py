@@ -13,31 +13,33 @@ never constructs ``ConfigHandler``, because its constructor creates an
 ``execution_output/`` directory as a side effect and a diagnostic command must
 not mutate the project it is inspecting.
 """
+import json
 import os
 import shutil
 import socket
 import subprocess  # nosec B404
 import sys
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlparse
 
 import yaml
-from rich.console import Console
-from rich.table import Table
+from rich.cells import cell_len
+from rich.text import Text
 
+from optics_framework.helper.console import can_encode, safe_console
+from optics_framework.helper.environment import describe as describe_environment
+from optics_framework.helper.environment import detect as detect_environment
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
 
-_console = Console()
+_console = safe_console()
 
 _SOCKET_TIMEOUT_S = 3.0
 _ADB_TIMEOUT_S = 10.0
 
-_STATUS_GLYPH = {
-    "ok": "[green]✅[/green]",
-    "warn": "[yellow]⚠️[/yellow] ",
-    "fail": "[red]❌[/red]",
-}
+_STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
+_MAX_NAME_COLUMN = 32
 
 _ADB_DEVICES = "adb devices"
 _APPIUM_SERVER = "appium server"
@@ -46,6 +48,16 @@ _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
 
 
+class _Glyphs(NamedTuple):
+    status: dict[str, str]
+    width: int
+    title: str
+    arrow: str
+_EMOJI_GLYPHS = _Glyphs({"ok": "✅", "warn": "⚠️", "fail": "❌"}, 3, "🩺 optics doctor", "→")
+_PLAIN_GLYPHS = _Glyphs({"ok": "OK", "warn": "WARN", "fail": "FAIL"}, 5, "optics doctor", "->")
+def _glyphs() -> _Glyphs:
+    emoji = "".join(_EMOJI_GLYPHS.status.values()) + _EMOJI_GLYPHS.title + _EMOJI_GLYPHS.arrow
+    return _EMOJI_GLYPHS if can_encode(_console, emoji) else _PLAIN_GLYPHS
 class Check(NamedTuple):
     """One row of the doctor report."""
     name: str
@@ -59,7 +71,7 @@ class Check(NamedTuple):
 # --------------------------------------------------------------------------- #
 
 def check_core() -> list[Check]:
-    """Python and optics-framework itself.
+    """Python, optics-framework itself, and the install environment.
 
     The Python row is informational only — it never fails, because the package
     cannot even be imported below the supported pin, so a failing row would
@@ -76,6 +88,9 @@ def check_core() -> list[Check]:
         rows.append(Check("optics-framework", "warn",
                           "not installed as a package (source checkout?)",
                           "pip install optics-framework"))
+    row = describe_environment(detect_environment())
+    if row:
+        rows.append(Check("environment", *row))
     return rows
 
 
@@ -179,22 +194,53 @@ def _playwright_row() -> Check:
     if _playwright_chromium_downloaded():
         return Check(_PLAYWRIGHT_BROWSER, "ok", "Chromium download found")
     return Check(_PLAYWRIGHT_BROWSER, "warn",
-                 "package installed, but no Chromium download detected",
+                 "package installed, but its Chromium build is not downloaded",
                  "playwright install chromium  (or: optics setup --install playwright)")
 
 
-def _playwright_chromium_downloaded() -> bool:
+def _playwright_browser_dirs() -> list[str]:
+    """Directories Playwright may keep its browser downloads in."""
+    override = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if override:
+        return [override]
     home = os.path.expanduser("~")
-    cache_dirs = (
+    return [
         os.path.join(home, "Library", "Caches", "ms-playwright"),  # macOS
         os.path.join(home, ".cache", "ms-playwright"),  # Linux
-    )
-    for base in cache_dirs:
+        os.path.join(home, "AppData", "Local", "ms-playwright"),  # Windows
+    ]
+
+
+def _playwright_chromium_revision() -> str | None:
+    """Chromium build the installed Playwright expects, from its own manifest.
+
+    Playwright refuses to launch any build but the one it pins, so a leftover
+    download from an earlier version is not a usable browser."""
+    try:
+        import playwright
+        manifest = (Path(playwright.__file__).parent / "driver" / "package"
+                    / "browsers.json")
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (ImportError, OSError, ValueError):
+        return None
+    for browser in data.get("browsers", []):
+        if browser.get("name") == "chromium":
+            revision = browser.get("revision")
+            return str(revision) if revision else None
+    return None
+
+
+def _playwright_chromium_downloaded() -> bool:
+    revision = _playwright_chromium_revision()
+    for base in _playwright_browser_dirs():
         try:
             entries = os.listdir(base)
         except OSError:
             continue
-        if any(name.startswith("chromium") for name in entries):
+        if revision is None:
+            if any(name.startswith("chromium") for name in entries):
+                return True
+        elif f"chromium-{revision}" in entries:
             return True
     return False
 
@@ -341,6 +387,13 @@ _DRIVER_ROW_NAMES = {
 }
 
 
+def _engine_row_names_by_driver() -> dict[str, str]:
+    """Driver config key → the Engines row that carries its Python client.
+
+    An engine's ``extra`` is also its ``config.yaml`` source key."""
+    return {engine.extra: engine.name for engine in ALL_ENGINES.values()}
+
+
 def _enabled_driver_names(folder: str) -> set[str]:
     """Names of the drivers the project's config enables (empty when there is
     no readable config — e.g. a bare `optics doctor` with no folder)."""
@@ -356,7 +409,12 @@ def _mandatory_hints(rows: list[Check], drivers: set[str]) -> list[str]:
     A warning for something the user never enabled (say, Playwright's browser
     while they drive Appium) is an optional extra; a warning for their own
     driver's server/device/browser blocks the first real run and gets called
-    out in the closing message. Order follows the rows, deduplicated."""
+    out in the closing message. Order follows the rows, deduplicated. An
+    enabled driver's missing Python client blocks just as hard — the server can
+    be up and the device attached, and the run still fails on instantiation."""
+    engine_rows = _engine_row_names_by_driver()
+    required_engines = {engine_rows[driver] for driver in drivers
+                        if driver in engine_rows}
     hints: list[str] = []
     for row in rows:
         if row.status != "warn" or not row.hint:
@@ -366,6 +424,7 @@ def _mandatory_hints(rows: list[Check], drivers: set[str]) -> list[str]:
              and (row.name == _APPIUM_SERVER
                   or (row.name == _ADB_DEVICES
                       and "no devices attached" in row.detail)))
+            or row.name in required_engines
             or any(row.name in names
                    for driver, names in _DRIVER_ROW_NAMES.items()
                    if driver in drivers)
@@ -398,44 +457,92 @@ def _split_host_port(url: object) -> tuple[str, int] | None:
         return None
 
 
-def _print_report(rows: list[Check], mandatory_hints: list[str]) -> None:
-    """Print the report table, the counts line and the closing message.
+def _row_text(row: Check, name_width: int, glyphs: _Glyphs) -> Text:
+    """One check as a single line: glyph, padded name, detail — no table
+    borders to break when a narrow terminal wraps a long detail string."""
+    glyph = glyphs.status.get(row.status, "•")
+    style = _STATUS_STYLE.get(row.status, "")
+    text = Text("  ")
+    text.append(glyph, style=style)
+    text.append(" " * max(1, glyphs.width - cell_len(glyph)))
+    text.append(row.name.ljust(name_width))
+    text.append("  ")
+    text.append(row.detail)
+    return text
+
+
+def _hint_text(hint: str, arrow: str) -> Text:
+    text = Text(f"      {arrow} ", style="dim")
+    text.append(hint, style="dim")
+    return text
+
+
+def _print_section(title: str, rows: list[Check], name_width: int, glyphs: _Glyphs) -> None:
+    if not rows:
+        return
+    _console.print(f"[bold]{title}[/bold]")
+    for row in rows:
+        _console.print(_row_text(row, name_width, glyphs))
+        if row.hint:
+            _console.print(_hint_text(row.hint, glyphs.arrow))
+    _console.print()
+
+
+def print_report(sections: list[tuple[str, list[Check]]],
+                   mandatory_hints: list[str]) -> None:
+    """Print the report as grouped, left-aligned lines (not a bordered
+    table), the counts line and the closing message.
+
+    A four-column table sized wider than the visible terminal/pane wraps its
+    box-drawing characters mid-line and comes out jagged; plain lines instead
+    degrade gracefully — a long detail or hint just wraps as text.
 
     ``mandatory_hints`` carries the warnings on the ENABLED driver's own
     requirements; when non-empty the reassurance line is replaced by a
     targeted call-to-action listing them."""
-    table = Table(title="🩺 optics doctor", header_style="bold")
-    table.add_column("")
-    table.add_column("Check")
-    table.add_column("Details")
-    table.add_column("Hint", style="dim")
-    for row in rows:
-        table.add_row(_STATUS_GLYPH.get(row.status, "•"),
-                      row.name, row.detail, row.hint)
-    _console.print(table)
+    rows = [row for _, section_rows in sections for row in section_rows]
+    name_width = min(max((len(row.name) for row in rows), default=0),
+                      _MAX_NAME_COLUMN)
+
+    glyphs = _glyphs()
+    _console.print(f"[bold]{glyphs.title}[/bold]\n")
+    for title, section_rows in sections:
+        _print_section(title, section_rows, name_width, glyphs)
 
     counts = {status: sum(1 for r in rows if r.status == status)
               for status in ("ok", "warn", "fail")}
     _console.print(
         f"{counts['ok']} ok, {counts['warn']} warning(s), {counts['fail']} failure(s)")
     if counts["fail"]:
-        _console.print("[red]Fix the ❌ rows above, then re-run optics doctor.[/red]")
+        _console.print(f"[red]Fix the {glyphs.status['fail']} rows above, then re-run optics doctor.[/red]")
     elif counts["warn"]:
         if mandatory_hints:
-            _console.print("[yellow]⚠️ Before your first real run:[/yellow]")
+            _console.print(f"[yellow]{glyphs.status['warn']} Before your first real run:[/yellow]")
             for hint in mandatory_hints:
                 _console.print(f"  • {hint}")
         else:
             _console.print(
-                "Good enough to start — ⚠️ rows are optional extras you can add later.")
+                f"Good enough to start — {glyphs.status['warn']} rows are optional extras you can add later.")
     else:
         _console.print("[green]Everything looks good — happy testing![/green]")
 
 
-def run_doctor(folder: str | None = None, check: bool = False) -> int:
-    """Run every check and print the report. Returns 0, or 1 under
-    ``check=True`` when a project-config row failed (environment gaps stay
-    warnings — they are installable later and must not fail a fresh machine).
+class Diagnosis(NamedTuple):
+    """The outcome of a doctor run, so a caller can print it *and* act on it
+    without paying for the checks twice — several shell out to adb or open a
+    socket."""
+
+    sections: list[tuple[str, list[Check]]]
+    blocking: list[str]
+    failed: bool
+
+    @property
+    def ready(self) -> bool:
+        return not self.failed and not self.blocking
+
+
+def diagnose(folder: str | None = None) -> Diagnosis:
+    """Run every check and collect the result without printing anything.
 
     With ``folder``, the Appium probe targets that project's enabled appium
     url (falling back to 127.0.0.1:4723) and ``validate_project`` rows are
@@ -449,19 +556,32 @@ def run_doctor(folder: str | None = None, check: bool = False) -> int:
         target = _appium_target(folder)
         if target:
             host, port = target
-    rows = [
-        *check_core(),
-        *check_engines(),
-        *check_mobile(host, port),
-        *check_web(),
+    sections: list[tuple[str, list[Check]]] = [
+        ("Core", check_core()),
+        ("Engines", check_engines()),
+        ("Mobile", check_mobile(host, port)),
+        ("Web", check_web()),
     ]
     if folder:
-        rows.extend(validate_project(folder))
+        sections.append(("Project", validate_project(folder)))
     elif not os.path.isfile(os.path.join(os.getcwd(), "config.yaml")):
-        rows.append(Check("project", "warn", "No config.yaml found here",
-                          _NO_CONFIG_HINT))
+        sections.append(("Project", [Check("project", "warn",
+                                           "No config.yaml found here",
+                                           _NO_CONFIG_HINT)]))
+    rows = [row for _, section_rows in sections for row in section_rows]
     drivers = _enabled_driver_names(folder) if folder else set()
-    _print_report(rows, _mandatory_hints(rows, drivers))
-    if check and any(row.status == "fail" for row in rows):
-        return 1
-    return 0
+    return Diagnosis(sections, _mandatory_hints(rows, drivers),
+                     any(row.status == "fail" for row in rows))
+
+
+def print_diagnosis(diagnosis: Diagnosis) -> None:
+    print_report(diagnosis.sections, diagnosis.blocking)
+
+
+def run_doctor(folder: str | None = None, check: bool = False) -> int:
+    """Diagnose and print. Returns 0, or 1 under ``check=True`` when a
+    project-config row failed (environment gaps stay warnings — they are
+    installable later and must not fail a fresh machine)."""
+    diagnosis = diagnose(folder)
+    print_diagnosis(diagnosis)
+    return 1 if check and diagnosis.failed else 0

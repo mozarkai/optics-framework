@@ -124,23 +124,23 @@ class TestPressElementWithIndex:
     def test_coordinate_result_presses_coordinates(self, action_keyword, mock_dependencies):
         with self._mock_locate(action_keyword, (100, 150)):
             action_keyword.press_element("button")
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, None)
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, event_name=None)
 
     def test_element_result_presses_element_with_repeat(self, action_keyword, mock_dependencies):
         element_handle = MagicMock()
         with self._mock_locate(action_keyword, element_handle):
             action_keyword.press_element("//button", repeat="3")
-        mock_dependencies['driver'].press_element.assert_called_once_with(element_handle, 3, None)
+        mock_dependencies['driver'].press_element.assert_called_once_with(element_handle, 3, event_name=None)
 
     def test_offset_adjusts_coordinates(self, action_keyword, mock_dependencies):
         with self._mock_locate(action_keyword, (100, 150)):
             action_keyword.press_element("button", offset_x="10", offset_y="20")
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(110, 170, None)
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(110, 170, event_name=None)
 
     def test_event_name_forwarded_to_driver(self, action_keyword, mock_dependencies):
         with self._mock_locate(action_keyword, (120, 180)):
             action_keyword.press_element("button", event_name="test_event")
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(120, 180, "test_event")
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(120, 180, event_name="test_event")
 
     def test_aoi_params_passed_to_locate(self, action_keyword, mock_dependencies):
         with self._mock_locate(action_keyword, (200, 250)) as mock_locate:
@@ -148,7 +148,7 @@ class TestPressElementWithIndex:
                 "button", index="1", aoi_x="10", aoi_y="20", aoi_width="50", aoi_height="60"
             )
         mock_locate.assert_called_once_with("button", 10.0, 20.0, 50.0, 60.0, index=1)
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(200, 250, None)
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(200, 250, event_name=None)
 
     def test_no_located_result_raises_element_not_found(self, action_keyword):
         with patch.object(action_keyword.strategy_manager, 'locate', return_value=[]):
@@ -174,7 +174,7 @@ class TestScreenshotFailureFallback:
             with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
                 action_keyword.press_element("button")
 
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, None)
+        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, event_name=None)
 
     @patch('optics_framework.common.utils.save_screenshot')
     def test_locate_and_act_skips_save_when_screenshot_raises(
@@ -223,7 +223,7 @@ class TestScreenshotFailureFallback:
         ):
             action_keyword.press_by_percentage("50", "50")
 
-        mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, None)
+        mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, event_name=None)
         mock_save_screenshot.assert_not_called()
 
 
@@ -414,11 +414,10 @@ class TestSelectDropdownOption:
 class TestSwipeUntilElementAppears:
     """Tests for OpticsError(E0201) handling in swipe_until_element_appears."""
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_e0201_continues_loop_until_found(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_e0201_continues_loop_until_found(self, mock_time, action_keyword):
         """E0201 is caught, loop continues, element found on second call."""
-        mock_time.side_effect = [0, 0, 3, 6, 9]
+        mock_time.time.side_effect = [0, 0, 3, 6, 9]
         call_count = 0
 
         def assert_presence_side_effect(*args, **kwargs):
@@ -432,13 +431,12 @@ class TestSwipeUntilElementAppears:
             action_keyword.swipe_until_element_appears("element", "down", "10")
 
         assert call_count == 2
-        action_keyword.driver.swipe_percentage.assert_called_once_with(10, 50, "down", 25, None)
+        action_keyword.driver.swipe_percentage.assert_called_once_with(10, 50, "down", 25, event_name=None)
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_non_e0201_is_reraised(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_non_e0201_is_reraised(self, mock_time, action_keyword):
         """Non-E0201 OpticsError is re-raised immediately."""
-        mock_time.side_effect = [0, 0]
+        mock_time.time.side_effect = [0, 0]
 
         with patch.object(
             action_keyword.verifier, 'assert_presence',
@@ -450,22 +448,20 @@ class TestSwipeUntilElementAppears:
         assert exc_info.value.code == Code.E0303
         action_keyword.driver.swipe_percentage.assert_not_called()
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_element_found_stops_loop(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_element_found_stops_loop(self, mock_time, action_keyword):
         """Element found on first call, no swipe performed."""
-        mock_time.side_effect = [0, 0]
+        mock_time.time.side_effect = [0, 0]
 
         with patch.object(action_keyword.verifier, 'assert_presence', return_value=True):
             action_keyword.swipe_until_element_appears("element", "down", "10")
 
         action_keyword.driver.swipe_percentage.assert_not_called()
 
-    @patch('optics_framework.api.action_keyword.time.sleep', return_value=None)
-    @patch('optics_framework.api.action_keyword.time.time')
-    def test_timeout_stops_loop(self, mock_time, mock_sleep, action_keyword):
+    @patch('optics_framework.api.action_keyword.time')
+    def test_timeout_stops_loop(self, mock_time, action_keyword):
         """Element never found, loop exits after timeout and raises."""
-        mock_time.side_effect = [0, 0, 3, 6, 9, 12]
+        mock_time.time.side_effect = [0, 0, 3, 6, 9, 12]
 
         with patch.object(
             action_keyword.verifier, 'assert_presence',

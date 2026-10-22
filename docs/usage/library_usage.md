@@ -27,7 +27,7 @@ optics.setup(
 )
 
 # Launch app
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 
 # Interact with elements
 optics.press_element("submit_button")
@@ -134,7 +134,7 @@ optics.setup(config=yaml_config)
 
 ```python
 # Launch app by package name
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 
 # Launch other app
 optics.launch_other_app("com.other.app")
@@ -152,7 +152,7 @@ print(f"Session ID: {session_id}")
 
 ```python
 # Launch app
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 
 # Perform test operations
 optics.press_element("button")
@@ -377,7 +377,7 @@ optics = Optics()
 optics.setup(config=config)
 
 # Use session
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 optics.press_element("button")
 
 # Cleanup session
@@ -403,7 +403,7 @@ def optics_session(config):
 # Usage
 config = {...}
 with optics_session(config) as optics:
-    optics.launch_app("com.example.app")
+    optics.launch_app(app_identifier="com.example.app")
     optics.press_element("button")
     # Session automatically cleaned up on exit
 ```
@@ -418,8 +418,8 @@ optics1 = Optics(config=config1)
 optics2 = Optics(config=config2)
 
 # Each instance has its own session
-optics1.launch_app("app1")
-optics2.launch_app("app2")
+optics1.launch_app(app_identifier="app1")
+optics2.launch_app(app_identifier="app2")
 
 # Cleanup both
 optics1.quit()
@@ -486,7 +486,7 @@ def test_login_flow():
         optics.setup(config=config)
 
         # Launch app
-        optics.launch_app("com.example.app")
+        optics.launch_app(app_identifier="com.example.app")
 
         # Add elements
         optics.add_element("username", "//input[@id='username']")

@@ -74,6 +74,8 @@ class Config(BaseModel):
         if not self.llm_models:
             self.llm_models = [
                 {"gemini": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"openai": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"anthropic": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
 
     class Config:

@@ -327,6 +327,22 @@ curl -X POST "http://localhost:8000/v1/sessions/{session_id}/action" \
 
 Use the identifier format `collection_name.api_name` (e.g. `auth.token`). Extracted values from the API response are stored in the session and can be used by subsequent keywords or reads.
 
+The response is returned in `data`: `status_code`, `headers`, `body`, `elapsed_ms`.
+
+### Read Session Variables
+
+**GET** `/v1/sessions/{session_id}/variables`
+
+Returns the session's `${variable}` namespace, as written by `extract` blocks.
+
+```bash
+curl "http://localhost:8000/v1/sessions/{session_id}/variables"
+```
+
+```json
+{"variables": {"access_token": ["eyJhbGci..."], "otp": ["482913"]}}
+```
+
 ### Capture Screenshot
 
 **GET** `/v1/sessions/{session_id}/screenshot`

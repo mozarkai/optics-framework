@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Any
 
+from optics_framework.common.error import Code, OpticsError
+
 class DriverInterface(ABC):
     """
     Abstract base class for application drivers.
@@ -282,3 +284,13 @@ class DriverInterface(ABC):
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
         return False
+
+    # Optional: drivers override these only where the platform has the concept.
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        self._unsupported("go_back")
+
+    def _unsupported(self, capability: str) -> None:
+        raise OpticsError(
+            Code.E0105,
+            message=f"'{capability}' is not supported by the {type(self).__name__} driver.",
+        )

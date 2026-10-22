@@ -101,6 +101,29 @@ def welcome(first_run: bool = False) -> None:
                          subtitle=f"v{VERSION}", border_style="cyan"))
 
 
+def print_what_next(project_path: str) -> None:
+    """Print the closing panel shown once a first test run has passed.
+
+    Deliberately shorter than the full catalogue in ``print_next_steps``:
+    someone who has just watched one test go green needs a next move, not
+    every way to drive Optics."""
+    body = Text()
+    body.append("That was a real run — the same steps work everywhere else.\n\n")
+    body.append("Keep building\n", style="bold")
+    body.append("  optics live", style=_CMD_STYLE)
+    body.append(f" {project_path}\n", style="yellow")
+    body.append("      Try steps interactively against a live target.\n")
+    body.append("  optics list", style=_CMD_STYLE)
+    body.append("\n      Every step you can put in a test.\n\n")
+    body.append("Drive Optics from elsewhere\n", style="bold")
+    body.append("  optics serve", style=_CMD_STYLE)
+    body.append("      Run keywords over HTTP.\n")
+    body.append("  optics mcp", style=_CMD_STYLE)
+    body.append("        Let an AI agent drive your app.\n")
+    body.append("      The Python SDK and Robot Framework library are in the docs.")
+    _console.print(Panel(body, title="What next", border_style="green"))
+
+
 def print_next_steps(project_path: str, *, configured: bool = False) -> None:
     """Print the "now run:" block pointing at the next CLI commands.
 

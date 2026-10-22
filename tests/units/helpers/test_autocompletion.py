@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 from unittest.mock import patch
 
 import pytest
@@ -57,7 +58,8 @@ class TestConsentGate:
         rc = _rc_path(home, shell)
         content = rc.read_text(encoding="utf-8")
         assert "Optics CLI autocompletion" in content
-        assert f"source {home / '.optics'}/optics_completion." in content
+        completion = os.path.join(str(home / ".optics"), "optics_completion.")
+        assert f"source {completion}" in content
         assert "Added autocompletion" in out
         assert asked
 

@@ -16,7 +16,7 @@ One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Fr
 
 ![Optics demo](https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/optics-demo.gif)
 
-[Documentation](https://mozarkai.github.io/optics-framework/) · [Install](https://mozarkai.github.io/optics-framework/prerequisites/) · [Getting Started](https://mozarkai.github.io/optics-framework/getting-started/) · [Keywords](https://mozarkai.github.io/optics-framework/usage/keyword_usage/) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
+[Documentation](https://optics-framework.org/docs/) · [Install](https://optics-framework.org/docs/get-started/install) · [Getting Started](https://optics-framework.org/docs/get-started/quickstart) · [Keywords](https://optics-framework.org/docs/reference/keywords/) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
 
 </div>
 
@@ -26,44 +26,35 @@ Most frameworks assume a UI element has one true locator, and a test breaks the 
 
 That idea runs through the whole framework: locators fall back, drivers fall back, element values fall back. Tests are data (CSV or YAML), so non-coders can write them, and the same keywords are reachable from Python, Robot Framework, HTTP, and MCP.
 
-## Why Optics
-
-**A locator ladder, not a locator.** Every element-based keyword walks a priority-ordered chain until one strategy succeeds:
-
-| # | Strategy | How it finds the element |
-|---|----------|--------------------------|
-| 1 | `XPathStrategy` | Native XPath query through the driver's accessibility tree |
-| 2 | `TextElementStrategy` | Direct text / CSS / class lookup through the element source |
-| 3 | `TextDetectionStrategy` | Screenshot → OCR (EasyOCR, Pytesseract, Google Vision, remote OCR) |
-| 4 | `ImageDetectionStrategy` | Screenshot → template matching against a reference PNG |
-| 5 | AI self-heal *(opt-in)* | All four failed → an LLM reads the screen and recovers |
-
-Cheap strategies run first, so vision only costs you time when the tree can't help. Steps 1–4 are `LocatorStrategy` registrations; step 5 is a separate recovery layer, bounded to five turns and a six-keyword allowlist so it re-enters the ladder rather than tapping blind coordinates. Two more fallback axes sit alongside: **multiple values per element name**, and **multiple enabled drivers or element sources**, each tried in config order.
-
-Beyond the ladder:
-
-- **Tests are data** — elements, modules and test cases as plain CSV or YAML. No IDE, no programming.
-- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS.
-- **Non-intrusive** — the `ble` driver drives production devices as a Bluetooth HID mouse/keyboard where debugging and screenshots are blocked. Coordinate-only, so pair it with `camera_screenshot` and the vision strategies.
-- **Agent-ready** — `optics mcp` exposes every keyword as a typed MCP tool and device state as MCP resources.
-
 ## Install
 
-Optics needs **Python 3.12+**. The core install ships no drivers, OCR, or LLM backends — you add only what you need:
+One line puts the `optics` CLI on your PATH:
+
+```bash
+curl -fsSL https://optics-framework.org/install | sh      # macOS, Linux
+```
+
+```powershell
+irm https://optics-framework.org/install.ps1 | iex        # Windows
+```
+
+It installs into its own virtual environment under `~/.optics`, so nothing lands in your system Python. Then `optics quickstart` builds a project, checks your setup, and runs your first test.
+
+Already managing your own environment? Optics needs **Python 3.12+**, and the core install ships no drivers, OCR, or LLM backends — you add only what you need:
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install "optics-framework[appium,easyocr]"
 ```
 
-Most extra names match the `config.yaml` source keys, so the word you install is usually the word you enable (exceptions: `llm` enables the `gemini` engine, `google-vision` enables `google_vision`, and the bundles and `mcp` aren't config keys):
+Most extra names match the `config.yaml` source keys, so the word you install is usually the word you enable (exceptions: `google-vision` enables `google_vision`, and the bundles and `mcp` aren't config keys):
 
 | | |
 |---|---|
 | **Drivers** | `appium` · `selenium` · `playwright` · `ble` |
 | **OCR** | `easyocr` · `pytesseract` · `google-vision` |
-| **AI** | `llm` (natural-language mode + self-heal) · `mcp` (MCP server) |
-| **Bundles** | `mobile` · `web` · `vision` · `all` |
+| **AI** | `gemini` · `openai` · `anthropic` (natural-language mode + self-heal) · `mcp` (MCP server) |
+| **Bundles** | `mobile` · `web` · `vision` · `llm` · `all` |
 
 `optics setup` installs the drivers, OCR and LLM engines above (and the bundles) by name — pinned to your installed Optics version — and bare `optics setup` opens a TUI picker. `optics quickstart` goes one step further and offers the right extras for the platform you pick:
 
@@ -73,10 +64,10 @@ optics setup --install appium easyocr
 ```
 
 > [!NOTE]
-> The `mcp` server extra is **pip-only** (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
+> The installer always includes the `mcp` server extra. With pip, add it yourself (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
 
 > [!IMPORTANT]
-> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://mozarkai.github.io/optics-framework/prerequisites/).
+> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://optics-framework.org/docs/get-started/install).
 
 > [!WARNING]
 > Conda is not supported for `easyocr` + `optics-framework` together (conflicting NumPy 1.x/2.x requirements). Use a standard `venv`.
@@ -109,6 +100,27 @@ optics execute my_test_project
 - `playwright` — Playwright → `[playwright]` (then `playwright install` for the browsers)
 
 Omit `--template` for an empty scaffold with a commented starter `config.yaml`. Need only a config for an existing folder? `optics configure <folder>` writes one from a few questions, and `optics doctor [folder] [--check]` verifies engines, tooling, and project config.
+
+## Why Optics
+
+**A locator ladder, not a locator.** Every element-based keyword walks a priority-ordered chain until one strategy succeeds:
+
+| # | Strategy | How it finds the element |
+|---|----------|--------------------------|
+| 1 | `XPathStrategy` | Native XPath query through the driver's accessibility tree |
+| 2 | `TextElementStrategy` | Direct text / CSS / class lookup through the element source |
+| 3 | `TextDetectionStrategy` | Screenshot → OCR (EasyOCR, Pytesseract, Google Vision, remote OCR) |
+| 4 | `ImageDetectionStrategy` | Screenshot → template matching against a reference PNG |
+| 5 | AI self-heal *(opt-in)* | All four failed → an LLM reads the screen and recovers |
+
+Cheap strategies run first, so vision only costs you time when the tree can't help. Steps 1–4 are `LocatorStrategy` registrations; step 5 is a separate recovery layer, bounded to five turns and a six-keyword allowlist so it re-enters the ladder rather than tapping blind coordinates. Two more fallback axes sit alongside: **multiple values per element name**, and **multiple enabled drivers or element sources**, each tried in config order.
+
+Beyond the ladder:
+
+- **Tests are data** — elements, modules and test cases as plain CSV or YAML. No IDE, no programming.
+- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS.
+- **Non-intrusive** — the `ble` driver drives production devices as a Bluetooth HID mouse/keyboard where debugging and screenshots are blocked. Coordinate-only, so pair it with `camera_screenshot` and the vision strategies.
+- **Agent-ready** — `optics mcp` exposes every keyword as a typed MCP tool and device state as MCP resources.
 
 ## Write a test as data
 
@@ -177,7 +189,7 @@ Every successful keyword is buffered as you work. To persist the buffer:
 
 That appends the recorded keywords to `modules/modules.csv` as `<module_name>`, adds a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`, creates a header-only `elements/elements.csv` stub if none exists, and copies the session's screenshots to `execution_output/<module_name>/`. The buffer then clears, so the next actions become the next module. If either name already exists, re-run the identical `/save` to confirm the append.
 
-Other commands: `/device [id]`, `/elements`, `/screenshot`, `/help`, `/quit`. Full reference: [Live Usage](https://mozarkai.github.io/optics-framework/usage/live_usage/).
+Other commands: `/device [id]`, `/elements`, `/screenshot`, `/help`, `/quit`. Full reference: [Live Usage](https://optics-framework.org/docs/create/record).
 
 </details>
 
@@ -193,7 +205,7 @@ optics.setup(
     elements_sources=[{"appium_find_element": {"enabled": True}}],
 )
 
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 optics.enter_text("username_field", "testuser")
 optics.press_element("submit_button")
 optics.validate_element("welcome_message")
@@ -224,7 +236,7 @@ Every public method on the four API classes is automatically a keyword, on every
 | **App lifecycle** | Launch App · Launch Other App · Start Appium Session · Get Driver Session Id · Close And Terminate App · Force Terminate App · Get App Version |
 | **Flow control** | Run Loop · Condition · Read Data · Evaluate · Date Evaluate · Invoke API |
 
-Run `optics list` for the live catalogue with signatures, or read the [Keyword Usage guide](https://mozarkai.github.io/optics-framework/usage/keyword_usage/) for parameters and examples. Location keywords accept percentage-based **Area-of-Interest** bounds (`aoi_x/y/width/height`, 0–100) to scope a vision search to part of the screen.
+Run `optics list` for the live catalogue with signatures, or read the [Keyword Usage guide](https://optics-framework.org/docs/reference/keywords/) for parameters and examples. Location keywords accept percentage-based **Area-of-Interest** bounds (`aoi_x/y/width/height`, 0–100) to scope a vision search to part of the screen.
 
 > [!NOTE]
 > `Press Checkbox` and `Press Radio Button` still resolve but are deprecated aliases of `Press Element` — use `Press Element` directly. `Add API` is available on the `Optics` Python class only, not to the CSV/YAML runner; define APIs in an `api.yaml` and call them with `Invoke API` instead.
@@ -265,28 +277,35 @@ log_level: INFO
 | **Element sources** | `appium_find_element` · `appium_page_source` · `appium_screenshot` · `selenium_*` · `playwright_*` · `camera_screenshot` |
 | **Text detection** | `easyocr` · `pytesseract` · `google_vision` · `remote_ocr` |
 | **Image detection** | `templatematch` · `remote_oir` |
-| **LLM** | `gemini` |
+| **LLM** | `gemini` · `openai` (and any OpenAI-compatible server) · `anthropic` |
 
 ### Enabling the LLM features
 
-The `llm_models` block powers both natural-language mode in `optics live` (`Ctrl-N`) and AI self-heal. Install the extra (`pip install "optics-framework[llm]"`), then add:
+The `llm_models` block powers both natural-language mode in `optics live` (`Ctrl-N`) and AI self-heal. Pick the engine that matches the account you already have, install its extra, and enable it:
+
+| You have | Install | Enable |
+|---|---|---|
+| A Gemini API key, or Vertex AI | `optics-framework[gemini]` | `gemini` |
+| An OpenAI key | `optics-framework[openai]` | `openai` with a `model` |
+| An OpenRouter key (any hosted model) | `optics-framework[openai]` | `openai` with `url: https://openrouter.ai/api/v1` |
+| A local model (Ollama, vLLM, LM Studio) | `optics-framework[openai]` | `openai` with the server's `url` |
+| A Claude key, or Claude on Bedrock / Vertex | `optics-framework[anthropic]` | `anthropic` with a `model` |
 
 ```yaml
 llm_models:
-  - gemini:
+  - openai:
       enabled: true
+      url: https://openrouter.ai/api/v1         # omit for OpenAI itself
       capabilities:
-        model: gemini-2.5-flash    # optional; this is the default
-        # use_vertexai: true       # optional; else read from the environment
-        # project: my-gcp-project  # optional (Vertex)
-        # location: us-east4       # optional (Vertex)
+        model: anthropic/claude-sonnet-5-5
+        api_key_env: OPENROUTER_API_KEY         # default OPENAI_API_KEY
 
-ai_self_heal: true                 # opt into the LLM backstop; default false
+ai_self_heal: true                              # opt into the LLM backstop; default false
 ```
 
-Credentials are read from the environment by the `google-genai` SDK — `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for the Gemini Developer API, or `GOOGLE_GENAI_USE_VERTEXAI` + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` / `GOOGLE_APPLICATION_CREDENTIALS` for Vertex AI. **Never commit keys to `config.yaml`.** With every `capabilities` key omitted the SDK auto-detects the backend. `google-genai` is imported only when `gemini` is enabled, and a misconfigured LLM degrades to "no self-heal" rather than a hard failure.
+Keys always come from environment variables (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or the variable `api_key_env` names). **Never commit keys to `config.yaml`.** Enable more than one entry and Optics falls back to the next when a call fails. A misconfigured LLM degrades to "no self-heal" rather than a hard failure.
 
-Full reference: [Configuration](https://mozarkai.github.io/optics-framework/configuration/). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
+Full reference: [Configuration](https://optics-framework.org/docs/reference/config). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
 
 ## Results
 
@@ -297,7 +316,7 @@ An `optics execute` run writes to `<project>/execution_output/`:
 - **screenshots** — pre/post action frames, plus strategy-annotated and AOI overlays
 - **`detected_errors_<session_id>.json`** — on-screen error detection
 
-Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text for crash dialogs, `Session expired`, network errors, and the like — no assertions required. Matches also land in the JUnit XML as a synthetic failing testcase, so CI fails a build on "the app crashed mid-test" the same way it fails a normal assertion. See [Error Detection](https://mozarkai.github.io/optics-framework/usage/error_detection/).
+Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text for crash dialogs, `Session expired`, network errors, and the like — no assertions required. Matches also land in the JUnit XML as a synthetic failing testcase, so CI fails a build on "the app crashed mid-test" the same way it fails a normal assertion. See [Error Detection](https://optics-framework.org/docs/run/error-detection).
 
 ## CLI reference
 
@@ -318,7 +337,7 @@ optics completion  Install shell autocompletion
 optics --version   Print the installed version
 ```
 
-Details in the [CLI guide](https://mozarkai.github.io/optics-framework/usage/CLI_usage/).
+Details in the [CLI guide](https://optics-framework.org/docs/reference/cli).
 
 ## Contributing
 
@@ -349,6 +368,6 @@ Security issues follow [SECURITY.md](SECURITY.md) rather than public issues.
 
 Apache 2.0 — see [LICENSE](LICENSE).
 
-Questions and bugs: [GitHub Issues](https://github.com/mozarkai/optics-framework/issues). Anything else: [lalit@mozark.ai](mailto:lalit@mozark.ai).
+Questions and bugs: [GitHub Issues](https://github.com/mozarkai/optics-framework/issues).
 
-<div align="center"><sub>Built by <a href="https://mozark.ai">Mozark AI</a>.</sub></div>
+<div align="center"><sub>Built by the community.</sub></div>

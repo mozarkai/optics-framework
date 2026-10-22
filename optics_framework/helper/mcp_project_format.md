@@ -1,5 +1,6 @@
 # Optics project format
 
+
 An optics test project is a folder of CSV files plus a `config.yaml` that
 `optics execute <folder>` runs. Author one directly from the steps you already
 performed this session — the MCP has no save/record tool because you don't need
@@ -41,6 +42,18 @@ expand `${name}` inside a larger string.
     hour_field,text=Hour
     time,22:00
 
+On the web, use the `loc` value from the elements resource where an element has
+one (it is checked to match only that element) and keep the visible label as a
+fallback; values are tried in order:
+    Element_Name,Element_ID,Element_ID_2
+    password_field,[data-test="password"],Password
+    login_button,[data-test="login-button"],Login
+
+Web element values understand `xpath=`, `css=`, `text=`, `label=`,
+`placeholder=`, `role=button[name="Sign in"]`, `data-testid=...`, `#id`/`.class`
+CSS, and plain visible text (also matched as a label, placeholder, or button or
+link name).
+
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
 `{driver}_page_source`, `{driver}_screenshot`. appium is only an example here —
@@ -54,6 +67,20 @@ selenium and playwright follow the same shape.
       - appium_find_element: { enabled: true }
       - appium_page_source: { enabled: true }
       - appium_screenshot: { enabled: true }
+
+A website, run in a local browser:
+    driver_sources:
+      - playwright:
+          enabled: true
+          capabilities:
+            browser: chromium        # or firefox / webkit
+            headless: false          # true for CI
+    elements_sources:
+      - playwright_find_element: { enabled: true }
+      - playwright_page_source: { enabled: true }
+      - playwright_screenshot: { enabled: true }
+
+and the first module step opens the site: `Open Site,Launch App,https://...`.
 
 ## Control flow & data (author these into modules; the runner executes them)
 A module step is any keyword from the `optics://keywords` catalog — including the
