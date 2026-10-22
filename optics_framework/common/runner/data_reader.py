@@ -4,7 +4,7 @@ import re
 import inspect
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Callable, Optional, Dict, Set, Union, List, Tuple, cast
+from typing import Callable, Iterator, Optional, Dict, Set, Union, List, Tuple, cast
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import (
     ApiData,
@@ -690,6 +690,39 @@ class YAMLDataReader(DataReader):
             existing_api_def.expected_result.extract.update(
                 new_api_def.expected_result.extract
             )
+
+
+def _param_encodings(param: str) -> Iterator[str]:
+    yield param
+    key, sep, value = param.partition("=")
+    for quote in sorted('"\'', key=lambda q: q in param):
+        if sep:
+            yield f"{key}={quote}{value}{quote}"
+        yield f"{quote}{param}{quote}"
+
+
+def _encode_param(param: str) -> str:
+    """The first spelling the tokenizer reads back as exactly ``param``. A spelling with an
+    unpaired quote is skipped even when it reads back alone: in a step beside a quoted
+    param it would switch the whole step to the plain whitespace split."""
+    for candidate in _param_encodings(param):
+        if not _unbalanced_quote(candidate) and _tokens(candidate) == [param]:
+            return candidate
+    raise ValueError(f"param {param!r} has no spelling a YAML module step reads back")
+
+
+def format_module_step(keyword: str, params: List[str]) -> str:
+    """The YAML module step that :class:`YAMLDataReader` reads back as ``(keyword, params)``.
+
+    The finished step is parsed back before it is returned, so a param the catalogue would
+    fold into the keyword name raises ``ValueError`` rather than saving a step that runs
+    differently from the call that was recorded.
+    """
+    step = " ".join([keyword, *(_encode_param(param) for param in params)])
+    name, parsed = YAMLDataReader()._parse_module_step(step)
+    if _keyword_slug(name) != _keyword_slug(keyword) or parsed != list(params):
+        raise ValueError(f"{step!r} reads back as {name!r} with {parsed!r}")
+    return step
 
 
 def merge_dicts(dict1: Dict, dict2: Dict, data_type: str) -> Dict:

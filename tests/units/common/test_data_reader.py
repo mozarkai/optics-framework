@@ -5,12 +5,14 @@ readers for test cases / modules / elements, error-definition parsing, YAML API
 data parsing + merge, and the merge_dicts duplicate-key helper.
 """
 import pytest
+import yaml
 
 from optics_framework.common.models import ApiData
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     DataReader,
     YAMLDataReader,
+    format_module_step,
     merge_dicts,
 )
 from optics_framework.common.utils import escape_csv_value, unescape_csv_value
@@ -432,6 +434,51 @@ class TestEscapeUnescapeInverses:
     @pytest.mark.parametrize("raw", ["a\nb", "a\tb", "a\rb", "a\\nc", '//*[@d="A\nB"]', ""])
     def test_unescape_of_escape_is_identity(self, raw):
         assert unescape_csv_value(escape_csv_value(raw)) == raw
+
+
+class TestFormatModuleStep:
+    @pytest.mark.parametrize(
+        "keyword, params",
+        [
+            ("Launch App", []),
+            ("Sleep", ["5"]),
+            ("Press Element", ["${login_btn}", "index=0"]),
+            ("Enter Text", ["${search}", "two words"]),
+            ("Press Element", ["text=Sign in now"]),
+            ("Enter Text", ["${field}", ""]),
+            ("Enter Text", ["${field}", "it's fine", "a b"]),
+            ("Enter Text", ["${field}", '"quoted"']),
+            ("Enter Text", ["${field}", "line\nbreak\ttab"]),
+            ("Press Element", ["//input[@name='a b']"]),
+            ("Press Element", ['//button[@text="Save"]', "event_name=save tap"]),
+            ("Enter Text", ["${field}", "a:b #c {d} [e] & *f"]),
+        ],
+    )
+    def test_reads_back_through_the_yaml_reader(self, tmp_path, keyword, params):
+        step = format_module_step(keyword, params)
+        path = _write(
+            tmp_path, "modules.yaml", yaml.safe_dump({"Modules": [{"mod": [step]}]}, width=10**6)
+        )
+
+        assert YAMLDataReader().read_modules(path) == {"mod": [(keyword, params)]}
+
+    def test_plain_params_are_written_bare(self):
+        assert format_module_step("Press Element", ["${btn}", "index=0"]) == (
+            "Press Element ${btn} index=0"
+        )
+
+    def test_quotes_with_the_quote_the_param_lacks(self):
+        assert format_module_step("Enter Text", ["${f}", '"x"']) == "Enter Text ${f} '\"x\"'"
+
+    def test_param_no_quoting_can_hold_raises(self):
+        with pytest.raises(ValueError, match="has no spelling"):
+            format_module_step("Enter Text", ["${f}", "both \" and ' quotes"])
+
+    def test_param_the_catalogue_folds_into_the_keyword_raises(self):
+        # `Press Element With` extends toward `press_element_with_index`, so the reader
+        # would not dispatch press_element with `With` as its first param.
+        with pytest.raises(ValueError, match="reads back as"):
+            format_module_step("Press Element", ["With", "x"])
 
 
 class TestMergeDicts:
