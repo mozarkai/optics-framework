@@ -64,7 +64,7 @@ optics setup --install appium easyocr
 ```
 
 > [!NOTE]
-> The `mcp` server extra is **pip-only** (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
+> The installer always includes the `mcp` server extra. With pip, add it yourself (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
 
 > [!IMPORTANT]
 > Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://optics-framework.org/docs/get-started/install).
