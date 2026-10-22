@@ -43,7 +43,6 @@ def _require_chromium():
         async with playwright_api.async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             await browser.close()
-
     try:
         asyncio.run(launch())
     except Exception as e:
@@ -52,7 +51,7 @@ def _require_chromium():
         pytest.skip(f"Chromium is not installed for Playwright: {e}")
 
 
-def _project(tmp_path, steps):
+def _project(tmp_path, steps, config=CONFIG):
     modules = [
         "module_name,module_step,param_1,param_2",
         f"Open Store,Launch App,{STORE_URL}",
@@ -60,7 +59,7 @@ def _project(tmp_path, steps):
         "Close Store,Close And Terminate App",
     ]
     files = {
-        "config.yaml": CONFIG,
+        "config.yaml": config,
         "test_cases/test_cases.csv": TEST_CASES,
         "modules/modules.csv": "\n".join(modules) + "\n",
         "test_data/elements.csv": ELEMENTS,
@@ -102,13 +101,11 @@ def test_suite_replays_a_sign_in_journey(tmp_path):
         "Go Back",
         "Assert Presence,Sign in",
     ])
-
     assert run_project(project, use_printer=False) is True
 
 
 def test_a_missing_css_element_fails_the_run(tmp_path):
     project = _project(tmp_path, ["Assert Presence,#not-on-the-page,2"])
-
     assert run_project(project, use_printer=False) is False
 
 
@@ -117,7 +114,6 @@ def test_pressing_a_disabled_button_fails(tmp_path):
         f"Launch App,{(FIXTURE / 'orders.html').as_uri()}",
         "Press Element,Reorder",
     ])
-
     assert run_project(project, use_printer=False) is False
 
 
@@ -125,7 +121,6 @@ def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):
     orders = (FIXTURE / "orders.html").as_uri()
     visible = _project(tmp_path / "visible", [f"Launch App,{orders}", "Assert Visibility,Your orders,2"])
     clipped = _project(tmp_path / "clipped", [f"Launch App,{orders}", "Assert Visibility,Gift wrap,2"])
-
     assert run_project(visible, use_printer=False) is True
     assert run_project(clipped, use_printer=False) is False
 
@@ -133,7 +128,6 @@ def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):
 async def test_mcp_session_offers_unique_locators_for_the_suite():
     fastmcp = pytest.importorskip("fastmcp")
     from optics_framework.helper.mcp_server import build_server
-
     async with fastmcp.Client(build_server()) as client:
         started = await client.call_tool(
             "start_session", {"driver": "playwright", "capabilities": {"headless": True}}
@@ -145,10 +139,8 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             )
             resource = await client.read_resource(f"optics://session/{session_id}/elements")
             locators = {el["label"]: el.get("loc") for el in json.loads(resource[0].text)}
-
             assert locators["Email"] == "#email"
             assert locators["Password"] == '[data-testid="password"]'
-
             for element, text in ((locators["Email"], "ava@example.com"), ("Password", "secret")):
                 await client.call_tool(
                     "enter_text", {"session_id": session_id, "element": element, "text": text}
@@ -201,3 +193,40 @@ async def test_stopping_mcp_closes_its_browsers():
         server.kill()
 
     assert "Session terminated successfully" in output
+
+
+# A page without a meta viewport is zoomed out to fit the phone.
+@pytest.mark.parametrize("page", ["phone.html", "desktop_site.html"])
+def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path, page):
+    config = CONFIG.replace("headless: true\n", "headless: true\n        device: Pixel 7\n")
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / page).as_uri()}",
+        "Assert Presence,Phone layout",
+        "Press By Percentage,50,50",
+        "Assert Presence,Touched",
+        "Scroll,down",
+        "Assert Presence,Scrolled",
+        "Press Element,Buy",
+        "Assert Presence,Bought",
+    ], config=config)
+    assert run_project(project, use_printer=False) is True
+
+
+@pytest.mark.parametrize("save_captures", [True, False])
+def test_a_run_takes_screenshots_only_when_captures_are_on(tmp_path, monkeypatch, save_captures):
+    from optics_framework.engines.elementsources.playwright_screenshot import PlaywrightScreenshot
+
+    shots = []
+    take = PlaywrightScreenshot.capture_screenshot_bytes
+    monkeypatch.setattr(PlaywrightScreenshot, "capture_screenshot_bytes", lambda self: shots.append(1) or take(self))
+    config = f"save_captures: {str(save_captures).lower()}\n{CONFIG}"
+    project = _project(tmp_path, [
+        "Enter Text,${email_field},ava@example.com",
+        "Enter Text,${password_field},@:secret",
+        "Press Element,${sign_in}",
+        "Assert Presence,${welcome}",
+    ], config=config)
+
+    assert run_project(project, use_printer=False) is True
+    assert bool(list((tmp_path / "execution_output").rglob("*.jpg"))) is save_captures
+    assert bool(shots) is save_captures

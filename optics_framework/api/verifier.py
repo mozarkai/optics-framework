@@ -19,7 +19,8 @@ class Verifier:
         self.image_detection: Optional[InstanceFallback] = builder.get_image_detection()
         self.text_detection: Optional[InstanceFallback] = builder.get_text_detection()
         self.strategy_manager = StrategyManager(
-            self.element_source, self.text_detection, self.image_detection
+            self.element_source, self.text_detection, self.image_detection,
+            annotate_assertions=builder.session_config.save_captures,
         )
         self.event_sdk: EventSDK = builder.event_sdk
         self.execution_dir = builder.session_config.execution_output_path
@@ -203,11 +204,13 @@ class Verifier:
 
     def _save_annotated_screenshot(self, annotated_frame, timestamp):
         """Save annotated screenshot with timestamp."""
+        if self.capture_output_dir is None:
+            return
         utils.save_screenshot(
             annotated_frame,
             "assert_elements_image_detection_result",
             time_stamp=timestamp,
-            output_dir=self.execution_dir
+            output_dir=self.capture_output_dir
         )
 
     def _evaluate_rule(self, result_parts: list, rule: str) -> bool:
