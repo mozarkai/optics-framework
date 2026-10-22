@@ -662,9 +662,8 @@ Element sources define methods for locating and capturing UI elements.
 
     ### `appium_web`
 
-    **Purpose:** Finds `css=` and DOM XPath locators in the web page of the Android app in
-    front (Chrome, or a debuggable WebView) and returns screen coordinates, so the action
-    stays native. See [Mobile Web](usage/mobile_web.md).
+    **Purpose:** Finds `css=` and DOM XPath locators in mobile browsers and WebViews on
+    Android and iOS. See [Mobile Web](usage/mobile_web.md).
 
     ```yaml
     elements_sources:

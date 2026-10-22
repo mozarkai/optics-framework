@@ -9,7 +9,6 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_liveness import raise_if_session_dead
-from optics_framework.engines.drivers.appium_platforms import ANDROID
 from optics_framework.engines.elementsources.playwright_page_source import BOUNDS_JS, SUGGEST_LOCATORS_JS, WebDomInspector
 
 _SCROLL_INTO_VIEW_JS = "arguments[0].scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});"
@@ -20,6 +19,19 @@ _IN_VIEWPORT_JS = (
     "const bottom = top + (v ? v.height : window.innerHeight);"
     "return r.width > 0 && r.height > 0 && r.bottom > top && r.right > left"
     " && r.top < bottom && r.left < right;"
+)
+_CENTER_IN_VIEWPORT_JS = (
+    "const r = arguments[0].getBoundingClientRect(); const v = window.visualViewport;"
+    "if (!v) return true; const x = r.left + r.width / 2; const y = r.top + r.height / 2;"
+    "return x >= v.offsetLeft && x <= v.offsetLeft + v.width && y >= v.offsetTop && y <= v.offsetTop + v.height;"
+)
+_CLOSE_KEYBOARD_JS = "document.activeElement && document.activeElement.blur();"
+# iOS can raise the keyboard a second after typing ends, scrolling the page; until then the viewport is near full height.
+_KEYBOARD_PENDING_JS = (
+    "const a = document.activeElement, v = window.visualViewport;"
+    "return !!v && !!a && a !== arguments[0] && v.height > innerHeight * 0.8 && a.matches('textarea,"
+    " [contenteditable]:not([contenteditable=false]), input:not([type=checkbox], [type=radio], [type=button],"
+    " [type=submit], [type=reset], [type=file], [type=range], [type=color], [type=image], [type=hidden])');"
 )
 # One round trip: the page geometry web_rects_to_screen needs, the rects, and the locators.
 _INSPECT_JS = (
@@ -34,7 +46,7 @@ _SETTLE_INTERVAL_S = 0.15
 
 
 class AppiumWeb(ElementSourceInterface, WebDomInspector):
-    """Finds CSS and DOM XPath locators in the foreground Android app's web content (Chrome or a debuggable WebView).
+    """Finds CSS and DOM XPath locators in the foreground app's web content: a browser or an inspectable WebView.
 
     It returns screen coordinates, so the session and the actions that follow stay native.
     """
@@ -50,8 +62,8 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         raise NotImplementedError("AppiumWeb does not capture screenshots.")
 
     def get_interactive_elements(self, filter_config: list[str] | None = None, compact: bool = False) -> list:
-        """The whole web page the app in front shows, in device-screen pixels; out-of-view elements are ``offscreen``."""
-        if not self._reads_native_android():
+        """The whole web page the app in front shows, in screen coordinates; out-of-view elements are ``offscreen``."""
+        if not self._reads_native_screen():
             return []
         try:
             with self._web_context() as driver:
@@ -83,19 +95,19 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         return self.driver.web_rects_to_screen(rects, metrics), found or [None] * len(xpaths)
 
     def can_locate(self, element: str) -> bool:
-        return self._dom_query(element) is not None and self._reads_native_android()
+        return self._dom_query(element) is not None and self._reads_native_screen()
 
-    def _reads_native_android(self) -> bool:
+    def _reads_native_screen(self) -> bool:
         # A browser or autoWebview session already reads the page through the native sources; leaving it
         # through web_context would drop it to NATIVE_APP.
-        return self.driver is not None and self.driver.native_ui_platform() == ANDROID
+        return self.driver is not None and self.driver.native_ui_platform() is not None
 
     def locate(self, element: str, index: int | None = None) -> tuple[int, int] | None:
         if not self.can_locate(element):
             return None
         query = self._dom_query(element)
         try:
-            with self._web_context() as driver:
+            with self._web_context([query]) as driver:
                 matches = driver.find_elements(*query)
                 position = index or 0
                 if not 0 <= position < len(matches):
@@ -106,11 +118,31 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
                 target = matches[position]
                 if not target.is_displayed():
                     raise OpticsError(Code.E0201, message=f"'{element}' is in the page but not displayed.")
+                if self.driver.native_ui_platform() == "ios":
+                    self._await_keyboard(driver, target)
                 driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
+                self._uncover(driver, target)
                 rect = self._settled_rect(target)
         except _Unsupported:
             return None
         return rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
+
+    @staticmethod
+    def _await_keyboard(driver: Any, target: Any) -> None:
+        deadline = time.monotonic() + _SETTLE_TIMEOUT_S
+        while time.monotonic() < deadline and driver.execute_script(_KEYBOARD_PENDING_JS, target):
+            time.sleep(_SETTLE_INTERVAL_S)
+
+    @staticmethod
+    def _uncover(driver: Any, target: Any) -> None:
+        """Close the on-screen keyboard when it covers ``target`` at the end of the page, where scrolling cannot."""
+        if driver.execute_script(_CENTER_IN_VIEWPORT_JS, target):
+            return
+        driver.execute_script(_CLOSE_KEYBOARD_JS)
+        deadline = time.monotonic() + _SETTLE_TIMEOUT_S
+        while time.monotonic() < deadline and not driver.execute_script(_CENTER_IN_VIEWPORT_JS, target):
+            time.sleep(_SETTLE_INTERVAL_S)
+            driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
 
     def _settled_rect(self, target: Any) -> dict:
         """Screen rect once it holds still: Chrome slides its toolbar away after a scroll ends."""
@@ -151,7 +183,7 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
     ) -> list[bool]:
         """One look at the page in front; a page that cannot be read yet counts as no match."""
         try:
-            with self._web_context() as driver:
+            with self._web_context([query for query in queries if query is not None]) as driver:
                 return [query is not None and check(driver, query) for query in queries]
         except StaleElementReferenceException:
             internal_logger.debug("AppiumWeb: the page changed while checking; checking again.")
@@ -185,11 +217,11 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
             return None if utils.is_native_xpath(xpath) else (AppiumBy.XPATH, xpath)
         return None
 
-    def _web_context(self):
+    def _web_context(self, queries: list[tuple[str, str]] | None = None):
         if self.driver is None:
             raise OpticsError(Code.E0101, message="Appium driver is not initialized for AppiumWeb.")
         try:
-            return self.driver.web_context()
+            return self.driver.web_context(queries or ())
         except OpticsError as e:
             if e.code == Code.E0105:
                 internal_logger.debug(f"AppiumWeb: {e}")

@@ -1,22 +1,24 @@
-# Mobile Web (Chrome and WebViews on Android)
+# Mobile Web (browsers and WebViews on Android and iOS)
 
-Optics drives web pages on a real Android device through the same Appium session that
-drives native apps. One test can open an app, follow a link into Chrome, fill a web form,
-and come back to the app, with no separate browser driver and no context switching in
-your test steps.
+Optics drives web pages on Android and iOS devices through the same Appium session that
+drives native apps. One test can open an app, follow a link into Chrome or Safari, fill a
+web form, and come back to the app, with no separate browser driver and no context
+switching in your test steps. The same test steps work on both platforms.
 
 ## How it works
 
 The Appium session stays in the native context the whole time. Native locators (visible
-text, resource ids, native XPath) and OCR keep working on web pages, because Chrome puts
-the page's text, links, inputs and buttons into the native UI tree.
+text, resource ids, native XPath) and OCR keep working on web pages, because Chrome and
+Safari put the page's text, links, inputs and buttons into the native UI tree.
 
 Web locators, `css=...` and DOM XPath such as `//button[@type='submit']`, go through the
 `appium_web` element source. For each lookup it:
 
-1. finds the web content of the app in front (Chrome, or a debuggable WebView) and its
-   front tab,
-2. finds the element in the page and scrolls it into view,
+1. finds the web content of the app in front and its front tab: Chrome or a debuggable
+   WebView on Android; Safari, an in-app Safari sheet (`SFSafariViewController`), an
+   inspectable `WKWebView` or another inspectable browser on iOS,
+2. finds the element in the page and scrolls it into view, closing the on-screen
+   keyboard if it covers the element,
 3. converts the element's position to screen coordinates, and
 4. returns to the native context.
 
@@ -59,6 +61,29 @@ zoom. Older drivers work too: Optics computes the position from the page's
 geometry and the on-screen bounds of the WebView. For an app that shows several
 WebViews, use 8.6.0 or later, so each element is placed in the WebView that holds it.
 
+### iOS
+
+The same `elements_sources` work with `platformName: iOS` and `automationName: XCUITest`.
+No extra driver is needed; XCUITest reads web pages through Safari's Web Inspector.
+
+- **Real devices:** turn on **Web Inspector** and **Remote Automation** in
+  Settings > Apps > Safari > Advanced. Simulators need no setup.
+- **Apps:** a `WKWebView` is readable when the app sets `isInspectable = true`, which
+  apps built with the iOS 16.4 SDK or later need even in debug builds. Safari and in-app
+  Safari sheets are always readable.
+- **Other browsers:** Chrome, Firefox and other iOS browsers are read the same way when
+  they allow inspection. Firefox's tabs are inspectable out of the box; Chrome needs
+  Settings > Content Settings > Web Inspector.
+
+Optics starts native iOS sessions with `includeSafariInWebviews: true`,
+`additionalWebviewBundleIds: ["*"]`, `webviewConnectRetries: 1` and
+`webviewAtomWaitTimeout: 5000` (values in your `capabilities` take precedence). They let
+it see every app's web content and keep a lookup on a page that cannot answer to seconds
+instead of minutes. Sessions that start in Safari (`browserName`) keep Appium's defaults.
+
+Web positions on iOS are converted to screen points from a measurement of the page on
+screen, so Safari's toolbars, page zoom and the keyboard are accounted for.
+
 ## Locators
 
 | Locator | Example | Resolved by |
@@ -74,9 +99,9 @@ An XPath that names an Android or iOS class (`android.widget.Button`,
 native sources. Text inside quotes does not count, so `//a[contains(@href,'android.com')]`
 is still a web locator. An assertion leaves an XPath whose path names only HTML
 elements (`//input[@name='email']`, `//button`) to `appium_web` alone; `//*` and other
-XPaths are still checked natively too. In an iOS app session, where `appium_web` does not
-run, such an assertion fails at once. A web locator that matches an element hidden by the
+XPaths are still checked natively too. A web locator that matches an element hidden by the
 page (`display: none`, zero size) fails with "not displayed" instead of tapping blindly.
+A web locator that matches nothing fails at once, without waiting.
 
 `Assert Presence` with a web locator checks the DOM, so it passes for any element in the
 page, including one scrolled off screen or hidden. `Assert Visibility` passes only for an
@@ -101,8 +126,8 @@ elements. With `appium_web` enabled, one call returns:
   text): a `css=` or `xpath=` locator that matches only that element. Put it in your
   elements file. The full list carries the same `loc` next to its `xpath`.
 
-The page's on-screen elements appear once. UiAutomator2 also shows them in the native
-tree, without locators; the web entry replaces that copy.
+The page's on-screen elements appear once. UiAutomator2 and XCUITest also show them in
+the native tree, without locators; the web entry replaces that copy.
 
 `loc` is built to stay the same from run to run. It uses, in order, a test attribute
 (`data-testid` and similar), a hand-written id, `name`, `placeholder`, `aria-label`,
@@ -149,7 +174,11 @@ Read The Policy,Assert Presence,Google Play refund policy,20
   closed, Chrome ignores the first tap on the new tab. Before typing into a field there,
   press the field once.
 
-On iOS, a link from an app opens in Safari. Text locators and OCR work there.
+On iOS, a link from an app opens in Safari or an in-app Safari sheet, and an app can
+show its own `WKWebView`. Web locators find elements in whichever of them is on screen.
+When an app shows several web views at once, a web locator finds its element in the one
+that holds it.
+To return from Safari to the app, use `Launch App` with the app's bundle id.
 
 ## Chrome's own pop-ups
 
@@ -185,8 +214,6 @@ instead of listing the device's contexts on every lookup.
 
 ## Limits
 
-- Web locators work on Android. On iOS, use text locators and OCR: Safari's page content
-  is in the native UI tree there too.
 - Web locators search the top-level page only, not the inside of an `iframe`. Use text
   locators or OCR for content in a frame.
 - When several Chrome tabs show the same address and Optics cannot tell them apart (three
@@ -194,3 +221,5 @@ instead of listing the device's contexts on every lookup.
   browser tab is on screen". Close the extra tabs.
 - Each web lookup, and each element listing with web content in front, switches context
   twice and costs about one to two seconds on a remote device. Prefer native locators where they work, and use `css=` where they do not.
+- iOS sign-in sheets (`ASWebAuthenticationSession`) cannot be inspected. Use text
+  locators and OCR there.

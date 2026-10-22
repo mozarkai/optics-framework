@@ -42,7 +42,7 @@ expand `${name}` inside a larger string.
     hour_field,text=Hour
     time,22:00
 
-On the web, and in Chrome or a WebView on Android, use the `loc` value from the
+On the web, and in mobile browsers and WebViews, use the `loc` value from the
 elements resource where an element has one (it is checked to match only that
 element) and keep the visible label as a fallback; values are tried in order:
     Element_Name,Element_ID,Element_ID_2
@@ -57,8 +57,8 @@ link name).
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
 `{driver}_page_source`, `{driver}_screenshot`. appium is only an example here —
-selenium and playwright follow the same shape. appium adds `appium_web`, which
-resolves `css=` and DOM XPath locators in Chrome or a debuggable WebView on Android.
+selenium and playwright follow the same shape. appium adds `appium_web` for `css=`
+and DOM XPath locators in mobile browsers and debuggable WebViews.
     driver_sources:
       - appium:            # or selenium / playwright / ...
           enabled: true

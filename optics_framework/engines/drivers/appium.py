@@ -1,7 +1,9 @@
 import json
 import subprocess  # nosec
+import time
+import uuid
 from contextlib import contextmanager
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
@@ -9,7 +11,12 @@ from appium.webdriver.appium_connection import AppiumConnection
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
-from selenium.common.exceptions import InvalidSessionIdException, NoSuchWindowException
+from selenium.common.exceptions import (
+    InvalidSelectorException,
+    InvalidSessionIdException,
+    NoSuchWindowException,
+    TimeoutException,
+)
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
@@ -30,6 +37,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     supported_platforms,
     supported_on,
     ANDROID,
+    IOS,
     MOBILE,
     KEYCODE_RC_NAMED,
 )
@@ -45,6 +53,49 @@ _WEB_RECT_METRICS_JS = (
     " v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1,"
     " v ? v.width : window.innerWidth, v ? v.height : window.innerHeight];"
 )
+# An invisible, untouchable box over the visual viewport: its native rect maps the page's CSS pixels to screen points.
+# It goes inside an open modal, because WebKit hides everything outside one from accessibility.
+_IOS_PROBE_JS = (
+    "const v = window.visualViewport, p = document.createElement('div');"
+    "p.id = arguments[0]; p.setAttribute('role', 'img'); p.setAttribute('aria-label', arguments[0]);"
+    "p.style.cssText = `position:fixed;left:${v.offsetLeft}px;top:${v.offsetTop}px;width:${v.width}px;"
+    "height:${v.height}px;opacity:0.01;pointer-events:none;z-index:2147483647`;"
+    "const modal = [...document.querySelectorAll('dialog:modal,[aria-modal=\"true\"]')]"
+    ".filter(e => e.getClientRects().length).pop();"
+    "(modal || document.documentElement).appendChild(p); const r = p.getBoundingClientRect();"
+    "return [r.left, r.top, r.width, r.height];"
+)
+_IOS_PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
+_GET_CONTEXTS = "mobile: getContexts"
+_SAFARI_VIEW_SERVICE = "com.apple.SafariViewService"
+_ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"})
+# A zero-size page reports visible too: Firefox runs its translations engine in one.
+_PAGE_SHOWN_JS = "return document.visibilityState === 'visible' && innerWidth > 0 && innerHeight > 0;"
+_KEYBOARD_TIMEOUT_S = 2.0
+_KEYBOARD_POLL_S = 0.1
+
+
+def _starts_in_web(caps: dict[str, Any]) -> bool:
+    return bool(caps.get("browserName") or caps.get("autoWebview") or caps.get("appium:autoWebview"))
+
+
+def _page_holds(driver: WebDriver, queries: Sequence[tuple[str, str]]) -> bool:
+    try:
+        return not queries or any(driver.find_elements(*query) for query in queries)
+    except InvalidSelectorException:
+        return True  # the lookup that follows reports the bad selector
+
+
+def _ios_page(context: dict[str, Any]) -> tuple[str, str, str]:
+    return context["id"], str(context.get("url", "")), str(context.get("title", ""))
+
+
+def _ios_context_pid(context: str) -> int | None:
+    """Process id in an iOS web context name, ``WEBVIEW_<pid>.<page>``."""
+    try:
+        return int(context.removeprefix("WEBVIEW_").split(".")[0])
+    except ValueError:
+        return None
 
 
 def _is_app_webview_page(page: dict[str, Any]) -> bool:
@@ -195,6 +246,8 @@ class Appium(DriverInterface):
         self.initialized: bool = True
         self._app_webviews_in_front: int = 0
         self._known_web_contexts: dict[tuple[str, str], tuple[str, int]] = {}
+        self._frozen_web_contexts: set[tuple[str, str, str]] = set()
+        self._ios_web_context: str | None = None
 
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
@@ -226,10 +279,8 @@ class Appium(DriverInterface):
 
     def native_ui_platform(self) -> str | None:
         """``android`` or ``ios`` while the session reads that phone's native UI tree; None on TVs and in browser or web view sessions."""
-        caps = self._session_capabilities()
         platform = self._active_platform()
-        web_start = caps.get("browserName") or caps.get("autoWebview") or caps.get("appium:autoWebview")
-        return platform if platform in MOBILE and not web_start else None
+        return platform if platform in MOBILE and not _starts_in_web(self._session_capabilities()) else None
 
     def _require_profile(self) -> PlatformProfile:
         profile = get_profile(self._active_platform())
@@ -604,7 +655,9 @@ class Appium(DriverInterface):
                 message=f"Unsupported platform: {platform}. Supported: {supported_platforms()}.",
             )
         options = profile.options_factory()
-        return options, dict(profile.default_options)
+        if _starts_in_web(all_caps):
+            return options, dict(profile.default_options)
+        return options, {**profile.default_options, **profile.native_session_options}
 
     def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
         """
@@ -1144,6 +1197,24 @@ class Appium(DriverInterface):
                 Code.E0401, message="No element has keyboard focus on iOS; tap the field before entering text", cause=e
             ) from e
         focused.send_keys(keys)
+        if not isinstance(text, SpecialKey):
+            self._wait_for_keyboard(driver)
+
+    @staticmethod
+    def _wait_for_keyboard(driver: WebDriver) -> None:
+        """Return once the keyboard is on screen and still: iOS can raise it a second after typing, moving the page."""
+        bottom = driver.get_window_size()["height"]
+        deadline = time.monotonic() + _KEYBOARD_TIMEOUT_S
+        last = None
+        while time.monotonic() < deadline:
+            keyboards = driver.find_elements(AppiumBy.CLASS_NAME, "XCUIElementTypeKeyboard")
+            if not keyboards:
+                return
+            top = keyboards[0].rect["y"]
+            if top < bottom and top == last:
+                return
+            last = top
+            time.sleep(_KEYBOARD_POLL_S)
 
     @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
@@ -1447,18 +1518,19 @@ class Appium(DriverInterface):
     def _is_deeplink(self, value: str) -> bool:
         return isinstance(value, str) and "://" in value
 
-    @supported_on(ANDROID)
+    @supported_on(ANDROID, IOS)
     @contextmanager
-    def web_context(self) -> Iterator[WebDriver]:
-        """Run the body in the front tab of the foreground app's web content, then return to native."""
+    def web_context(self, queries: Sequence[tuple[str, str]] = ()) -> Iterator[WebDriver]:
+        """Run the body in the front tab of the foreground app's web content, then return to native.
+
+        On iOS an app can show several pages at once; the first that holds one of ``queries`` is entered.
+        """
         driver = self._require_driver()
-        package = driver.current_package
         try:
-            if not self._reenter_web_context(driver, package):
-                context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver, package)
-                self._switch_to_web_context(driver, context)
-                self._focus_window(driver, page_url)
-                self._known_web_contexts[(driver.session_id, package)] = (context, self._app_webviews_in_front)
+            if self._active_platform() == IOS:
+                self._enter_ios_web_context(driver, queries)
+            else:
+                self._enter_android_web_context(driver)
             yield driver
         finally:
             try:
@@ -1471,6 +1543,62 @@ class Appium(DriverInterface):
                             "start a new session.",
                     cause=e,
                 ) from e
+
+    def _enter_android_web_context(self, driver: WebDriver) -> None:
+        package = driver.current_package
+        if not self._reenter_web_context(driver, package):
+            context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver, package)
+            self._switch_to_web_context(driver, context)
+            self._focus_window(driver, page_url)
+            self._known_web_contexts[(driver.session_id, package)] = (context, self._app_webviews_in_front)
+
+    def _enter_ios_web_context(self, driver: WebDriver, queries: Sequence[tuple[str, str]] = ()) -> None:
+        """Enter the visible page of the app in front: its own WKWebView, a Safari sheet over it, or the browser it is.
+
+        Web Inspector names pages ``WEBVIEW_<pid>.<page>``; a Safari sheet runs in SafariViewService's process.
+        """
+        pid = driver.execute_script("mobile: activeAppInfo").get("pid")
+        listed = [
+            context for context in driver.execute_script(_GET_CONTEXTS) or []
+            if str(context.get("id", "")).startswith("WEBVIEW_")
+        ]
+        listed_pages = {_ios_page(context) for context in listed}
+        self._frozen_web_contexts &= listed_pages
+        candidates = sorted(
+            (
+                context for context in listed
+                if _ios_page(context) not in self._frozen_web_contexts
+                and (context.get("bundleId") == _SAFARI_VIEW_SERVICE or _ios_context_pid(context["id"]) == pid)
+            ),
+            key=lambda context: (context.get("bundleId") != _SAFARI_VIEW_SERVICE, context["id"] != self._ios_web_context),
+        )
+        fallback = None
+        for context in candidates:
+            try:
+                driver.switch_to.context(context["id"])
+                if not self._attached_tab_visible(driver):
+                    continue
+                if context.get("bundleId") in _ONE_PAGE_ON_SCREEN or _page_holds(driver, queries):
+                    self._ios_web_context = context["id"]
+                    return
+                fallback = fallback or context["id"]
+            except TimeoutException:
+                # A page left behind by a closed view answers nothing until webviewAtomWaitTimeout; skip it until
+                # its address or title changes, as a live page that was only busy loading does.
+                self._frozen_web_contexts.add(_ios_page(context))
+            except WebDriverException as e:
+                raise_if_session_dead(e)
+                internal_logger.debug(f"Appium: cannot read web context {context['id']}: {e.msg}")
+        if fallback is not None:
+            driver.switch_to.context(fallback)
+            self._ios_web_context = fallback
+            return
+        raise OpticsError(
+            Code.E0201,
+            message="No visible web content in the app in front. An app's WKWebView is automatable only when the app "
+                    "sets isInspectable; on a real device, also turn on Web Inspector and Remote Automation in "
+                    "Settings > Apps > Safari > Advanced.",
+        )
 
     def _reenter_web_context(self, driver: WebDriver, package: str) -> bool:
         """Re-enter ``package``'s known web context, skipping ``mobile: getContexts``, which hangs on frozen apps."""
@@ -1491,7 +1619,7 @@ class Appium(DriverInterface):
     def _foreground_web_context(self, driver: WebDriver, package: str) -> tuple[str, str | None, int]:
         """The foreground package's web context, its front page URL (pages list most recent first), and app WebView count."""
         owned = [
-            webview for webview in driver.execute_script("mobile: getContexts") or []
+            webview for webview in driver.execute_script(_GET_CONTEXTS) or []
             if _context_name(webview) and webview.get("pages")
             and ((webview.get("info") or {}).get("Android-Package") == package
                  or _context_name(webview) == f"WEBVIEW_{package}")
@@ -1564,7 +1692,7 @@ class Appium(DriverInterface):
 
     @staticmethod
     def _attached_tab_visible(driver: WebDriver) -> bool:
-        return driver.execute_script("return document.visibilityState") == "visible"
+        return driver.execute_script(_PAGE_SHOWN_JS) is True
 
     def web_element_screen_rect(self, element: Any) -> dict[str, int]:
         """Device-screen rectangle of an element found inside :meth:`web_context`."""
@@ -1576,21 +1704,49 @@ class Appium(DriverInterface):
     ) -> list[dict[str, Any] | None]:
         """Unclamped device-screen rectangles of ``getBoundingClientRect`` boxes measured inside :meth:`web_context`.
 
-        ``metrics`` is ``[devicePixelRatio, visualViewport offsetLeft, offsetTop, scale, width, height]``.
+        ``metrics`` is ``[devicePixelRatio, visualViewport offsetLeft, offsetTop, scale, width, height]``;
+        iOS measures the page itself instead.
         """
-        ratio, offset_x, offset_y, scale, view_width, view_height = metrics
-        factor = scale * ratio
-        origin = self._web_view_rect(self._require_driver(), view_width * factor, view_height * factor)
+        driver = self._require_driver()
+        if self._active_platform() == IOS:
+            origin_x, origin_y, factor_x, factor_y = self._ios_web_transform(driver)
+        else:
+            ratio, offset_x, offset_y, scale, view_width, view_height = metrics
+            factor_x = factor_y = scale * ratio
+            origin = self._web_view_rect(driver, view_width * factor_x, view_height * factor_y)
+            origin_x, origin_y = origin["x"] - offset_x * factor_x, origin["y"] - offset_y * factor_y
         return [
             None if rect is None else {
                 **rect,
-                "x": round(origin["x"] + (rect["x"] - offset_x) * factor),
-                "y": round(origin["y"] + (rect["y"] - offset_y) * factor),
-                "width": round(rect["width"] * factor),
-                "height": round(rect["height"] * factor),
+                "x": round(origin_x + rect["x"] * factor_x),
+                "y": round(origin_y + rect["y"] * factor_y),
+                "width": round(rect["width"] * factor_x),
+                "height": round(rect["height"] * factor_y),
             }
             for rect in rects
         ]
+
+    def _ios_web_transform(self, driver: WebDriver) -> tuple[float, float, float, float]:
+        """Screen origin and points-per-CSS-pixel of the page: Safari draws it under its toolbars, so measure a probe."""
+        label = f"optics-probe-{uuid.uuid4().hex}"
+        context = driver.current_context
+        left, top, width, height = driver.execute_script(_IOS_PROBE_JS, label)
+        try:
+            driver.switch_to.context(self.NATIVE_CONTEXT)
+            try:
+                rects = [element.rect for element in driver.find_elements(AppiumBy.ACCESSIBILITY_ID, label)]
+            finally:
+                driver.switch_to.context(context)
+        finally:
+            driver.execute_script(_IOS_PROBE_REMOVE_JS, label)
+        if len(rects) != 1 or not width or not height:
+            raise OpticsError(
+                Code.E0201,
+                message="Cannot place the web element: the page is not in the screen's accessibility tree.",
+            )
+        native = rects[0]
+        factor_x, factor_y = native["width"] / width, native["height"] / height
+        return native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y
 
     def _web_view_rect(self, driver: WebDriver, width: float, height: float) -> dict[str, int]:
         """Screen rect of the WebView drawing a ``width`` x ``height`` viewport.
@@ -1601,7 +1757,7 @@ class Appium(DriverInterface):
         if native and abs(native["width"] - width) <= 2 and abs(native["height"] - height) <= 2:
             return native
         current = driver.current_context
-        for webview in driver.execute_script("mobile: getContexts") or []:
+        for webview in driver.execute_script(_GET_CONTEXTS) or []:
             rect = webview.get("rect")
             if _context_name(webview) == current and isinstance(rect, dict) and rect.get("width") and rect.get("height"):
                 return rect
