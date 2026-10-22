@@ -5,6 +5,38 @@ from typing import Optional, List, Dict, Any
 from optics_framework.common.error import OpticsError, Code
 
 
+def missing_extra_error(engine: str, package: str, import_error: Exception | None) -> OpticsError:
+    return OpticsError(
+        Code.E0601,
+        message=(
+            f"The '{engine}' LLM engine requires the optional dependency '{package}'. "
+            f"Install it with: pip install 'optics-framework[{engine}]' "
+            f"(or: poetry install --extras {engine}). "
+            f"Underlying import error: {import_error}"
+        ),
+    )
+
+
+def image_mime_type(data: bytes) -> str:
+    """Sniff a common image mime type from magic bytes.
+
+    Callers may send PNG, JPEG, WebP or GIF, and providers need the real type.
+    Raises ``ValueError`` when the format cannot be identified.
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError(
+        f"Unrecognised image format (first 8 bytes: {data[:8]!r}). "
+        "Supported formats: PNG, JPEG, GIF, WebP."
+    )
+
+
 class LLMInterface(ABC):
     """
     Abstract base class for multimodal LLM engines.
@@ -12,7 +44,7 @@ class LLMInterface(ABC):
     The contract is deliberately generic (text prompt, optional images, optional
     structured-JSON output) so the same engine can be reused by features beyond the
     natural-language ``optics live`` agent. Implementers wrap a concrete provider SDK
-    (e.g. Google Gemini via ``google-genai``).
+    (``gemini``, ``openai``, ``anthropic`` under ``engines/llm_models``).
     """
 
     @abstractmethod

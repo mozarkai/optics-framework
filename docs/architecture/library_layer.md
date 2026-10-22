@@ -97,7 +97,7 @@ optics.setup(
 )
 
 # Use keywords
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 optics.press_element("submit_button")
 optics.enter_text("username_field", "testuser")
 optics.validate_element("welcome_message")
@@ -175,7 +175,7 @@ optics.scroll(100, 200, 300, 400)
 
 ```python
 # App lifecycle
-optics.launch_app("com.example.app")
+optics.launch_app(app_identifier="com.example.app")
 optics.launch_other_app("com.other.app")
 optics.close_and_terminate_app()
 optics.force_terminate_app()
@@ -250,8 +250,8 @@ optics1 = Optics(config=config1)
 optics2 = Optics(config=config2)
 
 # Each instance has its own session
-optics1.launch_app("app1")
-optics2.launch_app("app2")
+optics1.launch_app(app_identifier="app1")
+optics2.launch_app(app_identifier="app2")
 ```
 
 ## Configuration

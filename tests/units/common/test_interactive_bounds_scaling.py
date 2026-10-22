@@ -129,6 +129,54 @@ class TestScaleInteractiveElementBounds:
 
 
 # ---------------------------------------------------------------------------
+# A window that does not cover the screenshot: a legacy iOS app in compatibility
+# mode gets a 320x568-point window, scaled to fit the width of a 1170x2532-pixel
+# screen and centred, so the screenshot keeps a 227px black bar above and below.
+# Numbers below are from a real BitbarIOSSample session on an iPhone 14.
+# ---------------------------------------------------------------------------
+class TestLetterboxedWindow:
+    SRC = _AppiumSource(_FakeWebDriver(320, 568))
+
+    def _scaled(self, bounds):
+        els = [{"bounds": dict(bounds)}]
+        utils.scale_interactive_element_bounds(els, self.SRC, _screenshot(1170, 2532))
+        return els[0]["bounds"]
+
+    def test_uses_the_fitting_ratio_on_both_axes(self):
+        # 3.65625 (1170/320) on both, not 4.4577 (2532/568) vertically.
+        assert self._scaled({"x1": 0, "y1": 0, "x2": 320, "y2": 568}) == {
+            "x1": 0, "y1": 227, "x2": 1170, "y2": 2304,
+        }
+
+    def test_element_above_the_middle_is_not_lifted(self):
+        # "Buy 101 devices": the old per-axis stretch put y1 at 1016, 45px too high.
+        assert self._scaled({"x1": 52, "y1": 228, "x2": 181, "y2": 250}) == {
+            "x1": 190, "y1": 1061, "x2": 661, "y2": 1141,
+        }
+
+    def test_element_below_the_middle_is_not_dropped(self):
+        # "Answer": the old stretch put y1 at 1885, 111px too low.
+        assert self._scaled({"x1": 224, "y1": 423, "x2": 276, "y2": 442}) == {
+            "x1": 819, "y1": 1774, "x2": 1009, "y2": 1843,
+        }
+
+    def test_window_height_maps_inside_the_screenshot(self):
+        # The old stretch mapped the window's last row onto the frame's last row,
+        # hiding the letterbox entirely.
+        b = self._scaled({"x1": 0, "y1": 568, "x2": 1, "y2": 568})
+        assert b["y1"] == 2304 and b["y1"] < 2532
+
+    def test_near_uniform_ratios_keep_per_axis_scaling(self):
+        # 1080/375 = 2.8800 vs 2340/812 = 2.8818 — integer rounding of the window
+        # size, not a letterbox: no offset is introduced.
+        els = [{"bounds": {"x1": 20, "y1": 96, "x2": 355, "y2": 140}}]
+        utils.scale_interactive_element_bounds(
+            els, _AppiumSource(_FakeWebDriver(375, 812)), _screenshot()
+        )
+        assert els[0]["bounds"] == {"x1": 57, "y1": 276, "x2": 1022, "y2": 403}
+
+
+# ---------------------------------------------------------------------------
 # Both consumers share one gate/ratio helper — this cross-checks that the dict
 # path and the tuple path land on the same pixel geometry (tuple-path breadth
 # lives in test_bbox_scaling.py).
@@ -143,6 +191,17 @@ class TestSharedGateConsistency:
         # Both paths must land on the same pixel geometry.
         assert (b["x1"], b["y1"], b["x2"], b["y2"]) == (57, 276, 1022, 403)
         assert tuple_out == ((57, 276), (1022, 403))
+
+    def test_both_paths_agree_on_letterboxed_window(self):
+        src = _AppiumSource(_FakeWebDriver(320, 568))
+        els = [{"bounds": {"x1": 52, "y1": 228, "x2": 181, "y2": 250}}]
+        utils.scale_interactive_element_bounds(els, src, _screenshot(1170, 2532))
+        b = els[0]["bounds"]
+        tuple_out = utils.scale_bboxes_for_screenshot(
+            [((52, 228), (181, 250))], src, _screenshot(1170, 2532)
+        )[0]
+        assert (b["x1"], b["y1"], b["x2"], b["y2"]) == (190, 1061, 661, 1141)
+        assert tuple_out == ((190, 1061), (661, 1141))
 
     def test_both_paths_skip_non_appium(self):
         src = _SeleniumSource(_FakeWebDriver(375, 812))

@@ -19,7 +19,9 @@ def list_api_methods(package):
         module = importlib.import_module(f"{package.__name__}.{module_name}")
 
         for name, cls in inspect.getmembers(module, inspect.isclass):
-            if cls.__module__ == module.__name__:  # Ensure class belongs to this module
+            if cls.__module__ == module.__name__ and not name.startswith(
+                "_"
+            ):  # Ensure class belongs to this module and is public
                 methods = [
                     func
                     for func in dir(cls)

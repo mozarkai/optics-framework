@@ -1,0 +1,93 @@
+name: Bug Report
+description: Something in Optics Framework is broken or behaves unexpectedly
+title: "fix: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug — clear reports get fixed faster.
+        Please [search existing issues](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue) first to avoid duplicates.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem, including the error message.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps — a sample project folder (config.yaml + test case) is ideal.
+      placeholder: |
+        1. Run `optics execute …`
+        2. With this config.yaml …
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface were you using?
+      options:
+        - "CLI — optics execute / dry-run"
+        - "CLI — optics live"
+        - "CLI — optics serve (REST API)"
+        - "CLI — optics mcp"
+        - "Python SDK"
+        - "Robot Framework library"
+        - "optics generate / init / setup"
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: driver
+    attributes:
+      label: Which driver / platform?
+      options:
+        - Appium — Android
+        - Appium — iOS
+        - Selenium — Web
+        - Playwright
+        - Not driver-related
+        - Other / multiple
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Optics Framework version
+      description: Output of `optics --version`
+      placeholder: "1.9.3"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and anything else relevant (device/emulator model, Appium server version).
+      placeholder: "macOS 15.4, Python 3.12.3, Pixel 8 emulator API 35, Appium 2.11"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Relevant log output, `junit_output.xml`, or screenshots from `execution_output/`. Paste text inside code fences; do not attach huge binaries.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate
+          required: true
+        - label: I am willing to submit a pull request for this fix

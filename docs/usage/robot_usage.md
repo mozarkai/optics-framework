@@ -10,7 +10,7 @@ Install the Optics Framework and Robot Framework:
 pip install optics-framework robotframework
 ```
 
-## Quick Start
+## Basic Example
 
 ### Basic Example
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "optics-framework"
-version = "1.9.1"
+version = "1.11.0"
 description = "A flexible and modular test automation framework that can be used to automate any mobile application."
 authors = ["Lalitanand Dandge <lalit@mozark.ai>"]
 license = "Apache-2.0"
@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = ["test automation", "framework", "mobile automation"]
 homepage = "https://github.com/mozarkai/optics-framework"
 repository = "https://github.com/mozarkai/optics-framework"
-documentation = "https://mozarkai.github.io/optics-framework/"
+documentation = "https://optics-framework.org/docs/"
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"Programming Language :: Python :: 3.12",
@@ -21,6 +21,9 @@ include = [
 	"optics_framework/py.typed"
 ]
 
+[tool.poetry.urls]
+Website = "https://optics-framework.org/"
+
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
 typing_extensions = ">=4.13.0"
@@ -28,36 +31,38 @@ pandas = ">=2.2.3,<4.0.0"
 pyyaml = "^6.0.2"
 lxml = ">=5.3.1,<7.0.0"
 fuzzywuzzy = "^0.18.0"
-opencv-python = "^4.11.0.86"
+opencv-python-headless = ">=4.11.0.86,<6.0.0.0"
 python-levenshtein = "^0.27.1"
 prompt-toolkit = "^3.0.50"
-rich = ">=13.9.4,<15.0.0"
+rich = ">=13.9.4,<16.0.0"
 python-json-logger = ">=3.3,<5.0"
 sse-starlette = ">=2.2.1,<4.0.0"
 # Ceiling lifted past 0.119 so the optional `mcp` extra (fastmcp) can resolve:
 # fastmcp pulls starlette>=1.0, which FastAPI only supports from 0.119 onward.
-fastapi = ">=0.115.12,<0.138.0"
+fastapi = ">=0.115.12,<0.144.0"
 requests = "^2.32.3"
 textual = ">=3,<7"
 pytest = "^9.0.0"
 pydantic = "^2.11.2"
-scikit-image = "^0.25.2"
+scikit-image = ">=0.25.2,<0.27.0"
 uvicorn = ">=0.35,<0.43"
 jsonpath-ng = "^1.7.0"
 beautifulsoup4 = "^4.12"
 packaging = ">=24"
-appium-python-client = { version = ">=5.0,<6.0", optional = true }
+appium-python-client = { version = ">=5.0,<7.0", optional = true }
 selenium = { version = ">=4.10,<5.0", optional = true }
 playwright = { version = ">=1.40,<2.0", optional = true }
 pyserial = { version = ">=3.5,<4.0", optional = true }
 easyocr = { version = ">=1.7,<2.0", optional = true }
 pytesseract = { version = ">=0.3.10,<0.4.0", optional = true }
-pillow = { version = ">=10.0,<12.0", optional = true }
+pillow = { version = ">=12.3,<14.0", optional = true }
 google-cloud-vision = { version = ">=3.4,<4.0", optional = true }
 google-genai = { version = ">=2.0.0,<3.0.0", optional = true }
+openai = { version = ">=3.0,<4.0", optional = true }
+anthropic = { version = ">=1.0,<2.0", optional = true }
 # >=3.4.2: earlier 3.4.x omit the starlette>=1.0 pin, letting the resolver keep
 # starlette 0.48 (a combo fastmcp's own code is incompatible with at runtime).
-fastmcp = { version = ">=3.4.2,<4.0.0", optional = true }
+fastmcp = { version = ">=3.4.2,<5.0.0", optional = true }
 
 [tool.poetry.extras]
 # Extra names match the config.yaml source keys so `optics setup --install <key>`
@@ -69,32 +74,36 @@ ble = ["pyserial"]
 easyocr = ["easyocr"]
 pytesseract = ["pytesseract", "pillow"]
 google-vision = ["google-cloud-vision"]
-llm = ["google-genai"]
+gemini = ["google-genai"]
+openai = ["openai"]
+anthropic = ["anthropic"]
 mcp = ["fastmcp"]
 # Convenience bundles.
 mobile = ["appium-python-client"]
 web = ["selenium", "playwright"]
 vision = ["easyocr", "pytesseract", "pillow", "google-cloud-vision"]
+llm = ["google-genai", "openai", "anthropic"]
 all = [
 	"appium-python-client", "selenium", "playwright", "pyserial",
-	"easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-genai",
+	"easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-genai", "openai", "anthropic",
 ]
 
 [tool.poetry.group.dev.dependencies]
-tox = ">=4.24.1,<4.31.0"
+tox = ">=4.24.1,<4.66.0"
 pytest = "^9.0.0"
-pytest-cov = ">=6.0,<7.1"
+pytest-cov = ">=6.0,<7.2"
 commitizen = "^4.4.1"
 pre-commit = "^4.2.0"
-ruff = ">=0.11.2,<0.15.0"
+ruff = ">=0.11.2,<0.18.0"
 bandit = "^1.8.3"
 pylint = ">=3.3.7,<5.0.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^9.0.0"
-pytest-cov = ">=6.0,<7.1"
+pytest-cov = ">=6.0,<7.2"
 pytest-mock = ">=3.14,<3.16"
 pytest-asyncio = ">=1.0,<2.0"
+httpx2 = ">=2.12,<3"
 
 [tool.poetry.group.docs.dependencies]
 mkdocs-material = "^9.6.11"

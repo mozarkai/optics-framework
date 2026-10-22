@@ -4,13 +4,161 @@ This document provides comprehensive documentation for all configuration options
 
 ## Overview
 
-There are two configuration files:
+Configuration is **project-specific**: the one file that matters is `config.yaml` in your project directory. It is what `optics execute <folder>` / `optics dry_run <folder>` actually read, and built-in defaults fill in any field you omit.
 
-1. **Project Configuration** — `config.yaml` in your project directory. This is the config `optics execute <folder>` / `optics dry_run <folder>` actually read. Built-in defaults fill in any field you omit.
-2. **Global Configuration** — `~/.optics/global_config.yaml`, edited by the interactive `optics config` command.
+!!! tip "Writing a project config"
+    Run `optics configure <folder>` to answer a few questions and generate the file, or `optics quickstart` for the full guided setup (project + config + environment check via `optics doctor`).
 
-!!! warning "The runner reads the project config only"
-    `optics execute`/`optics dry_run` load the target folder's own `config.yaml` and do **not** merge the global file into it. Treat `config.yaml` in each project as the source of truth for that run. The global config is a convenience surface edited via `optics config`; to affect a specific run, edit that project's `config.yaml`.
+## Configuration Examples
+
+=== "Android Mobile App"
+
+    Complete configuration for Android app testing with Appium:
+
+    ```yaml
+    # Core Settings
+    console: true
+    file_log: true
+    log_level: INFO
+    project_path: "./my_android_project"
+    halt_duration: 0.1
+
+    # Driver Configuration
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://localhost:4723/wd/hub"
+          capabilities:
+            automationName: "UiAutomator2"
+            deviceName: "emulator-5554"
+            platformName: "Android"
+            platformVersion: "13.0"
+            appPackage: "com.example.app"
+            appActivity: "com.example.app.MainActivity"
+
+    # Element Sources
+    elements_sources:
+      - appium_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+      - appium_screenshot:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Text Detection
+    text_detection:
+      - easyocr:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Image Detection
+    image_detection:
+      - templatematch:
+          enabled: true
+          url: null
+          capabilities: {}
+    ```
+
+=== "Web Application (Playwright)"
+
+    Configuration for web testing using Playwright:
+
+    ```yaml
+    # Core Settings
+    console: true
+    file_log: true
+    json_log: true
+    log_level: INFO
+    project_path: "./web_test_project"
+    halt_duration: 0.2
+
+    # Driver Configuration
+    driver_sources:
+      - playwright:
+          enabled: true
+          url: null
+          capabilities:
+            browser: "chromium"
+            headless: false
+            viewport:
+              width: 1920
+              height: 1080
+
+    # Element Sources
+    elements_sources:
+      - playwright_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+      - playwright_screenshot:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Text Detection
+    text_detection:
+      - pytesseract:
+          enabled: true
+          url: null
+          capabilities: {}
+
+    # Image Detection
+    image_detection:
+      - templatematch:
+          enabled: true
+          url: null
+          capabilities: {}
+    ```
+
+=== "Mixed Driver Configuration"
+
+    Example with multiple drivers for fallback support:
+
+    ```yaml
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://localhost:4723/wd/hub"
+          capabilities:
+            automationName: "UiAutomator2"
+            deviceName: "emulator-5554"
+            platformName: "Android"
+      - selenium:
+          enabled: true
+          url: "http://localhost:4444/wd/hub"
+          capabilities:
+            browserName: "chrome"
+
+    elements_sources:
+      - appium_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+      - selenium_find_element:
+          enabled: true
+          url: null
+          capabilities: {}
+    ```
+
+=== "Full Logging Configuration"
+
+    Example with comprehensive logging setup:
+
+    ```yaml
+    console: true
+    file_log: true
+    json_log: true
+    log_level: DEBUG
+    log_path: "./logs/execution.log"
+    json_path: "./logs/execution.json"
+    project_path: "./test_project"
+    execution_output_path: "./outputs"
+    ```
+
+---
 
 ## Quick Reference
 
@@ -18,11 +166,13 @@ There are two configuration files:
 |----------|-------------|---------------|
 | **Logging** | `console`, `file_log`, `json_log`, `log_level` | `log_level: INFO` or `DEBUG` |
 | **Paths** | `project_path`, `execution_output_path` | `./my_project`, `./outputs` |
-| **Execution** | `halt_duration`, `max_attempts` | `0.1`, `3` |
+| **Execution** | `halt_duration` | `0.1` |
 | **Drivers** | `appium`, `selenium`, `playwright`, `ble` | See Driver Sources tab |
 | **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |
 | **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |
 | **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |
+| **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |
+| **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |
 
 ## Configuration Structure
 
@@ -33,6 +183,7 @@ All configurations are defined in YAML format. The main configuration file (`con
 - **Element sources** - Element detection methods
 - **Text detection engines** - OCR capabilities
 - **Image detection engines** - Template matching
+- **LLM models** - Optional LLM backend for AI self-healing and `optics live`'s natural-language mode
 
 ---
 
@@ -142,16 +293,6 @@ All configurations are defined in YAML format. The main configuration file (`con
     halt_duration: 0.1  # 100ms pause between actions
     ```
 
-    ### `max_attempts`
-
-    **Type:** `int` | **Default:** `3`
-
-    Maximum number of retry attempts for failing actions. The framework will retry up to this many times before reporting failure.
-
-    ```yaml
-    max_attempts: 3
-    ```
-
 === "Test Control"
 
     ### `include`
@@ -187,6 +328,30 @@ All configurations are defined in YAML format. The main configuration file (`con
     ```yaml
     event_attributes_json: "./config/event_attributes.json"
     ```
+
+=== "AI Self-Healing"
+
+    ### `ai_self_heal`
+
+    **Type:** `bool` | **Default:** `false`
+
+    Last-resort recovery for element location. When every locator strategy (XPath, text,
+    OCR, image) fails for a self-healing-capable keyword (e.g. `Press Element`, `Enter Text`),
+    a bounded LLM-driven loop reads the screen and attempts to recover before the keyword
+    fails outright.
+
+    Opt-in and inert unless an entry under `llm_models` is also enabled — a missing or
+    misconfigured LLM degrades this to a no-op rather than a failure:
+
+    ```yaml
+    ai_self_heal: true
+
+    llm_models:
+      - gemini:
+          enabled: true
+    ```
+
+    See [LLM Models](#llm-models) below for backend configuration.
 
 ---
 
@@ -612,11 +777,18 @@ Image detection engines provide template matching capabilities for locating UI e
       - templatematch:
           enabled: true
           url: null
-          capabilities: {}
+          capabilities:
+            sift_nfeatures: 2000
     ```
 
     !!! note "Local Processing"
         Template matching runs locally using OpenCV and does not require external services.
+
+    Matching is two-stage: a `cv2.matchTemplate` fast path handles exact
+    same-scale matches, and a SIFT + FLANN + RANSAC fallback covers scaled or
+    rotated instances. `capabilities.sift_nfeatures` (default `2000`) caps the
+    SIFT features extracted per frame in that fallback, bounding per-call
+    memory; raise it only if scaled matches fail on feature-poor screens.
 
 === "Remote OIR"
 
@@ -629,6 +801,113 @@ Image detection engines provide template matching capabilities for locating UI e
           url: "https://your-oir-service.com/api/match"
           capabilities: {}
     ```
+
+---
+
+## LLM Models
+
+LLM backends power two opt-in features: the [`ai_self_heal`](#ai_self_heal) recovery path
+above, and `optics live`'s natural-language mode (`Ctrl-N`). Both stay inert until an entry
+below is enabled — the backend SDK is only imported when its engine is enabled, so leaving
+this section out has no cost for projects that don't use either feature.
+
+Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the
+`llm` extra installs all three. Keys are read from environment variables only. If you enable
+more than one entry, a failed call falls through to the next one in list order.
+
+| You have | Engine |
+|----------|--------|
+| A Gemini API key, or Vertex AI | `gemini` |
+| An OpenAI key, OpenRouter, Azure OpenAI, or a local server (Ollama, vLLM, LM Studio) | `openai` |
+| A Claude key, or Claude on Amazon Bedrock / Google Vertex AI | `anthropic` |
+
+=== "Gemini"
+
+    **Purpose:** Google Gemini via the `google-genai` SDK, supporting both the Gemini
+    Developer API and Vertex AI. Install: `pip install 'optics-framework[gemini]'`.
+
+    ```yaml
+    llm_models:
+      - gemini:
+          enabled: true
+          capabilities:
+            model: gemini-3.8-flash    # optional; framework default is gemini-2.5-flash
+            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)
+            # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI
+            # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT
+            # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION
+    ```
+
+    With no `capabilities` set, the SDK auto-detects everything from environment variables:
+
+    | Variable | Purpose |
+    |----------|---------|
+    | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Gemini Developer API key |
+    | `GOOGLE_GENAI_USE_VERTEXAI` | Switch to Vertex AI |
+    | `GOOGLE_CLOUD_PROJECT` | Vertex AI project |
+    | `GOOGLE_CLOUD_LOCATION` | Vertex AI location |
+    | `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI service account credentials |
+
+    !!! warning "Don't hardcode credentials"
+        `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a
+        warning when used — prefer the environment variables above so keys never end up in
+        a committed `config.yaml`.
+
+=== "OpenAI-compatible"
+
+    **Purpose:** any server that speaks the OpenAI Chat Completions API, via the `openai`
+    SDK. Without `url` it calls OpenAI; with one it calls that server instead.
+    Install: `pip install 'optics-framework[openai]'`.
+
+    ```yaml
+    llm_models:
+      - openai:
+          enabled: true
+          url: https://openrouter.ai/api/v1   # omit for OpenAI; or OPENAI_BASE_URL
+          capabilities:
+            model: anthropic/claude-sonnet-5-5  # required; the name the server uses
+            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY
+            # response_format: json_object     # for servers without JSON-schema output
+            # max_tokens: 4096                  # optional cap per reply; unset = server default
+            # temperature: 0.0
+    ```
+
+    | Server | `url` | Key |
+    |--------|-------|-----|
+    | OpenAI | (omit) | `OPENAI_API_KEY` |
+    | OpenRouter | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` via `api_key_env` |
+    | Azure OpenAI | `https://<resource>.openai.azure.com/openai/v1/` | your Azure key via `api_key_env` |
+    | Ollama | `http://localhost:11434/v1` | none |
+    | vLLM / LM Studio | the server's `/v1` URL | none |
+
+    Natural-language mode and self-heal send screenshots, so pick a model that accepts
+    images. Responses use strict JSON-schema output by default; if the server rejects it,
+    set `response_format: json_object` and the schema is sent in the prompt instead.
+
+=== "Anthropic"
+
+    **Purpose:** Claude via the `anthropic` SDK, on the Claude API, Amazon Bedrock, or
+    Google Vertex AI. Install: `pip install 'optics-framework[anthropic]'` (for Bedrock
+    or Vertex, also `pip install 'anthropic[bedrock]'` or `'anthropic[vertex]'`).
+
+    ```yaml
+    llm_models:
+      - anthropic:
+          enabled: true
+          capabilities:
+            model: claude-sonnet-5-5   # required; Bedrock/Vertex use their own model IDs
+            # platform: bedrock        # anthropic (default) | bedrock | vertex
+            # region: us-east-1        # Bedrock or Vertex region
+            # project: your-project    # Vertex project
+            # max_tokens: 4096
+            # temperature: 0.0
+    ```
+
+    | Platform | Credentials |
+    |----------|-------------|
+    | `anthropic` | `ANTHROPIC_API_KEY`, or the variable named by `api_key_env` |
+    | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |
+    | `vertex` | Google application default credentials |
 
 ---
 
@@ -669,165 +948,9 @@ driver_sources:
 
 ---
 
-## Configuration Examples
-
-=== "Android Mobile App"
-
-    Complete configuration for Android app testing with Appium:
-
-    ```yaml
-    # Core Settings
-    console: true
-    file_log: true
-    log_level: INFO
-    project_path: "./my_android_project"
-    halt_duration: 0.1
-    max_attempts: 3
-
-    # Driver Configuration
-    driver_sources:
-      - appium:
-          enabled: true
-          url: "http://localhost:4723/wd/hub"
-          capabilities:
-            automationName: "UiAutomator2"
-            deviceName: "emulator-5554"
-            platformName: "Android"
-            platformVersion: "13.0"
-            appPackage: "com.example.app"
-            appActivity: "com.example.app.MainActivity"
-
-    # Element Sources
-    elements_sources:
-      - appium_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-      - appium_screenshot:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Text Detection
-    text_detection:
-      - easyocr:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Image Detection
-    image_detection:
-      - templatematch:
-          enabled: true
-          url: null
-          capabilities: {}
-    ```
-
-=== "Web Application (Playwright)"
-
-    Configuration for web testing using Playwright:
-
-    ```yaml
-    # Core Settings
-    console: true
-    file_log: true
-    json_log: true
-    log_level: INFO
-    project_path: "./web_test_project"
-    halt_duration: 0.2
-    max_attempts: 5
-
-    # Driver Configuration
-    driver_sources:
-      - playwright:
-          enabled: true
-          url: null
-          capabilities:
-            browser: "chromium"
-            headless: false
-            viewport:
-              width: 1920
-              height: 1080
-
-    # Element Sources
-    elements_sources:
-      - playwright_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-      - playwright_screenshot:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Text Detection
-    text_detection:
-      - pytesseract:
-          enabled: true
-          url: null
-          capabilities: {}
-
-    # Image Detection
-    image_detection:
-      - templatematch:
-          enabled: true
-          url: null
-          capabilities: {}
-    ```
-
-=== "Mixed Driver Configuration"
-
-    Example with multiple drivers for fallback support:
-
-    ```yaml
-    driver_sources:
-      - appium:
-          enabled: true
-          url: "http://localhost:4723/wd/hub"
-          capabilities:
-            automationName: "UiAutomator2"
-            deviceName: "emulator-5554"
-            platformName: "Android"
-      - selenium:
-          enabled: true
-          url: "http://localhost:4444/wd/hub"
-          capabilities:
-            browserName: "chrome"
-
-    elements_sources:
-      - appium_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-      - selenium_find_element:
-          enabled: true
-          url: null
-          capabilities: {}
-    ```
-
-=== "Full Logging Configuration"
-
-    Example with comprehensive logging setup:
-
-    ```yaml
-    console: true
-    file_log: true
-    json_log: true
-    log_level: DEBUG
-    log_path: "./logs/execution.log"
-    json_path: "./logs/execution.json"
-    project_path: "./test_project"
-    execution_output_path: "./outputs"
-    ```
-
----
-
 ## How configuration is loaded
 
-When you run `optics execute` or `optics dry_run`, the framework reads the target folder's own `config.yaml`. Any field you leave out falls back to the built-in defaults (for example, every source defaults to `enabled: false`). The global `~/.optics/global_config.yaml` is **not** merged into the run, so a project's `config.yaml` is the single source of truth for that run.
-
-!!! note "Where the global config is used"
-    The global config is the file the interactive `optics config` command edits. It is a convenience for user-wide defaults and is not read by `optics execute`, so editing it has no effect on a run. To change how a specific project runs, edit that project's `config.yaml`.
+When you run `optics execute` or `optics dry_run`, the framework reads the target folder's own `config.yaml`. Any field you leave out falls back to the built-in defaults (for example, every source defaults to `enabled: false`). A project's `config.yaml` is the single source of truth for that run — there is no global config layer to merge.
 
 ---
 
@@ -837,5 +960,5 @@ When you run `optics execute` or `optics dry_run`, the framework reads the targe
 2. **Use Appropriate OCR**: Choose EasyOCR for accuracy, Pytesseract for speed
 3. **Set Log Level Appropriately**: Use DEBUG during development, INFO or WARNING in production
 4. **Configure Execution Paths**: Set `project_path` and `execution_output_path` for organized output
-5. **Keep Each Project's `config.yaml` Self-Contained**: It is the config the runner reads — don't rely on the global config to supply values at run time
+5. **Keep Each Project's `config.yaml` Self-Contained**: It is the only config the runner reads
 6. **Test Configuration Changes**: Verify configurations work correctly before running large test suites

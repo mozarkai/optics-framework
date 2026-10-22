@@ -20,13 +20,13 @@ from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData
+from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
 )
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64
@@ -270,6 +270,7 @@ class SessionConfig(BaseModel):
     project_path: Optional[str] = None
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
+    strict_element_match: Optional[bool] = None
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
 
     def _normalize_item(self, item: Union[str, Dict[str, Any]], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
@@ -372,8 +373,8 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
 def _extract_keywords_from_module(module) -> List[KeywordInfo]:
     """Extract all keyword infos from a module."""
     keywords = []
-    for _, obj in inspect.getmembers(module):
-        if inspect.isclass(obj) and obj.__module__ == module.__name__:
+    for name, obj in inspect.getmembers(module):
+        if inspect.isclass(obj) and obj.__module__ == module.__name__ and not name.startswith("_"):
             keywords.extend(_extract_keywords_from_class(obj))
     return keywords
 
@@ -431,9 +432,8 @@ def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[
     default > built-in default. A single serve/mcp process is multi-tenant, so a
     caller can enable/disable self-heal and choose its own LLM provider/model per
     session rather than being locked to the operator's choice. LLM credentials never
-    flow through here — the provider reads its own environment variables (e.g.
-    GeminiLLM reads GOOGLE_API_KEY/GEMINI_API_KEY) — so exposing provider/model per
-    session adds no credential surface.
+    flow through here — each engine reads its own credentials and endpoint from the
+    process environment — so exposing provider/model per session adds no credential surface.
     """
     env_enabled, env_provider, env_model = _env_self_heal_defaults()
     enabled = config.ai_self_heal if config.ai_self_heal is not None else env_enabled
@@ -496,7 +496,8 @@ async def create_session(config: SessionConfig):
             ai_self_heal=ai_self_heal,
             project_path=config.project_path,
             log_level=LOG_LEVEL_DEBUG,
-            save_captures=False  # do not save screenshots or pagesource when using `optics serve`
+            save_captures=False,  # do not save screenshots or pagesource when using `optics serve`
+            strict_element_match=bool(config.strict_element_match),
         )
         templates = (
             discover_templates(config.project_path) if config.project_path else None
@@ -510,11 +511,12 @@ async def create_session(config: SessionConfig):
                     status_code=400,
                     detail=f"{MSG_INVALID_API_DATA} {e}",
                 ) from e
-        session_id = session_manager.create_session(
+        session_id = await asyncio.to_thread(
+            session_manager.create_session,
             session_config,
             test_cases=None,
             modules=None,
-            elements=None,
+            elements=ElementData(),
             apis=apis,
             templates=templates,
         )
@@ -579,8 +581,7 @@ def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param:
 
 
 def _resolve_named_to_positional(
-    method: Callable[..., Any],
-    named_params: Dict[str, Union[str, List[str]]]
+    method: Callable[..., Any], named_params: Dict[str, Union[str, List[str]]]
 ) -> List[List[str]]:
     """
     Convert named parameters to positional parameters based on method signature.
@@ -595,8 +596,11 @@ def _resolve_named_to_positional(
     sig = inspect.signature(method)
     param_names = []
     for p in sig.parameters.values():
-        if p.name != "self":
-            param_names.append(p.name)
+        if p.name == "self":
+            continue
+        if p.kind == inspect.Parameter.KEYWORD_ONLY:
+            continue
+        param_names.append(p.name)
 
     normalized_params = []
     for param_name in param_names:
@@ -680,7 +684,11 @@ def _build_named_param_context(
 ) -> _NamedParamsContext:
     """Normalize named params and build context for fallback combos."""
     sig = inspect.signature(method)
-    all_param_names = [p.name for p in sig.parameters.values() if p.name != "self"]
+    all_param_names = [
+        p.name
+        for p in sig.parameters.values()
+        if p.name != "self" and p.kind != inspect.Parameter.KEYWORD_ONLY
+    ]
     normalized_param_lists: List[List[str]] = []
     provided_param_names: List[str] = []
     param_defaults: Dict[str, Any] = {}
@@ -736,13 +744,8 @@ def _combo_to_positional_named(
 async def _execute_no_params(
     engine: ExecutionEngine, session_id: str, keyword: str
 ) -> Any:
-    """Run keyword with no params; raise RuntimeError on failure, re-raise SystemExit etc."""
-    try:
-        return await engine.execute(_keyword_execution_params(session_id, keyword, []))
-    except Exception as e:
-        if _should_reraise(e):
-            raise
-        raise RuntimeError(f"Keyword execution failed: {e}") from e
+    """Run keyword with no params."""
+    return await engine.execute(_keyword_execution_params(session_id, keyword, []))
 
 
 async def _try_combos_named(
@@ -751,8 +754,8 @@ async def _try_combos_named(
     keyword: str,
     ctx: _NamedParamsContext,
 ) -> Any:
-    """Try each named-param combo; return first success or raise RuntimeError."""
-    errors: List[Tuple[tuple, str]] = []
+    """Try each named-param combo; return the first success."""
+    errors: List[Tuple[tuple, Exception]] = []
     for combo in product(*ctx.normalized_param_lists):
         try:
             args = _combo_to_positional_named(combo, ctx)
@@ -760,11 +763,8 @@ async def _try_combos_named(
         except Exception as e:
             if _should_reraise(e):
                 raise
-            errors.append((combo, repr(e)))
-    if not errors:
-        raise RuntimeError(f"No valid fallback values provided for keyword '{keyword}'")
-    msg = "\n".join([f"{c} -> {err}" for c, err in errors])
-    raise RuntimeError(f"All fallback attempts failed for keyword '{keyword}':\n{msg}")
+            errors.append((combo, e))
+    raise_fallback_failure(f"keyword '{keyword}'", errors)
 
 
 async def _try_combos_positional(
@@ -773,8 +773,8 @@ async def _try_combos_positional(
     keyword: str,
     normalized_param_lists: List[List[str]],
 ) -> Any:
-    """Try each positional combo; return first success or raise RuntimeError."""
-    errors: List[Tuple[tuple, str]] = []
+    """Try each positional combo; return the first success."""
+    errors: List[Tuple[tuple, Exception]] = []
     for combo in product(*normalized_param_lists):
         try:
             return await engine.execute(
@@ -783,11 +783,8 @@ async def _try_combos_positional(
         except Exception as e:
             if _should_reraise(e):
                 raise
-            errors.append((combo, repr(e)))
-    if not errors:
-        raise RuntimeError(f"No valid fallback values provided for keyword '{keyword}'")
-    msg = "\n".join([f"{c} -> {err}" for c, err in errors])
-    raise RuntimeError(f"All fallback attempts failed for keyword '{keyword}':\n{msg}")
+            errors.append((combo, e))
+    raise_fallback_failure(f"keyword '{keyword}'", errors)
 
 
 async def _execute_keyword_with_fallback(
@@ -814,7 +811,8 @@ async def _execute_keyword_with_fallback(
         Any: Result from the first successful execution
 
     Raises:
-        RuntimeError: If all fallback attempts fail
+        Exception: The failing attempt's own error, or an OpticsError listing every
+            attempt under the last one's code when several values were tried
     """
     if isinstance(params, dict):
         ctx = _build_named_param_context(method, params)
@@ -1034,10 +1032,23 @@ async def get_driver_session_id(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "get_driver_session_id")
 
+@app.get(
+    "/v1/sessions/{session_id}/variables",
+    responses={404: {"description": "Session not found"}},
+)
+async def get_session_variables(session_id: str):
+    """Return the session's ``${variable}`` namespace: name -> ordered values."""
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+    elements = session.elements
+    return {"variables": elements.elements if isinstance(elements, ElementData) else {}}
+
 @app.get("/v1/sessions/{session_id}/elements")
 async def get_elements(
     session_id: str,
-    filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text")
+    filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text"),
+    compact: bool = Query(False, description="Return only actionable elements (folded labels) plus read-only text, as a compact token-lean list (Appium and Playwright sources)")
 ):
     """
     Get interactive elements from the current session screen.
@@ -1052,14 +1063,18 @@ async def get_elements(
             - "images": Only image elements
             - "text": Only text elements
             Can be combined: ?filter_config=buttons&filter_config=inputs
+        compact: When true, ignore filter_config and return the compact list
+            ({i, label, cls, bounds, act, rid?}) instead of the full element dump.
 
     Returns:
         The elements result.
     """
-    params: Optional[Dict[str, Union[str, List[str]]]] = None
+    params: Dict[str, Union[str, List[str]]] = {}
     if filter_config:
-        params = {PARAM_FILTER_CONFIG: filter_config}
-    return await run_keyword_endpoint(session_id, "get_interactive_elements", params)
+        params[PARAM_FILTER_CONFIG] = filter_config
+    if compact:
+        params["compact"] = "true"
+    return await run_keyword_endpoint(session_id, "get_interactive_elements", params or None)
 
 @app.get("/v1/sessions/{session_id}/source")
 async def get_pagesource(session_id: str):

@@ -9,7 +9,7 @@ tracked as a deferred behaviour fix — so the cases that expose it are marked
 prompting removal of the marker) once the fix lands.
 """
 import json
-from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 import pytest
 
@@ -41,17 +41,21 @@ class _Modules:
 
 
 class _Session:
-    def __init__(self):
+    def __init__(self, output_dir):
         self.elements = ElementData()
         self.modules = _Modules()
         self.apis = ApiData()
         self.apis.collections = {}
-        self.config_handler = MagicMock()
+        self.config_handler = SimpleNamespace(
+            config=SimpleNamespace(
+                execution_output_path=str(output_dir), project_path=None
+            )
+        )
 
 
 @pytest.fixture
-def flow_control():
-    session = _Session()
+def flow_control(tmp_path):
+    session = _Session(tmp_path)
     return FlowControl(session, {
         "add": lambda a, b: int(a) + int(b),
         "concat": lambda a, b: f"{a}{b}",

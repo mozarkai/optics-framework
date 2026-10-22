@@ -49,8 +49,8 @@ theme:
 nav:
   - Home: index.md
   - Introduction: introduction.md
-  - Installation & Prerequisites: prerequisites.md
-  - Quick Start: quickstart.md
+  - Installation: prerequisites.md
+  - Getting Started: getting-started.md
   - Configuration: configuration.md
   - User Workflow: user_workflow.md
   - Usage:
@@ -86,6 +86,7 @@ nav:
     - Flow Control: api_reference/flow_control.md
   - Contribution:
     - Contributing Guidelines: contribution/contributing_guidelines.md
+    - Recipes: contribution/recipes.md
     - Developer Guide: contribution/developer_guide.md
     - Help Wanted: contribution/help_wanted.md
     - Code of Conduct: contribution/code_of_conduct.md
@@ -96,6 +97,8 @@ plugins:
       handlers:
         python:
           paths: [.]
+          options:
+            docstring_style: sphinx
   - minify:
       minify_html: true
 

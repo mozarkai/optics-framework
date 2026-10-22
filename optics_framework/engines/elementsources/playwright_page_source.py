@@ -7,11 +7,29 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common import utils
 from optics_framework.common.async_utils import run_async
+from optics_framework.engines.drivers import playwright_locator
 
 
 PLAYWRIGHT_NOT_INITIALISED_MSG = (
     "Playwright driver is not initialized for PlaywrightPageSource."
 )
+
+# Compact web inspector (get_interactive_elements(compact=True)). HTML carries no
+# clickable/editable attributes, so actionable nodes are inferred from tag/role/type.
+WEB_TAP_TAGS = frozenset({"button", "summary", "label"})
+WEB_TAP_ROLES = frozenset(
+    {"button", "link", "menuitem", "tab", "option", "checkbox", "radio", "switch"}
+)
+WEB_TOGGLE_INPUT_TYPES = frozenset({"checkbox", "radio"})
+WEB_TOGGLE_ROLES = frozenset({"switch", "checkbox", "radio"})
+WEB_TEXT_INPUT_TYPES = frozenset({
+    "text", "search", "email", "password", "tel", "url", "number",
+    "date", "datetime-local", "month", "time", "week",
+})
+WEB_SKIP_TAGS = frozenset(
+    {"script", "style", "meta", "link", "title", "head", "noscript", "template"}
+)
+WEB_COMPACT_LABEL_MAX_CHARS = 120
 
 
 class PlaywrightPageSource(ElementSourceInterface):
@@ -90,9 +108,8 @@ class PlaywrightPageSource(ElementSourceInterface):
         Returns:
             Tuple[str, str]: (page_source, timestamp)
         """
-        internal_logger.error("trying get_page_source ..............")
         page = self._require_page()
-        internal_logger.error("trying get_page_source _require_page ..............")
+        self.driver.wait_for_page_settled()
         timestamp = utils.get_timestamp()
 
         html: str = run_async(page.content())
@@ -113,7 +130,7 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         return html, str(timestamp)
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> List[Dict]:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[Dict]:
         """
         Cross-platform element extraction for web pages.
 
@@ -126,9 +143,14 @@ class PlaywrightPageSource(ElementSourceInterface):
                 - "images": Only image elements
                 - "text": Only text elements
                 Can be combined: ["buttons", "inputs"]
+            compact: When True, ignore filter_config and return only actionable
+                elements (labels folded in from descendants, with an ``act`` list)
+                plus standalone visible text (``act: []``), shaped for the Verifier's
+                compact projection.
 
         Returns:
-            List of dictionaries with keys: text, bounds, xpath, extra
+            List of dictionaries with keys: text, bounds, xpath, extra. In compact
+            mode each dict carries ``act`` instead of ``xpath``.
         """
         # Ensure page source is fetched and parsed
         self.get_page_source()  # Returns (html, timestamp); updates self.tree
@@ -138,11 +160,23 @@ class PlaywrightPageSource(ElementSourceInterface):
             return []
 
         page = self._require_page()
+        if compact:
+            return self._extract_compact_web_interactives(page)
+
         elements = self.tree.xpath(".//*")
+        # One page.evaluate() resolves bounds for every candidate node, instead of a
+        # Playwright locator round trip per node (count() + bounding_box() each).
+        rects = self._resolve_bounds_batch(
+            page, [self._build_simple_xpath(node) for node in elements]
+        )
+        if rects is None:
+            # No bounds means every element would be dropped below anyway; keep the
+            # pre-batching "no elements this pass" result for this best-effort list.
+            return []
         results = []
 
-        for node in elements:
-            bounds = self._extract_bounds(node, page)
+        for node, rect in zip(elements, rects):
+            bounds = self._rect_to_bounds(rect)
             if not bounds:
                 continue
 
@@ -168,48 +202,71 @@ class PlaywrightPageSource(ElementSourceInterface):
     # Helper methods for get_interactive_elements
     # ---------------------------------------------------------
 
-    def _extract_bounds(self, node: etree.Element, page: Any) -> Optional[Dict[str, int]]:
-        """
-        Extract bounding box coordinates for a web element using Playwright.
+    # In-browser: resolves each xpath via document.evaluate and reports its
+    # getBoundingClientRect(), or null when unmatched / not laid out. The visibility
+    # check approximates Playwright's own "not visible" -> null bounding_box() contract,
+    # since that internal algorithm isn't reachable from plain page.evaluate() JS.
+    _BOUNDS_BATCH_SCRIPT = """
+    (xpaths) => xpaths.map((xp) => {
+        if (!xp) return null;
+        try {
+            const result = document.evaluate(
+                xp, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            );
+            const el = result.singleNodeValue;
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+            const style = window.getComputedStyle(el);
+            if (style.visibility === 'hidden' || style.display === 'none') return null;
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        } catch (e) {
+            return null;
+        }
+    });
+    """
 
-        Args:
-            node: The lxml element node
-            page: Playwright page object
+    def _resolve_bounds_batch(
+        self, page: Any, xpaths: List[Optional[str]]
+    ) -> Optional[List[Optional[Dict[str, float]]]]:
+        """Resolve bounding rects for every candidate xpath in one round trip.
 
-        Returns:
-            Dict with x1, y1, x2, y2 or None if cannot get bounds
+        ``None`` means the batch lookup itself failed: ``page.evaluate`` raised or
+        returned a malformed payload. That is deliberately distinct from a list of
+        per-element ``None``s, which just means no candidate had visible bounds.
         """
+        if not xpaths:
+            return []
         try:
-            # Build a selector from the element
-            xpath = self._build_simple_xpath(node)
-            if not xpath:
-                return None
-
-            # Try to locate the element using XPath
-            locator = page.locator(f"xpath={xpath}")
-            count = run_async(locator.count())
-
-            if count == 0:
-                return None
-
-            # Get bounding box from the first matching element
-            bbox = run_async(locator.first.bounding_box())
-
-            if bbox is None:
-                return None
-
-            x1 = int(bbox["x"])
-            y1 = int(bbox["y"])
-            x2 = int(bbox["x"] + bbox["width"])
-            y2 = int(bbox["y"] + bbox["height"])
-
-            return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-
+            rects = run_async(page.evaluate(self._BOUNDS_BATCH_SCRIPT, xpaths))
         except Exception as e:
+            # The batch call itself failed (e.g. page mid-navigation). Falling back to one
+            # evaluate() per node here would reintroduce the exact per-node round-trip cost
+            # this batching exists to avoid.
             internal_logger.debug(
-                f"[PlaywrightPageSource] Could not extract bounds for element: {e}"
+                f"[PlaywrightPageSource] Batched bounds lookup failed: {e}"
             )
             return None
+        if not isinstance(rects, list) or len(rects) != len(xpaths):
+            internal_logger.debug(
+                "[PlaywrightPageSource] Batched bounds lookup returned a malformed payload"
+            )
+            return None
+        return rects
+
+    @staticmethod
+    def _rect_to_bounds(rect: Optional[Dict[str, float]]) -> Optional[Dict[str, int]]:
+        """Convert a ``{x,y,width,height}`` rect (or ``None``) into ``{x1,y1,x2,y2}``."""
+        if not rect:
+            return None
+        try:
+            x1 = int(rect["x"])
+            y1 = int(rect["y"])
+            x2 = int(rect["x"] + rect["width"])
+            y2 = int(rect["y"] + rect["height"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
     def _escape_xpath_value(self, val: str) -> str:
         """
@@ -405,6 +462,206 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         # Try class (last resort)
         return self._try_class_text(attrs)
+
+    # ---------------------------------------------------------
+    # Compact extraction helpers (get_interactive_elements(compact=True))
+    # ---------------------------------------------------------
+
+    def _web_is_hidden(self, node: etree.Element) -> bool:
+        """Cheap hidden/disabled checks; CSS-driven hiding is caught by the bounds probe."""
+        attrs = node.attrib or {}
+        if attrs.get("hidden") is not None or (attrs.get("aria-hidden") or "").lower() == "true":
+            return True
+        if (node.tag or "").lower() == "input" and (attrs.get("type") or "").lower() == "hidden":
+            return True
+        style = (attrs.get("style") or "").lower().replace(" ", "")
+        return "display:none" in style or "visibility:hidden" in style
+
+    def _is_web_toggle(self, node: etree.Element) -> bool:
+        tag = (node.tag or "").lower()
+        attrs = node.attrib or {}
+        role = (attrs.get("role") or "").lower()
+        return (
+            (tag == "input" and (attrs.get("type") or "").lower() in WEB_TOGGLE_INPUT_TYPES)
+            or role in WEB_TOGGLE_ROLES
+        )
+
+    def _is_web_disabled(self, node: etree.Element) -> bool:
+        """Native disabled or an ARIA widget marked non-operable."""
+        attrs = node.attrib or {}
+        return "disabled" in attrs or (attrs.get("aria-disabled") or "").lower() == "true"
+
+    def _web_element_actions(self, node: etree.Element) -> List[str]:
+        """Interactions a web node affords: tap/toggle/input (empty => none).
+
+        Inferred from tag/role/type because HTML has none of UiAutomator2's action
+        attributes. Scroll-only elements have no static signal and stay unclassified.
+        """
+        if self._web_is_hidden(node) or self._is_web_disabled(node):
+            return []
+        tag = (node.tag or "").lower()
+        attrs = node.attrib or {}
+        role = (attrs.get("role") or "").lower()
+        input_type = (attrs.get("type") or "").lower()
+        contenteditable = attrs.get("contenteditable")
+        text_input = (
+            (tag == "input" and (not input_type or input_type in WEB_TEXT_INPUT_TYPES))
+            or tag == "textarea"
+            or (contenteditable is not None and contenteditable.lower() != "false")
+        )
+        clickable = (
+            tag in WEB_TAP_TAGS
+            or (tag == "a" and attrs.get("href"))
+            or role in WEB_TAP_ROLES
+            or "onclick" in attrs
+            or tag in ("input", "select")
+            or text_input
+        )
+        actions: List[str] = []
+        if clickable:
+            actions.append("tap")
+        if self._is_web_toggle(node):
+            actions.append("toggle")
+        if text_input:
+            actions.append("input")
+        return actions
+
+    def _web_own_label(self, node: etree.Element) -> str:
+        """The node's own visible text, else its accessibility-ish attributes."""
+        text = (node.text or "").strip()
+        if text:
+            return text
+        attrs = node.attrib or {}
+        for key in ("aria-label", "title", "alt", "placeholder", "value"):
+            if key == "value" and self._is_web_toggle(node):
+                continue  # a checkbox/radio value is a form payload, not a label
+            val = (attrs.get(key) or "").strip()
+            if val:
+                return val
+        return self._label_for(node)
+
+    def _label_for(self, node: etree.Element) -> str:
+        cache = getattr(self, "_label_cache", None)
+        if cache is None or cache[0] is not self.tree:
+            labels: dict[str, str] = {}
+            for label in self.tree.iter("label") if self.tree is not None else ():
+                target = label.attrib.get("for")
+                if target and target not in labels:
+                    labels[target] = " ".join("".join(label.itertext()).split())
+            cache = self._label_cache = (self.tree, labels)
+        return cache[1].get(node.attrib.get("id") or "", "")
+
+    def _web_folded_label(self, node: etree.Element) -> str:
+        # An attribute label wins when the node has no direct text of its own; otherwise
+        # fold in direct text, descendant text and inline tails.
+        if not (node.text or "").strip():
+            own = self._web_own_label(node)
+            if own:
+                return own[:WEB_COMPACT_LABEL_MAX_CHARS]
+        parts: List[str] = []
+        self._collect_web_text(node, parts)
+        return " ".join(dict.fromkeys(parts))[:WEB_COMPACT_LABEL_MAX_CHARS]
+
+    def _collect_web_text(self, node: etree.Element, parts: List[str]) -> None:
+        # node.text is only the text before the first child and each child's tail is the
+        # text after it, so both are needed to keep "Save <b>Changes</b> now" whole.
+        # Nested actionable subtrees are not descended into.
+        text = self._web_own_label(node)
+        if text:
+            parts.append(text)
+        for child in node:
+            if isinstance(child.tag, str) and not self._web_element_actions(child):
+                self._collect_web_text(child, parts)
+            if child.tail and child.tail.strip():
+                parts.append(child.tail.strip())
+
+    def _web_folds_text(self, node: etree.Element) -> bool:
+        return bool(self._web_element_actions(node))
+
+    def _has_web_folding_ancestor(self, node: etree.Element) -> bool:
+        parent = node.getparent()
+        while parent is not None:
+            if self._web_folds_text(parent):
+                return True
+            parent = parent.getparent()
+        return False
+
+    def _has_actionable_web_descendant(self, node: etree.Element) -> bool:
+        return any(
+            child is not node and self._web_element_actions(child) for child in node.iter()
+        )
+
+    def _compact_web_entry(
+        self, node: etree.Element, label: str, actions: List[str], bounds: Dict,
+        locator: str | None = None,
+    ) -> Dict:
+        extra = {"class": (node.tag or "").lower()}
+        rid = node.attrib.get("id")
+        if rid:
+            extra["resource-id"] = rid
+        entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        if locator:
+            entry["loc"] = locator
+        return entry
+
+    def _suggest_locators(self, page: Any, xpaths: list[str | None]) -> list[str | None]:
+        try:
+            return playwright_locator.suggest_locators(page, xpaths)
+        except Exception as e:
+            internal_logger.debug("[PlaywrightPageSource] Locator suggestions failed: %s", e)
+            return [None] * len(xpaths)
+
+    def _compact_web_candidate(
+        self, node: etree.Element
+    ) -> Optional[Tuple[str, List[str]]]:
+        """``(label, actions)`` for a node worth reporting, or ``None`` to drop it.
+
+        Deliberately bounds-free so every kept node can be resolved in one batched
+        lookup rather than a Playwright round trip each.
+        """
+        if not isinstance(node.tag, str) or node.tag.lower() in WEB_SKIP_TAGS:
+            return None
+        if self._web_is_hidden(node):
+            return None
+        actions = self._web_element_actions(node)
+        if actions:
+            label = self._web_folded_label(node)
+            # An empty-labelled wrapper around another actionable element (a div around
+            # its button) is noise; the inner element carries the label.
+            if not label and self._has_actionable_web_descendant(node):
+                return None
+        else:
+            label = self._web_own_label(node)
+            if not label or len(node) > 0 or self._has_web_folding_ancestor(node):
+                return None
+        return label, actions
+
+    def _extract_compact_web_interactives(self, page: Any) -> List[Dict]:
+        # Actionable elements (folded labels) + standalone visible text; drops the rest.
+        # Candidates are chosen first so one batched lookup covers all of their bounds.
+        candidates = [
+            (node, candidate)
+            for node in self.tree.iter()
+            if (candidate := self._compact_web_candidate(node)) is not None
+        ]
+        xpaths = [self._build_simple_xpath(node) for node, _ in candidates]
+        rects = self._resolve_bounds_batch(page, xpaths)
+        if rects is None:
+            # Every entry needs bounds, so a failed batch would collapse to an empty list
+            # indistinguishable from a genuinely empty screen. Consumers such as the live
+            # NL agent fall back to page source on "unavailable" but not on "empty", so
+            # surface the failure instead of swallowing it.
+            raise OpticsError(
+                Code.E0202,
+                message="Batched bounds lookup failed; compact elements unavailable.",
+            )
+        locators = self._suggest_locators(page, xpaths) if xpaths else []
+        entries = []
+        for (node, (label, actions)), rect, locator in zip(candidates, rects, locators):
+            bounds = self._rect_to_bounds(rect)
+            if bounds:
+                entries.append(self._compact_web_entry(node, label, actions, bounds, locator))
+        return entries
 
     def _check_filter_type(self, node: etree.Element, filter_type: str) -> bool:
         """
@@ -874,63 +1131,26 @@ class PlaywrightPageSource(ElementSourceInterface):
 
         return original_element, element
 
-    def _build_playwright_locator(self, page: Any, element: str, element_type: str) -> Any:
+    def _strict_element_match(self) -> bool:
+        """Whether project config requests exact-only matching (Config.strict_element_match).
+
+        Governs both locate and presence/assert checks so the two stay uniform -- see
+        assert_elements. Defaults False (fuzzy) when the config chain is unavailable.
         """
-        Build Playwright locator based on element type.
-
-        :param page: Playwright page object
-        :param element: Element selector string
-        :param element_type: Type of element (Text, XPath, CSS)
-        :return: Playwright locator
-        """
-        if element_type == "Text":
-            text_value = self._strip_prefix_for_page_source(element, "text=")
-            return page.get_by_text(text_value, exact=False)
-
-        if element_type == "XPath":
-            xpath_value = self._strip_prefix_for_page_source(element, "xpath=")
-            return page.locator(f"xpath={xpath_value}")
-
-        # CSS / default
-        css_value = self._strip_prefix_for_page_source(element, "css=")
-        return page.locator(css_value)
-
-    def _strip_prefix_for_page_source(self, element: str, prefix: str) -> str:
-        """
-        Strip prefix from element string if present (case-insensitive).
-
-        :param element: Element string
-        :param prefix: Prefix to strip (e.g., "xpath=", "text=", "css=")
-        :return: Element string without prefix
-        """
-        if element.lower().startswith(prefix.lower()):
-            eq_index = element.find("=")
-            return element[eq_index + 1:] if eq_index >= 0 else element
-        return element
+        try:
+            return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
+        except AttributeError:
+            return False
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
+        """Locate without waiting; PlaywrightFindElement is the source that waits."""
         page = self._require_page()
 
         original_element, element = self._resolve_optics_element(element)
-        element_type = utils.determine_element_type(element)
-
         try:
-            locator = self._build_playwright_locator(page, element, element_type)
-
-            if index is not None:
-                locator = locator.nth(index)
-
-            count = run_async(locator.count())
-            internal_logger.debug(
-                "[PlaywrightLocate] Locator '%s' found %d elements",
-                element, count
+            return playwright_locator.find(
+                page, element, index=int(index or 0), exact=self._strict_element_match()
             )
-
-            if count == 0:
-                return None
-
-            return locator.first
-
         except Exception as e:
             internal_logger.error(
                 "[PlaywrightLocate] Error locating element '%s' (resolved='%s')",
@@ -949,29 +1169,8 @@ class PlaywrightPageSource(ElementSourceInterface):
     # ---------------------------------------------------------
 
     def _check_single_element_presence(self, page: Any, element: str) -> bool:
-        """
-        Check if a single element is present on the page.
-
-        :param page: Playwright page object
-        :param element: Element selector string
-        :return: True if element is found, False otherwise
-        """
         try:
-            internal_logger.debug(
-                "[PlaywrightPageSource] Element '%s'",
-                element
-            )
-            element_type = utils.determine_element_type(element)
-            if element_type == "Text":
-                locator = page.get_by_text(element, exact=False)
-            elif element_type == "XPath":
-                locator = page.locator(f"xpath={element}")
-            else:
-                # CSS selector
-                locator = page.locator(element)
-
-            count = run_async(locator.count())
-            return count > 0
+            return playwright_locator.is_present(page, element, exact=self._strict_element_match())
         except Exception as e:
             internal_logger.debug(
                 "[PlaywrightPageSource] Error checking '%s': %s",

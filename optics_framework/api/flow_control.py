@@ -130,6 +130,9 @@ class FlowControl:
         Not exposed on the Optics SDK — session.modules is only populated by
         CSV/YAML-driven execution; SDK/Robot Framework users should call keywords
         directly or write a real function/keyword instead.
+
+        :param module_name: The module to execute.
+        :return: Results of each keyword call in the module, in order.
         """
         module_def = self._get_validated_module_def(module_name)
         results = []
@@ -140,7 +143,13 @@ class FlowControl:
 
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
     def run_loop(self, target: str, *args: str) -> List[Any]:
-        """Runs a loop over a target module, either by count or with variables."""
+        """Runs a loop over a target module, either by count or with variables.
+
+        :param target: The module name to execute in the loop.
+        :param args: A single count (e.g. ``"5"``), or variable-iterable pairs
+            (e.g. ``"${user}", "a|b|c"``) to iterate one value per run.
+        :return: One result list per iteration.
+        """
         internal_logger.debug(f"[RUN_LOOP] Called with target={target}, args={args}")
         self._ensure_session()
         if self.session is None:
@@ -187,10 +196,7 @@ class FlowControl:
         internal_logger.debug(f"[_LOOP_WITH_VARIABLES] min_length={min_length}, var_names={var_names}")
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
 
         results = []
         for i in range(min_length):
@@ -267,7 +273,13 @@ class FlowControl:
             raise OpticsError(Code.E0403, message=f"Expected a list, JSON string, or pipe-separated string for iterable of variable '{variable}', got {type(iterable).__name__}.")
 
     def condition(self, *args: str) -> Optional[List[Any]]:
-        """Evaluates conditions and executes corresponding targets."""
+        """Evaluates conditions and executes corresponding targets.
+
+        :param args: Condition-target pairs, optionally ending with an else target:
+            ``"cond1", "target1", "cond2", "target2", [else_target]``. A condition is a
+            module name (prefix ``!`` to invert) or an expression.
+        :return: Result of the matched target module, or None if nothing matched.
+        """
         internal_logger.debug(f"[CONDITION] Called with args={args}")
         self._ensure_session()
         if self.session is None:
@@ -433,17 +445,14 @@ class FlowControl:
         Reads tabular data from a CSV file, JSON file, environment variable, or a 2D list,
         applies optional filtering and column selection, and stores the result in the session's elements.
 
-        Args:
-            input_element: Variable name where the result is stored (e.g. `${data}`). Prefer `${name}` form.
-            file_path: Data source. One of: (1) path to a `.csv` or `.json` file; (2) string
-                ``ENV:VAR_NAME`` to use an environment variable (value parsed as JSON, CSV, or plain string);
-                (3) a 2D list with first row as headers (Python API only).
-            query: Optional semicolon-separated parts: ``select=col1,col2`` and/or filter expressions
-                (pandas-style). Any ``${varname}`` in the query is resolved from `session.elements` before
-                evaluation. Default ``""``.
-
-        Returns:
-            The stored value as a list (or list of lists for multi-row results). Also writes into
+        :param input_element: Variable name where the result is stored (e.g. ``${data}``). Prefer ``${name}`` form.
+        :param file_path: Data source. One of: (1) path to a ``.csv`` or ``.json`` file; (2) string
+            ``ENV:VAR_NAME`` to use an environment variable (value parsed as JSON, CSV, or plain string);
+            (3) a 2D list with first row as headers (Python API only).
+        :param query: Optional semicolon-separated parts: ``select=col1,col2`` and/or filter expressions
+            (pandas-style). Any ``${varname}`` in the query is resolved from `session.elements` before
+            evaluation. Default ``""``.
+        :returns: The stored value as a list (or list of lists for multi-row results). Also writes into
             `session.elements` under the name derived from `input_element`.
         """
         internal_logger.debug(f"[READ_DATA] Called with input_element={input_element}, file_path={file_path}, query={query}")
@@ -626,10 +635,7 @@ class FlowControl:
 
     def _resolve_query_vars(self, q):
         pattern = re.compile(VAR_PATTERN)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         def replacer(match):
             var_name = match.group(1).strip()
             value = runner_elements.get_first(var_name)
@@ -804,15 +810,18 @@ class FlowControl:
 
     @raw_params(0)
     def evaluate(self, param1: str, param2: str) -> Any:
-        """Evaluates an expression and stores the result in session.elements."""
+        """Evaluates an expression and stores the result in session.elements.
+
+        :param param1: Variable name to store the result under, e.g. ``${result}``.
+        :param param2: Expression to evaluate; ``${var}`` refs are substituted first,
+            then run through a restricted eval (arithmetic, comparisons, ternary).
+        :return: The evaluated result (also stored as a string in session.elements).
+        """
         self._ensure_session()
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         var_name = self._extract_variable_name(param1)
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         result = self._compute_expression(param2)
         runner_elements.remove_element(var_name)
         runner_elements.add_element(var_name, str(result))
@@ -924,22 +933,18 @@ class FlowControl:
         """
         Evaluates a date expression based on an input date and stores the result in session.elements.
 
-        Args:
-            param1 (str): The variable name (placeholder) where the evaluated date result will be stored.
-            param2 (str): The input date string (e.g., "04/25/2025" or "2025-04-25"). Format is auto-detected.
-            param3 (str): The date expression to evaluate, such as "+1 day", "-2 days", or "today".
-            param4 (Optional[str]): The output format for the evaluated date (default is "%d %B", e.g., "26 April").
-
-        Returns:
-            str: The resulting evaluated and formatted date string.
-
-        Raises:
-            ValueError: If the session is not present, the input date format cannot be detected,
-                        or the expression format is invalid.
+        :param param1: The variable name (placeholder) where the evaluated date result will be stored.
+        :param param2: The input date string (e.g., ``"04/25/2025"`` or ``"2025-04-25"``). Format is auto-detected.
+        :param param3: The date expression to evaluate, such as ``"+1 day"``, ``"-2 days"``, or ``"today"``.
+        :param param4: The output format for the evaluated date (default is ``"%d %B"``, e.g., ``"26 April"``).
+        :returns: The resulting evaluated and formatted date string.
+        :raises OpticsError: If the session is not present, the input date format cannot be detected,
+            or the expression format is invalid.
 
         Example:
+
             date_evaluate("tomorrow", "04/25/2025", "+1 day")
-            ➔ Stores "26 April" in session.elements["tomorrow"]
+            -> Stores "26 April" in session.elements["tomorrow"]
         """
         self._ensure_session()
         if self.session is None:
@@ -981,15 +986,16 @@ class FlowControl:
         result = base_date.strftime(output_format)
 
         # Store in session.elements
-        runner_elements = getattr(self.session, "elements", None)
-        if not isinstance(runner_elements, ElementData):
-            runner_elements = ElementData()
-            setattr(self.session, "elements", runner_elements)
+        runner_elements = self._get_or_create_session_elements()
         runner_elements.add_element(var_name, result)
         return result
 
-    def invoke_api(self, api_identifier: str) -> None:
-        """Invokes an API call based on a definition from the session's API data."""
+    def invoke_api(self, api_identifier: str) -> dict[str, Any]:
+        """Invokes an API call based on a definition from the session's API data.
+
+        :param api_identifier: API to call, in ``collection.api_name`` form.
+        :return: ``status_code``, ``headers``, ``body`` and ``elapsed_ms`` of the response.
+        """
         internal_logger.debug(f"[INVOKE_API] Called with api_identifier={api_identifier}")
         self._ensure_session()
         if self.session is None:
@@ -1007,6 +1013,19 @@ class FlowControl:
         internal_logger.debug(f"[INVOKE_API] Received response: status_code={response.status_code}")
         self._process_response(response, api_def)
         internal_logger.debug(f"[INVOKE_API] Finished processing response for API: {api_name}")
+        return {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "body": self._response_body(response),
+            "elapsed_ms": round(response.elapsed.total_seconds() * 1000, 3),
+        }
+
+    def _response_body(self, response: requests.Response) -> Any:
+        """Parsed JSON body, or the raw text when the response is not JSON."""
+        try:
+            return response.json()
+        except ValueError:
+            return response.text
 
     def _parse_api_identifier(self, identifier: str) -> Tuple[str, str]:
         """Parses 'collection.api' into a tuple."""
@@ -1272,11 +1291,18 @@ class FlowControl:
                 f"Could not extract '{element_name}' using path '{path}'."
             )
 
-    def _get_or_create_session_elements(self):
-        """Gets session elements or creates if not properly initialized."""
+    def _get_or_create_session_elements(self) -> ElementData:
+        """Gets session elements or creates if not properly initialized.
+
+        `optics serve` creates every session with `elements=None` and offers no way to fill
+        it, so raising here left `Invoke API` unusable there — its `extract` had nowhere to
+        put a value. `TestRunner` already substitutes an empty `ElementData` in the same
+        case, so creating one is the reading the runner has always taken.
+        """
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
-            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
+            runner_elements = ElementData()
+            self.session.elements = runner_elements
         return runner_elements
 
     def _evaluate_jsonpath_assertions(
@@ -1317,20 +1343,14 @@ class FlowControl:
                 ) from e
 
     def _extract_from_json(self, data: Any, path: str) -> Optional[Any]:
-        """Extracts a value from a nested dictionary using a dot-separated path."""
-        current_data = data
-        for key in path.split("."):
-            internal_logger.debug(
-                f"_extract_from_json: Current data type: {type(current_data)}, Key: {key}"
-            )
-            if isinstance(current_data, dict):
-                current_data = current_data.get(key)
-                internal_logger.debug(
-                    f"_extract_from_json: Value after get('{key}'): {current_data}"
-                )
-            else:
-                internal_logger.warning(
-                    f"_extract_from_json: Data is not a dictionary at key '{key}'. Current data: {current_data}"
-                )
-                return None
-        return current_data
+        """Extracts a value using a JSONPath expression, or the bare ``a.b`` form."""
+        expression = path if path.lstrip().startswith("$") else f"$.{path}"
+        try:
+            matches = jsonpath_parse(expression).find(data)
+        except Exception as e:  # noqa: BLE001 - a bad path is a definition error, not a crash
+            internal_logger.warning(f"Invalid extract path '{path}': {e}")
+            return None
+        if not matches:
+            internal_logger.warning(f"Extract path '{path}' matched nothing in the response.")
+            return None
+        return matches[0].value

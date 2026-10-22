@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import base64
 import inspect
+import os
+import pathlib
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
@@ -33,13 +35,35 @@ from optics_framework.api.app_management import AppManagement
 from optics_framework.api.verifier import Verifier
 from optics_framework.common import expose_api
 from optics_framework.common.error import OpticsError
+from optics_framework.common.factories import ElementSourceFactory
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.helper.version import VERSION
+
+# Unrelated to StrategyFactory's locate-strategy priority in strategies.py —
+# this ranks element-source modules, not locate techniques.
+_SOURCE_RANK = {"find_element": 0, "page_source": 1, "screenshot": 2}
+
+
+def _default_sources_for_driver(driver: str) -> list[str]:
+    """The driver's canonical elements_sources trio, found by reflection.
+
+    Returns ``[]`` for an unmatched driver name; ``start_session`` then fails
+    with the usual "Element source configuration must be set" error.
+    """
+    key = (driver or "").strip().lower()
+    matches = ElementSourceFactory.available_sources(key)
+
+    def rank(name: str) -> tuple[int, str]:
+        suffix = name.split("_", 1)[1] if "_" in name else name
+        return (_SOURCE_RANK.get(suffix, len(_SOURCE_RANK)), name)
+
+    return sorted(matches, key=rank)
 
 # fastmcp is optional (extra: mcp). Import lazily with a clear, actionable error.
 try:
     from fastmcp import FastMCP
     from fastmcp.exceptions import ToolError
-    from fastmcp.tools.tool import Tool
+    from fastmcp.tools import Tool
     from fastmcp.utilities.types import Image
 
     _FASTMCP_IMPORT_ERROR: Optional[ImportError] = None
@@ -52,18 +76,50 @@ except ImportError as _e:  # pragma: no cover - exercised only without the extra
 
 SERVER_NAME = "Optics MCP"
 SERVER_INSTRUCTIONS = (
-    "Drive a live device/browser through the optics-framework.\n"
-    "1. Call `start_session` first to open a session against your driver "
-    "(e.g. appium) and capture the returned `session_id`.\n"
-    "2. Pass that `session_id` to every keyword tool (press_element, enter_text, "
-    "swipe, assert_presence, ...).\n"
-    "3. Observe device state via resources: optics://session/{session_id}/screenshot, "
-    "/source, /elements, /screen_elements. The full keyword catalog is at "
-    "optics://keywords.\n"
-    "4. Call `terminate_session` when done.\n"
-    "Sessions live only inside this server process; they are not shared with "
-    "`optics serve` or `optics live`."
+    "Drive a live device or browser through the optics-framework under agent control.\n"
+    "1. `start_session` opens a session against your driver (e.g. appium) and returns "
+    "a `session_id`; pass it to every keyword tool and resource. Element sources "
+    "default per driver, so `start_session(driver=\"appium\")` just works — supply "
+    "`url`/`capabilities` for your target (device id goes in capabilities, e.g. "
+    "deviceName/udid; the MCP itself needs no adb). For a website use "
+    "`start_session(driver=\"playwright\", capabilities={\"headless\": false})`, then "
+    "`launch_app(app_identifier=\"<url>\")`; calling `launch_app` again navigates the "
+    "same browser.\n"
+    "2. Act with the keyword tools (press_element, enter_text, swipe, assert_presence, "
+    "...). First read the `optics://session/{id}/elements` resource (or call "
+    "`get_interactive_elements`): it returns a compact list of every actionable element "
+    "with a label, its `act` (tap/long/toggle/input/scroll) and bounds, plus read-only "
+    "text (`act: []`) for asserting screen state. Tap with `press_element`, passing a "
+    "locator (`xpath=`/`text=`/an id/an image) or an element's visible label from that "
+    "list; it raises when the target is not found. On the web an element can also carry "
+    "`loc`, a locator checked to match exactly that element: prefer it over the label, "
+    "and store it in the suite's elements file so a replay finds the same element. Web "
+    "keywords wait for an element to appear, so no `sleep` is needed after a page load. "
+    "That wait is also what a miss costs (`assert_presence` waits up to `timeout_str`, "
+    "30 s by default): to check what is on screen now, read the elements resource or "
+    "pass a short `timeout_str`. "
+    "`detect_and_press` is for optional "
+    "taps only: it skips the press and still succeeds when the target never appears. "
+    "Ground every tap in the elements list or a locator rather than pixel/percentage "
+    "coordinates, which misfire on the wrong element. Observe with the `screenshot` "
+    "tool and the `optics://session/{id}/...` "
+    "resources.\n"
+    "3. To build a reusable suite you already have the steps you ran — author an "
+    "optics CSV project yourself (read the `optics://project-format` resource for the "
+    "exact layout and `${var}` parameterization), then run it with the CLI "
+    "(`optics execute <folder>`). The MCP has no record/save/replay tools by design: "
+    "compose them from the keyword tools plus that format knowledge.\n"
+    "4. `terminate_session` when done. Sessions live only inside this server process; "
+    "they are not shared with `optics serve` or `optics live`."
 )
+
+# Knowledge (not a tool) served at optics://project-format so an agent can author
+# a runnable optics suite itself from the steps it already ran — no save/record
+# tool needed. Kept as a standalone file (not a Python string literal) so it
+# reads and edits like the doc it is.
+_PROJECT_FORMAT_DOC = (
+    pathlib.Path(__file__).parent / "mcp_project_format.md"
+).read_text(encoding="utf-8")
 
 # API classes whose public methods become keyword tools — the same set the HTTP
 # `execute_keyword` registry builds (FlowControl is intentionally excluded; it
@@ -78,11 +134,18 @@ _RESOURCE_ONLY_KEYWORDS = frozenset(
     {"capture_screenshot", "capture_pagesource", "get_screen_elements"}
 )
 
-# Internal params injected by decorators (e.g. `@with_self_healing` fills
-# `located`), never supplied by an MCP client — drop them from tool schemas.
-_EXCLUDED_PARAMS = frozenset({"located"})
+# Raw pixel/percentage tap keywords, kept out of the MCP tool surface by default: tapping
+# a coordinate the agent eyeballed off a screenshot misfires. Operators can re-enable via
+# env var; this gates only the MCP tools, not AI self-heal's internal press_by_percentage.
+_COORDINATE_TAP_KEYWORDS = frozenset({"press_by_coordinates", "press_by_percentage"})
+ENV_ALLOW_COORDINATE_TAPS = "OPTICS_MCP_ALLOW_COORDINATE_TAPS"
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
 
 _RESULT_KEY = expose_api.KEY_RESULT
+
+
+def _coordinate_taps_allowed() -> bool:
+    return os.environ.get(ENV_ALLOW_COORDINATE_TAPS, "").strip().lower() in _TRUE_STRINGS
 
 
 def _require_fastmcp() -> None:
@@ -98,6 +161,8 @@ def _http_detail(detail: Any) -> str:
     if isinstance(detail, dict):
         # OpticsError.to_payload(include_status=True) shape: prefer message/code.
         msg = detail.get("message") or detail.get("detail") or detail
+        if detail.get("cause"):
+            msg = f"{msg} (cause: {detail['cause']})"
         code = detail.get("code")
         return f"[{code}] {msg}" if code else str(msg)
     return str(detail)
@@ -127,7 +192,6 @@ def _reflect_keyword_params(method: Callable[..., Any]) -> list[inspect.Paramete
         p
         for name, p in sig.parameters.items()
         if name != "self"
-        and name not in _EXCLUDED_PARAMS
         # *args / **kwargs can't be represented as discrete string tool params.
         and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     ]
@@ -200,15 +264,23 @@ def _make_keyword_tool(slug: str, params: list[inspect.Parameter]) -> Callable[.
     return wrapper
 
 
+def _is_keyword_tool(name: str, seen: set[str], allow_coordinate_taps: bool) -> bool:
+    """Whether a public API method should be exposed as its own MCP tool."""
+    if name.startswith("_") or name.startswith("test") or name in seen:
+        return False
+    if name in _RESOURCE_ONLY_KEYWORDS:
+        return False
+    return allow_coordinate_taps or name not in _COORDINATE_TAP_KEYWORDS
+
+
 def _iter_keyword_tools() -> list[tuple[str, str, Callable[..., Any]]]:
     """Yield (slug, description, wrapper) for every action keyword to register."""
     tools: list[tuple[str, str, Callable[..., Any]]] = []
     seen: set[str] = set()
+    allow_coordinate_taps = _coordinate_taps_allowed()
     for cls in _KEYWORD_CLASSES:
         for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-            if name.startswith("_") or name.startswith("test"):
-                continue
-            if name in _RESOURCE_ONLY_KEYWORDS or name in seen:
+            if not _is_keyword_tool(name, seen, allow_coordinate_taps):
                 continue
             seen.add(name)
             description = inspect.getdoc(method) or expose_api._humanize_keyword(name)
@@ -217,10 +289,12 @@ def _iter_keyword_tools() -> list[tuple[str, str, Callable[..., Any]]]:
     return tools
 
 
-async def _observe(session_id: str, keyword: str) -> Any:
+async def _observe(
+    session_id: str, keyword: str, params: Optional[dict[str, Any]] = None
+) -> Any:
     """Run a read-only observer keyword and return its unwrapped result."""
     try:
-        response = await expose_api.run_keyword_endpoint(session_id, keyword)
+        response = await expose_api.run_keyword_endpoint(session_id, keyword, params)
     except HTTPException as exc:
         raise ToolError(_http_detail(exc.detail)) from exc
     data = getattr(response, "data", None) or {}
@@ -240,7 +314,7 @@ def _decode_screenshot(result: Any) -> bytes:
 def build_server() -> "FastMCP":
     """Construct the FastMCP server with all keyword tools and state resources."""
     _require_fastmcp()
-    mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+    mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, version=VERSION)
 
     # --- Lifecycle tools -------------------------------------------------------
     async def start_session(
@@ -254,6 +328,7 @@ def build_server() -> "FastMCP":
         ai_self_heal: Optional[bool] = None,
         llm_provider: Optional[str] = None,
         llm_model: Optional[str] = None,
+        strict_element_match: Optional[bool] = None,
     ) -> dict[str, Any]:
         """Start a new optics session and launch the target app.
 
@@ -271,6 +346,10 @@ def build_server() -> "FastMCP":
         ai_self_heal=True with no provider configured anywhere still degrades to inert
         (no LLM to drive it); LLM credentials always come from the provider's own env
         vars (e.g. GOOGLE_API_KEY), never this tool.
+
+        strict_element_match: reject fuzzy/partial text and xpath matches on locate
+        (default False, i.e. fuzzy-tolerant). Set True when a near-miss locator string
+        pressing the wrong element is worse than the keyword failing outright.
         """
         if url or capabilities:
             driver_sources: list[Any] = [
@@ -278,15 +357,25 @@ def build_server() -> "FastMCP":
             ]
         else:
             driver_sources = [driver]
+        # Sane defaults: only an *omitted* elements_sources (None) triggers the
+        # per-driver defaults. An explicit empty list is passed through — it
+        # disables element sources entirely, and session creation then fails with
+        # "Element source configuration must be set".
+        resolved_elements = (
+            elements_sources
+            if elements_sources is not None
+            else _default_sources_for_driver(driver)
+        )
         config = expose_api.SessionConfig(
             driver_sources=driver_sources,
-            elements_sources=elements_sources or [],
+            elements_sources=resolved_elements,
             text_detection=text_detection or [],
             image_detection=image_detection or [],
             project_path=project_path,
             ai_self_heal=ai_self_heal,
             llm_provider=llm_provider,
             llm_model=llm_model,
+            strict_element_match=strict_element_match,
         )
         try:
             response = await expose_api.create_session(config)
@@ -325,6 +414,12 @@ def build_server() -> "FastMCP":
         """The full optics keyword catalog (name, slug, description, params)."""
         return [info.model_dump() for info in expose_api.discover_keywords()]
 
+    @mcp.resource("optics://project-format", mime_type="text/markdown")
+    def project_format() -> str:
+        """How optics stores a test suite (CSV layout + ${var} params) so you can
+        author a runnable project yourself, then run it with `optics execute`."""
+        return _PROJECT_FORMAT_DOC
+
     @mcp.resource("optics://session/{session_id}/screenshot", mime_type="image/png")
     async def screenshot_resource(session_id: str) -> bytes:
         """Current screen as raw PNG bytes (use the `screenshot` tool for a rendered image)."""
@@ -337,8 +432,12 @@ def build_server() -> "FastMCP":
 
     @mcp.resource("optics://session/{session_id}/elements", mime_type="application/json")
     async def interactive_elements(session_id: str) -> Any:
-        """All interactive elements on screen (unfiltered; use the tool to filter)."""
-        return await _observe(session_id, "get_interactive_elements")
+        """Compact on-screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}:
+        actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
+        read-only text (act: []). Appium and Playwright page sources answer the compact
+        projection; a source without it returns its full element list. Use the
+        get_interactive_elements tool with compact=false for the full untrimmed list."""
+        return await _observe(session_id, "get_interactive_elements", {"compact": "true"})
 
     @mcp.resource(
         "optics://session/{session_id}/screen_elements", mime_type="application/json"

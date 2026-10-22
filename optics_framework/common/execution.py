@@ -77,6 +77,7 @@ class BatchExecutor(Executor):
                 message=message,
                 extra={"session_id": session.session_id}
             ))
+            return runner.result_printer.test_state
         except Exception as e:
             await event_manager.publish_event(Event(
                 entity_type="execution",
@@ -127,6 +128,7 @@ class DryRunExecutor(Executor):
             message=message,
             extra={"session_id": session.session_id}
         ))
+        return runner.result_printer.test_state
 
 
 def _deserialize_single_param(param_value: str, param_type: Any) -> Any:
@@ -186,7 +188,10 @@ class KeywordExecutor(Executor):
             try:
                 # Deserialize parameters based on method signature
                 deserialized_params = _deserialize_params(method, self.params)
-                result = method(*deserialized_params)
+                async with session.keyword_lock:
+                    result = await asyncio.to_thread(method, *deserialized_params)
+                    heal_owner = getattr(method, "__self__", None)
+                    heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
             except Exception as e:
                 await event_manager.publish_event(Event(
                     entity_type="keyword",
@@ -196,9 +201,9 @@ class KeywordExecutor(Executor):
                     message="Keyword execution failed: %s" % str(e),
                     extra={"session_id": session.session_id}
                 ))
+                if isinstance(e, OpticsError):
+                    raise
                 raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
-            heal_owner = getattr(method, "__self__", None)
-            heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
             extra = {"session_id": session.session_id}
             if heal_info:
                 extra["healed"] = "true"
@@ -365,6 +370,8 @@ class ExecutionEngine:
             await event_manager.publish_event(
                 _execution_event(params.session_id, EventStatus.ERROR, f"Execution failed: {str(e)}")
             )
+            if isinstance(e, OpticsError):
+                raise
             raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
 
     async def _drain_events_and_shutdown(self, event_manager: EventManager) -> None:
@@ -420,6 +427,8 @@ class ExecutionEngine:
                     _execution_event(params.session_id, EventStatus.FAIL, f"Execution failed: {str(e)}")
                 )
                 internal_logger.error("Execution error in session %s: %s", params.session_id, e)
+                if isinstance(e, OpticsError):
+                    raise
                 raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
             finally:
                 if hasattr(runner, "result_printer") and runner.result_printer:

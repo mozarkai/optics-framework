@@ -2,17 +2,18 @@
 
 No device/driver: `expose_api.execute_keyword` / `create_session` /
 `run_keyword_endpoint` are mocked. Covers dynamic per-keyword tool registration
-(str-typed schemas with an injected session_id, internal `located` excluded),
-the read-only observers being surfaced as resources instead of tools, param
-stringification at the ExecuteRequest boundary, error translation to ToolError,
-and the screenshot resource returning raw image bytes.
+(str-typed schemas with an injected session_id), the read-only observers being
+surfaced as resources instead of tools, param stringification at the
+ExecuteRequest boundary, error translation to ToolError, and the screenshot
+resource returning raw image bytes.
 
 `fastmcp` is an optional extra; the whole module skips when it is absent.
 """
 import asyncio
 import base64
+import inspect
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -87,7 +88,7 @@ def test_keyword_tool_schema_is_string_typed_with_session_id():
     # session_id is injected and required alongside the keyword's required args.
     assert "session_id" in props
     assert set(press.parameters["required"]) >= {"session_id", "element"}
-    # Internal self-healing param must not be exposed.
+    # Only declared keyword params are exposed (no injection plumbing).
     assert "located" not in props
     # Every property is a string (optional ones are anyOf[string, null]).
     for name, schema in props.items():
@@ -144,6 +145,73 @@ def test_stringify_params_helper():
         {"a": 1, "b": None, "c": ["x", 2], "d": True}
     )
     assert out == {"a": "1", "c": ["x", "2"], "d": "True"}  # None dropped
+
+
+# --- deep dispatch: real named-param path (regression for #454) ------------
+
+_SELF_HEALING_KEYWORDS = [
+    ("press_element", {"element": "X"}),
+    ("press_checkbox", {"element": "X"}),
+    ("press_radio_button", {"element": "X"}),
+    ("swipe_from_element", {"element": "X", "direction": "up", "swipe_length": "50"}),
+    ("scroll_from_element", {"element": "X", "direction": "down", "scroll_length": "50"}),
+    ("enter_text", {"element": "X", "text": "T"}),
+    ("enter_number", {"element": "X", "number": "5"}),
+    ("clear_element_text", {"element": "X"}),
+    ("get_text", {"element": "X"}),
+]
+
+
+@pytest.mark.parametrize("slug, params", _SELF_HEALING_KEYWORDS)
+def test_mcp_dispatch_binds_real_self_healing_signatures(slug, params):
+    from optics_framework.api.action_keyword import ActionKeyword
+    from optics_framework.common import expose_api
+
+    method = getattr(ActionKeyword, slug)
+    engine = MagicMock()
+    engine.execute = AsyncMock(return_value=_exec_response("ok"))
+    _run(expose_api._execute_keyword_with_fallback(
+        engine, "sess", slug, params, method, MagicMock()
+    ))
+    built = engine.execute.await_args.args[0].params
+    assert "located" not in built
+    inspect.signature(method).bind(None, *built)
+
+
+@pytest.mark.parametrize("slug, params", _SELF_HEALING_KEYWORDS)
+def test_mcp_tool_to_dispatch_binds_real_signatures(slug, params):
+    server = mcp_server.build_server()
+    engine = MagicMock()
+    engine.execute = AsyncMock(return_value=_exec_response("ok"))
+
+    session = MagicMock()
+    session.event_queue.put = AsyncMock()
+    session.request_template_overrides = {}
+    from optics_framework.api.action_keyword import ActionKeyword
+
+    session.optics.build = MagicMock(return_value=MagicMock())
+
+    class _RealRegistry:
+        def __init__(self):
+            self.keyword_map = {slug: getattr(ActionKeyword, slug)}
+
+        def register(self, instance):
+            pass
+
+    real_registry = _RealRegistry()
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=session), \
+            patch.object(expose_api, "KeywordRegistry", return_value=real_registry), \
+            patch.object(expose_api, "FlowControl", return_value=MagicMock()), \
+            patch.object(expose_api, "ExecutionEngine", return_value=engine):
+        async def go():
+            async with Client(server) as client:
+                await client.call_tool(slug, {"session_id": "s1", **params})
+
+        _run(go())
+
+    built = engine.execute.await_args.args[0].params
+    inspect.signature(getattr(ActionKeyword, slug)).bind(None, *built)
 
 
 # --- error translation -----------------------------------------------------

@@ -1,16 +1,16 @@
-# :material-api: REST API Usage
+# REST API Usage
 
 The Optics Framework provides a RESTful API for programmatic interaction with the framework. This API allows you to create sessions, execute keywords, capture screenshots, and manage test execution.
 
-## :material-link: Base URL
+## Base URL
 
 The API is served via FastAPI and typically runs on `http://localhost:8000` by default.
 
-## :material-shield-lock: Authentication
+## Authentication
 
 Currently, the API does not require authentication. CORS is enabled for all origins.
 
-## :material-code-json: Response Format
+## Response Format
 
 All endpoints return JSON responses. Error responses follow this format:
 
@@ -20,7 +20,7 @@ All endpoints return JSON responses. Error responses follow this format:
 }
 ```
 
-## :material-database: Models
+## Models
 
 ### SessionConfig
 
@@ -132,7 +132,7 @@ Information about an available keyword.
 }
 ```
 
-## :material-routes: Endpoints
+## Endpoints
 
 ### Health Check
 
@@ -326,6 +326,22 @@ curl -X POST "http://localhost:8000/v1/sessions/{session_id}/action" \
 ```
 
 Use the identifier format `collection_name.api_name` (e.g. `auth.token`). Extracted values from the API response are stored in the session and can be used by subsequent keywords or reads.
+
+The response is returned in `data`: `status_code`, `headers`, `body`, `elapsed_ms`.
+
+### Read Session Variables
+
+**GET** `/v1/sessions/{session_id}/variables`
+
+Returns the session's `${variable}` namespace, as written by `extract` blocks.
+
+```bash
+curl "http://localhost:8000/v1/sessions/{session_id}/variables"
+```
+
+```json
+{"variables": {"access_token": ["eyJhbGci..."], "otp": ["482913"]}}
+```
 
 ### Capture Screenshot
 
@@ -548,7 +564,7 @@ curl -X DELETE "http://localhost:8000/v1/sessions/{session_id}/stop"
     - Automatically executes `close_and_terminate_app` keyword before termination
     - Cleans up all session resources
 
-## :material-alert-circle: Error Handling
+## Error Handling
 
 The API uses standard HTTP status codes:
 
@@ -577,7 +593,7 @@ For Optics-specific errors, the response may include additional fields:
 }
 ```
 
-## :material-routes: Common Workflows
+## Common Workflows
 
 ### Basic Session Workflow
 
@@ -618,7 +634,7 @@ For Optics-specific errors, the response may include additional fields:
    DELETE /v1/sessions/{session_id}/stop
    ```
 
-## :material-information: Notes
+## Notes
 
 - All endpoints that accept `session_id` will return `404` if the session doesn't exist
 - The API supports CORS for all origins

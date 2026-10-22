@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.common.exceptions import InvalidSessionIdException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
@@ -15,6 +16,10 @@ class SeleniumDriver(DriverInterface):
     NAME = "selenium"
     ACTION_NOT_SUPPORTED = "Action not supported in Selenium."
     SETUP_NOT_INITIALIZED = "Selenium setup not initialized. Call start_session() first."
+
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        return isinstance(exc, InvalidSessionIdException)
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
         self.driver: Optional[webdriver.Remote] = None
@@ -241,7 +246,7 @@ class SeleniumDriver(DriverInterface):
             size = self.driver.get_window_size()
             abs_x = int(size['width'] * percentage_x / 100)
             abs_y = int(size['height'] * percentage_y / 100)
-            self.press_coordinates(abs_x, abs_y, event_name)
+            self.press_coordinates(abs_x, abs_y, event_name=event_name)
         except Exception as e:
             internal_logger.error(f"Failed to click using percentage coordinates: {e}")
             raise
@@ -360,6 +365,13 @@ class SeleniumDriver(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to scroll {direction}: {e}")
             raise
+
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        if self.driver is None:
+            raise RuntimeError(self.SETUP_NOT_INITIALIZED)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+        self.driver.back()
 
     def get_text_element(self, element) -> str:
         try:

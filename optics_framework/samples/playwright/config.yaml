@@ -4,13 +4,12 @@
 console: true
 file_log: true
 json_log: false
-log_level: DEBUG
+log_level: INFO
 
 # --------------------------------------------------
 # Runtime behavior
 # --------------------------------------------------
 halt_duration: 0.2
-max_attempts: 3
 
 # --------------------------------------------------
 # Drivers

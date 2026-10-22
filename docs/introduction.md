@@ -104,4 +104,4 @@ The Optics Framework is licensed under the **Apache License 2.0**, which can be 
 
 ## Next Steps
 
-Ready to get started? Check out our [Quick Start Guide](quickstart.md) to create your first test in minutes!
+Ready to get started? Run **`optics quickstart`** for a guided setup, or check out our [Getting Started Guide](getting-started.md) to create your first test in minutes!

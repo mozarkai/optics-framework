@@ -2,18 +2,23 @@
 
 `optics mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server that exposes the optics-framework keyword engine to an LLM client
-(Claude Desktop, Claude Code, Cursor, …). The model can start a device/browser
-session, run automation keywords as **tools**, and observe device state through
-**resources** — driving a live target the way `optics live` does, but under
-agent control.
+(Claude Desktop, Claude Code, Cursor, …). The model starts a device/browser
+session, runs automation keywords as **tools**, and observes device state through
+**resources** — driving a live target the way `optics live` does, but under agent
+control.
+
+The surface is deliberately small: the keyword tools plus a few resources. There
+are **no record/save/replay tools** — a capable agent already knows the steps it
+ran, so to turn a session into a reusable suite it authors an optics CSV project
+itself (the `optics://project-format` resource documents the exact layout) and
+runs it with `optics execute`. The MCP layer stays driver- and device-agnostic:
+it never shells out to `adb` or assumes a device type; it only makes calls to the
+driver server you point `start_session` at.
 
 It reuses the in-process keyword machinery from the REST server
 (`optics serve`), so whatever driver and element sources optics already supports
 work here too. The driver is chosen at runtime via the `start_session` tool —
 nothing is hard-coded.
-
-> Verified end-to-end against a remote Appium hub on a physical Samsung A53:
-> `start_session` → `screenshot` (rendered PNG) → `swipe` → `terminate_session`.
 
 ---
 
@@ -23,6 +28,7 @@ nothing is hard-coded.
 - **A driver target** that optics can reach — e.g. a local
   [Appium](https://appium.io) server with a connected device/emulator, or a
   remote Appium hub. You provide its URL and capabilities to `start_session`.
+  For websites, Playwright launches its own browser, so there is nothing to run.
 - An MCP-capable client (Claude Desktop/Code, Cursor, or the `fastmcp` Python
   client for scripting).
 - *(Optional)* extras for richer element location: text detection
@@ -32,10 +38,24 @@ nothing is hard-coded.
 ## 2. Install
 
 The MCP server depends on [`fastmcp`](https://github.com/PrefectHQ/fastmcp),
-shipped as an **optional extra**:
+shipped as the `mcp` extra. The installer always includes it, finds a Python 3.12+
+on its own and puts `optics` on your PATH. Then add the engine for your target:
 
 ```bash
-pip install 'optics-framework[mcp]'
+curl -fsSL https://optics-framework.org/install | sh    # macOS, Linux
+optics setup --install playwright    # websites (also downloads Chromium), or: appium
+```
+
+```powershell
+irm https://optics-framework.org/install.ps1 | iex     # Windows
+```
+
+With pip, Optics needs **Python 3.12+** (an older Python fails or resolves an old
+release) and you add the extra yourself:
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install 'optics-framework[mcp,playwright]' && playwright install chromium
 # from source:
 poetry install --extras mcp
 ```
@@ -114,6 +134,8 @@ config (e.g. Claude Desktop `claude_desktop_config.json`, or Claude Code
 }
 ```
 
+In the Claude Code CLI, `claude mcp add optics -- optics mcp` writes the same entry.
+
 If `optics` isn't on the client's `PATH`, use the absolute path (e.g.
 `/path/to/.venv/bin/optics`) or `"command": "python", "args": ["-m",
 "optics_framework.helper.cli", "mcp"]`.
@@ -134,12 +156,55 @@ the client at the URL:
 1. **`start_session`** — open a session against your driver. Returns
    `{ "session_id", "driver_id" }`. The target app is launched automatically.
    Capture the `session_id`; **every** other tool and resource needs it.
-2. **Observe** — read a resource or call `screenshot` to see the screen, read
-   `optics://session/{session_id}/source` for the UI hierarchy, or call
-   `get_interactive_elements` for tappable elements.
+   `elements_sources` **defaults per driver** (appium →
+   `appium_find_element`/`appium_page_source`/`appium_screenshot`; selenium and
+   playwright analogous), so `start_session` with just a `driver` works. The device
+   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs
+   no `adb` of its own. A Playwright session starts on a blank page: open a site with
+   `launch_app` and its URL (see the example below).
+2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,
+   or read `optics://session/{session_id}/elements` for the compact list of
+   actionable elements (labels, `act`, `bounds`) plus read-only text. These work
+   the same across drivers via the session's own element sources.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
-   `assert_presence`, …) with the `session_id`.
-4. **`terminate_session`** — release the driver when done.
+   `assert_presence`, …) with the `session_id`. **Target elements by locator**
+   (`xpath=`/`text=`/an id/an image) or by an element's visible label with
+   `press_element`, which raises when the target is not found. `detect_and_press`
+   is for optional taps only: it skips the press and still succeeds when the target
+   never appears. Do not tap raw pixel coordinates guessed off a screenshot; those
+   misfire. Keywords wait for their target, so a miss costs that wait:
+   `assert_presence` waits up to `timeout_str` (30 s by default), and an action waits
+   for the driver's element timeout (10 s on Playwright, `element_timeout_ms`). To see
+   what is on screen right now, read the elements resource or pass a short `timeout_str`.
+4. **Build a reusable suite** — see below.
+5. **`terminate_session`** — release the driver when done.
+
+### Build a reusable suite (author it — there's no save tool)
+
+The MCP has no recording/save/replay tools on purpose: you already know the
+keywords you called and their args, so you can author an optics project directly.
+
+1. Read the **`optics://project-format`** resource — it documents the CSV layout
+   (`test_cases/`, `modules/`, `test_data/elements.csv`, `config.yaml`), how
+   modules reference `${variables}`, and the escaping rules.
+2. Write those files (the keyword *display names* come from the `optics://keywords`
+   catalog). Parameterize by putting run-specific values in `elements.csv` and
+   referencing them as `${name}`, so "set alarm to 22:00" becomes a reusable
+   `${time}`. A whole cell must be exactly `${name}` — the runner substitutes
+   whole values only, not `${name}` inside a larger string.
+3. For loops, branching, computed values or API calls in a suite, author the
+   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)
+   into the modules — they run under `optics execute`. Live, you drive that logic
+   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP
+   tools because they need the runner's module/data context.
+4. Optionally lint it first: the
+   [optics-framework-lsp](https://github.com/mozarkai/optics-framework-lsp) language
+   server (`uv tool install optics-framework-lsp`) reports every problem in a suite in
+   one pass with `optics-lsp lint <folder> --json`. Its VS Code and JetBrains
+   extensions also offer it to agents as a separate MCP server, `optics-lsp`.
+5. Run it with the CLI: `optics execute <folder>` (results land in
+   `execution_output/`). To replay interactively instead, just call the keyword
+   tools again in sequence — the agent is the runner.
 
 ### `start_session` arguments
 
@@ -148,7 +213,7 @@ the client at the URL:
 | `driver` | str | driver name, e.g. `"appium"` (default) |
 | `url` | str | driver/hub URL (e.g. local `http://127.0.0.1:4723` or a remote hub) |
 | `capabilities` | object | driver capabilities (platform, device, app, auth…) |
-| `elements_sources` | list[str] | element sources to enable (see §7) |
+| `elements_sources` | list[str] | element sources to enable; **optional** — defaults to the driver's canonical set (see §8) |
 | `text_detection` | list[str] | optional OCR sources (e.g. `["googlevision"]`) |
 | `image_detection` | list[str] | optional template sources (e.g. `["templatematch"]`) |
 | `project_path` | str | optional project folder (loads bundled templates) |
@@ -177,6 +242,25 @@ Omit `appPackage`/`appActivity` to attach to whatever is already on screen. For
 a remote/managed hub, set `url` to the hub and include any hub-specific
 capabilities (auth token, device id) just as you would in `config.yaml`.
 
+**Example — a website with Playwright:**
+
+```json
+{
+  "driver": "playwright",
+  "capabilities": { "browser": "chromium", "headless": false }
+}
+```
+
+Then open the page with `launch_app`:
+
+```json
+{ "session_id": "<session_id>", "app_identifier": "https://www.saucedemo.com" }
+```
+
+Calling `launch_app` again navigates the same browser. The capabilities are the
+Playwright driver's `config.yaml` capabilities (`browser`, `headless`, `viewport`,
+`element_timeout_ms`, …; see [Configuration](../configuration.md#driver-sources)).
+
 ### AI self-heal
 
 Self-heal has two layers. Whoever starts `optics mcp` (or `optics serve`) can
@@ -186,17 +270,20 @@ that's already integrated inherits it with no `start_session` changes:
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `OPTICS_AI_SELF_HEAL` | off | `true`/`1`/`yes`/`on` (case-insensitive) enables it |
-| `OPTICS_LLM_PROVIDER` | `gemini` | which `llm_models` entry to enable |
-| `OPTICS_LLM_MODEL` | provider default | optional model name override |
+| `OPTICS_LLM_PROVIDER` | `gemini` | which `llm_models` entry to enable: `gemini`, `openai` or `anthropic` |
+| `OPTICS_LLM_MODEL` | `gemini-2.5-flash` for `gemini` | model name; **required** for `openai` and `anthropic`, which have no default |
 
 Because a single `serve`/`mcp` process is multi-tenant, each of these is also a
 **per-session override** on `start_session`: `ai_self_heal`, `llm_provider`, and
 `llm_model`. A per-session value always wins over the matching env-var default,
 so a caller can opt in/out and pick its own model without being locked to the
 operator's choice; anything left unset falls back to the env default (and then to
-`gemini`). LLM credentials (e.g. `GOOGLE_API_KEY`/`GEMINI_API_KEY` for Gemini)
-always come from the provider's own environment variables — never through
-`start_session` — so choosing a provider/model per session exposes no secrets.
+`gemini`). LLM credentials always come from the provider's own environment
+variables (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — never through
+`start_session` — so choosing a provider/model per session exposes no secrets. The
+same goes for the endpoint: to route the `openai` engine to OpenRouter or a local
+server, the operator sets `OPENAI_BASE_URL`; a caller cannot point the server's key
+at a URL of its choosing.
 
 When self-heal recovers a keyword, the call still succeeds, and the result carries
 the recovery so a client can learn *how* it was fixed:
@@ -235,16 +322,19 @@ other tool is an optics keyword auto-exposed from `ActionKeyword` /
 - **Session/app:** `start_session`, `terminate_session`, `launch_app`,
   `launch_other_app`, `close_and_terminate_app`, `get_app_version`,
   `get_driver_session_id`.
-- **Interact:** `press_element`, `press_by_coordinates`, `press_by_percentage`,
-  `press_keycode`, `enter_text`, `enter_number`, `clear_element_text`,
-  `select_dropdown_option`, `detect_and_press`.
+- **Interact:** `press_element`, `press_keycode`, `enter_text`, `enter_number`,
+  `clear_element_text`, `select_dropdown_option`, `detect_and_press`. Raw
+  coordinate taps (`press_by_coordinates`, `press_by_percentage`) are not exposed
+  as tools because a pixel eyed off a screenshot misfires; set
+  `OPTICS_MCP_ALLOW_COORDINATE_TAPS=1` before starting the server to re-enable
+  them for targets with no queryable elements (e.g. a canvas).
 - **Gestures/scroll:** `swipe`, `swipe_by_percentage`, `swipe_from_element`,
   `swipe_until_element_appears`, `scroll`, `scroll_from_element`,
   `scroll_until_element_appears`.
 - **Observe/verify:** `screenshot` (rendered image), `get_text`,
-  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`),
-  `is_element`, `assert_presence`, `assert_equality`, `validate_element`,
-  `validate_screen`.
+  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`, and
+  `compact` for the token-lean list), `is_element`, `assert_presence`,
+  `assert_equality`, `validate_element`, `validate_screen`.
 - **Misc:** `sleep`, `execute_script`.
 
 The full machine-readable catalog (every keyword, its params and docs) is the
@@ -253,18 +343,27 @@ The full machine-readable catalog (every keyword, its params and docs) is the
 `screenshot` returns a rendered `image/png` your client can display inline —
 prefer it over the screenshot resource when you want to *see* the screen.
 
+Besides the reflected keywords, only three tools are purpose-built:
+`start_session`, `terminate_session`, and `screenshot`. There are intentionally
+**no** recording, suite-CRUD, replay, device-discovery, or `doctor` tools — an
+agent composes those from the keyword tools plus the `optics://project-format`
+knowledge (see §5). `start_session` supplies the one non-obvious convenience: a
+per-driver `elements_sources` default so the call just works.
+
 ## 7. Resources reference
 
 | URI | Content |
 |-----|---------|
 | `optics://keywords` | full keyword catalog (name, slug, description, params) |
+| `optics://project-format` | how optics stores a suite (CSV layout + `${var}`), so you can author one |
 | `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |
 | `optics://session/{session_id}/source` | page source / UI hierarchy |
-| `optics://session/{session_id}/elements` | interactive elements (unfiltered) |
+| `optics://session/{session_id}/elements` | compact actionable elements + read-only text (Appium/Playwright) |
 | `optics://session/{session_id}/screen_elements` | captured screen elements |
 
-`get_interactive_elements` is available **both** as a resource (unfiltered) and
-as a tool (so the model can pass `filter_config`).
+`get_interactive_elements` is available **both** as a resource (compact by default)
+and as a tool (so the model can pass `filter_config`, or `compact=false` for the full
+untrimmed element list).
 
 > The screenshot **resource** delivers raw PNG bytes with a generic
 > `application/octet-stream` mime (a limitation of templated MCP resources). For
@@ -273,7 +372,12 @@ as a tool (so the model can pass `filter_config`).
 ## 8. Element sources decide what works
 
 The keywords you can use depend on which `elements_sources` (and detection
-sources) you enable in `start_session` — same rules as a normal optics project:
+sources) you enable in `start_session` — same rules as a normal optics project.
+When you omit `elements_sources`, `start_session` enables the driver's canonical
+trio automatically (appium → `appium_find_element`/`appium_page_source`/
+`appium_screenshot`); pass the argument only to narrow or extend that. An
+explicit **empty** list is passed through and disables element sources entirely
+(the session then fails to start) — omit the argument for the defaults:
 
 | Capability | Needs |
 |------------|-------|
@@ -306,11 +410,26 @@ expected; enable `appium_page_source` (or a vision source) for that path.
 - **Errors surface as MCP tool errors.** An optics failure (element not found,
   bad config, driver error) comes back as a `ToolError` carrying the optics
   error code/message, so the model can read and react to it.
+- **`start_session` failed with "Element source configuration must be set".** You
+  passed an explicit empty `elements_sources`, or the driver name doesn't match
+  any installed element-source modules (e.g. a typo — check the name against
+  §8). Omit `elements_sources` to get the driver defaults, or name the sources
+  per §8.
+- **Where do suites live?** Wherever you write them — the MCP has no workspace of
+  its own. Author the CSV project (see `optics://project-format`) at a path you
+  choose and run it with `optics execute`.
+- **Setup errors (device unreachable, driver not running).** The MCP only talks to
+  the driver server at the `url` you pass; make sure that server is up and can see
+  the device (for Appium+Android that means its host has the Android SDK — the MCP
+  itself needs none). `optics doctor` on that host diagnoses the toolchain.
 
 ## 10. How it works (pointer)
 
-`optics mcp` is a thin in-process wrapper over `common/expose_api.py`. It
-reflects the API keyword classes into typed tools and routes execution through
-the same `execute_keyword` path the REST server uses; read-only observers become
-resources. See `optics_framework/helper/mcp_server.py` and the "MCP server
-journey" section of `CLAUDE.md` for the internals.
+`optics mcp` is a thin in-process wrapper over `common/expose_api.py`. It reflects
+the API keyword classes into typed tools and routes execution through the same
+`execute_keyword` path the REST server uses; read-only observers become resources.
+The only hand-written additions are the `start_session`/`terminate_session`/
+`screenshot` lifecycle tools, the per-driver `elements_sources` default, and the
+`optics://project-format` knowledge resource — no recording/suite/device tooling.
+See `optics_framework/helper/mcp_server.py` and the "MCP server journey" section of
+`CLAUDE.md` for the internals.

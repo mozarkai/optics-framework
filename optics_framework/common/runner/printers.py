@@ -8,7 +8,9 @@ from rich.tree import Tree
 from rich.text import Text
 from rich.panel import Panel
 from rich.progress import Progress, TaskID
-from rich.console import Console, Group
+from rich.console import Group
+from rich import get_console
+from optics_framework.common.logging_config import quiet_console_logs, restore_console_logs
 
 
 class TestCaseResult(BaseModel):
@@ -33,6 +35,7 @@ class ModuleResult(BaseModel):
     name: str
     elapsed: str
     status: str
+    reason: str = ""
     keywords: List[KeywordResult] = Field(default_factory=list)
 
 
@@ -191,6 +194,36 @@ class TreeResultPrinter(IResultPrinter):
             Text(status_part, style=self.STATUS_COLORS.get(status, "white"))
         )
 
+    def _failure_detail_lines(self) -> List[str]:
+        """One line per failed step (and any step carrying a recorded reason)."""
+        lines: List[str] = []
+        for tc_result in self.test_state.values():
+            for module in tc_result.modules:
+                lines.extend(
+                    self._module_failure_lines(tc_result.name, module))
+        return lines
+
+    @staticmethod
+    def _module_failure_lines(test_name: str,
+                              module: ModuleResult) -> List[str]:
+        lines: List[str] = []
+        if module.status == "FAIL" and module.reason:
+            lines.append(
+                f"{test_name} → step '{module.name}' — {module.reason}")
+        for keyword in module.keywords:
+            line = TreeResultPrinter._keyword_failure_line(test_name, keyword)
+            if line is not None:
+                lines.append(line)
+        return lines
+
+    @staticmethod
+    def _keyword_failure_line(test_name: str,
+                              keyword: KeywordResult) -> Optional[str]:
+        if keyword.status != "FAIL" and not keyword.reason:
+            return None
+        detail = f" — {keyword.reason}" if keyword.reason else ""
+        return f"{test_name} → step '{keyword.resolved_name}'{detail}"
+
     def _render_tree(self) -> Group:
         tree = Tree("Test Suite", style="bold white")
         for tc_result in self.test_state.values():
@@ -216,7 +249,15 @@ class TreeResultPrinter(IResultPrinter):
         summary_text = f"Total Test Cases: {total} | Passed: {passed} | Failed: {failed}"
         summary_panel = Panel(
             summary_text, style="green" if failed == 0 else "red")
-        return Group(self.progress, tree, summary_panel)
+        renderables = [self.progress, tree, summary_panel]
+        failure_lines = self._failure_detail_lines()
+        if failure_lines:
+            renderables.append(Panel(
+                Text("\n".join(failure_lines), style="red"),
+                title="Failure details",
+                border_style="red",
+            ))
+        return Group(*renderables)
 
     def print_tree_log(self, test_case_result: TestCaseResult) -> None:
         self.test_state[test_case_result.name] = test_case_result
@@ -233,11 +274,15 @@ class TreeResultPrinter(IResultPrinter):
 
     def start_live(self) -> None:
         if not self._live:
+            restore_console_logs()
+            console = get_console()
+            console.force_terminal = True
             self._live = Live(self._render_tree(
-            ), refresh_per_second=10, console=Console(force_terminal=True) )
+            ), refresh_per_second=10, console=console)
             self._live.start()
 
     def stop_live(self) -> None:
         if self._live:
             self._live.stop()
             self._live = None
+            quiet_console_logs()

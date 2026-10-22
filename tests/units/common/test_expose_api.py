@@ -14,7 +14,10 @@ Source under test: optics_framework/common/expose_api.py
 """
 import asyncio
 import base64
+import inspect
 import json
+import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,6 +27,7 @@ from fastapi.testclient import TestClient
 from optics_framework.common import expose_api
 from optics_framework.common.config_handler import DependencyConfig
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.models import ElementData
 
 
 def _run(coro):
@@ -350,15 +354,19 @@ def test_fallback_positional_tries_next_value_on_failure():
     assert engine.execute.await_count == 2
 
 
-def test_fallback_positional_all_fail_raises_runtime_error():
+def test_fallback_positional_all_fail_lists_each_attempt_under_the_last_code():
     engine = MagicMock()
-    engine.execute = AsyncMock(side_effect=RuntimeError("boom"))
-    with pytest.raises(RuntimeError, match="All fallback attempts failed"):
-        _run(
-            expose_api._execute_keyword_with_fallback(
-                engine, "sess", "press_element", [["a", "b"]], _dummy_method, MagicMock()
-            )
-        )
+    engine.execute = AsyncMock(side_effect=[
+        OpticsError(Code.E0201, message="no a"), OpticsError(Code.E0201, message="no b"),
+    ])
+    attempt = expose_api._execute_keyword_with_fallback(
+        engine, "sess", "press_element", [["a", "b"]], _dummy_method, MagicMock()
+    )
+    with pytest.raises(OpticsError) as exc_info:
+        _run(attempt)
+    assert exc_info.value.code == Code.E0201
+    assert "no a" in exc_info.value.message
+    assert "no b" in exc_info.value.message
     assert engine.execute.await_count == 2
 
 
@@ -408,15 +416,61 @@ def test_fallback_named_params_fold_in_defaults():
     assert engine.execute.await_args.args[0].params == ["x", "0"]
 
 
-def test_fallback_no_params_wraps_engine_failure():
+def test_fallback_named_params_exclude_keyword_only_located():
+    def method(self, element: str, text: str = "", repeat: str = "1", *, located=None):
+        pass
+
+    engine = MagicMock()
+    engine.execute = AsyncMock(return_value="ok")
+    result = _run(
+        expose_api._execute_keyword_with_fallback(
+            engine, "sess", "enter_text", {"element": "x", "text": "hi"}, method, MagicMock()
+        )
+    )
+    assert result == "ok"
+    params = engine.execute.await_args.args[0].params
+    assert params == ["x", "hi", "1"]
+    assert "None" not in params[-1:]
+
+
+def test_build_named_param_context_skips_keyword_only():
+    def method(self, element: str, repeat: str = "1", *, located=None):
+        pass
+
+    ctx = expose_api._build_named_param_context(method, {"element": "x"})
+    assert ctx.all_param_names == ["element", "repeat"]
+    assert "located" not in ctx.param_defaults
+    assert ctx.provided_param_names == ["element"]
+
+
+def test_build_named_param_context_real_enter_text_signature():
+    from optics_framework.api.action_keyword import ActionKeyword
+
+    method = ActionKeyword.enter_text
+    ctx = expose_api._build_named_param_context(
+        method, {"element": "//Search", "text": "shawarma"}
+    )
+    assert "located" not in ctx.all_param_names
+    combo_args = expose_api._combo_to_positional_named(("//Search", "shawarma"), ctx)
+    inspect.signature(method).bind(None, *combo_args)
+
+
+def test_resolve_named_to_positional_skips_keyword_only():
+    def method(self, element: str, repeat: str = "1", *, located=None):
+        pass
+
+    out = expose_api._resolve_named_to_positional(method, {"element": "x"})
+    assert out == [["x"]]
+
+
+def test_fallback_no_params_surfaces_engine_failure_as_is():
     engine = MagicMock()
     engine.execute = AsyncMock(side_effect=RuntimeError("driver down"))
-    with pytest.raises(RuntimeError, match="Keyword execution failed"):
-        _run(
-            expose_api._execute_keyword_with_fallback(
-                engine, "sess", "capture_screenshot", [], _dummy_method, MagicMock()
-            )
-        )
+    attempt = expose_api._execute_keyword_with_fallback(
+        engine, "sess", "capture_screenshot", [], _dummy_method, MagicMock()
+    )
+    with pytest.raises(RuntimeError, match="^driver down$"):
+        _run(attempt)
 
 
 def test_fallback_reraises_control_flow_exception():
@@ -568,13 +622,24 @@ def test_execute_keyword_success(client):
 def test_create_session_success_and_deprecation(client):
     """create_session normalizes config, warns on legacy appium_* fields, and
     returns the driver id produced by the launch_app keyword call."""
+    create_thread_id: list[int] = []
+    event_loop_thread_id: list[int] = []
+
+    def create_session(*args, **kwargs):
+        create_thread_id.append(threading.get_ident())
+        return "sess-abc"
+
+    async def launch_app(*args, **kwargs):
+        event_loop_thread_id.append(threading.get_ident())
+        return launch_response
+
     launch_response = expose_api.ExecutionResponse(
         execution_id="e1",
         status=expose_api.STATUS_SUCCESS,
         data={expose_api.KEY_RESULT: "driver-123"},
     )
-    with patch.object(expose_api.session_manager, "create_session", return_value="sess-abc"), \
-            patch.object(expose_api, "execute_keyword", new=AsyncMock(return_value=launch_response)), \
+    with patch.object(expose_api.session_manager, "create_session", side_effect=create_session), \
+            patch.object(expose_api, "execute_keyword", side_effect=launch_app), \
             patch.object(expose_api, "reconfigure_logging"), \
             pytest.warns(DeprecationWarning):
         resp = client.post(
@@ -589,6 +654,7 @@ def test_create_session_success_and_deprecation(client):
     body = resp.json()
     assert body["session_id"] == "sess-abc"
     assert body["driver_id"] == "driver-123"
+    assert create_thread_id != event_loop_thread_id
 
 
 def test_delete_session_success_and_hash_cleanup(client):
@@ -800,3 +866,31 @@ def test_upload_template_success_writes_file_and_registers(client, tmp_path):
     stored_path = session.inline_templates["my_btn"]
     with open(stored_path, "rb") as f:
         assert f.read() == raw
+
+
+def test_get_session_variables_returns_namespace(client):
+    session = SimpleNamespace(elements=ElementData())
+    session.elements.add_element("otp", "482913")
+    session.elements.add_element("access_token", "eyJhbGci")
+
+    with patch.object(expose_api.session_manager, "get_session", return_value=session):
+        resp = client.get("/v1/sessions/s1/variables")
+
+    assert resp.status_code == 200
+    assert resp.json()["variables"] == {"otp": ["482913"], "access_token": ["eyJhbGci"]}
+
+
+def test_get_session_variables_empty_when_store_absent(client):
+    with patch.object(expose_api.session_manager, "get_session", return_value=SimpleNamespace(elements=None)):
+        resp = client.get("/v1/sessions/s1/variables")
+
+    assert resp.status_code == 200
+    assert resp.json()["variables"] == {}
+
+
+def test_get_session_variables_session_not_found_returns_404(client):
+    with patch.object(expose_api.session_manager, "get_session", return_value=None):
+        resp = client.get("/v1/sessions/missing/variables")
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == expose_api.SESSION_NOT_FOUND

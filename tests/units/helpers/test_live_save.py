@@ -2,16 +2,19 @@
 
 These exercise the CSV serialisation directly, without a device or session: a
 lightweight subclass overrides ``__init__`` to set only the attributes ``save``
-touches (``folder_path``, ``_artifacts_dir``, ``recorded``, ``saved``). The output
-is validated both structurally and by round-tripping through ``CSVDataReader`` so it
-stays compatible with the batch runner.
+touches (``folder_path``, ``_artifacts_dir``, ``recorded``, ``saved``, plus a
+stub ``session`` holding the session's known elements). The output is validated
+both structurally and by round-tripping through ``CSVDataReader`` so it stays
+compatible with the batch runner.
 """
 import csv
 import os
+from types import SimpleNamespace
 
 import pytest
 
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.models import ElementData
 from optics_framework.common.runner.data_reader import CSVDataReader
 from optics_framework.helper.live import LiveController, SaveConflictError, SaveResult
 
@@ -26,11 +29,15 @@ class _Controller(LiveController):
     touches are initialized.
     """
 
-    def __init__(self, folder: str):  # noqa: super-init-not-called
+    def __init__(self, folder: str, elements: ElementData | None = None):  # noqa: super-init-not-called
         self.folder_path = folder
         self._artifacts_dir = os.path.join(folder, "no_artifacts")  # absent -> no snapshot
         self.recorded = []
         self.saved = False
+        # save() merges these into the project's tracked elements CSV; the flag
+        # short-circuits ensure_elements_loaded's own project walk.
+        self._elements_loaded = True
+        self.session = SimpleNamespace(elements=elements if elements is not None else ElementData())
 
 
 @pytest.fixture
@@ -172,3 +179,66 @@ def test_saved_files_round_trip_through_csv_reader(c):
         "TC one": ["mod_a"],
         "TC two": ["mod_b"],
     }
+
+
+def _seed_elements_csv(tmp_path, content: str) -> str:
+    """Create the scaffold-convention ``test_data/elements.csv``; returns its path."""
+    elements_dir = tmp_path / "test_data"
+    elements_dir.mkdir()
+    elements_path = elements_dir / "elements.csv"
+    elements_path.write_text(content, encoding="utf-8")
+    return str(elements_path)
+
+
+def test_save_merges_new_elements_into_existing_test_data_csv(tmp_path):
+    elements_path = _seed_elements_csv(
+        tmp_path, "Element_Name,Element_ID\nHeading,//h1[@id='top']\n"
+    )
+    # "heading" differs only in case from the tracked "Heading" -> skipped;
+    # Submit_Button is genuinely new -> appended.
+    c = _Controller(str(tmp_path), ElementData(elements={
+        "heading": ["//h1[@id='top']"],
+        "Submit_Button": ["//button[@type='submit']"],
+    }))
+    c.recorded = [("launch_app", [])]
+
+    result = c.save("TC", "mod")
+
+    assert result.elements_path == elements_path
+    # Only the new row was added; original content/formatting (LF endings) intact.
+    with open(elements_path, encoding="utf-8") as fh:
+        assert fh.read() == (
+            "Element_Name,Element_ID\n"
+            "Heading,//h1[@id='top']\n"
+            "Submit_Button,//button[@type='submit']\n"
+        )
+    assert not (tmp_path / "elements").exists()  # no second elements folder scattered
+
+
+def test_save_without_existing_elements_csv_creates_stub(c):
+    c.recorded = [("launch_app", [])]
+
+    result = c.save("TC", "mod")
+
+    assert result.elements_path == os.path.join(c.folder_path, "elements", "elements.csv")
+    assert os.path.isfile(result.elements_path)
+    assert _rows(result.elements_path) == []  # header-only stub, as documented
+
+
+def test_resave_appends_no_duplicate_element_rows(tmp_path):
+    elements_path = _seed_elements_csv(tmp_path, "Element_Name,Element_ID\nHeading,//h1\n")
+    c = _Controller(str(tmp_path), ElementData(elements={
+        "Heading": ["//h1"],
+        "Submit_Button": ["//button[@type='submit']"],
+    }))
+    c.recorded = [("launch_app", [])]
+    first = c.save("TC", "mod")
+
+    c.recorded = [("scroll", [])]
+    second = c.save("TC", "mod", allow_append=True)  # same module -> conflict path opted in
+
+    assert second.elements_path == first.elements_path == elements_path
+    assert _rows(second.elements_path) == [
+        {"Element_Name": "Heading", "Element_ID": "//h1"},
+        {"Element_Name": "Submit_Button", "Element_ID": "//button[@type='submit']"},
+    ]

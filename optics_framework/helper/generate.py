@@ -1,15 +1,55 @@
+import re
 import os
+import inspect
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple, Optional, Union, Any
+from functools import lru_cache
+from typing import Dict, List, Tuple, Optional, Union, Any, Iterator
 import logging
 import pandas as pd
 import yaml
 import json
 import shutil
 
+
 from optics_framework.common.utils import unescape_csv_value
 
+_KWARG = re.compile(r"^([A-Za-z_]\w*)=(.*)$", re.DOTALL)
+
+
+@lru_cache(maxsize=None)
+def _sdk_parameters(method_name: str) -> Optional[frozenset]:
+    """Parameter names of the Optics SDK method a generated step calls, or None if unknown."""
+    try:
+        from optics_framework.optics import Optics  # deferred: pulls in the vision stack
+    except ImportError:
+        return None
+    method = getattr(Optics, method_name, None)
+    if method is None:
+        return None
+    try:
+        return frozenset(inspect.signature(method).parameters) - {"self"}
+    except (TypeError, ValueError):
+        return None
+
+
+def _keyword_argument(param: str, accepted: Optional[frozenset]) -> Optional[Tuple[str, str]]:
+    """Split ``name=value`` when ``name`` is a parameter of the target method.
+
+    Locators such as ``css=#login`` or ``text=Login`` also look like ``name=value``
+    but are the step's element, so they stay positional. Matching quotes around the
+    value are dropped: ``index="2"`` passes the string ``2``.
+    """
+    match = _KWARG.match(param)
+    if not match or (accepted is not None and match.group(1) not in accepted):
+        return None
+    name, value = match.groups()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    return name, value
+
 TestCaseKey = "Test Cases"
+
+logger = logging.getLogger(__name__)
 
 # Type aliases for clarity
 TestCases = Dict[str, List[str]]
@@ -155,6 +195,7 @@ class YAMLDataReader(DataReader):
             "Enter Text Using Keyboard",
             "Enter Number",
             "Press Keycode",
+            "Go Back",
             "Clear Element Text",
             "Get Text",
             "Sleep",
@@ -219,6 +260,7 @@ class TestFrameworkGenerator(ABC):
             "Enter Text Using Keyboard": "enter_text_using_keyboard",
             "Enter Number": "enter_number",
             "Press Keycode": "press_keycode",
+            "Go Back": "go_back",
             "Clear Element Text": "clear_element_text",
             "Get Text": "get_text",
             "Sleep": "sleep",
@@ -242,18 +284,34 @@ class TestFrameworkGenerator(ABC):
     ) -> str:
         pass
 
-    def _resolve_params(self, params: List[str], elements: Elements, framework: str) -> List[str]:
+    def _method_name(self, keyword: str) -> str:
+        return self.keyword_registry.get(keyword, "_".join(keyword.lower().split()))
+
+    def _resolve_params(
+        self, params: List[str], elements: Elements, framework: str, method_name: str
+    ) -> List[str]:
+        accepted = _sdk_parameters(method_name)
+        kwargs = [_keyword_argument(param, accepted) for param in params]
+        # Named arguments can only follow the positional ones, so only a trailing run
+        # counts: in `Enter Text text=Email hello`, `text=Email` is the element.
+        first_named = len(params)
+        while first_named and kwargs[first_named - 1]:
+            first_named -= 1
         resolved = []
-        for param in params:
-            if param.startswith("${") and param.endswith("}"):
+        for i, param in enumerate(params):
+            kwarg = kwargs[i]
+            if i >= first_named and kwarg:
+                name, value = kwarg
+                resolved.append(f"{name}={value!r}" if framework == "pytest" else f"{name}={value}")
+            elif param.startswith("${") and param.endswith("}"):
                 var_name = param[2:-1]
                 if var_name not in elements:
                     raise ValueError(f"Element '{var_name}' not found in elements.")
                 resolved.append(f"ELEMENTS['{var_name}']" if framework == "pytest" else f"${{ELEMENTS.{var_name}}}")
-            elif "=" in param and not param.startswith(("'", '"')):
-                resolved.append(param)
             elif framework == "pytest":
-                resolved.append(f"'{param}'")
+                resolved.append(repr(param))
+            elif kwarg and accepted is not None:
+                resolved.append(param.replace("=", "\\=", 1))
             else:
                 resolved.append(param)
         return resolved
@@ -311,18 +369,18 @@ class PytestGenerator(TestFrameworkGenerator):
 
                 "",
                 "CONFIG = {",
-                f"    'driver_config': {config.get('driver_sources', [])},"
+                f"    'driver_sources': {config.get('driver_sources', [])},"
                 if config.get("driver_sources")
-                else "    'driver_config': [],",
-                f"    'element_source_config': {config.get('elements_sources', [])},"
+                else "    'driver_sources': [],",
+                f"    'elements_sources': {config.get('elements_sources', [])},"
                 if config.get("elements_sources")
-                else "    'element_source_config': [],",
-                f"    'text_config': {config.get('text_detection', [])},"
+                else "    'elements_sources': [],",
+                f"    'text_detection': {config.get('text_detection', [])},"
                 if config.get("text_detection")
-                else "    'text_config': [],",
-                f"    'image_config': {config.get('image_detection', [])},"
+                else "    'text_detection': [],",
+                f"    'image_detection': {config.get('image_detection', [])},"
                 if config.get("image_detection")
-                else "    'image_config': [],",
+                else "    'image_detection': [],",
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
                 "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
@@ -337,7 +395,7 @@ class PytestGenerator(TestFrameworkGenerator):
     def _generate_elements(self, elements: Elements) -> str:
         lines = ["ELEMENTS = {"]
         for name, value in elements.items():
-            lines.append(f"    '{name}': '{value}',")
+            lines.append(f"    {name!r}: {value!r},")
         lines.append("}\n")
         return "\n".join(lines)
 
@@ -360,10 +418,8 @@ class PytestGenerator(TestFrameworkGenerator):
         func_name = "_".join(module_name.lower().split())
         lines = [f"def {func_name}(optics: Optics) -> None:"]
         for keyword, params in steps:
-            method_name = self.keyword_registry.get(
-                keyword, "_".join(keyword.lower().split())
-            )
-            resolved_params = self._resolve_params(params, elements, "pytest")
+            method_name = self._method_name(keyword)
+            resolved_params = self._resolve_params(params, elements, "pytest", method_name)
             param_str = ", ".join(resolved_params)
             lines.append(f"    optics.{method_name}({param_str})")
         return "\n".join(lines) + "\n"
@@ -419,17 +475,17 @@ class RobotGenerator(TestFrameworkGenerator):
             Dict with the structure expected by the new Optics setup method
         """
         transformed = {
-            "driver_config": config.get('driver_sources', []),
-            "element_source_config": config.get('elements_sources', []),
+            "driver_sources": config.get('driver_sources', []),
+            "elements_sources": config.get('elements_sources', []),
             "project_path": "${EXECDIR}"
         }
 
         # Add optional configurations only if they exist and are not empty
         if config.get('image_detection'):
-            transformed["image_config"] = config.get('image_detection', [])
+            transformed["image_detection"] = config.get('image_detection', [])
 
         if config.get('text_detection'):
-            transformed["text_config"] = config.get('text_detection', [])
+            transformed["text_detection"] = config.get('text_detection', [])
 
         if config.get('execution_output_path'):
             transformed["execution_output_path"] = config.get('execution_output_path')
@@ -496,7 +552,7 @@ class RobotGenerator(TestFrameworkGenerator):
         lines.extend([
             "Setup Optics",
             "    # Parse JSON configuration and setup Optics",
-            "    ${config_dict}=    Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
+            "    ${config_dict}=    BuiltIn.Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
             "    Setup    config=${config_dict}",
             "",
         ])
@@ -512,7 +568,9 @@ class RobotGenerator(TestFrameworkGenerator):
         for module_name, steps in modules.items():
             lines.append(module_name)
             for keyword, params in steps:
-                resolved_params = self._resolve_params(params, elements, "robot")
+                resolved_params = self._resolve_params(
+                    params, elements, "robot", self._method_name(keyword)
+                )
                 param_str = "    ".join(resolved_params)
                 lines.append(f"    {keyword}    {param_str}")
             lines.append("")
@@ -530,9 +588,10 @@ class FileWriter:
         tests_folder = os.path.join(folder_path, "Tests")
         os.makedirs(tests_folder, exist_ok=True)
         output_file = os.path.join(tests_folder, filename)
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(content)
-        logging.info(f"Generated test file: {output_file}")
+        logger.info(f"Generated test file: {output_file}")
 
         # Create requirements.txt in generated/ directory
         requirements = [
@@ -546,7 +605,7 @@ class FileWriter:
         requirements_file = os.path.join(folder_path, "requirements.txt")
         with open(requirements_file, "w", encoding="utf-8") as f:
             f.write("\n".join(requirements) + "\n")
-        logging.info(f"Generated requirements file: {requirements_file}")
+        logger.info(f"Generated requirements file: {requirements_file}")
 
     def copy_input_templates(self, source_folder: str, generated_folder: str) -> None:
         """
@@ -569,12 +628,12 @@ class FileWriter:
 
                 # Copy the entire input_templates folder
                 shutil.copytree(input_templates_path, destination_path)
-                logging.info(f"Copied input_templates folder to: {destination_path}")
+                logger.info(f"Copied input_templates folder to: {destination_path}")
 
             except Exception as e:
-                logging.error(f"Failed to copy input_templates folder: {e}")
+                logger.exception(f"Failed to copy input_templates folder: {e}")
         else:
-            logging.info("No input_templates folder found - skipping copy")
+            logger.debug("No input_templates folder found - skipping copy")
 
 
 def detect_file_type(file_path: str) -> Optional[Tuple[str, str]]:
@@ -601,7 +660,7 @@ def _detect_csv_type(file_path: str) -> Optional[Tuple[str, str]]:
         if "element_name" in headers and "element_id" in headers:
             return "csv", "elements"
     except Exception as e:
-        logging.error(f"Error reading CSV {file_path}: {e}")
+        logger.exception(f"Error reading CSV {file_path}: {e}")
     return None
 
 
@@ -618,7 +677,7 @@ def _detect_yaml_type(file_path: str) -> Optional[Tuple[str, str]]:
         if "Elements" in data:
             return "yaml", "elements"
     except Exception as e:
-        logging.error(f"Error reading YAML {file_path}: {e}")
+        logger.exception(f"Error reading YAML {file_path}: {e}")
     return None
 
 
@@ -635,6 +694,32 @@ def _assign_yaml_files(yaml_files, files):
             )
             if key in data and not files[content_type]:
                 files[content_type] = yaml_file
+
+# Directories that never hold source project files — skipped when scanning so a
+# recursive walk doesn't pick up generated code, run artefacts or caches.
+_SKIP_SCAN_DIRS = {"__pycache__", "generated", "execution_output"}
+
+
+def _iter_project_files(folder_path: str) -> Iterator[Tuple[str, str, str]]:
+    """Yield ``(file_path, file_format, content_type)`` for every recognised file.
+
+    Walks ``folder_path`` recursively so files organised into subfolders
+    (``test_cases/``, ``modules/``, ``test_data/`` — the layout ``optics init``
+    scaffolds) are discovered, not only files sitting at the project root. Caches,
+    generated code and run artefacts are skipped.
+    """
+    for root, dirs, files in os.walk(folder_path):
+        dirs[:] = [
+            d for d in dirs if d not in _SKIP_SCAN_DIRS and not d.startswith(".")
+        ]
+        for name in files:
+            file_path = os.path.join(root, name)
+            result = detect_file_type(file_path)
+            if not result:
+                continue
+            file_format, content_type = result
+            yield file_path, file_format, content_type
+
 
 def find_all_files(folder_path: str) -> dict[str, list[str]]:
     """Find all CSV and YAML files for each content type, supporting mixed formats with priority rules."""
@@ -653,13 +738,7 @@ def find_all_files(folder_path: str) -> dict[str, list[str]]:
         "config": {"csv": [], "yaml": []},
     }
 
-    for file in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, file)
-        result = detect_file_type(file_path)
-        if not result:
-            continue
-        file_format, content_type = result
-
+    for file_path, file_format, content_type in _iter_project_files(folder_path):
         if content_type in all_files_by_type:
             all_files_by_type[content_type][file_format].append(file_path)
 
@@ -696,12 +775,7 @@ def find_files(
     }
     yaml_files = []
 
-    for file in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, file)
-        result = detect_file_type(file_path)
-        if not result:
-            continue
-        file_format, content_type = result
+    for file_path, file_format, content_type in _iter_project_files(folder_path):
         if file_format == "csv":
             files[content_type] = file_path
         elif file_format == "yaml" and content_type != "config":
@@ -763,24 +837,23 @@ def generate_test_file(
         framework (str): Target framework ('pytest' or 'robot').
         output_filename (str): Name of the output file (optional).
     """
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     # Find all files for mixed CSV/YAML support
     all_files = find_all_files(folder_path)
 
-    # Check for required files
-    if not all_files["config"]:
-        logging.error("Error: Missing config.yaml")
-        return
-    if not all_files["test_cases"]:
-        logging.error("Error: Missing test cases file")
-        return
-    if not all_files["modules"]:
-        logging.error("Error: Missing modules file")
-        return
-    if not all_files["elements"]:
-        logging.error("Error: Missing elements file")
-        return
+    required = {
+        "config.yaml": all_files["config"],
+        "test cases file": all_files["test_cases"],
+        "modules file": all_files["modules"],
+        "elements file": all_files["elements"],
+    }
+    missing = [label for label, found in required.items() if not found]
+    if missing:
+        raise ValueError(
+            f"Cannot generate: missing {', '.join(missing)} in {folder_path}. "
+            "Run `optics init <name>` to scaffold a complete project, or check the path."
+        )
 
     if framework == "pytest":
         generator = PytestGenerator()
@@ -789,8 +862,8 @@ def generate_test_file(
         generator = RobotGenerator()
         default_filename = f"test_{os.path.basename(folder_path)}.robot"
     else:
-        logging.error(f"Unsupported framework: {framework}")
-        return
+        raise ValueError(
+            f"Unsupported framework: {framework}. Use 'pytest' or 'robot'.")
 
     # Read and merge data from all files
     test_cases = read_mixed_data(all_files["test_cases"], "test_cases")

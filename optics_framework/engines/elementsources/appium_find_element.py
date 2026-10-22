@@ -78,7 +78,10 @@ class AppiumFindElement(ElementSourceInterface):
         Returns:
             list: A list of interactive elements (buttons, links, etc.) found in the page source.
         """
-        internal_logger.exception(
+        # Debug, not exception: the strategy chain screens this source out of the
+        # extraction path by capability, so reaching here is a caller's direct use --
+        # not a failure worth an ERROR-level traceback on a per-call hot path.
+        internal_logger.debug(
             'Appium Find Element does not support getting interactive elements. Please use AppiumPageSource for this functionality.'
         )
         raise NotImplementedError(

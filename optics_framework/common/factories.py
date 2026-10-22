@@ -1,4 +1,7 @@
+import importlib
+import pkgutil
 from typing import List
+
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.base_factory import GenericFactory
 from optics_framework.common.driver_interface import DriverInterface
@@ -30,6 +33,25 @@ class DeviceFactory(GenericFactory[DriverInterface]):
 
 class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
     DEFAULT_PACKAGE = "optics_framework.engines.elementsources"
+
+    @classmethod
+    def available_sources(cls, driver: str) -> List[str]:
+        """Installed element-source module names for a driver.
+
+        Matches the leading ``{driver}_`` segment (e.g. ``appium`` yields
+        ``appium_find_element`` / ``appium_page_source`` / ``appium_screenshot``).
+        Name-level only: nothing is imported, so a missing optional engine extra
+        never breaks it.
+        """
+        try:
+            pkg = importlib.import_module(cls.DEFAULT_PACKAGE)
+        except ImportError:  # pragma: no cover - the engines package always imports
+            return []
+        return sorted(
+            m.name
+            for m in pkgutil.iter_modules(pkg.__path__)
+            if not m.name.startswith("_") and m.name.split("_", 1)[0] == driver
+        )
 
     @classmethod
     def get_driver(

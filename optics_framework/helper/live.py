@@ -14,6 +14,7 @@ import re
 import csv
 import sys
 import time
+import difflib
 import shlex
 import shutil
 import logging
@@ -27,6 +28,8 @@ from datetime import datetime
 from itertools import product
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+import cv2
+import numpy as np
 import yaml
 
 from optics_framework.common import utils
@@ -454,7 +457,8 @@ class LiveController:
         for name, param in sig.parameters.items():
             if name == "self":
                 continue
-            # Skip keyword-only sentinels like ``located`` used by self-healing.
+            # Keywords take plain positional/keyword params; skip variadic kinds
+            # that can't render as a discrete ghost-text token.
             if param.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.VAR_KEYWORD):
                 continue
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
@@ -539,24 +543,24 @@ class LiveController:
         start = time.time()
         try:
             tokens = shlex.split(raw, posix=True)
-        except ValueError as exc:
-            return ActionResult(raw=raw, status=ActionStatus.FAIL, message=f"Parse error: {exc}")
+        except ValueError:
+            tokens = raw.split()
         if not tokens:
-            return ActionResult(raw=raw, status=ActionStatus.FAIL, message="Empty command")
+            return ActionResult(raw=raw, status=ActionStatus.FAIL, message="Empty input")
 
-        keyword_token, params = tokens[0], tokens[1:]
-        func_name = "_".join(keyword_token.split()).lower()
-        method = self.keyword_map.get(func_name)
-        if method is None:
+        func_name, params = self._match_keyword(tokens)
+        if func_name is None:
+            guessed = " ".join(tokens[:2])
             return ActionResult(
                 raw=raw,
-                keyword=keyword_token,
+                keyword=guessed,
                 status=ActionStatus.FAIL,
-                message=f"Unknown keyword: {keyword_token}",
+                message=self._unknown_keyword_message(guessed),
             )
 
         if any(p.startswith("${") for p in params):
             self.ensure_elements_loaded()
+        method = self.keyword_map[func_name]
 
         try:
             param_candidates = self._build_candidates(params)
@@ -599,6 +603,49 @@ class LiveController:
             execution_logger.setLevel(prev_level)
             internal_logger_obj.removeHandler(internal_capture)
 
+    def _match_keyword(self, tokens: List[str]) -> Tuple[Optional[str], List[str]]:
+        """Resolve the leading tokens to a keyword in ``self.keyword_map``.
+
+        Longest match first, so both the CSV display form (``Launch App url``)
+        and snake_case (``launch_app url``) resolve: each leading token span is
+        underscore-joined and lowercased before lookup, and the remaining
+        tokens become the parameter list.
+        """
+        for count in range(len(tokens), 0, -1):
+            candidate = "_".join(tokens[:count]).lower()
+            if candidate in self.keyword_map:
+                return candidate, tokens[count:]
+        return None, []
+
+    def _unknown_keyword_message(self, guessed: str) -> str:
+        """Actionable unknown-keyword text, plus the closest real keyword when one exists.
+
+        The input is normalised exactly like :meth:`_match_keyword` normalises tokens
+        before lookup, so ``Launch App`` and ``launch app`` suggest ``launch_app``.
+        """
+        normalized = "_".join(guessed.split()).lower()
+        matches = difflib.get_close_matches(normalized, self.keyword_map.keys(), n=1, cutoff=0.6)
+        suggestion = f" Did you mean '{matches[0]}'?" if matches else ""
+        return (
+            f"Unknown keyword: '{guessed}'. Keywords use snake_case — "
+            f"run `optics list` (e.g. launch_app, validate_element).{suggestion}"
+        )
+
+    def _signature_hint_message(self, func_name: str) -> str:
+        """Friendly usage message for a call whose args wouldn't bind (ValueError/TypeError).
+
+        Shows the same ``<required> [optional]`` shape the completion popup uses
+        (:meth:`keyword_signature`), so a mistyped call reads as a usage problem
+        instead of an interpreter crash.
+        """
+        signature = self.keyword_signature(func_name)
+        expected = signature.split(" ", 1)[1] if signature else None
+        expected_part = f"expected {expected} — " if expected else ""
+        return (
+            f"Couldn't run '{func_name}': {expected_part}"
+            "check `optics list` or Tab-complete for the signature."
+        )
+
     @staticmethod
     def _is_fallback_error(exc: OpticsError) -> bool:
         """True for element-location codes (E02xx / X0201) — retry the next locator.
@@ -621,7 +668,7 @@ class LiveController:
         """
         internal_capture.clear()
         try:
-            positional, keywords = self._resolve_candidate(combo)
+            positional, keywords = self._resolve_candidate(method, combo)
             method(*positional, **keywords)
         except OpticsError as exc:
             return exc
@@ -663,13 +710,20 @@ class LiveController:
                 strategy=self._winning_strategy(strategy_capture),
                 recorded=record,
             )
+        if isinstance(last_exc, (TypeError, ValueError)):
+            internal_logger.debug(
+                "'%s' failed with %s: %s", func_name, type(last_exc).__name__, last_exc
+            )
+            message = self._signature_hint_message(func_name)
+        else:
+            message = self._format_error(last_exc)
         return ActionResult(
             raw=raw,
             keyword=func_name,
             params=params,
             status=ActionStatus.FAIL,
             elapsed=time.time() - start,
-            message=self._format_error(last_exc),
+            message=message,
         )
 
     def _build_candidates(self, params: List[str]) -> List[List[str]]:
@@ -689,11 +743,15 @@ class LiveController:
                 candidates.append([param])
         return candidates
 
-    def _resolve_candidate(self, combo: Tuple[str, ...]) -> Tuple[List[str], Dict[str, str]]:
-        """Split one candidate combination into positional args and keyword args."""
+    def _resolve_candidate(self, method: Callable[..., Any], combo: Tuple[str, ...]) -> Tuple[List[str], Dict[str, str]]:
+        """Split one candidate combination into positional args and keyword args.
+
+        Whether a ``key=value`` token is a keyword argument is decided against
+        ``method``'s signature, so ``text=``/``css=``/``id=`` locators stay
+        positional (the keyword's ``element`` argument).
+        """
         combo_list = list(combo)
-        kw_params = DataReader.get_keyword_params(combo_list)
-        positional = DataReader.get_positional_params(combo_list)
+        positional, kw_params = DataReader.split_params_by_signature(method, combo_list)
         resolved_positional = [self._resolve_value(p) for p in positional]
         resolved_kw: Dict[str, str] = {}
         for key, value in kw_params.items():
@@ -771,8 +829,11 @@ class LiveController:
         Appends to three fixed-name files so a session can build up a test suite one
         module at a time: ``modules/modules.csv`` (the recorded keywords as one module
         named ``module_name``), ``test_cases/test_cases.csv`` (a ``(test_case,
-        module_name)`` row), and ``elements/elements.csv`` (a header-only stub for
-        manual editing).
+        module_name)`` row), and the project's elements CSV. Elements go into an
+        existing elements file when one is tracked anywhere in the project (the
+        scaffolds keep it at ``test_data/elements.csv``) — only names not already
+        present are merged in; with no elements CSV anywhere, a header-only
+        ``elements/elements.csv`` stub is created as before.
 
         Session artifacts are copied to ``execution_output/<module_name>/``.
 
@@ -791,12 +852,10 @@ class LiveController:
 
         modules_dir = os.path.join(self.folder_path, "modules")
         test_cases_dir = os.path.join(self.folder_path, "test_cases")
-        elements_dir = os.path.join(self.folder_path, "elements")
-        for directory in (modules_dir, test_cases_dir, elements_dir):
+        for directory in (modules_dir, test_cases_dir):
             os.makedirs(directory, exist_ok=True)
         modules_path = os.path.join(modules_dir, "modules.csv")
         test_cases_path = os.path.join(test_cases_dir, "test_cases.csv")
-        elements_path = os.path.join(elements_dir, "elements.csv")
 
         module_exists = mod in self._existing_names(modules_path, "module_name")
         test_case_exists = tc in self._existing_names(test_cases_path, "test_case")
@@ -812,7 +871,7 @@ class LiveController:
         step_count = len(self.recorded)
         self._append_module_csv(modules_path, mod)
         self._append_test_case_csv(test_cases_path, tc, mod)
-        self._ensure_elements_stub(elements_path)
+        elements_path = self._write_elements()
 
         artifacts_path: Optional[str] = None
         if os.path.isdir(self._artifacts_dir) and os.listdir(self._artifacts_dir):
@@ -911,6 +970,92 @@ class LiveController:
             return
         with open(path, "w", encoding="utf-8", newline="") as fh:
             csv.writer(fh).writerow(["Element_Name", "Element_ID"])
+
+    def _write_elements(self) -> str:
+        """Merge the session's elements into the project's tracked elements CSV.
+
+        An existing elements CSV anywhere under the project is preferred over
+        creating a second file (the scaffolds track elements in
+        ``test_data/elements.csv``, and a fresh ``elements/elements.csv`` stub
+        would scatter element data across two folders). Only names not already
+        present are appended; with no elements CSV anywhere, today's header-only
+        ``elements/elements.csv`` stub is created. Returns the file written.
+        """
+        self.ensure_elements_loaded()
+        existing = self._find_elements_csv()
+        if existing is not None:
+            self._append_new_elements(existing)
+            return existing
+        elements_path = os.path.join(self.folder_path, "elements", "elements.csv")
+        os.makedirs(os.path.dirname(elements_path), exist_ok=True)
+        self._ensure_elements_stub(elements_path)
+        return elements_path
+
+    def _find_elements_csv(self) -> Optional[str]:
+        """Path of an existing elements CSV under the project, or None.
+
+        Content-header based discovery (an ``element_name``/``element_id``
+        header), mirroring :func:`optics_framework.helper.execute.find_files`.
+        ``test_data/elements.csv`` — the scaffold convention — wins when present,
+        otherwise the lexicographically first match keeps the choice deterministic.
+        """
+        matches: List[str] = []
+        for root, _dirs, files in os.walk(self.folder_path):
+            for fname in files:
+                if not fname.lower().endswith(".csv"):
+                    continue
+                path = os.path.join(root, fname)
+                if "elements" in identify_file_content(path):
+                    matches.append(path)
+        if not matches:
+            return None
+        preferred = os.path.join(self.folder_path, "test_data", "elements.csv")
+        if preferred in matches:
+            return preferred
+        return min(matches)
+
+    def _existing_element_names(self, path: str) -> set[str]:
+        """Element names already tracked in ``path``, lowercased.
+
+        Column matching is case-insensitive too, so files headed
+        ``Element_Name`` (the samples) and ``element_name`` both work.
+        """
+        names: set[str] = set()
+        for row in self._read_rows(path):
+            for key, value in row.items():
+                if key is not None and key.strip().lower() == "element_name":
+                    name = (value or "").strip()
+                    if name:
+                        names.add(name.lower())
+        return names
+
+    def _append_new_elements(self, path: str) -> None:
+        """Append session element rows missing from ``path`` (never duplicates).
+
+        Dedupe is case-insensitive on element name; rows are appended verbatim
+        so the file's existing content, column layout, and line endings stay
+        intact. A missing trailing newline on the last row is repaired before
+        appending so the first new row doesn't glue onto it.
+        """
+        elements = self.session.elements
+        if elements is None or not elements.elements:
+            return
+        present = self._existing_element_names(path)
+        rows = [
+            (escape_csv_value(name), escape_csv_value(value))
+            for name, values in elements.elements.items()
+            if name.strip().lower() not in present
+            for value in values
+        ]
+        if not rows:
+            return
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            raw = fh.read()
+        terminator = "\r\n" if raw.endswith("\r\n") else "\n"
+        with open(path, "a", encoding="utf-8", newline="") as fh:
+            if raw and not raw.endswith(("\r", "\n")):
+                fh.write(terminator)
+            csv.writer(fh, lineterminator=terminator).writerows(rows)
 
     # -- Devices ------------------------------------------------------------------
 
@@ -1111,7 +1256,7 @@ class LiveController:
     def natural_language_available(self) -> bool:
         """True if an LLM engine is enabled in config (an ``llm_models`` entry).
 
-        Instantiation errors (missing ``[llm]`` extra, bad credentials) are not probed
+        Instantiation errors (missing engine extra, bad credentials) are not probed
         here — they surface with an actionable message in :meth:`run_natural_language`.
         """
         if self._nl_available is None:
@@ -1143,6 +1288,35 @@ class LiveController:
         xml_source = result[0]
         return utils.strip_page_source(xml_source) or None
 
+    def screen_elements(self, png: bytes) -> Optional[List[dict]]:
+        """Compact interactive elements for the current screen, with bounds.
+
+        Best-effort: returns ``None`` when the active element source cannot extract
+        elements, so the NL agent falls back to ``page_source``. Bounds are scaled
+        against ``png`` -- the screenshot the agent already captured for the LLM this
+        step -- rather than a second device capture; the decode is skipped for
+        non-Appium sources, where the scaling is a no-op anyway.
+        """
+        if self._action_keyword is None:  # pragma: no cover - defensive
+            return None
+        try:
+            elements = self._action_keyword.strategy_manager.get_interactive_elements(
+                None, compact=True
+            )
+        except OpticsError as exc:
+            internal_logger.debug("Structured screen elements unavailable: %s", exc)
+            return None
+        element_source = self._action_keyword.element_source
+        active_source = getattr(element_source, "active_instance", None) or element_source
+        screenshot_np = None
+        if getattr(active_source, "REQUIRED_DRIVER_TYPE", None) == "appium":
+            try:
+                screenshot_np = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
+            except Exception as exc:  # noqa: BLE001
+                internal_logger.debug("Screenshot decode for bounds scaling failed: %s", exc)
+        utils.scale_interactive_element_bounds(elements, element_source, screenshot_np)
+        return elements
+
     def _nl_execute(self, raw: str) -> ExecResult:
         """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
         result = self._execute_line(raw, record=False)
@@ -1157,11 +1331,12 @@ class LiveController:
         """Build (and cache) the NL agent. Raises OpticsError if no LLM is usable."""
         if self._nl_agent is not None:
             return self._nl_agent
-        llm = self.session.optics.get_llm()  # may raise E0601 if the [llm] extra is missing
+        llm = self.session.optics.get_llm()  # may raise E0601 if the engine's extra is missing
         if llm is None or not getattr(llm, "instances", None):
             raise OpticsError(
                 Code.E0501,
-                message="No LLM engine enabled. Enable a 'gemini' entry under llm_models in config.yaml.",
+                message="No LLM engine enabled. Enable a gemini, openai or anthropic entry "
+                "under llm_models in config.yaml.",
             )
         self._nl_agent = NaturalLanguageAgent(
             llm=llm,
@@ -1170,6 +1345,7 @@ class LiveController:
             keyword_catalog=self._nl_catalog,
             element_names=self.element_names,
             pagesource_provider=self.page_source,
+            screen_elements_provider=self.screen_elements,
             curate_on_done=True,
         )
         return self._nl_agent

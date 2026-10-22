@@ -1,15 +1,22 @@
 import re
 import subprocess  # nosec B404
+import threading
+from collections import deque
 from importlib.metadata import PackageNotFoundError, version
-from typing import Dict, List, Optional
+from typing import Deque, Dict, List, Optional
 import sys
+from textual import work
 from textual.app import App, ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Checkbox, Button, Header, Footer, Static
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import BaseModel
 
+from optics_framework.helper.environment import detect, plan_install
+
 
 DISTRIBUTION_NAME = "optics-framework"
+_STATUS_ID = "#status"
 
 
 class SetupError(Exception):
@@ -77,7 +84,9 @@ TEXT_ENGINES = EngineCategory(
 LLM_ENGINES = EngineCategory(
     name="LLM Engine",
     engines={
-        "Gemini": EngineBackend(name="Gemini", extra="llm", packages=["google-genai"], aliases=["llm"]),
+        "Gemini": EngineBackend(name="Gemini", extra="gemini", packages=["google-genai"]),
+        "OpenAI": EngineBackend(name="OpenAI", extra="openai", packages=["openai"]),
+        "Anthropic": EngineBackend(name="Anthropic", extra="anthropic", packages=["anthropic"]),
     }
 )
 
@@ -92,6 +101,7 @@ _BUNDLES: Dict[str, List[EngineBackend]] = {
     "mobile": [ACTION_DRIVERS.engines["Appium"]],
     "web": [ACTION_DRIVERS.engines["Selenium"], ACTION_DRIVERS.engines["Playwright"]],
     "vision": list(TEXT_ENGINES.engines.values()),
+    "llm": list(LLM_ENGINES.engines.values()),
     "all": list(ALL_ENGINES.values()),
 }
 
@@ -217,7 +227,17 @@ def resolve_engines(tokens: List[str]) -> tuple[List[InstallRequest], List[str]]
 
 
 class EngineInstallerApp(App):
+    TITLE = "optics setup"
+
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("ctrl+c", "quit", "Quit"),
+    ]
+
     CSS = """
+    #engine-list {
+        height: 1fr;
+    }
     Checkbox {
         margin: 1;
     }
@@ -228,28 +248,36 @@ class EngineInstallerApp(App):
     Static {
         padding: 1;
     }
+    #status {
+        color: $text-muted;
+    }
     """
 
     def __init__(self):
         super().__init__()
         self.selected_engines: Dict[str, EngineBackend] = {}
+        self._install_finished = False
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("Select engines to install:", classes="title")
+        # Scroll the (potentially long) engine list so the action buttons below
+        # stay on-screen even on a short terminal.
+        with VerticalScroll(id="engine-list"):
+            yield Static("Select engines to install:", classes="title")
 
-        yield Static("Action Drivers:")
-        for name, engine in ACTION_DRIVERS.engines.items():
-            yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"action_{name.lower().replace(' ', '_')}")
+            yield Static("Action Drivers:")
+            for name, engine in ACTION_DRIVERS.engines.items():
+                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"action_{name.lower().replace(' ', '_')}")
 
-        yield Static("OCR Engines:")
-        for name, engine in TEXT_ENGINES.engines.items():
-            yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
+            yield Static("OCR Engines:")
+            for name, engine in TEXT_ENGINES.engines.items():
+                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
 
-        yield Static("LLM Engines:")
-        for name, engine in LLM_ENGINES.engines.items():
-            yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"llm_{name.lower().replace(' ', '_')}")
+            yield Static("LLM Engines:")
+            for name, engine in LLM_ENGINES.engines.items():
+                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"llm_{name.lower().replace(' ', '_')}")
 
+        yield Static("", id="status")
         yield Button("Install Selected", id="install", variant="primary")
         yield Button("Quit", id="quit", variant="error")
         yield Footer()
@@ -277,12 +305,71 @@ class EngineInstallerApp(App):
             self.exit()
 
     def install_engines(self) -> None:
-        """Install every checked engine. The checkbox UI has no version field,
-        so each selection installs at its extra's default bound."""
+        """Kick off installation of every checked engine in a worker thread.
+
+        The checkbox UI has no version field, so each selection installs at its
+        extra's default bound. The pip install (and any Playwright browser
+        download) runs off the UI thread so the TUI stays responsive instead of
+        freezing for the duration."""
         if not self.selected_engines:
             self.notify("No engines selected!", severity="warning")
             return
-        install_extras([InstallRequest(engine=e) for e in self.selected_engines.values()])
+        requests = [InstallRequest(engine=e) for e in self.selected_engines.values()]
+        self._install_finished = False
+        self.query_one("#install", Button).disabled = True
+        self.query_one(_STATUS_ID, Static).update(
+            "Installing… this can take a while (browser/model downloads); the UI stays responsive."
+        )
+        self._install_worker(requests)
+
+    @work(thread=True)
+    def _install_worker(self, requests: List[InstallRequest]) -> None:
+        """Run the blocking install off the UI thread, then report back on it.
+
+        A 1 Hz ticker thread keeps the status line showing elapsed time — the
+        TUI's alternate screen would otherwise sit silent (pip output can't be
+        printed here) for minutes during big downloads, which reads as a hang."""
+        names = ", ".join(request.engine.name for request in requests)
+        done = threading.Event()
+        ticker = threading.Thread(
+            target=self._tick_install_progress, args=(names, done), daemon=True)
+        ticker.start()
+        try:
+            success, message = install_extras(requests, stream=False)
+        finally:
+            done.set()
+            ticker.join()
+        self.call_from_thread(self._on_install_finished, success, message)
+
+    def _tick_install_progress(self, names: str, done: threading.Event) -> None:
+        elapsed = 0
+        while not done.wait(1.0):
+            elapsed += 1
+            self.call_from_thread(
+                self._show_install_progress, f"Installing {names}… {elapsed}s")
+
+    def _show_install_progress(self, text: str) -> None:
+        # Checked on the UI thread so a tick already in flight when the install
+        # finishes can never overwrite the final status.
+        if self._install_finished:
+            return
+        self.query_one(_STATUS_ID, Static).update(text)
+
+    def _on_install_finished(self, success: bool, message: str) -> None:
+        self._install_finished = True
+        status = message
+        if success:
+            # The TUI's alternate screen swallows print(), so fold the next
+            # steps into the status line the user is already watching.
+            status = f"{message}{install_next_steps_text()}"
+        self.query_one(_STATUS_ID, Static).update(status)
+        self.notify(
+            message.splitlines()[0],
+            severity="information" if success else "error",
+            timeout=10,
+        )
+        # Re-enable Install so a failed run can be retried; harmless on success.
+        self.query_one("#install", Button).disabled = False
 
 
 def _installed_version() -> Optional[str]:
@@ -292,7 +379,62 @@ def _installed_version() -> Optional[str]:
         return None
 
 
-def install_extras(requests: List[InstallRequest]) -> None:
+def install_next_steps_text() -> str:
+    """Concrete next steps shown after a successful engine install.
+
+    Shared by the ``optics setup --install`` CLI path (printed) and the TUI's
+    finish handler (folded into its status line) so both say the same thing."""
+    return (
+        "\nNext steps:\n"
+        "  1. optics init myproject            # scaffold a new project\n"
+        "  2. optics configure myproject       # write its config.yaml\n"
+        "  3. optics doctor myproject          # verify the setup is ready\n"
+        "  4. optics dry_run myproject         # validate without a device\n"
+        "  5. optics execute myproject         # run on a real device"
+    )
+
+
+def print_install_next_steps() -> None:
+    """Print the next-steps text for the ``optics setup --install`` CLI path."""
+    print(install_next_steps_text())
+
+
+# Last N output lines a streamed command keeps buffered, quoted on failure so a
+# pip error excerpt survives without holding the whole (potentially huge) log.
+_TAIL_LINES = 15
+
+
+def _run_capture(cmd: List[str]) -> None:
+    """Run cmd capturing all output (TUI path, where printing is swallowed).
+
+    Raises CalledProcessError carrying e.stderr/e.stdout on failure."""
+    subprocess.run(  # nosec B603
+        cmd, capture_output=True, text=True, check=True, shell=False)
+
+
+def _run_streaming(cmd: List[str]) -> None:
+    """Run cmd echoing its merged output to the console live (CLI path), so long
+    installs show pip's progress instead of minutes of silence.
+
+    A short tail stays buffered and rides out on CalledProcessError.output if
+    the command fails. Raises CalledProcessError on non-zero exit."""
+    tail: Deque[str] = deque(maxlen=_TAIL_LINES)
+    process = subprocess.Popen(  # nosec B603
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1, shell=False)
+    for line in process.stdout:
+        if line.lstrip().startswith("Requirement already satisfied"):
+            continue
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        tail.append(line.rstrip("\n"))
+    process.stdout.close()
+    if process.wait() != 0:
+        raise subprocess.CalledProcessError(
+            process.returncode, cmd, output="".join(f"{line}\n" for line in tail))
+
+
+def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tuple[bool, str]:
     """Install the selected engine backends by pulling the matching
     `optics-framework` extras, pinned to the installed version so the CLI is
     never upgraded out from under the user.
@@ -303,10 +445,22 @@ def install_extras(requests: List[InstallRequest]) -> None:
     supported range fails loudly rather than silently downgrading it.
     ``packages[0]`` is each engine's primary package — the one a version
     override targets. Extra packages, like pytesseract's pillow, stay on the
-    extra's bound."""
+    extra's bound.
+
+    ``stream=True`` (the CLI default) echoes the command's output live so the
+    user sees pip working; ``stream=False`` (the TUI, whose alternate screen
+    swallows prints) captures quietly instead.
+
+    The installing command comes from `plan_install`, not from a hardcoded
+    ``pip``: uv and pipx environments ship no pip, and manager-owned ones would
+    discard the install on their next sync.
+
+    Returns ``(success, message)`` rather than raising, so both the CLI
+    (`optics setup --install`) and the TUI can surface the outcome — the TUI's
+    alternate screen swallows ``print``. On failure the message carries an
+    excerpt of the captured output. Callers decide how to display it."""
     if not requests:
-        print("No engines selected.")
-        return
+        return False, "No engines selected."
 
     extras = sorted({req.engine.extra for req in requests})
     installed = _installed_version()
@@ -316,28 +470,39 @@ def install_extras(requests: List[InstallRequest]) -> None:
 
     pinned = [f"{req.engine.packages[0]}{req.version}" for req in requests if req.version]
 
+    env = detect()
+    plan = plan_install(env, [spec, *pinned])
+    if plan.command is None:
+        return False, plan.describe()
+
+    run = _run_streaming if stream else _run_capture
+    # Callers print whatever comes back, so the note goes out either now or in
+    # the returned message — never both.
+    if plan.note and stream:
+        print(plan.note)
     try:
-        subprocess.run(  # nosec B603
-            [sys.executable, "-m", "pip", "install", spec, *pinned],
-            capture_output=True, text=True, check=True, shell=False)
+        run(plan.command)
 
         if any(req.engine.extra == "playwright" for req in requests):
-            print("Installing Playwright Chromium browser and system dependencies...")
             # Per https://playwright.dev/python/docs/browsers this must run after
             # the pip install. Chromium is the most common target; --with-deps
             # pulls the required OS libraries.
-            subprocess.run(  # nosec B603
-                [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
-                capture_output=True, text=True, check=True, shell=False)
+            run([env.python, "-m", "playwright", "install", "--with-deps", "chromium"])
 
-        print("Engines installed successfully!")
+        success = ("Engine packages installed. Services like the Appium "
+                   "server still need to be started separately.")
+        if plan.note and not stream:
+            return True, f"{plan.note}\n{success}"
+        return True, success
     except subprocess.CalledProcessError as e:
-        # capture_output routes the command's diagnostics to e.stderr/e.stdout
-        # rather than the console, so surface them here for a debuggable failure.
-        print(f"Installation failed: {e}")
+        # capture_output / _run_streaming route the command's diagnostics to
+        # e.stderr/e.stdout rather than losing them, so fold them into the
+        # message for a debuggable failure.
         detail = (e.stderr or "").strip() or (e.stdout or "").strip()
+        message = f"Installation failed: {e}"
         if detail:
-            print(detail)
+            message = f"{message}\n{detail}"
+        return False, message
 
 
 def list_engines() -> None:

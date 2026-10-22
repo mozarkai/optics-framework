@@ -1,4 +1,4 @@
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Union
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
@@ -43,7 +43,7 @@ class Verifier:
         """
         internal_logger.debug(f"Validating element: {element}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
-        self.assert_presence(element, timeout, rule, event_name)
+        self.assert_presence(element, timeout, rule, event_name=event_name)
 
     def is_element(
         self,
@@ -124,19 +124,21 @@ class Verifier:
         return result
 
 
-    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
+    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
         :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
-        :param timeout: The time to wait for the elements in seconds.
+        :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
+        :param fail: If True, raise on failure; if False, return False instead. A suite writes
+            this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_presence")
 
-    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail=True) -> bool:
+    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
         Asserts that elements are actually rendered/visible on screen right now -- distinct
         from :meth:`assert_presence`, which reports found even for elements that exist in
@@ -146,16 +148,19 @@ class Verifier:
         :param timeout_str: The time to wait for the elements to become visible, in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
+        :param fail: If True, raise on failure; if False, return False instead. A suite writes
+            this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_visibility")
 
     def _assert_common(
         self, elements: str, timeout_str: str, rule: str,
-        event_name: Optional[str], fail: bool, method_name: str,
+        event_name: Optional[str], fail: Union[bool, str], method_name: str,
     ) -> bool:
         rule = rule.lower()
         timeout = int(timeout_str)
+        fail = str(fail).strip().lower() != "false"
         elements_list = elements.split('|')
 
         grouped_elements = self._group_elements_by_type(elements_list)
@@ -171,10 +176,11 @@ class Verifier:
 
     def _group_elements_by_type(self, elements_list: list) -> dict:
         """Group elements by their type (Text, XPath, Image)."""
+        types = {el: utils.determine_element_type(el) for el in elements_list}
         return {
-            'Text': [el for el in elements_list if utils.determine_element_type(el) == 'Text'],
-            'XPath': [el for el in elements_list if utils.determine_element_type(el) == 'XPath'],
-            'Image': [el for el in elements_list if utils.determine_element_type(el) == 'Image']
+            'Text': [el for el in elements_list if types[el] in ('Text', 'CSS')],
+            'XPath': [el for el in elements_list if types[el] == 'XPath'],
+            'Image': [el for el in elements_list if types[el] == 'Image'],
         }
 
     def _process_element_groups(self, grouped_elements: dict, timeout: int, rule: str, method_name: str = "assert_presence") -> tuple:
@@ -211,7 +217,7 @@ class Verifier:
     def _handle_result(self, result: bool, timestamps: list, event_name: Optional[str], fail: bool, rule: str, method_name: str):
         """Handle the final result, including event capture and error raising."""
         if result:
-            self._capture_success_event(timestamps, event_name)
+            self._capture_success_event(timestamps, event_name=event_name)
         elif fail:
             assertion_label = method_name.replace("assert_", "").capitalize()
             raise AssertionError(f"{assertion_label} assertion failed based on rule: {rule}")
@@ -235,7 +241,7 @@ class Verifier:
         internal_logger.debug(f"Validating screen for elements: {elements}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         try:
-            self.assert_presence(elements, timeout, rule, event_name, fail=False)
+            self.assert_presence(elements, timeout, rule, event_name=event_name, fail=False)
             return True
         except OpticsError as e:
             internal_logger.info(f"Validate Screen: Elements not found. Error: {e}")
@@ -305,8 +311,34 @@ class Verifier:
         source = self.element_source.active_instance
         return getattr(source, "REQUIRED_DRIVER_TYPE", None) == "appium"
 
+    @staticmethod
+    def _to_compact_shape(elements: list) -> list:
+        # Project compact dicts to {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}.
+        # A payload without an "act" key (a source that does not implement compact)
+        # passes through.
+        if not elements or not isinstance(elements[0], dict) or "act" not in elements[0]:
+            return elements
+        compact = []
+        for i, el in enumerate(elements):
+            extra = el.get("extra") or {}
+            bounds = el.get("bounds") or {}
+            entry = {
+                "i": i,
+                "label": el.get("text") or "",
+                "cls": (extra.get("class") or "").split(".")[-1],
+                "bounds": [bounds.get("x1"), bounds.get("y1"), bounds.get("x2"), bounds.get("y2")],
+                "act": el.get("act") or [],
+            }
+            rid = extra.get("resource-id")
+            if rid:
+                entry["rid"] = rid.split("/")[-1]
+            if el.get("loc"):
+                entry["loc"] = el["loc"]
+            compact.append(entry)
+        return compact
+
     def _collect_interactive_elements(
-        self, filter_config: Optional[List[str]], screenshot_np: Optional[Any]
+        self, filter_config: Optional[List[str]], screenshot_np: Optional[Any], compact: bool = False
     ) -> list:
         """Fetch interactive elements, CSV-escape their text/xpath, and scale their
         bounds into the given screenshot's pixel space.
@@ -315,7 +347,7 @@ class Verifier:
         workspace stream so all three return consistent, screenshot-aligned bounds from
         a single capture. Does not persist anything — callers decide whether to save.
         """
-        elements = self.strategy_manager.get_interactive_elements(filter_config)
+        elements = self.strategy_manager.get_interactive_elements(filter_config, compact=compact)
         for el in elements:
             if isinstance(el, dict):
                 if "xpath" in el and el["xpath"] is not None:
@@ -328,7 +360,7 @@ class Verifier:
         utils.scale_interactive_element_bounds(elements, self.element_source, screenshot_np)
         return elements
 
-    def get_interactive_elements(self, filter_config: Optional[List[str]] = None) -> list:
+    def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> list:
         """
         Retrieves a list of interactive elements on the current screen.
 
@@ -337,11 +369,17 @@ class Verifier:
         On Appium sources, element bounds are returned in the screenshot's pixel space.
 
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
-        :type filter_config: Optional[List[str]]
+        :param compact: When True, return only actionable elements (labels folded in,
+            with an ``act`` list) plus standalone visible text (``act: []``), as
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?}`` (``loc``: a unique web
+            locator). Implemented by the Appium and Playwright page sources; sources without it return their full list.
         :return: A list of interactive elements.
         """
+        compact = utils.to_bool(compact)
         screenshot_np = self._safe_capture_screenshot_np() if self._bounds_need_screenshot() else None
-        elements = self._collect_interactive_elements(filter_config, screenshot_np)
+        elements = self._collect_interactive_elements(filter_config, screenshot_np, compact=compact)
+        if compact:
+            elements = self._to_compact_shape(elements)
         utils.save_interactable_elements(elements, output_dir=self.execution_dir)
         return elements
 

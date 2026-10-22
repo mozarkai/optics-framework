@@ -1,4 +1,5 @@
 from optics_framework.common.events import EventSubscriber, Event, EventStatus, get_event_manager
+import json
 import xml.etree.ElementTree as ET #nosec B405
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -26,13 +27,10 @@ class JUnitHandlerRegistry:
                 self._handlers[session_id].close()
                 del self._handlers[session_id]
 
-            # Only setup if JUnit logging is enabled
-            if not getattr(config, 'json_log', False):
-                return
-
             # Create session-specific output path
             junit_path = self._get_session_junit_path(session_id, config)
-            handler = JUnitEventHandler(junit_path)
+            json_log_path = self._get_json_log_path(config)
+            handler = JUnitEventHandler(junit_path, json_output_path=json_log_path)
 
             # Subscribe to session-specific EventManager
             event_manager = get_event_manager(session_id)
@@ -43,17 +41,28 @@ class JUnitHandlerRegistry:
             internal_logger.debug(f"Session {session_id} EventManager has {len(event_manager.subscribers)} subscribers: {list(event_manager.subscribers.keys())}")
 
     def _get_session_junit_path(self, session_id: str, config: Config) -> Path:
-        """Generate session-specific JUnit output path."""
-        log_dir = config.execution_output_path or (Path.cwd() / "logs")
+        """Generate the canonical JUnit XML output path.
 
-        # Use custom path if specified, otherwise create session-specific path
-        junit_path = getattr(config, 'json_log_path', None)
-        if junit_path:
-            junit_path = Path(junit_path).expanduser()
-            # Add session suffix to custom path
-            return junit_path.parent / f"{junit_path.stem}_{session_id}{junit_path.suffix}"
-        else:
-            return Path(log_dir) / f"junit_output_{session_id}.xml"
+        Falls back to a session-suffixed name when another active handler
+        already owns the canonical file in the same output directory, so
+        concurrent sessions never clobber each other's report.
+        """
+        log_dir = Path(config.execution_output_path or (Path.cwd() / "logs"))
+        junit_path = log_dir / "junit_output.xml"
+        for other_id, handler in self._handlers.items():
+            if other_id != session_id and handler.output_path == junit_path:
+                return log_dir / f"junit_output_{session_id}.xml"
+        return junit_path
+
+    def _get_json_log_path(self, config: Config) -> Optional[Path]:
+        """Generate the JSON event log output path, or None when json_log is disabled."""
+        if not getattr(config, 'json_log', False):
+            return None
+        custom_path = getattr(config, 'json_path', None)
+        if custom_path:
+            return Path(custom_path).expanduser()
+        log_dir = config.execution_output_path or (Path.cwd() / "logs")
+        return Path(log_dir) / "logs.json"
 
     def cleanup_session(self, session_id: str) -> None:
         """Cleanup JUnit handler for a specific session."""
@@ -108,8 +117,9 @@ class LogCaptureBuffer(logging.Handler):
         return self.records
 
 class JUnitEventHandler(EventSubscriber):
-    def __init__(self, output_path: Path):
+    def __init__(self, output_path: Path, json_output_path: Optional[Path] = None):
         self.output_path = output_path
+        self.json_output_path = json_output_path
         self.testsuites = ET.Element("testsuites")
         self.session_suites: Dict[str, ET.Element] = {}
         self.testcase_cases: Dict[str, ET.Element] = {}
@@ -118,6 +128,7 @@ class JUnitEventHandler(EventSubscriber):
         self.module_elements: Dict[str, ET.Element] = {}
         self.active_keyword_elements: Dict[str, ET.Element] = {}  # Per keyword_id for update during execution
         self.keyword_log_buffers: Dict[str, LogCaptureBuffer] = {}
+        self.json_events: List[Dict] = []
 
         internal_logger.debug(f"Initialized JUnitEventHandler with output: {self.output_path}")
 
@@ -125,6 +136,7 @@ class JUnitEventHandler(EventSubscriber):
     async def on_event(self, event: Event) -> None:
         internal_logger.debug(
             f"JUnitEventHandler received event: {event.model_dump()}")
+        self.json_events.append(event.model_dump())
         session_id = event.extra.get("session_id") if event.extra else None
         if not session_id and event.entity_type == "test_case":
             internal_logger.warning(
@@ -202,6 +214,9 @@ class JUnitEventHandler(EventSubscriber):
 
         kw_element = ET.SubElement(module_kw, "kw", name=event.name, status=event.status.value)
 
+        if event.status == EventStatus.FAIL and event.message:
+            kw_element.set("message", event.message)
+
         if event.start_time:
             kw_element.set("starttime", time.strftime('%Y%m%d %H:%M:%S', time.localtime(event.start_time)))
         if event.end_time:
@@ -269,6 +284,16 @@ class JUnitEventHandler(EventSubscriber):
         session_suite.set("tests", str(int(session_suite.get("tests", "0")) + 1))
         session_suite.set("failures", str(int(session_suite.get("failures", "0")) + len(detected)))
 
+    def _flush_json(self):
+        if self.json_output_path is None:
+            return
+        try:
+            self.json_output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.json_output_path, "w", encoding="utf-8") as f:
+                json.dump(self.json_events, f, indent=2)
+        except Exception as e:
+            internal_logger.error(f"Failed to flush JSON events: {str(e)}")
+
     def flush(self):
         try:
             internal_logger.debug(f"Flushing Robot-style XML to {self.output_path}")
@@ -283,6 +308,7 @@ class JUnitEventHandler(EventSubscriber):
                 f.write(pretty_xml)
         except Exception as e:
             internal_logger.error(f"Failed to flush Robot-style XML: {str(e)}")
+        self._flush_json()
 
     def close(self):
         self.flush()

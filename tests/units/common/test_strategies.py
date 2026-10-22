@@ -13,19 +13,23 @@ from unittest.mock import MagicMock, patch
 import cv2
 import numpy as np
 import pytest
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import InvalidSessionIdException, WebDriverException
 
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import (
+    LocatorStrategy,
+    PagesourceStrategy,
     StrategyManager,
     TextDetectionStrategy,
     LocateResult,
 )
 from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
 from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
+
+import optics_framework.engines.drivers.appium  # noqa: F401
 
 
 # --- parse_text_only_prefix and determine_element_type (utils) ---
@@ -569,3 +573,209 @@ class TestAllocTimeForStrategy:
         result = _sm(MagicMock())._alloc_time_for_strategy(1000.4, 1, [1, 2])
         assert result is not None
         assert result[0] == 0
+
+
+# --- StrategyManager.get_interactive_elements() strategy screening ---
+
+
+class TestGetInteractiveElementsStrategyScreening:
+    """Only sources that actually implement extraction should be tried.
+
+    A source qualifies as a pagesource strategy by returning a page source, which is a
+    weaker capability than extracting elements from one -- AppiumFindElement supports
+    the first and unconditionally raises on the second. Trying it anyway burned work
+    and logged a traceback on every call to a hot path (mozarkai/optics-framework#455).
+    """
+
+    @staticmethod
+    def _strategy(supports_extraction: bool, elements=None):
+        source = MagicMock()
+        if supports_extraction:
+            source.get_interactive_elements = MagicMock(return_value=elements or [])
+        else:
+            def _unsupported(filter_config=None, compact=False):
+                raise NotImplementedError("does not support getting interactive elements")
+            source.get_interactive_elements = _unsupported
+
+        strategy = MagicMock()
+        strategy.element_source = source
+        strategy.get_interactive_elements = MagicMock(
+            side_effect=lambda fc=None, compact=False: source.get_interactive_elements(fc, compact=compact)
+        )
+        return strategy
+
+    def test_unsupported_source_is_never_called(self, monkeypatch):
+        capable = self._strategy(True, [{"text": "OK"}])
+        incapable = self._strategy(False)
+        monkeypatch.setattr(
+            LocatorStrategy,
+            "_is_method_implemented",
+            staticmethod(lambda src, name: src is capable.element_source),
+        )
+        manager = _sm(MagicMock())
+        manager.pagesource_strategies = [incapable, capable]
+
+        assert manager.get_interactive_elements() == [{"text": "OK"}]
+        incapable.get_interactive_elements.assert_not_called()
+
+    def test_no_capable_strategy_raises_rather_than_returning_empty(self, monkeypatch):
+        monkeypatch.setattr(
+            LocatorStrategy, "_is_method_implemented", staticmethod(lambda src, name: False)
+        )
+        manager = _sm(MagicMock())
+        manager.pagesource_strategies = [self._strategy(False)]
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.get_interactive_elements()
+        assert exc_info.value.code == Code.E0202
+
+
+    def test_failure_names_the_underlying_error(self, monkeypatch):
+        monkeypatch.setattr(
+            LocatorStrategy, "_is_method_implemented", staticmethod(lambda src, name: True)
+        )
+        strategy = MagicMock()
+        strategy.get_interactive_elements.side_effect = RuntimeError(
+            "Page.content: the page is navigating"
+        )
+        manager = _sm(MagicMock())
+        manager.pagesource_strategies = [strategy]
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.get_interactive_elements()
+        assert exc_info.value.code == Code.E0202
+        assert "the page is navigating" in str(exc_info.value)
+
+# --- PagesourceStrategy compact-forwarding compatibility ---
+
+
+class _LegacyExtractionSource:
+    def __init__(self):
+        self.calls: list = []
+
+    def get_interactive_elements(self, filter_config=None):
+        self.calls.append(filter_config)
+        return [{"text": "OK"}]
+
+
+class _VarKwargsExtractionSource:
+    def __init__(self):
+        self.kwargs: dict = {}
+
+    def get_interactive_elements(self, filter_config=None, **kwargs):
+        self.kwargs = kwargs
+        return []
+
+
+class TestPagesourceStrategyCompactForwarding:
+    def test_legacy_signature_is_called_without_compact(self):
+        source = _LegacyExtractionSource()
+        elements = PagesourceStrategy(source).get_interactive_elements(None, compact=True)
+        assert elements == [{"text": "OK"}]
+        assert source.calls == [None]
+
+    def test_declared_compact_is_forwarded(self):
+        source = MagicMock()
+        source.get_interactive_elements.return_value = []
+        PagesourceStrategy(source).get_interactive_elements(None, compact=True)
+        source.get_interactive_elements.assert_called_once_with(None, compact=True)
+
+    def test_var_keyword_signature_is_forwarded(self):
+        source = _VarKwargsExtractionSource()
+        PagesourceStrategy(source).get_interactive_elements(None, compact=True)
+        assert source.kwargs == {"compact": True}
+
+    def test_none_result_still_raises_not_implemented(self):
+        source = _LegacyExtractionSource()
+        source.get_interactive_elements = lambda filter_config=None: None
+        strategy = PagesourceStrategy(source)
+        with pytest.raises(NotImplementedError):
+            strategy.get_interactive_elements()
+
+
+class TestDeadSessionIsNotMasked:
+    @staticmethod
+    def _dead() -> InvalidSessionIdException:
+        return InvalidSessionIdException("A session is either terminated or not started")
+
+    def test_locate_raises_dead_session_instead_of_e0201(self):
+        source = MagicMock()
+        source.locate.side_effect = self._dead()
+        results = _sm(source).locate("//button[@id='search']")
+
+        with pytest.raises(OpticsError) as exc_info:
+            list(results)
+        assert exc_info.value.code == Code.E0106
+
+    def test_locate_unwraps_a_source_that_already_wrapped_it_as_e0201(self):
+        source = MagicMock()
+        source.locate.side_effect = OpticsError(
+            Code.E0201, message="Element of type XPath not found", cause=self._dead()
+        )
+        results = _sm(source).locate("//button[@id='search']")
+
+        with pytest.raises(OpticsError) as exc_info:
+            list(results)
+        assert exc_info.value.code == Code.E0106
+
+    def test_assert_presence_raises_dead_session_instead_of_e0201(self):
+        source = MagicMock()
+        source.assert_elements = MagicMock(side_effect=self._dead())
+        manager = _sm(source)
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.assert_presence(["text=Search"], "Text", timeout=10, rule="any")
+        assert exc_info.value.code == Code.E0106
+        assert source.assert_elements.called
+
+    def test_capture_pagesource_raises_dead_session_instead_of_e0403(self):
+        source = MagicMock()
+        source.get_page_source.side_effect = self._dead()
+        manager = _sm(source)
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.capture_pagesource()
+        assert exc_info.value.code == Code.E0106
+
+    def test_capture_screenshot_raises_dead_session_instead_of_e0303(self):
+        source = MagicMock()
+        source.capture.side_effect = self._dead()
+        manager = _sm(source)
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.capture_screenshot()
+        assert exc_info.value.code == Code.E0106
+
+    def test_capture_screenshot_bytes_raises_dead_session_instead_of_e0303(self):
+        source = MagicMock()
+        source.capture_screenshot_bytes.side_effect = self._dead()
+        manager = _sm(source)
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.capture_screenshot_bytes()
+        assert exc_info.value.code == Code.E0106
+
+    def test_get_interactive_elements_raises_dead_session_instead_of_e0202(self, monkeypatch):
+        monkeypatch.setattr(
+            LocatorStrategy, "_is_method_implemented", staticmethod(lambda src, name: True)
+        )
+        source = MagicMock()
+        source.get_interactive_elements.side_effect = self._dead()
+        manager = _sm(source)
+
+        with pytest.raises(OpticsError) as exc_info:
+            manager.get_interactive_elements()
+        assert exc_info.value.code == Code.E0106
+
+    def test_e0106_is_outside_the_element_fallback_family(self):
+        assert not Code.E0106.value.startswith("E02")
+        assert Code.E0106 != Code.X0201
+
+    def test_ordinary_backend_failure_still_reports_not_found(self):
+        source = MagicMock()
+        source.locate.side_effect = WebDriverException("stale element reference")
+        results = _sm(source).locate("//button[@id='search']")
+
+        with pytest.raises(OpticsError) as exc_info:
+            list(results)
+        assert exc_info.value.code == Code.E0201

@@ -1,20 +1,10 @@
 # User Workflow
 
-This guide walks you through the workflow for using the Optics Framework to create and execute automated tests. The framework relies on a CSV-based structure and a YAML configuration file to define test cases, modules, and elements.
+This page traces one concrete project end to end: how its test cases, modules, elements, and `config.yaml` fit together, and how they flow through `dry_run` and `execute`. For installation and first-time setup, see [Getting Started](getting-started.md); for every configuration field, see [Configuration Reference](configuration.md).
 
-## Initial Setup
+## The Worked Example: YouTube
 
-To begin, the Optics Framework requires a YAML configuration file (`config.yaml`) and CSV files to define your tests. You can bootstrap a project using the `optics init` command:
-
-```bash
-optics init --name my_project --template contact
-```
-
-- **--name**: Specifies the project name (required).
-- **--path**: Directory where the project folder is created (default: current directory).
-- **--template**: (Optional) Copy a complete sample project (`contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`).
-
-With `--template`, the project is a ready-to-run copy of that sample. Without it, `optics init` scaffolds the subdirectory layout (`test_cases/`, `modules/`, `test_data/`) plus a commented starter `config.yaml` for you to fill in.
+Everything below comes from the bundled `youtube` sample, which drives the real YouTube Android app three ways at once: by on-screen text, by XPath, and by image matching. Create it with `optics quickstart` (pick the `youtube` starting point) or `optics init my_project --template youtube`.
 
 ## CSV Use Cases
 
@@ -210,7 +200,7 @@ A Selenium-based sample that automates Gmail sign-in and account creation. It in
 To check for syntactical errors in your CSV files and configuration, run a dry run:
 
 ```bash
-optics dry_run ./contact
+optics dry_run ./youtube
 ```
 
 `dry_run` takes a project folder (not a single test case). It simulates execution without interacting with the device — validating that every keyword exists and every `${element}` resolves — helping you catch issues early.
@@ -220,9 +210,9 @@ optics dry_run ./contact
 Once validated, execute your tests with:
 
 ```bash
-optics execute ./contact
+optics execute ./youtube
 ```
 
-- **./contact**: Path to your project directory. The runner discovers test cases, modules, and config from this folder.
+- **./youtube**: Path to your project directory. The runner discovers test cases, modules, and config from this folder.
 
 Output, including logs, will be saved in the `execution_output/` folder.

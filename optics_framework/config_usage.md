@@ -231,12 +231,6 @@ json_path: "./logs/test_logs.json"
 halt_duration: 0.1  # 100ms pause between actions
 ```
 
-### max_attempts
-- What it does: Number of retry attempts for failing actions.
-```bash
-max_attempts: 3  #Retry up to 3 times
-```
-
 ### project_path
 - What it does: Root directory for test project files.
 ```bash

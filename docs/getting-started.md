@@ -1,14 +1,63 @@
-# :material-speedometer: Quick Start Guide
+# Getting Started Guide
 
-This guide will walk you through creating automated tests using Optics Framework.
+This guide walks you through creating automated tests using Optics Framework — from a fresh install to your first executed test.
 
-## :material-rocket: Quick Start
+!!! abstract "A few terms first"
+    - **Engine** — an installable backend that does the work: an action *driver* (Appium, Selenium, Playwright), an OCR engine, or an LLM. Install engines with `optics setup`.
+    - **Element source** — where Optics looks for on-screen elements (the driver's page source, OCR text, or image matching), configured under `elements_sources` in `config.yaml`.
+    - **Locator** — the value that identifies one element: an XPath, a `text=…` string, a CSS selector, or an image filename.
+    - **Element** — a named locator you reference from a module as `${name}`, defined in `elements.csv`.
+
+!!! tip "In a hurry?"
+    Run **`optics quickstart`** — the [guided walkthrough](#optics-quickstart-the-guided-walkthrough) below documents every stage, defaults included. The rest of the page explains each piece and how to do it by hand.
+
+## `optics quickstart`: The Guided Walkthrough
+
+One command takes you from nothing to a runnable project:
+
+```bash
+optics quickstart
+```
+
+It walks through eight stages, in order:
+
+1. Prints the welcome banner and the golden path.
+2. Asks what you want to automate: `mobile` or `web`.
+3. Offers to pip-install the matching engines (Appium for mobile, Selenium + Playwright for web).
+4. Offers starting points: an empty project (recommended) or a packaged sample (`contact`, `youtube`, …). Picking a sample aimed at the other domain asks for confirmation first.
+5. Names the project folder and picks where it lives.
+6. Runs a short config Q&A scoped to your platform choice, then writes a commented, platform-correct `config.yaml`.
+7. Verifies the environment and the fresh project with `optics doctor`.
+8. Prints next steps tailored to your answers.
+
+Every question ships with a default, so pressing Enter throughout yields a runnable project:
+
+| Stage | What it asks | Default (just press Enter) |
+|---|---|---|
+| Target | `mobile` or `web`? | `mobile` |
+| Engines | Install them now? | yes |
+| Starting point | Empty project or a sample? | empty project (recommended) |
+| Project name | Folder name for the new project | `my-optics-project` |
+| Location | Where to create it | current directory |
+| Platform | Android / iOS, or Playwright / Selenium | Android (mobile), Playwright (web) |
+| Details | Device name, app id, server URL, browser, headless | Working examples: `emulator-5554`, `com.example.app`, `http://127.0.0.1:4723`, Chromium, headed |
+| Vision | Find elements by on-screen text (EasyOCR)? | no |
+| Log level | `DEBUG` to `ERROR` | `INFO` |
+
+The defaults are runnable placeholders, not magic: edit the generated `config.yaml` whenever you like, or redo the Q&A with `optics configure <folder>`. Samples ship their own curated `config.yaml`, and the wizard keeps it unless you explicitly agree to overwrite.
+
+!!! info "Prerequisites, the short version"
+    A standard Python 3.12+ virtualenv is all you need to start. Web targets need nothing more (the Playwright engine downloads its own browsers); mobile additionally needs a JDK (17+), Node.js + the Appium server, and the Android platform-tools — the full list lives in [Installation](prerequisites.md). You don't need to settle this up front: the `doctor` check in stage 7 reports each gap with the exact command that fixes it.
+
+The rest of this page explains **what each stage sets up**, so you can also drive every part yourself if you prefer full control.
+
+## Overview: Manual Setup
 
 ### Step 1: Create Python Virtual Environment
 
 ```bash
-mkdir ~/test-code
-cd ~/test-code
+mkdir test-code
+cd test-code
 python3 -m venv venv
 source venv/bin/activate
 pip install optics-framework
@@ -19,7 +68,7 @@ pip install optics-framework
 
 ### Step 2: Install the Engines You Need
 
-The core install has no drivers. Add the ones your test needs — either as pip extras or via `optics setup` (the names match the `config.yaml` source keys):
+The core install has no drivers. Add the ones your test needs — either as pip extras or via `optics setup` (the names match the `config.yaml` source keys). Not sure which ones you need? The [guided walkthrough](#optics-quickstart-the-guided-walkthrough) installs them for you based on your target platform:
 
 ```bash
 optics setup --install appium easyocr
@@ -29,15 +78,18 @@ optics setup --install appium easyocr
 !!! warning "Note"
     Intel-based Macs cannot download easyocr.
 
+!!! info "Mobile needs more than pip"
+    `optics setup` installs the Python engine, but Appium mobile automation also needs system tools it can't install for you — a **JDK (17+)**, **Node.js + the `appium` server**, and the **Android platform-tools** (`adb`). See [Installation](prerequisites.md), and run `optics doctor` any time to see exactly what's still missing (with the command to fix each item).
+
 ### Step 3: Create a New Test Project
 
 ```bash
-optics init --name my_test_project --template contact
+optics init my_test_project --template contact
 ```
 
-This copies the `contact` sample — a complete, runnable project — into `./my_test_project`. Omit `--template` to scaffold an empty project you fill in yourself. Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`.
+This copies the `contact` sample — a complete, runnable project — into `./my_test_project`. Omit `--template` to scaffold an empty project you fill in yourself (or run `optics quickstart` for the fully guided walkthrough: engines + project + config + doctor check). Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`.
 
-## :material-file-tree: Project Structure
+## Project Structure
 
 Your test project uses four main components that work together:
 
@@ -72,9 +124,9 @@ my_test_project/
 
 The API YAML format is different from element files: it defines collections, base URLs, endpoints, request/response, and optional `extract` rules. See the **Invoke Api** and **Add Api** sections in [Keyword Usage](usage/keyword_usage.md), and sample `api.yaml` files
 
-## :material-cog: Step 1: Configure Your Environment
+## Configuring `config.yaml`
 
-The `config.yaml` file tells the framework how to connect to your device and what tools to use for finding elements.
+The `config.yaml` file tells the framework how to connect to your device and what tools to use for finding elements. The quickest way to create it is `optics configure <project>` — a short Q&A writes a platform-correct file for you (or `optics configure <project> --edit` to hand-tune every field in a TUI). You can also edit it directly, as shown below.
 
 ### Driver Connection
 
@@ -98,7 +150,7 @@ driver_sources:
 - `udid`: Your device's unique identifier (find with `adb devices`)
 - `url`: Your Appium server address (usually localhost)
 
-## :material-camera: Step 2: Capture UI Element Screenshots
+## Capturing UI Element Screenshots
 
 Before defining elements in the CSV, you need to capture screenshots of the UI elements you want to interact with.
 
@@ -109,37 +161,38 @@ This folder stores PNG images of buttons, icons, text fields, and other UI eleme
 !!! tip "Best Practice"
     Organize `input_templates/` with subfolders for different screens and name images to match their Element_ID exactly.
 
-## :material-format-list-bulleted: Step 3: Define Your Elements
+## Defining Your Elements
 
 Elements are the UI components you'll interact with – buttons, text fields, tabs, etc.
 
 ### CSV Structure
 
 ```csv
-Element_Name,Element_ID_xpath,Element_ID,Element_ID_Text
+Element_Name,Element_ID
 ```
 
-### Column Explanations
+- **Element_Name**: the name you reference from modules as `${Element_Name}`.
+- **Element_ID**: how to locate it — an XPath, a `text=…` string, a CSS selector, or an image filename from `input_templates/`.
 
-- **Element_Name**: A descriptive name you'll use in modules (e.g., `login_button`)
-- **Element_ID_xpath**: The technical XPath or accessibility ID for finding the element
-- **Element_ID**: The PNG filename from `input_templates/` for visual matching
-- **Element_Text**: The visible text on the element (optional, for verification)
+**Fallbacks.** To give one element several locators (tried in order until one matches), add more columns whose names start with `Element_ID` — e.g. `Element_ID_xpath`, `Element_ID_text`, `Element_ID_image`. Only `Element_Name` and `Element_ID*` columns are read; any other column is ignored.
 
 ### Example `elements.csv`
 
 ```csv
-Element_Name,Element_ID_xpath,Element_ID,Element_Text
+Element_Name,Element_ID_xpath,Element_ID_image,Element_ID_text
 login_button,"//android.widget.Button[@resource-id=""com.app.login:id/btnLogin""]",button_login.png,Login
 ```
 
-### Special Element Types
+Here `login_button` is located by XPath first, then by matching `button_login.png`, then by the on-screen text `Login`.
+
+### Values as Data
+
+An element can also just hold a value your steps consume via `${...}` (e.g. text to type):
 
 ```csv
-Element_Name,Element_ID_xpath,Element_ID,Element_Text
-test_password,,,SecurePass123
-retry_count,,,3
-item_list,"[""Item1"",""Item2"",""Item3""]",,
+Element_Name,Element_ID
+test_password,SecurePass123
+retry_count,3
 ```
 
 ### Finding XPaths
@@ -155,7 +208,7 @@ Use Appium Inspector or your device's UI Automator to find element XPaths:
 !!! tip "Newlines and special characters in CSV"
     XPaths and other locator strings in CSV stay one line per row. To include a newline in a value (e.g. in `@content-desc`), use `\n`; for a tab use `\t`, and for a literal backslash use `\\`. Example: `//android.widget.ImageView[@content-desc="I\nIcici Bank Limited"]` in a cell is read as an XPath whose attribute value contains a real newline between `I` and `Icici Bank Limited`.
 
-## :material-puzzle: Step 4: Create Reusable Modules
+## Creating Reusable Modules
 
 Modules are sequences of actions that accomplish a specific task, such as building blocks.
 
@@ -188,7 +241,7 @@ Launch External App,Launch Other App,com.example.otherapp,,,,
 !!! note "Variable References"
     `${element_name}` references an element from `elements.csv`
 
-## :material-check-circle: Step 5: Build Test Cases
+## Building Test Cases
 
 Test cases combine modules into complete test scenarios.
 
@@ -230,7 +283,7 @@ Verify User Login,User Login
 
 Test cases define **what** to test, modules define **how** to do it. This separation lets you mix and match modules for different test scenarios.
 
-## :material-play: Running Your Tests
+## Running Your Tests
 
 ### Prerequisites
 
@@ -239,7 +292,9 @@ Test cases define **what** to test, modules define **how** to do it. This separa
 - Appium server running: `appium`
 - Android virtual device or physical device connected and verified: `adb devices`
 
-New to Appium or the Android SDK? Install them from their official docs — [Appium](https://appium.io/docs/en/latest/quickstart/) and the [Android platform tools](https://developer.android.com/tools/releases/platform-tools). The [Installation & Prerequisites](prerequisites.md) page lists what Optics itself needs.
+Run `optics doctor my_test_project` to confirm all of the above at once — it reports each engine, tool, and `config.yaml` check as ✅/⚠️/❌ with the command to fix anything missing.
+
+New to Appium or the Android SDK? Install them from their official docs — [Appium](https://appium.io/docs/en/latest/quickstart/) and the [Android platform tools](https://developer.android.com/tools/releases/platform-tools). The [Installation](prerequisites.md) page lists what Optics itself needs.
 
 ### Always Dry Run Test Cases Before Executing
 
@@ -269,7 +324,7 @@ optics execute my_test_project
 5. Executes test cases in order from `test_cases.csv`
 6. Generates a test report with results and logs
 
-## :material-star: Best Practices
+## Best Practices
 
 ### 1. Naming Conventions
 
@@ -330,7 +385,10 @@ my_test_project/
 - Check `input_templates/` images load correctly
 - Verify element names match exactly (case-sensitive)
 
-## :material-format-list-checks: Quick Start Checklist
+## Checklist
+
+!!! tip "Took the guided path?"
+    `optics quickstart` already scaffolds the project, writes `config.yaml`, and verifies your environment and tools via `optics doctor`. Start at *Defining Your Elements* below — the remaining checkboxes are about authoring your first test.
 
 - [ ] Configure `config.yaml` with your device details
 - [ ] Capture screenshots of UI elements
@@ -344,7 +402,7 @@ my_test_project/
 - [ ] Execute tests
 - [ ] Review test results and logs
 
-## :material-alert: Common Pitfalls to Avoid
+## Common Pitfalls to Avoid
 
 !!! failure "Avoid These Mistakes"
     - ❌ **Hardcoding values** - Use variables instead
@@ -358,7 +416,7 @@ my_test_project/
     - ❌ **Outdated screenshots** - Update images when UI changes
     - ❌ **Generic element names** - `button1.png` is less clear than `button_login.png`
 
-## :material-help-circle: Need Help?
+## Need Help?
 
 ### Common Issues
 

@@ -18,6 +18,7 @@ from optics_framework.common.ai_self_heal import (
     HealContext,
     HealKeywordSpec,
     HEAL_ACTION_SCHEMA,
+    HEAL_SYSTEM_PROMPT,
 )
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.step_curation import CURATION_SCHEMA
@@ -204,6 +205,37 @@ class TestHandlerActions:
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is False
         assert len(executor.calls) == 2
+
+    def test_prompt_lists_prior_heal_steps_with_outcomes(self):
+        """Each turn sees the heal's own earlier calls, so a FAIL isn't retried blind."""
+        prompts = []
+
+        class RecordingLLM(FakeLLM):
+            def generate_json(self, prompt, *args, **kwargs):
+                prompts.append(prompt)
+                return super().generate_json(prompt, *args, **kwargs)
+
+        llm = RecordingLLM([
+            {"action": "keyword", "keyword": "press_element", "params": ["WrongText"],
+             "completed": True, "reason": "try pressing"},
+            {"action": "keyword", "keyword": "scroll", "params": ["down"],
+             "completed": False, "reason": "reveal"},
+            {"action": "give_up", "reason": "stuck"},
+        ])
+        executor = FakeExecutor(fail_keywords={"press_element"})
+        AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=3).heal(_ctx(), _shots, _no_ps)
+
+        assert "SELF-HEAL STEPS SO FAR" not in prompts[0]
+        assert "1. press_element WrongText -> FAIL" in prompts[1]
+        assert "1. press_element WrongText -> FAIL" in prompts[2]
+        assert "2. scroll down -> PASS" in prompts[2]
+
+    def test_system_prompt_names_only_dispatchable_gestures(self):
+        """The prompt must not steer the model to a keyword the heal allowlist lacks."""
+        assert "`swipe`" not in HEAL_SYSTEM_PROMPT
+        assert "swipe instead of scroll" not in HEAL_SYSTEM_PROMPT.lower()
+        for name in ("scroll", "swipe_by_percentage", "press_keycode", "press_by_percentage"):
+            assert f"`{name}`" in HEAL_SYSTEM_PROMPT
 
     def test_intermediate_press_then_final_press(self):
         """LLM presses a menu (completed=False), then the final target (completed=True)."""
@@ -474,16 +506,16 @@ class TestActionKeywordWiring:
         assert ak.ai_self_heal_enabled is False
         assert ak._llm is None
         shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        assert ak._ai_self_heal("X", "press_element", (), {}, shot) is False
+        assert ak._ai_self_heal("X", "press_element", (), shot) is False
 
     def test_no_screenshot_inert(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        assert ak._ai_self_heal("X", "press_element", (), {}, None) is False
+        assert ak._ai_self_heal("X", "press_element", (), None) is False
 
     def test_llm_without_instances_inert(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[]))
         shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        assert ak._ai_self_heal("X", "press_element", (), {}, shot) is False
+        assert ak._ai_self_heal("X", "press_element", (), shot) is False
 
     def test_heal_catalog_returns_specs(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
@@ -511,21 +543,21 @@ class TestActionKeywordWiring:
         ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
         ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
 
-        # scroll is non-self-healing, so `_heal_execute` calls the real method; let it
+        # scroll is non-locating, so `_heal_execute` calls the real method; let it
         # run against the mocked `ak.driver` and assert the call reached the driver
         # with the parsed params (`_heal_dispatch` binds the real method at __init__,
         # so reassigning `ak.scroll` here would never be consulted — see press_element
-        # below for the correct way to intercept a self-healing-decorated method).
-        # press_element goes through `with_self_healing` decorator, which needs a
-        # working strategy_manager.locate; mock it to return a located result.
+        # below for the correct way to intercept a locating keyword).
+        # press_element runs `_locate_and_act`, which needs a working
+        # strategy_manager.locate; mock it to return a located result.
         mock_result = MagicMock()
         mock_result.is_coordinates = False
         mock_result.value = MagicMock()
         mock_result.strategy = MagicMock()
         ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
 
-        assert ak._ai_self_heal("Login", "press_element", (), {}, shot) is True
-        ak.driver.scroll.assert_called_once_with("down", 1000, None)
+        assert ak._ai_self_heal("Login", "press_element", (), shot) is True
+        ak.driver.scroll.assert_called_once_with("down", 1000, event_name=None)
         # Healed keyword is recorded as a breadcrumb (may appear more than once —
         # the inner press_element records one, and _log_heal_outcome records another).
         steps = list(ak._recent_steps)
@@ -626,7 +658,7 @@ class TestSuggestedStepsWiring:
         mock_result.strategy = MagicMock()
         ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
 
-        assert ak._ai_self_heal("Login", "press_element", (), {}, shot) is True
+        assert ak._ai_self_heal("Login", "press_element", (), shot) is True
         info = ak._pop_last_heal_info()
         assert info is not None
         assert info["suggested_steps"] == [{"keyword": "press_element", "params": ["Login"]}]

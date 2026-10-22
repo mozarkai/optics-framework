@@ -83,5 +83,5 @@ api:
             extract:
               today: time_zone.date
 
-log_level: DEBUG
+log_level: INFO
 file_log: true

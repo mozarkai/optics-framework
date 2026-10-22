@@ -20,27 +20,38 @@ built via ``__new__`` and wired with the minimal collaborators (real ``ElementDa
 a real ``NullResultPrinter``, and a tiny fake event manager) so the assertions stay
 behaviour-focused rather than call-order-focused.
 """
+import logging
 import time
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.events import EventStatus
 from optics_framework.common.logging_config import LogCaptureBuffer
 from optics_framework.common.models import (
     ElementData,
     KeywordNode,
+    ModuleData,
     ModuleNode,
     State,
 )
+# Aliased on import: pytest would otherwise try to collect the ``Test``-prefixed
+# class and emit PytestCollectionWarning.
+from optics_framework.common.models import TestCaseNode as _TestCaseNode
 from optics_framework.common.runner.printers import (
     NullResultPrinter,
     ModuleResult,
     KeywordResult,
+    TerminalWidthProvider,
+    TreeResultPrinter,
 )
 # Aliased on import: pytest would otherwise try to collect these ``Test``-prefixed
 # classes and emit PytestCollectionWarning.
 from optics_framework.common.runner.printers import TestCaseResult as _TestCaseResult
+from optics_framework.common.runner import test_runnner as _test_runnner
 from optics_framework.common.runner.test_runnner import TestRunner as _TestRunner
 
 
@@ -61,11 +72,12 @@ class _FakeEventManager:
         return None
 
 
-def _make_runner(elements=None, keyword_map=None):
+def _make_runner(elements=None, keyword_map=None, modules=None):
     """A ``TestRunner`` with just the collaborators the fallback path touches."""
     runner = _TestRunner.__new__(_TestRunner)
     runner.elements = elements if elements is not None else ElementData()
     runner.keyword_map = keyword_map or {}
+    runner.modules = modules if modules is not None else ModuleData()
     runner.session_id = "sess-1"
     runner.result_printer = NullResultPrinter()
     runner.event_manager = _FakeEventManager()
@@ -268,11 +280,16 @@ class TestFallbackSuccess:
         elements = ElementData()
         elements.add_element("n", "3")
         runner = _make_runner(elements=elements)
-        method = _Recorder()
-        # "L1" is positional; "repeat=${n}" becomes kwarg repeat=3 after resolution
+        calls = []
+
+        def method(element, repeat=None):  # a realistic keyword signature
+            calls.append(((element,), {"repeat": repeat}))
+
+        # "L1" is positional; "repeat=${n}" is a real kwarg (method HAS `repeat`)
+        # so it resolves to repeat="3"; a `text=`-style locator would stay positional.
         result = await _run_fallback(runner, method, [["L1"], ["repeat=${n}"]])
         assert result is True
-        assert method.calls == [(("L1",), {"repeat": "3"})]
+        assert calls == [(("L1",), {"repeat": "3"})]
 
 
 # --------------------------------------------------------------------------- #
@@ -413,3 +430,490 @@ class TestExecuteKeywordNameResolution:
         assert ok is False
         assert called == []                 # never dispatched — element unresolved
         assert kw_result.status == "FAIL"
+
+
+# --------------------------------------------------------------------------- #
+# Module-step resolution — a test-case step must name a known module or a      #
+# registered keyword, in dry-run AND batch mode                                #
+# --------------------------------------------------------------------------- #
+
+class TestModuleStepResolution:
+    @staticmethod
+    def _wire_module(runner, module_name, keywords=None):
+        module_result = ModuleResult(
+            name=module_name, elapsed="0.00s", status="NOT_RUN",
+            keywords=keywords or [],
+        )
+        tc_result = _TestCaseResult(
+            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
+            modules=[module_result],
+        )
+        runner.result_printer.test_state = {"tc": tc_result}
+        return tc_result, module_result
+
+    def test_step_resolves_via_module_definition_or_keyword(self):
+        modules = ModuleData()
+        modules.add_module_definition("Use Var", [("Validate Element", [])])
+        runner = _make_runner(keyword_map={"launch_app": lambda: None}, modules=modules)
+        assert runner._step_resolves("Use Var") is True
+        assert runner._step_resolves("Launch App") is True
+        assert runner._step_resolves("Bogus Keyword Of Doom hello") is False
+
+    async def test_unknown_step_fails_dry_run(self):
+        runner = _make_runner()
+        step = "Bogus Keyword Of Doom hello"
+        tc_result, module_result = self._wire_module(runner, step)
+        ok = await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
+        assert ok is False
+        assert module_result.status == "FAIL"
+
+    async def test_unknown_step_fails_batch(self):
+        runner = _make_runner(keyword_map={"known": lambda: None})
+        step = "Bogus Keyword Of Doom hello"
+        tc_result, module_result = self._wire_module(runner, step)
+        ok = await runner._process_module(_mod_node(name=step), tc_result, {})
+        assert ok is False
+        assert module_result.status == "FAIL"
+
+    async def test_unknown_step_fail_event_carries_reason(self):
+        runner = _make_runner()
+        step = "Bogus Keyword Of Doom hello"
+        tc_result, _ = self._wire_module(runner, step)
+        await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
+        fails = [e for e in runner.event_manager.events if e.status == EventStatus.FAIL]
+        assert any(
+            e.entity_type == "module"
+            and e.message == f"Unknown keyword or module: '{step}'"
+            for e in fails
+        )
+
+    async def test_known_module_still_passes_dry_run(self):
+        modules = ModuleData()
+        modules.add_module_definition("Launch App", [("Launch App", [])])
+        runner = _make_runner(keyword_map={"launch_app": lambda: None}, modules=modules)
+        keyword_node = _kw_node(name="Launch App")
+        kw_result = _kw_result(node_id=keyword_node.id, name=keyword_node.name)
+        tc_result, module_result = self._wire_module(
+            runner, "Launch App", keywords=[kw_result]
+        )
+        module_node = _mod_node(name="Launch App")
+        module_node.add_keyword(keyword_node)
+        ok = await runner._dry_run_module(module_node, tc_result, "tc-node-1")
+        assert ok is True
+        assert module_result.status == "PASS"
+
+
+# --------------------------------------------------------------------------- #
+# Dry-run param resolution — an unresolved ``${var}`` is a per-keyword FAIL,   #
+# not an aborted run                                                           #
+# --------------------------------------------------------------------------- #
+
+class TestDryRunUnresolvedParam:
+    async def test_missing_variable_marks_fail_instead_of_raising(self):
+        modules = ModuleData()
+        modules.add_module_definition("Use Var", [("Validate Element", ["${NoSuchVar}"])])
+        runner = _make_runner(modules=modules)
+        kw_result = _kw_result(node_id="kw-1", name="Validate Element")
+        module_result = ModuleResult(
+            name="Use Var", elapsed="0.00s", status="NOT_RUN", keywords=[kw_result],
+        )
+        tc_result = _TestCaseResult(
+            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
+            modules=[module_result],
+        )
+        runner.result_printer.test_state = {"tc": tc_result}
+        module_node = _mod_node(name="Use Var")
+        module_node.add_keyword(_kw_node(name="Validate Element", params=["${NoSuchVar}"]))
+
+        ok = await runner._dry_run_module(module_node, tc_result, "tc-node-1")
+
+        assert ok is False
+        assert kw_result.status == "FAIL"
+        assert module_result.status == "FAIL"
+
+    async def test_missing_variable_fail_event_reports_element(self):
+        modules = ModuleData()
+        modules.add_module_definition("Use Var", [("Validate Element", ["${NoSuchVar}"])])
+        runner = _make_runner(modules=modules)
+        kw_result = _kw_result(node_id="kw-1", name="Validate Element")
+        module_result = ModuleResult(
+            name="Use Var", elapsed="0.00s", status="NOT_RUN", keywords=[kw_result],
+        )
+        tc_result = _TestCaseResult(
+            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
+            modules=[module_result],
+        )
+        runner.result_printer.test_state = {"tc": tc_result}
+        module_node = _mod_node(name="Use Var")
+        module_node.add_keyword(_kw_node(name="Validate Element", params=["${NoSuchVar}"]))
+
+        await runner._dry_run_module(module_node, tc_result, "tc-node-1")
+
+        fails = [e for e in runner.event_manager.events if e.status == EventStatus.FAIL]
+        assert any(
+            e.entity_type == "keyword" and e.message == "Element not found: NoSuchVar"
+            for e in fails
+        )
+
+    async def test_unknown_keyword_reason_includes_did_you_mean(self):
+        modules = ModuleData()
+        modules.add_module_definition("Use KW", [("Launhc App", [])])  # typo
+        runner = _make_runner(
+            keyword_map={"launch_app": lambda: None}, modules=modules)
+        kw_result = _kw_result(node_id="kw-1", name="Launhc App")
+        module_result = ModuleResult(
+            name="Use KW", elapsed="0.00s", status="NOT_RUN", keywords=[kw_result],
+        )
+        tc_result = _TestCaseResult(
+            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
+            modules=[module_result],
+        )
+        runner.result_printer.test_state = {"tc": tc_result}
+        module_node = _mod_node(name="Use KW")
+        module_node.add_keyword(_kw_node(name="Launhc App"))
+
+        await runner._dry_run_module(module_node, tc_result, "tc-node-1")
+
+        fails = [e for e in runner.event_manager.events
+                 if e.status == EventStatus.FAIL and e.entity_type == "keyword"]
+        assert fails
+        assert "Keyword not found: Launhc App" in fails[0].message
+        assert "Did you mean 'Launch App'" in fails[0].message
+        assert runner._last_failure_reason == fails[0].message
+
+    def test_init_state_keeps_unresolved_param_visible(self):
+        """``_initialize_test_state`` must not raise on unresolved ``${var}``;
+        the raw reference stays visible in the resolved display name."""
+        modules = ModuleData()
+        modules.add_module_definition("Use Var", [("Validate Element", ["${NoSuchVar}"])])
+        runner = _make_runner(modules=modules)
+        module_node = _mod_node(name="Use Var")
+        module_node.add_keyword(_kw_node(name="Validate Element", params=["${NoSuchVar}"]))
+        tc_root = _TestCaseNode(name="tc")
+        tc_root.add_module(module_node)
+        runner.test_cases = tc_root
+        runner._initialize_test_state()
+        (tc_result,) = runner.result_printer.test_state.values()
+        assert tc_result.modules[0].keywords[0].resolved_name == (
+            "Validate Element (${NoSuchVar})"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def internal_records():
+    """Capture ``optics.internal`` records despite ``propagate = False``."""
+    from optics_framework.common.logging_config import internal_logger
+
+    captured = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record):
+            captured.append(record)
+
+    handler = _ListHandler(level=logging.DEBUG)
+    internal_logger.addHandler(handler)
+    previous_level = internal_logger.level
+    internal_logger.setLevel(logging.DEBUG)
+    yield captured
+    internal_logger.setLevel(previous_level)
+    internal_logger.removeHandler(handler)
+
+
+def _runner_with_session(session):
+    runner = _make_runner()
+    runner.session = session
+    return runner
+
+
+class TestEndOfRunDriverProbe:
+    @pytest.mark.parametrize(
+        "driver, expected",
+        [
+            (None, False),                                    # no driver at all
+            (SimpleNamespace(page=None), False),              # Playwright, terminated
+            (SimpleNamespace(page=object()), True),           # Playwright, live
+            (SimpleNamespace(driver=None), False),            # Appium/Selenium, terminated
+            (SimpleNamespace(driver=object()), True),         # Appium/Selenium, live
+            (SimpleNamespace(page=None, driver=object()), False),
+            (SimpleNamespace(), True),                        # unknown backend: fail open
+        ],
+    )
+    def test_probe_reflects_driver_handle(self, driver, expected):
+        runner = _runner_with_session(SimpleNamespace(driver=driver))
+        assert runner._end_of_run_driver_open() is expected
+
+    @pytest.mark.parametrize(
+        "handle_value, expected",
+        [(None, False), (object(), True)],
+    )
+    def test_probe_reads_handle_through_fallback_wrapper(self, handle_value, expected):
+        """``session.driver`` is an ``InstanceFallback``; its ``__getattr__``
+        hides real attribute values behind generated callables, so liveness
+        must be read off ``active_instance`` (QA finding 1)."""
+        driver = InstanceFallback([SimpleNamespace(page=handle_value)])
+        runner = _runner_with_session(SimpleNamespace(driver=driver))
+        assert runner._end_of_run_driver_open() is expected
+
+
+class TestEndOfRunArtifacts:
+    def test_torn_down_session_skips_capture_silently(
+        self, monkeypatch, internal_records
+    ):
+        """The shipped playwright template's teardown closes the page before
+        capture runs — the runner must skip with no console-facing WARNING or
+        traceback panel at all, only an internal debug log (mozark QA issue 1)."""
+        runner = _runner_with_session(
+            SimpleNamespace(
+                driver=InstanceFallback([SimpleNamespace(page=None)]),
+                config=SimpleNamespace(execution_output_path="/tmp/out"),
+                optics=MagicMock(),
+            )
+        )
+        strategy_manager_calls = []
+        monkeypatch.setattr(
+            _test_runnner, "StrategyManager",
+            lambda *a, **k: strategy_manager_calls.append(a),
+        )
+
+        runner._capture_end_of_run_artifacts()
+
+        assert strategy_manager_calls == []      # engine layer never invoked
+        warnings_ = [r for r in internal_records if r.levelno >= logging.WARNING]
+        assert warnings_ == []
+        debugs = [r for r in internal_records if r.levelno == logging.DEBUG]
+        assert any("skipped" in r.getMessage() for r in debugs)
+
+    def test_open_session_captures_screenshot_pagesource_and_detection(self, monkeypatch):
+        runner = _runner_with_session(
+            SimpleNamespace(
+                driver=SimpleNamespace(page=object()),
+                config=SimpleNamespace(execution_output_path="/tmp/out"),
+                optics=MagicMock(),
+                error_definitions=None,
+            )
+        )
+        calls = []
+        monkeypatch.setattr(_test_runnner, "StrategyManager", MagicMock())
+        monkeypatch.setattr(
+            _TestRunner, "_save_end_of_run_screenshot",
+            lambda self, sm, out: calls.append("screenshot"),
+        )
+        monkeypatch.setattr(
+            _TestRunner, "_save_end_of_run_pagesource",
+            lambda self, sm, out: (calls.append("pagesource"), ("<html></html>", "ts"))[1],
+        )
+        monkeypatch.setattr(
+            _TestRunner, "_run_end_of_run_detection",
+            lambda self, src, ts, out: calls.append("detection"),
+        )
+
+        runner._capture_end_of_run_artifacts()
+
+        assert calls == ["screenshot", "pagesource", "detection"]
+
+    def test_capture_failure_while_alive_stays_a_single_line(
+        self, monkeypatch, internal_records
+    ):
+        runner = _runner_with_session(
+            SimpleNamespace(
+                driver=SimpleNamespace(page=object()),
+                config=SimpleNamespace(execution_output_path="/tmp/out"),
+                optics=MagicMock(),
+            )
+        )
+        monkeypatch.setattr(
+            _test_runnner, "StrategyManager",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+
+        runner._capture_end_of_run_artifacts()
+
+        warnings_ = [r for r in internal_records if r.levelno == logging.WARNING]
+        assert len(warnings_) == 1
+        assert warnings_[0].getMessage() == "End-of-run artifact capture failed: boom"
+        assert warnings_[0].exc_info is None
+
+
+
+class TestFailureReasonRecording:
+    @staticmethod
+    def _wire_module(runner, module_name, keywords=None):
+        module_result = ModuleResult(
+            name=module_name, elapsed="0.00s", status="NOT_RUN",
+            keywords=keywords or [],
+        )
+        tc_result = _TestCaseResult(
+            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
+            modules=[module_result],
+        )
+        runner.result_printer.test_state = {"tc": tc_result}
+        return tc_result, module_result
+
+    async def test_fatal_keyword_exception_records_reason_on_result(self):
+        runner = _make_runner()
+        method = _Recorder(always_raise=ValueError("kaboom"))
+        kw_result = _kw_result()
+        await runner._try_execute_with_fallback(
+            method, [["a"]], _kw_node(), _mod_node(),
+            kw_result, time.time(), _tc_result(), LogCaptureBuffer(),
+        )
+        assert kw_result.status == "FAIL"
+        assert kw_result.reason == "Keyword 'Some Keyword' failed: kaboom"
+
+    async def test_unknown_module_records_reason_in_batch_mode(self):
+        runner = _make_runner(keyword_map={"known": lambda: None})
+        step = "Bogus Keyword Of Doom hello"
+        tc_result, module_result = self._wire_module(runner, step)
+        await runner._process_module(_mod_node(name=step), tc_result, {})
+        assert module_result.status == "FAIL"
+        assert module_result.reason == f"Unknown keyword or module: '{step}'"
+
+    async def test_unknown_module_records_reason_in_dry_run(self):
+        runner = _make_runner()
+        step = "Bogus Keyword Of Doom hello"
+        tc_result, module_result = self._wire_module(runner, step)
+        await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
+        assert module_result.status == "FAIL"
+        assert module_result.reason == f"Unknown keyword or module: '{step}'"
+
+    async def test_dry_run_keyword_failure_records_reason_on_result(self):
+        modules = ModuleData()
+        modules.add_module_definition("Use KW", [("Launhc App", [])])
+        runner = _make_runner(keyword_map={"launch_app": lambda: None}, modules=modules)
+        kw_result = _kw_result(node_id="kw-1", name="Launhc App")
+        tc_result, module_result = self._wire_module(
+            runner, "Use KW", keywords=[kw_result]
+        )
+        module_node = _mod_node(name="Use KW")
+        module_node.add_keyword(_kw_node(name="Launhc App"))
+        await runner._dry_run_module(module_node, tc_result, "tc-node-1")
+        assert kw_result.status == "FAIL"
+        assert "Keyword not found: Launhc App" in kw_result.reason
+
+
+class TestUnknownModuleSuggestion:
+    """QA finding 3: unknown steps get a single difflib-based hint."""
+
+    async def test_batch_reason_appends_closest_keyword_match(self):
+        runner = _make_runner(keyword_map={"launch_app": lambda: None})
+        tc_result, module_result = TestFailureReasonRecording._wire_module(
+            runner, "Launch Ap"
+        )
+        await runner._process_module(_mod_node(name="Launch Ap"), tc_result, {})
+        assert module_result.reason == (
+            "Unknown keyword or module: 'Launch Ap'."
+            " Did you mean 'Launch App'? (run `optics list` to see all keywords)"
+        )
+
+    async def test_no_match_appends_nothing(self):
+        runner = _make_runner(keyword_map={"completely_different": lambda: None})
+        step = "Bogus Keyword Of Doom hello"
+        tc_result, module_result = TestFailureReasonRecording._wire_module(runner, step)
+        await runner._process_module(_mod_node(name=step), tc_result, {})
+        assert module_result.reason == f"Unknown keyword or module: '{step}'"
+
+
+class TestFailureDetailsSection:
+    @staticmethod
+    def _printer():
+        return TreeResultPrinter(TerminalWidthProvider())
+
+    @staticmethod
+    def _failed_state():
+        keyword = KeywordResult(
+            id="k1", name="Press Element", resolved_name="Press Element (btn)",
+            elapsed="0.10s", status="FAIL",
+            reason="Keyword 'Press Element' failed: boom",
+        )
+        module = ModuleResult(
+            name="Open Example Pag", elapsed="0.10s", status="FAIL",
+            reason="Unknown keyword or module: 'Open Example Pag'",
+        )
+        test_case = _TestCaseResult(
+            id="t1", name="TC Broken", elapsed="0.20s", status="FAIL",
+            modules=[module],
+        )
+        return keyword, test_case
+
+    def test_lists_failed_modules_and_keywords_with_reasons(self):
+        printer = self._printer()
+        keyword, test_case = self._failed_state()
+        test_case.modules[0].keywords = [keyword]
+        printer.test_state = {"TC Broken": test_case}
+        assert printer._failure_detail_lines() == [
+            "TC Broken → step 'Open Example Pag'"
+            " — Unknown keyword or module: 'Open Example Pag'",
+            "TC Broken → step 'Press Element (btn)'"
+            " — Keyword 'Press Element' failed: boom",
+        ]
+
+    def test_not_run_steps_without_reason_are_not_listed(self):
+        printer = self._printer()
+        _, test_case = self._failed_state()
+        not_run = KeywordResult(
+            id="k2", name="Close Browser", resolved_name="Close Browser",
+            elapsed="0.00s", status="NOT_RUN", reason="",
+        )
+        test_case.modules[0].keywords = [not_run]
+        printer.test_state = {"TC Broken": test_case}
+        assert printer._failure_detail_lines() == [
+            "TC Broken → step 'Open Example Pag'"
+            " — Unknown keyword or module: 'Open Example Pag'",
+        ]
+
+    def test_panel_only_rendered_when_failures_exist(self):
+        passing = ModuleResult(
+            name="Launch App", elapsed="0.10s", status="PASS",
+            keywords=[KeywordResult(
+                id="k1", name="Launch App", resolved_name="Launch App",
+                elapsed="0.10s", status="PASS", reason="",
+            )],
+        )
+        passed_tc = _TestCaseResult(
+            id="t1", name="TC OK", elapsed="0.10s", status="PASS",
+            modules=[passing],
+        )
+
+        clean_printer = self._printer()
+        clean_printer.test_state = {"TC OK": passed_tc}
+        assert all(
+            getattr(r, "title", None) != "Failure details"
+            for r in clean_printer._render_tree().renderables
+        )
+        assert clean_printer._failure_detail_lines() == []
+
+        keyword, failed_tc = self._failed_state()
+        failed_tc.modules[0].keywords = [keyword]
+        failing_printer = self._printer()
+        failing_printer.test_state = {"TC Broken": failed_tc}
+        group = failing_printer._render_tree()
+        titles = [getattr(r, "title", None) for r in group.renderables]
+        assert "Failure details" in titles
+
+
+# --------------------------------------------------------------------------- #
+# Signature-aware param split — a 'text='/'css=' locator is the positional      #
+# element, never a keyword argument (regression: playwright sample TypeError)   #
+# --------------------------------------------------------------------------- #
+
+class TestSignatureAwareParamSplit:
+    @staticmethod
+    def _validate_like(element, timeout="10", rule="all", event_name=None):
+        pass
+
+    def test_equals_locator_dispatched_positionally(self):
+        runner = _make_runner()
+        pos, kw = runner._resolve_candidate_params(
+            self._validate_like, ("text=Example Domain",))
+        assert pos == ["text=Example Domain"]
+        assert kw == {}
+
+    def test_genuine_keyword_arg_still_routed(self):
+        runner = _make_runner()
+        pos, kw = runner._resolve_candidate_params(
+            self._validate_like, ("text=OK", "event_name=tap"))
+        assert pos == ["text=OK"]
+        assert kw == {"event_name": "tap"}

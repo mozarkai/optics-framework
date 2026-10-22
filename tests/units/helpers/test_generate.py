@@ -16,6 +16,7 @@ explicit drift guard.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -116,6 +117,18 @@ def yaml_project(tmp_path: Path) -> Path:
     _write(tmp_path, "test_cases.yaml", YAML_TEST_CASES)
     _write(tmp_path, "modules.yaml", YAML_MODULES)
     _write(tmp_path, "elements.yaml", YAML_ELEMENTS)
+    _write(tmp_path, "config.yaml", CONFIG_YAML)
+    return tmp_path
+
+
+@pytest.fixture
+def nested_csv_project(tmp_path: Path) -> Path:
+    """The CSV project in the subfolder layout ``optics init`` scaffolds."""
+    for sub in ("test_cases", "modules", "test_data"):
+        (tmp_path / sub).mkdir()
+    _write(tmp_path / "test_cases", "test_cases.csv", CSV_TEST_CASES)
+    _write(tmp_path / "modules", "modules.csv", CSV_MODULES)
+    _write(tmp_path / "test_data", "elements.csv", CSV_ELEMENTS)
     _write(tmp_path, "config.yaml", CONFIG_YAML)
     return tmp_path
 
@@ -263,21 +276,51 @@ class TestResolveParams:
     )
     def test_element_reference(self, framework, expected):
         out = PytestGenerator()._resolve_params(
-            ["${login_button}"], {"login_button": "loginBtn"}, framework
+            ["${login_button}"], {"login_button": "loginBtn"}, framework, "press_element"
         )
         assert out == [expected]
 
     def test_missing_element_raises(self):
         with pytest.raises(ValueError, match="Element 'ghost' not found"):
-            PytestGenerator()._resolve_params(["${ghost}"], {}, "pytest")
+            PytestGenerator()._resolve_params(["${ghost}"], {}, "pytest", "press_element")
 
     @pytest.mark.parametrize("framework", ["pytest", "robot"])
-    def test_keyword_argument_passthrough(self, framework):
-        assert PytestGenerator()._resolve_params(["index=2"], {}, framework) == ["index=2"]
+    @pytest.mark.parametrize("param", ["index=2", 'index="2"', "index='2'"])
+    def test_keyword_argument_value_is_the_bare_string(self, framework, param):
+        expected = ["index='2'"] if framework == "pytest" else ["index=2"]
+        assert PytestGenerator()._resolve_params([param], {}, framework, "press_element") == expected
+
+    @pytest.mark.parametrize("locator", ["css=#login", "text=Login", "id=submit"])
+    def test_locator_strategy_prefix_is_not_a_kwarg(self, locator):
+        gen = PytestGenerator()
+        assert gen._resolve_params([locator], {}, "pytest", "press_element") == [repr(locator)]
+        assert gen._resolve_params([locator], {}, "robot", "press_element") == [locator]
+
+    def test_only_trailing_name_value_tokens_are_kwargs(self):
+        params = ["text=Email", "hello", "event_name=typed"]
+        gen = PytestGenerator()
+        assert gen._resolve_params(params, {}, "pytest", "enter_text") == [
+            "'text=Email'", "'hello'", "event_name='typed'"
+        ]
+        # Robot would read text=Email as the named `text` argument; escape it.
+        assert gen._resolve_params(params, {}, "robot", "enter_text") == [
+            "text\\=Email", "hello", "event_name=typed"
+        ]
+
+    def test_unknown_method_keeps_name_value_as_kwarg(self):
+        resolved = PytestGenerator()._resolve_params(["mode=fast"], {}, "pytest", "custom_widget_tap")
+        assert resolved == ["mode='fast'"]
+
+    def test_xpath_with_equals_is_a_literal_not_a_kwarg(self):
+        resolved = PytestGenerator()._resolve_params(
+            ["//input[@id='user']"], {}, "pytest", "press_element"
+        )
+        assert resolved == ['"//input[@id=\'user\']"']
 
     def test_literal_is_quoted_for_pytest_only(self):
-        assert PytestGenerator()._resolve_params(["hello"], {}, "pytest") == ["'hello'"]
-        assert PytestGenerator()._resolve_params(["hello"], {}, "robot") == ["hello"]
+        gen = PytestGenerator()
+        assert gen._resolve_params(["hello"], {}, "pytest", "enter_text") == ["'hello'"]
+        assert gen._resolve_params(["hello"], {}, "robot", "enter_text") == ["hello"]
 
 
 # --------------------------------------------------------------------------- #
@@ -310,7 +353,17 @@ class TestPytestGenerator:
 
     def test_elements_dict_rendered(self, code):
         assert "ELEMENTS = {" in code
-        assert "'username_field': '//input[@id='user']'," in code
+        assert """'username_field': "//input[@id='user']",""" in code
+
+    def test_generated_code_is_valid_python(self, code):
+        import ast
+
+        ast.parse(code)
+
+    def test_config_uses_the_keys_optics_setup_reads(self, code):
+        assert "'driver_sources':" in code
+        assert "'elements_sources':" in code
+        assert "driver_config" not in code
 
     def test_module_function_and_calls(self, code):
         assert "def login_module(optics: Optics) -> None:" in code
@@ -321,6 +374,42 @@ class TestPytestGenerator:
     def test_test_function_invokes_modules(self, code):
         assert "def test_login_test(optics):" in code
         assert "    login_module(optics)" in code
+
+    def test_generated_calls_bind_to_the_sdk_signatures(self):
+        import ast
+        import inspect
+
+        from optics_framework.optics import Optics
+
+        elements = {"btn": "//button[@id='x']"}
+        modules = {
+            "M": [
+                ("Press Element", ["css=#login"]),
+                ("Press Element", ["${btn}", 'index="2"', "event_name=tap"]),
+                ("Enter Text", ["text=Email", "ava@birch.shop"]),
+            ]
+        }
+        code = PytestGenerator().generate({"T": ["M"]}, modules, elements, {})
+
+        def value(node):
+            if isinstance(node, ast.Subscript) and ast.unparse(node.value) == "ELEMENTS":
+                return elements[ast.literal_eval(node.slice)]
+            return ast.literal_eval(node)
+
+        calls = []
+        for node in ast.walk(ast.parse(code)):
+            if isinstance(node, ast.Call) and ast.unparse(node.func).startswith("optics.") \
+                    and node.func.attr in {"press_element", "enter_text"}:
+                args = [value(a) for a in node.args]
+                kwargs = {k.arg: value(k.value) for k in node.keywords}
+                inspect.signature(getattr(Optics, node.func.attr)).bind(None, *args, **kwargs)
+                calls.append((node.func.attr, args, kwargs))
+
+        assert calls == [
+            ("press_element", ["css=#login"], {}),
+            ("press_element", ["//button[@id='x']"], {"index": "2", "event_name": "tap"}),
+            ("enter_text", ["text=Email", "ava@birch.shop"], {}),
+        ]
 
     def test_unknown_keyword_falls_back_to_snake_case(self):
         code = PytestGenerator().generate(
@@ -355,12 +444,12 @@ class TestRobotGenerator:
         transformed = RobotGenerator()._transform_config_structure(
             {"driver_sources": ["d"], "elements_sources": ["e"], "text_detection": ["t"]}
         )
-        assert transformed["driver_config"] == ["d"]
-        assert transformed["element_source_config"] == ["e"]
-        assert transformed["text_config"] == ["t"]
+        assert transformed["driver_sources"] == ["d"]
+        assert transformed["elements_sources"] == ["e"]
+        assert transformed["text_detection"] == ["t"]
         assert transformed["project_path"] == "${EXECDIR}"
         # Empty optional sections are omitted, not rendered as [].
-        assert "image_config" not in transformed
+        assert "image_detection" not in transformed
 
     def test_escape_json_for_robot(self):
         escaped = RobotGenerator()._escape_json_for_robot('{"a":"b\\c"}')
@@ -410,6 +499,21 @@ class TestFindFiles:
         assert mod.endswith(f"modules.{ext}")
         assert el.endswith(f"elements.{ext}")
         assert cfg.endswith("config.yaml")
+
+    def test_find_all_files_discovers_subfolder_layout(self, nested_csv_project):
+        """Files split across ``test_cases/``, ``modules/`` and ``test_data/`` are found."""
+        found = find_all_files(str(nested_csv_project))
+        assert found["test_cases"] == [str(nested_csv_project / "test_cases" / "test_cases.csv")]
+        assert found["modules"] == [str(nested_csv_project / "modules" / "modules.csv")]
+        assert found["elements"] == [str(nested_csv_project / "test_data" / "elements.csv")]
+        assert found["config"] == [str(nested_csv_project / "config.yaml")]
+
+    def test_find_files_discovers_subfolder_layout(self, nested_csv_project):
+        tc, mod, el, cfg = find_files(str(nested_csv_project))
+        assert tc is not None and tc.endswith("test_cases.csv")
+        assert mod is not None and mod.endswith("modules.csv")
+        assert el is not None and el.endswith("elements.csv")
+        assert cfg is not None and cfg.endswith("config.yaml")
 
 
 # --------------------------------------------------------------------------- #
@@ -475,9 +579,20 @@ class TestGenerateTestFile:
         code = _generated_output(tmp_path, "pytest")
         assert "def test_login_test(optics):" in code
 
+    def test_pipeline_from_scaffolded_subfolder_layout(self, nested_csv_project):
+        """`optics generate` works on a project laid out the way `optics init` scaffolds it."""
+        generate_test_file(str(nested_csv_project), framework="pytest")
+        code = _generated_output(nested_csv_project, "pytest")
+        assert "Login Module" in code or "login_module" in code
+
     def test_custom_output_filename(self, csv_project):
         generate_test_file(str(csv_project), framework="pytest", output_filename="my_suite.py")
         assert (csv_project / "generated" / "Tests" / "my_suite.py").exists()
+
+    def test_custom_output_nested_path(self, csv_project):
+        generate_test_file(
+            str(csv_project), framework="pytest", output_filename="sub/dir/my_suite.py")
+        assert (csv_project / "generated" / "Tests" / "sub" / "dir" / "my_suite.py").exists()
 
     def test_copies_input_templates(self, csv_project):
         templates = csv_project / "input_templates"
@@ -491,16 +606,16 @@ class TestGenerateTestFile:
     @pytest.mark.parametrize(
         "missing", ["config.yaml", "test_cases.csv", "modules.csv", "elements.csv"]
     )
-    def test_missing_required_file_aborts_without_output(self, csv_project, caplog, missing):
+    def test_missing_required_file_aborts_without_output(self, csv_project, missing):
         (csv_project / missing).unlink()
-        generate_test_file(str(csv_project), framework="pytest")
+        with pytest.raises(ValueError, match="missing"):
+            generate_test_file(str(csv_project), framework="pytest")
         assert not (csv_project / "generated").exists()
-        assert "Error" in caplog.text or "Missing" in caplog.text
 
-    def test_unsupported_framework_aborts(self, csv_project, caplog):
-        generate_test_file(str(csv_project), framework="junit")
+    def test_unsupported_framework_aborts(self, csv_project):
+        with pytest.raises(ValueError, match="Unsupported framework"):
+            generate_test_file(str(csv_project), framework="junit")
         assert not (csv_project / "generated" / "Tests").exists()
-        assert "Unsupported framework" in caplog.text
 
 
 # --------------------------------------------------------------------------- #
@@ -524,3 +639,11 @@ class TestFileWriter:
         (tmp_path / "generated").mkdir()
         FileWriter().copy_input_templates(str(tmp_path), str(tmp_path / "generated"))
         assert not (tmp_path / "generated" / "Tests" / "input_templates").exists()
+
+    def test_copy_input_templates_absent_is_quiet_at_info(self, tmp_path, caplog):
+        """A missing input_templates folder is normal for small projects — nothing
+        at INFO or above may reach the console (a debug-level note is fine)."""
+        with caplog.at_level(logging.INFO, logger="optics_framework.helper.generate"):
+            FileWriter().copy_input_templates(str(tmp_path), str(tmp_path / "generated"))
+
+        assert caplog.records == []

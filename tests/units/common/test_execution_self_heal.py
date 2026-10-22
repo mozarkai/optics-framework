@@ -23,6 +23,9 @@ def _run(coro):
 class _Session:
     session_id = "sess-1"
 
+    def __init__(self):
+        self.keyword_lock = asyncio.Lock()
+
 
 class _Runner:
     def __init__(self, keyword_map):
