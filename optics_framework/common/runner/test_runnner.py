@@ -1,4 +1,3 @@
-import copy
 import json
 import os
 import time
@@ -16,7 +15,6 @@ from optics_framework.common.session_manager import Session
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
-    holding_logs_for_secret,
     mask_secrets,
     internal_logger,
     execution_logger,
@@ -61,15 +59,20 @@ class Runner:
     keyword_map: Dict[str, Callable[..., Any]]
     apis: ApiData
     elements: ElementData
+    _previous_case: str | None = None
+
+    def _begin_test_case_scope(self, test_case: str) -> None:
+        utils.begin_test_case_scope(self.elements, self._previous_case)
+        self._previous_case = test_case
 
     def _resolve_candidate_params(self, method, candidate_args):
         candidate_args = utils.substitute_inline(method, list(candidate_args), self.elements)
         positional_params, kw_params = DataReader.split_params_by_signature(
             method, candidate_args)
         raw = utils.raw_param_indices(method)
-        resolved_positional_params = [
+        resolved_positional_params = utils.unescape_vars(method, [
             param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
-        ]
+        ])
         resolved_kw_params = {}
         for key, value in kw_params.items():
             if value.startswith("${") and value.endswith("}"):
@@ -127,7 +130,6 @@ class TestRunner(Runner):
         self.test_cases = self.session.test_cases
         self.modules = self.session.modules
         self.elements = self.session.elements if self.session.elements is not None else ElementData()
-        self._suite_elements = utils.suite_snapshot(self.elements)
         self.apis = self.session.apis if self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
         self.result_printer = result_printer
@@ -327,6 +329,7 @@ class TestRunner(Runner):
         end_time: Optional[float] = None,
         elapsed: Optional[float] = None,
         logs: Optional[List[logging.LogRecord]] = None,
+        stored: dict[str, str] | None = None,
     ) -> None:
         log_messages = None
         if logs is not None:
@@ -343,7 +346,7 @@ class TestRunner(Runner):
             status=status,
             message=reason or "",
             parent_id=parent_id,
-            extra={"session_id": self.session_id},
+            extra={"session_id": self.session_id, **({"stored": json.dumps(stored)} if stored else {})},
             args=args,
             start_time=start_time,
             end_time=end_time,
@@ -501,10 +504,8 @@ class TestRunner(Runner):
                 break
             try:
                 resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(method, candidate_args)
-                with holding_logs_for_secret(store_as):
-                    returned = method(*resolved_positional_params, **resolved_kw_params)
-                    if store_as is not None:
-                        utils.store_result(self.elements, store_as, returned)
+                _, stored = utils.call_and_store(self.elements, method, resolved_positional_params, resolved_kw_params, store_as)
+                keyword_result.stored = stored
                 keyword_node.state = State.COMPLETED_PASSED
                 await self._send_event(
                     "keyword",
@@ -515,6 +516,7 @@ class TestRunner(Runner):
                     end_time=time.time(),
                     elapsed=time.time() - start_time,
                     logs=capture_handler.records,
+                    stored=stored,
                 )
                 self._update_status(keyword_result, "PASS", time.time() - start_time, test_case_result.name)
                 return True
@@ -751,8 +753,7 @@ class TestRunner(Runner):
     ) -> TestCaseResult:
         start_time = time.time()
         self._last_failure_reason = None
-        # Stored values must not leak into the next test case.
-        self.elements.elements = copy.deepcopy(self._suite_elements)
+        self._begin_test_case_scope(test_case)
         testcase_id = str(uuid.uuid4())
         extra = self._extra(test_case)
         test_case_result = self._init_test_case(test_case)
@@ -910,9 +911,14 @@ class TestRunner(Runner):
                 params = utils.substitute_inline(method, params, self.elements)
                 raw = utils.raw_param_indices(method)
                 resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
+                # Nothing runs here, so define the names a run would set.
                 if store_as is not None:
-                    # Nothing runs here, so define the name for later steps.
-                    utils.store_result(self.elements, store_as, f"<{store_as}>")
+                    utils.require_store_name(store_as)
+                    self.elements.store(store_as, f"<{store_as}>")
+                if getattr(method, "_defines_variable", False) and params:
+                    defined = utils.WHOLE_VAR_PATTERN.sub(r"\1", str(params[0]).strip()).strip()
+                    self.elements.remove_element(defined)
+                    self.elements.add_element(defined, f"<{defined}>")
                 if isinstance(keyword_result, KeywordResult):
                     keyword_result.resolved_name = mask_secrets(
                         f"{keyword_current.name} ({', '.join(resolved_params)})"
@@ -1005,7 +1011,6 @@ class PytestRunner(Runner):
             self.session.elements if self.session and isinstance(self.session.elements, ElementData)
             else ElementData()
         )
-        self._suite_elements = utils.suite_snapshot(self.elements)
         self.apis = self.session.apis if self.session and hasattr(self.session, "apis") and self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
         self.result_printer = NullResultPrinter()
@@ -1145,11 +1150,8 @@ class PytestRunner(Runner):
                 break
             try:
                 resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(method, candidate_args)
-                with holding_logs_for_secret(store_as):
-                    returned = method(*resolved_positional_params, **resolved_kw_params)
-                    if store_as is not None:
-                        utils.store_result(self.elements, store_as, returned)
-                self._queue_keyword_pass_event(keyword, keyword_id, module_id)
+                _, stored = utils.call_and_store(self.elements, method, resolved_positional_params, resolved_kw_params, store_as)
+                self._queue_keyword_pass_event(keyword, keyword_id, module_id, stored)
                 return True
             except OpticsError as oe:
                 if oe.code.value.startswith("E02") or oe.code == Code.X0201:
@@ -1170,7 +1172,7 @@ class PytestRunner(Runner):
         )
         return False
 
-    def _queue_keyword_pass_event(self, keyword, keyword_id, module_id):
+    def _queue_keyword_pass_event(self, keyword, keyword_id, module_id, stored=None):
         queue_event_sync(
             Event(
                 entity_type="keyword",
@@ -1178,7 +1180,7 @@ class PytestRunner(Runner):
                 name=keyword,
                 status=EventStatus.PASS,
                 parent_id=module_id,
-                extra={"session_id": self.session.session_id},
+                extra={"session_id": self.session.session_id, **({"stored": json.dumps(stored)} if stored else {})},
             ),
             self.event_manager
         )
@@ -1263,7 +1265,7 @@ class PytestRunner(Runner):
         self, test_case: str, dry_run: bool = False
     ) -> TestCaseResult:
         start_time = time.time()
-        self.elements.elements = copy.deepcopy(self._suite_elements)
+        self._begin_test_case_scope(test_case)
         testcase_id = str(uuid.uuid4())
         result = TestCaseResult(
             id=testcase_id, name=test_case, elapsed="0.00s", status="NOT_RUN"

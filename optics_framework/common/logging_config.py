@@ -114,39 +114,48 @@ class LoggingManager:
         self.execution_listener = None
         self.junit_handler = None
 
-SENSITIVE_NAME = re.compile(r"pass|pwd|pin|otp|secret|token|api|key", re.IGNORECASE)
-# password_field names a locator, not a secret.
-LOCATOR_PREFIXES = ("/", "(", "xpath=", "id:", "css=", "text=")
-IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp")
-_secret_values: set = set()
+SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", "pin", "otp", "secret", "token", "key", "apikey"})
+# Shorter values, like otp_length=6, would mask digits all over the log.
+MIN_SECRET_LENGTH = 4
+_active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
 
 
-def register_secret(name: str, value) -> None:
+def is_secret_name(name: str | None) -> bool:
+    if not name:
+        return False
+    words = re.split(r"[^a-z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower())
+    return any(word in SECRET_NAME_WORDS for word in words)
+
+
+def use_secrets(secrets: set[str]) -> None:
+    """Mask this session's secrets in logs written from the current context."""
+    _active_secrets.set(secrets)
+
+
+def register_secret(secrets: set[str], name: str, value) -> None:
     text = str(value)
-    if text.startswith("@:"):
-        text = text[2:]
-    lowered = text.lower()
-    if text and SENSITIVE_NAME.search(name) and not (lowered.startswith(LOCATOR_PREFIXES) or lowered.endswith(IMAGE_SUFFIXES)):
-        _secret_values.add(text)
+    if is_secret_name(name) and len(text) >= MIN_SECRET_LENGTH:
+        secrets.add(text)
+    use_secrets(secrets)
 
 
 def mask_secrets(text: str) -> str:
     # Longest first, so overlapping secrets mask whole.
-    for secret in sorted(_secret_values, key=len, reverse=True):
+    for secret in sorted(_active_secrets.get() or (), key=len, reverse=True):
         text = text.replace(secret, "****")
     return re.sub(r"@:([^\s,\)\]]+)", "****", text)
 
 
-_held_records: ContextVar[Optional[list]] = ContextVar("_held_records", default=None)
+_held_records: ContextVar[list | None] = ContextVar("_held_records", default=None)
 
 
 @contextmanager
-def holding_logs_for_secret(name: Optional[str]):
+def holding_logs_for_secret(name: str | None):
     """Get Text logs what it read before store_as registers it; hold those lines until then."""
-    if not name or not SENSITIVE_NAME.search(name):
+    if not is_secret_name(name):
         yield
         return
-    held: list = []
+    held: list[logging.LogRecord] = []
     token = _held_records.set(held)
     try:
         yield
