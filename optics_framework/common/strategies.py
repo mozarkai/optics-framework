@@ -379,6 +379,7 @@ class ImageDetectionStrategy(LocatorStrategy):
 
 
 _SAME_ELEMENT_OVERLAP = 0.6
+_SAME_TEXT_INSIDE = 0.9
 _ASSERT_POLL_INTERVAL_S = 0.5
 _VISION_INTERVAL_S = 2.0
 
@@ -410,14 +411,20 @@ def _supplements_screen_elements(element_source: Any) -> bool:
     return getattr(element_source, "SUPPLEMENTS_SCREEN_ELEMENTS", False) is True
 
 
-def _overlap(a: dict, b: dict) -> float:
-    """Intersection over union of two ``{x1, y1, x2, y2}`` boxes."""
+def _area(box: dict) -> float:
+    return max(0, box["x2"] - box["x1"]) * max(0, box["y2"] - box["y1"])
+
+
+def _shared(a: dict, b: dict) -> float:
     width = min(a["x2"], b["x2"]) - max(a["x1"], b["x1"])
     height = min(a["y2"], b["y2"]) - max(a["y1"], b["y1"])
-    if width <= 0 or height <= 0:
-        return 0.0
-    shared = width * height
-    union = (a["x2"] - a["x1"]) * (a["y2"] - a["y1"]) + (b["x2"] - b["x1"]) * (b["y2"] - b["y1"]) - shared
+    return width * height if width > 0 and height > 0 else 0.0
+
+
+def _overlap(a: dict, b: dict) -> float:
+    """Intersection over union of two ``{x1, y1, x2, y2}`` boxes."""
+    shared = _shared(a, b)
+    union = _area(a) + _area(b) - shared
     return shared / union if union > 0 else 0.0
 
 
@@ -432,22 +439,39 @@ def _native_container(entry: dict) -> bool:
     )
 
 
+def _split_frame(result: Any) -> tuple[Any, np.ndarray | None]:
+    """A located value and its annotated frame, whichever shape the strategy returned them in."""
+    if isinstance(result, LocateValueWithFrame):
+        return result.value, result.annotated_frame
+    if isinstance(result, tuple) and len(result) == 2 and (result[1] is None or hasattr(result[1], "shape")):
+        return result[0], result[1]
+    return result, None
+
+
 def merge_screen_elements(base: List[dict], added: List[dict]) -> List[dict]:
     """``base`` plus ``added``, dropping ``base`` entries an ``added`` one mirrors; native scroll containers stay.
 
-    UiAutomator2 mirrors a page's accessibility nodes, so one button can arrive from both sources.
+    UiAutomator2 and XCUITest mirror a page's accessibility nodes, so one button can arrive from both sources;
+    XCUITest sizes a mirrored text to its words, so a same-label box inside a web one is a mirror too.
     """
-    boxes = [
-        entry["bounds"] for entry in added
+    shown = [
+        entry for entry in added
         if isinstance(entry, dict) and isinstance(entry.get("bounds"), dict) and not entry.get("offscreen")
     ]
+
+    def mirrors(entry: dict, web: dict) -> bool:
+        box, web_box = entry["bounds"], web["bounds"]
+        if _overlap(box, web_box) >= _SAME_ELEMENT_OVERLAP:
+            return True
+        text = entry.get("text")
+        return bool(text) and text == web.get("text") and _shared(box, web_box) >= _SAME_TEXT_INSIDE * _area(box)
 
     def mirrored(entry: Any) -> bool:
         if not isinstance(entry, dict) or not isinstance(entry.get("bounds"), dict):
             return False
         if _native_container(entry):
             return False
-        return any(_overlap(entry["bounds"], box) >= _SAME_ELEMENT_OVERLAP for box in boxes)
+        return any(mirrors(entry, web) for web in shown)
 
     return [entry for entry in base if not mirrored(entry)] + list(added)
 
@@ -694,7 +718,7 @@ class StrategyManager:
         index: int,
     ) -> Optional[LocateResult]:
         """Run one strategy; return LocateResult on success, None on skip; raise on failure."""
-        if not strategy.supports(element_type, strategy.element_source):
+        if not strategy.supports(element_type, strategy.element_source) or not strategy.can_assert(element):
             return None
         try:
             locate_with_aoi = getattr(strategy, "locate_with_aoi", None)
@@ -704,12 +728,7 @@ class StrategyManager:
                 result = strategy.locate(element, index=index)
             if result is None:
                 return None
-            if isinstance(result, LocateValueWithFrame):
-                value, annotated_frame = result.value, result.annotated_frame
-            elif isinstance(result, tuple) and len(result) == 2 and (result[1] is None or hasattr(result[1], "shape")):
-                value, annotated_frame = result[0], result[1]
-            else:
-                value, annotated_frame = result, None
+            value, annotated_frame = _split_frame(result)
             if use_aoi and locate_with_aoi is None and not isinstance(value, tuple):
                 # Strategy can't scope to the AOI itself (accessibility/XPath) — enforce
                 # it here so an out-of-AOI match falls through to an AOI-capable strategy.

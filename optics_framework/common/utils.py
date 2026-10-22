@@ -197,7 +197,7 @@ _NATIVE_CLASS = re.compile(r"\bandroidx?(?:\.[a-z0-9_]+)+\.[A-Z]|XCUIElementType
 _NATIVE_ATTRIBUTE = re.compile(
     r"@(?:resource-id|content-desc|text|package|bounds"
     r"|clickable|long-clickable|checkable|focusable|focused|scrollable"
-    r"|displayed|enabled|password|hint|visible|accessible)(?![\w.-])"
+    r"|displayed|enabled|password|hint|visible|accessible|label|traits|placeholderValue|hittable)(?![\w.-])"
 )
 _STRING_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
 _DOM_TAGS = frozenset({
