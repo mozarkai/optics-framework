@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import pathlib
 
 import pytest
@@ -42,6 +43,8 @@ def _require_chromium():
     try:
         asyncio.run(launch())
     except Exception as e:
+        if os.environ.get("CI"):
+            raise
         pytest.skip(f"Chromium is not installed for Playwright: {e}")
 
 

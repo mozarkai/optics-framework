@@ -28,14 +28,17 @@ jobs:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
           POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
         run: poetry install --with test --extras appium --extras selenium --extras playwright --extras google-vision --extras llm --extras mcp
+      - name: Install Chromium
+        env:
+          POETRY_INSTALLER_ONLY_BINARY: ':all:'
+        run: poetry run playwright install --with-deps chromium
       - name: Run tests
         run: poetry run pytest -c pytest.toml --no-cov -q
 
   # Windows-only, and deliberately not run on pull requests: the pytest matrix
-  # above already covers path handling and encoding on Windows across the whole
-  # suite with precise failures. This job adds the one thing unit tests cannot
-  # reach — a real browser launch writing real artefacts — at the cost of a
-  # ~150 MB Chromium download, so it runs where releases are cut from instead.
+  # above already runs real suites in headless Chromium on every OS. This job
+  # adds the CLI installed the way a user installs it, scaffolding and running
+  # the sample, so it runs where releases are cut from instead.
   playwright-sample:
     if: github.event_name != 'pull_request'
     runs-on: windows-latest

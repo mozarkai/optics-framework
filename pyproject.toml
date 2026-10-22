@@ -55,7 +55,7 @@ playwright = { version = ">=1.40,<2.0", optional = true }
 pyserial = { version = ">=3.5,<4.0", optional = true }
 easyocr = { version = ">=1.7,<2.0", optional = true }
 pytesseract = { version = ">=0.3.10,<0.4.0", optional = true }
-pillow = { version = ">=12.3,<13.0", optional = true }
+pillow = { version = ">=12.3,<14.0", optional = true }
 google-cloud-vision = { version = ">=3.4,<4.0", optional = true }
 google-genai = { version = ">=2.0.0,<3.0.0", optional = true }
 openai = { version = ">=3.0,<4.0", optional = true }
@@ -94,7 +94,7 @@ pytest = "^9.0.0"
 pytest-cov = ">=6.0,<7.2"
 commitizen = "^4.4.1"
 pre-commit = "^4.2.0"
-ruff = ">=0.11.2,<0.17.0"
+ruff = ">=0.11.2,<0.18.0"
 bandit = "^1.8.3"
 pylint = ">=3.3.7,<5.0.0"
 
