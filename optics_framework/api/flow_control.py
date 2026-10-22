@@ -22,6 +22,11 @@ from optics_framework.common import utils
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
 NO_SESSION_ELEMENT_PRESENT = "Session elements is not an ElementData instance or is None."
 VAR_PATTERN = r"\$\{([^}]+)\}"
+ENV_SOURCE_PREFIX = "ENV:"
+
+
+def reads_environment(file_path: Any) -> bool:
+    return isinstance(file_path, str) and file_path.startswith(ENV_SOURCE_PREFIX)
 
 
 def raw_params(*indices):
@@ -489,11 +494,10 @@ class FlowControl:
             if not data or not isinstance(data, list) or not data[0]:
                 return pd.DataFrame(), None
             return pd.DataFrame(data[1:], columns=data[0]), None
+        elif reads_environment(file_path):
+            return self._load_env_data(file_path.removeprefix(ENV_SOURCE_PREFIX))
         elif isinstance(file_path, str):
-            if file_path.startswith('ENV:'):
-                return self._load_env_data(file_path[4:])
-            else:
-                return self._load_file_data(file_path), None
+            return self._load_file_data(file_path), None
         else:
             internal_logger.error("[READ_DATA] file_path must be a list or a file path string.")
             raise OpticsError(Code.E0501, message="file_path must be a list or a file path string.")

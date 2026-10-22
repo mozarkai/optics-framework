@@ -155,3 +155,25 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             )
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
+
+
+def test_serve_refuses_read_data_from_its_environment():
+    from fastapi.testclient import TestClient
+    from optics_framework.common import expose_api
+
+    with TestClient(expose_api.app) as client:
+        started = client.post("/v1/sessions/start", json={
+            "driver_sources": [{"playwright": {"capabilities": {"headless": True}}}],
+            "elements_sources": ["playwright_find_element"],
+        })
+        assert started.status_code == 200, started.text
+        session_id = started.json()["session_id"]
+        try:
+            refused = client.post(f"/v1/sessions/{session_id}/action", json={
+                "mode": "keyword", "keyword": "Read Data", "params": ["${data}", "ENV:PATH"],
+            })
+        finally:
+            client.delete(f"/v1/sessions/{session_id}/stop")
+
+    assert refused.status_code == 400, refused.text
+    assert os.environ["PATH"] not in refused.text
