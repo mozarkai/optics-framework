@@ -214,6 +214,8 @@ class KeywordInfo(BaseModel):
     keyword_slug: str
     description: str
     parameters: List[KeywordParameter]
+    # Lets a client offer store_as only where there is a value to keep.
+    returns: bool = True
 
 
 def _humanize_keyword(name: str) -> str:
@@ -376,6 +378,7 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
                 keyword_slug=meth_name,
                 description=doc,
                 parameters=params,
+                returns=sig.return_annotation not in (None, type(None), "None"),
             )
         )
     return keywords
