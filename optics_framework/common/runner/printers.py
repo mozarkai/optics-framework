@@ -29,6 +29,8 @@ class KeywordResult(BaseModel):
     elapsed: str
     status: str
     reason: str
+    # What store_as kept, masked, so reports show the value per step.
+    stored: dict[str, str] = Field(default_factory=dict)
 
 
 class ModuleResult(BaseModel):

@@ -12,7 +12,7 @@ from io import StringIO
 from jsonpath_ng import parse as jsonpath_parse
 import requests
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.logging_config import internal_logger, execution_logger, register_secret
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.error import OpticsError, Code
@@ -36,6 +36,18 @@ def raw_params(*indices):
         return wrapper
 
     return decorator
+
+
+def substitutes_own_vars(func: Callable[..., Any]) -> Callable[..., Any]:
+    """The keyword resolves ${name} itself, e.g. quoting it for a query, so the runner leaves it alone."""
+    func._substitutes_own_vars = True  # pylint: disable=protected-access  # type: ignore[attr-defined]
+    return func
+
+
+def defines_variable(func: Callable[..., Any]) -> Callable[..., Any]:
+    """The first param names a variable the keyword sets, so a dry run can count it as defined."""
+    func._defines_variable = True  # pylint: disable=protected-access  # type: ignore[attr-defined]
+    return func
 
 
 class FlowControl:
@@ -99,14 +111,17 @@ class FlowControl:
         self, method: Callable[..., Any], keyword: str, params: List[Any]
     ) -> Any:
         """Resolve params, log, and call the keyword method; raise on error."""
-        raw_indices = getattr(method, "_raw_param_indices", [])
-        resolved_params = [
+        elements = self._get_or_create_session_elements()
+        params, store_as = utils.split_store_as(params)
+        params = utils.substitute_inline(method, params, elements)
+        raw_indices = utils.raw_param_indices(method)
+        resolved_params = utils.unescape_vars(method, [
             p if i in raw_indices else self._resolve_param(p)
             for i, p in enumerate(params)
-        ]
+        ])
         execution_logger.info(f"Executing {keyword} with params: {resolved_params}")
         try:
-            return method(*resolved_params)
+            return utils.call_and_store(elements, method, resolved_params, {}, store_as)[0]
         except Exception as e:
             internal_logger.error(f"Error executing keyword '{keyword}': {e}")
             raise OpticsError(Code.E0401, message=f"Error executing keyword '{keyword}': {e}", cause=e)
@@ -272,6 +287,7 @@ class FlowControl:
         else:
             raise OpticsError(Code.E0403, message=f"Expected a list, JSON string, or pipe-separated string for iterable of variable '{variable}', got {type(iterable).__name__}.")
 
+    @substitutes_own_vars
     def condition(self, *args: str) -> Optional[List[Any]]:
         """Evaluates conditions and executes corresponding targets.
 
@@ -437,6 +453,8 @@ class FlowControl:
 
         return pattern.sub(replacer, cond)
 
+    @defines_variable
+    @substitutes_own_vars
     @raw_params(0)
     def read_data(
         self, input_element: str, file_path: Union[str, List[Any]], query: str = ""
@@ -467,6 +485,7 @@ class FlowControl:
             # Always store the value in session.elements, even if not in ${name} format
             runner_elements = getattr(self.session, "elements", None)
             if isinstance(runner_elements, ElementData):
+                register_secret(runner_elements.secrets, elem_name, direct_env_value)
                 runner_elements.remove_element(elem_name)
                 runner_elements.add_element(elem_name, direct_env_value)
             else:
@@ -693,6 +712,7 @@ class FlowControl:
                 store_value = ','.join(data_str)
             else:
                 store_value = data_str
+            register_secret(runner_elements.secrets, elem_name, store_value)
             internal_logger.debug(f"[READ_DATA] Storing value under element '{elem_name}': {store_value}")
             runner_elements.remove_element(elem_name)
             runner_elements.add_element(elem_name, store_value)
@@ -808,6 +828,8 @@ class FlowControl:
             pass
         raise OpticsError(Code.E0403, message=f"Query '{query}' must be a column name or integer index present in the CSV.")
 
+    @defines_variable
+    @substitutes_own_vars
     @raw_params(0)
     def evaluate(self, param1: str, param2: str) -> Any:
         """Evaluates an expression and stores the result in session.elements.
@@ -926,6 +948,7 @@ class FlowControl:
                 continue
         raise OpticsError(Code.E0403, message=f"Unable to detect date format for input: {date_str}")
 
+    @defines_variable
     @raw_params(0)
     def date_evaluate(
         self, param1: str, param2: str, param3: str, param4: Optional[str] = "%d %B"
