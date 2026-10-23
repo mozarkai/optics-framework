@@ -87,7 +87,7 @@ optics setup --install appium easyocr
 optics init my_test_project --template contact
 ```
 
-This copies the `contact` sample — a complete, runnable project — into `./my_test_project`. Omit `--template` to scaffold an empty project you fill in yourself (or run `optics quickstart` for the fully guided walkthrough: engines + project + config + doctor check). Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`.
+This copies the `contact` sample — a complete, runnable project — into `./my_test_project`. Omit `--template` to scaffold an empty project you fill in yourself (or run `optics quickstart` for the fully guided walkthrough: engines + project + config + doctor check). Templates: `contact`, `clock`, `calendar`, `youtube`, `gmail_web`, `playwright`, `mobile_web`.
 
 ## Project Structure
 

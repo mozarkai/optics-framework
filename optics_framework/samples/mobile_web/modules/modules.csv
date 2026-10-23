@@ -1,0 +1,9 @@
+module_name,module_step,param_1,param_2
+Open Wikipedia In Chrome,Launch App
+Open Wikipedia In Chrome,Execute Script,${Grant_Chrome_Notifications}
+Open Wikipedia In Chrome,Launch App,https://www.wikipedia.org/
+Open Wikipedia In Chrome,Detect And Press,${Chrome_Notification_Prompt},5
+Search Wikipedia,Enter Text,${Search_Box},Appium
+Search Wikipedia,Press Element,${Search_Button}
+Verify Article,Assert Presence,${Article_Heading}
+Verify Article,Assert Presence,Appium
