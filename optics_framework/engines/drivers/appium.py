@@ -45,15 +45,10 @@ from optics_framework.common.session_liveness import raise_if_session_dead
 _MAX_ERROR_OUTPUT_LINES = 20
 
 _CDP_EXECUTE = "opticsExecuteCdp"
-_WEB_RECT_METRICS_JS = (
-    "const r = arguments[0].getBoundingClientRect(); const v = window.visualViewport;"
-    "return [r.left, r.top, r.width, r.height, window.devicePixelRatio,"
-    " v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1,"
-    " v ? v.width : window.innerWidth, v ? v.height : window.innerHeight];"
-)
-# An invisible, untouchable box over the visual viewport: its native rect maps the page's CSS pixels to screen points.
+_WEB_RECT_JS = "const r = arguments[0].getBoundingClientRect(); return [r.left, r.top, r.width, r.height];"
+# An invisible, untouchable box over the visual viewport: its native rect maps the page's CSS pixels to the screen.
 # It goes inside an open modal, because WebKit hides everything outside one from accessibility.
-_IOS_PROBE_JS = (
+_PROBE_JS = (
     "const v = window.visualViewport, p = document.createElement('div');"
     "p.id = arguments[0]; p.setAttribute('role', 'img'); p.setAttribute('aria-label', arguments[0]);"
     "p.style.cssText = `position:fixed;left:${v.offsetLeft}px;top:${v.offsetTop}px;width:${v.width}px;"
@@ -63,7 +58,7 @@ _IOS_PROBE_JS = (
     "(modal || document.documentElement).appendChild(p); const r = p.getBoundingClientRect();"
     "return [r.left, r.top, r.width, r.height];"
 )
-_IOS_PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
+_PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
 _GET_CONTEXTS = "mobile: getContexts"
 _SAFARI_VIEW_SERVICE = "com.apple.SafariViewService"
 _ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"})
@@ -71,6 +66,7 @@ _ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"}
 _PAGE_SHOWN_JS = "return document.visibilityState === 'visible' && innerWidth > 0 && innerHeight > 0;"
 _KEYBOARD_TIMEOUT_S = 2.0
 _KEYBOARD_POLL_S = 0.1
+_PROBE_TIMEOUT_S = 2.0
 
 
 def _starts_in_web(caps: dict[str, Any]) -> bool:
@@ -240,7 +236,6 @@ class Appium(DriverInterface):
         # UI Tree handling
         self.ui_helper: Optional[UIHelper] = None
         self.initialized: bool = True
-        self._app_webviews_in_front: int = 0
         self._known_web_contexts: dict[tuple[str, str], tuple[str, int]] = {}
         self._frozen_web_contexts: set[tuple[str, str, str]] = set()
         self._ios_web_context: str | None = None
@@ -1540,7 +1535,7 @@ class Appium(DriverInterface):
     def _enter_android_web_context(self, driver: WebDriver) -> None:
         package = driver.current_package
         if not self._reenter_web_context(driver, package):
-            context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver, package)
+            context, page_url, app_webviews = self._foreground_web_context(driver, package)
             try:
                 driver.switch_to.context(context)
             except WebDriverException as e:
@@ -1553,7 +1548,7 @@ class Appium(DriverInterface):
                     cause=e,
                 ) from e
             self._focus_window(driver, page_url)
-            self._known_web_contexts[(driver.session_id, package)] = (context, self._app_webviews_in_front)
+            self._known_web_contexts[(driver.session_id, package)] = (context, app_webviews)
 
     def _enter_ios_web_context(self, driver: WebDriver, queries: Sequence[tuple[str, str]] = ()) -> None:
         """Enter the visible page of the app in front: its WKWebView, a Safari sheet (SafariViewService) or Safari."""
@@ -1612,7 +1607,6 @@ class Appium(DriverInterface):
                 return False
         except WebDriverException:
             return False
-        self._app_webviews_in_front = min(app_webviews, len(handles))
         return True
 
     def _foreground_web_context(self, driver: WebDriver, package: str) -> tuple[str, str | None, int]:
@@ -1667,21 +1661,12 @@ class Appium(DriverInterface):
 
     def web_element_screen_rect(self, element: Any) -> dict[str, int]:
         """Device-screen rectangle of an element found inside :meth:`web_context`."""
-        left, top, width, height, *metrics = self._require_driver().execute_script(_WEB_RECT_METRICS_JS, element)
-        return self.web_rects_to_screen([{"x": left, "y": top, "width": width, "height": height}], metrics)[0]
+        left, top, width, height = self._require_driver().execute_script(_WEB_RECT_JS, element)
+        return self.web_rects_to_screen([{"x": left, "y": top, "width": width, "height": height}])[0]
 
-    def web_rects_to_screen(
-        self, rects: list[dict[str, Any] | None], metrics: list[float]
-    ) -> list[dict[str, Any] | None]:
-        """Unclamped screen rects of page boxes; ``metrics``: devicePixelRatio, visualViewport left, top, scale, width, height."""
-        driver = self._require_driver()
-        if self._is_ios():
-            origin_x, origin_y, factor_x, factor_y = self._ios_web_transform(driver)
-        else:
-            ratio, offset_x, offset_y, scale, view_width, view_height = metrics
-            factor_x = factor_y = scale * ratio
-            origin = self._web_view_rect(driver, view_width * factor_x, view_height * factor_y)
-            origin_x, origin_y = origin["x"] - offset_x * factor_x, origin["y"] - offset_y * factor_y
+    def web_rects_to_screen(self, rects: list[dict[str, Any] | None]) -> list[dict[str, Any] | None]:
+        """Unclamped screen rects of page boxes."""
+        origin_x, origin_y, factor_x, factor_y = self._web_transform(self._require_driver())
         return [
             None if rect is None else {
                 **rect,
@@ -1693,19 +1678,23 @@ class Appium(DriverInterface):
             for rect in rects
         ]
 
-    def _ios_web_transform(self, driver: WebDriver) -> tuple[float, float, float, float]:
-        """Screen origin and points-per-CSS-pixel of the page: Safari draws it under its toolbars, so measure a probe."""
+    def _web_transform(self, driver: WebDriver) -> tuple[float, float, float, float]:
+        """Screen origin and screen units per CSS pixel of the page: browsers draw it under toolbars, so measure a probe."""
         label = f"optics-probe-{uuid.uuid4().hex}"
         context = driver.current_context
-        left, top, width, height = driver.execute_script(_IOS_PROBE_JS, label)
+        left, top, width, height = driver.execute_script(_PROBE_JS, label)
         try:
             driver.switch_to.context(self.NATIVE_CONTEXT)
             try:
-                rects = [element.rect for element in driver.find_elements(AppiumBy.ACCESSIBILITY_ID, label)]
+                rects: list[dict[str, int]] = []
+                deadline = time.monotonic() + _PROBE_TIMEOUT_S
+                # Android lists a new node in its accessibility tree a moment after the page adds it.
+                while not rects and time.monotonic() < deadline:
+                    rects = [element.rect for element in driver.find_elements(AppiumBy.ACCESSIBILITY_ID, label)]
             finally:
                 driver.switch_to.context(context)
         finally:
-            driver.execute_script(_IOS_PROBE_REMOVE_JS, label)
+            driver.execute_script(_PROBE_REMOVE_JS, label)
         if len(rects) != 1 or not width or not height:
             raise OpticsError(
                 Code.E0201,
@@ -1714,34 +1703,6 @@ class Appium(DriverInterface):
         native = rects[0]
         factor_x, factor_y = native["width"] / width, native["height"] / height
         return native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y
-
-    def _web_view_rect(self, driver: WebDriver, width: float, height: float) -> dict[str, int]:
-        """Screen rect of the WebView drawing a ``width`` x ``height`` viewport; clipped native bounds do not count."""
-        native = self._native_webview_bounds(driver)
-        if native and abs(native["width"] - width) <= 2 and abs(native["height"] - height) <= 2:
-            return native
-        current = driver.current_context
-        for webview in driver.execute_script(_GET_CONTEXTS) or []:
-            rect = webview.get("rect")
-            if _context_name(webview) == current and isinstance(rect, dict) and rect.get("width") and rect.get("height"):
-                return rect
-        raise OpticsError(
-            Code.E0201,
-            message="Cannot place the web element: no single native WebView shows the whole page, "
-                    "and the driver reports no rect for it. UiAutomator2 driver 8.6.0 or later reports one.",
-        )
-
-    def _native_webview_bounds(self, driver: WebDriver) -> dict[str, int] | None:
-        """Bounds of the one on-screen native WebView, or None when several could show the page."""
-        context, window = driver.current_context, driver.current_window_handle
-        driver.switch_to.context(self.NATIVE_CONTEXT)
-        try:
-            rects = [el.rect for el in driver.find_elements(AppiumBy.CLASS_NAME, "android.webkit.WebView")]
-        finally:
-            driver.switch_to.context(context)
-            driver.switch_to.window(window)
-        webviews = [rect for rect in rects if rect["width"] and rect["height"]]
-        return webviews[0] if len(webviews) == 1 and self._app_webviews_in_front <= 1 else None
 
     def _open_deeplink(
             self,

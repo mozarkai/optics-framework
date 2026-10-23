@@ -49,7 +49,6 @@ def test_web_context_raises_e0106_when_native_context_cannot_be_restored():
     webdriver = instance.driver
     webdriver.current_package = "com.android.chrome"
     instance._known_web_contexts = {(webdriver.session_id, "com.android.chrome"): ("CHROMIUM", 0)}
-    instance._app_webviews_in_front = 0
     webdriver.window_handles = ["tab"]
 
     def switch(context):
@@ -157,7 +156,7 @@ def test_ios_web_context_enters_the_visible_app_page_that_holds_the_element():
     assert instance.entered[-1] == "WEBVIEW_100.1"
 
 
-def test_ios_web_rects_map_css_pixels_through_the_probe():
+def test_web_rects_map_css_pixels_through_the_probe():
     instance = _driver_instance({"platformName": "iOS"})
     webdriver = instance.driver
     webdriver.current_context = "WEBVIEW_100.1"
@@ -167,7 +166,7 @@ def test_ios_web_rects_map_css_pixels_through_the_probe():
     probe.rect = {"x": 0, "y": 62, "width": 402, "height": 714}
     webdriver.find_elements.return_value = [probe]
 
-    rects = instance.web_rects_to_screen([{"x": 24, "y": 24, "width": 354, "height": 38}, None], [3, 0, 0, 1, 402, 714])
+    rects = instance.web_rects_to_screen([{"x": 24, "y": 24, "width": 354, "height": 38}, None])
 
     assert rects == [{"x": 24, "y": 86, "width": 354, "height": 38}, None]
     assert webdriver.switch_to.context.call_args_list[-1].args == ("WEBVIEW_100.1",)

@@ -55,9 +55,6 @@ Appium download it by starting the server with
 `appium server --allow-insecure uiautomator2:chromedriver_autodownload`, or point
 `appium:chromedriverExecutableDir` at a folder of chromedriver binaries.
 
-Use UiAutomator2 driver 8.6.0 or later for an app that shows several WebViews. Older
-drivers place elements from the on-screen bounds of the one WebView.
-
 ### iOS
 
 The same `elements_sources` work with `platformName: iOS` and `automationName: XCUITest`.
