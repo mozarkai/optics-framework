@@ -205,6 +205,7 @@ Captures screenshots from external cameras or capture cards.
 - External camera support
 - Video capture card support
 - Production monitoring use case
+- Endpoint is raw TCP (`ip:port`) or HTTP with bearer token (`http(s)://` url + `token`); env fallback via `WEBCAM_SCREENSHOT_URL` / `WEBCAM_SCREENSHOT_TOKEN` / `WEBCAM_SCREENSHOT_TCP_PORT` (see `docs/configuration.md`)
 
 ### Page Source-Based Sources
 
