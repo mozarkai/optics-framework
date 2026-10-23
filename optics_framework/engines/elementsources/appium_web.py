@@ -32,12 +32,9 @@ _KEYBOARD_PENDING_JS = (
     " [contenteditable]:not([contenteditable=false]), input:not([type=checkbox], [type=radio], [type=button],"
     " [type=submit], [type=reset], [type=file], [type=range], [type=color], [type=image], [type=hidden])');"
 )
-# One round trip: the page geometry web_rects_to_screen needs, the rects, and the locators.
+# One round trip: the rects and the locators.
 _INSPECT_JS = (
-    "const v = window.visualViewport;"
-    "return [[window.devicePixelRatio, v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1,"
-    " v ? v.width : window.innerWidth, v ? v.height : window.innerHeight],"
-    f" ({BOUNDS_JS})(arguments[0]),"
+    f"return [({BOUNDS_JS})(arguments[0]),"
     f" arguments[1] ? ({SUGGEST_LOCATORS_JS})(arguments[1]) : null];"
 )
 _SETTLE_TIMEOUT_S = 2.0
@@ -70,7 +67,7 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         if not xpaths:
             return [], []
         try:
-            metrics, rects, found = self.driver.driver.execute_script(
+            rects, found = self.driver.driver.execute_script(
                 _INSPECT_JS, xpaths, locate if any(locate) else None
             )
         except WebDriverException as e:
@@ -80,7 +77,7 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         if not isinstance(rects, list) or len(rects) != len(xpaths):
             internal_logger.debug("AppiumWeb: measuring the page returned a malformed payload.")
             return None, [None] * len(xpaths)
-        return self.driver.web_rects_to_screen(rects, metrics), found or [None] * len(xpaths)
+        return self.driver.web_rects_to_screen(rects), found or [None] * len(xpaths)
 
     def can_locate(self, element: str) -> bool:
         return self._dom_query(element) is not None and self._reads_native_screen()
