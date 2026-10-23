@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "optics-framework"
 version = "1.11.0"
-description = "A flexible and modular test automation framework that can be used to automate any mobile application."
+description = "Self-healing test automation for Android, iOS, web and smart TV apps, with CSV/YAML test suites and an MCP server for AI agents."
 authors = ["Lalitanand Dandge <lalit@mozark.ai>"]
 license = "Apache-2.0"
 readme = "README.md"
-keywords = ["test automation", "framework", "mobile automation"]
-homepage = "https://github.com/mozarkai/optics-framework"
+keywords = ["test automation", "mobile testing", "appium", "playwright", "selenium", "android", "ios", "smart tv", "tizen", "webos", "ocr", "self-healing", "mcp", "keyword-driven", "yaml", "csv", "robot framework"]
+homepage = "https://optics-framework.org/"
 repository = "https://github.com/mozarkai/optics-framework"
 documentation = "https://optics-framework.org/docs/"
 classifiers = [
@@ -22,7 +22,7 @@ include = [
 ]
 
 [tool.poetry.urls]
-Website = "https://optics-framework.org/"
+"Docs for AI agents" = "https://optics-framework.org/llms.txt"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"

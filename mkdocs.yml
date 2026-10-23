@@ -91,6 +91,9 @@ nav:
     - Help Wanted: contribution/help_wanted.md
     - Code of Conduct: contribution/code_of_conduct.md
 
+hooks:
+  - scripts/mkdocs_canonical.py
+
 plugins:
   - search
   - mkdocstrings:
