@@ -37,9 +37,11 @@ _INSPECT_JS = (
     f"return [({BOUNDS_JS})(arguments[0]),"
     f" arguments[1] ? ({SUGGEST_LOCATORS_JS})(arguments[1]) : null];"
 )
-_TEXT_JS = (
-    "const e = arguments[0];"
-    "return ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) ? e.value : e.innerText;"
+_TEXT_AND_REACH_JS = (
+    "const e = arguments[0]; const r = e.getBoundingClientRect();"
+    "const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
+    "const text = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) ? e.value : e.innerText;"
+    "return [text, !!hit && (e.contains(hit) || hit.contains(e) || hit.control === e)];"
 )
 _SETTLE_TIMEOUT_S = 2.0
 _SETTLE_INTERVAL_S = 0.15
@@ -111,8 +113,8 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
             driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
             self._uncover(driver, target)
             rect = self._settled_rect(target)
-            text = driver.execute_script(_TEXT_JS, target)
-        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text)
+            text, reachable = driver.execute_script(_TEXT_AND_REACH_JS, target)
+        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text, not reachable)
 
     @staticmethod
     def _await_keyboard(driver: Any, target: Any) -> None:
