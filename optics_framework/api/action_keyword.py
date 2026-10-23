@@ -7,6 +7,7 @@ from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
+from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import utils
 from optics_framework.common.ai_self_heal import (
@@ -410,6 +411,7 @@ class ActionKeyword:
         intent_args: tuple = (),
         index: str = "0",
         aoi: Tuple[str, str, str, str] = ("0", "0", "100", "100"),
+        allow_covered: bool = False,
     ) -> Any:
         """Locate ``element`` through the strategy ladder and run ``act`` on it.
 
@@ -421,6 +423,7 @@ class ActionKeyword:
 
         ``intent_args`` are the keyword's action parameters (everything after the
         element, minus locate-tuning params); they feed the self-heal breadcrumbs.
+        A covered point is skipped like a failed action; a keyword that only reads it sets ``allow_covered``.
         """
         screenshot_np = self._capture_screenshot_safe()
         aoi_x = _parse_aoi_param(aoi[0], 0)
@@ -439,7 +442,7 @@ class ActionKeyword:
             aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
         )
         return self._act_until_success(
-            results, act, element, func_name, intent_args, screenshot_np
+            results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered
         )
 
     def _act_until_success(
@@ -450,6 +453,7 @@ class ActionKeyword:
         func_name: str,
         intent_args: tuple,
         screenshot_np: Any,
+        allow_covered: bool = False,
     ) -> Any:
         """Run ``act`` on each locate result until one succeeds; heal/wrap on failure."""
         last_exception: Optional[Exception] = None
@@ -470,6 +474,8 @@ class ActionKeyword:
             result_count += 1
             _save_annotated_for_result(result, screenshot_np, self.capture_output_dir, func_name)
             try:
+                if isinstance(result.value, ScreenPoint) and result.value.covered and not allow_covered:
+                    raise OpticsError(Code.E0201, message=f"'{element}' is covered by another element on the page.")
                 # Only the driver behind this result's element source can use its element handle.
                 with self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
                     ret = act(result.value)
@@ -499,7 +505,6 @@ class ActionKeyword:
                 cause=last_exception,
             )
         raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
-
 
     # Click actions
     def press_element(
@@ -1118,7 +1123,7 @@ class ActionKeyword:
 
         return self._locate_and_act(
             element, "get_text", act,
-            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height), allow_covered=True,
         )
 
     def sleep(self, duration: str) -> None:
