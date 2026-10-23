@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any, List, Literal
 import os
 import socket
+from urllib.parse import urlparse
 import cv2
 import numpy as np
 import requests
@@ -13,7 +14,7 @@ ENV_SCREENSHOT_URL = "WEBCAM_SCREENSHOT_URL"
 ENV_SCREENSHOT_TOKEN = "WEBCAM_SCREENSHOT_TOKEN"  # nosec B105 - an env var name, not a secret
 ENV_SCREENSHOT_TCP_PORT = "WEBCAM_SCREENSHOT_TCP_PORT"
 ENV_TCP_FALLBACK_HOST = "127.0.0.1"
-HTTP_SCHEMES = ("http://", "https://")
+HTTP_SCHEMES = frozenset({"http", "https"})
 HTTP_TIMEOUT_SECONDS = 15
 HTTP_OK = 200
 HTTP_ERROR_MESSAGE_LIMIT = 300
@@ -123,28 +124,31 @@ class CameraScreenshot(ElementSourceInterface):
         # Initialize webcam, HTTP endpoint or TCP connection
         if self.camera_index is not None:
             self.cap = cv2.VideoCapture(self.camera_index)
-        elif endpoint and endpoint.lower().startswith(HTTP_SCHEMES):
+        elif endpoint and urlparse(endpoint).scheme.lower() in HTTP_SCHEMES:
             self.http_url = endpoint
             self._http_token = self._resolve_token(capabilities)
-        else:
-            if endpoint:
-                try:
-                    # Parse URL to extract IP address and port
-                    ip_port = str(endpoint).split(":")
-                    if len(ip_port) != 2:
-                        raise ValueError(
-                            f"Invalid URL format: {endpoint}. Expected format: ip:port"
-                        )
-                    self.ip_address, port_str = ip_port
-                    self.port = int(port_str)
-                except (ValueError, TypeError) as e:
-                    internal_logger.error(f"Failed to parse URL {endpoint}: {e}")
-                    raise ValueError(f"Invalid URL format: {endpoint}")
-            else:
-                raise ValueError("No camera_index or valid URL provided")
+        elif endpoint:
+            self.ip_address, self.port = self._parse_ip_port(endpoint)
             self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
+        else:
+            raise ValueError("No camera_index or valid URL provided")
 
         self.camera_screenshot_config = config
+
+    @staticmethod
+    def _parse_ip_port(endpoint: str) -> tuple:
+        """Split an ``ip:port`` endpoint for the raw-TCP protocol."""
+        try:
+            ip_port = str(endpoint).split(":")
+            if len(ip_port) != 2:
+                raise ValueError(
+                    f"Invalid URL format: {endpoint}. Expected format: ip:port"
+                )
+            ip_address, port_str = ip_port
+            return ip_address, int(port_str)
+        except (ValueError, TypeError) as e:
+            internal_logger.error(f"Failed to parse URL {endpoint}: {e}")
+            raise ValueError(f"Invalid URL format: {endpoint}")
 
     def capture(self) -> np.ndarray:
         """

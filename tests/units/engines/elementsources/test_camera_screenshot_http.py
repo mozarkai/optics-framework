@@ -151,15 +151,17 @@ class TestHttp:
 
     def test_non_json_error_body(self, http_server):
         http_server.mode = "plain"
+        source = _source(url=http_server.url, token=TOKEN)
         with pytest.raises(CameraScreenshotHttpError) as exc:
-            _source(url=http_server.url, token=TOKEN).capture()
+            source.capture()
         assert exc.value.status == 500
         assert "boom" in str(exc.value)
 
     def test_redirect_is_not_followed(self, http_server):
         http_server.mode = "redirect"
+        source = _source(url=http_server.url, token=TOKEN)
         with pytest.raises(CameraScreenshotHttpError) as exc:
-            _source(url=http_server.url, token=TOKEN).capture()
+            source.capture()
         assert exc.value.status == 302
         assert len(http_server.received) == 1
 
@@ -167,8 +169,9 @@ class TestHttp:
         url = http_server.url
         http_server.shutdown()
         http_server.server_close()
+        source = _source(url=url, token=TOKEN)
         with pytest.raises(RuntimeError, match="failed"):
-            _source(url=url, token=TOKEN).capture()
+            source.capture()
 
 
 class TestTcpUnchanged:
@@ -245,6 +248,7 @@ class TestTokenNotLogged:
         with caplog.at_level(logging.DEBUG):
             _source(url=http_server.url, token=TOKEN).capture()
             http_server.mode = (503, "CAPTURE_FAILED")
+            source = _source(url=http_server.url, token=TOKEN)
             with pytest.raises(CameraScreenshotHttpError):
-                _source(url=http_server.url, token=TOKEN).capture()
+                source.capture()
         assert TOKEN not in caplog.text
