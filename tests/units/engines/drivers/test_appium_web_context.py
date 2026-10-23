@@ -1,6 +1,7 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from appium.common.exceptions import NoSuchContextException
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 from optics_framework.common.error import Code, OpticsError
@@ -22,10 +23,10 @@ def _driver_instance(capabilities: dict) -> Appium:
     [
         ({"platformName": "Android"}, "android"),
         ({"platformName": "iOS"}, "ios"),
-        ({"platformName": "Android", "browserName": ""}, "android"),
+        ({"platformName": "iOS", "browserName": ""}, "ios"),
         ({"platformName": "TizenTV"}, None),
-        ({"platformName": "Android", "browserName": "chrome"}, None),
-        ({"platformName": "Android", "appium:autoWebview": True}, None),
+        ({"platformName": "Android", "browserName": "chrome"}, "android"),
+        ({"platformName": "Android", "appium:autoWebview": True}, "android"),
         ({"platformName": "iOS", "browserName": "Safari"}, None),
     ],
 )
@@ -186,3 +187,25 @@ def test_ios_context_options_apply_to_native_sessions_only(capabilities, fast_co
     _, defaults = instance._get_platform_and_options(capabilities)
 
     assert (defaults.get("webviewAtomWaitTimeout") == 5000) is fast_contexts
+
+
+def test_a_browser_session_remembers_the_context_it_entered():
+    instance = _driver_instance({"platformName": "Android"})
+    webdriver = instance.driver
+    webdriver.current_package = "com.android.chrome"
+    webdriver.contexts = [Appium.NATIVE_CONTEXT, Appium.BROWSER_SESSION_CONTEXT]
+    instance._known_web_contexts = {}
+
+    def switch(context):
+        if context == "WEBVIEW_chrome":
+            raise NoSuchContextException("no such context")
+
+    webdriver.switch_to.context.side_effect = switch
+
+    with patch.object(instance, "_foreground_web_context", return_value=("WEBVIEW_chrome", None, 0)), \
+            patch.object(instance, "_focus_window"), instance.web_context():
+        pass
+
+    assert instance._known_web_contexts[(webdriver.session_id, "com.android.chrome")] == (
+        Appium.BROWSER_SESSION_CONTEXT, 0
+    )
