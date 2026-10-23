@@ -36,8 +36,6 @@ from optics_framework.engines.drivers.appium_platforms import (
     normalize_platform,
     supported_platforms,
     supported_on,
-    ANDROID,
-    IOS,
     MOBILE,
     KEYCODE_RC_NAMED,
 )
@@ -100,12 +98,10 @@ def _ios_context_pid(context: str) -> int | None:
 
 def _is_app_webview_page(page: dict[str, Any]) -> bool:
     """An Android WebView describes its page in JSON (attached, visible, bounds); a browser tab does not."""
-    description = page.get("description")
-    if isinstance(description, str):
-        try:
-            description = json.loads(description)
-        except ValueError:
-            return False
+    try:
+        description = json.loads(page.get("description") or "")
+    except ValueError:
+        return False
     return isinstance(description, dict) and "attached" in description
 
 
@@ -1518,16 +1514,13 @@ class Appium(DriverInterface):
     def _is_deeplink(self, value: str) -> bool:
         return isinstance(value, str) and "://" in value
 
-    @supported_on(ANDROID, IOS)
+    @supported_on(*MOBILE)
     @contextmanager
     def web_context(self, queries: Sequence[tuple[str, str]] = ()) -> Iterator[WebDriver]:
-        """Run the body in the front tab of the foreground app's web content, then return to native.
-
-        On iOS an app can show several pages at once; the first that holds one of ``queries`` is entered.
-        """
+        """Run the body in the foreground app's front web page, on iOS the first holding a ``queries`` match; then go native."""
         driver = self._require_driver()
         try:
-            if self._active_platform() == IOS:
+            if self._is_ios():
                 self._enter_ios_web_context(driver, queries)
             else:
                 self._enter_android_web_context(driver)
@@ -1548,22 +1541,28 @@ class Appium(DriverInterface):
         package = driver.current_package
         if not self._reenter_web_context(driver, package):
             context, page_url, self._app_webviews_in_front = self._foreground_web_context(driver, package)
-            self._switch_to_web_context(driver, context)
+            try:
+                driver.switch_to.context(context)
+            except WebDriverException as e:
+                # Seen with Samsung Internet, whose DevTools socket chromedriver cannot attach to.
+                reason = e.msg.splitlines()[0] if e.msg else type(e).__name__
+                raise OpticsError(
+                    Code.E0201,
+                    message=f"Cannot read the web page shown by '{package}': {reason}. Web locators work "
+                            "in Chrome and in WebViews with debugging enabled; use text locators or OCR here.",
+                    cause=e,
+                ) from e
             self._focus_window(driver, page_url)
             self._known_web_contexts[(driver.session_id, package)] = (context, self._app_webviews_in_front)
 
     def _enter_ios_web_context(self, driver: WebDriver, queries: Sequence[tuple[str, str]] = ()) -> None:
-        """Enter the visible page of the app in front: its own WKWebView, a Safari sheet over it, or the browser it is.
-
-        Web Inspector names pages ``WEBVIEW_<pid>.<page>``; a Safari sheet runs in SafariViewService's process.
-        """
+        """Enter the visible page of the app in front: its WKWebView, a Safari sheet (SafariViewService) or Safari."""
         pid = driver.execute_script("mobile: activeAppInfo").get("pid")
         listed = [
             context for context in driver.execute_script(_GET_CONTEXTS) or []
             if str(context.get("id", "")).startswith("WEBVIEW_")
         ]
-        listed_pages = {_ios_page(context) for context in listed}
-        self._frozen_web_contexts &= listed_pages
+        self._frozen_web_contexts &= {_ios_page(context) for context in listed}
         candidates = sorted(
             (
                 context for context in listed
@@ -1633,25 +1632,9 @@ class Appium(DriverInterface):
                     "WebView is automatable only when the app enables WebView debugging.",
         )
 
-    def _switch_to_web_context(self, driver: WebDriver, context: str) -> None:
-        try:
-            driver.switch_to.context(context)
-        except WebDriverException as e:
-            # Seen with Samsung Internet, whose DevTools socket chromedriver cannot attach to.
-            reason = e.msg.splitlines()[0] if e.msg else type(e).__name__
-            raise OpticsError(
-                Code.E0201,
-                message=f"Cannot read the web page shown by '{driver.current_package}': {reason}. Web locators work "
-                        "in Chrome and in WebViews with debugging enabled; use text locators or OCR here.",
-                cause=e,
-            ) from e
-
     @staticmethod
     def _focus_window(driver: WebDriver, page_url: str | None) -> None:
-        """Focus the window showing the front page, matched by URL in the DevTools target list.
-
-        Switching windows would bring each tab to the front, and that list carries no tab order.
-        """
+        """Focus the tab showing the front page, matched by URL in the DevTools target list, which has no tab order."""
         handles = driver.window_handles
         if len(handles) < 2 or not page_url:
             return
@@ -1661,9 +1644,13 @@ class Appium(DriverInterface):
             target["targetId"] for target in targets
             if target.get("url") == page_url and target.get("targetId") in handles
         ]
-        attached = Appium._attached_window(driver)
-        if len(matches) > 1:
-            matches = Appium._narrow_by_attached_tab(driver, matches, attached)
+        try:
+            attached = driver.current_window_handle
+        except NoSuchWindowException:
+            attached = None
+        if len(matches) > 1 and attached in matches:
+            # Same-URL tabs (a reopened Custom Tab link): keep the attached one only if it is the visible one.
+            matches = [attached] if Appium._attached_tab_visible(driver) else [h for h in matches if h != attached]
         if len(matches) != 1:
             reason = "several tabs show" if matches else "no tab shows"
             raise OpticsError(
@@ -1673,22 +1660,6 @@ class Appium(DriverInterface):
             )
         if matches[0] != attached:
             driver.switch_to.window(matches[0])
-
-    @staticmethod
-    def _attached_window(driver: WebDriver) -> str | None:
-        try:
-            return driver.current_window_handle
-        except NoSuchWindowException:
-            return None
-
-    @staticmethod
-    def _narrow_by_attached_tab(driver: WebDriver, handles: list[str], current: str | None) -> list[str]:
-        """Narrow same-URL tabs (a reopened Custom Tab link) by whether the attached tab is visible."""
-        if current not in handles:
-            return handles
-        if Appium._attached_tab_visible(driver):
-            return [current]
-        return [handle for handle in handles if handle != current]
 
     @staticmethod
     def _attached_tab_visible(driver: WebDriver) -> bool:
@@ -1702,13 +1673,9 @@ class Appium(DriverInterface):
     def web_rects_to_screen(
         self, rects: list[dict[str, Any] | None], metrics: list[float]
     ) -> list[dict[str, Any] | None]:
-        """Unclamped device-screen rectangles of ``getBoundingClientRect`` boxes measured inside :meth:`web_context`.
-
-        ``metrics`` is ``[devicePixelRatio, visualViewport offsetLeft, offsetTop, scale, width, height]``;
-        iOS measures the page itself instead.
-        """
+        """Unclamped screen rects of page boxes; ``metrics``: devicePixelRatio, visualViewport left, top, scale, width, height."""
         driver = self._require_driver()
-        if self._active_platform() == IOS:
+        if self._is_ios():
             origin_x, origin_y, factor_x, factor_y = self._ios_web_transform(driver)
         else:
             ratio, offset_x, offset_y, scale, view_width, view_height = metrics
@@ -1749,10 +1716,7 @@ class Appium(DriverInterface):
         return native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y
 
     def _web_view_rect(self, driver: WebDriver, width: float, height: float) -> dict[str, int]:
-        """Screen rect of the WebView drawing a ``width`` x ``height`` viewport.
-
-        Native bounds are clipped to the screen, so they count only when they hold the whole viewport.
-        """
+        """Screen rect of the WebView drawing a ``width`` x ``height`` viewport; clipped native bounds do not count."""
         native = self._native_webview_bounds(driver)
         if native and abs(native["width"] - width) <= 2 and abs(native["height"] - height) <= 2:
             return native
@@ -1777,9 +1741,7 @@ class Appium(DriverInterface):
             driver.switch_to.context(context)
             driver.switch_to.window(window)
         webviews = [rect for rect in rects if rect["width"] and rect["height"]]
-        if len(webviews) != 1 or self._app_webviews_in_front > 1:
-            return None
-        return webviews[0]
+        return webviews[0] if len(webviews) == 1 and self._app_webviews_in_front <= 1 else None
 
     def _open_deeplink(
             self,

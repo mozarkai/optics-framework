@@ -52,7 +52,7 @@ class LocatorStrategy(ABC):
         """One look per element, no waiting; returns the hits and an annotated frame when the strategy drew one."""
 
     def can_assert(self, element: str) -> bool:
-        """Whether this strategy can look ``element`` up; vision strategies always can."""
+        """Whether this strategy can look ``element`` up."""
         return True
 
     @staticmethod
@@ -431,21 +431,11 @@ def _overlap(a: dict, b: dict) -> float:
 def _native_container(entry: dict) -> bool:
     """A compact entry says so in ``act``; a full one only in its native attributes."""
     extra = entry.get("extra") if isinstance(entry.get("extra"), dict) else {}
-    native_class = str(entry.get("cls") or extra.get("class") or "")
     return (
         "scroll" in (entry.get("act") or [])
         or str(extra.get("scrollable")).lower() == "true"
-        or native_class.endswith("WebView")
+        or str(extra.get("class") or "").endswith("WebView")
     )
-
-
-def _split_frame(result: Any) -> tuple[Any, np.ndarray | None]:
-    """A located value and its annotated frame, whichever shape the strategy returned them in."""
-    if isinstance(result, LocateValueWithFrame):
-        return result.value, result.annotated_frame
-    if isinstance(result, tuple) and len(result) == 2 and (result[1] is None or hasattr(result[1], "shape")):
-        return result[0], result[1]
-    return result, None
 
 
 def merge_screen_elements(base: List[dict], added: List[dict]) -> List[dict]:
@@ -728,7 +718,12 @@ class StrategyManager:
                 result = strategy.locate(element, index=index)
             if result is None:
                 return None
-            value, annotated_frame = _split_frame(result)
+            if isinstance(result, LocateValueWithFrame):
+                value, annotated_frame = result.value, result.annotated_frame
+            elif isinstance(result, tuple) and len(result) == 2 and (result[1] is None or hasattr(result[1], "shape")):
+                value, annotated_frame = result[0], result[1]
+            else:
+                value, annotated_frame = result, None
             if use_aoi and locate_with_aoi is None and not isinstance(value, tuple):
                 # Strategy can't scope to the AOI itself (accessibility/XPath) — enforce
                 # it here so an out-of-AOI match falls through to an AOI-capable strategy.
@@ -841,10 +836,12 @@ class StrategyManager:
         state.vision_due = self._vision_due(state)
         checked = False
         for strategy in state.strategies.copy():
-            pending = self._pending_for(strategy, state)
+            vision = _is_vision(strategy)
+            if vision and not state.vision_due:
+                continue
+            pending = [e for e, hit in state.found.items() if not hit and strategy.can_assert(e)]
             if not pending:
                 continue
-            vision = _is_vision(strategy)
             if checked and not state.first_round and time.monotonic() >= state.deadline:
                 return None
             frame = self._round_frame(state) if vision else None
@@ -855,13 +852,6 @@ class StrategyManager:
             if result is not None:
                 return result
         return None
-
-    @staticmethod
-    def _pending_for(strategy: LocatorStrategy, state: _AssertState) -> list[str]:
-        """Elements ``strategy`` looks for this round: none while its vision turn is not due."""
-        if _is_vision(strategy) and not state.vision_due:
-            return []
-        return [e for e, hit in state.found.items() if not hit and strategy.can_assert(e)]
 
     @staticmethod
     def _vision_due(state: _AssertState) -> bool:
@@ -875,20 +865,16 @@ class StrategyManager:
         """The screenshot all vision strategies share this round; None when it cannot be taken."""
         if state.frame is None:
             started, timestamp = time.monotonic(), utils.get_timestamp()
-            state.frame = self._vision_frame()
+            try:
+                state.frame = self.capture_screenshot()
+            except OpticsError as e:
+                if e.code == Code.E0106:
+                    raise
             if state.frame is None:
                 state.vision_due = False
             else:
                 state.last_vision, state.frame_ts = started, timestamp
         return state.frame
-
-    def _vision_frame(self) -> np.ndarray | None:
-        try:
-            return self.capture_screenshot()
-        except OpticsError as e:
-            if e.code == Code.E0106:
-                raise
-            return None
 
     def _check_with(
         self, strategy: LocatorStrategy, pending: list[str], frame: np.ndarray | None, state: _AssertState
@@ -997,8 +983,7 @@ class StrategyManager:
         )
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
-        """Interactive elements of the screen: the first source that lists them, plus
-        what every supplementing source adds (see ``SUPPLEMENTS_SCREEN_ELEMENTS``)."""
+        """Interactive elements of the screen: the first source that lists them, plus what every supplementing source adds."""
         applicable_strategies = [
             s for s in self.pagesource_strategies
             if self._can_strategy_get_interactive_elements(s)

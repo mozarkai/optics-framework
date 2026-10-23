@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,12 +30,10 @@ def test_native_sources_keep_dom_xpath_off_phones(source_cls):
     assert source_cls(driver=_driver(None)).can_locate("//input") is True
 
 
-@pytest.mark.parametrize("platform", ["android", "ios"])
-def test_appium_web_accepts_web_locators_on_native_phone_sessions(platform):
-    assert AppiumWeb(driver=_driver(platform)).can_locate("css=#q") is True
-    assert AppiumWeb(driver=_driver(platform)).can_locate("//input") is True
-    assert AppiumWeb(driver=_driver(None)).can_locate("css=#q") is False
-    assert AppiumWeb(driver=_driver(None)).can_locate("//input") is False
+@pytest.mark.parametrize(("platform", "accepts"), [("android", True), ("ios", True), (None, False)])
+@pytest.mark.parametrize("locator", ["css=#q", "//input"])
+def test_appium_web_takes_web_locators_only_on_native_phone_sessions(platform, accepts, locator):
+    assert AppiumWeb(driver=_driver(platform)).can_locate(locator) is accepts
 
 
 def test_appium_web_leaves_a_browser_session_in_its_web_context():
@@ -53,35 +50,20 @@ def test_can_locate_without_a_driver_does_not_raise(source_cls):
     source_cls(driver=None).can_locate("css=#q")
 
 
-def test_check_once_reraises_dead_session():
+def test_check_elements_reraises_dead_session():
     driver = _driver("android")
-
-    @contextmanager
-    def web_context(queries=()):
-        raise OpticsError(Code.E0106, message="gone")
-        yield
-
-    driver.web_context = web_context
-    source = AppiumWeb(driver=driver)
+    driver.web_context.side_effect = OpticsError(Code.E0106, message="gone")
 
     with pytest.raises(OpticsError) as excinfo:
-        source._check_once([("css selector", "#q")], AppiumWeb._is_present)
+        AppiumWeb(driver=driver).check_elements(["css=#q"])
 
     assert excinfo.value.code == Code.E0106
 
 
 def test_appium_web_check_elements_answers_per_element_in_one_web_context():
     driver = _driver("android")
-    page = MagicMock()
+    page = driver.web_context.return_value.__enter__.return_value
     page.find_elements.side_effect = lambda by, value: [MagicMock()] if value == "#q" else []
-    entries = []
-
-    @contextmanager
-    def web_context(queries=()):
-        entries.append(1)
-        yield page
-
-    driver.web_context = web_context
 
     assert AppiumWeb(driver=driver).check_elements(["css=#q", "css=#missing"]) == [True, False]
-    assert len(entries) == 1
+    driver.web_context.assert_called_once()
