@@ -275,7 +275,7 @@ log_level: INFO
 | Layer | Available engines |
 |-------|-------------------|
 | **Drivers** | `appium` (Android, iOS, Android TV, Tizen, webOS) · `selenium` · `playwright` · `ble` |
-| **Element sources** | `appium_find_element` · `appium_page_source` · `appium_screenshot` · `selenium_*` · `playwright_*` · `camera_screenshot` |
+| **Element sources** | `appium_find_element` · `appium_page_source` · `appium_web` · `appium_screenshot` · `selenium_*` · `playwright_*` · `camera_screenshot` |
 | **Text detection** | `easyocr` · `pytesseract` · `google_vision` · `remote_ocr` |
 | **Image detection** | `templatematch` · `remote_oir` |
 | **LLM** | `gemini` · `openai` (and any OpenAI-compatible server) · `anthropic` |

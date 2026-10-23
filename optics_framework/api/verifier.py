@@ -19,7 +19,8 @@ class Verifier:
         self.image_detection: Optional[InstanceFallback] = builder.get_image_detection()
         self.text_detection: Optional[InstanceFallback] = builder.get_text_detection()
         self.strategy_manager = StrategyManager(
-            self.element_source, self.text_detection, self.image_detection
+            self.element_source, self.text_detection, self.image_detection,
+            annotate_assertions=builder.session_config.save_captures,
         )
         self.event_sdk: EventSDK = builder.event_sdk
         self.execution_dir = builder.session_config.execution_output_path
@@ -203,11 +204,13 @@ class Verifier:
 
     def _save_annotated_screenshot(self, annotated_frame, timestamp):
         """Save annotated screenshot with timestamp."""
+        if self.capture_output_dir is None:
+            return
         utils.save_screenshot(
             annotated_frame,
             "assert_elements_image_detection_result",
             time_stamp=timestamp,
-            output_dir=self.execution_dir
+            output_dir=self.capture_output_dir
         )
 
     def _evaluate_rule(self, result_parts: list, rule: str) -> bool:
@@ -313,7 +316,7 @@ class Verifier:
 
     @staticmethod
     def _to_compact_shape(elements: list) -> list:
-        # Project compact dicts to {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}.
+        # Project compact dicts to {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}.
         # A payload without an "act" key (a source that does not implement compact)
         # passes through.
         if not elements or not isinstance(elements[0], dict) or "act" not in elements[0]:
@@ -334,6 +337,8 @@ class Verifier:
                 entry["rid"] = rid.split("/")[-1]
             if el.get("loc"):
                 entry["loc"] = el["loc"]
+            if el.get("offscreen"):
+                entry["offscreen"] = True
             compact.append(entry)
         return compact
 
@@ -371,8 +376,10 @@ class Verifier:
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
         :param compact: When True, return only actionable elements (labels folded in,
             with an ``act`` list) plus standalone visible text (``act: []``), as
-            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?}`` (``loc``: a unique web
-            locator). Implemented by the Appium and Playwright page sources; sources without it return their full list.
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}`` (``loc``: a web
+            locator matching only that element; ``offscreen``: in the page but scrolled out of
+            view). Implemented by the Appium, Appium web and Playwright page sources; sources
+            without it return their full list.
         :return: A list of interactive elements.
         """
         compact = utils.to_bool(compact)

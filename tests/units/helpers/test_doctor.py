@@ -1,11 +1,4 @@
-"""Unit tests for ``optics doctor`` (``optics_framework/helper/doctor.py``).
-
-Environment probes are exercised through their seams — shutil.which, the
-metadata ``version`` lookup, subprocess.run and the socket — so the suite never
-needs adb, Appium or a browser installed. Project validation runs against real
-config.yaml files on disk and doubles as a guard against doctor mutating the
-project it inspects (no execution_output/ may appear).
-"""
+"""Unit tests for ``optics doctor``; probes are stubbed at their seams, so no adb, Appium or browser is needed."""
 from __future__ import annotations
 
 import io
@@ -71,10 +64,6 @@ def _write_config(tmp_path, answers=None, raw=None) -> str:
     return folder
 
 
-# --------------------------------------------------------------------------- #
-# check_core                                                                   #
-# --------------------------------------------------------------------------- #
-
 class TestCheckCore:
     def test_reports_installed_version(self):
         with patch(f"{MODULE}.version", return_value="9.9.9"):
@@ -98,10 +87,6 @@ class TestCheckCore:
         assert python_row.status == "ok"
 
 
-# --------------------------------------------------------------------------- #
-# check_engines                                                                #
-# --------------------------------------------------------------------------- #
-
 class TestCheckEngines:
     def test_one_row_per_engine(self):
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
@@ -120,7 +105,6 @@ class TestCheckEngines:
             if package == "appium-python-client":
                 return "5.0.0"
             raise PackageNotFoundError(package)
-
         with patch(f"{MODULE}.version", side_effect=fake_version):
             rows = doctor.check_engines()
         appium = next(r for r in rows if r.name == "Appium")
@@ -128,16 +112,11 @@ class TestCheckEngines:
         assert "appium-python-client 5.0.0" in appium.detail
 
 
-# --------------------------------------------------------------------------- #
-# check_mobile                                                                 #
-# --------------------------------------------------------------------------- #
-
 @pytest.fixture
 def no_socket(monkeypatch):
     """Simulate "nothing listening": any connect attempt raises OSError."""
     def refuse(*_args, **_kwargs):
         raise OSError("connection refused")
-
     monkeypatch.setattr(doctor.socket, "create_connection", refuse)
 
 
@@ -206,10 +185,6 @@ class TestCheckMobile:
         connect.assert_called_once_with(("10.0.0.5", 5555), timeout=doctor._SOCKET_TIMEOUT_S)
 
 
-# --------------------------------------------------------------------------- #
-# check_web                                                                    #
-# --------------------------------------------------------------------------- #
-
 class TestCheckWeb:
     @pytest.fixture(autouse=True)
     def isolated_home(self, monkeypatch, tmp_path):
@@ -246,9 +221,7 @@ class TestCheckWeb:
         assert pw.status == "ok"
 
     def test_chromium_from_an_earlier_playwright_is_not_accepted(self, monkeypatch):
-        """Playwright pins one exact build and refuses to launch any other, so
-        a leftover download is not a usable browser. Reporting it as one sends
-        the user into a run that fails on launch."""
+        """Playwright launches only its pinned build, so a leftover download is unusable."""
         cache = self.home / "Library/Caches/ms-playwright"
         (cache / "chromium-1234").mkdir(parents=True)
         monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
@@ -287,10 +260,6 @@ class TestCheckWeb:
         selenium_row = next(r for r in rows if r.name == "selenium webdriver")
         assert selenium_row.status == "ok"
 
-
-# --------------------------------------------------------------------------- #
-# validate_project                                                             #
-# --------------------------------------------------------------------------- #
 
 class TestValidateProject:
     def test_valid_rendered_config_all_ok(self, tmp_path):
@@ -440,10 +409,6 @@ class TestValidateProject:
         assert "execution_output" not in after
 
 
-# --------------------------------------------------------------------------- #
-# _split_host_port                                                             #
-# --------------------------------------------------------------------------- #
-
 class TestSplitHostPort:
     @pytest.mark.parametrize("url, expected", [
         ("http://10.1.2.3:5555", ("10.1.2.3", 5555)),
@@ -466,10 +431,6 @@ class TestSplitHostPort:
         assert doctor._split_host_port(url) is None
 
 
-# --------------------------------------------------------------------------- #
-# run_doctor                                                                   #
-# --------------------------------------------------------------------------- #
-
 def _stub_env_rows():
     return [Check("python", "ok", "3.12.1"),
             Check("Appium", "warn", "not installed", "optics setup --install appium")]
@@ -481,13 +442,11 @@ class TestRunDoctor:
         """Replace every environment probe with one canned warning row."""
         monkeypatch.setattr(doctor, "check_core", _stub_env_rows)
         monkeypatch.setattr(doctor, "check_engines", lambda: [])
-        monkeypatch.setattr(doctor, "check_web", lambda: [])
+        monkeypatch.setattr(doctor, "check_web", lambda *_: [])
         captured = {}
-
         def fake_check_mobile(host="127.0.0.1", port=4723):
             captured["target"] = (host, port)
             return [Check("appium server", "warn", f"{host}:{port}")]
-
         monkeypatch.setattr(doctor, "check_mobile", fake_check_mobile)
         return captured
 
@@ -545,9 +504,7 @@ class TestRunDoctor:
 
 
 class TestMissingProjectRow:
-    """A bare `optics doctor` must speak about the absent project instead of
-    printing only machine rows (and the absence itself is a warning, never a
-    --check failure)."""
+    """A bare `optics doctor` warns about the missing project, never failing --check."""
 
     def test_bare_run_in_empty_dir_warns_about_missing_project(
             self, monkeypatch, tmp_path):
@@ -595,8 +552,7 @@ class TestMissingProjectRow:
 
 
 class TestGatedClosingMessage:
-    """Warnings on an ENABLED driver's must-haves replace the reassurance
-    with a targeted call-to-action listing exactly those hints."""
+    """Warnings on an enabled driver's must-haves replace the reassurance with their hints."""
 
     APPIUM_HINT = "Start it in another terminal with the `appium` command."
     DEVICE_HINT = "Connect a device or start an emulator (USB debugging on)."
@@ -675,8 +631,7 @@ class TestGatedClosingMessage:
 
 
 class TestMandatoryHintsCoverEnabledEngines:
-    """The server can be up and the device attached, and the run still dies the
-    moment the driver is instantiated."""
+    """A missing driver client fails the run even with the server up and a device attached."""
 
     def test_missing_client_for_the_enabled_driver_blocks(self):
         rows = [

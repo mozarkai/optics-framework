@@ -1,7 +1,7 @@
 """Unit tests for AppiumFindElement.assert_elements_visible (visibility vs. presence)."""
 from unittest.mock import MagicMock
 import pytest
-from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, WebDriverException
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.engines.elementsources.appium_find_element import AppiumFindElement
@@ -186,3 +186,9 @@ class TestLocateIndex:
         with pytest.raises(OpticsError) as exc:
             source.locate("android.widget.Button", index=5)
         assert exc.value.code == Code.E0201
+
+
+def test_check_elements_maps_no_such_element_to_a_miss(source):
+    source.driver.driver.find_element.side_effect = [NoSuchElementException("gone"), MagicMock()]
+
+    assert source.check_elements(["//a", "//b"]) == [False, True]

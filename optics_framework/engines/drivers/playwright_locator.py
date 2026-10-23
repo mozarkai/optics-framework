@@ -1,12 +1,11 @@
 """Turns an Optics element value into a Playwright locator, for every Playwright source."""
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 from playwright.async_api import Error as PlaywrightError
 
 from optics_framework.common import utils
-from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers.playwright import Playwright
 
 _ENGINE_PREFIXES = ("role=", "id=", "data-testid=", "data-test=", "data-test-id=")
@@ -78,11 +77,11 @@ def candidates(page: Any, element: str, *, exact: bool = False) -> list[Any]:
     return _semantic(page, element, text_kinds, exact)
 
 
-def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) -> Any | None:
+def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool, run: Callable) -> Any | None:
     try:
         if not visible_only:
-            return locator.nth(index) if run_async(locator.count()) > index else None
-        flags = run_async(locator.evaluate_all(_VISIBLE_FLAGS_SCRIPT, on_screen))
+            return locator.nth(index) if run(locator.count()) > index else None
+        flags = run(locator.evaluate_all(_VISIBLE_FLAGS_SCRIPT, on_screen))
     except PlaywrightError as e:
         if Playwright.is_dead_session_error(e):
             raise
@@ -92,7 +91,7 @@ def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) ->
 
 
 def find(
-    page: Any,
+    driver: Playwright,
     element: str,
     *,
     index: int = 0,
@@ -102,11 +101,11 @@ def find(
     on_screen: bool = False,
 ) -> Any | None:
     """The ``index``-th (visible) match of ``element``, or ``None`` after ``timeout_s``."""
-    options = candidates(page, element, exact=exact)
+    options = candidates(driver.page, element, exact=exact)
     deadline = time.monotonic() + timeout_s
     while True:
         for locator in options:
-            match = _nth_match(locator, index, visible_only, on_screen)
+            match = _nth_match(locator, index, visible_only, on_screen, driver.run)
             if match is not None:
                 return match
         if time.monotonic() >= deadline:
@@ -114,59 +113,9 @@ def find(
         time.sleep(_POLL_INTERVAL_S)
 
 
-def is_present(page: Any, element: str, *, exact: bool = False) -> bool:
-    return find(page, element, exact=exact, visible_only=False) is not None
+def is_present(driver: Playwright, element: str, *, exact: bool = False) -> bool:
+    return find(driver, element, exact=exact, visible_only=False) is not None
 
 
-def is_visible(page: Any, element: str, *, exact: bool = False) -> bool:
-    return find(page, element, exact=exact, on_screen=True) is not None
-
-
-# Per xpath: a selector matching only that node, or null. Test attributes first.
-_SUGGEST_SCRIPT = r"""
-(xpaths) => {
-    const TEST_ATTRS = ['data-testid', 'data-test', 'data-test-id', 'data-qa', 'data-cy'];
-    const quote = (v) => '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-    const unique = (sel, el) => {
-        try {
-            const hits = document.querySelectorAll(sel);
-            return hits.length === 1 && hits[0] === el;
-        } catch (e) {
-            return false;
-        }
-    };
-    const suggest = (el) => {
-        const tag = el.tagName.toLowerCase();
-        for (const attr of TEST_ATTRS) {
-            const v = el.getAttribute(attr);
-            if (v && unique(`[${attr}=${quote(v)}]`, el)) return `[${attr}=${quote(v)}]`;
-        }
-        if (el.id && /^[A-Za-z_-][\w-]*$/.test(el.id) && unique('#' + el.id, el)) return '#' + el.id;
-        for (const attr of ['name', 'aria-label', 'placeholder', 'title', 'alt']) {
-            const v = el.getAttribute(attr);
-            if (v && unique(`${tag}[${attr}=${quote(v)}]`, el)) return `${tag}[${attr}=${quote(v)}]`;
-        }
-        const href = tag === 'a' && el.getAttribute('href');
-        if (href && unique(`a[href=${quote(href)}]`, el)) return `a[href=${quote(href)}]`;
-        return null;
-    };
-    return xpaths.map((xp) => {
-        if (!xp) return null;
-        try {
-            const el = document.evaluate(
-                xp, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
-            ).singleNodeValue;
-            return el && el.nodeType === 1 ? suggest(el) : null;
-        } catch (e) {
-            return null;
-        }
-    });
-}
-"""
-
-
-def suggest_locators(page: Any, xpaths: list[str | None]) -> list[str | None]:
-    """A unique CSS locator per node, checked in the page, or ``None``."""
-    if not xpaths:
-        return []
-    return list(run_async(page.evaluate(_SUGGEST_SCRIPT, xpaths)))
+def is_visible(driver: Playwright, element: str, *, exact: bool = False) -> bool:
+    return find(driver, element, exact=exact, on_screen=True) is not None
