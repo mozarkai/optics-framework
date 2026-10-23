@@ -1,9 +1,8 @@
 import time
-from collections.abc import Callable
 from typing import Any
 from appium.webdriver.common.appiumby import AppiumBy
 from lxml import etree  # type: ignore
-from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+from selenium.common.exceptions import WebDriverException
 from optics_framework.common import utils
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import OpticsError, Code
@@ -46,17 +45,13 @@ _SETTLE_INTERVAL_S = 0.15
 
 
 class AppiumWeb(ElementSourceInterface, WebDomInspector):
-    """Finds CSS and DOM XPath locators in the foreground app's web content: a browser or an inspectable WebView.
-
-    It returns screen coordinates, so the session and the actions that follow stay native.
-    """
+    """Finds CSS and DOM XPath locators in the foreground browser or WebView and returns screen coordinates, so actions stay native."""
 
     REQUIRED_DRIVER_TYPE = "appium"
     SUPPLEMENTS_SCREEN_ELEMENTS = True
 
     def __init__(self, driver: Any = None):
         self.driver = driver
-        self._page_driver: Any = None
 
     def capture(self):
         raise NotImplementedError("AppiumWeb does not capture screenshots.")
@@ -65,16 +60,9 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         """The whole web page the app in front shows, in screen coordinates; out-of-view elements are ``offscreen``."""
         if not self._reads_native_screen():
             return []
-        try:
-            with self._web_context() as driver:
-                self._page_driver = driver
-                try:
-                    self.tree = etree.HTML(driver.page_source)
-                    return self._web_interactive_elements(filter_config, utils.to_bool(compact))
-                finally:
-                    self._page_driver = None
-        except _Unsupported:
-            return []
+        with self.driver.web_context() as driver:
+            self.tree = etree.HTML(driver.page_source)
+            return self._web_interactive_elements(filter_config, compact)
 
     def _inspect_nodes(
         self, xpaths: list[str | None], locate: list[str | None]
@@ -82,7 +70,7 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         if not xpaths:
             return [], []
         try:
-            metrics, rects, found = self._page_driver.execute_script(
+            metrics, rects, found = self.driver.driver.execute_script(
                 _INSPECT_JS, xpaths, locate if any(locate) else None
             )
         except WebDriverException as e:
@@ -106,25 +94,22 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         if not self.can_locate(element):
             return None
         query = self._dom_query(element)
-        try:
-            with self._web_context([query]) as driver:
-                matches = driver.find_elements(*query)
-                position = index or 0
-                if not 0 <= position < len(matches):
-                    raise OpticsError(
-                        Code.E0201,
-                        message=f"'{element}' matched {len(matches)} web element(s); index {position} is out of range.",
-                    )
-                target = matches[position]
-                if not target.is_displayed():
-                    raise OpticsError(Code.E0201, message=f"'{element}' is in the page but not displayed.")
-                if self.driver.native_ui_platform() == "ios":
-                    self._await_keyboard(driver, target)
-                driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
-                self._uncover(driver, target)
-                rect = self._settled_rect(target)
-        except _Unsupported:
-            return None
+        with self.driver.web_context([query]) as driver:
+            matches = driver.find_elements(*query)
+            position = index or 0
+            if not 0 <= position < len(matches):
+                raise OpticsError(
+                    Code.E0201,
+                    message=f"'{element}' matched {len(matches)} web element(s); index {position} is out of range.",
+                )
+            target = matches[position]
+            if not target.is_displayed():
+                raise OpticsError(Code.E0201, message=f"'{element}' is in the page but not displayed.")
+            if self.driver.native_ui_platform() == "ios":
+                self._await_keyboard(driver, target)
+            driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
+            self._uncover(driver, target)
+            rect = self._settled_rect(target)
         return rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
 
     @staticmethod
@@ -146,14 +131,11 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
 
     def _settled_rect(self, target: Any) -> dict:
         """Screen rect once it holds still: Chrome slides its toolbar away after a scroll ends."""
-        rect = self.driver.web_element_screen_rect(target)
+        previous, rect = None, self.driver.web_element_screen_rect(target)
         deadline = time.monotonic() + _SETTLE_TIMEOUT_S
-        while time.monotonic() < deadline:
+        while rect != previous and time.monotonic() < deadline:
             time.sleep(_SETTLE_INTERVAL_S)
-            current = self.driver.web_element_screen_rect(target)
-            if current == rect:
-                return current
-            rect = current
+            previous, rect = rect, self.driver.web_element_screen_rect(target)
         return rect
 
     def assert_elements(self, elements: Any, timeout: int = 30, rule: str = "any") -> tuple[bool, str]:
@@ -166,32 +148,24 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         """One look; the strategy layer owns waiting."""
         if rule not in ("any", "all"):
             raise ValueError("Invalid rule. Use 'any' or 'all'.")
-        try:
-            found = self.check_elements(elements, visible)
-        except _Unsupported:
-            raise TimeoutError(f"Web elements cannot be checked on this platform: {elements}") from None
-        if not (all if rule == "all" else any)(found):
+        if not (all if rule == "all" else any)(self.check_elements(elements, visible)):
             raise TimeoutError(f"Web elements not found based on rule '{rule}': {elements}")
         return True, utils.get_timestamp()
 
     def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
-        queries = [self._dom_query(element) for element in elements]
-        return self._check_once(queries, self._is_visible if visible else self._is_present)
-
-    def _check_once(
-        self, queries: list[tuple[str, str] | None], check: Callable[[Any, tuple[str, str]], bool]
-    ) -> list[bool]:
         """One look at the page in front; a page that cannot be read yet counts as no match."""
+        queries = [self._dom_query(element) for element in elements]
+        if not self._reads_native_screen():
+            return [False] * len(queries)
+        check = self._is_visible if visible else self._is_present
         try:
-            with self._web_context([query for query in queries if query is not None]) as driver:
+            with self.driver.web_context([query for query in queries if query is not None]) as driver:
                 return [query is not None and check(driver, query) for query in queries]
-        except StaleElementReferenceException:
-            internal_logger.debug("AppiumWeb: the page changed while checking; checking again.")
         except OpticsError as e:
             raise_if_session_dead(e)
             internal_logger.debug(f"AppiumWeb: no web content to check yet: {e}")
         except WebDriverException as e:
-            # A browser still opening a tab or registering its web view fails this way.
+            # A browser still opening a tab, registering its web view or changing the page mid-check fails this way.
             raise_if_session_dead(e)
             internal_logger.debug(f"AppiumWeb: the page could not be read yet: {e.msg}")
         return [False] * len(queries)
@@ -217,21 +191,6 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
             return None if utils.is_native_xpath(xpath) else (AppiumBy.XPATH, xpath)
         return None
 
-    def _web_context(self, queries: list[tuple[str, str]] | None = None):
-        if self.driver is None:
-            raise OpticsError(Code.E0101, message="Appium driver is not initialized for AppiumWeb.")
-        try:
-            return self.driver.web_context(queries or ())
-        except OpticsError as e:
-            if e.code == Code.E0105:
-                internal_logger.debug(f"AppiumWeb: {e}")
-                raise _Unsupported from e
-            raise
-
 
 def _without_prefix(element: str, prefix: str) -> str:
     return element[len(prefix):] if element.lower().startswith(prefix) else element
-
-
-class _Unsupported(Exception):
-    """The device platform has no web context support; the lookup is skipped, not failed."""
