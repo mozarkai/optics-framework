@@ -31,13 +31,13 @@ _DRIVER_BY_PLATFORM = {
 }
 
 _ELEMENTS_SOURCES_BY_DRIVER = {
-    "appium": ["appium_find_element", "appium_page_source", "appium_screenshot"],
+    "appium": ["appium_find_element", "appium_page_source", "appium_web", "appium_screenshot"],
     "selenium": ["selenium_find_element", "selenium_page_source", "selenium_screenshot"],
     "playwright": ["playwright_find_element", "playwright_page_source", "playwright_screenshot"],
 }
 
 _SOURCE_GROUP_TITLES = {
-    "appium": "Appium locators / page source / screenshots:",
+    "appium": "Appium locators / page source / web pages / screenshots:",
     "selenium": "Selenium locators / page source / screenshots:",
     "playwright": "Playwright locators / page source / screenshots:",
 }

@@ -192,6 +192,9 @@ class SeleniumFindElement(ElementSourceInterface):
             not_found_desc="found",
         )
 
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        return [self.locate(element) is not None for element in elements]
+
     def _is_located_and_visible(self, element: str) -> bool:
         """True only if `element` both locates, is not CSS-hidden, and is within the viewport.
 

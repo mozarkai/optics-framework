@@ -380,18 +380,19 @@ Clear Element Text,text_field.png,0,0,100,100,clear_field
 
 ### Get Text
 
-Gets the text from a specified element. Currently supports XPath and Text-based elements with Appium.
+Gets the text from a specified element: XPath and Text-based elements with Appium, and CSS or DOM XPath locators in a web page through `appium_web` (an input returns its value).
 
 **Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `element` | Required | The target element (Text or XPath) | - |
+| `element` | Required | The target element (Text, XPath, or a web locator) | - |
 
 **Example:**
 
 ```csv
 Get Text,//android.widget.TextView[@resource-id="title"]
+Get Text,css=h1#firstHeading
 ```
 
 **Note:** This keyword returns text but does not store it in CSV format. Use with flow control keywords to store results.

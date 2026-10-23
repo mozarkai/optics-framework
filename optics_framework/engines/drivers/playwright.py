@@ -1,5 +1,9 @@
 import asyncio
+import json
+import os
+from dataclasses import dataclass, field
 from typing import Optional, Any
+from urllib.parse import urlsplit
 from playwright.async_api import (
     async_playwright,
     Page,
@@ -10,9 +14,38 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.async_utils import DEFAULT_TIMEOUT_S, run_async
+from optics_framework.common.async_utils import run_async
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
+
+
+@dataclass(frozen=True, repr=False)
+class RemoteBrowser:
+    """A browser to connect to; its repr names only the host, since tracebacks log locals that can carry credentials."""
+
+    url: str
+    headers: dict = field(default_factory=dict)
+    protocol: str = "cdp"
+    context: str = "new"
+
+    def __repr__(self) -> str:
+        return f"RemoteBrowser(url={utils.redact_url(self.url)!r}, protocol={self.protocol!r})"
+
+    def expanded_headers(self) -> dict[str, str] | None:
+        return {name: utils.expand_env(str(value)) for name, value in self.headers.items()} or None
+
+    def mask(self, message: str) -> str:
+        """``message`` with this browser's credentials masked; connect errors repeat the full endpoint."""
+        templates = [self.url, *map(str, self.headers.values())]
+        names = {name for template in templates for name in utils.env_names(template)}
+        url = urlsplit(utils.expand_env(self.url))
+        if url.path.strip("/"):
+            message = message.replace(url.path, "/***")
+        secrets = [os.environ.get(name) for name in names]
+        secrets += [url.password, url.query, *(self.expanded_headers() or {}).values()]
+        for secret in sorted(filter(None, secrets), key=len, reverse=True):
+            message = message.replace(secret, "***")
+        return message
 
 
 class Playwright(DriverInterface):
@@ -20,7 +53,12 @@ class Playwright(DriverInterface):
     NAME = "playwright"
     PAGE_NOT_INITIALIZED_MSG = "Playwright page not initialized"
     DEFAULT_ELEMENT_TIMEOUT_MS = 10000
+    DEFAULT_NAVIGATION_TIMEOUT_MS = 60000
     DEFAULT_SETTLE_TIMEOUT_MS = 3000
+    DEFAULT_ACTION_TIMEOUT_MS = 15000
+    DEFAULT_CONNECT_TIMEOUT_MS = 90000
+    REMOTE_ENV = "OPTICS_PLAYWRIGHT_REMOTE"
+    _CONNECT_METHODS = {"cdp": "connect_over_cdp", "playwright": "connect"}
     SETTLE_QUIET_S = 0.5
     SETTLE_POLL_S = 0.1
     # None while the document is still parsing, so "loading" never counts as stable.
@@ -66,6 +104,7 @@ class Playwright(DriverInterface):
         self._browser = None
         self._context = None
         self.page: Optional[Page] = None
+        self._touch = False
 
         internal_logger.info("[Playwright] Driver initialized")
 
@@ -81,10 +120,23 @@ class Playwright(DriverInterface):
         return int(self._setting("element_timeout_ms", self.DEFAULT_ELEMENT_TIMEOUT_MS)) / 1000
 
     def _navigation_timeout_ms(self) -> int:
-        return int(self._setting("navigation_timeout_ms", 60000))
+        return int(self._setting("navigation_timeout_ms", self.DEFAULT_NAVIGATION_TIMEOUT_MS))
+
+    def _action_timeout_s(self) -> float:
+        return int(self._setting("action_timeout_ms", self.DEFAULT_ACTION_TIMEOUT_MS)) / 1000
+
+    def _connect_timeout_ms(self) -> int:
+        return int(self._setting("connect_timeout_ms", self.DEFAULT_CONNECT_TIMEOUT_MS))
 
     def _call_budget_s(self, operation_timeout_s: float) -> float:
-        return operation_timeout_s + DEFAULT_TIMEOUT_S
+        return operation_timeout_s + self._action_timeout_s()
+
+    def _launch_budget_s(self) -> float:
+        return self._call_budget_s((self._connect_timeout_ms() + self._navigation_timeout_ms()) / 1000)
+
+    def run(self, coro, timeout_s: float | None = None):
+        """Run a Playwright coroutine on the shared loop, bounded by ``timeout_s`` or ``action_timeout_ms``."""
+        return run_async(coro, timeout=self._action_timeout_s() if timeout_s is None else timeout_s)
 
     def _settle_timeout_s(self) -> float:
         return int(self._setting("settle_timeout_ms", self.DEFAULT_SETTLE_TIMEOUT_MS)) / 1000
@@ -103,7 +155,7 @@ class Playwright(DriverInterface):
         budget_s = self._settle_timeout_s()
         if budget_s <= 0 or self.page is None:
             return
-        run_async(self._wait_for_page_settled_async(budget_s), timeout=self._call_budget_s(budget_s))
+        self.run(self._wait_for_page_settled_async(budget_s), timeout_s=self._call_budget_s(budget_s))
 
     async def _wait_for_page_settled_async(self, budget_s: float) -> None:
         loop = asyncio.get_running_loop()
@@ -130,9 +182,9 @@ class Playwright(DriverInterface):
 
     def launch_app(self, app_identifier=None, app_activity=None, event_name=None):
         """Open the browser, or navigate the one already open."""
-        return run_async(
+        return self.run(
             self._launch_app_async(app_identifier, event_name=event_name),
-            timeout=self._call_budget_s(self._navigation_timeout_ms() / 1000),
+            timeout_s=self._launch_budget_s(),
         )
 
     async def _launch_app_async(self, app_identifier, event_name):
@@ -153,7 +205,7 @@ class Playwright(DriverInterface):
             internal_logger.info("[Playwright] Application launched")
             return "PLAYWRIGHT_SESSION"
 
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, OpticsError):
             if started_browser:
                 await self._cleanup_resources()
             raise
@@ -164,15 +216,82 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0102, str(e), cause=e)
 
     async def _start_browser(self):
-        internal_logger.info("[Playwright] Launching browser")
-        browser = self._setting("browser", "chromium")
-        headless = self._setting("headless", False)
-        viewport = self._setting("viewport", {"width": 1280, "height": 800})
+        remote = self._remote()
         self._pw = await async_playwright().start()
-        self._browser = await getattr(self._pw, browser).launch(headless=headless)
-        self._context = await self._browser.new_context(viewport=viewport)
+        browser_type = getattr(self._pw, self._setting("browser", "chromium"))
+        if remote:
+            await self._open_remote(browser_type, remote)
+        else:
+            internal_logger.info("[Playwright] Launching browser")
+            self._browser = await browser_type.launch(headless=self._setting("headless", False))
+            await self._open_new_context()
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
+
+    async def _open_new_context(self):
+        options = {"viewport": {"width": 1280, "height": 800}}
+        device = self._setting("device", None)
+        if device:
+            if device not in self._pw.devices:
+                raise OpticsError(Code.E0501, f"Unknown device {device!r}: use a Playwright device name such as 'iPhone 15' or 'Pixel 7'")
+            options = {k: v for k, v in self._pw.devices[device].items() if k != "default_browser_type"}
+        if self._setting("viewport", None):
+            options["viewport"] = self._setting("viewport", None)
+        self._touch = bool(options.get("has_touch"))
+        self._context = await self._browser.new_context(**options)
         self.page = await self._context.new_page()
+
+    def _remote(self) -> RemoteBrowser | None:
+        """The remote browser to connect to, or None to launch locally; ``OPTICS_PLAYWRIGHT_REMOTE`` overrides the config."""
+        from_env = os.environ.get(self.REMOTE_ENV)
+        if from_env:
+            try:
+                remote = RemoteBrowser(**json.loads(from_env))
+            except (json.JSONDecodeError, TypeError) as e:
+                raise OpticsError(
+                    Code.E0501, f'{self.REMOTE_ENV} must be a JSON object with "url" and optionally "headers", "protocol" and "context": {e}'
+                ) from None
+        elif self.config.get("url"):
+            remote = RemoteBrowser(
+                self.config["url"],
+                self._setting("headers", None) or {},
+                self._setting("protocol", "cdp"),
+                self._setting("context", "new"),
+            )
+        else:
+            return None
+        if remote.protocol not in self._CONNECT_METHODS:
+            raise OpticsError(Code.E0501, f"protocol must be one of {sorted(self._CONNECT_METHODS)}, not {remote.protocol!r}")
+        if remote.protocol == "cdp" and self._setting("browser", "chromium") != "chromium":
+            raise OpticsError(Code.E0501, 'protocol "cdp" reaches Chromium-based browsers only; set browser: chromium')
+        if remote.context not in ("new", "existing"):
+            raise OpticsError(Code.E0501, f'context must be "new" or "existing", not {remote.context!r}')
+        if remote.context == "existing" and self._setting("device", None):
+            raise OpticsError(Code.E0501, 'device applies to a new context; it cannot change the browser\'s own (context: existing)')
+        return remote
+
+    async def _open_remote(self, browser_type, remote: RemoteBrowser):
+        internal_logger.info(
+            "[Playwright] Connecting to remote browser at %s over %s", utils.redact_url(remote.url), remote.protocol
+        )
+        connect = getattr(browser_type, self._CONNECT_METHODS[remote.protocol])
+        # Expanded values are never bound to a local: tracebacks can be logged with locals.
+        # Any Playwright error from here on can repeat the endpoint, not only connect's.
+        try:
+            self._browser = await connect(
+                utils.expand_env(remote.url), headers=remote.expanded_headers(), timeout=self._connect_timeout_ms()
+            )
+            if remote.context == "existing" and self._browser.contexts:
+                self._context = self._browser.contexts[0]
+                pages = self._context.pages
+                self.page = pages[0] if pages else await self._context.new_page()
+                # A tab the browser never activated draws no frames, so screenshots of it time out.
+                await self.page.bring_to_front()
+            else:
+                await self._open_new_context()
+            return
+        except PlaywrightError as e:
+            message = remote.mask(str(e))
+        raise OpticsError(Code.E0102, message)
 
     async def _launch_other_app_async(self, app_name: str, event_name=None):
         """
@@ -199,14 +318,16 @@ class Playwright(DriverInterface):
 
             internal_logger.info("[Playwright] Launched other app in new tab")
 
+        except OpticsError:
+            raise
         except Exception as e:
             internal_logger.debug("[Playwright] Failed to launch other app: %s", e, exc_info=True)
             raise OpticsError(Code.E0102, str(e), cause=e)
 
     def launch_other_app(self, app_name: str, event_name=None):
-        return run_async(
+        return self.run(
             self._launch_other_app_async(app_name, event_name=event_name),
-            timeout=self._call_budget_s(self._navigation_timeout_ms() / 1000),
+            timeout_s=self._launch_budget_s(),
         )
 
     async def _navigate_to(self, url: str):
@@ -271,34 +392,76 @@ class Playwright(DriverInterface):
 
     def press_element(self, element: str, repeat: int = 1, event_name=None):
         timeout_s = self.element_timeout_s()
-        run_async(
+        self.run(
             self._press_element_async(element, repeat, timeout_s, event_name=event_name),
-            timeout=self._call_budget_s(timeout_s * (int(repeat) + 1)),
+            timeout_s=self._call_budget_s(timeout_s * (int(repeat) + 1)),
         )
 
     async def _press_element_async(self, element, repeat, timeout_s, event_name):
         locator = self._as_locator(element)
         timeout_ms = timeout_s * 1000
-        await locator.wait_for(state="visible", timeout=timeout_ms)
+        zoomed = self._touch and await self._zoom() != 1
+        if zoomed:
+            # click() and tap() wait for visibility themselves; the hand-computed tap reads a bounding box.
+            await locator.wait_for(state="visible", timeout=timeout_ms)
 
         for _ in range(int(repeat)):
-            await locator.click(timeout=timeout_ms)
+            if zoomed:
+                await self._tap_on_screen(locator, timeout_ms)
+            else:
+                await (locator.tap if self._touch else locator.click)(timeout=timeout_ms)
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
 
+    def _zoom(self):
+        return self.page.evaluate("visualViewport.scale")
+
+    async def _tap_on_screen(self, locator, timeout_ms):
+        # Playwright's tap misses on a page zoomed out to fit a phone, so tap the centre where the screen shows it.
+        await locator.scroll_into_view_if_needed(timeout=timeout_ms)
+        box = await locator.bounding_box(timeout=timeout_ms)
+        zoom, left, top = await self.page.evaluate(
+            "[visualViewport.scale, visualViewport.offsetLeft, visualViewport.offsetTop]"
+        )
+        await self._press_at(
+            (box["x"] + box["width"] / 2 - left) * zoom, (box["y"] + box["height"] / 2 - top) * zoom
+        )
+
+    async def _press_at(self, x, y):
+        # A phone gets touch events; mobile WebKit ignores mouse clicks entirely.
+        if not self._touch:
+            return await self.page.mouse.click(x, y)
+        # Chromium places touches in page pixels, which a zoomed page's screenshot does not use.
+        if self._browser.browser_type.name == "chromium":
+            zoom = await self._zoom()
+            x, y = x / zoom, y / zoom
+        await self.page.touchscreen.tap(x, y)
+
+    def _scroll_by(self, delta):
+        # Mobile WebKit has no mouse wheel.
+        if self._touch:
+            return self.page.evaluate("delta => window.scrollBy(0, delta)", delta)
+        return self.page.mouse.wheel(0, delta)
+
     def press_coordinates(self, x: int, y: int, event_name=None):
-        run_async(self.page.mouse.click(x, y))
+        self.run(self._press_at(x, y))
 
     def press_percentage_coordinates(self, px, py, repeat=1, event_name=None):
-        run_async(self._press_percentage_async(px, py, repeat))
+        self.run(self._press_percentage_async(px, py, repeat))
+
+    async def _viewport(self) -> dict:
+        """The page's viewport; a browser's own context, adopted over CDP, emulates none."""
+        return self.page.viewport_size or await self.page.evaluate(
+            "() => ({width: window.innerWidth, height: window.innerHeight})"
+        )
 
     async def _press_percentage_async(self, px, py, repeat):
-        vp = self.page.viewport_size
+        vp = await self._viewport()
         x = int(vp["width"] * px / 100)
         y = int(vp["height"] * py / 100)
         for _ in range(repeat):
-            await self.page.mouse.click(x, y)
+            await self._press_at(x, y)
 
     def press_keycode(self, keycode: str, event_name=None):
         """
@@ -322,7 +485,7 @@ class Playwright(DriverInterface):
 
         # Use mapped key or the keycode string directly (Playwright accepts key names)
         key = key_map.get(keycode, keycode)
-        run_async(self.page.keyboard.press(key))
+        self.run(self.page.keyboard.press(key))
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
@@ -332,10 +495,10 @@ class Playwright(DriverInterface):
     # =====================================================
 
     def enter_text(self, text, event_name=None):
-        run_async(self._type(self.page.keyboard, text))
+        self.run(self._type(self.page.keyboard, text))
 
     def enter_text_using_keyboard(self, text, event_name=None):
-        run_async(self._type(self.page.keyboard, text))
+        self.run(self._type(self.page.keyboard, text))
 
     def enter_text_element(self, element: str, text, event_name=None):
         locator = self._as_locator(element)
@@ -343,7 +506,7 @@ class Playwright(DriverInterface):
             action = locator.press(self._key_name(text))
         else:
             action = locator.fill(utils.strip_sensitive_prefix(str(text)))
-        run_async(action, timeout=self._call_budget_s(self.element_timeout_s()))
+        self.run(action, timeout_s=self._call_budget_s(self.element_timeout_s()))
 
     def _type(self, keyboard, text):
         if isinstance(text, SpecialKey):
@@ -356,11 +519,11 @@ class Playwright(DriverInterface):
         return self._SPECIAL_KEYS[key]
 
     def clear_text(self, event_name=None):
-        run_async(self.page.keyboard.press("Control+A"))
-        run_async(self.page.keyboard.press("Backspace"))
+        self.run(self.page.keyboard.press("Control+A"))
+        self.run(self.page.keyboard.press("Backspace"))
 
     def clear_text_element(self, element: str, event_name=None):
-        run_async(self._as_locator(element).fill(""), timeout=self._call_budget_s(self.element_timeout_s()))
+        self.run(self._as_locator(element).fill(""), timeout_s=self._call_budget_s(self.element_timeout_s()))
 
     def _as_locator(self, element):
         """A locator for a selector string. Element sources already return a
@@ -374,17 +537,17 @@ class Playwright(DriverInterface):
 
     def swipe(self, x, y, direction, swipe_length, event_name=None):
         delta = swipe_length if direction == "down" else -swipe_length
-        run_async(self.page.mouse.wheel(0, delta))
+        self.run(self._scroll_by(delta))
 
     def swipe_percentage(self, x_per: int, y_per: int, direction: str, swipe_length_percentage: int, event_name=None):
-        run_async(self._swipe_percentage_async(direction, swipe_length_percentage))
+        self.run(self._swipe_percentage_async(direction, swipe_length_percentage))
 
     async def _swipe_percentage_async(self, direction: str, swipe_length_percentage: int):
-        vp = self.page.viewport_size
+        vp = await self._viewport()
         delta = int(vp["height"] * swipe_length_percentage / 100)
         if direction != "down":
             delta = -delta
-        await self.page.mouse.wheel(0, delta)
+        await self._scroll_by(delta)
 
     def swipe_element(self, element: str, direction: str, swipe_length: int, event_name=None):
         """
@@ -397,12 +560,13 @@ class Playwright(DriverInterface):
 
         # 🔒 Web rule: swipe == scroll
         try:
-            run_async(
+            self.run(
                 self._swipe_element_async(
                     element=element,
                     direction=direction,
                     swipe_length=swipe_length
-                )
+                ),
+                timeout_s=self._call_budget_s(self.element_timeout_s()),
             )
         except Exception as e:
             raise RuntimeError(
@@ -412,7 +576,7 @@ class Playwright(DriverInterface):
 
     async def _swipe_element_async(self, element: str, direction: str, swipe_length: int):
         locator = self._as_locator(element)
-        await locator.wait_for(state="visible", timeout=10000)
+        await locator.wait_for(state="visible", timeout=self.element_timeout_s() * 1000)
 
         # Calculate scroll delta
         delta = swipe_length if direction == "down" else -swipe_length
@@ -436,8 +600,8 @@ class Playwright(DriverInterface):
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
         for _ in range(2):
-            run_async(self.page.mouse.wheel(0, pixels if direction == "down" else -pixels))
-            run_async(self.page.wait_for_timeout(120))
+            self.run(self._scroll_by(pixels if direction == "down" else -pixels))
+            self.run(self.page.wait_for_timeout(120))
 
 
     # =====================================================
@@ -445,9 +609,9 @@ class Playwright(DriverInterface):
     # =====================================================
 
     def go_back(self, event_name=None):
-        run_async(
+        self.run(
             self._go_back_async(),
-            timeout=self._call_budget_s(self._navigation_timeout_ms() / 1000),
+            timeout_s=self._call_budget_s(self._navigation_timeout_ms() / 1000),
         )
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
@@ -461,81 +625,40 @@ class Playwright(DriverInterface):
         )
 
     def get_text_element(self, element: str) -> str:
-        return run_async(
+        return self.run(
             self._as_locator(element).inner_text(),
-            timeout=self._call_budget_s(self.element_timeout_s()),
+            timeout_s=self._call_budget_s(self.element_timeout_s()),
         )
 
     def force_terminate_app(self, app_name: str, event_name=None):
         raise NotImplementedError("force_terminate_app not supported")
 
     def terminate(self):
-        run_async(self._terminate_async())
+        self.run(self._terminate_async())
 
     async def _cleanup_resources(self):
-        """Clean up partially initialized resources on error or cancellation."""
-        for attr, close in (("page", "close"), ("_context", "close"), ("_browser", "close"), ("_pw", "stop")):
-            resource = getattr(self, attr)
-            if resource is None:
-                continue
+        """Close the browser, ending any remote session but leaving an adopted context's tabs open, then stop Playwright."""
+        browser, pw = self._browser, self._pw
+        self.page = self._context = self._browser = self._pw = None
+        try:
+            if browser is not None:
+                await browser.close()
+        except Exception as e:
+            internal_logger.warning("[Playwright] Error closing the browser: %s", e)
+        finally:
+            # Also on cancellation: stopping Playwright ends its driver and any connection a stuck close left open.
             try:
-                await getattr(resource, close)()
-            except Exception as cleanup_error:
-                internal_logger.warning(f"[Playwright] Error during cleanup: {cleanup_error}")
-            setattr(self, attr, None)
+                if pw is not None:
+                    await pw.stop()
+            except Exception as e:
+                internal_logger.warning("[Playwright] Error stopping Playwright: %s", e)
 
     async def _terminate_async(self):
         internal_logger.info("[Playwright] Terminating session")
-
-        try:
-            # Close page first
-            if self.page:
-                try:
-                    await self.page.close()
-                except Exception as e:
-                    internal_logger.debug(f"[Playwright] Error closing page: {e}")
-                finally:
-                    self.page = None
-
-            # Close context (this will close all pages in the context)
-            if self._context:
-                try:
-                    await self._context.close()
-                except Exception as e:
-                    internal_logger.debug(f"[Playwright] Error closing context: {e}")
-                finally:
-                    self._context = None
-
-            # Close browser (this will close all contexts and windows)
-            if self._browser:
-                try:
-                    await self._browser.close()
-                except Exception as e:
-                    internal_logger.debug(f"[Playwright] Error closing browser: {e}")
-                finally:
-                    self._browser = None
-
-            # Stop Playwright
-            if self._pw:
-                try:
-                    await self._pw.stop()
-                except Exception as e:
-                    internal_logger.debug(f"[Playwright] Error stopping Playwright: {e}")
-                finally:
-                    self._pw = None
-
-            # Send all events if event_sdk is available
-            if self.event_sdk:
-                self.event_sdk.send_all_events()
-
-            internal_logger.info("[Playwright] Session terminated successfully")
-        except Exception as e:
-            internal_logger.warning(f"[Playwright] Error during termination: {e}")
-            # Ensure cleanup even if there's an error
-            self.page = None
-            self._context = None
-            self._browser = None
-            self._pw = None
+        await self._cleanup_resources()
+        if self.event_sdk:
+            self.event_sdk.send_all_events()
+        internal_logger.info("[Playwright] Session terminated successfully")
 
     def get_driver_session_id(self):
         return None
@@ -552,7 +675,7 @@ class Playwright(DriverInterface):
         :return: The result of the script execution.
         :rtype: Any
         """
-        return run_async(self._execute_script_async(script, *args, event_name=event_name))
+        return self.run(self._execute_script_async(script, *args, event_name=event_name))
 
     async def _execute_script_async(self, script: str, *args, event_name: Optional[str] = None) -> Any:
         """Async helper for execute_script."""

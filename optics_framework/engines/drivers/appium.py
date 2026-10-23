@@ -1,12 +1,23 @@
+import json
 import subprocess  # nosec
+import time
+import uuid
+from contextlib import contextmanager
+from collections.abc import Iterator, Sequence
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
+from appium.common.exceptions import NoSuchContextException
 from appium.webdriver.appium_connection import AppiumConnection
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
 from selenium.common import WebDriverException
-from selenium.common.exceptions import InvalidSessionIdException
+from selenium.common.exceptions import (
+    InvalidSelectorException,
+    InvalidSessionIdException,
+    NoSuchWindowException,
+    TimeoutException,
+)
 from selenium.webdriver.remote.command import Command  # type: ignore
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
@@ -26,12 +37,75 @@ from optics_framework.engines.drivers.appium_platforms import (
     normalize_platform,
     supported_platforms,
     supported_on,
+    ANDROID,
     MOBILE,
     KEYCODE_RC_NAMED,
 )
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 _MAX_ERROR_OUTPUT_LINES = 20
+
+_CDP_EXECUTE = "opticsExecuteCdp"
+_WEB_RECT_JS = "const r = arguments[0].getBoundingClientRect(); return [r.left, r.top, r.width, r.height];"
+# An invisible, untouchable box over the visual viewport: its native rect maps the page's CSS pixels to the screen.
+# It goes inside an open modal, because WebKit hides everything outside one from accessibility.
+_PROBE_JS = (
+    "const v = window.visualViewport, p = document.createElement('div');"
+    "p.id = arguments[0]; p.setAttribute('role', 'img'); p.setAttribute('aria-label', arguments[0]);"
+    "p.style.cssText = `position:fixed;left:${v.offsetLeft}px;top:${v.offsetTop}px;width:${v.width}px;"
+    "height:${v.height}px;opacity:0.01;pointer-events:none;z-index:2147483647`;"
+    "const modal = [...document.querySelectorAll('dialog:modal,[aria-modal=\"true\"]')]"
+    ".filter(e => e.getClientRects().length).pop();"
+    "(modal || document.documentElement).appendChild(p); const r = p.getBoundingClientRect();"
+    "return [r.left, r.top, r.width, r.height];"
+)
+_PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
+_GET_CONTEXTS = "mobile: getContexts"
+_SAFARI_VIEW_SERVICE = "com.apple.SafariViewService"
+_ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"})
+# A zero-size page reports visible too: Firefox runs its translations engine in one.
+_PAGE_SHOWN_JS = "return document.visibilityState === 'visible' && innerWidth > 0 && innerHeight > 0;"
+_KEYBOARD_TIMEOUT_S = 2.0
+_KEYBOARD_POLL_S = 0.1
+_PROBE_TIMEOUT_S = 2.0
+
+
+def _starts_in_web(caps: dict[str, Any]) -> bool:
+    return bool(caps.get("browserName") or caps.get("autoWebview") or caps.get("appium:autoWebview"))
+
+
+def _page_holds(driver: WebDriver, queries: Sequence[tuple[str, str]]) -> bool:
+    try:
+        return not queries or any(driver.find_elements(*query) for query in queries)
+    except InvalidSelectorException:
+        return True  # the lookup that follows reports the bad selector
+
+
+def _ios_page(context: dict[str, Any]) -> tuple[str, str, str]:
+    return context["id"], str(context.get("url", "")), str(context.get("title", ""))
+
+
+def _ios_context_pid(context: str) -> int | None:
+    """Process id in an iOS web context name, ``WEBVIEW_<pid>.<page>``."""
+    try:
+        return int(context.removeprefix("WEBVIEW_").split(".")[0])
+    except ValueError:
+        return None
+
+
+def _is_app_webview_page(page: dict[str, Any]) -> bool:
+    """An Android WebView describes its page in JSON (attached, visible, bounds); a browser tab does not."""
+    try:
+        description = json.loads(page.get("description") or "")
+    except ValueError:
+        return False
+    return isinstance(description, dict) and "attached" in description
+
+
+def _context_name(webview: dict[str, Any]) -> str | None:
+    """Switchable context name of a ``mobile: getContexts`` entry; ``webview`` can be a pid (``WEBVIEW_28005``)."""
+    return webview.get("webviewName") or webview.get("webview")
 
 
 def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LINES) -> str:
@@ -88,6 +162,9 @@ class Appium(DriverInterface):
         SpecialKey.SPACE: " ",
     }
     MOBILE_PREFIX = "mobile:"
+    NATIVE_CONTEXT = "NATIVE_APP"
+    BROWSER_SESSION_CONTEXT = "CHROMIUM"
+    ANDROID_BROWSER_PACKAGES = {"chrome": "com.android.chrome"}
     MOBILE_CLEAR = "mobile: clear"
     CAP_APP_PACKAGE = "appium:appPackage"
     CAP_APP_PACKAGE_LEGACY = "appPackage"
@@ -163,6 +240,9 @@ class Appium(DriverInterface):
         # UI Tree handling
         self.ui_helper: Optional[UIHelper] = None
         self.initialized: bool = True
+        self._known_web_contexts: dict[tuple[str, str], tuple[str, int]] = {}
+        self._frozen_web_contexts: set[tuple[str, str, str]] = set()
+        self._ios_web_context: str | None = None
 
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
@@ -171,16 +251,19 @@ class Appium(DriverInterface):
             raise OpticsError(Code.E0101, message=self.NOT_INITIALIZED)
         return self.driver
 
-    def _active_platform(self) -> str:
-        """Normalized platformName from live or configured capabilities."""
-        caps: Dict[str, Any] = {}
+    def _session_capabilities(self) -> dict[str, Any]:
+        """Live session capabilities, falling back to the configured ones."""
+        caps: dict[str, Any] = {}
         if self.driver is not None:
             try:
                 caps = self.driver.capabilities or {}
             except Exception:
                 caps = {}
-        if not caps:
-            caps = self.capabilities or {}
+        return caps or self.capabilities or {}
+
+    def _active_platform(self) -> str:
+        """Normalized platformName from live or configured capabilities."""
+        caps = self._session_capabilities()
         platform = caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)
         if not platform:
             for key, value in caps.items():
@@ -188,6 +271,13 @@ class Appium(DriverInterface):
                     platform = value
                     break
         return normalize_platform(platform)
+
+    def native_ui_platform(self) -> str | None:
+        """``android`` or ``ios`` while the session reads that phone's native UI tree; None on TVs and in iOS browser or web view sessions."""
+        platform = self._active_platform()
+        if platform == ANDROID:
+            return platform  # browser and autoWebview sessions are parked in NATIVE_APP on creation
+        return platform if platform in MOBILE and not _starts_in_web(self._session_capabilities()) else None
 
     def _require_profile(self) -> PlatformProfile:
         profile = get_profile(self._active_platform())
@@ -284,6 +374,9 @@ class Appium(DriverInterface):
             new_session_id = self.driver.session_id
             internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
             self.ui_helper = UIHelper(self)
+            if self._active_platform() == ANDROID and _starts_in_web(options.to_capabilities()):
+                # Web lookups enter the web per call, so a browser or autoWebview session goes back to native.
+                self.driver.switch_to.context(self.NATIVE_CONTEXT)
             return new_session_id
         except Exception as e:
             internal_logger.debug(f"Failed to create new Appium session: {e}")
@@ -562,7 +655,9 @@ class Appium(DriverInterface):
                 message=f"Unsupported platform: {platform}. Supported: {supported_platforms()}.",
             )
         options = profile.options_factory()
-        return options, dict(profile.default_options)
+        if _starts_in_web(all_caps):
+            return options, dict(profile.default_options)
+        return options, {**profile.default_options, **profile.native_session_options}
 
     def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
         """
@@ -771,8 +866,13 @@ class Appium(DriverInterface):
         app_activity: Optional[str] = None,
         event_name: Optional[str] = None,
     ) -> str:
-        """Launch the app, activating it on the driver if a session is already alive."""
+        """Launch the app, or open a URL or deep link in the app that handles it, starting a session if none is alive."""
         session_id = self.get_session_id()
+        if app_identifier and self._is_deeplink(app_identifier):
+            if self.driver is None or not self._is_session_alive():
+                session_id = self.start_session(event_name=event_name)
+            self._open_deeplink(self._require_driver(), app_identifier)
+            return session_id
         if self.driver is None or not self._is_session_alive():
             session_id = self.start_session(
                 app_package=app_identifier,
@@ -853,15 +953,15 @@ class Appium(DriverInterface):
         """
         Simulates a tap gesture at the specified screen coordinates using Appium's `tap` method.
         """
+        driver = self._require_driver()
+        timestamp = self.event_sdk.get_current_time_for_events()
         try:
-            driver = self._require_driver()
-            timestamp = self.event_sdk.get_current_time_for_events()
             driver.tap([(x, y)], 100)
-            if event_name:
-                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
-            internal_logger.debug(f"Tapped at coordinates ({x}, {y})")
-        except Exception as e:
-            internal_logger.debug(f"Failed to tap at ({x}, {y}): {e}")
+        except WebDriverException as e:
+            raise OpticsError(Code.E0401, message=f"Failed to tap at ({x}, {y})", cause=e) from e
+        if event_name:
+            self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+        internal_logger.debug(f"Tapped at coordinates ({x}, {y})")
 
     @supported_on(*MOBILE)
     def swipe(
@@ -1102,6 +1202,24 @@ class Appium(DriverInterface):
                 Code.E0401, message="No element has keyboard focus on iOS; tap the field before entering text", cause=e
             ) from e
         focused.send_keys(keys)
+        if not isinstance(text, SpecialKey):
+            self._wait_for_keyboard(driver)
+
+    @staticmethod
+    def _wait_for_keyboard(driver: WebDriver) -> None:
+        """Return once the keyboard is on screen and still: iOS can raise it a second after typing, moving the page."""
+        bottom = driver.get_window_size()["height"]
+        deadline = time.monotonic() + _KEYBOARD_TIMEOUT_S
+        last = None
+        while time.monotonic() < deadline:
+            keyboards = driver.find_elements(AppiumBy.CLASS_NAME, "XCUIElementTypeKeyboard")
+            if not keyboards:
+                return
+            top = keyboards[0].rect["y"]
+            if top < bottom and top == last:
+                return
+            last = top
+            time.sleep(_KEYBOARD_POLL_S)
 
     @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
@@ -1405,6 +1523,207 @@ class Appium(DriverInterface):
     def _is_deeplink(self, value: str) -> bool:
         return isinstance(value, str) and "://" in value
 
+    @supported_on(*MOBILE)
+    @contextmanager
+    def web_context(self, queries: Sequence[tuple[str, str]] = ()) -> Iterator[WebDriver]:
+        """Run the body in the foreground app's front web page, on iOS the first holding a ``queries`` match; then go native."""
+        driver = self._require_driver()
+        try:
+            if self._is_ios():
+                self._enter_ios_web_context(driver, queries)
+            else:
+                self._enter_android_web_context(driver)
+            yield driver
+        finally:
+            try:
+                driver.switch_to.context(self.NATIVE_CONTEXT)
+            except WebDriverException as e:
+                raise_if_session_dead(e)
+                raise OpticsError(
+                    Code.E0106,
+                    message="The session could not return to the native context after reading the web page; "
+                            "start a new session.",
+                    cause=e,
+                ) from e
+
+    def _enter_android_web_context(self, driver: WebDriver) -> None:
+        package = driver.current_package
+        if not self._reenter_web_context(driver, package):
+            context, page_url, app_webviews = self._foreground_web_context(driver, package)
+            try:
+                driver.switch_to.context(context)
+            except NoSuchContextException:
+                # A browserName session exposes its browser under one fixed context name.
+                if self.BROWSER_SESSION_CONTEXT not in driver.contexts:
+                    raise
+                context = self.BROWSER_SESSION_CONTEXT
+                driver.switch_to.context(context)
+            except WebDriverException as e:
+                # Seen with Samsung Internet, whose DevTools socket chromedriver cannot attach to.
+                reason = e.msg.splitlines()[0] if e.msg else type(e).__name__
+                raise OpticsError(
+                    Code.E0201,
+                    message=f"Cannot read the web page shown by '{package}': {reason}. Web locators work "
+                            "in Chrome and in WebViews with debugging enabled; use text locators or OCR here.",
+                    cause=e,
+                ) from e
+            self._focus_window(driver, page_url)
+            self._known_web_contexts[(driver.session_id, package)] = (context, app_webviews)
+
+    def _enter_ios_web_context(self, driver: WebDriver, queries: Sequence[tuple[str, str]] = ()) -> None:
+        """Enter the visible page of the app in front: its WKWebView, a Safari sheet (SafariViewService) or Safari."""
+        pid = driver.execute_script("mobile: activeAppInfo").get("pid")
+        listed = [
+            context for context in driver.execute_script(_GET_CONTEXTS) or []
+            if str(context.get("id", "")).startswith("WEBVIEW_")
+        ]
+        self._frozen_web_contexts &= {_ios_page(context) for context in listed}
+        candidates = sorted(
+            (
+                context for context in listed
+                if _ios_page(context) not in self._frozen_web_contexts
+                and (context.get("bundleId") == _SAFARI_VIEW_SERVICE or _ios_context_pid(context["id"]) == pid)
+            ),
+            key=lambda context: (context.get("bundleId") != _SAFARI_VIEW_SERVICE, context["id"] != self._ios_web_context),
+        )
+        fallback = None
+        for context in candidates:
+            try:
+                driver.switch_to.context(context["id"])
+                if not self._attached_tab_visible(driver):
+                    continue
+                if context.get("bundleId") in _ONE_PAGE_ON_SCREEN or _page_holds(driver, queries):
+                    self._ios_web_context = context["id"]
+                    return
+                fallback = fallback or context["id"]
+            except TimeoutException:
+                # A page left behind by a closed view answers nothing until webviewAtomWaitTimeout; skip it until
+                # its address or title changes, as a live page that was only busy loading does.
+                self._frozen_web_contexts.add(_ios_page(context))
+            except WebDriverException as e:
+                raise_if_session_dead(e)
+                internal_logger.debug(f"Appium: cannot read web context {context['id']}: {e.msg}")
+        if fallback is not None:
+            driver.switch_to.context(fallback)
+            self._ios_web_context = fallback
+            return
+        raise OpticsError(
+            Code.E0201,
+            message="No visible web content in the app in front. An app's WKWebView is automatable only when the app "
+                    "sets isInspectable; on a real device, also turn on Web Inspector and Remote Automation in "
+                    "Settings > Apps > Safari > Advanced.",
+        )
+
+    def _reenter_web_context(self, driver: WebDriver, package: str) -> bool:
+        """Re-enter ``package``'s known web context, skipping ``mobile: getContexts``, which hangs on frozen apps."""
+        known = self._known_web_contexts.get((driver.session_id, package))
+        if known is None:
+            return False
+        context, app_webviews = known
+        try:
+            driver.switch_to.context(context)
+            handles = driver.window_handles
+            if len(handles) > 1 and (app_webviews or not self._attached_tab_visible(driver)):
+                return False
+        except WebDriverException:
+            return False
+        return True
+
+    def _foreground_web_context(self, driver: WebDriver, package: str) -> tuple[str, str | None, int]:
+        """The foreground package's web context, its front page URL (pages list most recent first), and app WebView count."""
+        owned = [
+            webview for webview in driver.execute_script(_GET_CONTEXTS) or []
+            if _context_name(webview) and webview.get("pages")
+            and ((webview.get("info") or {}).get("Android-Package") == package
+                 or _context_name(webview) == f"WEBVIEW_{package}")
+        ]
+        if owned:
+            app_webviews = sum(_is_app_webview_page(page) for webview in owned for page in webview["pages"])
+            return _context_name(owned[0]), owned[0]["pages"][0].get("url"), app_webviews
+        raise OpticsError(
+            Code.E0201,
+            message=f"No web content found in the foreground app '{package}'. An app's "
+                    "WebView is automatable only when the app enables WebView debugging.",
+        )
+
+    @staticmethod
+    def _focus_window(driver: WebDriver, page_url: str | None) -> None:
+        """Focus the tab showing the front page, matched by URL in the DevTools target list, which has no tab order."""
+        handles = driver.window_handles
+        if len(handles) < 2 or not page_url:
+            return
+        driver.command_executor.add_command(_CDP_EXECUTE, "POST", "/session/$sessionId/goog/cdp/execute")
+        targets = driver.execute(_CDP_EXECUTE, {"cmd": "Target.getTargets", "params": {}})["value"]["targetInfos"]
+        matches = [
+            target["targetId"] for target in targets
+            if target.get("url") == page_url and target.get("targetId") in handles
+        ]
+        try:
+            attached = driver.current_window_handle
+        except NoSuchWindowException:
+            attached = None
+        if len(matches) > 1 and attached in matches:
+            # Same-URL tabs (a reopened Custom Tab link): keep the attached one only if it is the visible one.
+            matches = [attached] if Appium._attached_tab_visible(driver) else [h for h in matches if h != attached]
+        if len(matches) != 1:
+            reason = "several tabs show" if matches else "no tab shows"
+            raise OpticsError(
+                Code.E0201,
+                message=f"Cannot tell which browser tab is on screen: {reason} '{page_url}'. "
+                        "Close the other tabs, or open the page once.",
+            )
+        if matches[0] != attached:
+            driver.switch_to.window(matches[0])
+
+    @staticmethod
+    def _attached_tab_visible(driver: WebDriver) -> bool:
+        return driver.execute_script(_PAGE_SHOWN_JS) is True
+
+    def web_element_screen_rect(self, element: Any) -> dict[str, int]:
+        """Device-screen rectangle of an element found inside :meth:`web_context`."""
+        left, top, width, height = self._require_driver().execute_script(_WEB_RECT_JS, element)
+        return self.web_rects_to_screen([{"x": left, "y": top, "width": width, "height": height}])[0]
+
+    def web_rects_to_screen(self, rects: list[dict[str, Any] | None]) -> list[dict[str, Any] | None]:
+        """Unclamped screen rects of page boxes."""
+        origin_x, origin_y, factor_x, factor_y = self._web_transform(self._require_driver())
+        return [
+            None if rect is None else {
+                **rect,
+                "x": round(origin_x + rect["x"] * factor_x),
+                "y": round(origin_y + rect["y"] * factor_y),
+                "width": round(rect["width"] * factor_x),
+                "height": round(rect["height"] * factor_y),
+            }
+            for rect in rects
+        ]
+
+    def _web_transform(self, driver: WebDriver) -> tuple[float, float, float, float]:
+        """Screen origin and screen units per CSS pixel of the page: browsers draw it under toolbars, so measure a probe."""
+        label = f"optics-probe-{uuid.uuid4().hex}"
+        context = driver.current_context
+        left, top, width, height = driver.execute_script(_PROBE_JS, label)
+        try:
+            driver.switch_to.context(self.NATIVE_CONTEXT)
+            try:
+                rects: list[dict[str, int]] = []
+                deadline = time.monotonic() + _PROBE_TIMEOUT_S
+                # Android lists a new node in its accessibility tree a moment after the page adds it.
+                while not rects and time.monotonic() < deadline:
+                    rects = [element.rect for element in driver.find_elements(AppiumBy.ACCESSIBILITY_ID, label)]
+            finally:
+                driver.switch_to.context(context)
+        finally:
+            driver.execute_script(_PROBE_REMOVE_JS, label)
+        if len(rects) != 1 or not width or not height:
+            raise OpticsError(
+                Code.E0201,
+                message="Cannot place the web element: the page is not in the screen's accessibility tree.",
+            )
+        native = rects[0]
+        factor_x, factor_y = native["width"] / width, native["height"] / height
+        return native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y
+
     def _open_deeplink(
             self,
             driver: WebDriver,
@@ -1443,22 +1762,16 @@ class Appium(DriverInterface):
             deeplink: str,
     ) -> None:
 
+        args = {"url": deeplink}
+        # A browser session opens web links in its own browser, not the device default.
+        browser = self.ANDROID_BROWSER_PACKAGES.get(str(self._session_capabilities().get("browserName", "")).lower())
+        if browser and urlsplit(deeplink).scheme in ("http", "https"):
+            args["package"] = browser
         try:
-            driver.execute_script(
-                "mobile: deepLink",
-                {"url": deeplink},
-            )
-            internal_logger.debug(
-                f"Android deep link launched: {deeplink}"
-            )
-            return
-
-        except Exception:
-            internal_logger.debug(
-                "mobile:deepLink failed, using adb fallback"
-            )
-
-        subprocess.run(["adb","shell","am","start","-a","android.intent.action.VIEW","-d",deeplink,],check=True,)  # nosec - adb command executed with static trusted arguments for Android deeplink fallback
+            driver.execute_script("mobile: deepLink", args)
+        except WebDriverException as e:
+            raise OpticsError(Code.E0401, message=f"Failed to open '{deeplink}': {e.msg}", cause=e) from e
+        internal_logger.debug(f"Android deep link launched: {deeplink}")
 
     def _open_ios_deeplink(
             self,

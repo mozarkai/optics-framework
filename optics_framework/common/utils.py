@@ -11,6 +11,7 @@ import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
+from urllib.parse import urlsplit
 import inspect
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import internal_logger
@@ -192,6 +193,46 @@ def determine_element_type(element):
     return "Text"
 
 
+_NATIVE_CLASS = re.compile(r"\bandroidx?(?:\.[a-z0-9_]+)+\.[A-Z]|XCUIElementType")
+_NATIVE_ATTRIBUTE = re.compile(
+    r"@(?:resource-id|content-desc|text|package|bounds"
+    r"|clickable|long-clickable|checkable|focusable|focused|scrollable"
+    r"|displayed|enabled|password|hint|visible|accessible|label|traits|placeholderValue|hittable)(?![\w.-])"
+)
+_STRING_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
+_DOM_TAGS = frozenset({
+    "a", "abbr", "article", "aside", "audio", "b", "body", "button", "canvas", "circle", "code", "dd",
+    "details", "dialog", "div", "dl", "dt", "em", "fieldset", "figure", "footer", "form", "g",
+    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "html", "i", "iframe", "img", "input", "label",
+    "legend", "li", "main", "nav", "ol", "optgroup", "option", "p", "path", "picture", "pre", "rect",
+    "section", "select", "small", "source", "span", "strong", "summary", "svg", "table", "tbody", "td",
+    "textarea", "tfoot", "th", "thead", "tr", "u", "ul", "use", "video",
+})
+_XPATH_PREDICATE = re.compile(r"\[[^\[\]]*\]")
+_XPATH_TOKEN = re.compile(r"[@$][\w.:-]+|([\w.-]+)\s*(::|\()?")
+
+
+def is_native_xpath(xpath: str) -> bool:
+    """Whether ``xpath`` names an Android or iOS class or attribute outside its string literals."""
+    if _NATIVE_CLASS.search(xpath):
+        return True
+    outside_literals = _STRING_LITERAL.sub("", xpath)
+    return _NATIVE_ATTRIBUTE.search(outside_literals) is not None
+
+
+def is_dom_only_xpath(xpath: str) -> bool:
+    """Whether every branch of ``xpath`` names an HTML element, so only a web page's DOM can match it."""
+    if is_native_xpath(xpath):
+        return False
+    spine = _STRING_LITERAL.sub("''", re.sub(r"(?i)^xpath=", "", xpath))
+    while (stripped := _XPATH_PREDICATE.sub("", spine)) != spine:
+        spine = stripped
+    return all(
+        _DOM_TAGS & {m[1] for m in _XPATH_TOKEN.finditer(branch) if not m[2]}
+        for branch in spine.split("|")
+    )
+
+
 def parse_text_only_prefix(element: str) -> Tuple[str, bool]:
     """Return (stripped_element, use_text_detection_only)."""
     if element.lower().startswith(TEXT_ONLY_PREFIX):
@@ -210,6 +251,34 @@ def to_bool(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+
+_ENV_REFERENCE = re.compile(r"\$\{(\w+)\}")
+
+
+def env_names(value: str) -> list[str]:
+    """The NAMEs of the ``${NAME}`` references in ``value``."""
+    return _ENV_REFERENCE.findall(value)
+
+
+def expand_env(value: str) -> str:
+    """Replace each ``${NAME}`` with its environment variable; unset or empty fails so a missing secret is never sent."""
+    def lookup(match: re.Match) -> str:
+        name = match.group(1)
+        if not os.environ.get(name):
+            raise OpticsError(Code.E0501, f"Environment variable {name} is not set")
+        return os.environ[name]
+
+    return _ENV_REFERENCE.sub(lookup, value)
+
+
+def redact_url(url: str) -> str:
+    """``url`` cut to scheme and host for logs, since credentials can ride in the userinfo, path or query."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<unparsable url>"
+    return f"{parts.scheme}://{parts.hostname}"
 
 
 def get_timestamp():
@@ -1139,6 +1208,25 @@ def scale_interactive_element_bounds(
             }
         except (KeyError, TypeError, ValueError):
             continue
+
+
+def screenshot_point_to_window(
+    element_source: Any,
+    screenshot: Optional[np.ndarray],
+    point: Tuple[int, int],
+) -> Tuple[int, int]:
+    """Map an OCR or image match from screenshot pixels to window points; the inverse of ``scale_bboxes_for_screenshot``.
+
+    At a scale of 1 the point is unchanged even when sizes differ: the window leaves out the system bars.
+    """
+    transform = _pixel_scale_for_source(element_source, screenshot)
+    if transform is None:
+        return point
+    scale_x, scale_y, offset_x, offset_y = transform
+    if max(abs(scale_x - 1), abs(scale_y - 1)) <= LETTERBOX_RATIO_TOLERANCE:
+        return point
+    x, y = point
+    return round((x - offset_x) / scale_x), round((y - offset_y) / scale_y)
 
 
 def bboxes_from_webelements(

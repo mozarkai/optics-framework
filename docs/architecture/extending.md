@@ -459,7 +459,9 @@ elements_sources:
 - Set `REQUIRED_DRIVER_TYPE` if driver-dependent
 - Implement all abstract methods from `ElementSourceInterface`
 - Return NumPy arrays for screenshots
-- Handle timeouts and retries in `assert_elements()`
+- Assertions own timing and retries: they call `check_elements(elements, visible=False)` once
+  per round until the timeout. Its default calls `assert_elements()` once per element with a
+  1 s timeout; you can override it with one non-waiting look per element
 
 ## Creating New Text Detection Models
 
