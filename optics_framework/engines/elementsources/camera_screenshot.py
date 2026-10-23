@@ -1,16 +1,53 @@
 from typing import Optional, Dict, Any, List, Literal
+import os
 import socket
 import cv2
 import numpy as np
-from pydantic import BaseModel, Field, ValidationError
+import requests
+from pydantic import BaseModel, Field, SecretStr, ValidationError
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
+
+
+ENV_SCREENSHOT_URL = "WEBCAM_SCREENSHOT_URL"
+ENV_SCREENSHOT_TOKEN = "WEBCAM_SCREENSHOT_TOKEN"  # nosec B105 - an env var name, not a secret
+ENV_SCREENSHOT_TCP_PORT = "WEBCAM_SCREENSHOT_TCP_PORT"
+ENV_TCP_FALLBACK_HOST = "127.0.0.1"
+HTTP_SCHEMES = ("http://", "https://")
+HTTP_TIMEOUT_SECONDS = 15
+HTTP_OK = 200
+HTTP_ERROR_MESSAGE_LIMIT = 300
+
+
+class CameraScreenshotHttpError(RuntimeError):
+    """Raised when the HTTP screenshot endpoint answers with a non-200 status.
+
+    Carries the status plus the ``code`` / ``message`` of the server's JSON error
+    body. The bearer token is never part of the message.
+    """
+
+    def __init__(self, status: int, code: Optional[str], message: Optional[str]):
+        self.status = status
+        self.code = code
+        self.server_message = message
+        super().__init__(
+            f"Camera screenshot request failed: HTTP {status}"
+            f" code={code or 'unknown'} message={message or 'none'}"
+        )
 
 
 class CapabilitiesConfig(BaseModel):
     camera_index: Optional[int] = Field(None, description="Index of the camera to use")
     url: Optional[str] = Field(
-        None, description="URL of the camera stream (e.g., 127.0.0.1:3000)"
+        None,
+        description=(
+            "Screenshot endpoint: 'ip:port' (raw TCP) or an http(s):// URL "
+            "(e.g., 127.0.0.1:3000 or http://127.0.0.1:3000/screenshot)"
+        ),
+    )
+    token: Optional[SecretStr] = Field(
+        None,
+        description="Bearer token sent to an http(s):// url; masked in repr and dumps",
     )
     out_width: int = Field(1080, description="Output width of the screenshot")
     out_height: int = Field(1920, description="Output height of the screenshot")
@@ -72,32 +109,40 @@ class CameraScreenshot(ElementSourceInterface):
         self.header_size: int = capabilities.header_size
         self.byte_order: str = capabilities.byte_order
 
-        # Initialize webcam or TCP connection
+        self.http_url: Optional[str] = None
+        self._http_token: Optional[str] = None
+        self.sock = None
+        self.cap = None
+        self.ip_address = None
+        self.port = None
+
+        endpoint = capabilities.url
+        if capabilities.camera_index is None and not endpoint:
+            endpoint = self._endpoint_from_env()
+
+        # Initialize webcam, HTTP endpoint or TCP connection
         if self.camera_index is not None:
             self.cap = cv2.VideoCapture(self.camera_index)
-            self.sock = None
-            self.ip_address = None
-            self.port = None
+        elif endpoint and endpoint.lower().startswith(HTTP_SCHEMES):
+            self.http_url = endpoint
+            self._http_token = self._resolve_token(capabilities)
         else:
-            if capabilities.url:
+            if endpoint:
                 try:
                     # Parse URL to extract IP address and port
-                    ip_port = str(self.capabilities_model.url).split(":")
+                    ip_port = str(endpoint).split(":")
                     if len(ip_port) != 2:
                         raise ValueError(
-                            f"Invalid URL format: {capabilities.url}. Expected format: ip:port"
+                            f"Invalid URL format: {endpoint}. Expected format: ip:port"
                         )
                     self.ip_address, port_str = ip_port
                     self.port = int(port_str)
                 except (ValueError, TypeError) as e:
-                    internal_logger.error(
-                        f"Failed to parse URL {capabilities.url}: {e}"
-                    )
-                    raise ValueError(f"Invalid URL format: {capabilities.url}")
+                    internal_logger.error(f"Failed to parse URL {endpoint}: {e}")
+                    raise ValueError(f"Invalid URL format: {endpoint}")
             else:
                 raise ValueError("No camera_index or valid URL provided")
             self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
-            self.cap = None
 
         self.camera_screenshot_config = config
 
@@ -108,6 +153,8 @@ class CameraScreenshot(ElementSourceInterface):
         Returns:
             np.ndarray: The captured image as a NumPy array, or an empty array on failure.
         """
+        if self.http_url:
+            return self.take_http_screenshot()
         if self.sock:
             try:
                 frame = self.take_screenshot()
@@ -197,6 +244,82 @@ class CameraScreenshot(ElementSourceInterface):
                 f"An unexpected error occurred during TCP connection setup: {e}"
             )
             return None
+
+    @staticmethod
+    def _endpoint_from_env() -> Optional[str]:
+        """Return the controller-injected endpoint, or None when none is set.
+
+        The HTTP URL wins over the legacy raw-TCP port.
+        """
+        env_url = os.environ.get(ENV_SCREENSHOT_URL)
+        if env_url:
+            return env_url
+        tcp_port = os.environ.get(ENV_SCREENSHOT_TCP_PORT)
+        if tcp_port:
+            return f"{ENV_TCP_FALLBACK_HOST}:{tcp_port}"
+        return None
+
+    @staticmethod
+    def _resolve_token(capabilities: "CapabilitiesConfig") -> Optional[str]:
+        """Config token first, then ``WEBCAM_SCREENSHOT_TOKEN``."""
+        if capabilities.token is not None:
+            return capabilities.token.get_secret_value()
+        return os.environ.get(ENV_SCREENSHOT_TOKEN) or None
+
+    @staticmethod
+    def _http_error(response: requests.Response) -> CameraScreenshotHttpError:
+        code: Optional[str] = None
+        message: Optional[str] = None
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                code = str(body.get("code")) if body.get("code") is not None else None
+                message = (
+                    str(body.get("message")) if body.get("message") is not None else None
+                )
+        except ValueError:
+            message = response.text[:HTTP_ERROR_MESSAGE_LIMIT] or None
+        if message:
+            message = message[:HTTP_ERROR_MESSAGE_LIMIT]
+        return CameraScreenshotHttpError(response.status_code, code, message)
+
+    def take_http_screenshot(self) -> np.ndarray:
+        """
+        Fetch a JPEG from the HTTP screenshot endpoint and decode it.
+
+        Raises:
+            CameraScreenshotHttpError: the server answered with a non-200 status.
+            RuntimeError: the request failed or the body is not a decodable image.
+        """
+        headers = {}
+        if self._http_token:
+            headers["Authorization"] = f"Bearer {self._http_token}"
+        try:
+            # Redirects are never followed: they would re-send the bearer token.
+            response = requests.get(
+                str(self.http_url),
+                headers=headers,
+                timeout=HTTP_TIMEOUT_SECONDS,
+                allow_redirects=False,
+            )
+        except requests.RequestException as e:
+            internal_logger.error(f"HTTP screenshot request failed: {type(e).__name__}")
+            raise RuntimeError(
+                f"Camera screenshot request to {self.http_url} failed: {type(e).__name__}"
+            ) from e
+        if response.status_code != HTTP_OK:
+            error = self._http_error(response)
+            internal_logger.error(str(error))
+            raise error
+        screenshot = cv2.imdecode(
+            np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR
+        )
+        if screenshot is None:
+            internal_logger.error("Failed to decode the HTTP screenshot body.")
+            raise ValueError(
+                "Failed to decode image data. Data might be corrupt or invalid."
+            )
+        return screenshot
 
     def take_screenshot(self):
         """
