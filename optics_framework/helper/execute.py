@@ -31,6 +31,8 @@ from optics_framework.common.models import (
     TemplateData,
     ErrorDefinitions,
 )
+from optics_framework.helper import engine_requirements
+from optics_framework.helper.setup import LLM_ENGINES
 from optics_framework.helper.abort import abort_with_panel
 
 
@@ -718,6 +720,7 @@ class BaseRunner:
         initialize_handlers(self.config)
 
         self._filter_and_build_execution_queue()
+        self._require_installed_engines()
         self._setup_session()
 
     def _init_data_readers(self):
@@ -831,6 +834,32 @@ class BaseRunner:
         )
         internal_logger.error("No test cases found in %s", self.folder_path)
         print(message, file=sys.stderr)
+        sys.exit(1)
+
+    def _require_installed_engines(self) -> None:
+        """Stop before the session when an enabled engine is not installed.
+
+        Both ``execute`` and ``dry_run`` build the engines listed in
+        config.yaml, so neither can get past a missing package; without this
+        gate the factory raises deep in the run, reporting ``E0601`` against an
+        optics module that is in fact present. A project-level precondition
+        like this is stated once and stops the command — the per-keyword FAIL
+        dry-run records elsewhere is for problems a keyword owns, and none of
+        them own this one.
+
+        Same condition and same words as ``optics doctor``'s ⚠️ rows; only the
+        severity differs, because this command was about to load the engine.
+
+        The LLM is the exception: it resolves lazily and AI self-heal degrades
+        to inert when its package is absent, so neither command fatally loads
+        it — a missing ``google-genai`` must not refuse to start a run that
+        would never touch it."""
+        missing = [m for m in engine_requirements.missing_engines(self.config)
+                   if m.engine not in LLM_ENGINES.engines.values()]
+        if not missing:
+            return
+        report = engine_requirements.report(missing, self.folder_path)
+        print(f"Cannot start: {report}", file=sys.stderr)
         sys.exit(1)
 
     def _setup_session(self):
