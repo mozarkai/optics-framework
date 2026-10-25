@@ -19,7 +19,8 @@ class Verifier:
         self.image_detection: Optional[InstanceFallback] = builder.get_image_detection()
         self.text_detection: Optional[InstanceFallback] = builder.get_text_detection()
         self.strategy_manager = StrategyManager(
-            self.element_source, self.text_detection, self.image_detection
+            self.element_source, self.text_detection, self.image_detection,
+            annotate_assertions=builder.session_config.save_captures,
         )
         self.event_sdk: EventSDK = builder.event_sdk
         self.execution_dir = builder.session_config.execution_output_path
