@@ -3,7 +3,7 @@ from types import ModuleType
 import importlib
 import pkgutil
 import inspect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -17,8 +17,7 @@ class GenericFactory(Generic[T]):
         module_paths: Dict[str, str] = Field(default_factory=dict)
         instances: Dict[str, S] = {}
 
-        class Config:
-            arbitrary_types_allowed = True
+        model_config = ConfigDict(arbitrary_types_allowed=True)
 
     _registry: ModuleRegistry[T] = ModuleRegistry()
 
@@ -209,8 +208,7 @@ class InstanceFallback(BaseModel, Generic[T]):
     instances: List[T] = Field(default_factory=list)
     current_instance: Optional[T] = None
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, instances: List[T], **data):
         super().__init__(instances=instances, **data)

@@ -3,7 +3,7 @@ import os
 import platform
 import re
 from typing import Any, Dict, Optional, Union
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import serial.tools.list_ports
 from serial import Serial
 from optics_framework.common.driver_interface import DriverInterface
@@ -31,8 +31,7 @@ class CapabilitiesConfig(BaseModel):
     )
 
     # app_element: str = Field(default="app", description="Element to launch the app")
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class BLEDriver(DriverInterface):
