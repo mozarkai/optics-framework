@@ -2,7 +2,7 @@ import os
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import initialize_handlers
@@ -14,9 +14,7 @@ class DependencyConfig(BaseModel):
     url: Optional[str] = None
     capabilities: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        """Pydantic V2 configuration."""
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class Config(BaseModel):
@@ -78,9 +76,7 @@ class Config(BaseModel):
                 {"anthropic": DependencyConfig(enabled=False, url=None, capabilities={})},
             ]
 
-    class Config:
-        """Pydantic V2 configuration."""
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def get(self, key: str, default: Any = None) -> Any:
         """

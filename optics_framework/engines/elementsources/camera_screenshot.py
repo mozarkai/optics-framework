@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any, List, Literal
 import socket
 import cv2
 import numpy as np
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
 
@@ -27,8 +27,7 @@ class CapabilitiesConfig(BaseModel):
         "little", description="Byte order for the header (little or big endian)"
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     @property
     def has_camera_index_or_url(self) -> Any:
