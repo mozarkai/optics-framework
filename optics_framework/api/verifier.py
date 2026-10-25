@@ -203,11 +203,13 @@ class Verifier:
 
     def _save_annotated_screenshot(self, annotated_frame, timestamp):
         """Save annotated screenshot with timestamp."""
+        if self.capture_output_dir is None:
+            return
         utils.save_screenshot(
             annotated_frame,
             "assert_elements_image_detection_result",
             time_stamp=timestamp,
-            output_dir=self.execution_dir
+            output_dir=self.capture_output_dir
         )
 
     def _evaluate_rule(self, result_parts: list, rule: str) -> bool:
