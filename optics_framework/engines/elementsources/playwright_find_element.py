@@ -5,8 +5,15 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
-from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers import playwright_locator
+
+# Null inside an iframe, whose viewport coordinates lack the frame's offset on the page.
+_RECT_SCRIPT = """els => {
+    if (!els.length) return [];
+    if (window !== window.top) return null;
+    const r = els[0].getBoundingClientRect();
+    return [r.x, r.y, r.width, r.height];
+}"""
 
 
 class PlaywrightFindElement(ElementSourceInterface):
@@ -47,7 +54,7 @@ class PlaywrightFindElement(ElementSourceInterface):
             Tuple[str, str]: (page_source, timestamp)
         """
         page = self._require_page()
-        html = run_async(page.content())
+        html = self.driver.run(page.content())
         timestamp = utils.get_timestamp()
         return str(html), str(timestamp)
 
@@ -81,12 +88,12 @@ class PlaywrightFindElement(ElementSourceInterface):
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """Locate a visible element, waiting up to the driver's element timeout."""
-        page = self._require_page()
+        self._require_page()
         if utils.determine_element_type(element) == "Image":
             return None
         try:
             return playwright_locator.find(
-                page,
+                self.driver,
                 element,
                 index=int(index or 0),
                 exact=self._strict_element_match(),
@@ -103,12 +110,12 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_element_bboxes(
         self, elements: List[str]
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Return bounding boxes for each element using Playwright bounding_box()."""
+        """Return a bounding box for each element (see get_bbox_for_element)."""
         result: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]] = []
-        page = self._require_page()
+        self._require_page()
         for element in elements:
             try:
-                handle = playwright_locator.find(page, element, exact=self._strict_element_match())
+                handle = playwright_locator.find(self.driver, element, exact=self._strict_element_match())
             except Exception:
                 result.append(None)
                 continue
@@ -118,20 +125,19 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_bbox_for_element(
         self, element: Any
     ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
-        """Return bounding box for an already-located Playwright element handle."""
+        """One evaluate, since ``bounding_box()`` costs several remote round trips and waits on a missing element."""
         if element is None:
             return None
         try:
-            bbox = run_async(element.bounding_box())
-            if bbox is not None:
-                x1 = int(bbox.get("x", 0))
-                y1 = int(bbox.get("y", 0))
-                x2 = int(x1 + bbox.get("width", 0))
-                y2 = int(y1 + bbox.get("height", 0))
-                return ((x1, y1), (x2, y2))
+            rect = self.driver.run(element.evaluate_all(_RECT_SCRIPT))
+            if rect is None:
+                box = self.driver.run(element.first.bounding_box())
+                rect = [box["x"], box["y"], box["width"], box["height"]]
+            x, y, width, height = rect
         except (TypeError, ValueError, AttributeError):
-            pass
-        return None
+            return None
+        x1, y1 = int(x), int(y)
+        return ((x1, y1), (int(x1 + width), int(y1 + height)))
 
     # --------------------------------------------------
     # Assertions
@@ -158,12 +164,12 @@ class PlaywrightFindElement(ElementSourceInterface):
             raise OpticsError(Code.E0403, message="Invalid rule. Use 'any' or 'all'")
         if isinstance(elements, str):
             elements = [elements]
-        page = self._require_page()
+        self._require_page()
         exact = self._strict_element_match()
         deadline = time.monotonic() + float(timeout)
         while True:
             try:
-                found = [check(page, element, exact=exact) for element in elements]
+                found = [check(self.driver, element, exact=exact) for element in elements]
             except Exception as e:
                 raise OpticsError(
                     Code.E0401, message=f"Error during element assertion: {e}"

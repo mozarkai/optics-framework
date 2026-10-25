@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Coroutine
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
@@ -8,9 +8,6 @@ from optics_framework.common.error import OpticsError, Code
 _persistent_loop: asyncio.AbstractEventLoop | None = None
 _loop_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
-
-# Shared executor to avoid thread churn
-_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def _start_loop(loop: asyncio.AbstractEventLoop):
@@ -37,22 +34,13 @@ def _get_or_create_persistent_loop() -> asyncio.AbstractEventLoop:
     return _persistent_loop
 
 
-DEFAULT_TIMEOUT_S = 15.0
-
-
-def run_async(coro: Coroutine[Any, Any, Any], timeout: float = DEFAULT_TIMEOUT_S):
+def run_async(coro: Coroutine[Any, Any, Any], timeout: float):
     """
     Safely run async coroutine from sync code.
     - Works with pytest / nested loops
     - Avoids deadlocks
     - Stable for Playwright
     """
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-
     # 🔹 Always use persistent background loop to avoid deadlocks when called from async context
     # When called from FastAPI/async context, using the running loop causes deadlocks because
     # we're blocking synchronously while waiting for a coroutine scheduled on the same loop

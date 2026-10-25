@@ -9,12 +9,10 @@ from optics_framework.engines.elementsources import playwright_page_source as pw
 pytestmark = pytest.mark.white_box
 
 
-def _source(html, monkeypatch):
-    # run_async is a pass-through: the fake page returns plain values, not coroutines.
-    monkeypatch.setattr(pw, "run_async", lambda coro: coro)
+def _source(html):
     page = MagicMock()
     page.content.return_value = html
-    src = pw.PlaywrightPageSource(driver=MagicMock(page=page))
+    src = pw.PlaywrightPageSource(driver=MagicMock(page=page, run=lambda coro, **_: coro))
     return src, page
 
 
@@ -24,8 +22,7 @@ def _grid_html(n):
 
 
 def _candidate_count(html):
-    """Every node .//* sees, including lxml's implicit <head/> -- ground truth for
-    'every candidate got bounds' assertions, independent of that auto-wrapping."""
+    """Every node .//* sees, including lxml's implicit <head/>."""
     tree = etree.HTML(html)
     return len(tree.xpath(".//*")) if tree is not None else 0
 
@@ -36,53 +33,43 @@ def _uniform_rects(width=20, height=20):
     return _side_effect
 
 
-def test_page_source_waits_for_the_page_to_settle_before_reading(monkeypatch):
-    src, page = _source("<html><body></body></html>", monkeypatch)
+def test_page_source_waits_for_the_page_to_settle_before_reading():
+    src, page = _source("<html><body></body></html>")
     order = []
     src.driver.wait_for_page_settled.side_effect = lambda: order.append("settle")
     page.content.side_effect = lambda: order.append("read") or "<html><body></body></html>"
-
     src.get_page_source()
-
     assert order == ["settle", "read"]
 
 
 class TestBatchedEvaluateCallCount:
     @pytest.mark.parametrize("n", [1, 50])
-    def test_evaluate_called_once_regardless_of_node_count(self, n, monkeypatch):
+    def test_evaluate_called_once_regardless_of_node_count(self, n):
         html = _grid_html(n)
-        src, page = _source(html, monkeypatch)
+        src, page = _source(html)
         page.evaluate.side_effect = _uniform_rects()
-
         elements = src.get_interactive_elements(None)
-
         assert page.evaluate.call_count == 1
-        # Every candidate node (including lxml's implicit <head/>) got real bounds from
-        # the single evaluate() call, so none were dropped by the batching rewrite.
         assert len(elements) == _candidate_count(html)
 
     @pytest.mark.parametrize("n", [1, 50])
-    def test_compact_path_also_batches(self, n, monkeypatch):
-        src, page = _source(_grid_html(n), monkeypatch)
+    def test_compact_path_also_batches(self, n):
+        src, page = _source(_grid_html(n))
         page.evaluate.side_effect = _uniform_rects()
-
         elements = src.get_interactive_elements(None, compact=True)
-
         assert page.evaluate.call_count == 2  # bounds, then locator suggestions
         assert [el["text"] for el in elements] == [f"Item {i}" for i in range(n)]
 
-    def test_evaluate_not_called_when_there_are_no_candidate_nodes(self, monkeypatch):
-        src, page = _source("", monkeypatch)
+    def test_evaluate_not_called_when_there_are_no_candidate_nodes(self):
+        src, page = _source("")
         page.evaluate.side_effect = _uniform_rects()
-
         elements = src.get_interactive_elements(None)
-
         assert elements == []
         assert page.evaluate.call_count == 0
 
 
 class TestOutputShapeAndFiltering:
-    def test_mixed_present_absent_bounds_matches_prior_semantics(self, monkeypatch):
+    def test_mixed_present_absent_bounds_matches_prior_semantics(self):
         html = (
             "<html><body>"
             '<button id="btn-a">Alpha</button>'
@@ -90,11 +77,9 @@ class TestOutputShapeAndFiltering:
             '<button id="btn-c">Gamma</button>'
             "</body></html>"
         )
-        src, page = _source(html, monkeypatch)
-
+        src, page = _source(html)
         def side_effect(script, xpaths):
-            # Bounds for btn-a/btn-c, withheld for btn-b -- exercises the same
-            # `if not bounds: continue` filtering the old per-node code performed.
+            # btn-b gets no bounds, so it is dropped.
             rects = []
             for xp in xpaths:
                 if xp and "btn-a" in xp:
@@ -104,80 +89,67 @@ class TestOutputShapeAndFiltering:
                 else:
                     rects.append(None)
             return rects
-
         page.evaluate.side_effect = side_effect
         elements = src.get_interactive_elements(None)
-
         assert page.evaluate.call_count == 1
         texts = {el["text"] for el in elements}
         assert texts == {"Alpha", "Gamma"}
-
         alpha = next(el for el in elements if el["text"] == "Alpha")
         assert set(alpha.keys()) == {"text", "bounds", "xpath", "extra"}
         assert alpha["bounds"] == {"x1": 10, "y1": 20, "x2": 110, "y2": 60}
         assert alpha["xpath"]
 
-    def test_compact_drops_only_the_candidate_without_bounds(self, monkeypatch):
+    def test_compact_drops_only_the_candidate_without_bounds(self):
         html = (
             "<html><body>"
             '<button id="btn-a">Alpha</button>'
             '<button id="btn-b">Beta</button>'
             "</body></html>"
         )
-        src, page = _source(html, monkeypatch)
+        src, page = _source(html)
         page.evaluate.side_effect = lambda script, xpaths: [
             {"x": 0, "y": 0, "width": 10, "height": 10} if xp and "btn-a" in xp else None
             for xp in xpaths
         ]
-
         elements = src.get_interactive_elements(None, compact=True)
-
         assert [el["text"] for el in elements] == ["Alpha"]
 
-    def test_filter_config_still_applies_after_bounds_check(self, monkeypatch):
+    def test_filter_config_still_applies_after_bounds_check(self):
         html = (
             "<html><body>"
             '<button id="btn-a">Alpha</button>'
             '<span id="span-a">Not a button</span>'
             "</body></html>"
         )
-        src, page = _source(html, monkeypatch)
+        src, page = _source(html)
         page.evaluate.side_effect = _uniform_rects()
-
         elements = src.get_interactive_elements(["buttons"])
-
         assert [el["text"] for el in elements] == ["Alpha"]
 
-    def test_no_filter_config_returns_all_bounded_elements(self, monkeypatch):
+    def test_no_filter_config_returns_all_bounded_elements(self):
         html = _grid_html(5)
-        src, page = _source(html, monkeypatch)
+        src, page = _source(html)
         page.evaluate.side_effect = _uniform_rects()
-
         elements = src.get_interactive_elements(None)
-
         assert len(elements) == _candidate_count(html)
 
 
 class TestBatchFailureDegradesGracefully:
-    def test_evaluate_exception_returns_no_elements_without_per_node_fallback(self, monkeypatch):
-        src, page = _source(_grid_html(3), monkeypatch)
+    def test_evaluate_exception_returns_no_elements_without_per_node_fallback(self):
+        src, page = _source(_grid_html(3))
         page.evaluate.side_effect = RuntimeError("page navigated mid-evaluate")
-
         elements = src.get_interactive_elements(None)
-
         assert elements == []
         # A whole-batch failure must not fall back to one evaluate() call per node.
         assert page.evaluate.call_count == 1
 
-    def test_compact_batch_failure_is_unavailable_not_empty(self, monkeypatch):
+    def test_compact_batch_failure_is_unavailable_not_empty(self):
         # The NL agent falls back to page source on "unavailable", so a failed batch
         # must raise rather than return [] and look like a genuinely empty screen.
-        src, page = _source(_grid_html(3), monkeypatch)
+        src, page = _source(_grid_html(3))
         page.evaluate.side_effect = RuntimeError("page navigated mid-evaluate")
-
         with pytest.raises(OpticsError) as excinfo:
             src.get_interactive_elements(None, compact=True)
-
         assert excinfo.value.code == Code.E0202
         assert page.evaluate.call_count == 1
 
@@ -188,34 +160,28 @@ class TestBatchFailureDegradesGracefully:
             {"unexpected": "payload"},  # not a list at all
         ],
     )
-    def test_compact_malformed_batch_is_unavailable_not_empty(self, payload, monkeypatch):
-        src, page = _source(_grid_html(3), monkeypatch)
+    def test_compact_malformed_batch_is_unavailable_not_empty(self, payload):
+        src, page = _source(_grid_html(3))
         page.evaluate.return_value = payload
-
         with pytest.raises(OpticsError) as excinfo:
             src.get_interactive_elements(None, compact=True)
-
         assert excinfo.value.code == Code.E0202
 
-    def test_compact_empty_page_still_returns_empty_list(self, monkeypatch):
-        src, page = _source("", monkeypatch)
+    def test_compact_empty_page_still_returns_empty_list(self):
+        src, page = _source("")
         page.evaluate.side_effect = _uniform_rects()
-
         assert src.get_interactive_elements(None, compact=True) == []
         assert page.evaluate.call_count == 0
 
-    def test_compact_all_bounds_invisible_still_returns_empty_list(self, monkeypatch):
+    def test_compact_all_bounds_invisible_still_returns_empty_list(self):
         # A length-matched payload of nulls is a real "nothing visible" answer, not a
         # failed lookup, so it must keep the [] that means empty.
-        src, page = _source(_grid_html(3), monkeypatch)
+        src, page = _source(_grid_html(3))
         page.evaluate.side_effect = lambda script, xpaths: [None] * len(xpaths)
-
         assert src.get_interactive_elements(None, compact=True) == []
 
-    def test_mismatched_length_response_is_treated_as_all_absent(self, monkeypatch):
-        src, page = _source(_grid_html(3), monkeypatch)
+    def test_mismatched_length_response_is_treated_as_all_absent(self):
+        src, page = _source(_grid_html(3))
         page.evaluate.return_value = [{"x": 0, "y": 0, "width": 5, "height": 5}]  # too short
-
         elements = src.get_interactive_elements(None)
-
         assert elements == []
