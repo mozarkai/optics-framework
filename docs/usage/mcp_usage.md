@@ -157,15 +157,18 @@ the client at the URL:
    `{ "session_id", "driver_id" }`. The target app is launched automatically.
    Capture the `session_id`; **every** other tool and resource needs it.
    `elements_sources` **defaults per driver** (appium →
-   `appium_find_element`/`appium_page_source`/`appium_screenshot`; selenium and
-   playwright analogous), so `start_session` with just a `driver` works. The device
+   `appium_find_element`/`appium_page_source`/`appium_web`/`appium_screenshot`;
+   selenium and playwright analogous), so `start_session` with just a `driver` works. The device
    is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs
    no `adb` of its own. A Playwright session starts on a blank page: open a site with
    `launch_app` and its URL (see the example below).
 2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,
    or read `optics://session/{session_id}/elements` for the compact list of
    actionable elements (labels, `act`, `bounds`) plus read-only text. These work
-   the same across drivers via the session's own element sources.
+   the same across drivers via the session's own element sources. A web element
+   (Playwright, or mobile browsers and WebViews through `appium_web`) also carries
+   `loc`, a locator that matches only that element, and `offscreen: true` when it is
+   on the page but scrolled out of view.
 3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
    `assert_presence`, …) with the `session_id`. **Target elements by locator**
    (`xpath=`/`text=`/an id/an image) or by an element's visible label with
@@ -373,9 +376,9 @@ untrimmed element list).
 
 The keywords you can use depend on which `elements_sources` (and detection
 sources) you enable in `start_session` — same rules as a normal optics project.
-When you omit `elements_sources`, `start_session` enables the driver's canonical
-trio automatically (appium → `appium_find_element`/`appium_page_source`/
-`appium_screenshot`); pass the argument only to narrow or extend that. An
+When you omit `elements_sources`, `start_session` enables the driver's element
+sources automatically (appium → `appium_find_element`/`appium_page_source`/
+`appium_web`/`appium_screenshot`); pass the argument only to narrow or extend that. An
 explicit **empty** list is passed through and disables element sources entirely
 (the session then fails to start) — omit the argument for the defaults:
 
@@ -384,6 +387,7 @@ explicit **empty** list is passed through and disables element sources entirely
 | Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |
 | Screenshots & image-based location | `appium_screenshot` |
 | Page source, `get_interactive_elements`, source-based extraction | `appium_page_source` |
+| `css=` / DOM XPath in a mobile browser or debuggable WebView (Android and iOS), and that page's elements in `get_interactive_elements` | `appium_web` |
 | OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |
 | Image template matching | an `image_detection` source (e.g. `templatematch`) |
 

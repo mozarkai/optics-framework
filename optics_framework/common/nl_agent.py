@@ -204,6 +204,10 @@ coordinates at most TWICE for a given target; if that does not work, STOP and us
 USING THE ON-SCREEN ELEMENTS LIST:
 - Use it together with the screenshot. Each line is: label, the actions the element affords, \
 its bounds [x1,y1][x2,y2], and its resource id when it has one.
+- A web element can carry `loc=<locator>`, which matches only that element: pass it as the \
+`element` parameter instead of the label, above all when several elements share a label.
+- `off-screen` marks a web element that is on the page but scrolled out of view: scroll \
+toward it before acting on it.
 - The actions are (tap), (long), (toggle), (input), (scroll) — an element with NO actions is \
 read-only text: useful for judging screen state, never a tap target. Pick a target whose \
 actions match what you intend, e.g. only `enter_text` into an element listed (input).
@@ -250,7 +254,9 @@ def _render_screen_element(index: int, element: Dict[str, Any]) -> Optional[str]
     action_str = f" ({','.join(str(a) for a in actions)})" if actions else ""
     rid = str((element.get("extra") or {}).get("resource-id") or "").split("/")[-1]
     rid_str = f" #{rid}" if rid else ""
-    return f'  {index}. "{label}"{action_str} {bounds_str}{rid_str}'
+    loc_str = f" loc={element['loc']}" if element.get("loc") else ""
+    offscreen_str = " off-screen" if element.get("offscreen") else ""
+    return f'  {index}. "{label}"{action_str} {bounds_str}{rid_str}{loc_str}{offscreen_str}'
 
 
 def _render_screen_elements(
@@ -527,7 +533,8 @@ class NaturalLanguageAgent:
             lines.append("")
             lines.append(
                 "CURRENT SCREEN ELEMENTS (label, afforded actions, bounds "
-                "[x1,y1][x2,y2], resource id — no actions means read-only text):"
+                "[x1,y1][x2,y2], resource id, web locator, off-screen — no actions means "
+                "read-only text):"
             )
             lines.append(_render_screen_elements(screen_elements))
         elif page_source:

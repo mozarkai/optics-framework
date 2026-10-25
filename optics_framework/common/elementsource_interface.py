@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Tuple
 import numpy
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 class ElementSourceInterface(ABC):
     """
@@ -13,6 +14,9 @@ class ElementSourceInterface(ABC):
     Implementers should handle specific element types (e.g., image bytes, templates)
     as needed.
     """
+
+    #: True when this source's elements sit inside another source's screen (a web page in an app) and add to it.
+    SUPPLEMENTS_SCREEN_ELEMENTS: bool = False
 
     @abstractmethod
     def capture(self) -> numpy.ndarray:
@@ -52,6 +56,10 @@ class ElementSourceInterface(ABC):
         """
         pass
 
+    def can_locate(self, element: str) -> bool:
+        """Whether this source can look ``element`` up."""
+        return True
+
     @abstractmethod
     def assert_elements(self, elements: Any, timeout: int = 30, rule: str = 'any') -> None:
         """
@@ -68,6 +76,19 @@ class ElementSourceInterface(ABC):
         :raises AssertionError: If the assertion fails based on the rule.
         """
         pass
+
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        """One look, no waiting: whether each element is present (visible when ``visible``) right now."""
+        assert_method = self.assert_elements_visible if visible else self.assert_elements
+        found = []
+        for element in elements:
+            try:
+                # 0 would skip the `while elapsed < timeout` loops most sources poll with
+                found.append(assert_method([element], 1, "any") is not False)
+            except Exception as e:
+                raise_if_session_dead(e)
+                found.append(False)
+        return found
 
     def get_element_bboxes(
         self, elements: list

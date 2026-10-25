@@ -47,11 +47,11 @@ from optics_framework.helper.version import VERSION
 
 # Unrelated to StrategyFactory's locate-strategy priority in strategies.py —
 # this ranks element-source modules, not locate techniques.
-_SOURCE_RANK = {"find_element": 0, "page_source": 1, "screenshot": 2}
+_SOURCE_RANK = {"find_element": 0, "page_source": 1, "web": 2, "screenshot": 3}
 
 
 def _default_sources_for_driver(driver: str) -> list[str]:
-    """The driver's canonical elements_sources trio, found by reflection.
+    """The driver's elements_sources, found by reflection and ranked by role.
 
     Returns ``[]`` for an unmatched driver name; ``start_session`` then fails
     with the usual "Element source configuration must be set" error.
@@ -90,16 +90,21 @@ SERVER_INSTRUCTIONS = (
     "deviceName/udid; the MCP itself needs no adb). For a website use "
     "`start_session(driver=\"playwright\", capabilities={\"headless\": false})`, then "
     "`launch_app(app_identifier=\"<url>\")`; calling `launch_app` again navigates the "
-    "same browser.\n"
+    "same browser. For the mobile site, add `\"device\": \"Pixel 7\"` (any Playwright "
+    "device name) to `capabilities` to emulate that phone with touch input. For a "
+    "remote browser, pass its endpoint as `url` (and `capabilities.headers` / "
+    "`capabilities.protocol` if it needs them).\n"
     "2. Act with the keyword tools (press_element, enter_text, swipe, assert_presence, "
     "...). First read the `optics://session/{id}/elements` resource (or call "
     "`get_interactive_elements`): it returns a compact list of every actionable element "
     "with a label, its `act` (tap/long/toggle/input/scroll) and bounds, plus read-only "
     "text (`act: []`) for asserting screen state. Tap with `press_element`, passing a "
     "locator (`xpath=`/`text=`/an id/an image) or an element's visible label from that "
-    "list; it raises when the target is not found. On the web an element can also carry "
-    "`loc`, a locator checked to match exactly that element: prefer it over the label, "
-    "and store it in the suite's elements file so a replay finds the same element. Web "
+    "list; it raises when the target is not found. On the web (and in a phone's browser or "
+    "WebView) an element can also carry `loc`, a locator checked to match exactly that "
+    "element: prefer it over the label, and store it in the suite's elements file so a "
+    "replay finds the same element. The list covers the whole web page; an element marked "
+    "`offscreen: true` is scrolled out of view, and pressing it by `loc` scrolls it in. Web "
     "keywords wait for an element to appear, so no `sleep` is needed after a page load. "
     "That wait is also what a miss costs (`assert_presence` waits up to `timeout_str`, "
     "30 s by default): to check what is on screen now, read the elements resource or "
@@ -438,10 +443,12 @@ def build_server() -> "FastMCP":
 
     @mcp.resource("optics://session/{session_id}/elements", mime_type="application/json")
     async def interactive_elements(session_id: str) -> Any:
-        """Compact on-screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}:
+        """Compact screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}:
         actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
-        read-only text (act: []). Appium and Playwright page sources answer the compact
-        projection; a source without it returns its full element list. Use the
+        read-only text (act: []). A web element carries loc, a locator matching only it, and
+        offscreen: true when it is on the page but scrolled out of view. Appium, Appium web
+        and Playwright page sources answer the compact projection; a source without it
+        returns its full element list. Use the
         get_interactive_elements tool with compact=false for the full untrimmed list."""
         return await _observe(session_id, "get_interactive_elements", {"compact": "true"})
 

@@ -9,6 +9,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 
 class AppiumFindElement(ElementSourceInterface):
@@ -88,6 +89,11 @@ class AppiumFindElement(ElementSourceInterface):
             'Appium Find Element does not support getting interactive elements. Please use AppiumPageSource for this functionality.'
         )
 
+    def can_locate(self, element: str) -> bool:
+        element_type = utils.determine_element_type(element)
+        if element_type == "XPath":
+            return not (utils.is_dom_only_xpath(element) and self.driver is not None and self.driver.native_ui_platform())
+        return element_type in ("Text", "Class")
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
@@ -272,8 +278,20 @@ class AppiumFindElement(ElementSourceInterface):
                 and located.is_displayed()
                 and self._is_within_screen_bounds(located)
             )
-        except (OpticsError, WebDriverException):
+        except (OpticsError, WebDriverException) as e:
+            raise_if_session_dead(e)
             return False
+
+    def _is_located(self, element: str) -> bool:
+        try:
+            return self.locate(element) is not None
+        except (OpticsError, WebDriverException) as e:
+            raise_if_session_dead(e)
+            return False
+
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        check = self._is_located_and_displayed if visible else self._is_located
+        return [check(element) for element in elements]
 
     def assert_elements_visible(self, elements: List[str], timeout: int = 10, rule: str = "any"):
         """

@@ -538,6 +538,10 @@ If multiple vision models are configured, they're tried in order:
 text_detection_fallback.detect_text(screenshot)
 ```
 
+### Assertion Polling
+
+`assert_presence` and `assert_visibility` poll in rounds until the timeout. Each round gives every strategy that can take the locator one non-waiting `check_elements()` call on the elements not yet found, cheap sources first, and stops at the first round that meets the rule (`all` counts each element once any source has found it). Rounds start at most once every 0.5 s, and the first round always runs in full. OCR and template matching share one screenshot taken in that round and run at most every 2 s while a cheaper strategy can still find every pending element.
+
 ## Self-Healing Decorator
 
 **Location:** `optics_framework/api/action_keyword.py`
@@ -620,13 +624,13 @@ if is_aoi_used:
     utils.save_screenshot(
         annotated_screenshot,
         f"{func.__name__}_with_aoi",
-        output_dir=self.execution_dir
+        output_dir=self.capture_output_dir
     )
 else:
     utils.save_screenshot(
         screenshot_np,
         func.__name__,
-        output_dir=self.execution_dir
+        output_dir=self.capture_output_dir
     )
 ```
 
@@ -831,201 +835,7 @@ Manages screenshot capture from element sources.
 
 - Black screen detection
 - Screenshot validation
-- Screenshot streaming support
 - Multiple element source fallback
-
-### Screenshot Streaming
-
-**Location:** `optics_framework/common/screenshot_stream.py`
-
-Screenshot streaming provides continuous screenshot capture for timeout-based element location operations. This is useful when waiting for elements to appear or when monitoring screen changes.
-
-#### Architecture
-
-```mermaid
-graph TB
-    A[Capture Thread] --> B[Screenshot Queue]
-    B --> C[Deduplication Thread]
-    C --> D[Filtered Queue]
-    D --> E[Strategy/Consumer]
-
-    A --> F[Element Source]
-    F --> A
-```
-
-#### Key Components
-
-**ScreenshotStream Class:**
-```python
-class ScreenshotStream:
-    def __init__(self, capture_screenshot_callable, max_queue_size=100):
-        self.capture_screenshot = capture_screenshot_callable
-        self.screenshot_queue = queue.Queue(maxsize=max_queue_size)
-        self.filtered_queue = queue.Queue(maxsize=max_queue_size)
-        self.stop_event = threading.Event()
-```
-
-#### Capture Process
-
-**1. Continuous Capture:**
-```python
-def capture_stream(self, timeout):
-    """
-    Continuously captures screenshots in a separate thread.
-
-    - Captures at maximum rate
-    - Stores in screenshot_queue
-    - Stops on timeout or stop_event
-    """
-    start_time = time.time()
-    while not self.stop_event.is_set() and (time.time() - start_time) < timeout:
-        frame = self.capture_screenshot()
-        self.screenshot_queue.put((frame, timestamp))
-```
-
-**2. Deduplication:**
-```python
-def process_screenshot_queue(self):
-    """
-    Processes screenshots with SSIM-based deduplication.
-
-    - Compares frames using Structural Similarity Index
-    - Filters duplicate frames (similarity >= 0.75)
-    - Stores unique frames in filtered_queue
-    """
-    similarity = ssim(gray_last_frame, gray_frame)
-    if similarity >= 0.75:
-        # Skip duplicate
-        return last_processed_frame
-    # Add to filtered queue
-```
-
-**SSIM Deduplication:**
-- Uses Structural Similarity Index (SSIM) to detect duplicate frames
-- Threshold: 0.75 (75% similarity = duplicate)
-- Reduces processing load by filtering similar screenshots
-- Preserves unique frames for element location
-
-#### Usage
-
-**Starting Stream:**
-```python
-stream = ScreenshotStream(capture_screenshot_callable)
-stream.start_capture(timeout=30, deduplication=True)
-```
-
-**Getting Screenshots:**
-```python
-# Get latest screenshot
-frame, timestamp = stream.get_latest_screenshot(wait_time=1)
-
-# Get all available screenshots
-frames = stream.get_all_available_screenshots(wait_time=0.1)
-
-# Get specific number of frames
-frames = stream.fetch_frames_from_queue(num_frames=10)
-```
-
-**Stopping Stream:**
-```python
-stream.stop_capture(wait_for_threads=True, timeout=5)
-```
-
-#### Thread Management
-
-**Capture Thread:**
-- Continuously captures screenshots
-- Non-blocking (daemon thread)
-- Stops on timeout or stop_event
-
-**Deduplication Thread:**
-- Processes screenshots from queue
-- Applies SSIM deduplication
-- Stores unique frames in filtered queue
-- Optional (can be disabled)
-
-**Cleanup:**
-```python
-def stop_capture(self, wait_for_threads=True, timeout=5):
-    """
-    Stops capture and waits for threads to finish.
-
-    - Sets stop_event
-    - Waits for threads with timeout
-    - Logs warnings if threads don't stop
-    """
-```
-
-#### Queue Management
-
-**Queue Sizes:**
-- Default max size: 100 frames
-- Oldest frames dropped when queue is full
-- Prevents memory issues
-
-**Queue Operations:**
-```python
-# Clear queues
-stream.clear_queues()
-
-# Get queue sizes (debugging)
-sizes = stream.get_queue_sizes()
-# Returns: {'screenshot_queue_size': 10, 'filtered_queue_size': 5}
-```
-
-#### Performance Considerations
-
-**Benefits:**
-- Non-blocking capture (doesn't slow down execution)
-- Deduplication reduces processing load
-- Queue-based (decouples capture from consumption)
-
-**Trade-offs:**
-- Memory usage (queues store frames)
-- CPU usage (deduplication computation)
-- Thread overhead
-
-**Optimization Tips:**
-- Adjust `max_queue_size` based on needs
-- Disable deduplication if not needed
-- Use appropriate timeout values
-- Clear queues between operations
-
-#### Use Cases
-
-1. **Timeout-Based Location**: Wait for element to appear
-2. **Screen Change Detection**: Monitor for UI changes
-3. **Continuous Monitoring**: Track screen state over time
-4. **Performance Analysis**: Capture frames for analysis
-
-#### Integration with Strategies
-
-Strategies can use screenshot streaming for timeout-based operations:
-
-```python
-# In strategy implementation
-def locate_with_timeout(self, element: str, timeout: int = 30):
-    stream = ScreenshotStream(self.element_source.capture)
-    stream.start_capture(timeout, deduplication=True)
-
-    while True:
-        frame, timestamp = stream.get_latest_screenshot()
-        if frame is None:
-            continue
-
-        # Try to locate element in frame
-        result = self._locate_in_frame(frame, element)
-        if result:
-            stream.stop_capture()
-            return result
-
-        # Check timeout
-        if time.time() - start_time > timeout:
-            break
-
-    stream.stop_capture()
-    raise ElementNotFoundError()
-```
 
 ## Page Source Strategies
 
@@ -1151,4 +961,3 @@ Screenshots are saved with strategy information:
 - [Extending](extending.md) - Creating custom strategies
 - [Self-Healing Decorator](strategies.md#self-healing-decorator) - Detailed decorator implementation
 - [AOI Support](strategies.md#aoi-support) - Area of Interest system
-- [Screenshot Streaming](strategies.md#screenshot-streaming) - Continuous screenshot capture
