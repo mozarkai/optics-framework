@@ -555,7 +555,7 @@ def calculate_aoi_bounds(screenshot_shape, aoi_x, aoi_y, aoi_width, aoi_height):
 
 ### ADR-010: Screenshot Streaming with Deduplication
 
-**Status:** Accepted
+**Status:** Superseded. Assertions now poll every strategy in one loop and share one screenshot per round between the vision strategies.
 
 **Context:**
 Timeout-based element location requires continuous screenshot capture. Need to avoid processing duplicate frames and manage memory efficiently.

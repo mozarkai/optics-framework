@@ -44,6 +44,22 @@ _MOBILE_DEFAULT_OPTIONS: dict[str, Any] = {
     "connectHardwareKeyboard": True,
 }
 
+# A context switch asks every app's DevTools socket for its pages, and a frozen app's never answers. Version
+# details stay on (one parallel 2 s wait at most): without them chromedriver is matched to the WebView, not Chrome.
+_ANDROID_CONTEXT_OPTIONS: dict[str, Any] = {
+    "ensureWebviewsHavePages": False,
+    "extractChromeAndroidPackageFromContextName": True,
+}
+
+# Web Inspector lists every app's pages ("*" covers WebViews and any browser) and fails fast: without these,
+# an empty listing retries for 10 s and a frozen page blocks each script for 2 min.
+_IOS_CONTEXT_OPTIONS: dict[str, Any] = {
+    "includeSafariInWebviews": True,
+    "additionalWebviewBundleIds": ["*"],
+    "webviewConnectRetries": 1,
+    "webviewAtomWaitTimeout": 5000,
+}
+
 
 @dataclass(frozen=True)
 class PlatformProfile:
@@ -55,6 +71,7 @@ class PlatformProfile:
     app_id_caps: tuple[str, ...]
     keycode_strategy: str
     default_options: dict[str, Any] = field(default_factory=dict)
+    native_session_options: dict[str, Any] = field(default_factory=dict)  # left out when a session starts in a browser
     rc_command: str | None = None  # only meaningful when keycode_strategy == KEYCODE_RC_NAMED
     rc_key_map: dict[str, str] = field(default_factory=dict)
     rc_extra_payload: dict[str, Any] = field(default_factory=dict)
@@ -125,7 +142,7 @@ register_profile(PlatformProfile(
     options_factory=UiAutomator2Options,
     app_id_caps=("appPackage", "appium:appPackage"),
     keycode_strategy=KEYCODE_ANDROID_INT,
-    default_options={**_MOBILE_DEFAULT_OPTIONS, "ignoreHiddenApiPolicyError": True},
+    default_options={**_MOBILE_DEFAULT_OPTIONS, **_ANDROID_CONTEXT_OPTIONS, "ignoreHiddenApiPolicyError": True},
 ))
 
 register_profile(PlatformProfile(
@@ -135,6 +152,7 @@ register_profile(PlatformProfile(
     app_id_caps=("bundleId", "appium:bundleId"),
     keycode_strategy=KEYCODE_ANDROID_INT,
     default_options=dict(_MOBILE_DEFAULT_OPTIONS),
+    native_session_options=_IOS_CONTEXT_OPTIONS,
 ))
 
 # D-pad / OK -> Samsung remote key names (values from @headspinio/tizen-remote).

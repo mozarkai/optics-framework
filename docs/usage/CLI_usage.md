@@ -103,6 +103,7 @@ Use `--template <name>` to copy a sample layout and assets from `optics_framewor
 - `youtube` — YouTube sample (Appium; uses image templates)
 - `gmail_web` — Gmail web sample (Selenium)
 - `playwright` — Minimal web sample (Playwright)
+- `mobile_web` — Wikipedia search in Chrome on an Android device (Appium)
 
 Exact values depend on the directories under `optics_framework/samples/`. Use only names that exist as subdirectories there.
 

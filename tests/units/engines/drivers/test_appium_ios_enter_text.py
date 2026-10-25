@@ -13,6 +13,7 @@ pytestmark = pytest.mark.white_box
 def _driver_instance(platform: str, focused=None, focus_error=None) -> Appium:
     webdriver = MagicMock()
     webdriver.capabilities = {"platformName": platform}
+    webdriver.find_elements.return_value = []
     active = PropertyMock(side_effect=focus_error) if focus_error else PropertyMock(return_value=focused)
     type(webdriver.switch_to).active_element = active
     instance = Appium.__new__(Appium)
@@ -31,6 +32,18 @@ class TestIosEnterText:
 
         focused.send_keys.assert_called_once_with("hello")
         instance.driver.execute_script.assert_not_called()
+
+    def test_returns_once_a_late_keyboard_has_landed(self, monkeypatch):
+        monkeypatch.setattr("optics_framework.engines.drivers.appium.time.sleep", lambda _: None)
+        instance = _driver_instance("iOS", focused=MagicMock())
+        instance.driver.get_window_size.return_value = {"width": 402, "height": 874}
+        keyboard = MagicMock()
+        type(keyboard).rect = PropertyMock(side_effect=[{"y": y} for y in (891, 891, 700, 590, 590)])
+        instance.driver.find_elements.return_value = [keyboard]
+
+        instance.enter_text("hello")
+
+        assert instance.driver.find_elements.call_count == 5
 
     def test_special_key_becomes_the_character_it_types(self):
         focused = MagicMock()

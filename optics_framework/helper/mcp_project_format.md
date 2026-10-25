@@ -42,9 +42,9 @@ expand `${name}` inside a larger string.
     hour_field,text=Hour
     time,22:00
 
-On the web, use the `loc` value from the elements resource where an element has
-one (it is checked to match only that element) and keep the visible label as a
-fallback; values are tried in order:
+On the web, and in mobile browsers and WebViews, use the `loc` value from the
+elements resource where an element has one (it is checked to match only that
+element) and keep the visible label as a fallback; values are tried in order:
     Element_Name,Element_ID,Element_ID_2
     password_field,[data-test="password"],Password
     login_button,[data-test="login-button"],Login
@@ -57,7 +57,8 @@ link name).
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
 `{driver}_page_source`, `{driver}_screenshot`. appium is only an example here —
-selenium and playwright follow the same shape.
+selenium and playwright follow the same shape. appium adds `appium_web` for `css=`
+and DOM XPath locators in mobile browsers and debuggable WebViews.
     driver_sources:
       - appium:            # or selenium / playwright / ...
           enabled: true
@@ -66,6 +67,7 @@ selenium and playwright follow the same shape.
     elements_sources:
       - appium_find_element: { enabled: true }
       - appium_page_source: { enabled: true }
+      - appium_web: { enabled: true }
       - appium_screenshot: { enabled: true }
 
 A website, run in a local browser:
@@ -81,6 +83,21 @@ A website, run in a local browser:
       - playwright_screenshot: { enabled: true }
 
 and the first module step opens the site: `Open Site,Launch App,https://...`.
+
+A website on a remote browser grid: add its endpoint as `url`, with the
+provider's options in the query, plus any auth `headers`. Leave `protocol` at
+its default (`cdp`) unless the provider documents Playwright's `connect`
+(a Playwright server); a `/playwright` path alone does not mean that. Write secrets as
+`${ENV_VAR}` references, never literal values; `optics execute` reads them from
+the environment.
+    driver_sources:
+      - playwright:
+          enabled: true
+          url: "wss://<grid>/<path>?<provider options>"
+          capabilities:
+            protocol: cdp
+            headers:
+              Authorization: Bearer ${GRID_TOKEN}
 
 ## Control flow & data (author these into modules; the runner executes them)
 A module step is any keyword from the `optics://keywords` catalog — including the

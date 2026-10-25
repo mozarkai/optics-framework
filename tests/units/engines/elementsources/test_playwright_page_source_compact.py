@@ -1,10 +1,11 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from lxml import etree
 
 from optics_framework.api.verifier import Verifier
-from optics_framework.engines.elementsources import playwright_page_source as pw
+from optics_framework.engines.elementsources.playwright_page_source import BOUNDS_JS
 from optics_framework.engines.elementsources.playwright_page_source import (
     PlaywrightPageSource,
 )
@@ -15,15 +16,10 @@ RECT = {"x": 1, "y": 2, "width": 2, "height": 2}
 BOUNDS = {"x1": 1, "y1": 2, "x2": 3, "y2": 4}
 
 
-@pytest.fixture(autouse=True)
-def _passthrough_run_async(monkeypatch):
-    # The fake page returns plain values, so awaiting them like real coroutines would fail.
-    monkeypatch.setattr(pw, "run_async", lambda coro: coro)
-
-
 def _source(html: str) -> PlaywrightPageSource:
     source = PlaywrightPageSource.__new__(PlaywrightPageSource)
     source.tree = etree.HTML(html)
+    source.driver = SimpleNamespace(run=lambda coro, **_: coro, page=_page())
     return source
 
 
@@ -31,12 +27,14 @@ def _page() -> MagicMock:
     # Stub the browser boundary, not the source's own bounds helper, so these tests
     # exercise the real extraction path and a helper that disappears fails here.
     page = MagicMock()
-    page.evaluate.side_effect = lambda script, xpaths: [dict(RECT) for _ in xpaths]
+    page.evaluate.side_effect = lambda script, xpaths: [
+        dict(RECT) if script == BOUNDS_JS else None for _ in xpaths
+    ]
     return page
 
 
 def _compact(html: str) -> list[dict]:
-    return _source(html)._extract_compact_web_interactives(_page())
+    return _source(html)._extract_compact_web_interactives()
 
 
 def _by_label(entries: list[dict]) -> dict[str, dict]:
@@ -124,9 +122,7 @@ class TestWebCompactTextAndDrops:
 
 class TestWebCompactProjectsToMCPShape:
     def test_verifier_projects_web_records_to_compact_shape(self):
-        entries = _source(
-            '<button id="go"><span>Go</span></button><span>Hello</span>'
-        )._extract_compact_web_interactives(_page())
+        entries = _compact('<button id="go"><span>Go</span></button><span>Hello</span>')
 
         assert Verifier._to_compact_shape(entries) == [
             {"i": 0, "label": "Go", "cls": "button", "bounds": [1, 2, 3, 4],
@@ -142,5 +138,4 @@ class TestWebCompactProjectsToMCPShape:
 def test_an_input_takes_its_label_from_label_for():
     source = _source('<label for="e">E<b>mail</b></label><input id="e" type="email">')
     node = source.tree.xpath("//input")[0]
-
     assert source._web_own_label(node) == "Email"

@@ -1,0 +1,6 @@
+Element_Name,Element_ID
+Grant_Chrome_Notifications,"{""script"": ""mobile: changePermissions"", ""args"": {""permissions"": ""android.permission.POST_NOTIFICATIONS"", ""appPackage"": ""com.android.chrome"", ""action"": ""grant""}}"
+Chrome_Notification_Prompt,negative_button
+Search_Box,css=#searchInput
+Search_Button,//button[@type='submit']
+Article_Heading,css=h1#firstHeading

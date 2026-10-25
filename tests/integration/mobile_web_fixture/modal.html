@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Optics Consent</title>
+</head>
+<body>
+  <h1>Optics Shop</h1>
+  <dialog id="consent">
+    <p>Allow cookies?</p>
+    <button id="accept" onclick="document.getElementById('consent').close(); document.getElementById('status').textContent = 'Cookies accepted';">Accept</button>
+  </dialog>
+  <p id="status"></p>
+  <script>document.getElementById('consent').showModal();</script>
+</body>
+</html>
