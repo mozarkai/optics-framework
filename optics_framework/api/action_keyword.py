@@ -65,10 +65,12 @@ def _locate_element(
 def _save_annotated_for_result(
     result: Any,
     screenshot_np: Any,
-    execution_dir: str,
+    execution_dir: str | None,
     func_name: str,
 ) -> None:
     annotated = getattr(result, "annotated_frame", None)
+    if not execution_dir:
+        return
     if annotated is not None:
         utils.save_screenshot(
             annotated,
@@ -77,15 +79,13 @@ def _save_annotated_for_result(
             time_stamp=utils.get_timestamp(),
         )
         return
-    if result.is_coordinates:
+    if result.is_coordinates or screenshot_np is None:
         return
     element_source = getattr(result.strategy, "element_source", None)
     if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
         return
     bbox = element_source.get_bbox_for_element(result.value)
     if bbox is None:
-        return
-    if screenshot_np is None:
         return
     # Element bbox is in the driver's window coordinate space; scale it to the
     # screenshot's pixel space before drawing (no-op when the two already match).
@@ -200,7 +200,8 @@ class ActionKeyword:
         self.strategy_manager = StrategyManager(
             self.element_source, self.text_detection, self.image_detection
         )
-        self.execution_dir = builder.session_config.execution_output_path
+        session_config = builder.session_config
+        self.capture_output_dir = session_config.execution_output_path if session_config.save_captures else None
         # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
         # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
         # (e.g. the engine's optional extra missing) must disable the feature, not
@@ -387,7 +388,9 @@ class ActionKeyword:
         return " ".join(parts)
 
     def _capture_screenshot_safe(self) -> Any:
-        """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""
+        """Capture a screenshot, or None on failure or when neither saved captures nor AI self-heal need it."""
+        if self.capture_output_dir is None and self._llm is None:
+            return None
         try:
             return self.strategy_manager.capture_screenshot()
         except Exception as e:
@@ -396,8 +399,8 @@ class ActionKeyword:
 
     def _save_screenshot_if_available(self, screenshot_np: Any, name: str) -> None:
         """Save a screenshot only if one was successfully captured."""
-        if screenshot_np is not None:
-            utils.save_screenshot(screenshot_np, name, output_dir=self.execution_dir)
+        if screenshot_np is not None and self.capture_output_dir is not None:
+            utils.save_screenshot(screenshot_np, name, output_dir=self.capture_output_dir)
 
     def _locate_and_act(
         self,
@@ -425,10 +428,10 @@ class ActionKeyword:
         aoi_width = _parse_aoi_param(aoi[2], 100)
         aoi_height = _parse_aoi_param(aoi[3], 100)
         is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
-        if is_aoi_used and screenshot_np is not None:
+        if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
             _maybe_save_aoi_screenshot(
                 screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
-                self.execution_dir, func_name,
+                self.capture_output_dir, func_name,
             )
         self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
         results = _locate_element(
@@ -465,7 +468,7 @@ class ActionKeyword:
 
         for result in results_list:
             result_count += 1
-            _save_annotated_for_result(result, screenshot_np, self.execution_dir, func_name)
+            _save_annotated_for_result(result, screenshot_np, self.capture_output_dir, func_name)
             try:
                 ret = act(result.value)
             except Exception as e:  # noqa: BLE001 - try the next strategy's result
@@ -984,11 +987,7 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "enter_text_keyboard", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "enter_text_keyboard")
         internal_logger.info(f'Entering text directly: {text}')
         self.driver.enter_text(text, event_name=event_name)
 
@@ -1006,11 +1005,7 @@ class ActionKeyword:
         parsed = utils.parse_special_key(text_input)
         if parsed is not None:
             text_input = parsed
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "enter_text_using_keyboard")
         internal_logger.info(f'Entering text using keyboard: {text_input}')
         self.driver.enter_text_using_keyboard(text_input, event_name=event_name)
 
@@ -1053,11 +1048,7 @@ class ActionKeyword:
         :param keycode: The keycode to be pressed.
         :param event_name: The event triggering the press.
         """
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "press_keycode", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "press_keycode")
 
         internal_logger.info(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(keycode, event_name=event_name)
@@ -1184,11 +1175,7 @@ class ActionKeyword:
         :return: The result of the script execution.
         :rtype: Any
         """
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "execute_script", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "execute_script")
 
         script, args = self._parse_script_and_args(script_or_json)
 
