@@ -189,6 +189,13 @@ def test_a_secret_read_from_the_screen_is_masked_in_every_log_line(run, device, 
     assert "Text of element: ****" in _logs(tmp_path)
 
 
+@pytest.mark.parametrize("name", ["password1", "login_otp2", "OTPCode", "myAPIToken"])
+def test_a_secret_name_with_digits_or_an_acronym_is_masked(run, tmp_path, name):
+    run({"M": [("Get Text", "#user", f"store_as={name}")]}, {"TC": ["M"]})
+
+    assert "bob@example.com" not in _logs(tmp_path)
+
+
 def test_an_elements_file_value_is_not_masked_whatever_its_name(run, tmp_path):
     run({"M": [("Get Text", "${pin_tab}"), ("Sleep", "${otp_length}")]}, {"TC": ["M"]},
         elements={"pin_tab": "#title", "otp_length": "6"})
