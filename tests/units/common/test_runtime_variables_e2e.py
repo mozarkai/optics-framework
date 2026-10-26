@@ -128,32 +128,21 @@ def test_a_store_cell_without_a_name_fails_the_step(run):
     assert "store_as needs a name" in _reasons(results, "TC")[0]
 
 
-def test_a_value_reaches_the_next_module_but_not_the_next_test_case(run):
+def test_a_value_reaches_later_test_cases(run, device):
     results = run({"Store": [("Get Text", "${price_label}", "store_as=price")],
                    "Use": [("Press Element", "${price}")]},
-                  {"TC1": ["Store", "Use"], "TC2": ["Use"]})
+                  {"TC1": ["Store"], "TC2": ["Use"]})
 
-    assert results["TC1"].status == "PASS"
-    assert results["TC2"].status == "FAIL"
-    assert _reasons(results, "TC2") == ["Element not found: price"]
-
-
-def test_the_pytest_runner_keeps_a_value_to_its_test_case_too(run, device):
-    modules = {"Store": [("Get Text", "${price_label}", "store_as=price"), ("Press Element", "${price}")],
-               "Use": [("Press Element", "${price}")]}
-
-    # The pytest runner reports a failed test case by raising, not by returning results.
-    with pytest.raises(OpticsError):
-        run(modules, {"TC1": ["Store"], "TC2": ["Use"]}, runner="pytest")
-    assert device.calls == [("get_text", "#price"), ("press_element", "$ 29.99")]
+    assert results["TC2"].status == "PASS"
+    assert device.calls[-1] == ("press_element", "$ 29.99")
 
 
-def test_a_suite_element_shadowed_by_a_stored_value_comes_back_in_the_next_test_case(run, device):
-    run({"Shadow": [("Get Text", "${title_label}", "store_as=price_label")],
-         "Read": [("Get Text", "${price_label}")]},
-        {"TC1": ["Shadow"], "TC2": ["Read"]})
+def test_the_pytest_runner_keeps_a_value_across_test_cases_too(run, device):
+    run({"Store": [("Get Text", "${price_label}", "store_as=price")],
+         "Use": [("Press Element", "${price}")]},
+        {"TC1": ["Store"], "TC2": ["Use"]}, runner="pytest")
 
-    assert device.calls[-1] == ("get_text", "#price")
+    assert device.calls[-1] == ("press_element", "$ 29.99")
 
 
 def test_an_unknown_name_inside_a_param_fails_before_the_device_is_touched(run, device):
