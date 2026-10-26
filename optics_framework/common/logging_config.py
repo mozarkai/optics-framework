@@ -120,10 +120,16 @@ MIN_SECRET_LENGTH = 4
 _active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
 
 
+# Fixed-width lookarounds only, so a long name cannot make the match backtrack.
+_WORD_BOUNDARY = re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])")
+
+
 def is_secret_name(name: str | None) -> bool:
     if not name:
         return False
-    words = re.split(r"[^a-z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower())
+    # Splits camelCase, acronym runs (APIToken) and letters from digits (password1).
+    split = re.sub(_WORD_BOUNDARY, "_", name)
+    words = re.split(r"[^a-z0-9]+", split.lower())
     return any(word in SECRET_NAME_WORDS for word in words)
 
 
