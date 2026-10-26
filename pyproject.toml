@@ -89,7 +89,7 @@ all = [
 ]
 
 [tool.poetry.group.dev.dependencies]
-tox = ">=4.24.1,<4.66.0"
+tox = ">=4.24.1,<4.68.0"
 pytest = "^9.0.0"
 pytest-cov = ">=6.0,<7.2"
 commitizen = "^4.4.1"
