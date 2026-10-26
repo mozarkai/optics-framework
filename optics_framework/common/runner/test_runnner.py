@@ -16,6 +16,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
     mask_secrets,
+    use_secrets,
     internal_logger,
     execution_logger,
     LogCaptureBuffer,
@@ -59,12 +60,6 @@ class Runner:
     keyword_map: Dict[str, Callable[..., Any]]
     apis: ApiData
     elements: ElementData
-    _previous_case: str | None = None
-
-    def _begin_test_case_scope(self, test_case: str) -> None:
-        utils.begin_test_case_scope(self.elements, self._previous_case)
-        self._previous_case = test_case
-
     def _resolve_candidate_params(self, method, candidate_args):
         candidate_args = utils.substitute_inline(method, list(candidate_args), self.elements)
         positional_params, kw_params = DataReader.split_params_by_signature(
@@ -753,7 +748,7 @@ class TestRunner(Runner):
     ) -> TestCaseResult:
         start_time = time.time()
         self._last_failure_reason = None
-        self._begin_test_case_scope(test_case)
+        use_secrets(self.elements.secrets)
         testcase_id = str(uuid.uuid4())
         extra = self._extra(test_case)
         test_case_result = self._init_test_case(test_case)
@@ -1265,7 +1260,7 @@ class PytestRunner(Runner):
         self, test_case: str, dry_run: bool = False
     ) -> TestCaseResult:
         start_time = time.time()
-        self._begin_test_case_scope(test_case)
+        use_secrets(self.elements.secrets)
         testcase_id = str(uuid.uuid4())
         result = TestCaseResult(
             id=testcase_id, name=test_case, elapsed="0.00s", status="NOT_RUN"

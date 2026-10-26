@@ -1,7 +1,7 @@
 from uuid import uuid4
 from enum import Enum
 from typing import Optional, Dict, List, Callable, Any
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -160,24 +160,8 @@ class ElementData(BaseModel):
     """
     elements: Dict[str, List[str]] = Field(default_factory=dict)
     secrets: set[str] = Field(default_factory=set, exclude=True)
-    # Values store_as replaced, so a test case can hand back what it changed.
-    _stored: dict[str, list[str] | None] = PrivateAttr(default_factory=dict)
-
     def store(self, name: str, value: str) -> None:
-        if name not in self._stored:
-            self._stored[name] = self.elements.get(name)
         self.elements[name] = [value]
-
-    def undo_stored(self) -> None:
-        for name, previous in self._stored.items():
-            if previous is None:
-                self.elements.pop(name, None)
-            else:
-                self.elements[name] = previous
-        self._stored.clear()
-
-    def keep_stored(self) -> None:
-        self._stored.clear()
 
     def add_element(self, name: str, value: str):
         """Append a value for an element key.
