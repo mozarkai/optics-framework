@@ -13,7 +13,7 @@ from datetime import timezone, timedelta
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
 import inspect
 from skimage.metrics import structural_similarity as ssim
-from optics_framework.common.logging_config import internal_logger, register_secret, holding_logs_for_secret, mask_secrets, use_secrets
+from optics_framework.common.logging_config import internal_logger, register_secret, holding_logs_for_secret, mask_secrets
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import ElementData
 
@@ -111,14 +111,6 @@ def store_result(elements: ElementData, name: str, result: Any) -> str:
     elements.store(name, value)
     return value
 
-
-def begin_test_case_scope(elements: ElementData, previous_case: str | None) -> None:
-    """store_as values end with their test case, except a setup's, which the suite keeps."""
-    if previous_case and "setup" in previous_case.lower():
-        elements.keep_stored()
-    else:
-        elements.undo_stored()
-    use_secrets(elements.secrets)
 
 
 def call_and_store(elements: ElementData, method: Callable, args: list, kwargs: dict, store_as: str | None) -> tuple[Any, dict[str, str]]:
