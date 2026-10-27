@@ -71,3 +71,28 @@ class TestGetLocatorAndStrategyUsingIndex:
         )
 
         assert result["locator"] == "Buy 101 devices"
+
+
+SAME_TEXT_TREE = (
+    '<hierarchy rotation="0">'
+    '<android.widget.Button text="Add" content-desc="Add" bounds="[0,0][100,50]"/>'
+    '<android.widget.Button text="Add" bounds="[0,60][100,110]"/>'
+    "</hierarchy>"
+)
+
+
+class TestSeveralMatches:
+    def test_a_node_matched_through_two_attributes_counts_once(self):
+        result = _helper(SAME_TEXT_TREE).get_locator_and_strategy_using_index("Add", 0)
+
+        assert result["count"] == 2
+        assert result["occurrence"] == 1
+
+    def test_index_picks_the_second_node_with_the_same_text(self):
+        helper = _helper(SAME_TEXT_TREE)
+
+        result = helper.get_locator_and_strategy_using_index("Add", 1)
+        xpath = helper.nth_view_locator(result["strategy"], result["locator"], result["occurrence"])
+
+        assert xpath == '(//*[@text="Add"])[2]'
+        assert helper.tree.xpath(xpath)[0].get("bounds") == "[0,60][100,110]"

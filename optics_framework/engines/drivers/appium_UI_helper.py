@@ -724,52 +724,10 @@ class UIHelper:
                 bounds = elem.attrib.get("bounds", "")  # Parse bounds if available
                 position = self.parse_bounds(bounds)
                 all_elements.append(
-                    {"strategy": strategy, "value": attr_value, "position": position}
+                    {"strategy": strategy, "value": attr_value, "position": position, "node": elem}
                 )
 
-        # Perform a linear match against all elements
-        # Prefer exact matches (or suffix after '/') before falling back to fuzzy compare
-        exact_matches = []
-        fuzzy_matches = []
-        for idx, elem in enumerate(all_elements):
-            val = elem.get("value", "")
-            # exact full-string match
-            if val == element:
-                exact_matches.append(
-                    {
-                        "index": idx,
-                        "strategy": elem["strategy"],
-                        "value": val,
-                        "position": elem["position"],
-                    }
-                )
-                continue
-
-            # exact suffix match (e.g., resource-id like 'pkg/name' -> 'name')
-            if "/" in val and val.rsplit("/", 1)[-1] == element:
-                exact_matches.append(
-                    {
-                        "index": idx,
-                        "strategy": elem["strategy"],
-                        "value": val,
-                        "position": elem["position"],
-                    }
-                )
-                continue
-
-            # fallback to fuzzy/partial compare
-            if not strict and utils.compare_text(val, element):
-                fuzzy_matches.append(
-                    {
-                        "index": idx,
-                        "strategy": elem["strategy"],
-                        "value": val,
-                        "position": elem["position"],
-                    }
-                )
-
-        # If exact matches exist, prefer them; otherwise use fuzzy matches
-        matches = exact_matches if exact_matches else fuzzy_matches
+        matches = self._index_matches(tree, all_elements, element, strict)
 
         # Log matches
         internal_logger.debug(
@@ -788,9 +746,36 @@ class UIHelper:
 
         strategy = desired_match["strategy"]
         locator = desired_match["value"]
+        same_value = [tree.getpath(n) for n in tree.xpath(f"//*[@{strategy}=$value]", value=locator)]
+        node_path = tree.getpath(desired_match["node"])
+        occurrence = same_value.index(node_path) + 1 if node_path in same_value else 1
 
         internal_logger.debug(f"Returning strategy: {strategy}, locator: {locator}")
-        return {"strategy": strategy, "locator": locator}
+        return {"strategy": strategy, "locator": locator, "count": len(matches), "occurrence": occurrence}
+
+    @staticmethod
+    def _index_matches(tree, all_elements: list, element: str, strict: bool) -> list:
+        """Exact (or ``pkg/name`` suffix) matches, else fuzzy ones, one per node."""
+        exact_matches = []
+        fuzzy_matches = []
+        for idx, elem in enumerate(all_elements):
+            val = elem.get("value", "")
+            match = {
+                "index": idx,
+                "strategy": elem["strategy"],
+                "value": val,
+                "position": elem["position"],
+                "node": elem["node"],
+            }
+            if val == element or ("/" in val and val.rsplit("/", 1)[-1] == element):
+                exact_matches.append(match)
+            elif not strict and utils.compare_text(val, element):
+                fuzzy_matches.append(match)
+        # A node matched through two attributes (text and content-desc) is one element.
+        unique: dict = {}
+        for match in exact_matches or fuzzy_matches:
+            unique.setdefault(tree.getpath(match["node"]), match)
+        return list(unique.values())
 
     def parse_bounds(self, bounds):
         """
@@ -1287,6 +1272,9 @@ class UIHelper:
             candidate = self._xpath_build_hierarchical(node, index) or self._build_structural_xpath(node)
         index.xpath_cache[node] = candidate
         return candidate
+
+    def nth_view_locator(self, strategy: str, locator: str, occurrence: int) -> str:
+        return f"(//*[@{strategy}={self._escape_for_xpath_literal(locator)}])[{occurrence}]"
 
     def _escape_for_xpath_literal(self, s: str) -> str:
         """
