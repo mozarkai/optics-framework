@@ -1,0 +1,112 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/mcp_usage.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to2__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/mcp_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to2__0"></td><td class="diff_header" id="from2_189">189</td><td nowrap="nowrap">   modules reference `${variables}`, and the escaping rules.</td><td class="diff_next"></td><td class="diff_header" id="to2_189">189</td><td nowrap="nowrap">   modules reference `${variables}`, and the escaping rules.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_190">190</td><td nowrap="nowrap">2. Write those files (the keyword *display names* come from the `optics://keywords`</td><td class="diff_next"></td><td class="diff_header" id="to2_190">190</td><td nowrap="nowrap">2. Write those files (the keyword *display names* come from the `optics://keywords`</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_191">191</td><td nowrap="nowrap">   catalog). Parameterize by putting run-specific values in `elements.csv` and</td><td class="diff_next"></td><td class="diff_header" id="to2_191">191</td><td nowrap="nowrap">   catalog). Parameterize by putting run-specific values in `elements.csv` and</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_192">192</td><td nowrap="nowrap">   referencing them as `${name}`, so "set alarm to 22:00" becomes a reusable</td><td class="diff_next"></td><td class="diff_header" id="to2_192">192</td><td nowrap="nowrap">   referencing them as `${name}`, so "set alarm to 22:00" becomes a reusable</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__1">n</a></td><td class="diff_header" id="from2_193">193</td><td nowrap="nowrap"><span class="diff_sub">   `${time}`. A whole cell must be exactly `${name}` — the runner substitutes</span></td><td class="diff_next"><a href="#difflib_chg_to2__1">n</a></td><td class="diff_header" id="to2_193">193</td><td nowrap="nowrap"><span class="diff_add">   `${time}`. A cell that is exactly `${name}` tries each of its values in order;</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_194">194</td><td nowrap="nowrap"><span class="diff_sub">   whole values only, not `${name}` inside a larger string.</span></td><td class="diff_next"></td><td class="diff_header" id="to2_194">194</td><td nowrap="nowrap"><span class="diff_add">   `${name}` inside a longer value is replaced by its first value.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_195">195</td><td nowrap="nowrap">3. For loops, branching, computed values or API calls in a suite, author the</td><td class="diff_next"></td><td class="diff_header" id="to2_195">195</td><td nowrap="nowrap">3. For loops, branching, computed values or API calls in a suite, author the</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_196">196</td><td nowrap="nowrap">   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)</td><td class="diff_next"></td><td class="diff_header" id="to2_196">196</td><td nowrap="nowrap">   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_197">197</td><td nowrap="nowrap">   into the modules — they run under `optics execute`. Live, you drive that logic</td><td class="diff_next"></td><td class="diff_header" id="to2_197">197</td><td nowrap="nowrap">   into the modules — they run under `optics execute`. Live, you drive that logic</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_198">198</td><td nowrap="nowrap">   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP</td><td class="diff_next"></td><td class="diff_header" id="to2_198">198</td><td nowrap="nowrap">   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to2__1"></td><td class="diff_header" id="from2_202">202</td><td nowrap="nowrap">   server (`uv tool install optics-framework-lsp`) reports every problem in a suite in</td><td class="diff_next"></td><td class="diff_header" id="to2_202">202</td><td nowrap="nowrap">   server (`uv tool install optics-framework-lsp`) reports every problem in a suite in</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_203">203</td><td nowrap="nowrap">   one pass with `optics-lsp lint &lt;folder&gt; --json`. Its VS Code and JetBrains</td><td class="diff_next"></td><td class="diff_header" id="to2_203">203</td><td nowrap="nowrap">   one pass with `optics-lsp lint &lt;folder&gt; --json`. Its VS Code and JetBrains</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_204">204</td><td nowrap="nowrap">   extensions also offer it to agents as a separate MCP server, `optics-lsp`.</td><td class="diff_next"></td><td class="diff_header" id="to2_204">204</td><td nowrap="nowrap">   extensions also offer it to agents as a separate MCP server, `optics-lsp`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_205">205</td><td nowrap="nowrap">5. Run it with the CLI: `optics execute &lt;folder&gt;` (results land in</td><td class="diff_next"></td><td class="diff_header" id="to2_205">205</td><td nowrap="nowrap">5. Run it with the CLI: `optics execute &lt;folder&gt;` (results land in</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__2">n</a></td><td class="diff_header" id="from2_206">206</td><td nowrap="nowrap"><span class="diff_sub">   `execution_output/`). To replay interactively instead, just call the keyword</span></td><td class="diff_next"><a href="#difflib_chg_to2__2">n</a></td><td class="diff_header" id="to2_206">206</td><td nowrap="nowrap"><span class="diff_add">   `execution_output/`; when a step fails, `failed_steps_elements.json` holds the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_207">207</td><td nowrap="nowrap"><span class="diff_add">   compact element list of the screen it failed on). To replay interactively instead, just call the keyword</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_207">207</td><td nowrap="nowrap">   tools again in sequence — the agent is the runner.</td><td class="diff_next"></td><td class="diff_header" id="to2_208">208</td><td nowrap="nowrap">   tools again in sequence — the agent is the runner.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_208">208</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_209">209</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_209">209</td><td nowrap="nowrap">### `start_session` arguments</td><td class="diff_next"></td><td class="diff_header" id="to2_210">210</td><td nowrap="nowrap">### `start_session` arguments</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_210">210</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_211">211</td><td nowrap="nowrap"></td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to2__2"></td><td class="diff_header" id="from2_333">333</td><td nowrap="nowrap">  `scroll_until_element_appears`.</td><td class="diff_next"></td><td class="diff_header" id="to2_334">334</td><td nowrap="nowrap">  `scroll_until_element_appears`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_334">334</td><td nowrap="nowrap">- **Observe/verify:** `screenshot` (rendered image), `get_text`,</td><td class="diff_next"></td><td class="diff_header" id="to2_335">335</td><td nowrap="nowrap">- **Observe/verify:** `screenshot` (rendered image), `get_text`,</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_335">335</td><td nowrap="nowrap">  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`, and</td><td class="diff_next"></td><td class="diff_header" id="to2_336">336</td><td nowrap="nowrap">  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`, and</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_336">336</td><td nowrap="nowrap">  `compact` for the token-lean list), `is_element`, `assert_presence`,</td><td class="diff_next"></td><td class="diff_header" id="to2_337">337</td><td nowrap="nowrap">  `compact` for the token-lean list), `is_element`, `assert_presence`,</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__top">t</a></td><td class="diff_header" id="from2_337">337</td><td nowrap="nowrap">  `assert_equality`, `validate_element`, `validate_screen`.</td><td class="diff_next"><a href="#difflib_chg_to2__top">t</a></td><td class="diff_header" id="to2_338">338</td><td nowrap="nowrap">  `assert_equality`,<span class="diff_add"> `assert_text`,</span> `validate_element`, `validate_screen`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_338">338</td><td nowrap="nowrap">- **Misc:** `sleep`, `execute_script`.</td><td class="diff_next"></td><td class="diff_header" id="to2_339">339</td><td nowrap="nowrap">- **Misc:** `sleep`, `execute_script`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_339">339</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_340">340</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_340">340</td><td nowrap="nowrap">The full machine-readable catalog (every keyword, its params and docs) is the</td><td class="diff_next"></td><td class="diff_header" id="to2_341">341</td><td nowrap="nowrap">The full machine-readable catalog (every keyword, its params and docs) is the</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_341">341</td><td nowrap="nowrap">`optics://keywords` resource.</td><td class="diff_next"></td><td class="diff_header" id="to2_342">342</td><td nowrap="nowrap">`optics://keywords` resource.</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
