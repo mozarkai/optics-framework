@@ -335,7 +335,7 @@ other tool is an optics keyword auto-exposed from `ActionKeyword` /
 - **Observe/verify:** `screenshot` (rendered image), `get_text`,
   `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`, and
   `compact` for the token-lean list), `is_element`, `assert_presence`,
-  `assert_equality`, `validate_element`, `validate_screen`.
+  `assert_equality`, `assert_text`, `validate_element`, `validate_screen`.
 - **Misc:** `sleep`, `execute_script`.
 
 The full machine-readable catalog (every keyword, its params and docs) is the

@@ -467,16 +467,31 @@ Evaluate,${price},'9.99'
 Assert Equality,${price},9.99
 ```
 
-**Example (chained after `Get Text`):**
+`Assert Equality` does not fail the step when the values differ. To fail the step when an element shows the wrong text, use [Assert Text](#assert-text).
 
-`Get Text` doesn't store its result automatically, so capture the returned text and compare it directly:
+### Assert Text
+
+Waits until the text of an element equals the expected text, and fails the step if it does not. For a text field (`input` or `textarea`) on the web, it compares the field's current value. Spaces at the start and end are ignored on both sides.
+
+If the element is not found, the step fails with an element-not-found error, so the next value of a `${name}` element is tried. If the element shows a different text at the timeout, the step fails and the error gives the text that the element shows.
+
+The element must be in the UI tree. An element found only by OCR or image fails the step at once.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The element to read (Text, XPath or CSS) | - |
+| `expected` | Required | The text to expect | - |
+| `timeout` | Optional | The time to wait for the text in seconds | `10` |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
 
 ```csv
-Get Text,//android.widget.TextView[@resource-id="price_label"]
-Assert Equality,9.99,9.99
+Assert Text,//android.widget.TextView[@resource-id="price_label"],9.99
+Assert Text,${state_field},${state},5
 ```
-
-Here, the first `9.99` in `Assert Equality` is the text `Get Text` returned from the label. You paste in whatever value it gave back, not a fresh literal.
 
 ### Validate Element
 

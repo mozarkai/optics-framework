@@ -69,6 +69,8 @@ or `key` are masked too.
 ## Choosing keywords
 - `Assert Presence` fails the step when the element is missing. `Validate Screen`
   and `Assert Equality` never fail a step: they only return whether the check held.
+- `Assert Text,${price_label},9.99` fails the step unless the element shows that
+  text (or a field holds that value) within the timeout (default 10 s).
 - `Enter Text Direct` types into whatever has focus at once. Prefer `Enter Text`
   with the field's locator; on the web it waits until the field accepts input.
 - `Is Element` checks `visible`, `invisible`, `enabled`, `disabled`, `checked` and
