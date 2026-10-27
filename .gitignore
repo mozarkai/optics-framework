@@ -179,6 +179,7 @@ cython_debug/
 *.jpg
 *.json
 *.log
+*.log.[0-9]*
 .DS_Store
 
 # Sample projects and packaged assets are source, not runtime artifacts —
