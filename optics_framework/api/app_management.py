@@ -1,4 +1,5 @@
 from typing import Optional
+from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -34,6 +35,7 @@ class AppManagement:
         """
         internal_logger.debug("Initialising setup for AppManagement.")
 
+    @utils.not_storable
     def launch_app(self, app_identifier: Optional[str] = None, app_activity: Optional[str] = None, event_name: Optional[str] = None) -> str:
         """
         Launches the specified application.

@@ -113,8 +113,16 @@ def store_result(elements: ElementData, name: str, result: Any) -> str:
 
 
 
+def not_storable(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Nothing in the keyword's result is usable by a later step, so it takes no store_as."""
+    func._not_storable = True  # pylint: disable=protected-access  # type: ignore[attr-defined]
+    return func
+
+
 def call_and_store(elements: ElementData, method: Callable, args: list, kwargs: dict, store_as: str | None) -> tuple[Any, dict[str, str]]:
     """Returns the keyword's result and, masked for reports, what store_as kept."""
+    if store_as is not None and getattr(method, "_not_storable", False):
+        raise OpticsError(Code.E0403, message=f"{method.__name__} takes no store_as.")
     with holding_logs_for_secret(store_as):
         returned = method(*args, **kwargs)
         if store_as is None:
