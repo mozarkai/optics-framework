@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
 from typing import Any, Dict, Optional, Union
-from optics_framework.common.utils import SpecialKey, strip_sensitive_prefix
+from optics_framework.common.utils import TEXT_OR_VALUE_JS, SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.eventSDK import EventSDK
@@ -381,13 +381,7 @@ class SeleniumDriver(DriverInterface):
         self.driver.back()
 
     def get_text_element(self, element) -> str:
-        try:
-            text = element.text
-            internal_logger.debug(f"Extracted text from element: {text}")
-            return text
-        except Exception as e:
-            internal_logger.error(f"Failed to get text from element: {e}")
-            return ""
+        return element.parent.execute_script(f"return ({TEXT_OR_VALUE_JS})(arguments[0]);", element)
 
     def _raise_action_not_supported(self) -> None:
         internal_logger.warning(self.ACTION_NOT_SUPPORTED)

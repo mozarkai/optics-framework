@@ -468,7 +468,7 @@ class Playwright(DriverInterface):
 
     def get_text_element(self, element: str) -> str:
         return run_async(
-            self._as_locator(element).inner_text(),
+            self._as_locator(element).evaluate(utils.TEXT_OR_VALUE_JS),
             timeout=self._call_budget_s(self.element_timeout_s()),
         )
 
