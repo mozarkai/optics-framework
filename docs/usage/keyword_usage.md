@@ -264,7 +264,7 @@ Scroll From Element,scrollable_area.png,down,100,0,0,100,100,scroll_area
 
 ### Enter Text
 
-Enters text into a specified element. On the web, when the element is a caption or label rather than a field, the text goes into the field it names: its `<label>` control, the one field labelled with the caption's text, or the only field next to it. When several fields fit, the step fails instead of guessing.
+Enters text into a specified element. When the element is a caption or label rather than a field, the text goes into the field it names: on the web its `<label>` control or the one field labelled with the caption's text, on Android and iOS the one field whose hint or accessibility label holds the caption's text, and otherwise the only field next to it. When several fields fit, the step fails instead of guessing.
 
 **Parameters:**
 
