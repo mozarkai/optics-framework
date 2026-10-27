@@ -1301,6 +1301,13 @@ class Appium(DriverInterface):
             raise OpticsError(Code.E0401, message="Element text is None")
         return text
 
+    @supported_on(*MOBILE)
+    def is_element_checked(self, element: Any) -> bool:
+        # UiAutomator2 maps is_selected() to "selected", not "checked"; XCUITest switches report value 1/0.
+        if self._is_ios():
+            return str(element.get_attribute("value")).lower() in ("1", "true")
+        return str(element.get_attribute("checked")).lower() == "true"
+
     # helper functions
     def pixel_2_appium(self, x: int, y: int, screenshot: Any) -> Optional[tuple[int, int]]:
         driver = self._require_driver()

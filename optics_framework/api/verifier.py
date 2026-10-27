@@ -13,6 +13,13 @@ class Verifier:
     Provides methods to verify elements, screens, and data integrity.
     """
 
+    _ELEMENT_STATES = {
+        "enabled": ("is_element_enabled", True, "disabled"),
+        "disabled": ("is_element_enabled", False, "enabled"),
+        "checked": ("is_element_checked", True, "unchecked"),
+        "unchecked": ("is_element_checked", False, "checked"),
+    }
+
     def __init__(self, builder: OpticsBuilder):
         self.driver: InstanceFallback = builder.get_driver()
         self.element_source: InstanceFallback = builder.get_element_source()
@@ -53,10 +60,12 @@ class Verifier:
         event_name: Optional[str] = None,
     ) -> None:
         """
-        Checks if the specified element is in a given state (e.g., Enabled/Disabled/Visible/Invisible).
+        Checks if the specified element is in a given state, failing the step if it is not.
 
         :param element: The element to be checked (Image template, OCR template, or XPath).
-        :param element_state: The state to verify (visible, invisible, enabled, disabled).
+        :param element_state: The state to verify (visible, invisible, enabled, disabled, checked, unchecked).
+            On the web, an element marked ``aria-disabled="true"`` counts as disabled and
+            ``aria-checked`` counts for checked.
         :param timeout: The time to wait for the element in seconds.
         :param event_name: The name of the event associated with the check, if any.
         """
@@ -74,7 +83,7 @@ class Verifier:
             if event_name:
                 self.event_sdk.capture_event(event_name)
 
-        elif state in ("enabled", "disabled"):
+        elif state in self._ELEMENT_STATES:
             located = None
             try:
                 for result in self.strategy_manager.locate(element):
@@ -86,20 +95,19 @@ class Verifier:
             if located is None:
                 raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
             if isinstance(located, tuple):
-                raise OpticsError(Code.E0401, message="Cannot check enabled/disabled state for coordinate-based elements.")
+                raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
 
-            is_enabled = located.is_enabled()
-            if state == "enabled" and not is_enabled:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is not enabled.")
-            if state == "disabled" and is_enabled:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is enabled but expected disabled.")
+            check, positive, opposite = self._ELEMENT_STATES[state]
+            if getattr(self.driver, check)(located) != positive:
+                raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
             if event_name:
                 self.event_sdk.capture_event(event_name)
 
         else:
             raise OpticsError(
                 Code.E0403,
-                message=f"Unknown element_state '{element_state}'. Expected: visible, invisible, enabled, disabled."
+                message=f"Unknown element_state '{element_state}'. "
+                        "Expected: visible, invisible, enabled, disabled, checked, unchecked."
             )
 
     def _resolve_param(self, param: str) -> str:

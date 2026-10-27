@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from optics_framework.api.verifier import Verifier
+from optics_framework.common.error import OpticsError
 from optics_framework.common.optics_builder import OpticsBuilder
 
 
@@ -128,3 +129,36 @@ class TestCssLocators:
             verifier.assert_presence("#missing", timeout_str="1")
 
         verifier.strategy_manager.assert_presence.assert_called_once_with(["#missing"], "Text", 1, "any")
+
+
+class TestIsElementState:
+    @pytest.fixture
+    def located(self, verifier):
+        element = object()
+        verifier.strategy_manager.locate = MagicMock(return_value=iter([MagicMock(value=element)]))
+        return element
+
+    @pytest.mark.parametrize("state, check, value", [
+        ("enabled", "is_element_enabled", True),
+        ("disabled", "is_element_enabled", False),
+        ("checked", "is_element_checked", True),
+        ("unchecked", "is_element_checked", False),
+    ])
+    def test_the_driver_decides_the_state(self, verifier, located, state, check, value):
+        getattr(verifier.driver, check).return_value = value
+
+        verifier.is_element("css=#x", state, 1)
+
+        getattr(verifier.driver, check).assert_called_once_with(located)
+
+    @pytest.mark.parametrize("state, check, value", [
+        ("enabled", "is_element_enabled", False),
+        ("disabled", "is_element_enabled", True),
+        ("checked", "is_element_checked", False),
+        ("unchecked", "is_element_checked", True),
+    ])
+    def test_the_opposite_state_fails(self, verifier, located, state, check, value):
+        getattr(verifier.driver, check).return_value = value
+
+        with pytest.raises(OpticsError, match=f"expected {state}"):
+            verifier.is_element("css=#x", state, 1)
