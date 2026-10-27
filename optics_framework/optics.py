@@ -1177,7 +1177,7 @@ class Optics:
         timeout: fallback_str,
         event_name: Optional[fallback_str] = None,
     ) -> None:
-        """Check if the specified element is in a given state (visible/invisible/enabled/disabled)."""
+        """Check if the specified element is in a given state (visible/invisible/enabled/disabled/checked/unchecked)."""
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
         self.verifier.is_element(

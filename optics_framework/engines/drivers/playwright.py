@@ -460,6 +460,12 @@ class Playwright(DriverInterface):
             wait_until=self._setting("navigation_wait_until", "domcontentloaded"),
         )
 
+    def is_element_enabled(self, element: Any) -> bool:
+        return run_async(self._as_locator(element).is_enabled(), timeout=self._call_budget_s(self.element_timeout_s()))
+
+    def is_element_checked(self, element: Any) -> bool:
+        return run_async(self._as_locator(element).is_checked(), timeout=self._call_budget_s(self.element_timeout_s()))
+
     def get_text_element(self, element: str) -> str:
         return run_async(
             self._as_locator(element).inner_text(),
