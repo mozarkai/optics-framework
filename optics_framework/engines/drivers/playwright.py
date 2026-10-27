@@ -360,7 +360,7 @@ class Playwright(DriverInterface):
         return self._SPECIAL_KEYS[key]
 
     def clear_text(self, event_name=None):
-        run_async(self.page.keyboard.press("Control+A"))
+        run_async(self.page.keyboard.press("ControlOrMeta+A"))
         run_async(self.page.keyboard.press("Backspace"))
 
     def clear_text_element(self, element: str, event_name=None):
