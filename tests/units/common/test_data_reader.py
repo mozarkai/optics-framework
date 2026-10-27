@@ -45,6 +45,22 @@ class TestSplitParamsBySignature:
         assert pos == ["${Heading}", "https://example.com"]
         assert kw == {}
 
+    def test_a_locator_in_the_element_slot_is_not_a_keyword_arg(self):
+        def enter_text(element, text, event_name=None):
+            """Stand-in with Enter Text's signature, whose ``text`` param shares the locator prefix."""
+
+        pos, kw = DataReader.split_params_by_signature(enter_text, ["text=First Name", "John"])
+        assert pos == ["text=First Name", "John"]
+        assert kw == {}
+
+    def test_a_later_token_can_still_name_the_text_param(self):
+        def enter_text(element, text, event_name=None):
+            pass
+
+        pos, kw = DataReader.split_params_by_signature(enter_text, ["css=#name", "text=John"])
+        assert pos == ["css=#name"]
+        assert kw == {"text": "John"}
+
     def test_unreadable_signature_falls_back_to_keyword(self):
         # A non-introspectable target keeps the historical behaviour: a
         # ``key=value`` token is treated as a keyword argument.
