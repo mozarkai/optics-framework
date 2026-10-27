@@ -29,7 +29,7 @@ The full chain when a user types `optics execute <folder>`:
    - `_locate_and_act` captures a screenshot via `self._capture_screenshot_safe()` → `StrategyManager.capture_screenshot` (`common/strategies.py:860`).
    - `_parse_aoi_param` (`:37`) normalises the `aoi` tuple (`aoi_x/y/width/height`); `index` is passed alongside it.
    - `_locate_element` (`:53`) calls `strategy_manager.locate(element, ...)` which is a **generator** (`strategies.py:710`).
-   - `_act_until_success` (`:442`) consumes the generator: for each `LocateResult` yielded, saves an annotated screenshot then calls `act(result.value)`. First success returns; if every yielded result raises **and** AI self-heal (see below) can't recover, it wraps the last as `OpticsError(Code.X0201, ...)`; if the generator yielded nothing and self-heal can't recover, the strategies layer's `Code.E0201` propagates.
+   - `_act_until_success` (`:442`) drains the generator into a list first (`list(results)`), so every strategy's `locate` runs before any `act`; then for each `LocateResult`, saves an annotated screenshot then calls `act(result.value)`. First success returns; if every yielded result raises **and** AI self-heal (see below) can't recover, it wraps the last as `OpticsError(Code.X0201, ...)`; if the generator yielded nothing and self-heal can't recover, the strategies layer's `Code.E0201` propagates.
 8. `StrategyManager.locate` (`strategies.py:705`) is the **self-healing element location** layer (**fallback level 2**):
    - `utils.parse_text_only_prefix(element)` (`common/utils.py:268`) strips the optional `TEXT_ONLY:` prefix that forces vision-based search.
    - `utils.determine_element_type(element)` (`utils.py:239`) classifies the locator string: `.png/.jpg/.jpeg/.bmp` → `"Image"`; `text=` / `TEXT_ONLY:` → `"Text"`; `css=` → `"CSS"`; `xpath=`, `/`, `//`, `(` → `"XPath"`; else `"Text"`.
@@ -136,7 +136,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - Add a wrapper on `optics.py:Optics` with `@keyword("Pretty Name")` and (if it has element/fallback args) `@fallback_params` — without this it won't be reachable from Robot Framework or the public SDK.
 - Add `"Pretty Name": "method_name"` to `TestFrameworkGenerator.keyword_registry` (`generate.py:240`) so `optics generate` emits it.
 - Add `"Pretty Name"` to the `keyword_registry` set inside `YAMLDataReader.read_modules` (`generate.py:172`) so YAML step parsing recognises multi-word names.
-- Re-run `optics list` to confirm reflection picks it up; `tests/feature/` and `tests/units/` may need fixtures.
+- Re-run `optics list` to confirm reflection picks it up; `tests/units/` and `tests/integration/` may need fixtures.
 
 ## Where else to put things
 
@@ -225,7 +225,7 @@ CI runs static analysis on every push to `main` via `.github/workflows/mozarkson
 - **`OPTICS_EVENT_DRAIN_TIMEOUT_S`** (`execution.py:292`, default `2.0`) caps shutdown-side event flushing. Truncated JUnit XML on long runs → raise this env before debugging logic.
 - **Robot Framework is optional.** `keyword` (`optics.py:54`) / `library` (`optics.py:65`) provide no-op decorators when `robotframework` isn't installed. Don't hard-import `robot.api`; mirror the try/except.
 - **`element_source.locate` stubs hide strategies.** `LocatorStrategy._is_method_implemented` (`strategies.py:81`) reads source to detect bodies that just `raise NotImplementedError` and excludes that source from the strategy. A poorly-stubbed new element source can silently disappear from the strategy list.
-- **Two test trees.** `tests/units/` and `tests/feature/` both run under one `pytest` invocation (`pytest.toml`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
+- **Two test trees.** `tests/units/` and `tests/integration/` both run under one `pytest` invocation (`pytest.toml`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
 
 ## Commands
 

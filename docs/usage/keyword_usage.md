@@ -286,7 +286,7 @@ Enter Text,username_field.png,myusername,0,0,100,100,enter_username
 
 ### Enter Text Direct
 
-Enters text directly using the keyboard without targeting a specific element.
+Types text into the element that has focus, without targeting a specific element. It does not wait for a field to be ready. To type into a known field, use `Enter Text` with the field's locator; on the web it waits until the field accepts input.
 
 **Parameters:**
 
@@ -394,7 +394,12 @@ Gets the text from a specified element. For a text field (`input` or `textarea`)
 Get Text,//android.widget.TextView[@resource-id="title"]
 ```
 
-**Note:** This keyword returns text but does not store it in CSV format. Use with flow control keywords to store results.
+**Note:** To keep the text for later steps, add `store_as=<name>`, then reference it as `${name}`:
+
+```csv
+Get Text,${state_field},store_as=state
+Enter Text,${search_field},${state}
+```
 
 ### Sleep
 
@@ -564,7 +569,7 @@ Assert Visibility,login_button.png|signup_button.png,30,any,check_buttons_visibl
 
 ### Validate Screen
 
-Verifies the specified screen by checking element presence. Similar to `Assert Presence` but does not fail if elements are not found.
+Waits for elements and reports whether they appeared. Similar to `Assert Presence`, but it never fails the step: when the elements are not found, it logs that and the run continues. Use `Assert Presence` when the check must fail the test.
 
 **Parameters:**
 

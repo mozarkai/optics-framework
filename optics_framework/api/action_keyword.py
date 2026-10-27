@@ -979,7 +979,9 @@ class ActionKeyword:
 
     def enter_text_direct(self, text: str, event_name: Optional[str] = None) -> None:
         """
-        Enter text using the keyboard.
+        Type text into the element that has focus, without waiting for it to accept input.
+
+        To type into a known field, use ``enter_text`` with its locator; on the web it waits until the field accepts input.
 
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
