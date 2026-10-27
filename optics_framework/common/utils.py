@@ -13,7 +13,7 @@ from datetime import timezone, timedelta
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
 import inspect
 from skimage.metrics import structural_similarity as ssim
-from optics_framework.common.logging_config import internal_logger, register_secret, holding_logs_for_secret, mask_secrets
+from optics_framework.common.logging_config import internal_logger, execution_logger, register_secret, holding_logs_for_secret, mask_secrets
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import ElementData
 
@@ -375,6 +375,14 @@ def detect_change(frame1, frame2, threshold=0.95):
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
     score, _ = ssim(gray1, gray2, full=True)
     return score < threshold
+
+def warn_if_ambiguous(element: str, count: int, index: int) -> None:
+    if count > 1:
+        execution_logger.warning(
+            f"'{element}' matches {count} elements; using the one at index {index}. "
+            "Pass index= or a more specific locator to pick another."
+        )
+
 
 def compare_text(given_text, target_text, strict: bool = False):
     """
