@@ -15,6 +15,10 @@ from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 
 
+# innerText of a field is empty; what it shows is its value.
+_TEXT_OR_VALUE_JS = "el => ['INPUT', 'TEXTAREA'].includes(el.tagName) ? el.value : el.innerText"
+
+
 class Playwright(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "playwright"
@@ -468,7 +472,7 @@ class Playwright(DriverInterface):
 
     def get_text_element(self, element: str) -> str:
         return run_async(
-            self._as_locator(element).inner_text(),
+            self._as_locator(element).evaluate(_TEXT_OR_VALUE_JS),
             timeout=self._call_budget_s(self.element_timeout_s()),
         )
 

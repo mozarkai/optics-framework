@@ -380,7 +380,7 @@ Clear Element Text,text_field.png,0,0,100,100,clear_field
 
 ### Get Text
 
-Gets the text from a specified element. Currently supports XPath and Text-based elements with Appium.
+Gets the text from a specified element. For a text field (`input` or `textarea`) on the web, it returns the field's current value.
 
 **Parameters:**
 

@@ -54,9 +54,10 @@ def test_clear_text_empties_a_located_field():
 def test_get_text_reads_a_located_element():
     driver = _driver()
     located = MagicMock()
-    located.inner_text = AsyncMock(return_value="1")
+    located.evaluate = AsyncMock(return_value="1")
 
     assert driver.get_text_element(located) == "1"
+    located.evaluate.assert_awaited_once_with(pw_driver._TEXT_OR_VALUE_JS)
     driver.page.locator.assert_not_called()
 
 
