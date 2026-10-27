@@ -28,6 +28,8 @@ TAP_CLASS_FRAGMENTS = (
 )
 TOGGLE_CLASS_FRAGMENTS = ("Switch", "CheckBox", "RadioButton", "ToggleButton")
 INPUT_CLASS_FRAGMENTS = ("EditText", "TextField", "SecureTextField", "AutoCompleteTextView", "SearchField")
+# A field's text (Android) and value (iOS) hold what was typed, not its name.
+FIELD_NAME_ATTRS = ("hint", "content-desc", "label", "name", "placeholderValue")
 SCROLL_CLASS_FRAGMENTS = (
     "XCUIElementTypeScrollView", "XCUIElementTypeTable", "XCUIElementTypeCollectionView",
     "XCUIElementTypePickerWheel",
