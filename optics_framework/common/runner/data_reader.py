@@ -67,6 +67,7 @@ def _keyword_slug(name: str) -> str:
 # it to the shorter runtime keyword that shares their prefix. Their arity is written out
 # because reflection only walks the api classes.
 _FACADE_KEYWORD_SLUGS = {"press_element_with_index": 3, "quit": 0}
+_LOCATOR_PREFIXES = {"text", "css", "xpath"}
 
 
 def _arity(method) -> Optional[int]:
@@ -239,21 +240,27 @@ class DataReader(ABC):
         positional. This keeps locator strategies such as ``text=...``,
         ``css=...`` or ``id=...`` as the keyword's positional ``element`` argument
         (they merely happen to contain ``=``) while still honouring genuine
-        keyword arguments like ``event_name=...`` or ``timeout=...``. When the
-        signature cannot be read the historical behaviour is kept (every
-        ``key=value`` is a keyword argument).
+        keyword arguments like ``event_name=...`` or ``timeout=...``. The first
+        ``text=``/``css=``/``xpath=`` token of a keyword whose first parameter is
+        ``element`` is that element unless ``element=`` is named, so
+        ``Enter Text,text=Name,Ava`` locates ``text=Name`` instead of typing "Name". When the signature cannot be read the historical behaviour
+        is kept (every ``key=value`` is a keyword argument).
         """
         try:
-            valid: Optional[set] = set(inspect.signature(method).parameters)
+            names = list(inspect.signature(method).parameters)
+            valid: Optional[set] = set(names)
         except (TypeError, ValueError):
-            valid = None
+            names, valid = [], None
         positional: List[str] = []
         keywords: Dict[str, str] = {}
-        for param in param_strings:
+        named = {p.split("=", 1)[0].strip() for p in param_strings if DataReader.is_keyword_param(p)}
+        locator_first = names[:1] == ["element"] and "element" not in named
+        for i, param in enumerate(param_strings):
             if DataReader.is_keyword_param(param):
                 key, value = param.split("=", 1)
                 key = key.strip()
-                if valid is None or key in valid:
+                element_slot = i == 0 and locator_first and key in _LOCATOR_PREFIXES
+                if (valid is None or key in valid) and not element_slot:
                     keywords[key] = value.strip()
                     continue
             positional.append(param.strip())
