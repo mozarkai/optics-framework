@@ -51,6 +51,15 @@ def test_clear_text_empties_a_located_field():
     located.fill.assert_awaited_once_with("")
 
 
+def test_clear_text_selects_all_with_the_platform_modifier():
+    driver = _driver()
+    driver.page.keyboard.press = AsyncMock()
+
+    driver.clear_text()
+
+    assert [c.args[0] for c in driver.page.keyboard.press.await_args_list] == ["ControlOrMeta+A", "Backspace"]
+
+
 def test_get_text_reads_a_located_element():
     driver = _driver()
     located = MagicMock()
