@@ -20,6 +20,8 @@ from optics_framework.common.models import ElementData
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 TEXT_ONLY_PREFIX = "text_only:"
 XPATH_PREFIX = "xpath="
+# A web field's innerText is empty; what it shows is its value.
+TEXT_OR_VALUE_JS = "el => ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) ? el.value : el.innerText"
 WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
 
 
