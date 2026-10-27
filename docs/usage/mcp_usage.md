@@ -203,7 +203,8 @@ keywords you called and their args, so you can author an optics project directly
    one pass with `optics-lsp lint <folder> --json`. Its VS Code and JetBrains
    extensions also offer it to agents as a separate MCP server, `optics-lsp`.
 5. Run it with the CLI: `optics execute <folder>` (results land in
-   `execution_output/`). To replay interactively instead, just call the keyword
+   `execution_output/`; when a step fails, `failed_steps_elements.json` holds the
+   compact element list of the screen it failed on). To replay interactively instead, just call the keyword
    tools again in sequence — the agent is the runner.
 
 ### `start_session` arguments

@@ -127,6 +127,7 @@ class TestRunner(Runner):
         self.elements = self.session.elements if self.session.elements is not None else ElementData()
         self.apis = self.session.apis if self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
+        self._failed_steps_elements: List[dict] = []
         self.result_printer = result_printer
         self.config = session.config
         self.event_manager = event_manager
@@ -548,6 +549,7 @@ class TestRunner(Runner):
             logs=capture_handler.records,
         )
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
+        self._save_failure_elements(test_case_result.name, keyword_result.resolved_name)
 
     async def _handle_fallback_exhausted(
         self, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler, last_error
@@ -570,6 +572,23 @@ class TestRunner(Runner):
             logs=capture_handler.records,
         )
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
+        self._save_failure_elements(test_case_result.name, keyword_result.resolved_name)
+
+    def _save_failure_elements(self, test_case: str, step: str) -> None:
+        """Add the screen's compact element list to failed_steps_elements.json, to fix a failed step's locators."""
+        get_elements = self.keyword_map.get("get_interactive_elements")
+        if get_elements is None:
+            return
+        output_dir = self.config.execution_output_path
+        if not output_dir or not self.config.save_captures or not self._end_of_run_driver_open():
+            return
+        try:
+            self._failed_steps_elements.append({"test_case": test_case, "step": step, "elements": get_elements(compact=True)})
+            text = json.dumps(self._failed_steps_elements, indent=2, ensure_ascii=False)
+            with open(os.path.join(output_dir, "failed_steps_elements.json"), "w", encoding="utf-8") as f:
+                f.write(mask_secrets(text))
+        except Exception as e:
+            internal_logger.warning("Element list for the failed step skipped: %s", e)
 
     def _end_of_run_driver_open(self) -> bool:
         """Best-effort check that the driver session is still alive.
