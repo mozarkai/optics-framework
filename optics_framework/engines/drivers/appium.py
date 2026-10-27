@@ -1296,7 +1296,6 @@ class Appium(DriverInterface):
                 text = element.get_attribute("value")
             except WebDriverException:
                 text = None
-        internal_logger.info(f"Text of element: {text}")
         if text is None:
             raise OpticsError(Code.E0401, message="Element text is None")
         return text

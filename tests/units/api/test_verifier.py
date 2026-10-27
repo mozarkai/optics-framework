@@ -207,3 +207,17 @@ class TestAssertText:
 
         with pytest.raises(OpticsError, match="found only by OCR or image"):
             verifier.assert_text("DELHI", "DELHI", timeout="30")
+
+    def test_a_secret_is_compared_without_its_prefix(self, verifier):
+        verifier.driver.get_text_element.return_value = "4321"
+
+        verifier.assert_text("css=#pin", "@:4321", timeout="0")
+
+    def test_a_secret_stays_out_of_the_error(self, verifier):
+        verifier.driver.get_text_element.return_value = "4320"
+
+        with pytest.raises(OpticsError) as raised:
+            verifier.assert_text("css=#pin", "@:4321", timeout="0")
+
+        assert "4321" not in str(raised.value)
+        assert "4320" not in str(raised.value)
