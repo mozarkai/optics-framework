@@ -16,6 +16,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
     mask_secrets,
+    use_secret_names,
     use_secrets,
     internal_logger,
     execution_logger,
@@ -749,6 +750,7 @@ class TestRunner(Runner):
         start_time = time.time()
         self._last_failure_reason = None
         use_secrets(self.elements.secrets)
+        use_secret_names(self.config.secret_variables)
         testcase_id = str(uuid.uuid4())
         extra = self._extra(test_case)
         test_case_result = self._init_test_case(test_case)
@@ -1261,6 +1263,7 @@ class PytestRunner(Runner):
     ) -> TestCaseResult:
         start_time = time.time()
         use_secrets(self.elements.secrets)
+        use_secret_names(self.config.secret_variables)
         testcase_id = str(uuid.uuid4())
         result = TestCaseResult(
             id=testcase_id, name=test_case, elapsed="0.00s", status="NOT_RUN"
