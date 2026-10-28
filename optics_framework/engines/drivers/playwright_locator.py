@@ -78,17 +78,18 @@ def candidates(page: Any, element: str, *, exact: bool = False) -> list[Any]:
     return _semantic(page, element, text_kinds, exact)
 
 
-def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) -> Any | None:
+def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool) -> tuple[Any | None, int]:
     try:
         if not visible_only:
-            return locator.nth(index) if run_async(locator.count()) > index else None
+            count = run_async(locator.count())
+            return (locator.nth(index) if count > index else None), count
         flags = run_async(locator.evaluate_all(_VISIBLE_FLAGS_SCRIPT, on_screen))
     except PlaywrightError as e:
         if Playwright.is_dead_session_error(e):
             raise
-        return None  # an unparsable selector matches nothing
+        return None, 0  # an unparsable selector matches nothing
     visible = [i for i, shown in enumerate(flags) if shown]
-    return locator.nth(visible[index]) if len(visible) > index else None
+    return (locator.nth(visible[index]) if len(visible) > index else None), len(visible)
 
 
 def find(
@@ -100,14 +101,17 @@ def find(
     timeout_s: float = 0.0,
     visible_only: bool = True,
     on_screen: bool = False,
+    warn_if_ambiguous: bool = False,
 ) -> Any | None:
     """The ``index``-th (visible) match of ``element``, or ``None`` after ``timeout_s``."""
     options = candidates(page, element, exact=exact)
     deadline = time.monotonic() + timeout_s
     while True:
         for locator in options:
-            match = _nth_match(locator, index, visible_only, on_screen)
+            match, count = _nth_match(locator, index, visible_only, on_screen)
             if match is not None:
+                if warn_if_ambiguous:
+                    utils.warn_if_ambiguous(element, count, index)
                 return match
         if time.monotonic() >= deadline:
             return None

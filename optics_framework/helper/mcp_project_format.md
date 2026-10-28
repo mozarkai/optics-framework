@@ -34,9 +34,10 @@ positional value.
 ## test_data/elements.csv  — columns: Element_Name,Element_ID
 Maps a name to a locator OR a value; steps reference it as `${Element_Name}`.
 This is also how you parameterize a suite: put the run-specific value here and
-reference it, so "set alarm to 22:00" becomes a reusable `${time}`. A whole cell
-must be exactly `${Name}` — the runner substitutes whole values only, it does not
-expand `${name}` inside a larger string.
+reference it, so "set alarm to 22:00" becomes a reusable `${time}`. A cell that is
+exactly `${Name}` tries each of the element's values in order; `${name}` inside a
+longer value is replaced by its first value (`Hello ${name}`). Write `$${` for a
+literal `${`.
     Element_Name,Element_ID
     add_alarm,//*[@content-desc="Add alarm"]
     hour_field,text=Hour
@@ -52,7 +53,33 @@ fallback; values are tried in order:
 Web element values understand `xpath=`, `css=`, `text=`, `label=`,
 `placeholder=`, `role=button[name="Sign in"]`, `data-testid=...`, `#id`/`.class`
 CSS, and plain visible text (also matched as a label, placeholder, or button or
-link name).
+link name). Write `text=Gold Loan` without quotes: the quotes are searched for
+too. An exact match wins over a partial one; when several elements match, the
+first visible one is used, so pick another with `index=2` or a `loc`. Enter Text
+and Clear Element Text on a caption type into the field it names when only one
+field fits; a text field's own `loc` (its `act` is `input`) is the surest locator.
+
+## Secrets
+A value that starts with `@:` (`pin,@:4321`) is typed without the prefix and shown
+as `****` in logs and reports. To keep a secret out of the files, read it from the
+environment: `Read Data,${pin},ENV:LOGIN_PIN`. Values that Read Data or
+`store_as=` set under a name with a word such as `pin`, `password`, `otp`, `token`
+or `key` are masked too.
+
+## Choosing keywords
+- `Assert Presence` fails the step when the element is missing. `Validate Screen`
+  and `Assert Equality` never fail a step: they only return whether the check held.
+- `Assert Text,${price_label},9.99` fails the step unless the element shows that
+  text (or a field holds that value) within the timeout (default 10 s).
+- `Enter Text Direct` types into whatever has focus at once. Prefer `Enter Text`
+  with the field's locator; on the web it waits until the field accepts input.
+- `Is Element` checks `visible`, `invisible`, `enabled`, `disabled`, `checked` and
+  `unchecked`.
+- Add `store_as=name` to a keyword that returns a value to keep it for later
+  steps as `${name}`: `Get Text,${state_field},store_as=state`. Get Text returns
+  a text field's value.
+- With Playwright, `Press Keycode` takes a key name: `Press Keycode,ControlOrMeta+A`
+  selects all and `Press Keycode,Backspace` deletes.
 
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
@@ -99,4 +126,6 @@ un-escapes it on read.
 
 ## Running
 `optics execute <project>` runs every test case; JUnit XML, logs and screenshots
-land in `<project>/execution_output/`.
+land in `<project>/execution_output/`. When a step fails, `failed_steps_elements.json`
+there holds the same compact element list as the elements resource for the screen
+at that moment, so a broken locator can be fixed from it.

@@ -286,8 +286,10 @@ class AppiumPageSource(ElementSourceInterface):
             if locators:
                 strategy = locators['strategy']
                 locator = locators['locator']
-                xpath = self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
-                return xpath
+                utils.warn_if_ambiguous(text, locators.get('count', 1), index)
+                if locators.get('occurrence', 1) > 1:
+                    return self.driver.ui_helper.nth_view_locator(strategy, locator, locators['occurrence'])
+                return self.driver.ui_helper.get_view_locator(strategy=strategy, locator=locator)
             return None
         else:
             internal_logger.error(APPIUM_NOT_INITIALISED_MSG)

@@ -285,6 +285,12 @@ class DriverInterface(ABC):
     def is_dead_session_error(exc: BaseException) -> bool:
         return False
 
+    def is_element_enabled(self, element: Any) -> bool:
+        return element.is_enabled()
+
+    def is_element_checked(self, element: Any) -> bool:
+        return element.is_selected()
+
     # Optional: drivers override these only where the platform has the concept.
     def go_back(self, event_name: Optional[str] = None) -> None:
         self._unsupported("go_back")

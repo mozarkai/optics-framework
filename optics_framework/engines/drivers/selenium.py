@@ -366,6 +366,13 @@ class SeleniumDriver(DriverInterface):
             internal_logger.error(f"Failed to scroll {direction}: {e}")
             raise
 
+    def is_element_enabled(self, element) -> bool:
+        return element.get_attribute("aria-disabled") != "true" and element.is_enabled()
+
+    def is_element_checked(self, element) -> bool:
+        aria = element.get_attribute("aria-checked")
+        return aria == "true" if aria in ("true", "false") else element.is_selected()
+
     def go_back(self, event_name: Optional[str] = None) -> None:
         if self.driver is None:
             raise RuntimeError(self.SETUP_NOT_INITIALIZED)
@@ -374,13 +381,10 @@ class SeleniumDriver(DriverInterface):
         self.driver.back()
 
     def get_text_element(self, element) -> str:
-        try:
-            text = element.text
-            internal_logger.debug(f"Extracted text from element: {text}")
-            return text
-        except Exception as e:
-            internal_logger.error(f"Failed to get text from element: {e}")
-            return ""
+        text = element.text
+        if not text and element.tag_name.lower() in ("input", "textarea"):
+            text = element.get_property("value") or ""
+        return text
 
     def _raise_action_not_supported(self) -> None:
         internal_logger.warning(self.ACTION_NOT_SUPPORTED)

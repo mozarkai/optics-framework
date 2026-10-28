@@ -15,6 +15,25 @@ from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 
 
+# innerText of a field is empty; what it shows is its value.
+_TEXT_OR_VALUE_JS = "el => ['INPUT', 'TEXTAREA'].includes(el.tagName) ? el.value : el.innerText"
+_FIELD_SELECTOR = (
+    "input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button])"
+    ":not([type=submit]):not([type=reset]):not([type=image]):not([type=file]),"
+    " textarea, [contenteditable=''], [contenteditable=true], [role=textbox], [role=searchbox]"
+)
+_IS_FIELD_JS = "(el, selector) => el.matches(selector)"
+_LABEL_CONTROL_JS = "el => { const label = el.closest('label'); return label ? label.control : null; }"
+# The only field in the nearest container that holds one; none when that container holds several.
+_NEARBY_FIELD_JS = """(el, selector) => {
+    for (let node = el; node; node = node.parentElement) {
+        const fields = node.querySelectorAll(selector);
+        if (fields.length) return fields.length === 1 ? fields[0] : null;
+    }
+    return null;
+}"""
+
+
 class Playwright(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "playwright"
@@ -338,12 +357,35 @@ class Playwright(DriverInterface):
         run_async(self._type(self.page.keyboard, text))
 
     def enter_text_element(self, element: str, text, event_name=None):
-        locator = self._as_locator(element)
+        run_async(
+            self._enter_text_async(self._as_locator(element), text),
+            timeout=self._call_budget_s(self.element_timeout_s()),
+        )
+
+    async def _enter_text_async(self, locator, text):
+        field = await self._field_for(locator)
         if isinstance(text, SpecialKey):
-            action = locator.press(self._key_name(text))
+            await field.press(self._key_name(text))
         else:
-            action = locator.fill(utils.strip_sensitive_prefix(str(text)))
-        run_async(action, timeout=self._call_budget_s(self.element_timeout_s()))
+            await field.fill(utils.strip_sensitive_prefix(str(text)))
+
+    async def _field_for(self, locator):
+        """The field a located caption names, so a label or heading locator types into its input."""
+        if await locator.evaluate(_IS_FIELD_JS, _FIELD_SELECTOR):
+            return locator
+        control = (await locator.evaluate_handle(_LABEL_CONTROL_JS)).as_element()
+        if control:
+            return control
+        text = (await locator.inner_text()).strip()
+        for exact in (True, False) if text else ():
+            labelled = self.page.get_by_label(text, exact=exact)
+            if await labelled.count() == 1:
+                internal_logger.info(f"'{text}' is not a text field; using the field it labels.")
+                return labelled
+        nearby = (await locator.evaluate_handle(_NEARBY_FIELD_JS, _FIELD_SELECTOR)).as_element()
+        if nearby:
+            internal_logger.info(f"'{text}' is not a text field; using the only field next to it.")
+        return nearby or locator
 
     def _type(self, keyboard, text):
         if isinstance(text, SpecialKey):
@@ -356,11 +398,14 @@ class Playwright(DriverInterface):
         return self._SPECIAL_KEYS[key]
 
     def clear_text(self, event_name=None):
-        run_async(self.page.keyboard.press("Control+A"))
+        run_async(self.page.keyboard.press("ControlOrMeta+A"))
         run_async(self.page.keyboard.press("Backspace"))
 
     def clear_text_element(self, element: str, event_name=None):
-        run_async(self._as_locator(element).fill(""), timeout=self._call_budget_s(self.element_timeout_s()))
+        run_async(self._clear_async(self._as_locator(element)), timeout=self._call_budget_s(self.element_timeout_s()))
+
+    async def _clear_async(self, locator):
+        await (await self._field_for(locator)).fill("")
 
     def _as_locator(self, element):
         """A locator for a selector string. Element sources already return a
@@ -460,9 +505,15 @@ class Playwright(DriverInterface):
             wait_until=self._setting("navigation_wait_until", "domcontentloaded"),
         )
 
+    def is_element_enabled(self, element: Any) -> bool:
+        return run_async(self._as_locator(element).is_enabled(), timeout=self._call_budget_s(self.element_timeout_s()))
+
+    def is_element_checked(self, element: Any) -> bool:
+        return run_async(self._as_locator(element).is_checked(), timeout=self._call_budget_s(self.element_timeout_s()))
+
     def get_text_element(self, element: str) -> str:
         return run_async(
-            self._as_locator(element).inner_text(),
+            self._as_locator(element).evaluate(_TEXT_OR_VALUE_JS),
             timeout=self._call_budget_s(self.element_timeout_s()),
         )
 

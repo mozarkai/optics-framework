@@ -264,7 +264,7 @@ Scroll From Element,scrollable_area.png,down,100,0,0,100,100,scroll_area
 
 ### Enter Text
 
-Enters text into a specified element.
+Enters text into a specified element. When the element is a caption or label rather than a field, the text goes into the field it names: on the web its `<label>` control or the one field labelled with the caption's text, on Android and iOS the one field whose hint or accessibility label holds the caption's text, and otherwise the only field next to it. When several fields fit, the step fails instead of guessing.
 
 **Parameters:**
 
@@ -286,7 +286,7 @@ Enter Text,username_field.png,myusername,0,0,100,100,enter_username
 
 ### Enter Text Direct
 
-Enters text directly using the keyboard without targeting a specific element.
+Types text into the element that has focus, without targeting a specific element. It does not wait for a field to be ready. To type into a known field, use `Enter Text` with the field's locator; on the web it waits until the field accepts input.
 
 **Parameters:**
 
@@ -380,7 +380,7 @@ Clear Element Text,text_field.png,0,0,100,100,clear_field
 
 ### Get Text
 
-Gets the text from a specified element. Currently supports XPath and Text-based elements with Appium.
+Gets the text from a specified element. For a text field (`input` or `textarea`) on the web, it returns the field's current value.
 
 **Parameters:**
 
@@ -394,7 +394,12 @@ Gets the text from a specified element. Currently supports XPath and Text-based 
 Get Text,//android.widget.TextView[@resource-id="title"]
 ```
 
-**Note:** This keyword returns text but does not store it in CSV format. Use with flow control keywords to store results.
+**Note:** To keep the text for later steps, add `store_as=<name>`, then reference it as `${name}`:
+
+```csv
+Get Text,${state_field},store_as=state
+Enter Text,${search_field},${state}
+```
 
 ### Sleep
 
@@ -462,16 +467,33 @@ Evaluate,${price},'9.99'
 Assert Equality,${price},9.99
 ```
 
-**Example (chained after `Get Text`):**
+`Assert Equality` does not fail the step when the values differ. To fail the step when an element shows the wrong text, use [Assert Text](#assert-text).
 
-`Get Text` doesn't store its result automatically, so capture the returned text and compare it directly:
+### Assert Text
+
+Waits until the text of an element equals the expected text, and fails the step if it does not. For a text field (`input` or `textarea`) on the web, it compares the field's current value. Spaces at the start and end are ignored on both sides.
+
+If the element is not found, the step fails with an element-not-found error, so the next value of a `${name}` element is tried. If the element shows a different text at the timeout, the step fails and the error gives the text that the element shows.
+
+The element must be in the UI tree. An element found only by OCR or image fails the step at once.
+
+An expected value with the `@:` prefix is compared without the prefix, and the error shows `****` in place of both texts.
+
+**Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `element` | Required | The element to read (Text, XPath or CSS) | - |
+| `expected` | Required | The text to expect | - |
+| `timeout` | Optional | The time to wait for the text in seconds | `10` |
+| `event_name` | Optional | A string identifier for the event | - |
+
+**Example:**
 
 ```csv
-Get Text,//android.widget.TextView[@resource-id="price_label"]
-Assert Equality,9.99,9.99
+Assert Text,//android.widget.TextView[@resource-id="price_label"],9.99
+Assert Text,${state_field},${state},5
 ```
-
-Here, the first `9.99` in `Assert Equality` is the text `Get Text` returned from the label. You paste in whatever value it gave back, not a fresh literal.
 
 ### Validate Element
 
@@ -494,17 +516,20 @@ Validate Element,login_button.png,10,any,verify_login
 
 ### Is Element
 
-Checks if an element is in a given state: `visible`, `invisible`, `enabled`, or `disabled`. Raises an error if the element's actual state does not match the expected state.
+Checks if an element is in a given state: `visible`, `invisible`, `enabled`, `disabled`, `checked`, or `unchecked`. Raises an error if the element's actual state does not match the expected state.
 
 - **visible / invisible** — asserts presence or absence of the element on screen within the timeout.
-- **enabled / disabled** — locates the element and checks its interactive state via the accessibility tree. Coordinate-based results (e.g. from OCR) are not supported for enabled/disabled checks.
+- **enabled / disabled** — locates the element and checks its interactive state via the accessibility tree. On the web, `aria-disabled="true"` counts as disabled.
+- **checked / unchecked** — locates a checkbox, radio button or switch and checks whether it is on. On the web, `aria-checked` counts too.
+
+Coordinate-based results (e.g. from OCR) are not supported for the enabled, disabled, checked and unchecked states.
 
 **Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
 | `element` | Required | The element to check (Image template, OCR template, or XPath) | - |
-| `element_state` | Required | Expected state: `visible`, `invisible`, `enabled`, or `disabled` | - |
+| `element_state` | Required | Expected state: `visible`, `invisible`, `enabled`, `disabled`, `checked`, or `unchecked` | - |
 | `timeout` | Required | Time to wait for the element in seconds (integer) | - |
 | `event_name` | Optional | A string identifier for the event | - |
 
@@ -514,6 +539,7 @@ Checks if an element is in a given state: `visible`, `invisible`, `enabled`, or 
 Is Element,login_button.png,visible,10,check_login_visible
 Is Element,//android.widget.Button[@text="Submit"],enabled,5,check_submit_enabled
 Is Element,loading_spinner.png,invisible,15,wait_for_load
+Is Element,css=#accept_terms,checked,5
 ```
 
 ### Assert Presence
@@ -560,7 +586,7 @@ Assert Visibility,login_button.png|signup_button.png,30,any,check_buttons_visibl
 
 ### Validate Screen
 
-Verifies the specified screen by checking element presence. Similar to `Assert Presence` but does not fail if elements are not found.
+Waits for elements and reports whether they appeared. Similar to `Assert Presence`, but it never fails the step: when the elements are not found, it logs that and the run continues. Use `Assert Presence` when the check must fail the test.
 
 **Parameters:**
 

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from optics_framework.api.verifier import Verifier
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.optics_builder import OpticsBuilder
 
 
@@ -128,3 +129,95 @@ class TestCssLocators:
             verifier.assert_presence("#missing", timeout_str="1")
 
         verifier.strategy_manager.assert_presence.assert_called_once_with(["#missing"], "Text", 1, "any")
+
+
+class TestIsElementState:
+    @pytest.fixture
+    def located(self, verifier):
+        element = object()
+        verifier.strategy_manager.locate = MagicMock(return_value=iter([MagicMock(value=element)]))
+        return element
+
+    @pytest.mark.parametrize("state, check, value", [
+        ("enabled", "is_element_enabled", True),
+        ("disabled", "is_element_enabled", False),
+        ("checked", "is_element_checked", True),
+        ("unchecked", "is_element_checked", False),
+    ])
+    def test_the_driver_decides_the_state(self, verifier, located, state, check, value):
+        getattr(verifier.driver, check).return_value = value
+
+        verifier.is_element("css=#x", state, 1)
+
+        getattr(verifier.driver, check).assert_called_once_with(located)
+
+    @pytest.mark.parametrize("state, check, value", [
+        ("enabled", "is_element_enabled", False),
+        ("disabled", "is_element_enabled", True),
+        ("checked", "is_element_checked", False),
+        ("unchecked", "is_element_checked", True),
+    ])
+    def test_the_opposite_state_fails(self, verifier, located, state, check, value):
+        getattr(verifier.driver, check).return_value = value
+
+        with pytest.raises(OpticsError, match=f"expected {state}"):
+            verifier.is_element("css=#x", state, 1)
+
+
+class TestAssertText:
+    @pytest.fixture(autouse=True)
+    def located(self, verifier, monkeypatch):
+        monkeypatch.setattr(Verifier, "_TEXT_POLL_INTERVAL_S", 0)
+        verifier.strategy_manager.assert_presence = MagicMock()
+        element = object()
+        verifier.strategy_manager.locate = MagicMock(side_effect=lambda _: iter([MagicMock(value=element)]))
+        return element
+
+    def test_passes_once_the_text_matches(self, verifier, located):
+        verifier.driver.get_text_element.side_effect = ["Loading", " DELHI "]
+
+        verifier.assert_text("css=#state", "DELHI", timeout="5")
+
+        verifier.driver.get_text_element.assert_called_with(located)
+
+    def test_a_wrong_text_fails_with_both_values(self, verifier):
+        verifier.driver.get_text_element.return_value = "MUMBAI"
+
+        with pytest.raises(OpticsError, match="shows 'MUMBAI' but expected 'DELHI'"):
+            verifier.assert_text("css=#state", "DELHI", timeout="0")
+
+    def test_a_missing_element_is_element_not_found(self, verifier):
+        verifier.strategy_manager.locate = MagicMock(side_effect=OpticsError(Code.E0201, message="nope"))
+
+        with pytest.raises(OpticsError) as raised:
+            verifier.assert_text("css=#state", "DELHI", timeout="0")
+
+        assert raised.value.code == Code.E0201
+
+    def test_an_unsupported_platform_fails_at_once(self, verifier):
+        verifier.driver.get_text_element.side_effect = OpticsError(Code.E0105, message="not on a TV")
+
+        with pytest.raises(OpticsError) as raised:
+            verifier.assert_text("css=#state", "DELHI", timeout="30")
+
+        assert raised.value.code == Code.E0105
+
+    def test_an_element_found_only_by_vision_fails_at_once(self, verifier):
+        verifier.strategy_manager.locate = MagicMock(return_value=iter([MagicMock(value=(10, 20))]))
+
+        with pytest.raises(OpticsError, match="found only by OCR or image"):
+            verifier.assert_text("DELHI", "DELHI", timeout="30")
+
+    def test_a_secret_is_compared_without_its_prefix(self, verifier):
+        verifier.driver.get_text_element.return_value = "4321"
+
+        verifier.assert_text("css=#pin", "@:4321", timeout="0")
+
+    def test_a_secret_stays_out_of_the_error(self, verifier):
+        verifier.driver.get_text_element.return_value = "4320"
+
+        with pytest.raises(OpticsError) as raised:
+            verifier.assert_text("css=#pin", "@:4321", timeout="0")
+
+        assert "4321" not in str(raised.value)
+        assert "4320" not in str(raised.value)

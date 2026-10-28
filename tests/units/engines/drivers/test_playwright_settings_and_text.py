@@ -21,6 +21,7 @@ def _driver(config=None):
 def test_enter_text_fills_a_locator_returned_by_an_element_source():
     driver = _driver()
     located = MagicMock()
+    located.evaluate = AsyncMock(return_value=True)
     located.fill = AsyncMock()
 
     driver.enter_text_element(located, "standard_user")
@@ -32,6 +33,7 @@ def test_enter_text_fills_a_locator_returned_by_an_element_source():
 def test_enter_text_still_accepts_a_selector_string():
     driver = _driver()
     locator = MagicMock()
+    locator.evaluate = AsyncMock(return_value=True)
     locator.fill = AsyncMock()
     driver.page.locator.return_value = locator
 
@@ -44,6 +46,7 @@ def test_enter_text_still_accepts_a_selector_string():
 def test_clear_text_empties_a_located_field():
     driver = _driver()
     located = MagicMock()
+    located.evaluate = AsyncMock(return_value=True)
     located.fill = AsyncMock()
 
     driver.clear_text_element(located)
@@ -51,12 +54,22 @@ def test_clear_text_empties_a_located_field():
     located.fill.assert_awaited_once_with("")
 
 
+def test_clear_text_selects_all_with_the_platform_modifier():
+    driver = _driver()
+    driver.page.keyboard.press = AsyncMock()
+
+    driver.clear_text()
+
+    assert [c.args[0] for c in driver.page.keyboard.press.await_args_list] == ["ControlOrMeta+A", "Backspace"]
+
+
 def test_get_text_reads_a_located_element():
     driver = _driver()
     located = MagicMock()
-    located.inner_text = AsyncMock(return_value="1")
+    located.evaluate = AsyncMock(return_value="1")
 
     assert driver.get_text_element(located) == "1"
+    located.evaluate.assert_awaited_once_with(pw_driver._TEXT_OR_VALUE_JS)
     driver.page.locator.assert_not_called()
 
 
@@ -155,6 +168,7 @@ def test_special_keys_are_pressed_not_typed():
 def test_secret_prefix_is_not_typed():
     driver = _driver()
     located = MagicMock()
+    located.evaluate = AsyncMock(return_value=True)
     located.fill = AsyncMock()
 
     driver.enter_text_element(located, "@:secret")

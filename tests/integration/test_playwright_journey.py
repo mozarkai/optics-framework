@@ -112,6 +112,15 @@ def test_a_missing_css_element_fails_the_run(tmp_path):
     assert run_project(project, use_printer=False) is False
 
 
+def test_a_failed_step_leaves_the_screen_elements(tmp_path):
+    project = _project(tmp_path, ["Press Element,#not-on-the-page"])
+
+    assert run_project(project, use_printer=False) is False
+    failures = json.loads((tmp_path / "execution_output" / "failed_steps_elements.json").read_text())
+    assert [f["step"] for f in failures] == ["Press Element (#not-on-the-page)"]
+    assert any(e.get("label") == "Sign in" for e in failures[0]["elements"])
+
+
 def test_pressing_a_disabled_button_fails(tmp_path):
     project = _project(tmp_path, [
         f"Launch App,{(FIXTURE / 'orders.html').as_uri()}",
@@ -119,6 +128,28 @@ def test_pressing_a_disabled_button_fails(tmp_path):
     ])
 
     assert run_project(project, use_printer=False) is False
+
+
+def test_typing_into_a_caption_reaches_the_field_it_names(tmp_path):
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / 'fields.html').as_uri()}",
+        "Enter Text,Mobile Number,9876543210",
+        "Enter Text,text=First Name,John",
+        "Enter Text,Last Name,Doe",
+        "Assert Presence,text=9876543210/John/Doe,2",
+    ])
+
+    assert run_project(project, use_printer=False) is True
+
+
+def test_assert_text_reads_a_field_and_fails_on_a_wrong_value(tmp_path):
+    fields = (FIXTURE / "fields.html").as_uri()
+    steps = [f"Launch App,{fields}", "Enter Text,Mobile Number,9876543210"]
+    right = _project(tmp_path / "right", [*steps, 'Assert Text,css=input[type="tel"],9876543210,2'])
+    wrong = _project(tmp_path / "wrong", [*steps, 'Assert Text,css=input[type="tel"],1234567890,2'])
+
+    assert run_project(right, use_printer=False) is True
+    assert run_project(wrong, use_printer=False) is False
 
 
 def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):

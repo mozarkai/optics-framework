@@ -1,5 +1,6 @@
 import subprocess  # nosec
 from typing import Any, Dict, List, Optional, Union
+from lxml import etree  # type: ignore
 from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
 from appium.webdriver.appium_connection import AppiumConnection
@@ -20,6 +21,7 @@ from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
+from optics_framework.engines.drivers import appium_fields
 from optics_framework.engines.drivers.appium_platforms import (
     PlatformProfile,
     get_profile,
@@ -1071,14 +1073,34 @@ class Appium(DriverInterface):
                 element.send_keys(utils.strip_sensitive_prefix(str(text)))
         else:
             internal_logger.debug(f"Entering text '{text}' into element: {element}")
-            element.send_keys(utils.strip_sensitive_prefix(str(text)))
+            self._field_for(element).send_keys(utils.strip_sensitive_prefix(str(text)))
 
     @supported_on(*MOBILE)
     def clear_text_element(self, element: Any, event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
         internal_logger.debug(f"Clearing text in element: {element}")
-        element.clear()
+        self._field_for(element).clear()
+
+    def _field_for(self, element: Any) -> Any:
+        """The field a located caption names, so a label locator types into its input."""
+        try:
+            class_name = element.get_attribute("className") or element.get_attribute("type") or ""
+            if appium_fields.is_field(class_name):
+                return element
+            driver = self._require_driver()
+            root = etree.fromstring(driver.page_source.encode("utf-8"))
+            caption = appium_fields.node_at(root, element.rect, element.text or "")
+            field = appium_fields.field_for(root, caption) if caption is not None else None
+            if field is None:
+                return element
+            internal_logger.info(f"'{element.text}' is not a text field; using the field it names.")
+            return driver.find_element(AppiumBy.XPATH, appium_fields.absolute_xpath(field))
+        except (WebDriverException, etree.XMLSyntaxError) as e:
+            if self.is_dead_session_error(e):
+                raise
+            internal_logger.debug(f"Looking for the field next to {element} failed: {e}")
+            return element
 
     def _is_ios(self) -> bool:
         return self._active_platform() == self.PLATFORM_IOS
@@ -1296,10 +1318,16 @@ class Appium(DriverInterface):
                 text = element.get_attribute("value")
             except WebDriverException:
                 text = None
-        internal_logger.info(f"Text of element: {text}")
         if text is None:
             raise OpticsError(Code.E0401, message="Element text is None")
         return text
+
+    @supported_on(*MOBILE)
+    def is_element_checked(self, element: Any) -> bool:
+        # UiAutomator2 maps is_selected() to "selected", not "checked"; XCUITest switches report value 1/0.
+        if self._is_ios():
+            return str(element.get_attribute("value")).lower() in ("1", "true")
+        return str(element.get_attribute("checked")).lower() == "true"
 
     # helper functions
     def pixel_2_appium(self, x: int, y: int, screenshot: Any) -> Optional[tuple[int, int]]:

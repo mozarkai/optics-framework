@@ -1,17 +1,29 @@
+import time
 from typing import Optional, Any, List, Union
 
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.eventSDK import EventSDK
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 class Verifier:
     """
     Provides methods to verify elements, screens, and data integrity.
     """
+
+    _ELEMENT_STATES = {
+        "enabled": ("is_element_enabled", True, "disabled"),
+        "disabled": ("is_element_enabled", False, "enabled"),
+        "checked": ("is_element_checked", True, "unchecked"),
+        "unchecked": ("is_element_checked", False, "checked"),
+    }
+    _TEXT_POLL_INTERVAL_S = 0.5
+    # The assertion loop gives each strategy whole seconds, so a shorter lookup would check nothing.
+    _TEXT_MIN_LOOKUP_S = 1.0
 
     def __init__(self, builder: OpticsBuilder):
         self.driver: InstanceFallback = builder.get_driver()
@@ -53,54 +65,105 @@ class Verifier:
         event_name: Optional[str] = None,
     ) -> None:
         """
-        Checks if the specified element is in a given state (e.g., Enabled/Disabled/Visible/Invisible).
+        Checks if the specified element is in a given state, failing the step if it is not.
 
         :param element: The element to be checked (Image template, OCR template, or XPath).
-        :param element_state: The state to verify (visible, invisible, enabled, disabled).
+        :param element_state: The state to verify (visible, invisible, enabled, disabled, checked, unchecked).
+            On the web, an element marked ``aria-disabled="true"`` counts as disabled and
+            ``aria-checked`` counts for checked.
         :param timeout: The time to wait for the element in seconds.
         :param event_name: The name of the event associated with the check, if any.
         """
         state = element_state.strip().lower()
-
         if state in ("visible", "invisible"):
-            try:
-                present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
-            except OpticsError:
-                present = False
-            if state == "visible" and not present:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
-            if state == "invisible" and present:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
-            if event_name:
-                self.event_sdk.capture_event(event_name)
-
-        elif state in ("enabled", "disabled"):
-            located = None
-            try:
-                for result in self.strategy_manager.locate(element):
-                    located = result.value
-                    break
-            except OpticsError:
-                pass
-
-            if located is None:
-                raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
-            if isinstance(located, tuple):
-                raise OpticsError(Code.E0401, message="Cannot check enabled/disabled state for coordinate-based elements.")
-
-            is_enabled = located.is_enabled()
-            if state == "enabled" and not is_enabled:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is not enabled.")
-            if state == "disabled" and is_enabled:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is enabled but expected disabled.")
-            if event_name:
-                self.event_sdk.capture_event(event_name)
-
+            self._check_visibility(element, state, timeout)
+        elif state in self._ELEMENT_STATES:
+            self._check_state(element, state)
         else:
             raise OpticsError(
                 Code.E0403,
-                message=f"Unknown element_state '{element_state}'. Expected: visible, invisible, enabled, disabled."
+                message=f"Unknown element_state '{element_state}'. "
+                        "Expected: visible, invisible, enabled, disabled, checked, unchecked."
             )
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+    def _check_visibility(self, element: str, state: str, timeout: int) -> None:
+        try:
+            present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
+        except OpticsError:
+            present = False
+        if state == "visible" and not present:
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
+        if state == "invisible" and present:
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
+
+    def _check_state(self, element: str, state: str) -> None:
+        located = None
+        try:
+            for result in self.strategy_manager.locate(element):
+                located = result.value
+                break
+        except OpticsError:
+            pass
+        if located is None:
+            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+        if isinstance(located, tuple):
+            raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
+        check, positive, opposite = self._ELEMENT_STATES[state]
+        if getattr(self.driver, check)(located) != positive:
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
+
+    def assert_text(self, element: str, expected: str, timeout: str = "10", event_name: Optional[str] = None) -> None:
+        """
+        Waits until the element's text, or a field's value, equals ``expected``, failing the step if it never does.
+
+        :param element: The element to read (Text, XPath or CSS locator).
+        :param expected: The text to expect. Surrounding spaces are ignored on both sides; with an ``@:``
+            prefix it is compared without the prefix and both texts are masked in the error.
+        :param timeout: The time to wait for the text in seconds.
+        :param event_name: The name of the event associated with the check, if any.
+        """
+        expected = str(expected).strip()
+        sensitive = expected.startswith("@:")
+        want = utils.strip_sensitive_prefix(expected).strip()
+        deadline = time.monotonic() + float(timeout)
+        while True:
+            actual = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
+            if actual is not None and actual.strip() == want:
+                break
+            if time.monotonic() >= deadline:
+                if actual is None:
+                    raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+                shown = actual.strip()
+                if sensitive:
+                    shown, want = "****", "****"
+                raise OpticsError(Code.E0401, message=mask_secrets(f"Element '{element}' shows '{shown}' but expected '{want}'."))
+            time.sleep(self._TEXT_POLL_INTERVAL_S)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+    def _read_text(self, element: str, timeout: float) -> Optional[str]:
+        try:
+            # Wait through the assertion loop, which keeps to the timeout; a locate waits as long as the driver does.
+            self.strategy_manager.assert_presence([element], utils.determine_element_type(element), timeout=timeout)
+            result = next(iter(self.strategy_manager.locate(element)), None)
+        except OpticsError as e:
+            if not (e.code.value.startswith("E02") or e.code == Code.X0201):
+                raise
+            return None
+        if result is None:
+            return None
+        if isinstance(result.value, tuple):
+            raise OpticsError(Code.E0401, message=f"Cannot read the text of '{element}': it was found only by OCR or image.")
+        try:
+            return self.driver.get_text_element(result.value)
+        except Exception as e:
+            if isinstance(e, OpticsError):
+                raise
+            raise_if_session_dead(e)
+            internal_logger.debug(f"Reading the text of '{element}' failed: {e}")
+            return None
 
     def _resolve_param(self, param: str) -> str:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
@@ -231,7 +294,9 @@ class Verifier:
 
     def validate_screen(self, elements: str, timeout: str = "30", rule: str = 'any', event_name: Optional[str] = None) -> bool:
         """
-        Verifies the specified screen by checking element presence.
+        Waits for elements and returns whether they appeared, without failing the step.
+
+        Use ``assert_presence`` when a missing element must fail the test.
 
         :param elements: Comma-separated string of elements to verify (Image templates, OCR templates, or XPaths).
         :param timeout: The time to wait for verification in seconds.

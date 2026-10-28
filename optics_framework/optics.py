@@ -1177,13 +1177,32 @@ class Optics:
         timeout: fallback_str,
         event_name: Optional[fallback_str] = None,
     ) -> None:
-        """Check if the specified element is in a given state (visible/invisible/enabled/disabled)."""
+        """Check if the specified element is in a given state (visible/invisible/enabled/disabled/checked/unchecked)."""
         if not self.verifier:
             raise ValueError(INVALID_SETUP)
         self.verifier.is_element(
             element=cast(str, element),
             element_state=cast(str, element_state),
             timeout=int(cast(str, timeout)),
+            event_name=cast(Optional[str], event_name),
+        )
+
+    @keyword("Assert Text")
+    @fallback_params
+    def assert_text(
+        self,
+        element: fallback_str,
+        expected: fallback_str,
+        timeout: fallback_str = "10",
+        event_name: Optional[fallback_str] = None,
+    ) -> None:
+        """Fail unless the element's text, or a field's value, equals the expected text within the timeout."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        self.verifier.assert_text(
+            element=cast(str, element),
+            expected=cast(str, expected),
+            timeout=cast(str, timeout),
             event_name=cast(Optional[str], event_name),
         )
 
