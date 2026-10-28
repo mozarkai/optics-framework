@@ -3,6 +3,8 @@ import queue
 import time
 import re
 import atexit
+from contextlib import contextmanager
+from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from rich.logging import RichHandler
 from pydantic import BaseModel
@@ -96,6 +98,8 @@ class LoggingManager:
         self.internal_logger.propagate = False
         self.execution_logger = logging.getLogger("optics.execution")
         self.execution_logger.propagate = True
+        self.internal_logger.addFilter(SecretMaskingFilter())
+        self.execution_logger.addFilter(SecretMaskingFilter())
         self.internal_console_handler = RichHandler(
             rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
         self.internal_console_handler.setFormatter(SensitiveDataFormatter(
@@ -109,6 +113,76 @@ class LoggingManager:
         self.internal_listener = None
         self.execution_listener = None
         self.junit_handler = None
+
+SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", "pin", "otp", "secret", "token", "key", "apikey"})
+# Shorter values, like otp_length=6, would mask digits all over the log.
+MIN_SECRET_LENGTH = 4
+_active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
+
+
+# Fixed-width lookarounds only, so a long name cannot make the match backtrack.
+_WORD_BOUNDARY = re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])")
+
+
+def is_secret_name(name: str | None) -> bool:
+    if not name:
+        return False
+    # Splits camelCase, acronym runs (APIToken) and letters from digits (password1).
+    split = re.sub(_WORD_BOUNDARY, "_", name)
+    words = re.split(r"[^a-z0-9]+", split.lower())
+    return any(word in SECRET_NAME_WORDS for word in words)
+
+
+def use_secrets(secrets: set[str]) -> None:
+    """Mask this session's secrets in logs written from the current context."""
+    _active_secrets.set(secrets)
+
+
+def register_secret(secrets: set[str], name: str, value) -> None:
+    text = str(value)
+    if is_secret_name(name) and len(text) >= MIN_SECRET_LENGTH:
+        secrets.add(text)
+    use_secrets(secrets)
+
+
+def mask_secrets(text: str) -> str:
+    # Longest first, so overlapping secrets mask whole.
+    for secret in sorted(_active_secrets.get() or (), key=len, reverse=True):
+        text = text.replace(secret, "****")
+    return re.sub(r"@:([^\s,\)\]]+)", "****", text)
+
+
+_held_records: ContextVar[list | None] = ContextVar("_held_records", default=None)
+
+
+@contextmanager
+def holding_logs_for_secret(name: str | None):
+    """Get Text logs what it read before store_as registers it; hold those lines until then."""
+    if not is_secret_name(name):
+        yield
+        return
+    held: list[logging.LogRecord] = []
+    token = _held_records.set(held)
+    try:
+        yield
+    finally:
+        _held_records.reset(token)
+        for record in held:
+            logging.getLogger(record.name).handle(record)
+
+
+class SecretMaskingFilter(logging.Filter):
+    """On the logger, so plain file handlers get masked lines too."""
+
+    def filter(self, record):
+        held = _held_records.get()
+        if held is not None:
+            held.append(record)
+            return False
+        record.msg = mask_secrets(record.getMessage())
+        record.args = None
+        return True
+
 
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):

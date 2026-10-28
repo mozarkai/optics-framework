@@ -108,6 +108,12 @@ def test_discover_keywords_finds_real_api_keywords():
     assert not any(s.startswith("_") or s.startswith("test") for s in slugs)
 
 
+def test_discover_keywords_says_which_keywords_return_a_value():
+    returns = {i.keyword_slug: i.returns for i in expose_api.discover_keywords()}
+    assert returns["get_text"] and returns["assert_presence"]
+    assert not returns["press_element"] and not returns["sleep"]
+
+
 # ---------------------------------------------------------------------------
 # _make_dependency_entry
 # ---------------------------------------------------------------------------

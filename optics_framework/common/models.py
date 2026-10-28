@@ -159,6 +159,9 @@ class ElementData(BaseModel):
     succeeds.
     """
     elements: Dict[str, List[str]] = Field(default_factory=dict)
+    secrets: set[str] = Field(default_factory=set, exclude=True)
+    def store(self, name: str, value: str) -> None:
+        self.elements[name] = [value]
 
     def add_element(self, name: str, value: str):
         """Append a value for an element key.
