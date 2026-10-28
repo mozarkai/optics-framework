@@ -408,6 +408,19 @@ Driver sources define the automation frameworks used to control devices or brows
         iOS (XCUITest) includes such elements by default (with a `visible="false"`
         attribute) -- no equivalent setting needed.
 
+    !!! info "Android: idle wait before each command"
+        Before each command, UiAutomator2 waits for the UI to stop changing. Its own limit
+        is 10 seconds, so on a screen that never stops changing (a focused input, an
+        animation) every step takes 10 seconds or more. Optics sets the limit to 1 second.
+        Your `appium:settings` merge with this default. To change the limit, set
+        `waitForIdleTimeout` in milliseconds (`0` disables the wait):
+
+        ```yaml
+        capabilities:
+          appium:settings:
+            waitForIdleTimeout: 0
+        ```
+
 === "Selenium"
 
     **Purpose:** Web browser automation.
