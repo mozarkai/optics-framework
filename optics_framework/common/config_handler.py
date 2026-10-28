@@ -39,6 +39,8 @@ class Config(BaseModel):
     halt_duration: float = 0.1
     ai_self_heal: bool = False
     strict_element_match: bool = False
+    # Stored variables to mask whatever their name, beside the names that look secret.
+    secret_variables: List[str] = Field(default_factory=list)
 
     def __init__(self, **data):
         super().__init__(**data)

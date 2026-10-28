@@ -118,6 +118,7 @@ SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", 
 # Shorter values, like otp_length=6, would mask digits all over the log.
 MIN_SECRET_LENGTH = 4
 _active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
+_secret_names: ContextVar[frozenset[str]] = ContextVar("_secret_names", default=frozenset())
 
 
 # Fixed-width lookarounds only, so a long name cannot make the match backtrack.
@@ -127,10 +128,17 @@ _WORD_BOUNDARY = re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])|(?<=[a-z0-9])(?=[A-Z])|(?
 def is_secret_name(name: str | None) -> bool:
     if not name:
         return False
+    if name in _secret_names.get():
+        return True
     # Splits camelCase, acronym runs (APIToken) and letters from digits (password1).
     split = re.sub(_WORD_BOUNDARY, "_", name)
     words = re.split(r"[^a-z0-9]+", split.lower())
     return any(word in SECRET_NAME_WORDS for word in words)
+
+
+def use_secret_names(names: list[str]) -> None:
+    """Names a run's config marks secret, so their stored values mask like a secret-looking name's."""
+    _secret_names.set(frozenset(names))
 
 
 def use_secrets(secrets: set[str]) -> None:
