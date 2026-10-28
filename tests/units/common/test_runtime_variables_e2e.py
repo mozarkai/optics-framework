@@ -8,6 +8,7 @@ from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common import utils
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.helper.execute import DryRunRunner, ExecuteRunner, RunnerArgs
 
@@ -48,6 +49,11 @@ class Device:
 
     def sleep(self, duration):
         self.calls.append(("sleep", duration))
+
+    @utils.not_storable
+    def capture_pagesource(self, event_name=None):
+        self.calls.append(("capture_pagesource",))
+        return {"page_source": "<hierarchy/>", "timestamp": "0"}
 
     def validate_element(self, element, timeout="10", rule="all", event_name=None):
         self.calls.append(("validate_element", element))
@@ -120,6 +126,13 @@ def test_storing_what_a_keyword_did_not_return_fails_the_step(run):
 
     assert results["TC"].status == "FAIL"
     assert "returned no value" in _reasons(results, "TC")[0]
+
+
+def test_a_screen_dump_keyword_takes_no_store_as(run, device):
+    results = run({"M": [("Capture Pagesource", "store_as=src")]}, {"TC": ["M"]})
+
+    assert "takes no store_as" in _reasons(results, "TC")[0]
+    assert ("capture_pagesource",) not in device.calls
 
 
 def test_a_store_cell_without_a_name_fails_the_step(run):

@@ -378,7 +378,7 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
                 keyword_slug=meth_name,
                 description=doc,
                 parameters=params,
-                returns=sig.return_annotation not in (None, type(None), "None"),
+                returns=sig.return_annotation not in (None, type(None), "None") and not getattr(meth, "_not_storable", False),
             )
         )
     return keywords

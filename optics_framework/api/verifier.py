@@ -106,6 +106,7 @@ class Verifier:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
         return utils.resolve_scalar_param(self.session, param)
 
+    @utils.not_storable
     def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> bool:
         """
         Compares two values for equality. Both values are resolved from session
@@ -124,6 +125,7 @@ class Verifier:
         return result
 
 
+    @utils.not_storable
     def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
@@ -138,6 +140,7 @@ class Verifier:
         """
         return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_presence")
 
+    @utils.not_storable
     def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
         Asserts that elements are actually rendered/visible on screen right now -- distinct
@@ -229,6 +232,7 @@ class Verifier:
             self.event_sdk.capture_event_with_time_input(event_name, earliest_timestamp)
 
 
+    @utils.not_storable
     def validate_screen(self, elements: str, timeout: str = "30", rule: str = 'any', event_name: Optional[str] = None) -> bool:
         """
         Verifies the specified screen by checking element presence.
@@ -250,6 +254,7 @@ class Verifier:
             internal_logger.error(f"Failed to Validate Screen: {e}")
             return False
 
+    @utils.not_storable
     def capture_screenshot(self, event_name: Optional[str] = None) -> str:
         """
         Captures a screenshot of the current screen.
@@ -271,6 +276,7 @@ class Verifier:
         return screenshot
 
 
+    @utils.not_storable
     def capture_pagesource(self, event_name: Optional[str] = None) -> dict:
         """
         Captures the page source and timestamp of the current screen.
@@ -360,6 +366,7 @@ class Verifier:
         utils.scale_interactive_element_bounds(elements, self.element_source, screenshot_np)
         return elements
 
+    @utils.not_storable
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> list:
         """
         Retrieves a list of interactive elements on the current screen.
@@ -383,6 +390,7 @@ class Verifier:
         utils.save_interactable_elements(elements, output_dir=self.execution_dir)
         return elements
 
+    @utils.not_storable
     def get_screen_elements(self) -> dict:
         """
         Captures a screenshot and retrieves interactive elements for API response.

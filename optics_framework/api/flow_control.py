@@ -139,6 +139,7 @@ class FlowControl:
             return self._execute_nested_module(module_name, keyword)
         raise OpticsError(Code.E0402, message=f"Keyword '{keyword}' not found in keyword_map.")
 
+    @utils.not_storable
     def execute_module(self, module_name: str) -> List[Any]:
         """Executes a module's keywords using the session's keyword_map.
 
@@ -156,6 +157,7 @@ class FlowControl:
             results.append(self._execute_single_keyword(module_name, keyword, params))
         return results
 
+    @utils.not_storable
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
     def run_loop(self, target: str, *args: str) -> List[Any]:
         """Runs a loop over a target module, either by count or with variables.
@@ -287,6 +289,7 @@ class FlowControl:
         else:
             raise OpticsError(Code.E0403, message=f"Expected a list, JSON string, or pipe-separated string for iterable of variable '{variable}', got {type(iterable).__name__}.")
 
+    @utils.not_storable
     @substitutes_own_vars
     def condition(self, *args: str) -> Optional[List[Any]]:
         """Evaluates conditions and executes corresponding targets.
@@ -828,6 +831,7 @@ class FlowControl:
             pass
         raise OpticsError(Code.E0403, message=f"Query '{query}' must be a column name or integer index present in the CSV.")
 
+    @utils.not_storable
     @defines_variable
     @substitutes_own_vars
     @raw_params(0)
@@ -948,6 +952,7 @@ class FlowControl:
                 continue
         raise OpticsError(Code.E0403, message=f"Unable to detect date format for input: {date_str}")
 
+    @utils.not_storable
     @defines_variable
     @raw_params(0)
     def date_evaluate(
@@ -1013,6 +1018,7 @@ class FlowControl:
         runner_elements.add_element(var_name, result)
         return result
 
+    @utils.not_storable
     def invoke_api(self, api_identifier: str) -> dict[str, Any]:
         """Invokes an API call based on a definition from the session's API data.
 

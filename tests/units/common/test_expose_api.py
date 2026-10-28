@@ -110,8 +110,15 @@ def test_discover_keywords_finds_real_api_keywords():
 
 def test_discover_keywords_says_which_keywords_return_a_value():
     returns = {i.keyword_slug: i.returns for i in expose_api.discover_keywords()}
-    assert returns["get_text"] and returns["assert_presence"]
+    assert returns["get_text"] and returns["execute_script"]
     assert not returns["press_element"] and not returns["sleep"]
+    assert not returns["get_interactive_elements"] and not returns["get_screen_elements"] and not returns["capture_pagesource"]
+    assert not returns["capture_screenshot"]
+    assert not returns["condition"] and not returns["execute_module"] and not returns["invoke_api"]
+    assert not returns["evaluate"] and not returns["date_evaluate"] and not returns["run_loop"]
+    assert not returns["launch_app"]
+    assert not returns["assert_equality"] and not returns["assert_presence"] and not returns["assert_visibility"] and not returns["validate_screen"]
+    assert returns["read_data"]
 
 
 # ---------------------------------------------------------------------------
