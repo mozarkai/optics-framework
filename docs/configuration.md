@@ -695,8 +695,22 @@ Element sources define methods for locating and capturing UI elements.
       - camera_screenshot:
           enabled: true
           url: null
-          capabilities: {}
+          capabilities:
+            url: http://127.0.0.1:8080/screenshot   # or "ip:port" for raw TCP
+            token: <bearer-token>                   # HTTP only
     ```
+
+    | Capability | Description |
+    |---|---|
+    | `url` | `ip:port` (raw TCP, unchanged) or an `http://` / `https://` URL fetched with `GET`. |
+    | `token` | Sent as `Authorization: Bearer <token>` to an HTTP url. Masked in logs; redirects are not followed. |
+    | `camera_index` | Local webcam index, used instead of `url`. |
+
+    !!! note "Environment fallback"
+        When neither `url` nor `camera_index` is configured, the source reads
+        `WEBCAM_SCREENSHOT_URL` and `WEBCAM_SCREENSHOT_TOKEN` (HTTP). If no URL is set but
+        `WEBCAM_SCREENSHOT_TCP_PORT` is, it connects over raw TCP to `127.0.0.1:<port>`.
+        `token` falls back to `WEBCAM_SCREENSHOT_TOKEN`. Explicit config always wins over env.
 
 ---
 
