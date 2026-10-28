@@ -64,8 +64,8 @@ def device(monkeypatch):
 
 @pytest.fixture
 def run(tmp_path, device):
-    def run(modules, tests, elements=ELEMENTS, dry=False, runner="test_runner"):
-        (tmp_path / "config.yaml").write_text(CONFIG)
+    def run(modules, tests, elements=ELEMENTS, dry=False, runner="test_runner", config=""):
+        (tmp_path / "config.yaml").write_text(CONFIG + config)
         (tmp_path / "elements.csv").write_text(
             "Element_Name,Element_ID\n" + "".join(f"{k},{v}\n" for k, v in elements.items()))
         width = max(len(step) for steps in modules.values() for step in steps) - 1
@@ -187,6 +187,14 @@ def test_a_secret_read_from_the_screen_is_masked_in_every_log_line(run, device, 
     assert ("press_element", '//field[@text="bob@example.com"]') in device.calls
     assert "bob@example.com" not in _logs(tmp_path)
     assert "Text of element: ****" in _logs(tmp_path)
+
+
+@pytest.mark.parametrize("runner", ["test_runner", "pytest"])
+def test_a_variable_the_config_marks_secret_is_masked_whatever_its_name(run, tmp_path, runner):
+    run({"M": [("Get Text", "#user", "store_as=qa_option")]}, {"TC": ["M"]},
+        runner=runner, config="secret_variables: [qa_option]\n")
+
+    assert "bob@example.com" not in _logs(tmp_path)
 
 
 @pytest.mark.parametrize("name", ["password1", "login_otp2", "OTPCode", "myAPIToken"])
