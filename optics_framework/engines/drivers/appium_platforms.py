@@ -125,7 +125,13 @@ register_profile(PlatformProfile(
     options_factory=UiAutomator2Options,
     app_id_caps=("appPackage", "appium:appPackage"),
     keycode_strategy=KEYCODE_ANDROID_INT,
-    default_options={**_MOBILE_DEFAULT_OPTIONS, "ignoreHiddenApiPolicyError": True},
+    default_options={
+        **_MOBILE_DEFAULT_OPTIONS,
+        "ignoreHiddenApiPolicyError": True,
+        # UiAutomator2 waits up to 10 s for the UI to go idle before each command, so a screen
+        # that never settles (a focused input, an animation) costs 10 s per call.
+        "settings": {"waitForIdleTimeout": 1000},
+    },
 ))
 
 register_profile(PlatformProfile(

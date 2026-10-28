@@ -46,6 +46,24 @@ def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LI
     return "\n".join([*lines[:half], f"… ({omitted} lines omitted)", *lines[-half:]])
 
 
+_SETTINGS_CAPS = ("settings", "appium:settings")
+
+
+def _merge_capabilities(defaults: dict[str, Any], caps: dict[str, Any]) -> dict[str, Any]:
+    """Overlay ``caps`` on ``defaults``, merging Appium settings key by key."""
+    merged = {**defaults, **caps}
+    settings: dict[str, Any] = {}
+    for source in (defaults, caps):
+        for key in _SETTINGS_CAPS:
+            if isinstance(source.get(key), dict):
+                settings.update(source[key])
+    if settings:
+        for key in _SETTINGS_CAPS:
+            merged.pop(key, None)
+        merged["appium:settings"] = settings
+    return merged
+
+
 class _QueryForwardingConnection(AppiumConnection):
     """Re-appends the server URL's query string after each command path."""
 
@@ -314,7 +332,7 @@ class Appium(DriverInterface):
             return attached_sid
 
         options, default_options = self._get_platform_and_options(all_caps)
-        final_caps = {**default_options, **all_caps}
+        final_caps = _merge_capabilities(default_options, all_caps)
         internal_logger.debug(f"Final capabilities being applied: {final_caps}")
         for key, value in final_caps.items():
             options.set_capability(key, value)
