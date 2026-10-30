@@ -563,7 +563,7 @@ def _is_interesting(el) -> bool:
         return True
     # Platform-specific class heuristics for editable / password fields.
     cls = el.get("class") or el.tag or ""
-    if cls.endswith("EditText") or cls.endswith("TextField") or cls.endswith("SecureTextField"):
+    if cls.endswith(("EditText", "TextField", "SecureTextField")):
         return True
     if el.get("password") == "true":
         return True
