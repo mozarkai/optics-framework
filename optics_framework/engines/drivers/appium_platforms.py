@@ -34,6 +34,7 @@ KEYCODE_RC_NAMED = "rc_named"         # driver.execute_script("<vendor>: pressKe
 
 # Defaults shared by the mobile (Android/iOS) session; TV profiles keep their own
 # minimal set because these mobile-oriented caps are rejected by the TV drivers.
+# Both drivers wait up to 10 s for an idle app before each command; a screen that never settles pays it on every call.
 _MOBILE_DEFAULT_OPTIONS: dict[str, Any] = {
     "newCommandTimeout": 3600,
     "ensureWebviewsHavePages": True,
@@ -128,9 +129,7 @@ register_profile(PlatformProfile(
     default_options={
         **_MOBILE_DEFAULT_OPTIONS,
         "ignoreHiddenApiPolicyError": True,
-        # UiAutomator2 waits up to 10 s for the UI to go idle before each command, so a screen
-        # that never settles (a focused input, an animation) costs 10 s per call.
-        "settings": {"waitForIdleTimeout": 1000},
+        "settings": {"waitForIdleTimeout": 1000},  # milliseconds
     },
 ))
 
@@ -140,7 +139,7 @@ register_profile(PlatformProfile(
     options_factory=XCUITestOptions,
     app_id_caps=("bundleId", "appium:bundleId"),
     keycode_strategy=KEYCODE_ANDROID_INT,
-    default_options=dict(_MOBILE_DEFAULT_OPTIONS),
+    default_options={**_MOBILE_DEFAULT_OPTIONS, "settings": {"waitForIdleTimeout": 1}},  # seconds
 ))
 
 # D-pad / OK -> Samsung remote key names (values from @headspinio/tizen-remote).
