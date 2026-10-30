@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import inspect
 import time
 from typing import List, NamedTuple, Union, Tuple, Generator, Set, Optional, Any
+import cv2
 import numpy as np
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
@@ -380,10 +381,19 @@ class ImageDetectionStrategy(LocatorStrategy):
 
 _ASSERT_POLL_INTERVAL_S = 0.5
 _VISION_INTERVAL_S = 2.0
+_SAME_SCREEN_TOLERANCE = 8
 
 
 def _is_vision(strategy: LocatorStrategy) -> bool:
     return isinstance(strategy, (TextDetectionStrategy, ImageDetectionStrategy))
+
+
+def _same_screen(frame: np.ndarray, previous: np.ndarray | None) -> bool:
+    return (
+        previous is not None
+        and frame.shape == previous.shape
+        and int(cv2.absdiff(frame, previous).max()) <= _SAME_SCREEN_TOLERANCE
+    )
 
 
 @dataclass
@@ -400,6 +410,7 @@ class _AssertState:
     vision_due: bool = True
     frame: np.ndarray | None = None
     frame_ts: str | None = None
+    checked_frame: np.ndarray | None = None
 
 
 class PagesourceStrategy:
@@ -795,14 +806,17 @@ class StrategyManager:
         return any(not any(s.can_assert(e) for s in cheap) for e, hit in state.found.items() if not hit)
 
     def _round_frame(self, state: _AssertState) -> np.ndarray | None:
-        """The screenshot all vision strategies share this round; None when it cannot be taken."""
+        """The screenshot all vision strategies share this round; None when it cannot be taken or was already read."""
         if state.frame is None:
             started, timestamp = time.monotonic(), utils.get_timestamp()
-            state.frame = self._vision_frame()
-            if state.frame is None:
+            frame = self._vision_frame()
+            if frame is None or _same_screen(frame, state.checked_frame):
                 state.vision_due = False
-            else:
-                state.last_vision, state.frame_ts = started, timestamp
+                if frame is not None:
+                    state.last_vision = started
+                return None
+            state.frame = state.checked_frame = frame
+            state.last_vision, state.frame_ts = started, timestamp
         return state.frame
 
     def _vision_frame(self) -> np.ndarray | None:
