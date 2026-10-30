@@ -453,17 +453,18 @@ class ActionKeyword:
         result_count = 0
         locate_error: Optional[OpticsError] = None
 
-        try:
-            results_list = list(results)
-        except OpticsError as e:
-            # The locate generator raises when no strategy yields a result; treat that
-            # as "no results" so self-heal below gets a chance, but keep the original
-            # error as the cause instead of losing it.
-            internal_logger.debug(f"Locate generator raised for '{element}' in '{func_name}': {e}")
-            results_list = []
-            locate_error = e
-
-        for result in results_list:
+        # Lazy, so a later strategy locates only after this act fails.
+        results_iter = iter(results)
+        while True:
+            try:
+                result = next(results_iter)
+            except StopIteration:
+                break
+            except OpticsError as e:
+                # No strategy found it: leave self-heal a chance and keep this error as the cause.
+                internal_logger.debug(f"Locate generator raised for '{element}' in '{func_name}': {e}")
+                locate_error = e
+                break
             result_count += 1
             _save_annotated_for_result(result, screenshot_np, self.execution_dir, func_name)
             try:
