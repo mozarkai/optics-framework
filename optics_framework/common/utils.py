@@ -1014,16 +1014,26 @@ def bbox_from_appium_attribute_fallback(element: Any) -> Optional[Tuple[Tuple[in
 
 def bbox_from_webelement_like(obj: Any) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
     """
-    Return bounding box for a single WebElement-like object with .location/.size or .rect.
+    Return bounding box for a single WebElement-like object with .rect or .location/.size.
 
     Works for both Android (UIAutomator2) and iOS (XCUITest); both expose W3C-compatible
-    location, size, and rect on the WebElement.
+    location, size, and rect on the WebElement. ``rect`` comes first because it is one request.
 
-    :param obj: WebElement-like object with .location and .size dicts, or .rect (Selenium 4/Appium).
+    :param obj: WebElement-like object with .rect (Selenium 4/Appium), or .location and .size dicts.
     :return: ((x1,y1), (x2,y2)) or None if not available.
     """
     if obj is None:
         return None
+    try:
+        rect = getattr(obj, "rect", None)
+        if rect is not None and isinstance(rect, dict):
+            x1 = int(rect.get("x", 0))
+            y1 = int(rect.get("y", 0))
+            w = int(rect.get("width", 0))
+            h = int(rect.get("height", 0))
+            return ((x1, y1), (x1 + w, y1 + h))
+    except (TypeError, ValueError, AttributeError):
+        pass
     try:
         loc = getattr(obj, "location", None)
         sz = getattr(obj, "size", None)
@@ -1033,16 +1043,6 @@ def bbox_from_webelement_like(obj: Any) -> Optional[Tuple[Tuple[int, int], Tuple
             x2 = int(x1 + sz.get("width", 0))
             y2 = int(y1 + sz.get("height", 0))
             return ((x1, y1), (x2, y2))
-    except (TypeError, ValueError, AttributeError):
-        pass
-    try:
-        rect = getattr(obj, "rect", None)
-        if rect is not None and isinstance(rect, dict):
-            x1 = int(rect.get("x", 0))
-            y1 = int(rect.get("y", 0))
-            w = int(rect.get("width", 0))
-            h = int(rect.get("height", 0))
-            return ((x1, y1), (x1 + w, y1 + h))
     except (TypeError, ValueError, AttributeError):
         pass
     return None
