@@ -231,6 +231,7 @@ class AppiumPageSource(ElementSourceInterface):
         while time.time() - start_time < timeout:
             if (all if rule == "all" else any)(self.check_elements(elements)):
                 return True, utils.get_timestamp()
+            time.sleep(0.3)
 
         # Timeout reached
         internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
