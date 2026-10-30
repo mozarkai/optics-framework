@@ -399,7 +399,7 @@ class TestVisibilityExcludesPresenceOnlySources:
             text_detection=None,
             image_detection=None,
         )
-        with pytest.raises(Exception):
+        with pytest.raises(OpticsError):
             manager.assert_visibility(["//*[@id=\"offscreen\"]"], "XPath", timeout=1, rule="any")
 
 
