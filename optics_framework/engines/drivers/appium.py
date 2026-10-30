@@ -46,6 +46,24 @@ def _summarize_command_output(output: str, max_lines: int = _MAX_ERROR_OUTPUT_LI
     return "\n".join([*lines[:half], f"… ({omitted} lines omitted)", *lines[-half:]])
 
 
+_SETTINGS_CAPS = ("settings", "appium:settings")
+
+
+def _merge_capabilities(defaults: dict[str, Any], caps: dict[str, Any]) -> dict[str, Any]:
+    """Overlay ``caps`` on ``defaults``, merging Appium settings key by key."""
+    merged = {**defaults, **caps}
+    settings: dict[str, Any] = {}
+    for source in (defaults, caps):
+        for key in _SETTINGS_CAPS:
+            if isinstance(source.get(key), dict):
+                settings.update(source[key])
+    if settings:
+        for key in _SETTINGS_CAPS:
+            merged.pop(key, None)
+        merged["appium:settings"] = settings
+    return merged
+
+
 class _QueryForwardingConnection(AppiumConnection):
     """Re-appends the server URL's query string after each command path."""
 
@@ -171,16 +189,19 @@ class Appium(DriverInterface):
             raise OpticsError(Code.E0101, message=self.NOT_INITIALIZED)
         return self.driver
 
-    def _active_platform(self) -> str:
-        """Normalized platformName from live or configured capabilities."""
-        caps: Dict[str, Any] = {}
+    def _session_capabilities(self) -> dict[str, Any]:
+        """Live session capabilities, falling back to the configured ones."""
+        caps: dict[str, Any] = {}
         if self.driver is not None:
             try:
                 caps = self.driver.capabilities or {}
             except Exception:
                 caps = {}
-        if not caps:
-            caps = self.capabilities or {}
+        return caps or self.capabilities or {}
+
+    def _active_platform(self) -> str:
+        """Normalized platformName from live or configured capabilities."""
+        caps = self._session_capabilities()
         platform = caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)
         if not platform:
             for key, value in caps.items():
@@ -188,6 +209,13 @@ class Appium(DriverInterface):
                     platform = value
                     break
         return normalize_platform(platform)
+
+    def native_ui_platform(self) -> str | None:
+        """``android`` or ``ios`` in a native phone session; None on TVs and in browser or web view sessions."""
+        caps = self._session_capabilities()
+        platform = self._active_platform()
+        web_start = caps.get("browserName") or caps.get("autoWebview") or caps.get("appium:autoWebview")
+        return platform if platform in MOBILE and not web_start else None
 
     def _require_profile(self) -> PlatformProfile:
         profile = get_profile(self._active_platform())
@@ -314,7 +342,7 @@ class Appium(DriverInterface):
             return attached_sid
 
         options, default_options = self._get_platform_and_options(all_caps)
-        final_caps = {**default_options, **all_caps}
+        final_caps = _merge_capabilities(default_options, all_caps)
         internal_logger.debug(f"Final capabilities being applied: {final_caps}")
         for key, value in final_caps.items():
             options.set_capability(key, value)

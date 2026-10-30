@@ -97,6 +97,8 @@ class AppiumPageSource(ElementSourceInterface):
             xpath = self.find_xpath_from_text_index(locator, index, strict=strict)
         else:
             xpath = self.find_xpath_from_text(locator, strict=strict)
+        if not xpath:
+            raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found in the page source: {element}")
         try:
             execution_logger.debug(f"Finding element by text: {locator} with xpath: {xpath}")
             element_obj = driver.find_element(AppiumBy.XPATH, xpath)
@@ -110,6 +112,8 @@ class AppiumPageSource(ElementSourceInterface):
     def _locate_by_xpath(self, driver: WebDriver, element: str, element_type: str) -> Any:
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
             xpath, _ = self.driver.ui_helper.find_xpath(element, strict=self._strict_element_match())
+            if not xpath:
+                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found in the page source: {element}")
             try:
                 element_obj = driver.find_element(AppiumBy.XPATH, xpath)
                 return element_obj
@@ -121,6 +125,12 @@ class AppiumPageSource(ElementSourceInterface):
         else:
             internal_logger.error(APPIUM_NOT_INITIALISED_MSG)
             raise RuntimeError(APPIUM_NOT_INITIALISED_MSG)
+
+    def can_locate(self, element: str) -> bool:
+        element_type = utils.determine_element_type(element)
+        if element_type == "XPath":
+            return not (utils.is_dom_only_xpath(element) and self.driver is not None and self.driver.native_ui_platform())
+        return element_type in ("Text",)
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
@@ -209,7 +219,6 @@ class AppiumPageSource(ElementSourceInterface):
             elements (list): List of elements to assert on the page.
             timeout (int): Maximum time to wait for the elements to appear.
             rule (str): Rule to apply ("any" or "all").
-            polling_interval (float): Interval between retries in seconds.
 
         Returns:
             None
@@ -219,36 +228,29 @@ class AppiumPageSource(ElementSourceInterface):
         """
         self._validate_rule(rule)
         start_time = time.time()
-
         while time.time() - start_time < timeout:
-            texts = [el for el in elements if utils.determine_element_type(el) == 'Text']
-            xpaths = [el for el in elements if utils.determine_element_type(el) == 'XPath']
-
-            self.get_page_source()  # Refresh page source
-
-            strict = self._strict_element_match()
-
-            # Check text-based elements
-            text_found = self.ui_text_search(texts, rule, strict=strict) if texts else (rule == "all")
-
-            # Check XPath-based elements
-            if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None and xpaths:
-                xpath_results = [self.driver.ui_helper.find_xpath(xpath, strict=strict)[0] for xpath in xpaths]
-            else:
-                xpath_results = [rule == "all"]
-            xpath_found = (all(xpath_results) if rule == "all" else any(xpath_results))
-
-            # Rule evaluation
-            if (rule == "any" and (text_found or xpath_found)) or (rule == "all" and text_found and xpath_found):
+            if (all if rule == "all" else any)(self.check_elements(elements)):
                 return True, utils.get_timestamp()
-
-            # Optional: time.sleep(0.3)  # Delay to reduce busy looping
+            time.sleep(0.3)
 
         # Timeout reached
         internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
         raise TimeoutError(
             f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
         )
+
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        self.get_page_source()
+        strict = self._strict_element_match()
+        return [self._in_page_source(element, strict) for element in elements]
+
+    def _in_page_source(self, element: str, strict: bool) -> bool:
+        element_type = utils.determine_element_type(element)
+        if element_type == "Text":
+            return bool(self.ui_text_search([element], strict=strict))
+        if element_type == "XPath" and getattr(self.driver, "ui_helper", None) is not None:
+            return bool(self.driver.ui_helper.find_xpath(element, strict=strict)[0])
+        return False
 
     def _validate_rule(self, rule):
         if rule not in ["any", "all"]:

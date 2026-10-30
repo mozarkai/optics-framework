@@ -188,9 +188,15 @@ class SeleniumFindElement(ElementSourceInterface):
         """
         self._assert_elements_common(
             elements, timeout, rule,
-            check_fn=lambda element: self.locate(element) is not None,
+            check_fn=self._is_present,
             not_found_desc="found",
         )
+
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        return [self._is_present(element) for element in elements]
+
+    def _is_present(self, element: str) -> bool:
+        return self.locate(element) is not None
 
     def _is_located_and_visible(self, element: str) -> bool:
         """True only if `element` both locates, is not CSS-hidden, and is within the viewport.

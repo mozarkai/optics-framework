@@ -153,6 +153,12 @@ class PlaywrightFindElement(ElementSourceInterface):
     ):
         return self._poll_until(elements, timeout, rule, playwright_locator.is_visible)
 
+    def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
+        page = self._require_page()
+        check = playwright_locator.is_visible if visible else playwright_locator.is_present
+        exact = self._strict_element_match()
+        return [check(page, element, exact=exact) for element in elements]
+
     def _poll_until(self, elements, timeout, rule, check):
         if rule not in ("any", "all"):
             raise OpticsError(Code.E0403, message="Invalid rule. Use 'any' or 'all'")
