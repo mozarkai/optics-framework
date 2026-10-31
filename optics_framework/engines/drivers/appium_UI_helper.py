@@ -989,6 +989,8 @@ class UIHelper:
         rid = node.attrib.get("resource-id")
         if rid:
             extra["resource-id"] = rid
+        if node.attrib.get("password") == "true":
+            extra["password"] = True
         return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
 
     def _has_actionable_descendant(self, node: etree.Element) -> bool:
@@ -1016,8 +1018,14 @@ class UIHelper:
 
     def _extract_compact_interactives(self, root: etree.Element) -> List[Dict]:
         # Actionable elements (folded labels) + standalone visible text; drops the rest.
-        entries = (self._compact_entry_for(node) for node in root.iter())
-        return [entry for entry in entries if entry is not None]
+        index = XPathUniquenessIndex(root)
+        entries = []
+        for node in root.iter():
+            entry = self._compact_entry_for(node)
+            if entry is not None:
+                entry["loc"] = self.get_xpath(node, index)
+                entries.append(entry)
+        return entries
 
     def get_interactive_elements(
         self, filter_config: Optional[List[str]] = None, compact: bool = False
