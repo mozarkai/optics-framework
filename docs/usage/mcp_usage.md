@@ -2,23 +2,35 @@
 
 `optics mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server that exposes the optics-framework keyword engine to an LLM client
-(Claude Desktop, Claude Code, Cursor, …). The model starts a device/browser
-session, runs automation keywords as **tools**, and observes device state through
-**resources** — driving a live target the way `optics live` does, but under agent
-control.
+(Claude Desktop, Claude Code, Cursor, …). The model starts a device or browser
+session, acts on the screen with **tools**, and reads device state through
+**resources**. It drives a live target the way `optics live` does, but under
+agent control.
 
-The surface is deliberately small: the keyword tools plus a few resources. There
-are **no record/save/replay tools** — a capable agent already knows the steps it
-ran, so to turn a session into a reusable suite it authors an optics CSV project
-itself (the `optics://project-format` resource documents the exact layout) and
-runs it with `optics execute`. The MCP layer stays driver- and device-agnostic:
-it never shells out to `adb` or assumes a device type; it only makes calls to the
-driver server you point `start_session` at.
+The default toolset has ten tools. Each screen comes back as short rows, and
+every row has a ref such as `e7`:
 
-It reuses the in-process keyword machinery from the REST server
-(`optics serve`), so whatever driver and element sources optics already supports
-work here too. The driver is chosen at runtime via the `start_session` tool —
-nothing is hard-coded.
+```
+screen 21d99e · 7 rows
+e1 h1 "Optics Store"
+e3 input "Email" [tap,input] #email
+e7 button "Sign in" [tap]
+```
+
+The agent picks a row by its ref, and the server turns the ref into a locator
+that matches only that element. Every action returns what changed on the
+screen and a verdict on the text the agent expected to see.
+
+There are **no record, save or replay tools**. To turn a session into a suite,
+the agent reads the `optics://session/{id}/steps` resource and the
+`optics://project-format` resource, writes an optics CSV project, and runs it
+with `optics execute`. The MCP layer is driver- and device-agnostic: it never
+runs `adb` and does not assume a device type. It only calls the driver server
+that you give to `start_session`.
+
+It uses the same in-process keyword machinery as the REST server
+(`optics serve`), so every driver and element source that optics supports works
+here too.
 
 ---
 
@@ -78,6 +90,14 @@ optics mcp --transport http --host 127.0.0.1 --port 8090
 | `--transport` | `stdio` | `stdio` (local clients) or `http` |
 | `--host` | `127.0.0.1` | bind host (http only) |
 | `--port` | `8090` | bind port (http only) |
+| `--toolset` | `core` | `core` (ten tools) or `full` (also one tool per keyword); see §6 |
+
+| Environment variable | Default | Meaning |
+|----------------------|---------|---------|
+| `OPTICS_MCP_TOOLSET` | `core` | the toolset when `--toolset` is not given |
+| `OPTICS_MCP_SESSION_IDLE_S` | `900` | a session that is idle for longer is ended on the next call; `0` turns this off |
+| `OPTICS_MCP_CALL_TIMEOUT_S` | `100` | the longest a tool call can take before it returns a timeout |
+| `OPTICS_MCP_ALLOW_COORDINATE_TAPS` | off | `1` lets `run_keyword` reach `press_by_coordinates`, `press_by_percentage` and `swipe` |
 
 ### Docker
 
@@ -153,64 +173,112 @@ the client at the URL:
 
 ## 5. The expected journey
 
-1. **`start_session`** — open a session against your driver. Returns
-   `{ "session_id", "driver_id" }`. The target app is launched automatically.
-   Capture the `session_id`; **every** other tool and resource needs it.
-   `elements_sources` **defaults per driver** (appium →
-   `appium_find_element`/`appium_page_source`/`appium_screenshot`; selenium and
-   playwright analogous), so `start_session` with just a `driver` works. The device
-   is identified through `capabilities` (e.g. `deviceName`/`udid`) — the MCP needs
-   no `adb` of its own. A Playwright session starts on a blank page: open a site with
-   `launch_app` and its URL (see the example below).
-2. **Observe** — call `screenshot`, read `optics://session/{session_id}/source`,
-   or read `optics://session/{session_id}/elements` for the compact list of
-   actionable elements (labels, `act`, `bounds`) plus read-only text. These work
-   the same across drivers via the session's own element sources.
-3. **Act** — call keyword tools (`press_element`, `enter_text`, `swipe`,
-   `assert_presence`, …) with the `session_id`. **Target elements by locator**
-   (`xpath=`/`text=`/an id/an image) or by an element's visible label with
-   `press_element`, which raises when the target is not found. `detect_and_press`
-   is for optional taps only: it skips the press and still succeeds when the target
-   never appears. Do not tap raw pixel coordinates guessed off a screenshot; those
-   misfire. Keywords wait for their target, so a miss costs that wait:
-   `assert_presence` waits up to `timeout_str` (30 s by default), and an action waits
-   for the driver's element timeout (10 s on Playwright, `element_timeout_ms`). To see
-   what is on screen right now, read the elements resource or pass a short `timeout_str`.
-4. **Build a reusable suite** — see below.
-5. **`terminate_session`** — release the driver when done.
+1. **`start_session`** opens a session and returns its id. Pass `app` (a URL on
+   the web, a package or bundle id on a device) and the reply also holds the
+   first screen as rows. `elements_sources` default per driver, so a `driver`
+   alone is enough. A device is named in `capabilities` (for example
+   `deviceName` or `udid`); the MCP needs no `adb` of its own.
+2. **Act** with `tap`, `type_text`, `scroll`, `press_key` and `launch_app`.
+   Give a ref from the latest screen as the `target`. An exact visible label or a
+   locator (`css=`, `xpath=`, `text=`, an id, an image file) also works, but a ref
+   is safer: the server acts on it only through locators, never through fuzzy
+   text or OCR.
+3. **Verify.** Add `expect_present` and `expect_absent` to an action, with text
+   that you already know and that the action shows or removes. Text that was on
+   the screen before the action does not prove the step, and a value typed with
+   `type_text` or a typing keyword such as `enter_text` is not checked, because
+   the rows often do not hold it.
+   The reply has `verified`: `pass`, `fail` or `unknown`. `ok` only means that
+   the keyword ran; it does not mean that the step worked. Use `check` for a
+   verdict without an action.
+4. **Observe** only when you need more than the change list: `observe(query=…)`
+   finds rows on a long screen, and `observe(screenshot=true)` adds a JPEG.
+5. **Build a reusable suite** (see below).
+6. **`terminate_session`** releases the driver when you are done.
 
-### Build a reusable suite (author it — there's no save tool)
+`session_id` can be left out when only one session is open. A session that is
+idle for longer than the idle lease (15 minutes by default) is ended on the
+next call to the server.
 
-The MCP has no recording/save/replay tools on purpose: you already know the
-keywords you called and their args, so you can author an optics project directly.
+### What an action returns
 
-1. Read the **`optics://project-format`** resource — it documents the CSV layout
-   (`test_cases/`, `modules/`, `test_data/elements.csv`, `config.yaml`), how
-   modules reference `${variables}`, and the escaping rules.
-2. Write those files (the keyword *display names* come from the `optics://keywords`
-   catalog). Parameterize by putting run-specific values in `elements.csv` and
-   referencing them as `${name}`, so "set alarm to 22:00" becomes a reusable
-   `${time}`. A whole cell must be exactly `${name}` — the runner substitutes
-   whole values only, not `${name}` inside a larger string.
-3. For loops, branching, computed values or API calls in a suite, author the
-   control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)
-   into the modules — they run under `optics execute`. Live, you drive that logic
-   yourself; they are in the `optics://keywords` catalog but are not one-shot MCP
-   tools because they need the runner's module/data context.
-4. Optionally lint it first: the
-   [optics-framework-lsp](https://github.com/mozarkai/optics-framework-lsp) language
-   server (`uv tool install optics-framework-lsp`) reports every problem in a suite in
-   one pass with `optics-lsp lint <folder> --json`. Its VS Code and JetBrains
-   extensions also offer it to agents as a separate MCP server, `optics-lsp`.
-5. Run it with the CLI: `optics execute <folder>` (results land in
-   `execution_output/`). To replay interactively instead, just call the keyword
-   tools again in sequence — the agent is the runner.
+```
+tap e7 "Sign in" -> ok (XPath) · verified: pass
+check present "Welcome": met
+screen 4436bc · changed (+2 -0 ~0)
++ e8 p "Welcome, a@b.c"
++ e9 a "Orders" [tap]
+```
+
+- The first line gives the target, the keyword result with the locator
+  strategy that found it, and the verdict.
+- One line follows for each expectation.
+- The screen line is `unchanged`, `changed` with the added (`+`), removed
+  (`-`) and relabelled (`~`) rows, or `new screen` with every row. Pass
+  `screen="full"` for every row, or `screen="none"` for no screen line.
+- A ref never moves to a different element. A ref that is gone from the
+  screen is an error that lists the current rows.
+
+The verdict rule:
+
+| Result | `verified` |
+|--------|------------|
+| the keyword failed | `fail` |
+| no expectations | `unknown` |
+| every expectation met, and the screen changed or an `expect_present` that was not met before is met now | `pass` |
+| an expectation not met, and the screen did not change | `fail` |
+| an expectation not met, but the screen changed | `unknown` (the unmet checks are listed) |
+| the screen could not be read after the action | `unknown`; the expectations are not checked |
+
+Each acting tool also returns `structuredContent`:
+
+```json
+{"ok": true, "verified": "pass", "verb": "tap", "keyword": "press_element",
+ "target": {"ref": "e7", "label": "Sign in", "ladder": ["xpath=//button[normalize-space()='Sign in']"], "strategy": "XPath"},
+ "checks": [{"text": "Welcome", "expect": "present", "met": true}],
+ "screen": {"digest": "4436bc", "changed": true, "new_screen": false,
+            "added": [{"ref": "e8", "label": "Welcome, a@b.c", "cls": "p", "act": []}],
+            "removed": [], "relabelled": []}}
+```
+
+`error` (`{code, kind, message}`) is set when the call failed, `screen.rows`
+holds every row on a new screen, after an error and with `screen="full"`, and
+`result` holds the keyword's return value (for example from `get_text` through
+`run_keyword`).
+
+### Build a reusable suite (there is no save tool)
+
+1. Read **`optics://session/{session_id}/steps`**. It lists the session's
+   actions and gives `modules_csv` and `elements_csv` rows for the steps that
+   ran. The element rows hold the locators the server used for each ref, with
+   the label as the last fallback. A value typed into a secure or password
+   field, a field that shows a masked value, a field right after a caption
+   such as "PIN", or a field whose label, id or locator has a secret word, is
+   written as `<redacted>`; put the real value back before you run the suite. This applies
+   to `type_text` and to `enter_text`, `enter_number`, `enter_text_direct` and
+   `enter_text_using_keyboard`; a keyword that types without an element uses
+   the field of the step before it. A passed `check` becomes an
+   `Assert Presence` row: a ref becomes its locator, and a text that is only
+   part of a row's text is left out with a note.
+2. Read **`optics://project-format`** for the folder layout, `config.yaml`,
+   `${variables}` and escaping rules.
+3. Write the files. Parameterize by putting run-specific values in
+   `elements.csv` and referencing them as `${name}`. A whole cell must be
+   exactly `${name}`.
+4. For loops, branches, computed values or API calls, write the control-flow
+   keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …) into the
+   modules. They run under `optics execute`, not as live tools.
+5. Optionally lint the suite with the
+   [optics-framework-lsp](https://github.com/mozarkai/optics-framework-lsp)
+   language server: `optics-lsp lint <folder> --json`.
+6. Run it: `optics execute <folder>`. Results go to `execution_output/`.
 
 ### `start_session` arguments
 
 | Arg | Type | Notes |
 |-----|------|-------|
 | `driver` | str | driver name, e.g. `"appium"` (default) |
+| `app` | str | optional URL or app id to open before the first screen is read |
 | `url` | str | driver/hub URL (e.g. local `http://127.0.0.1:4723` or a remote hub) |
 | `capabilities` | object | driver capabilities (platform, device, app, auth…) |
 | `elements_sources` | list[str] | element sources to enable; **optional** — defaults to the driver's canonical set (see §8) |
@@ -220,6 +288,7 @@ keywords you called and their args, so you can author an optics project directly
 | `ai_self_heal` | bool | optional per-session override of the server's `OPTICS_AI_SELF_HEAL` default (see below) |
 | `llm_provider` | str | optional per-session override of the server's `OPTICS_LLM_PROVIDER` default (see below) |
 | `llm_model` | str | optional per-session override of the server's `OPTICS_LLM_MODEL` default (see below) |
+| `strict_element_match` | bool | reject fuzzy text matches for labels and locators (default `false`) |
 
 **Example — local Appium + Android emulator:**
 
@@ -247,17 +316,12 @@ capabilities (auth token, device id) just as you would in `config.yaml`.
 ```json
 {
   "driver": "playwright",
-  "capabilities": { "browser": "chromium", "headless": false }
+  "capabilities": { "browser": "chromium", "headless": false },
+  "app": "https://www.saucedemo.com"
 }
 ```
 
-Then open the page with `launch_app`:
-
-```json
-{ "session_id": "<session_id>", "app_identifier": "https://www.saucedemo.com" }
-```
-
-Calling `launch_app` again navigates the same browser. The capabilities are the
+`launch_app(app="<url>")` later navigates the same browser. The capabilities are the
 Playwright driver's `config.yaml` capabilities (`browser`, `headless`, `viewport`,
 `element_timeout_ms`, …; see [Configuration](../configuration.md#driver-sources)).
 
@@ -304,70 +368,97 @@ the recovery so a client can learn *how* it was fixed:
 actually worked, curated to the minimal set that reproduces the goal. A platform can
 persist these to replace the failing step, so the next run passes without needing
 self-heal. `optics serve`'s `POST /v1/sessions/{session_id}/action` returns the same
-shape under `data`. Un-healed calls return the bare result, unchanged.
-
-### Keyword parameters are strings
-
-Every keyword tool takes `session_id` plus that keyword's parameters, and all
-parameters are typed as **strings** — pass `"2"`, not `2`. Element arguments
-accept the same locators optics uses elsewhere: `xpath=…`, `text=…`, `css=…`, an
-`id`, or an image template name.
+shape under `data`. In the core toolset the same object is the `result` of the
+action. Un-healed calls return the bare result, unchanged.
 
 ## 6. Tools reference
 
-`start_session`, `terminate_session`, and `screenshot` are purpose-built; every
-other tool is an optics keyword auto-exposed from `ActionKeyword` /
-`AppManagement` / `Verifier`. Representative set:
+### Core toolset (default)
 
-- **Session/app:** `start_session`, `terminate_session`, `launch_app`,
-  `launch_other_app`, `close_and_terminate_app`, `get_app_version`,
-  `get_driver_session_id`.
-- **Interact:** `press_element`, `press_keycode`, `enter_text`, `enter_number`,
-  `clear_element_text`, `select_dropdown_option`, `detect_and_press`. Raw
-  coordinate taps (`press_by_coordinates`, `press_by_percentage`) are not exposed
-  as tools because a pixel eyed off a screenshot misfires; set
-  `OPTICS_MCP_ALLOW_COORDINATE_TAPS=1` before starting the server to re-enable
-  them for targets with no queryable elements (e.g. a canvas).
-- **Gestures/scroll:** `swipe`, `swipe_by_percentage`, `swipe_from_element`,
-  `swipe_until_element_appears`, `scroll`, `scroll_from_element`,
-  `scroll_until_element_appears`.
-- **Observe/verify:** `screenshot` (rendered image), `get_text`,
-  `get_interactive_elements` (accepts `filter_config`, e.g. `"buttons"`, and
-  `compact` for the token-lean list), `is_element`, `assert_presence`,
-  `assert_equality`, `validate_element`, `validate_screen`.
-- **Misc:** `sleep`, `execute_script`.
+Every tool except `start_session` takes an optional `session_id`. The acting
+tools (`tap`, `type_text`, `scroll`, `press_key`, `launch_app`, `run_keyword`)
+also take `expect_present`, `expect_absent` and `screen`.
 
-The full machine-readable catalog (every keyword, its params and docs) is the
-`optics://keywords` resource.
+| Tool | Params | Does |
+|------|--------|------|
+| `start_session` | `driver`, `app`, `url`, `capabilities`, … (§5) | starts a session; with `app`, returns the first screen |
+| `terminate_session` | — | ends the session and releases the driver |
+| `observe` | `query`, `screenshot`, `max_rows` (1–300, default 80) | lists the screen as rows; issues refs |
+| `tap` | `target`, `repeat` (1–20) | taps an element |
+| `type_text` | `target`, `text`, `clear_first` | types into a field |
+| `scroll` | `direction` (up/down/left/right), `until`, `timeout_s` (1–60) | scrolls; `direction` is the way the content moves, so `down` shows what is below. Left and right swipe on a device and scroll the page on a web driver. `until` works with up and down only |
+| `press_key` | `key` | `back` goes one screen back on every driver; otherwise an Android KeyEvent number (such as `66`) or a web key name |
+| `launch_app` | `app` | opens a URL, a package or a bundle id; empty opens the configured app |
+| `check` | `present`, `absent`, `timeout_s` (0–30) | waits for the texts or refs, then gives a verdict (`passed`); a locator in `present` is checked with `assert_presence`. `timeout_s` is the limit for the whole check |
+| `run_keyword` | `keyword`, `params` | runs any other keyword; an element param can be the ref of a row that has a locator |
 
-`screenshot` returns a rendered `image/png` your client can display inline —
-prefer it over the screenshot resource when you want to *see* the screen.
+`check` is a verdict: it is an error only when the server cannot read the
+screen. `run_keyword` reaches every keyword in `optics://keywords` except the
+session and capture internals. Coordinate keywords (`press_by_coordinates`,
+`press_by_percentage`, `swipe`) need `OPTICS_MCP_ALLOW_COORDINATE_TAPS=1`,
+because a pixel guessed from a screenshot often hits the wrong element. Keyword
+timeout params are capped at 60 seconds. `run_keyword` is marked destructive
+because it reaches `force_terminate_app`, `close_and_terminate_app` and
+`execute_script`.
 
-Besides the reflected keywords, only three tools are purpose-built:
-`start_session`, `terminate_session`, and `screenshot`. There are intentionally
-**no** recording, suite-CRUD, replay, device-discovery, or `doctor` tools — an
-agent composes those from the keyword tools plus the `optics://project-format`
-knowledge (see §5). `start_session` supplies the one non-obvious convenience: a
-per-driver `elements_sources` default so the call just works.
+Every tool has the four MCP annotations (`readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint`).
+
+### Errors
+
+An error reply starts with the optics error code when there is one, then one
+line of fact and one `Next:` line:
+
+| Kind | Example |
+|------|---------|
+| `stale_ref` | `e3 ("Sign in" button) is not on the current screen.` and the current rows |
+| `unknown_ref` | `No e99; current refs are e1–e12.` |
+| `ambiguous` | the label matches more than one row; the refs are listed |
+| `not_found` | `[E0201] not found: tried <locators>.` and the current rows |
+| `invalid_params` | what is wrong, the real params and one correct call |
+| `unsupported` | `[E0105] <tool> is not supported on this platform.` |
+| `session_lost` | `[E0106] the driver session ended.` The session is closed. |
+| `silent_failure` | `[E0401] the keyword logged an error and did not raise: …` and the screen change |
+| `timeout` | the call took longer than `OPTICS_MCP_CALL_TIMEOUT_S` |
+| `no_locator` | `run_keyword` got the ref of a row without a unique locator; pass a locator or the label |
+| `busy` | an earlier call that timed out is still running on the device |
+| `unknown_session` | the session ended after the idle lease, or never started |
+
+### Full toolset (`--toolset full`)
+
+The full toolset keeps the earlier surface for clients that call keywords by
+name: one string-typed tool per keyword of `ActionKeyword`, `AppManagement`
+and `Verifier` (each takes `session_id` and the keyword's params as strings),
+the `screenshot` tool, and the core `start_session`, `terminate_session`,
+`observe`, `tap`, `type_text`, `press_key`, `check` and `run_keyword`. The
+keyword tools `scroll` and `launch_app` replace the core tools with the same
+names. An element param of a keyword tool also accepts a ref from the latest
+`observe`.
+
+### Migration from the earlier surface
+
+1. The default surface is now the core toolset. Use `run_keyword` or
+   `--toolset full` for other keywords.
+2. The `screenshot` tool is in the full toolset only. In the core toolset, use
+   `observe(screenshot=true)`.
+3. Acting tools return `structuredContent`; a keyword's return value is in
+   `result`.
+4. The `screen_elements` resource is deprecated.
 
 ## 7. Resources reference
 
 | URI | Content |
 |-----|---------|
-| `optics://keywords` | full keyword catalog (name, slug, description, params) |
-| `optics://project-format` | how optics stores a suite (CSV layout + `${var}`), so you can author one |
+| `optics://keywords` | the keywords `run_keyword` accepts (name, slug, description, params) |
+| `optics://project-format` | how optics stores a suite (CSV layout and `${var}`) |
+| `optics://session/{session_id}/steps` | the session's actions and `modules_csv`/`elements_csv` rows to replay them |
 | `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |
 | `optics://session/{session_id}/source` | page source / UI hierarchy |
-| `optics://session/{session_id}/elements` | compact actionable elements + read-only text (Appium/Playwright) |
-| `optics://session/{session_id}/screen_elements` | captured screen elements |
+| `optics://session/{session_id}/elements` | compact elements without refs; reading it has no side effect |
+| `optics://session/{session_id}/screen_elements` | deprecated: captured screen elements |
 
-`get_interactive_elements` is available **both** as a resource (compact by default)
-and as a tool (so the model can pass `filter_config`, or `compact=false` for the full
-untrimmed element list).
-
-> The screenshot **resource** delivers raw PNG bytes with a generic
-> `application/octet-stream` mime (a limitation of templated MCP resources). For
-> an image your client renders as a picture, use the **`screenshot` tool**.
+Only `observe` and the acting tools issue refs. The `elements` resource has the
+same rows without refs.
 
 ## 8. Element sources decide what works
 
@@ -383,7 +474,7 @@ explicit **empty** list is passed through and disables element sources entirely
 |------------|-------|
 | Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |
 | Screenshots & image-based location | `appium_screenshot` |
-| Page source, `get_interactive_elements`, source-based extraction | `appium_page_source` |
+| Page source, `observe`, `get_interactive_elements`, source-based extraction | `appium_page_source` |
 | OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |
 | Image template matching | an `image_detection` source (e.g. `templatematch`) |
 
@@ -401,15 +492,20 @@ expected; enable `appium_page_source` (or a vision source) for that path.
   `optics-framework[mcp]`.
 - **Sessions aren't shared with `optics serve` / `optics live`.** Each is a
   separate process with its own in-memory session store. Always `start_session`
-  in this server before using a keyword tool; you cannot attach to a session
-  created elsewhere.
+  in this server before you use another tool; you cannot attach to a session
+  created elsewhere. A session also ends after the idle lease
+  (`OPTICS_MCP_SESSION_IDLE_S`).
 - **Device busy / already allocated** — if your hub reports the device as busy,
   free it through your device-orchestration API, then retry `start_session`.
-- **`get_interactive_elements` / `source` errors** — usually a missing element
+- **`observe` / `source` errors** — usually a missing element
   source; see §8.
-- **Errors surface as MCP tool errors.** An optics failure (element not found,
-  bad config, driver error) comes back as a `ToolError` carrying the optics
-  error code/message, so the model can read and react to it.
+- **Errors are tool results with `isError: true`.** The text gives the optics
+  error code, the fact and the next step (see §6, Errors). The full toolset's
+  keyword tools still raise a `ToolError` with the optics code and message.
+- **A tool call timed out, and the next call says the session is busy.** The
+  driver call is still running; it cannot be cancelled. Wait, then call
+  `observe`. Raise `OPTICS_MCP_CALL_TIMEOUT_S` if your client allows longer
+  calls.
 - **`start_session` failed with "Element source configuration must be set".** You
   passed an explicit empty `elements_sources`, or the driver name doesn't match
   any installed element-source modules (e.g. a typo — check the name against
@@ -425,11 +521,10 @@ expected; enable `appium_page_source` (or a vision source) for that path.
 
 ## 10. How it works (pointer)
 
-`optics mcp` is a thin in-process wrapper over `common/expose_api.py`. It reflects
-the API keyword classes into typed tools and routes execution through the same
-`execute_keyword` path the REST server uses; read-only observers become resources.
-The only hand-written additions are the `start_session`/`terminate_session`/
-`screenshot` lifecycle tools, the per-driver `elements_sources` default, and the
-`optics://project-format` knowledge resource — no recording/suite/device tooling.
-See `optics_framework/helper/mcp_server.py` and the "MCP server journey" section of
+`optics mcp` is a thin in-process wrapper over `common/expose_api.py`. The core
+tools map each verb to keyword calls with `common/agent_verbs.py`, run them
+through the same `execute_keyword` path as the REST server, and read the screen
+before and after with `common/screen_snapshot.py`, which issues the refs,
+builds the locator ladders and computes the diff and the verdict. See
+`optics_framework/helper/mcp_server.py` and the "MCP server journey" section of
 `CLAUDE.md` for the internals.

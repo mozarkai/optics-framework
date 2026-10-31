@@ -1,10 +1,9 @@
 # Optics project format
 
-
 An optics test project is a folder of CSV files plus a `config.yaml` that
-`optics execute <folder>` runs. Author one directly from the steps you already
-performed this session — the MCP has no save/record tool because you don't need
-one: you know the keywords you called and their args.
+`optics execute <folder>` runs. Write one from the steps you ran in this session.
+The MCP has no save or record tool. The `optics://session/{id}/steps` resource
+gives you the rows to start from (see "From the steps resource" below).
 
 ## Layout
     <project>/
@@ -42,12 +41,30 @@ expand `${name}` inside a larger string.
     hour_field,text=Hour
     time,22:00
 
-On the web, use the `loc` value from the elements resource where an element has
-one (it is checked to match only that element) and keep the visible label as a
-fallback; values are tried in order:
+Give an element more than one value when you can: the runner tries them in
+order. Put a locator that matches only that element first and the visible label
+last:
     Element_Name,Element_ID,Element_ID_2
     password_field,[data-test="password"],Password
     login_button,[data-test="login-button"],Login
+
+## From the steps resource
+`optics://session/{id}/steps` is read-only. It lists every action of the session
+with `ok` and `verified`, plus two CSV texts:
+- `modules_csv`: one `recorded` module with a row per keyword of each `ok` step.
+  A passed `check` becomes an `Assert Presence` row. A ref in it becomes its
+  locator; a text that is only part of a row's text is left out with a note.
+- `elements_csv`: one row per element the steps acted on. Its values are the
+  locators the server used for the ref, then the label as the last fallback.
+  These locators are what the refs hide from you, so use these rows rather
+  than labels: a bare label can reach OCR when the suite runs.
+
+Text typed into a secure or password field, or into a field whose label,
+caption, id or locator has a secret word (password, pwd, pin, otp, secret,
+token, key), is written
+as its own element with the value `<redacted>`.
+Replace that value, or pass it in another way, before you run the suite. A
+`check` with `absent` items has no keyword form and is left out.
 
 Web element values understand `xpath=`, `css=`, `text=`, `label=`,
 `placeholder=`, `role=button[name="Sign in"]`, `data-testid=...`, `#id`/`.class`

@@ -130,35 +130,44 @@ def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):
     assert run_project(clipped, use_printer=False) is False
 
 
-async def test_mcp_session_offers_unique_locators_for_the_suite():
+async def test_mcp_journey_by_ref_records_a_replayable_suite(tmp_path):
     fastmcp = pytest.importorskip("fastmcp")
     from optics_framework.helper.mcp_server import build_server
 
-    async with fastmcp.Client(build_server()) as client:
+    async with fastmcp.Client(build_server("core")) as client:
         started = await client.call_tool(
-            "start_session", {"driver": "playwright", "capabilities": {"headless": True}}
+            "start_session", {"driver": "playwright", "capabilities": {"headless": True}, "app": STORE_URL}
         )
-        session_id = started.data["session_id"]
+        session_id = started.structured_content["session_id"]
         try:
-            await client.call_tool(
-                "launch_app", {"session_id": session_id, "app_identifier": STORE_URL}
-            )
-            resource = await client.read_resource(f"optics://session/{session_id}/elements")
-            locators = {el["label"]: el.get("loc") for el in json.loads(resource[0].text)}
+            observed = await client.call_tool("observe", {})
+            fields = {row["label"]: row["ref"] for row in observed.structured_content["rows"] if "input" in row["act"]}
+            for label, text in (("Email", "ava@example.com"), ("Password", "secret")):
+                typed = await client.call_tool("type_text", {"target": fields[label], "text": text})
+                assert typed.structured_content["ok"]
 
-            assert locators["Email"] == "#email"
-            assert locators["Password"] == '[data-testid="password"]'
+            sign_in = next(r["ref"] for r in observed.structured_content["rows"] if r["label"] == "Sign in")
+            tapped = await client.call_tool("tap", {"target": sign_in, "expect_present": ["Welcome"]})
+            assert tapped.structured_content["verified"] == "pass"
 
-            for element, text in ((locators["Email"], "ava@example.com"), ("Password", "secret")):
-                await client.call_tool(
-                    "enter_text", {"session_id": session_id, "element": element, "text": text}
-                )
-            await client.call_tool("press_element", {"session_id": session_id, "element": "Sign in"})
-            await client.call_tool(
-                "assert_presence", {"session_id": session_id, "elements": "Welcome, ava@example.com"}
-            )
+            stale = await client.call_tool("tap", {"target": "e99"}, raise_on_error=False)
+            assert stale.is_error
+
+            steps = json.loads((await client.read_resource(f"optics://session/{session_id}/steps"))[0].text)
         finally:
-            await client.call_tool("terminate_session", {"session_id": session_id})
+            await client.call_tool("terminate_session", {})
+
+    assert "secret" not in steps["elements_csv"] + steps["modules_csv"]
+    files = {
+        "config.yaml": CONFIG,
+        "test_cases/test_cases.csv": "test_case,test_step\nReplay,recorded\n",
+        "modules/modules.csv": steps["modules_csv"],
+        "test_data/elements.csv": steps["elements_csv"].replace("<redacted>", "secret"),
+    }
+    for name, content in files.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(content, encoding="utf-8")
+    assert await asyncio.to_thread(run_project, str(tmp_path), use_printer=False) is True
 
 
 def test_stopping_serve_closes_its_browsers():
