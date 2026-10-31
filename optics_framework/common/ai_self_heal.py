@@ -2,12 +2,12 @@
 
 When the normal element-location ladder (XPath -> on-screen text -> OCR -> image) exhausts
 for a locate-based keyword, :class:`AISelfHealHandler` asks an :class:`LLMInterface` to look at
-the current screen (screenshot + condensed page source) plus the keyword's intent and the
-available keyword catalog, and to emit ONE keyword call at a time (e.g. ``press_element "Meesho"``,
-``scroll "down"``) until the keyword's goal is achieved or a small step budget is hit.
+the current screen (screenshot + ref rows or condensed page source) plus the keyword's intent
+and the available keyword catalog, and to emit ONE keyword call at a time (e.g. ``press_element
+"Sign in"``, ``scroll "down"``) until the keyword's goal is achieved or a small step budget is hit.
 
 Unlike the old coordinate-guessing approach, this routes through the framework's own keyword
-methods — so ``press_element "Meesho"`` uses the full locate ladder (XPath -> text -> OCR -> image)
+methods — so ``press_element "Sign in"`` uses the full locate ladder (XPath -> text -> OCR -> image)
 instead of the LLM blindly tapping pixel percentages.
 
 The handler is decoupled from any controller — it depends only on an ``llm``, a keyword executor
@@ -17,18 +17,30 @@ unit-testable with fakes.
 
 import shlex
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from optics_framework.common.error import OpticsError
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.screen_snapshot import (
+    REF_RE,
+    RefTable,
+    Row,
+    Snapshot,
+    TargetError,
+    acting_ladder,
+    live_ladder,
+    loc_stable,
+    render_rows,
+    saved_ladder,
+)
 from optics_framework.common.step_curation import curate_steps
-
 
 # Provider callables (best-effort; may return None when unavailable).
 ScreenshotProvider = Callable[[], Optional[bytes]]
 PagesourceProvider = Callable[[], Optional[str]]
+SnapshotProvider = Callable[[], list[dict] | None]
 
 
 @dataclass
@@ -89,6 +101,8 @@ class HealAction:
     params: List[str] = field(default_factory=list)
     reason: str = ""
     completed: bool = True       # False for intermediate navigation steps
+    target: str = ""             # a ref from the screen rows, or a raw element
+    record_params: Optional[List[str]] = None  # replayable params when they differ from params
 
 
 @dataclass
@@ -136,6 +150,13 @@ HEAL_ACTION_SCHEMA: Dict[str, Any] = {
             "type": "string",
             "description": "snake_case keyword name (only when action == keyword).",
         },
+        "target": {
+            "type": "string",
+            "description": (
+                "A ref from CURRENT SCREEN (e.g. e7) for the element of press_element or "
+                "enter_text; empty otherwise."
+            ),
+        },
         "params": {
             "type": "array",
             "items": {"type": "string"},
@@ -161,10 +182,10 @@ locators (XPath, on-screen text, OCR, image matching) all failed to find the tar
 described below. Drive the UI with the listed keywords, one call per turn, until that keyword's \
 goal is achieved.
 
-`press_element` is the main tool: give it the target's visible text and the framework locates it \
-through its full ladder (XPath -> text -> OCR -> image), so naming a target by its visible text is \
-more reliable than coordinates. Take exact text, content-desc or resource id from the condensed \
-hierarchy.
+`press_element` is the main tool. When CURRENT SCREEN rows are listed, name its element by ref in \
+`target`. Otherwise give it the target's visible text - exact text, content-desc or resource id \
+from the condensed hierarchy - and the framework locates it through its full ladder (XPath -> \
+text -> OCR -> image), which is more reliable than coordinates.
 
 If the target is visible, act on it and set `completed` to true. If it is not, reveal it first - \
 scroll, press a menu, or type into a search field - with `completed` false, then act on it by \
@@ -182,6 +203,10 @@ action remains. Keep `reason` short.
 """
 
 _MAX_THOUGHT_CHARS = 160
+
+
+def _fold(text: str) -> str:
+    return " ".join(text.split()).casefold()
 
 
 class AISelfHealHandler:
@@ -215,6 +240,8 @@ class AISelfHealHandler:
         attempted: List[str],
         succeeded: List[Tuple[str, List[str]]],
         heal_log: List[str],
+        refs: RefTable,
+        snapshot_provider: SnapshotProvider | None = None,
     ) -> Optional[HealResult]:
         """Execute one self-heal iteration; return a terminal HealResult or None to continue.
 
@@ -225,9 +252,11 @@ class AISelfHealHandler:
         png = self._safe_call(screenshot_provider)
         if not png:
             return HealResult(False, message="No screenshot available for self-heal.")
-        page_source = self._safe_call(pagesource_provider)
+        elements = self._safe_call(snapshot_provider)
+        snap = refs.snapshot(elements if isinstance(elements, list) else [])
+        page_source = None if snap.rows and not snap.hidden else self._safe_call(pagesource_provider)
 
-        prompt = self._build_prompt(ctx, page_source, catalog, heal_log)
+        prompt = self._build_prompt(ctx, page_source, catalog, heal_log, snap)
         try:
             raw = self.llm.generate_json(
                 prompt, HEAL_ACTION_SCHEMA, images=[png],
@@ -250,7 +279,17 @@ class AISelfHealHandler:
         if action.action == "done":
             return HealResult(True, action=action, message=action.reason or "Goal reached.")
 
-        # action.action == "keyword"
+        try:
+            action = self._bind_target(action, refs, catalog)
+        except TargetError as exc:
+            line = self._build_line(action.keyword, [action.target, *action.params] if action.target else action.params)
+            attempted.append(line)
+            reason = str(exc)
+            if exc.kind == "no_locator":
+                reason = f"{action.target} has no unique locator or text; act on another element."
+            heal_log.append(f"{line} -> FAIL: {reason}")
+            return None
+
         try:
             outcome = self._dispatch(action)
         except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
@@ -260,7 +299,8 @@ class AISelfHealHandler:
         attempted.append(line)
         heal_log.append(f"{line} -> {'PASS' if outcome.ok else 'FAIL'}")
         if outcome.ok:
-            succeeded.append((action.keyword, list(action.params)))
+            record = action.record_params if action.record_params is not None else action.params
+            succeeded.append((action.keyword, list(record)))
         if outcome.done:
             return HealResult(True, action=action, message=action.reason or "Healed.")
         return None
@@ -270,17 +310,23 @@ class AISelfHealHandler:
         ctx: HealContext,
         screenshot_provider: ScreenshotProvider,
         pagesource_provider: PagesourceProvider,
+        snapshot_provider: SnapshotProvider | None = None,
     ) -> HealResult:
-        """Attempt to recover the failed keyword. Never raises — returns ok=False on any problem."""
+        """Attempt to recover the failed keyword. Never raises — returns ok=False on any problem.
+
+        When ``snapshot_provider`` returns screen elements, the prompt lists them as ref
+        rows in place of the page source, and the model can name its element by ref.
+        """
         catalog = self.keyword_catalog()
         attempted: List[str] = []
         succeeded: List[Tuple[str, List[str]]] = []
         heal_log: List[str] = []
+        refs = RefTable()
 
         for step in range(self.max_steps):
             result = self._execute_single_step(
                 step, ctx, screenshot_provider, pagesource_provider, catalog, attempted,
-                succeeded, heal_log,
+                succeeded, heal_log, refs, snapshot_provider,
             )
             if result is not None:
                 result.steps_taken = list(attempted)
@@ -351,6 +397,52 @@ class AISelfHealHandler:
             internal_logger.debug("AI self-heal: provider unavailable: %s", exc)
             return None
 
+    @staticmethod
+    def _bind_target(
+        action: HealAction, refs: RefTable, catalog: list[HealKeywordSpec],
+    ) -> HealAction:
+        """Put the element ``target`` names into the keyword's element param, a ref as its locator.
+
+        A leading param that repeats the target is dropped, and so is one that is close
+        to it when the call has more params than the keyword takes. A row with no
+        locator is acted on by its label when that names one element. Raises
+        ``TargetError`` for a ref that is not on the current screen or a row with neither.
+        """
+        signature = next((s.signature for s in catalog if s.name == action.keyword), "")
+        parts = signature.split()
+        if parts[1:2] != ["<element>"]:
+            return action
+        params = list(action.params)
+        target = action.target.strip()
+        if not target and params and REF_RE.match(params[0].strip()):
+            target = params[0].strip()
+        if not target:
+            return action
+        row = refs.resolve(target)
+        snap = refs.latest()
+        repeats = {_fold(target), _fold(row.label) if row else ""} - {""}
+        if params:
+            first = _fold(params[0])
+            surplus = len(params) > len(parts[2:])
+            if first in repeats or (first and surplus and any(first in r or r in first for r in repeats)):
+                params = params[1:]
+        if row is None or snap is None:
+            return replace(action, target=target, params=[target, *params])
+        try:
+            element = live_ladder(row, snap)[0]
+            record = AISelfHealHandler._record_element(row, snap)
+        except TargetError:
+            element = record = acting_ladder(row, snap)[0]
+        return replace(action, target=target, params=[element, *params], record_params=[record, *params])
+
+    @staticmethod
+    def _record_element(row: Row, snap: Snapshot) -> str:
+        """The locator a replay should use: a stable rung, else a label unique on the screen."""
+        ladder = saved_ladder(row, snap)
+        if not loc_stable(ladder[0]) and row.label and sum(r.label == row.label for r in snap.all_rows) == 1:
+            return ladder[-1]
+        return ladder[0]
+
     def _dispatch(self, action: HealAction) -> _DispatchOutcome:
         """Execute one keyword via the injected executor.
 
@@ -404,6 +496,7 @@ class AISelfHealHandler:
             params=params,
             reason=str(raw.get("reason") or ""),
             completed=completed,
+            target=str(raw.get("target") or ""),
         )
 
     @staticmethod
@@ -415,7 +508,7 @@ class AISelfHealHandler:
 
     def _build_prompt(
         self, ctx: HealContext, page_source: Optional[str],
-        catalog: List[HealKeywordSpec], heal_log: List[str],
+        catalog: List[HealKeywordSpec], heal_log: List[str], snap: Snapshot | None = None,
     ) -> str:
         params = " ".join(str(p) for p in ctx.intent_params)
         lines = [
@@ -433,6 +526,23 @@ class AISelfHealHandler:
         for spec in catalog:
             lines.append(f"  {spec.signature}")
 
+        if snap is not None and snap.rows:
+            lines.append("")
+            lines.append(
+                'CURRENT SCREEN (one row per element: ref, class, "visible text", [actions], '
+                "#id; a row without [...] is read-only text):"
+            )
+            lines.append(render_rows(replace(snap, hidden=0)))
+            if snap.hidden:
+                where = "the condensed hierarchy below shows the whole screen, and " if page_source else ""
+                lines.append(
+                    f"… {snap.hidden} more rows not listed; {where}`target` also takes an element's "
+                    "exact visible text."
+                )
+            lines.append(
+                "Name the element of press_element or enter_text by putting its ref in "
+                "`target` (e.g. e7); leave it out of `params`."
+            )
         if page_source:
             lines.append("")
             lines.append(

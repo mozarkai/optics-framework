@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import tempfile
 import numpy as np
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.keyword_outcome import capture_keyword_logs, find_error_log, winning_strategy
 
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.api.action_keyword import _find_dropdown_container
@@ -157,6 +158,26 @@ class TestPressElementWithIndex:
         assert exc_info.value.code in (Code.E0201, Code.X0201)
 
 
+class TestActOnLaterResult:
+    @pytest.fixture(autouse=True)
+    def _no_disk_writes(self):
+        with patch('optics_framework.common.utils.save_screenshot'):
+            yield
+
+    def test_a_stale_first_result_is_no_error_when_the_next_one_works(self, action_keyword, mock_dependencies):
+        stale, fresh = MagicMock(), MagicMock()
+        results = [
+            LocateResult(stale, type("XPathStrategy", (), {})()),
+            LocateResult(fresh, type("TextElementStrategy", (), {})()),
+        ]
+        mock_dependencies['driver'].press_element.side_effect = [RuntimeError("stale element"), None]
+        with patch.object(action_keyword.strategy_manager, 'locate', return_value=results):
+            with capture_keyword_logs() as records:
+                action_keyword.press_element("Sign in")
+        assert find_error_log(records) is None
+        assert winning_strategy(records) == "Text"
+
+
 class TestScreenshotFailureFallback:
     """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
 
@@ -225,6 +246,25 @@ class TestScreenshotFailureFallback:
 
         mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, event_name=None)
         mock_save_screenshot.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("keyword", "args", "driver_call"),
+        [
+            ("press_keycode", ("66",), "press_keycode"),
+            ("enter_text_direct", ("abc",), "enter_text"),
+            ("enter_text_using_keyboard", ("abc",), "enter_text_using_keyboard"),
+            ("execute_script", ("mobile: pressKey",), "execute_script"),
+        ],
+    )
+    def test_secure_screen_is_not_logged_as_an_error(self, action_keyword, mock_dependencies, keyword, args, driver_call):
+        with patch.object(
+            action_keyword.strategy_manager, 'capture_screenshot',
+            side_effect=OpticsError(Code.E0303, message="black screen")
+        ):
+            with capture_keyword_logs() as records:
+                getattr(action_keyword, keyword)(*args)
+        getattr(mock_dependencies['driver'], driver_call).assert_called_once()
+        assert find_error_log(records) is None
 
 
 class TestSelectDropdownOption:
