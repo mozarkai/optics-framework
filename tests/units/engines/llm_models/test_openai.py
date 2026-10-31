@@ -73,7 +73,7 @@ def test_missing_key_without_url_fails_fast(fake_client, monkeypatch):
 def test_local_server_without_key_gets_placeholder(fake_client, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY")
     _llm(url="http://localhost:11434/v1")
-    assert fake_client.clients[-1] == {"api_key": "unused", "base_url": "http://localhost:11434/v1"}
+    assert fake_client.clients[-1] == {"api_key": "unused", "base_url": "http://localhost:11434/v1", "timeout": 60.0}
 
 
 def test_api_key_env_names_the_variable(fake_client, monkeypatch):

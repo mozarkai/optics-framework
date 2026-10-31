@@ -73,17 +73,17 @@ def test_invalid_platform_is_rejected(fake_sdk):
 def test_default_platform_reads_named_key_variable(fake_sdk, monkeypatch):
     monkeypatch.setenv("TEAM_CLAUDE_KEY", "k")
     _llm(url="https://gateway.example", api_key_env="TEAM_CLAUDE_KEY")
-    assert fake_sdk.built[-1] == ("anthropic", {"api_key": "k", "base_url": "https://gateway.example"})
+    assert fake_sdk.built[-1] == ("anthropic", {"api_key": "k", "base_url": "https://gateway.example", "timeout": 60.0})
 
 
 def test_bedrock_platform(fake_sdk):
     _llm(platform="bedrock", region="us-east-1")
-    assert fake_sdk.built[-1] == ("bedrock", {"aws_region": "us-east-1", "base_url": None})
+    assert fake_sdk.built[-1] == ("bedrock", {"aws_region": "us-east-1", "base_url": None, "timeout": 60.0})
 
 
 def test_vertex_platform(fake_sdk):
     _llm(platform="vertex", project="p", region="us-east5")
-    assert fake_sdk.built[-1] == ("vertex", {"base_url": None, "region": "us-east5", "project_id": "p"})
+    assert fake_sdk.built[-1] == ("vertex", {"base_url": None, "timeout": 60.0, "region": "us-east5", "project_id": "p"})
 
 
 def test_schema_forces_a_single_tool_call(fake_sdk):

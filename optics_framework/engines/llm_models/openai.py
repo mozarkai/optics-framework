@@ -3,7 +3,12 @@ import json
 import os
 from typing import Any
 
-from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error
+from optics_framework.common.llm_interface import (
+    LLMInterface,
+    image_mime_type,
+    missing_extra_error,
+    request_timeout_s,
+)
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -55,6 +60,7 @@ class OpenAILLM(LLMInterface):
                 f"got '{self.response_format}'.",
             )
 
+        timeout = request_timeout_s(caps)
         base_url = config.get("url") or os.getenv("OPENAI_BASE_URL")
         api_key_env = caps.get("api_key_env", _DEFAULT_API_KEY_ENV)
         api_key = os.getenv(api_key_env)
@@ -65,7 +71,7 @@ class OpenAILLM(LLMInterface):
             )
 
         try:
-            self.client = OpenAI(api_key=api_key or _KEYLESS_PLACEHOLDER, base_url=base_url)
+            self.client = OpenAI(api_key=api_key or _KEYLESS_PLACEHOLDER, base_url=base_url, timeout=timeout)
         except Exception as exc:  # noqa: BLE001 - surface any client init failure uniformly
             raise OpticsError(
                 Code.E0601, message=f"Failed to initialize OpenAI client: {exc}"

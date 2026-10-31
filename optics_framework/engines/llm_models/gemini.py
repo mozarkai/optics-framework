@@ -1,6 +1,11 @@
 from typing import Optional, List, Dict, Any
 
-from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error
+from optics_framework.common.llm_interface import (
+    LLMInterface,
+    image_mime_type,
+    missing_extra_error,
+    request_timeout_s,
+)
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -41,7 +46,9 @@ class GeminiLLM(LLMInterface):
         # output below 1.0, so pinning 0.0 is an explicit capabilities opt-in.
         self.temperature: Optional[float] = caps.get("temperature")
 
-        client_kwargs: Dict[str, Any] = {}
+        client_kwargs: Dict[str, Any] = {
+            "http_options": genai_types.HttpOptions(timeout=int(request_timeout_s(caps) * 1000)),
+        }
         # Explicit overrides win over env vars; absent kwargs fall back to SDK env auto-config.
         if "use_vertexai" in caps:
             client_kwargs["vertexai"] = bool(caps["use_vertexai"])

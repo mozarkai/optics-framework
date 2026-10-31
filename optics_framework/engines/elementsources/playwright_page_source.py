@@ -599,6 +599,8 @@ class PlaywrightPageSource(ElementSourceInterface):
         rid = node.attrib.get("id")
         if rid:
             extra["resource-id"] = rid
+        if extra["class"] == "input" and (node.attrib.get("type") or "").lower() == "password":
+            extra["password"] = True
         entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
         if locator:
             entry["loc"] = locator

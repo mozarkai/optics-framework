@@ -60,6 +60,9 @@ def _bare_controller():
     ctrl.recorded = []
     ctrl.saved = True
     ctrl._nl_available = None
+    ctrl._action_keyword = None
+    ctrl._nl_new_elements = {}
+    ctrl._agent_elements = set()
     return ctrl
 
 

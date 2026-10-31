@@ -184,6 +184,7 @@ class MCPArgs(BaseModel):
     transport: Literal["stdio", "http"] = "stdio"
     host: str = "127.0.0.1"
     port: int = 8090
+    toolset: Literal["core", "full"] | None = None
 
 
 class MCPCommand(Command):
@@ -201,13 +202,19 @@ class MCPCommand(Command):
         parser.add_argument(
             "--port", type=int, default=8090, help="Port to bind for http transport (default: 8090)"
         )
+        parser.add_argument(
+            "--toolset", choices=["core", "full"], default=None,
+            help="core: ten ref-targeted tools (default); full: also one tool per keyword "
+                 "(default from OPTICS_MCP_TOOLSET)"
+        )
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
         mcp_args = MCPArgs(
             transport=args.transport,
             host=args.host,
-            port=args.port
+            port=args.port,
+            toolset=args.toolset,
         )
         # Lazy import so the optional 'mcp' extra (fastmcp) is only required
         # when this command actually runs.
@@ -215,7 +222,8 @@ class MCPCommand(Command):
         run_mcp_server(
             transport=mcp_args.transport,
             host=mcp_args.host,
-            port=mcp_args.port
+            port=mcp_args.port,
+            toolset=mcp_args.toolset,
         )
 
 class ConfigureCommand(Command):

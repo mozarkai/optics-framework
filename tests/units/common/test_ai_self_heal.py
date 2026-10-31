@@ -101,6 +101,9 @@ class TestActionSchema:
     def test_required_minimal(self):
         assert HEAL_ACTION_SCHEMA["required"] == ["reason", "action"]
 
+    def test_target_is_an_optional_string(self):
+        assert HEAL_ACTION_SCHEMA["properties"]["target"]["type"] == "string"
+
     def test_no_anyof(self):
         assert "anyOf" not in json.dumps(HEAL_ACTION_SCHEMA)
 
@@ -109,13 +112,13 @@ class TestHandlerActions:
     def test_press_element_completes(self):
         """LLM emits press_element with text target — single step, completed."""
         llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["Meesho"],
+            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
              "completed": True, "reason": "press target"},
         ])
         executor = FakeExecutor()
         res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
         assert res.ok is True
-        assert executor.calls == ['press_element Meesho']
+        assert executor.calls == ['press_element Shop']
         assert llm.calls == 1
 
     def test_scroll_then_press_element(self):
@@ -123,13 +126,13 @@ class TestHandlerActions:
         llm = FakeLLM([
             {"action": "keyword", "keyword": "scroll", "params": ["down"],
              "completed": False, "reason": "reveal target"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Meesho"],
+            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
              "completed": True, "reason": "press target"},
         ])
         executor = FakeExecutor()
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is True
-        assert executor.calls == ['scroll down', 'press_element Meesho']
+        assert executor.calls == ['scroll down', 'press_element Shop']
         assert llm.calls == 2
 
     def test_enter_text_completes(self):
@@ -242,13 +245,13 @@ class TestHandlerActions:
         llm = FakeLLM([
             {"action": "keyword", "keyword": "press_element", "params": ["Apps"],
              "completed": False, "reason": "open apps drawer"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Meesho"],
+            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
              "completed": True, "reason": "press target"},
         ])
         executor = FakeExecutor()
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is True
-        assert executor.calls == ['press_element Apps', 'press_element Meesho']
+        assert executor.calls == ['press_element Apps', 'press_element Shop']
 
     def test_swipe_uses_percentage(self):
         llm = FakeLLM([
@@ -455,6 +458,199 @@ class TestPromptContext:
         assert "scroll <direction>" in llm.last_prompt
 
 
+SIGN_IN_LOC = '//android.widget.Button[@text="Sign in"]'
+EMAIL_LOC = '//android.widget.EditText[@resource-id="com.app:id/email"]'
+
+
+def _screen(*, sign_in=True):
+    rows = [
+        {"text": "Email", "act": ["tap", "input"], "bounds": {"x1": 0, "y1": 100, "x2": 400, "y2": 140},
+         "extra": {"class": "android.widget.EditText", "resource-id": "com.app:id/email"},
+         "loc": EMAIL_LOC},
+        {"text": "Sign in", "act": ["tap"], "bounds": {"x1": 0, "y1": 200, "x2": 400, "y2": 240},
+         "extra": {"class": "android.widget.Button", "resource-id": "com.app:id/sign_in"},
+         "loc": SIGN_IN_LOC},
+    ]
+    return rows if sign_in else rows[:1]
+
+
+class _PromptLLM(FakeLLM):
+    def __init__(self, scripted):
+        super().__init__(scripted)
+        self.prompts = []
+
+    def generate_json(self, prompt, *args, **kwargs):
+        self.prompts.append(prompt)
+        return super().generate_json(prompt, *args, **kwargs)
+
+
+class TestScreenRows:
+    def test_prompt_lists_rows_in_place_of_page_source(self):
+        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
+        pagesource_calls = []
+
+        def pagesource():
+            pagesource_calls.append(1)
+            return "PAGE SOURCE"
+
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(
+            _ctx(), _shots, pagesource, snapshot_provider=_screen
+        )
+        assert 'e1 EditText "Email" [tap,input] #email' in llm.last_prompt
+        assert 'e2 Button "Sign in" [tap] #sign_in' in llm.last_prompt
+        assert "PAGE SOURCE" not in llm.last_prompt
+        assert pagesource_calls == []
+
+    def test_ref_target_presses_the_row_locator(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e2", "params": [],
+             "completed": True, "reason": "press it"},
+        ])
+        executor = FakeExecutor()
+        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(
+            _ctx(), _shots, _no_ps, snapshot_provider=_screen
+        )
+        assert res.ok is True
+        assert executor.calls == ["press_element '//android.widget.Button[@text=\"Sign in\"]'"]
+        assert res.suggested_steps == [("press_element", [SIGN_IN_LOC])]
+
+    @pytest.mark.parametrize("target, params", [
+        ("e1", ["a@b.c"]),
+        ("e1", ["e1", "a@b.c"]),
+        ("e1", ["Email", "a@b.c"]),
+        ("e1", ["Email address", "a@b.c"]),
+        ("", ["e1", "a@b.c"]),
+    ])
+    def test_enter_text_types_into_the_row_locator(self, target, params):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "enter_text", "target": target, "params": params,
+             "completed": True, "reason": "type it"},
+        ])
+        executor = FakeExecutor()
+        AISelfHealHandler(llm, executor, lambda: _catalog()).heal(
+            _ctx(), _shots, _no_ps, snapshot_provider=_screen
+        )
+        assert executor.calls == [
+            "enter_text '//android.widget.EditText[@resource-id=\"com.app:id/email\"]' a@b.c"
+        ]
+
+    def test_ref_off_screen_is_reported_not_run(self):
+        screens = iter([_screen(), _screen(sign_in=False), _screen(sign_in=False)])
+        llm = _PromptLLM([
+            {"action": "keyword", "keyword": "scroll", "params": ["down"],
+             "completed": False, "reason": "reveal"},
+            {"action": "keyword", "keyword": "press_element", "target": "e2",
+             "completed": True, "reason": "press it"},
+            {"action": "give_up", "reason": "gone"},
+        ])
+        executor = FakeExecutor()
+        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=3).heal(
+            _ctx(), _shots, _no_ps, snapshot_provider=lambda: next(screens)
+        )
+        assert res.ok is False
+        assert executor.calls == ["scroll down"]
+        assert '2. press_element e2 -> FAIL: e2 ("Sign in" Button) is not on the current screen.' in llm.prompts[2]
+
+    def test_row_without_locator_is_pressed_by_its_label(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e1", "params": [],
+             "completed": True, "reason": "press it"},
+        ])
+        executor = FakeExecutor()
+        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(
+            _ctx(), _shots, _no_ps,
+            snapshot_provider=lambda: [{"text": "Sign in", "act": ["tap"], "extra": {"class": "button"}}],
+        )
+        assert res.ok is True
+        assert executor.calls == ["press_element 'Sign in'"]
+
+    @pytest.mark.parametrize("cls, calls", [
+        ("android.widget.Button", []),
+        ("button", ["press_element 'xpath=(//button[normalize-space()=\"Delete\"])[2]'"]),
+    ])
+    def test_shared_label_without_locator_is_not_pressed_by_that_label(self, cls, calls):
+        llm = _PromptLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e2", "params": [],
+             "completed": True, "reason": "press it"},
+            {"action": "give_up", "reason": "x"},
+        ])
+        executor = FakeExecutor()
+        rows = [{"text": "Delete", "act": ["tap"], "extra": {"class": cls}, "bounds": [0, y, 10, y + 10]}
+                for y in (0, 20)]
+        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(
+            _ctx(), _shots, _no_ps, snapshot_provider=lambda: rows,
+        )
+        assert executor.calls == calls
+        assert res.ok is bool(calls)
+
+    def test_indexed_locator_is_recorded_as_the_label(self):
+        indexed = "(//android.widget.Button)[3]"
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e1", "params": [],
+             "completed": True, "reason": "press it"},
+        ])
+        executor = FakeExecutor()
+        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(
+            _ctx(), _shots, _no_ps,
+            snapshot_provider=lambda: [{"text": "Sign in", "act": ["tap"], "loc": indexed,
+                                        "extra": {"class": "android.widget.Button"}}],
+        )
+        assert executor.calls == [f"press_element '{indexed}'"]
+        assert res.suggested_steps == [("press_element", ["Sign in"])]
+
+    def test_label_repeated_in_params_with_other_case_is_dropped(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e2", "params": ["SIGN  IN"],
+             "completed": True, "reason": "press it"},
+        ])
+        executor = FakeExecutor()
+        AISelfHealHandler(llm, executor, lambda: _catalog()).heal(
+            _ctx(), _shots, _no_ps, snapshot_provider=_screen
+        )
+        assert executor.calls == ["press_element '//android.widget.Button[@text=\"Sign in\"]'"]
+
+    def test_hidden_rows_keep_the_page_source(self):
+        rows = [
+            {"text": f"Item {i}", "act": ["tap"], "extra": {"class": "android.widget.TextView"}}
+            for i in range(90)
+        ]
+        rows.append({"text": "Settings", "extra": {"class": "android.widget.TextView"}})
+        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(
+            _ctx(), _shots, lambda: 'TextView "Settings"', snapshot_provider=lambda: rows
+        )
+        assert 'TextView "Settings"' in llm.last_prompt
+        assert "observe(" not in llm.last_prompt
+        without = FakeLLM([{"action": "give_up", "reason": "x"}])
+        AISelfHealHandler(without, FakeExecutor(), lambda: _catalog()).heal(
+            _ctx(), _shots, _no_ps, snapshot_provider=lambda: rows
+        )
+        assert "condensed hierarchy" not in without.last_prompt
+
+    def test_raw_target_passes_through_without_rows(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "Login", "params": [],
+             "completed": True, "reason": "press it"},
+        ])
+        executor = FakeExecutor()
+        AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
+        assert executor.calls == ["press_element Login"]
+
+    @pytest.mark.parametrize("snapshot_provider", [lambda: None, list])
+    def test_no_rows_keeps_the_page_source_prompt(self, snapshot_provider):
+        def ps():
+            return 'Button "Login" id=login bounds=[0,0][10,10] clickable'
+
+        without = FakeLLM([{"action": "give_up", "reason": "x"}])
+        AISelfHealHandler(without, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, ps)
+        empty = FakeLLM([{"action": "give_up", "reason": "x"}])
+        AISelfHealHandler(empty, FakeExecutor(), lambda: _catalog()).heal(
+            _ctx(), _shots, ps, snapshot_provider=snapshot_provider
+        )
+        assert empty.last_prompt == without.last_prompt
+        assert 'Button "Login" id=login' in empty.last_prompt
+
+
 # --------------------------------------------------------------------------------------------
 # ActionKeyword integration: inert when off / no LLM, active when on.
 # --------------------------------------------------------------------------------------------
@@ -562,6 +758,48 @@ class TestActionKeywordWiring:
         # the inner press_element records one, and _log_heal_outcome records another).
         steps = list(ak._recent_steps)
         assert any(s == ("press_element", ["Login"]) for s in steps)
+
+    def test_heal_targets_a_ref_from_the_screen_rows(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e2", "params": [],
+             "completed": True, "reason": "press it"},
+        ])
+        llm.instances = [object()]
+        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
+        shot = np.zeros((10, 10, 3), dtype=np.uint8)
+        ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
+        ak.strategy_manager.get_interactive_elements = MagicMock(return_value=_screen())
+        mock_result = MagicMock()
+        mock_result.is_coordinates = False
+        ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
+
+        assert ak._ai_self_heal("Sign in", "press_element", (), shot) is True
+        assert 'e2 Button "Sign in" [tap] #sign_in' in llm.last_prompt
+        ak.strategy_manager.get_interactive_elements.assert_called_once_with(None, compact=True)
+        assert ak.strategy_manager.locate.call_args.args[0] == SIGN_IN_LOC
+        assert ak._pop_last_heal_info()["suggested_steps"] == [
+            {"keyword": "press_element", "params": [SIGN_IN_LOC]}
+        ]
+
+    def test_heal_types_its_text_and_records_the_index_by_name(self):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "enter_text", "target": "e1", "params": ["jane@email.com", "1"],
+             "completed": True, "reason": "type it"},
+        ])
+        llm.instances = [object()]
+        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
+        shot = np.zeros((10, 10, 3), dtype=np.uint8)
+        ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
+        ak.strategy_manager.get_interactive_elements = MagicMock(return_value=_screen())
+        located = MagicMock(is_coordinates=False)
+        ak.strategy_manager.locate = MagicMock(return_value=iter([located]))
+
+        assert ak._ai_self_heal("Email", "enter_text", ("jane@email.com",), shot) is True
+        assert ak.strategy_manager.locate.call_args.kwargs["index"] == 1
+        ak.driver.enter_text_element.assert_called_once_with(located.value, "jane@email.com", event_name=None)
+        assert ak._pop_last_heal_info()["suggested_steps"] == [
+            {"keyword": "enter_text", "params": [EMAIL_LOC, "jane@email.com", "index=1"]}
+        ]
 
 
 # --------------------------------------------------------------------------------------------
