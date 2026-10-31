@@ -52,6 +52,11 @@ _META = "class:meta"
 # Style class for in-progress / AI-mode indicators, reused across history and overlays.
 _RUNNING = "class:running"
 
+_NL_HEADER_STATUS = {
+    NLRunStatus.PASS: ActionStatus.PASS,
+    NLRunStatus.UNVERIFIED: ActionStatus.WARN,
+}
+
 # Popup body bounds; the terminal is the real bound, these only cap it.
 _POPUP_MAX_ROWS = 30
 _POPUP_MAX_COLS = 72
@@ -107,6 +112,7 @@ _STYLE = Style.from_dict(
         "pass": "#00cc66",
         "fail": "#ff5555",
         "running": "#ffcc00",
+        "warn": "#ffaa00",
         "info": "#55ccff",
         "cmd": "bold",
         "ghost": "#777777 italic",
@@ -285,6 +291,7 @@ class LiveTUI:
         icon_map = {
             "PASS": ("class:pass", "✓"),
             "FAIL": ("class:fail", "✗"),
+            "WARN": ("class:warn", "!"),
             "RUNNING": (_RUNNING, "⋯"),
             "INFO": ("class:info", "•"),
         }
@@ -309,7 +316,7 @@ class LiveTUI:
             detail += f"  [{result.strategy}]"
         out.append((_META, detail))
         if result.message:
-            msg_style = "class:fail" if result.status == ActionStatus.FAIL else _META
+            msg_style = {ActionStatus.FAIL: "class:fail", ActionStatus.WARN: "class:warn"}.get(result.status, _META)
             out.append((msg_style, f"  {result.message}"))
         out.append(("", "\n"))
         return out
@@ -722,6 +729,8 @@ class LiveTUI:
     def _nl_summary_message(summary: NLSummary) -> str:
         if summary.status == NLRunStatus.PASS:
             label = "done"
+        elif summary.status == NLRunStatus.UNVERIFIED:
+            label = "PASS (unverified)"
         elif summary.status == NLRunStatus.ABORTED:
             label = "aborted"
         elif summary.status == NLRunStatus.MAX_STEPS:
@@ -729,9 +738,10 @@ class LiveTUI:
         else:
             label = "failed"
         parts = [f"{label} · {summary.steps} step(s) · {summary.elapsed:.1f}s"]
-        if summary.status == NLRunStatus.PASS and summary.steps:
+        done = summary.status in (NLRunStatus.PASS, NLRunStatus.UNVERIFIED)
+        if done and summary.steps:
             parts.append(f"recorded {summary.steps} (/save to keep)")
-        if summary.message and summary.status != "PASS":
+        if summary.message and summary.status != NLRunStatus.PASS:
             parts.append(summary.message)
         return " · ".join(parts)
 
@@ -770,7 +780,7 @@ class LiveTUI:
                         lambda: self._nl_abort,
                     ),
                 )
-                header.status = ActionStatus.PASS if summary.status == NLRunStatus.PASS else ActionStatus.FAIL
+                header.status = _NL_HEADER_STATUS.get(summary.status, ActionStatus.FAIL)
                 header.elapsed = summary.elapsed
                 header.message = self._nl_summary_message(summary)
             except Exception as exc:  # noqa: BLE001 - never crash the UI

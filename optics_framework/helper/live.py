@@ -28,13 +28,13 @@ from datetime import datetime
 from itertools import product
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
-import cv2
-import numpy as np
 import yaml
 
 from optics_framework.common import utils
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.keyword_outcome import find_error_log, winning_strategy
+from optics_framework.common.screen_snapshot import Row, element_name, read_screen
 from optics_framework.common.logging_config import (
     internal_logger,
     execution_logger,
@@ -64,16 +64,8 @@ from optics_framework.helper.execute import discover_templates, identify_file_co
 # Canonical optics logger names, referenced in several handler-management helpers.
 _INTERNAL_LOGGER_NAME = "optics.internal"
 _EXECUTION_LOGGER_NAME = "optics.execution"
+_VAR_RE = re.compile(r"\$\{([^}]*)\}")
 
-
-# Map locator-strategy class names (logged by ExecutionTracer) to short labels.
-_STRATEGY_LABELS: Dict[str, str] = {
-    "XPathStrategy": "XPath",
-    "TextElementStrategy": "Text",
-    "TextDetectionStrategy": "OCR",
-    "ImageDetectionStrategy": "Image",
-}
-_STRATEGY_SUCCESS_RE = re.compile(r"Trying (\w+) on .*? \.\.\. SUCCESS", re.IGNORECASE)
 
 class ActionStatus(str, Enum):
     """Status of a single keyword execution (str-valued, so it compares as a string)."""
@@ -82,12 +74,14 @@ class ActionStatus(str, Enum):
     FAIL = "FAIL"
     INFO = "INFO"
     RUNNING = "RUNNING"
+    WARN = "WARN"
 
 
 class NLRunStatus(str, Enum):
     """Terminal status of a natural-language run."""
 
     PASS = "PASS"  # nosec B105 - enum member name, not a credential
+    UNVERIFIED = "UNVERIFIED"
     FAIL = "FAIL"
     ABORTED = "ABORTED"
     MAX_STEPS = "MAX_STEPS"
@@ -104,6 +98,7 @@ class NLStepKind(str, Enum):
 # Map NaturalLanguageAgent terminal statuses to the live-session summary status.
 _NL_STATUS_MAP: Dict[str, NLRunStatus] = {
     "done": NLRunStatus.PASS,
+    "done_unverified": NLRunStatus.UNVERIFIED,
     "failed": NLRunStatus.FAIL,
     "aborted": NLRunStatus.ABORTED,
     "exhausted": NLRunStatus.MAX_STEPS,
@@ -188,7 +183,7 @@ class SaveResult:
 
 _CONFIG_KEYS = frozenset({
     "driver_sources", "element_sources", "elements_sources",
-    "text_detection", "image_detection", "llm_models",
+    "text_detection", "image_detection", "llm_models", "nl_agent",
     "log_level", "json_log", "file_log",
 })
 
@@ -362,6 +357,10 @@ class LiveController:
         # availability flag is computed from config (an enabled llm_models entry).
         self._nl_agent: Optional[NaturalLanguageAgent] = None
         self._nl_available: Optional[bool] = None
+        # The running NL instruction's new element names with the rungs to add on success,
+        # and every name the kept runs added, for /save.
+        self._nl_new_elements: dict[str, list[str]] = {}
+        self._agent_elements: set[str] = set()
 
     # -- Logging ------------------------------------------------------------------
 
@@ -675,7 +674,7 @@ class LiveController:
         # Surfaced to the user, never crashes the controller.
         except Exception as exc:  # noqa: BLE001
             return exc
-        silent_error = self._find_error_log(internal_capture)
+        silent_error = find_error_log(internal_capture.records)
         if silent_error is not None:
             return OpticsError(Code.E0401, message=silent_error)
         return None
@@ -707,7 +706,7 @@ class LiveController:
                 params=params,
                 status=ActionStatus.PASS,
                 elapsed=time.time() - start,
-                strategy=self._winning_strategy(strategy_capture),
+                strategy=winning_strategy(strategy_capture.records),
                 recorded=record,
             )
         if isinstance(last_exc, (TypeError, ValueError)):
@@ -774,37 +773,6 @@ class LiveController:
         return resolved
 
     @staticmethod
-    def _find_error_log(log_capture: LogCaptureBuffer) -> Optional[str]:
-        """Return the message of the first ERROR+ record in ``log_capture``, or None.
-
-        Used to detect cases where the framework reports a failure via logging
-        instead of raising (the appium driver's "Unknown swipe direction" path
-        is the canonical example). A returned value means the keyword "succeeded"
-        in the Python sense but didn't actually do what was asked.
-        """
-        for record in log_capture.records:
-            if isinstance(record, logging.LogRecord) and record.levelno >= logging.ERROR:
-                try:
-                    return record.getMessage()
-                except Exception:  # pragma: no cover - defensive
-                    return str(record)
-        return None
-
-    @staticmethod
-    def _winning_strategy(log_capture: LogCaptureBuffer) -> Optional[str]:
-        """Read the last successful locator strategy from captured execution logs."""
-        for record in reversed(log_capture.records):
-            try:
-                message = record.getMessage() if isinstance(record, logging.LogRecord) else str(record)
-            except Exception:  # nosec B112 # pragma: no cover - defensive
-                continue
-            match = _STRATEGY_SUCCESS_RE.search(message)
-            if match:
-                cls_name = match.group(1)
-                return _STRATEGY_LABELS.get(cls_name, cls_name.replace("Strategy", ""))
-        return None
-
-    @staticmethod
     def _format_error(exc: Optional[BaseException]) -> str:
         if exc is None:
             return "Keyword failed"
@@ -832,8 +800,8 @@ class LiveController:
         module_name)`` row), and the project's elements CSV. Elements go into an
         existing elements file when one is tracked anywhere in the project (the
         scaffolds keep it at ``test_data/elements.csv``) — only names not already
-        present are merged in; with no elements CSV anywhere, a header-only
-        ``elements/elements.csv`` stub is created as before.
+        present are merged in; with no elements CSV anywhere, ``elements/elements.csv``
+        is created with the elements the NL agent named.
 
         Session artifacts are copied to ``execution_output/<module_name>/``.
 
@@ -978,8 +946,8 @@ class LiveController:
         creating a second file (the scaffolds track elements in
         ``test_data/elements.csv``, and a fresh ``elements/elements.csv`` stub
         would scatter element data across two folders). Only names not already
-        present are appended; with no elements CSV anywhere, today's header-only
-        ``elements/elements.csv`` stub is created. Returns the file written.
+        present are appended; with no elements CSV anywhere, ``elements/elements.csv``
+        is created with the elements the NL agent named. Returns the file written.
         """
         self.ensure_elements_loaded()
         existing = self._find_elements_csv()
@@ -989,6 +957,7 @@ class LiveController:
         elements_path = os.path.join(self.folder_path, "elements", "elements.csv")
         os.makedirs(os.path.dirname(elements_path), exist_ok=True)
         self._ensure_elements_stub(elements_path)
+        self._append_new_elements(elements_path, only=self._agent_elements)
         return elements_path
 
     def _find_elements_csv(self) -> Optional[str]:
@@ -1029,13 +998,14 @@ class LiveController:
                         names.add(name.lower())
         return names
 
-    def _append_new_elements(self, path: str) -> None:
+    def _append_new_elements(self, path: str, only: Optional[set[str]] = None) -> None:
         """Append session element rows missing from ``path`` (never duplicates).
 
         Dedupe is case-insensitive on element name; rows are appended verbatim
         so the file's existing content, column layout, and line endings stay
         intact. A missing trailing newline on the last row is repaired before
-        appending so the first new row doesn't glue onto it.
+        appending so the first new row doesn't glue onto it. ``only`` limits the
+        rows to those names.
         """
         elements = self.session.elements
         if elements is None or not elements.elements:
@@ -1044,7 +1014,7 @@ class LiveController:
         rows = [
             (escape_csv_value(name), escape_csv_value(value))
             for name, values in elements.elements.items()
-            if name.strip().lower() not in present
+            if name.strip().lower() not in present and (only is None or name in only)
             for value in values
         ]
         if not rows:
@@ -1289,33 +1259,8 @@ class LiveController:
         return utils.strip_page_source(xml_source) or None
 
     def screen_elements(self, png: bytes) -> Optional[List[dict]]:
-        """Compact interactive elements for the current screen, with bounds.
-
-        Best-effort: returns ``None`` when the active element source cannot extract
-        elements, so the NL agent falls back to ``page_source``. Bounds are scaled
-        against ``png`` -- the screenshot the agent already captured for the LLM this
-        step -- rather than a second device capture; the decode is skipped for
-        non-Appium sources, where the scaling is a no-op anyway.
-        """
-        if self._action_keyword is None:  # pragma: no cover - defensive
-            return None
-        try:
-            elements = self._action_keyword.strategy_manager.get_interactive_elements(
-                None, compact=True
-            )
-        except OpticsError as exc:
-            internal_logger.debug("Structured screen elements unavailable: %s", exc)
-            return None
-        element_source = self._action_keyword.element_source
-        active_source = getattr(element_source, "active_instance", None) or element_source
-        screenshot_np = None
-        if getattr(active_source, "REQUIRED_DRIVER_TYPE", None) == "appium":
-            try:
-                screenshot_np = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
-            except Exception as exc:  # noqa: BLE001
-                internal_logger.debug("Screenshot decode for bounds scaling failed: %s", exc)
-        utils.scale_interactive_element_bounds(elements, element_source, screenshot_np)
-        return elements
+        """Compact interactive elements for the current screen, with bounds scaled against ``png``."""
+        return read_screen(self._action_keyword, png)
 
     def _nl_execute(self, raw: str) -> ExecResult:
         """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
@@ -1338,6 +1283,7 @@ class LiveController:
                 message="No LLM engine enabled. Enable a gemini, openai or anthropic entry "
                 "under llm_models in config.yaml.",
             )
+        settings = self.config.nl_agent
         self._nl_agent = NaturalLanguageAgent(
             llm=llm,
             screenshot_provider=self.screenshot_png_bytes,
@@ -1346,9 +1292,80 @@ class LiveController:
             element_names=self.element_names,
             pagesource_provider=self.page_source,
             screen_elements_provider=self.screen_elements,
+            max_steps=settings.max_steps,
             curate_on_done=True,
+            keywords=self.keyword_map,
+            element_registrar=self._register_agent_element,
+            vision=settings.vision,
+            escalation_llm=self._escalation_llm(llm, settings.escalation_model),
+            driver=self.driver_type,
         )
         return self._nl_agent
+
+    def _escalation_llm(self, llm: Any, model: str) -> Any | None:
+        """The first enabled engine rebuilt with ``model``, or None when no escalation model is set.
+
+        Built directly, not through the factory: the factory caches one instance per engine
+        name, so a second entry for the same engine would return the first one.
+        """
+        if not model:
+            return None
+        entry = next(
+            (details for item in self.config.llm_models for _name, details in item.items() if details.enabled),
+            None,
+        )
+        if entry is None:
+            return None
+        config = entry.model_dump()
+        config["capabilities"] = {**config.get("capabilities", {}), "model": model}
+        return type(llm.instances[0])(config)
+
+    def _register_agent_element(self, row: Row, live_rungs: list[str], replay_rungs: list[str]) -> str:
+        """Name the agent's target as a project element and return the ``${name}`` to run with."""
+        self.ensure_elements_loaded()
+        if self.session.elements is None:
+            self.session.elements = ElementData()
+        elements = self.session.elements
+        for name, values in elements.elements.items():
+            if values and values[0] == live_rungs[0]:
+                return "${" + name + "}"
+        taken = set(elements.elements) | {name.lower() for name in elements.elements}
+        name = element_name(row, taken)
+        for rung in live_rungs:
+            elements.add_element(name, rung)
+        self._nl_new_elements[name] = replay_rungs
+        return "${" + name + "}"
+
+    def _settle_agent_elements(self, kept_steps: List[Tuple[str, List[str]]]) -> None:
+        """Keep the run's new elements that ``kept_steps`` use, with their replay rungs; drop the rest."""
+        new, self._nl_new_elements = self._nl_new_elements, {}
+        elements = self.session.elements if new else None
+        if elements is None:
+            return
+        used = {name for _keyword, params in kept_steps for param in params for name in _VAR_RE.findall(param)}
+        for name, rungs in new.items():
+            if name not in used:
+                elements.remove_element(name)
+                continue
+            values = elements.get_element(name) or []
+            for rung in rungs:
+                if rung not in values:
+                    elements.add_element(name, rung)
+            self._agent_elements.add(name)
+
+    @contextmanager
+    def _self_heal_suspended(self) -> Iterator[None]:
+        """Turn AI self-heal off for an NL run: the agent heals itself and must see every step."""
+        action_keyword = self._action_keyword
+        if action_keyword is None:
+            yield
+            return
+        enabled = action_keyword.ai_self_heal_enabled
+        action_keyword.ai_self_heal_enabled = False
+        try:
+            yield
+        finally:
+            action_keyword.ai_self_heal_enabled = enabled
 
     @staticmethod
     def _nl_action_result(step: AgentStep) -> ActionResult:
@@ -1378,9 +1395,11 @@ class LiveController:
             if step.thought:
                 on_step(NLStep(kind=NLStepKind.THINKING, text=step.thought))
             return
-        if step.action == "keyword":
+        if step.action == "keyword" and step.keyword:
             action_result = self._nl_action_result(step)
             on_step(NLStep(kind=NLStepKind.KEYWORD, text=action_result.raw, result=action_result))
+        else:
+            on_step(NLStep(kind=NLStepKind.NOTE, text=step.observation))
 
     def run_natural_language(
         self,
@@ -1391,9 +1410,10 @@ class LiveController:
         """Translate a natural-language instruction into keyword calls (ReAct loop).
 
         Blocking — callers run this off the UI thread. ``on_step`` is invoked per agent
-        step (thinking lines + executed keyword results). Recording is commit-on-done: the
-        buffered successful steps are appended to ``self.recorded`` only when the whole
-        instruction succeeds, so an incomplete run never pollutes ``/save``.
+        step (thinking lines, executed keyword results and notes). Recording is
+        commit-on-done: the buffered steps, and the elements the agent named, are kept only
+        when the instruction ends done (verified or not), so an incomplete run never
+        pollutes ``/save``. AI self-heal is off during the run.
         """
         start = time.time()
         instruction = instruction.strip()
@@ -1406,18 +1426,21 @@ class LiveController:
             return NLSummary(instruction, NLRunStatus.FAIL, 0, time.time() - start, self._format_error(exc))
 
         try:
-            result: AgentResult = agent.run(
-                instruction,
-                on_step=lambda step: self._emit_nl_step(step, on_step),
-                should_abort=should_abort,
-            )
+            with self._self_heal_suspended():
+                result: AgentResult = agent.run(
+                    instruction,
+                    on_step=lambda step: self._emit_nl_step(step, on_step),
+                    should_abort=should_abort,
+                )
         except Exception as exc:  # noqa: BLE001 - never crash the controller
+            self._settle_agent_elements([])
             return NLSummary(
                 instruction, NLRunStatus.FAIL, 0, time.time() - start, f"{type(exc).__name__}: {exc}"
             )
 
-        # Commit-on-done: only a fully successful run is added to the recording.
-        if result.status == "done" and result.successful_steps:
+        done = result.status in ("done", "done_unverified")
+        self._settle_agent_elements(result.successful_steps if done else [])
+        if done and result.successful_steps:
             self.recorded.extend(result.successful_steps)
             self.saved = False
 

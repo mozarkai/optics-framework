@@ -37,6 +37,7 @@ class _Controller(LiveController):
         # save() merges these into the project's tracked elements CSV; the flag
         # short-circuits ensure_elements_loaded's own project walk.
         self._elements_loaded = True
+        self._agent_elements = set()
         self.session = SimpleNamespace(elements=elements if elements is not None else ElementData())
 
 

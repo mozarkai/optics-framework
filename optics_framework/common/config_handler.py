@@ -1,6 +1,6 @@
 import os
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +15,13 @@ class DependencyConfig(BaseModel):
     capabilities: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class NLAgentConfig(BaseModel):
+    """Settings of the natural-language agent in ``optics live``."""
+    vision: Literal["auto", "always", "never"] = "auto"
+    max_steps: int = Field(default=15, ge=1)
+    escalation_model: str = ""
 
 
 class Config(BaseModel):
@@ -39,6 +46,7 @@ class Config(BaseModel):
     halt_duration: float = 0.1
     ai_self_heal: bool = False
     strict_element_match: bool = False
+    nl_agent: NLAgentConfig = Field(default_factory=NLAgentConfig)
 
     def __init__(self, **data):
         super().__init__(**data)
