@@ -1,0 +1,167 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/configuration.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_172">172</td><td nowrap="nowrap">| **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |</td><td class="diff_next"></td><td class="diff_header" id="to0_172">172</td><td nowrap="nowrap">| **Text Detection** | `easyocr`, `pytesseract`, `google_vision` | See Text Detection tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_173">173</td><td nowrap="nowrap">| **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |</td><td class="diff_next"></td><td class="diff_header" id="to0_173">173</td><td nowrap="nowrap">| **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_174">174</td><td nowrap="nowrap">| **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |</td><td class="diff_next"></td><td class="diff_header" id="to0_174">174</td><td nowrap="nowrap">| **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_175">175</td><td nowrap="nowrap">| **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |</td><td class="diff_next"></td><td class="diff_header" id="to0_175">175</td><td nowrap="nowrap">| **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="to0_176">176</td><td nowrap="nowrap"><span class="diff_add">| **Natural-language agent** | `nl_agent` | `vision: auto`, `max_steps: 15` |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_176">176</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_177">177</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_177">177</td><td nowrap="nowrap">## Configuration Structure</td><td class="diff_next"></td><td class="diff_header" id="to0_178">178</td><td nowrap="nowrap">## Configuration Structure</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_178">178</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_179">179</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_179">179</td><td nowrap="nowrap">All configurations are defined in YAML format. The main configuration file (`config.yaml`) supports the following top-level sections:</td><td class="diff_next"></td><td class="diff_header" id="to0_180">180</td><td nowrap="nowrap">All configurations are defined in YAML format. The main configuration file (`config.yaml`) supports the following top-level sections:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__1"></td><td class="diff_header" id="from0_351">351</td><td nowrap="nowrap">          enabled: true</td><td class="diff_next"></td><td class="diff_header" id="to0_352">352</td><td nowrap="nowrap">          enabled: true</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_352">352</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_353">353</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_353">353</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_354">354</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_354">354</td><td nowrap="nowrap">    See [LLM Models](#llm-models) below for backend configuration.</td><td class="diff_next"></td><td class="diff_header" id="to0_355">355</td><td nowrap="nowrap">    See [LLM Models](#llm-models) below for backend configuration.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="to0_356">356</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_357">357</td><td nowrap="nowrap"><span class="diff_add">=== "Natural-Language Agent"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_358">358</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_359">359</td><td nowrap="nowrap"><span class="diff_add">    ### `nl_agent`</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_360">360</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_361">361</td><td nowrap="nowrap"><span class="diff_add">    **Type:** `object` | **Default:** `{vision: auto, max_steps: 15, escalation_model: ""}`</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_362">362</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_363">363</td><td nowrap="nowrap"><span class="diff_add">    Settings of the natural-language mode of `optics live` (`Ctrl-N`). They have an effect</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_364">364</td><td nowrap="nowrap"><span class="diff_add">    only when an entry under `llm_models` is enabled.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_365">365</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_366">366</td><td nowrap="nowrap"><span class="diff_add">    ```yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_367">367</td><td nowrap="nowrap"><span class="diff_add">    nl_agent:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_368">368</td><td nowrap="nowrap"><span class="diff_add">      vision: auto          # auto | always | never</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_369">369</td><td nowrap="nowrap"><span class="diff_add">      max_steps: 15</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_370">370</td><td nowrap="nowrap"><span class="diff_add">      escalation_model: ""  # optional; a stronger model of the first enabled engine</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_371">371</td><td nowrap="nowrap"><span class="diff_add">    ```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_372">372</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_373">373</td><td nowrap="nowrap"><span class="diff_add">    | Key | Meaning |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_374">374</td><td nowrap="nowrap"><span class="diff_add">    |-----|---------|</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_375">375</td><td nowrap="nowrap"><span class="diff_add">    | `vision` | When the agent sends the screenshot. `auto` sends it on the first turn, after a step that code did not confirm, when the screen has few or unlabelled controls, and when no element list is available. `always` sends it on every turn. `never` sends no image, for text-only models. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_376">376</td><td nowrap="nowrap"><span class="diff_add">    | `max_steps` | The most actions the agent takes for one instruction. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_377">377</td><td nowrap="nowrap"><span class="diff_add">    | `escalation_model` | A model ID for the same engine as the first enabled `llm_models` entry. The agent sends hard turns to it: a second try after a bad reply, a turn after two failures in a row, and a turn with a guard note. Empty means one model for all turns. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_355">355</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_378">378</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_356">356</td><td nowrap="nowrap">---</td><td class="diff_next"></td><td class="diff_header" id="to0_379">379</td><td nowrap="nowrap">---</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_357">357</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_380">380</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_358">358</td><td nowrap="nowrap">## Driver Sources</td><td class="diff_next"></td><td class="diff_header" id="to0_381">381</td><td nowrap="nowrap">## Driver Sources</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__2"></td><td class="diff_header" id="from0_814">814</td><td nowrap="nowrap">Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the</td><td class="diff_next"></td><td class="diff_header" id="to0_837">837</td><td nowrap="nowrap">Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_815">815</td><td nowrap="nowrap">`llm` extra installs all three. Keys are read from environment variables only. If you enable</td><td class="diff_next"></td><td class="diff_header" id="to0_838">838</td><td nowrap="nowrap">`llm` extra installs all three. Keys are read from environment variables only. If you enable</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_816">816</td><td nowrap="nowrap">more than one entry, a failed call falls through to the next one in list order.</td><td class="diff_next"></td><td class="diff_header" id="to0_839">839</td><td nowrap="nowrap">more than one entry, a failed call falls through to the next one in list order.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_817">817</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_840">840</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="to0_841">841</td><td nowrap="nowrap"><span class="diff_add">Every engine takes `capabilities.timeout_s` (default `60`): the seconds one request may take.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_842">842</td><td nowrap="nowrap"><span class="diff_add">A request that takes longer fails like any other LLM error, so a stalled connection cannot hang</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_843">843</td><td nowrap="nowrap"><span class="diff_add">a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before it fails.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_844">844</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_818">818</td><td nowrap="nowrap">| You have | Engine |</td><td class="diff_next"></td><td class="diff_header" id="to0_845">845</td><td nowrap="nowrap">| You have | Engine |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_819">819</td><td nowrap="nowrap">|----------|--------|</td><td class="diff_next"></td><td class="diff_header" id="to0_846">846</td><td nowrap="nowrap">|----------|--------|</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_820">820</td><td nowrap="nowrap">| A Gemini API key, or Vertex AI | `gemini` |</td><td class="diff_next"></td><td class="diff_header" id="to0_847">847</td><td nowrap="nowrap">| A Gemini API key, or Vertex AI | `gemini` |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_821">821</td><td nowrap="nowrap">| An OpenAI key, OpenRouter, Azure OpenAI, or a local server (Ollama, vLLM, LM Studio) | `openai` |</td><td class="diff_next"></td><td class="diff_header" id="to0_848">848</td><td nowrap="nowrap">| An OpenAI key, OpenRouter, Azure OpenAI, or a local server (Ollama, vLLM, LM Studio) | `openai` |</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__3"></td><td class="diff_header" id="from0_835">835</td><td nowrap="nowrap">            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)</td><td class="diff_next"></td><td class="diff_header" id="to0_862">862</td><td nowrap="nowrap">            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_836">836</td><td nowrap="nowrap">            # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI</td><td class="diff_next"></td><td class="diff_header" id="to0_863">863</td><td nowrap="nowrap">            # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_837">837</td><td nowrap="nowrap">            # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT</td><td class="diff_next"></td><td class="diff_header" id="to0_864">864</td><td nowrap="nowrap">            # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_838">838</td><td nowrap="nowrap">            # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION</td><td class="diff_next"></td><td class="diff_header" id="to0_865">865</td><td nowrap="nowrap">            # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__4">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__4">n</a></td><td class="diff_header" id="to0_866">866</td><td nowrap="nowrap"><span class="diff_add">            # timeout_s: 60            # optional; seconds per request</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_839">839</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_867">867</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_840">840</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_868">868</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_841">841</td><td nowrap="nowrap">    With no `capabilities` set, the SDK auto-detects everything from environment variables:</td><td class="diff_next"></td><td class="diff_header" id="to0_869">869</td><td nowrap="nowrap">    With no `capabilities` set, the SDK auto-detects everything from environment variables:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_842">842</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_870">870</td><td nowrap="nowrap"></td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__4"></td><td class="diff_header" id="from0_869">869</td><td nowrap="nowrap">            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY</td><td class="diff_next"></td><td class="diff_header" id="to0_897">897</td><td nowrap="nowrap">            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_870">870</td><td nowrap="nowrap">            # response_format: json_object     # for servers without JSON-schema output</td><td class="diff_next"></td><td class="diff_header" id="to0_898">898</td><td nowrap="nowrap">            # response_format: json_object     # for servers without JSON-schema output</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_871">871</td><td nowrap="nowrap">            # max_tokens: 4096                  # optional cap per reply; unset = server default</td><td class="diff_next"></td><td class="diff_header" id="to0_899">899</td><td nowrap="nowrap">            # max_tokens: 4096                  # optional cap per reply; unset = server default</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_872">872</td><td nowrap="nowrap">            # temperature: 0.0</td><td class="diff_next"></td><td class="diff_header" id="to0_900">900</td><td nowrap="nowrap">            # temperature: 0.0</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__5">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__5">n</a></td><td class="diff_header" id="to0_901">901</td><td nowrap="nowrap"><span class="diff_add">            # timeout_s: 60                     # optional; seconds per request</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_873">873</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_902">902</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_874">874</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_903">903</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_875">875</td><td nowrap="nowrap">    | Server | `url` | Key |</td><td class="diff_next"></td><td class="diff_header" id="to0_904">904</td><td nowrap="nowrap">    | Server | `url` | Key |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_876">876</td><td nowrap="nowrap">    |--------|-------|-----|</td><td class="diff_next"></td><td class="diff_header" id="to0_905">905</td><td nowrap="nowrap">    |--------|-------|-----|</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__5"></td><td class="diff_header" id="from0_900">900</td><td nowrap="nowrap">            # region: us-east-1        # Bedrock or Vertex region</td><td class="diff_next"></td><td class="diff_header" id="to0_929">929</td><td nowrap="nowrap">            # region: us-east-1        # Bedrock or Vertex region</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_901">901</td><td nowrap="nowrap">            # project: your-project    # Vertex project</td><td class="diff_next"></td><td class="diff_header" id="to0_930">930</td><td nowrap="nowrap">            # project: your-project    # Vertex project</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_902">902</td><td nowrap="nowrap">            # max_tokens: 4096</td><td class="diff_next"></td><td class="diff_header" id="to0_931">931</td><td nowrap="nowrap">            # max_tokens: 4096</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_903">903</td><td nowrap="nowrap">            # temperature: 0.0</td><td class="diff_next"></td><td class="diff_header" id="to0_932">932</td><td nowrap="nowrap">            # temperature: 0.0</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_933">933</td><td nowrap="nowrap"><span class="diff_add">            # timeout_s: 60            # optional; seconds per request</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_904">904</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_934">934</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_905">905</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_935">935</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_906">906</td><td nowrap="nowrap">    | Platform | Credentials |</td><td class="diff_next"></td><td class="diff_header" id="to0_936">936</td><td nowrap="nowrap">    | Platform | Credentials |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_907">907</td><td nowrap="nowrap">    |----------|-------------|</td><td class="diff_next"></td><td class="diff_header" id="to0_937">937</td><td nowrap="nowrap">    |----------|-------------|</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>

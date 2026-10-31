@@ -1,0 +1,138 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/live_usage.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/live_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/live_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_83">83</td><td nowrap="nowrap">## Slash commands</td><td class="diff_next"></td><td class="diff_header" id="to1_83">83</td><td nowrap="nowrap">## Slash commands</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_84">84</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_84">84</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_85">85</td><td nowrap="nowrap">| Command          | Description |</td><td class="diff_next"></td><td class="diff_header" id="to1_85">85</td><td nowrap="nowrap">| Command          | Description |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_86">86</td><td nowrap="nowrap">|------------------|-------------|</td><td class="diff_next"></td><td class="diff_header" id="to1_86">86</td><td nowrap="nowrap">|------------------|-------------|</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="from1_87">87</td><td nowrap="nowrap">| `/save &lt;test_case&gt; &lt;module_name&gt;` | Save the recorded actions as `&lt;module_name&gt;` in `modules/modules.csv` and add a `(&lt;test_case&gt;, &lt;module_name&gt;)` row to `test_cases/test_cases.csv`. Elements are merged into your project's existing elements CSV when one is tracked anywhere (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second `elements/elements.csv` appears; with no elements file, <span class="diff_chg">a header</span>-<span class="diff_chg">only `elements/elements.csv` stub is created.</span> All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `&lt;module_name&gt;` or `&lt;test_case&gt;` already exists, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/&lt;module_name&gt;/`. |</td><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="to1_87">87</td><td nowrap="nowrap">| `/save &lt;test_case&gt; &lt;module_name&gt;` | Save the recorded actions as `&lt;module_name&gt;` in `modules/modules.csv` and add a `(&lt;test_case&gt;, &lt;module_name&gt;)` row to `test_cases/test_cases.csv`. Elements are merged into your project's existing elements CSV when one is tracked anywhere (the templates keep it at `test_data/elements.csv`) — only names not already present are appended, so no second `elements/elements.csv` appears; with no elements file, <span class="diff_chg">`elements/elements.csv` is created with the elements that natural</span>-<span class="diff_chg">language runs named.</span> All three files use fixed names and are **appended** to when they already exist, so you can build a suite one module at a time. A successful save **clears the recording buffer**, so the next actions become the next module. If `&lt;module_name&gt;` or `&lt;test_case&gt;` already exists, the save is refused with a prompt — re-run the identical `/save` to append, or pick a different name. Session screenshots/artifacts are also snapshotted to `execution_output/&lt;module_name&gt;/`. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_88">88</td><td nowrap="nowrap">| `/device [id]`   | **Appium sessions only.** List the **Android** (`adb`) and **iOS** (`idevice_id`) devices attached to *this* machine, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). See the note below for remote Appium hubs. |</td><td class="diff_next"></td><td class="diff_header" id="to1_88">88</td><td nowrap="nowrap">| `/device [id]`   | **Appium sessions only.** List the **Android** (`adb`) and **iOS** (`idevice_id`) devices attached to *this* machine, each labelled by platform; with no argument, pick one to switch the active device's `udid`. The chosen device must match the session's configured platform. For Selenium/Playwright it reports that switching doesn't apply (the target is the configured browser). See the note below for remote Appium hubs. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_89">89</td><td nowrap="nowrap">| `/elements`      | Open a read-only popup of named elements and their locators (Up/Down scrolls, Esc closes). |</td><td class="diff_next"></td><td class="diff_header" id="to1_89">89</td><td nowrap="nowrap">| `/elements`      | Open a read-only popup of named elements and their locators (Up/Down scrolls, Esc closes). |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_90">90</td><td nowrap="nowrap">| `/screenshot`    | Capture the current device screen to a file and note the path in the history. |</td><td class="diff_next"></td><td class="diff_header" id="to1_90">90</td><td nowrap="nowrap">| `/screenshot`    | Capture the current device screen to a file and note the path in the history. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_91">91</td><td nowrap="nowrap">| `/help`          | Show the command reference (Up/Down scrolls, Esc closes). |</td><td class="diff_next"></td><td class="diff_header" id="to1_91">91</td><td nowrap="nowrap">| `/help`          | Show the command reference (Up/Down scrolls, Esc closes). |</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__1"></td><td class="diff_header" id="from1_115">115</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_115">115</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_116">116</td><td nowrap="nowrap">## Natural-language mode (optional)</td><td class="diff_next"></td><td class="diff_header" id="to1_116">116</td><td nowrap="nowrap">## Natural-language mode (optional)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_117">117</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_117">117</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_118">118</td><td nowrap="nowrap">Press `Ctrl-N` to toggle AI mode, then type an instruction in plain English</td><td class="diff_next"></td><td class="diff_header" id="to1_118">118</td><td nowrap="nowrap">Press `Ctrl-N` to toggle AI mode, then type an instruction in plain English</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="from1_119">119</td><td nowrap="nowrap"><span class="diff_sub">(e.g. `type "movies for kids" in the search bar`). Each turn the LLM is given a</span></td><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="to1_119">119</td><td nowrap="nowrap"><span class="diff_add">(e.g. `type "movies for kids" in the search bar`). `Ctrl-X` aborts. It works with whatever</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_120">120</td><td nowrap="nowrap"><span class="diff_sub">screenshot **and** a condensed UI hierarchy of the on-screen elements (their text,</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__2"></td><td class="diff_header" id="from1_121">121</td><td nowrap="nowrap"><span class="diff_sub">content-desc, resource ids, bounds, and flags — when the driver exposes a page source),</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_122">122</td><td nowrap="nowrap"><span class="diff_sub">and drives keywords step-by-step until the goal is reached; `Ctrl-X` aborts. A fully</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_123">123</td><td nowrap="nowrap"><span class="diff_sub">successful run is recorded and `/save`-able like any manual session. It works with whatever</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_124">124</td><td nowrap="nowrap">driver your config uses (Appium/Selenium/Playwright).</td><td class="diff_next"></td><td class="diff_header" id="to1_120">120</td><td nowrap="nowrap">driver your config uses (Appium/Selenium/Playwright).</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="to1_121">121</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_122">122</td><td nowrap="nowrap"><span class="diff_add">Each turn the agent reads the screen as a list of rows, for example</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_123">123</td><td nowrap="nowrap"><span class="diff_add">`e7 button "Sign in" [tap] #login`. `e7` is a ref, the words in quotes are on the screen,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_124">124</td><td nowrap="nowrap"><span class="diff_add">and `[tap]` lists what the element accepts. The LLM picks one action on a ref (`tap`, `type`,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_125">125</td><td nowrap="nowrap"><span class="diff_add">`select`, `scroll`, `key`, `open`, `check`, or any keyword) and says what text the next</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_126">126</td><td nowrap="nowrap"><span class="diff_add">screen must show or lose. The agent then:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_127">127</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_128">128</td><td nowrap="nowrap"><span class="diff_add">- runs the action through a locator that matches only that element, never through fuzzy text;</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_129">129</td><td nowrap="nowrap"><span class="diff_add">- reads the screen again and judges the step in code: **pass** when the expected text</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_130">130</td><td nowrap="nowrap"><span class="diff_add">  appears (text that was already on the screen proves nothing), **fail** when the action</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_131">131</td><td nowrap="nowrap"><span class="diff_add">  failed or nothing changed and the expectation is not met, and **unknown** otherwise, when</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_132">132</td><td nowrap="nowrap"><span class="diff_add">  the LLM judges it from the screen;</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_133">133</td><td nowrap="nowrap"><span class="diff_add">- accepts **done** only when the goal text that the LLM names is on the screen. A run that</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_134">134</td><td nowrap="nowrap"><span class="diff_add">  ends done without naming any goal text shows as `PASS (unverified)`;</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_135">135</td><td nowrap="nowrap"><span class="diff_add">- asks the LLM once more, with a correction, when a reply cannot run (a ref that is gone, a</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_136">136</td><td nowrap="nowrap"><span class="diff_add">  missing text, a typed value that is not in the instruction or on the screen);</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_137">137</td><td nowrap="nowrap"><span class="diff_add">- stops a run that loops: after 3 failures or 3 gestures in a row, and when actions keep</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_138">138</td><td nowrap="nowrap"><span class="diff_add">  leaving the screen unchanged (it adds a warning note first);</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_139">139</td><td nowrap="nowrap"><span class="diff_add">- sends the screenshot only when it adds information (see `nl_agent.vision` in</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_140">140</td><td nowrap="nowrap"><span class="diff_add">  [Configuration](../configuration.md#nl_agent)).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_141">141</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_142">142</td><td nowrap="nowrap"><span class="diff_add">The agent turns each element it acts on into a named element, such as `${sign_in_button}`,</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_143">143</td><td nowrap="nowrap"><span class="diff_add">whose values are the element's locators and, last, its label. The recorded step is</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_144">144</td><td nowrap="nowrap"><span class="diff_add">`press_element ${sign_in_button}`, and `/save` writes the element to your elements CSV. AI</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_145">145</td><td nowrap="nowrap"><span class="diff_add">self-heal is off while the agent runs, so every step it takes shows in its history.</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__3"></td><td class="diff_header" id="from1_125">125</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_146">146</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_126">126</td><td nowrap="nowrap">When an instruction completes, the recorded steps are **curated** before they enter the</td><td class="diff_next"></td><td class="diff_header" id="to1_147">147</td><td nowrap="nowrap">When an instruction completes, the recorded steps are **curated** before they enter the</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_127">127</td><td nowrap="nowrap">`/save` buffer: a final LLM pass keeps only the steps that contribute to the goal and drops</td><td class="diff_next"></td><td class="diff_header" id="to1_148">148</td><td nowrap="nowrap">`/save` buffer: a final LLM pass keeps only the steps that contribute to the goal and drops</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_128">128</td><td nowrap="nowrap">the agent's dead-ends, backtracks, and no-op gestures — so what you save is a minimal,</td><td class="diff_next"></td><td class="diff_header" id="to1_149">149</td><td nowrap="nowrap">the agent's dead-ends, backtracks, and no-op gestures — so what you save is a minimal,</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="from1_129">129</td><td nowrap="nowrap">replayable script, not a transcript of everything it tried. <span class="diff_chg">An incomp</span>let<span class="diff_sub">e in</span>st<span class="diff_chg">ruc</span>t<span class="diff_chg">i</span>on</td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_150">150</td><td nowrap="nowrap">replayable script, not a transcript of everything it tried. <span class="diff_chg">The e</span>le<span class="diff_add">men</span>ts<span class="diff_add"> </span>t<span class="diff_chg">ha</span>t<span class="diff_chg"> </span>on<span class="diff_add">ly dropped</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_130">130</td><td nowrap="nowrap"><span class="diff_sub">(failed/aborted/step-limit) records nothing. If the curation pass can't produce a usable</span></td><td class="diff_next"></td><td class="diff_header" id="to1_151">151</td><td nowrap="nowrap"><span class="diff_add">steps used are removed. An incomplete instruction (failed/aborted/step-limit) records nothing</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_131">131</td><td nowrap="nowrap"><span class="diff_sub">result it safely falls back to keeping every successful step, so a working recording is never</span></td><td class="diff_next"></td><td class="diff_header" id="to1_152">152</td><td nowrap="nowrap"><span class="diff_add">and removes the elements it named. If the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_132">132</td><td nowrap="nowrap"><span class="diff_sub">lost. Three steps to enable AI mode:</span></td><td class="diff_next"></td><td class="diff_header" id="to1_153">153</td><td nowrap="nowrap"><span class="diff_add">curation pass can't produce a usable result it safely falls back to keeping every</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_154">154</td><td nowrap="nowrap"><span class="diff_add">successful step, so a working recording is never lost. Three steps to enable AI mode:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_133">133</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_155">155</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_134">134</td><td nowrap="nowrap">**1. Install the extra for your provider** (the SDKs are not in the base install):</td><td class="diff_next"></td><td class="diff_header" id="to1_156">156</td><td nowrap="nowrap">**1. Install the extra for your provider** (the SDKs are not in the base install):</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_135">135</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_157">157</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_136">136</td><td nowrap="nowrap">```bash</td><td class="diff_next"></td><td class="diff_header" id="to1_158">158</td><td nowrap="nowrap">```bash</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
