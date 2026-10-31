@@ -219,3 +219,17 @@ def test_settle_timeout_of_zero_skips_the_wait(monkeypatch):
     driver.wait_for_page_settled()
 
     driver.page.evaluate.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("direction", "delta"),
+    [("down", (0, 120)), ("up", (0, -120)), ("right", (120, 0)), ("left", (-120, 0))],
+)
+def test_scroll_wheels_the_way_the_content_moves(direction, delta):
+    driver = _driver()
+    driver.page.mouse.wheel = AsyncMock()
+    driver.page.wait_for_timeout = AsyncMock()
+
+    driver.scroll(direction)
+
+    driver.page.mouse.wheel.assert_awaited_with(*delta)

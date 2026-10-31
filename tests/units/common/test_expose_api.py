@@ -114,6 +114,12 @@ def test_discover_keywords_says_which_keywords_return_a_value():
     assert not returns["press_element"] and not returns["sleep"]
 
 
+def test_discover_keywords_flags_deprecated_keywords():
+    deprecated = {i.keyword_slug for i in expose_api.discover_keywords() if i.deprecated}
+    assert {"press_checkbox", "press_radio_button"} <= deprecated
+    assert "press_element" not in deprecated
+
+
 # ---------------------------------------------------------------------------
 # _make_dependency_entry
 # ---------------------------------------------------------------------------

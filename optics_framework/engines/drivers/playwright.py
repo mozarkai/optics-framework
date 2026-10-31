@@ -435,8 +435,11 @@ class Playwright(DriverInterface):
 
 
     def scroll(self, direction: str = "down", pixels: int = 120, event_name=None):
+        delta_x, delta_y = {"down": (0, pixels), "right": (pixels, 0), "left": (-pixels, 0)}.get(
+            direction, (0, -pixels)
+        )
         for _ in range(2):
-            run_async(self.page.mouse.wheel(0, pixels if direction == "down" else -pixels))
+            run_async(self.page.mouse.wheel(delta_x, delta_y))
             run_async(self.page.wait_for_timeout(120))
 
 
