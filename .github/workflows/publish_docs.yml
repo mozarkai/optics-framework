@@ -34,7 +34,7 @@ jobs:
             mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
             mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION \
             pymdown-extensions==$PYMDOWN_EXTENSIONS_VERSION
-      - run: mkdocs build
+      - run: mkdocs build --strict
       - if: github.event_name == 'pull_request'
         run: git fetch origin "${{ github.event.pull_request.base.ref }}"
       - if: github.event_name == 'pull_request'
@@ -87,7 +87,7 @@ jobs:
             mkdocs-material==$MKDOCS_MATERIAL_VERSION "mkdocstrings[python]==$MKDOCSTRINGS_VERSION" \
             mkdocstrings-python==$MKDOCSTRINGS_PYTHON_VERSION mkdocs-minify-plugin==$MKDOCS_MINIFY_PLUGIN_VERSION \
             pymdown-extensions==$PYMDOWN_EXTENSIONS_VERSION
-      - run: mkdocs build --site-dir /tmp/docs-site
+      - run: mkdocs build --strict --site-dir /tmp/docs-site
       - name: Publish site to gh-pages, preserving PR previews
         run: |
           git fetch --depth=1 origin gh-pages
