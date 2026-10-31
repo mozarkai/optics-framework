@@ -17,6 +17,21 @@ def missing_extra_error(engine: str, package: str, import_error: Exception | Non
     )
 
 
+DEFAULT_TIMEOUT_S = 60.0
+
+
+def request_timeout_s(caps: Dict[str, Any]) -> float:
+    """Seconds one request may take (``capabilities.timeout_s``), so a hung call raises."""
+    value = caps.get("timeout_s", DEFAULT_TIMEOUT_S)
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        timeout = 0.0
+    if timeout <= 0:
+        raise OpticsError(Code.E0601, message=f"capabilities.timeout_s must be a positive number, got {value!r}.")
+    return timeout
+
+
 def image_mime_type(data: bytes) -> str:
     """Sniff a common image mime type from magic bytes.
 

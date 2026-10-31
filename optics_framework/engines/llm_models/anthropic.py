@@ -3,7 +3,12 @@ import json
 import os
 from typing import Any
 
-from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error
+from optics_framework.common.llm_interface import (
+    LLMInterface,
+    image_mime_type,
+    missing_extra_error,
+    request_timeout_s,
+)
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -53,8 +58,9 @@ class AnthropicLLM(LLMInterface):
                 message=f"capabilities.platform must be one of {_PLATFORMS}, got '{platform}'.",
             )
 
+        timeout = request_timeout_s(caps)
         try:
-            self.client = _build_client(platform, caps, config.get("url"))
+            self.client = _build_client(platform, caps, config.get("url"), timeout)
         except Exception as exc:  # noqa: BLE001 - surface any client/auth init failure uniformly
             raise OpticsError(
                 Code.E0601, message=f"Failed to initialize Anthropic client ({platform}): {exc}"
@@ -114,18 +120,18 @@ class AnthropicLLM(LLMInterface):
         raise OpticsError(Code.E0801, message="Claude returned no structured response.")
 
 
-def _build_client(platform: str, caps: dict[str, Any], base_url: str | None) -> Any:
+def _build_client(platform: str, caps: dict[str, Any], base_url: str | None, timeout: float) -> Any:
     if platform == "bedrock":
-        return anthropic_sdk.AnthropicBedrock(aws_region=caps.get("region"), base_url=base_url)
+        return anthropic_sdk.AnthropicBedrock(aws_region=caps.get("region"), base_url=base_url, timeout=timeout)
     if platform == "vertex":
-        vertex_kwargs: dict[str, Any] = {"base_url": base_url}
+        vertex_kwargs: dict[str, Any] = {"base_url": base_url, "timeout": timeout}
         if caps.get("region"):
             vertex_kwargs["region"] = caps["region"]
         if caps.get("project"):
             vertex_kwargs["project_id"] = caps["project"]
         return anthropic_sdk.AnthropicVertex(**vertex_kwargs)
     api_key = os.getenv(caps.get("api_key_env", "ANTHROPIC_API_KEY"))
-    return anthropic_sdk.Anthropic(api_key=api_key, base_url=base_url)
+    return anthropic_sdk.Anthropic(api_key=api_key, base_url=base_url, timeout=timeout)
 
 
 def _image_block(data: bytes) -> dict[str, Any]:
