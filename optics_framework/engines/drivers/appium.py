@@ -1053,29 +1053,28 @@ class Appium(DriverInterface):
         event_name: Optional[str] = None
     ) -> None:
         driver = self._require_driver()
+        fractions = {
+            "down": (0.5, 0.8, 0.5, 0.2),
+            "up": (0.5, 0.2, 0.5, 0.8),
+            "right": (0.8, 0.5, 0.2, 0.5),
+            "left": (0.2, 0.5, 0.8, 0.5),
+        }.get(direction)
+        if fractions is None:
+            internal_logger.error(f"Scroll direction '{direction}' not supported.")
+            return
         window_size = driver.get_window_size()
         width = window_size["width"]
         height = window_size["height"]
-        start_x: int
-        start_y: int
-        end_y: int
-        if direction == "up":
-            start_x = width // 2
-            start_y = int(height * 0.2)
-            end_y = int(height * 0.8)
-        elif direction == "down":
-            start_x = width // 2
-            start_y = int(height * 0.8)
-            end_y = int(height * 0.2)
-        else:
-            internal_logger.error(f"Scroll direction '{direction}' not supported.")
-            return
+        start_x, start_y, end_x, end_y = (
+            int(fraction * size)
+            for fraction, size in zip(fractions, (width, height, width, height))
+        )
         timestamp = self.event_sdk.get_current_time_for_events()
         try:
             internal_logger.debug(
-                f"Scrolling {direction} from ({start_x}, {start_y}) to ({start_x}, {end_y})"
+                f"Scrolling {direction} from ({start_x}, {start_y}) to ({end_x}, {end_y})"
             )
-            driver.swipe(start_x, start_y, start_x, end_y, duration)
+            driver.swipe(start_x, start_y, end_x, end_y, duration)
             if event_name:
                 self.event_sdk.capture_event_with_time_input(event_name, timestamp)
         except Exception as e:
