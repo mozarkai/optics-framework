@@ -533,8 +533,8 @@ class PlaywrightPageSource(ElementSourceInterface):
             return text
         attrs = node.attrib or {}
         for key in ("aria-label", "title", "alt", "placeholder", "value"):
-            if key == "value" and self._is_web_toggle(node):
-                continue  # a checkbox/radio value is a form payload, not a label
+            if key == "value" and (self._is_web_toggle(node) or (attrs.get("type") or "").lower() == "password"):
+                continue  # a checkbox/radio value is a form payload and a password value a secret, not a label
             val = (attrs.get(key) or "").strip()
             if val:
                 return val
@@ -599,6 +599,8 @@ class PlaywrightPageSource(ElementSourceInterface):
         rid = node.attrib.get("id")
         if rid:
             extra["resource-id"] = rid
+        if extra["class"] == "input" and (node.attrib.get("type") or "").lower() == "password":
+            extra["password"] = True
         entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
         if locator:
             entry["loc"] = locator

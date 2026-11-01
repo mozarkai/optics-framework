@@ -13,9 +13,12 @@ XPATH_UNIQUE_ATTRIBUTES = [
     "name", "content-desc", "id", "resource-id", "accessibility-id",
 ]
 XPATH_MAYBE_UNIQUE_ATTRIBUTES = ["label", "text", "value"]
+# An input's text/value is what was typed into it, so its locator names it by its hint instead.
+XPATH_INPUT_MAYBE_UNIQUE_ATTRIBUTES = ["label", "hint", "placeholderValue"]
 
 # The only attributes get_xpath ever probes, so the only ones worth indexing.
-XPATH_INDEXED_ATTRIBUTES = (*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIBUTES)
+XPATH_INDEXED_ATTRIBUTES = (*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIBUTES, "hint", "placeholderValue")
+_OBFUSCATED_ID_RE = re.compile(r"\d+_resource_name_obfuscated")
 
 # Class-name fragments for the compact extractor. iOS has no clickable/checkable/
 # scrollable attributes, so its XCUIElementType* nodes are classified by name.
@@ -35,6 +38,10 @@ SCROLL_CLASS_FRAGMENTS = (
     "XCUIElementTypePickerWheel",
 )
 COMPACT_LABEL_MAX_CHARS = 120
+
+
+def _obfuscated_id(rid: str) -> bool:
+    return bool(_OBFUSCATED_ID_RE.fullmatch(rid.rsplit(":id/", 1)[-1]))
 
 
 class XPathUniquenessIndex:
@@ -974,8 +981,14 @@ class UIHelper:
     def _compact_entry(self, node: etree.Element, label: str, actions: List[str], bounds: Dict) -> Dict:
         extra = {"class": self._class_of(node)}
         rid = node.attrib.get("resource-id")
-        if rid:
+        if rid and not _obfuscated_id(rid):
             extra["resource-id"] = rid
+        if node.attrib.get("password") == "true":
+            extra["password"] = True
+        if "input" in actions:
+            hint = next((v for a in FIELD_NAME_ATTRS if (v := (node.attrib.get(a) or "").strip())), "")
+            if hint:
+                extra["hint"] = hint
         return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
 
     def _has_actionable_descendant(self, node: etree.Element) -> bool:
@@ -1003,8 +1016,14 @@ class UIHelper:
 
     def _extract_compact_interactives(self, root: etree.Element) -> List[Dict]:
         # Actionable elements (folded labels) + standalone visible text; drops the rest.
-        entries = (self._compact_entry_for(node) for node in root.iter())
-        return [entry for entry in entries if entry is not None]
+        index = XPathUniquenessIndex(root)
+        entries = []
+        for node in root.iter():
+            entry = self._compact_entry_for(node)
+            if entry is not None:
+                entry["loc"] = self.get_xpath(node, index)
+                entries.append(entry)
+        return entries
 
     def get_interactive_elements(
         self, filter_config: Optional[List[str]] = None, compact: bool = False
@@ -1122,7 +1141,8 @@ class UIHelper:
             ("value", norm(attrs.get("value"))),               # iOS
             (
                 "resource-id",
-                norm(attrs.get("resource-id", "").split("/")[-1]) if attrs.get("resource-id") else None,  # Android
+                norm(attrs.get("resource-id", "").split("/")[-1])
+                if attrs.get("resource-id") and not _obfuscated_id(attrs["resource-id"]) else None,  # Android
             ),
         ]
         for key, val in text_candidates:
@@ -1212,11 +1232,15 @@ class UIHelper:
     def _xpath_try_cases_for_unique(
         self, node: etree.Element, index: XPathUniquenessIndex
     ) -> Optional[str]:
-        all_attrs = [*XPATH_UNIQUE_ATTRIBUTES, *XPATH_MAYBE_UNIQUE_ATTRIBUTES]
+        unique = (
+            [a for a in XPATH_UNIQUE_ATTRIBUTES if a != "resource-id"]
+            if _obfuscated_id(node.attrib.get("resource-id") or "") else XPATH_UNIQUE_ATTRIBUTES
+        )
+        maybe = XPATH_INPUT_MAYBE_UNIQUE_ATTRIBUTES if "input" in self._element_actions(node) else XPATH_MAYBE_UNIQUE_ATTRIBUTES
         cases: List[Any] = [
-            XPATH_UNIQUE_ATTRIBUTES,
-            self._xpath_attribute_pairs_permutations(all_attrs),
-            XPATH_MAYBE_UNIQUE_ATTRIBUTES,
+            unique,
+            self._xpath_attribute_pairs_permutations([*unique, *maybe]),
+            maybe,
             [],
         ]
         semi_unique: Optional[str] = None
