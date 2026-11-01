@@ -17,6 +17,13 @@ from optics_framework.helper.execute import run_project  # noqa: E402
 
 pytestmark = pytest.mark.black_box
 
+
+@pytest.fixture(autouse=True)
+def _full_mcp_toolset(monkeypatch):
+    """The MCP test below calls keyword tools, which only the full toolset has."""
+    monkeypatch.setenv("OPTICS_MCP_TOOLSET", "full")
+
+
 FIXTURE = pathlib.Path(__file__).parent / "web_fixture"
 STORE_URL = (FIXTURE / "index.html").as_uri()
 
