@@ -121,6 +121,18 @@ def test_pressing_a_disabled_button_fails(tmp_path):
     assert run_project(project, use_printer=False) is False
 
 
+def test_typing_into_a_caption_reaches_the_field_it_names(tmp_path):
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / 'fields.html').as_uri()}",
+        "Enter Text,Mobile Number,9876543210",
+        "Enter Text,text=First Name,John",
+        "Enter Text,Last Name,Doe",
+        "Assert Presence,text=9876543210/John/Doe,2",
+    ])
+
+    assert run_project(project, use_printer=False) is True
+
+
 def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):
     orders = (FIXTURE / "orders.html").as_uri()
     visible = _project(tmp_path / "visible", [f"Launch App,{orders}", "Assert Visibility,Your orders,2"])

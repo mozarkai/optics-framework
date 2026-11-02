@@ -55,9 +55,9 @@ Web element values understand `xpath=`, `css=`, `text=`, `label=`,
 CSS, and plain visible text (also matched as a label, placeholder, or button or
 link name). Write `text=Gold Loan` without quotes: the quotes are searched for
 too. An exact match wins over a partial one; when several elements match, the
-first visible one is used, so pick another with `index=2` or a `loc`. Give a text
-field's own `loc` (its `act` is `input`) to Enter Text and Clear Element Text: a
-label or caption locator finds the text, which cannot take input.
+first visible one is used, so pick another with `index=2` or a `loc`. Enter Text
+and Clear Element Text on a caption type into the field it names when only one
+field fits; a text field's own `loc` (its `act` is `input`) is the surest locator.
 
 ## Secrets
 A value that starts with `@:` (`pin,@:4321`) is typed without the prefix and shown
