@@ -2,8 +2,8 @@
 
 Optics drives web pages on Android and iOS devices through the same Appium session that
 drives native apps. One test can open an app, follow a link into Chrome or Safari, fill a
-web form, and come back to the app, with no separate browser driver and no context
-switching in your test steps. The same test steps work on both platforms.
+web form, and come back to the app, with no browser driver and no context switching in
+your test steps.
 
 ## How it works
 
@@ -27,8 +27,7 @@ The press or text entry that follows is a native action at those coordinates.
 ## Configuration
 
 Enable `appium_web` next to the other Appium sources. `optics quickstart` and
-`optics configure` enable it for Android and iOS projects, and the MCP server includes it
-when it fills in the Appium sources for you.
+`optics configure` enable it for Android and iOS projects.
 
 ```yaml
 driver_sources:
@@ -56,10 +55,8 @@ Appium download it by starting the server with
 `appium server --allow-insecure uiautomator2:chromedriver_autodownload`, or point
 `appium:chromedriverExecutableDir` at a folder of chromedriver binaries.
 
-UiAutomator2 driver 8.6.0 or later converts element positions exactly, including pinch
-zoom. Older drivers work too: Optics computes the position from the page's
-geometry and the on-screen bounds of the WebView. For an app that shows several
-WebViews, use 8.6.0 or later, so each element is placed in the WebView that holds it.
+Use UiAutomator2 driver 8.6.0 or later for an app that shows several WebViews. Older
+drivers place elements from the on-screen bounds of the one WebView.
 
 ### iOS
 
@@ -75,14 +72,10 @@ No extra driver is needed; XCUITest reads web pages through Safari's Web Inspect
   they allow inspection. Firefox's tabs are inspectable out of the box; Chrome needs
   Settings > Content Settings > Web Inspector.
 
-Optics starts native iOS sessions with `includeSafariInWebviews: true`,
+Native iOS sessions start with `includeSafariInWebviews: true`,
 `additionalWebviewBundleIds: ["*"]`, `webviewConnectRetries: 1` and
-`webviewAtomWaitTimeout: 5000` (values in your `capabilities` take precedence). They let
-it see every app's web content and keep a lookup on a page that cannot answer to seconds
-instead of minutes. Sessions that start in Safari (`browserName`) keep Appium's defaults.
-
-Web positions on iOS are converted to screen points from a measurement of the page on
-screen, so Safari's toolbars, page zoom and the keyboard are accounted for.
+`webviewAtomWaitTimeout: 5000`, so Optics sees every app's web content and a page that
+cannot answer costs seconds, not minutes. Values in your `capabilities` take precedence.
 
 ## Locators
 
@@ -94,20 +87,13 @@ screen, so Safari's toolbars, page zoom and the keyboard are accounted for.
 | DOM XPath | `//button[@type='submit']` | native sources first, then `appium_web` (assertions skip the native sources for HTML-only paths) |
 
 An XPath that names an Android or iOS class (`android.widget.Button`,
-`XCUIElementTypeButton`) or a native attribute (`@resource-id`, `@content-desc`, `@text`,
-`@bounds`, `@clickable` and the other UiAutomator2 and XCUITest attributes) is left to the
-native sources. Text inside quotes does not count, so `//a[contains(@href,'android.com')]`
-is still a web locator. An assertion leaves an XPath whose path names only HTML
-elements (`//input[@name='email']`, `//button`) to `appium_web` alone; `//*` and other
-XPaths are still checked natively too. A web locator that matches an element hidden by the
-page (`display: none`, zero size) fails with "not displayed" instead of tapping blindly.
-A web locator that matches nothing fails at once, without waiting.
+`XCUIElementTypeButton`) or a native attribute (`@resource-id`, `@text`, `@bounds` and
+the like) outside quotes is left to the native sources. A web locator that matches a
+hidden element fails with "not displayed"; one that matches nothing fails at once.
 
-`Assert Presence` with a web locator checks the DOM, so it passes for any element in the
-page, including one scrolled off screen or hidden. `Assert Visibility` passes only for an
-element that is displayed and inside the visible part of the page. An assertion checks
-every source that can take its locator in turn, round after round, until it passes or the
-timeout runs out, so the web check does not wait for the native sources to give up.
+`Assert Presence` with a web locator checks the DOM, so an element scrolled off screen or
+hidden passes. `Assert Visibility` passes only for an element displayed in the visible part
+of the page.
 
 ## Screen elements
 
@@ -115,33 +101,21 @@ timeout runs out, so the web check does not wait for the native sources to give 
 natural-language mode of `optics live` list the web page next to the app's native
 elements. With `appium_web` enabled, one call returns:
 
-- the native elements (Chrome's toolbar, the app around a WebView), as before;
-- every control and every piece of text of the web page, top to bottom, with screen-pixel
-  bounds. A sentence with links or bold words inside is one row, and the links get
-  their own rows; images, icons and canvases are listed too. Layout wrappers that hold
-  nothing of their own are left out. An element
-  outside the visible part of the page carries `offscreen: true`: scroll toward it, or
-  press it by locator, which scrolls it into view first;
-- a `loc` on each web element that the compact list reports (controls and visible
-  text): a `css=` or `xpath=` locator that matches only that element. Put it in your
-  elements file. The full list carries the same `loc` next to its `xpath`.
+- the native elements (Chrome's toolbar, the app around a WebView);
+- every control, piece of text and image of the web page, with screen bounds. An element
+  outside the visible part of the page carries `offscreen: true`; pressing it by locator
+  scrolls it into view;
+- a `loc` on each web control and text: a `css=` or `xpath=` locator that matches only
+  that element. Put it in your elements file.
 
-The page's on-screen elements appear once. UiAutomator2 and XCUITest also show them in
-the native tree, without locators; the web entry replaces that copy.
+A web entry replaces the copy of it that UiAutomator2 or XCUITest shows in the native tree.
 
-`loc` is built to stay the same from run to run. It uses, in order, a test attribute
-(`data-testid` and similar), a hand-written id, `name`, `placeholder`, `aria-label`,
-`title` or `alt`, a link's `href`, the element's own text, and a class. When those are
-shared, it names the element inside the card or row that holds it, for example
-`xpath=//article[.//h2[normalize-space()='Red Mug']]//button[normalize-space()='Add to cart']`.
-When nothing else is unique, it falls back to a CSS path. Generated ids and classes
-(`r-7f3a91c2`, `nav-help-83412`) are skipped. Text with digits, such as "Cart (0)", is
-matched by its leading words (`starts-with(normalize-space(), 'Cart (')`), so a count
-or a price that changes does not change the locator. The Playwright page source builds
-`loc` the same way.
-
-The listing adds about half a second on a local emulator, mostly finding and entering
-the page. On a screen with no web content, the cost is one check for web content.
+`loc` stays the same from run to run. It prefers a test attribute (`data-testid`), an id,
+a name or label, or the element's text; when those are shared, it names the element inside
+its card or row, for example
+`xpath=//article[.//h2[normalize-space()='Red Mug']]//button[normalize-space()='Add to cart']`,
+and last a CSS path. It skips generated ids and classes, and matches "Cart (0)" by its
+leading words, so a changing count does not change it.
 
 ## Moving between apps and the browser
 
@@ -157,28 +131,21 @@ Read The Policy,Assert Presence,Google Play refund policy,20
 ```
 
 - **App to browser.** Tapping a link in an app opens Chrome or a Chrome Custom Tab, the
-  in-app browser most apps use. Web locators then find elements in the page in front, and
-  native locators and OCR keep working. `Go Back` closes the tab and returns to the app.
+  in-app browser most apps use. Web locators then find elements in the page in front.
+  `Go Back` closes the tab and returns to the app.
 - **Browser to app.** A web link that an app handles, such as a Play Store link, opens
   that app. Its native elements are available as soon as it is in front.
 - **Choosing an app.** When more than one app can open a link, Android asks which one to
   use. Answer with `Detect And Press` on the app's name, then on `Just once`.
-- **Other browsers.** Web locators read Chrome and WebViews with debugging enabled. If a
-  link opens in another browser, such as Samsung Internet, they fail with "Cannot read
-  the web page shown by …"; text locators and OCR work there. To keep a test in Chrome,
-  make Chrome the device's default browser.
-- **The same link twice.** Opening a link that an earlier tab still shows leaves two tabs
-  with the same address. When a web locator has already looked at the earlier tab, Optics
-  tells the two apart and uses the one on screen.
+- **Other browsers.** If a link opens in another browser, such as Samsung Internet, web
+  locators fail with "Cannot read the web page shown by …"; text locators and OCR work
+  there. To keep a test in Chrome, make Chrome the device's default browser.
 - **A Custom Tab right after another.** When an app opens a Custom Tab just after one
   closed, Chrome ignores the first tap on the new tab. Before typing into a field there,
   press the field once.
 
-On iOS, a link from an app opens in Safari or an in-app Safari sheet, and an app can
-show its own `WKWebView`. Web locators find elements in whichever of them is on screen.
-When an app shows several web views at once, a web locator finds its element in the one
-that holds it.
-To return from Safari to the app, use `Launch App` with the app's bundle id.
+On iOS, when several web views are on screen, web locators use the one that holds the
+element. To return from Safari to the app, use `Launch App` with the app's bundle id.
 
 ## Chrome's own pop-ups
 
@@ -204,22 +171,18 @@ An app's WebView is reachable only when the app enables WebView debugging
 it, web locators fail with "No web content found in the foreground app". Native
 locators and OCR still work on the WebView's content.
 
-Every app with WebView debugging on keeps a DevTools socket open, including apps in the
-background, and Android freezes background apps so their sockets stop answering. Optics
-keeps web lookups from waiting on those sockets:
-it starts Android sessions with `ensureWebviewsHavePages: false`,
-`enableWebviewDetailsCollection: false` and `extractChromeAndroidPackageFromContextName: true`
-(values in your `capabilities` take precedence), and it remembers the web context of each app
-instead of listing the device's contexts on every lookup.
+Android sessions start with `ensureWebviewsHavePages: false` and
+`extractChromeAndroidPackageFromContextName: true`, so a frozen background app with WebView
+debugging on adds at most 2 s to a web lookup. Values in your `capabilities` take precedence.
 
 ## Limits
 
 - Web locators search the top-level page only, not the inside of an `iframe`. Use text
   locators or OCR for content in a frame.
-- When several Chrome tabs show the same address and Optics cannot tell them apart (three
-  or more, or two it has not looked at), web locators fail with "Cannot tell which
-  browser tab is on screen". Close the extra tabs.
-- Each web lookup, and each element listing with web content in front, switches context
-  twice and costs about one to two seconds on a remote device. Prefer native locators where they work, and use `css=` where they do not.
+- When several Chrome tabs show the same address and Optics cannot tell which is on
+  screen, web locators fail with "Cannot tell which browser tab is on screen". Close the
+  extra tabs.
+- A web lookup costs one to two seconds on a remote device. Prefer native locators where
+  they work.
 - iOS sign-in sheets (`ASWebAuthenticationSession`) cannot be inspected. Use text
   locators and OCR there.
