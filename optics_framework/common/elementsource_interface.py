@@ -3,6 +3,22 @@ from typing import Any, Optional, List, Tuple
 import numpy
 from optics_framework.common.session_liveness import raise_if_session_dead
 
+class ScreenPoint(tuple):
+    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` that carries the text shown there.
+
+    A source that finds an element in a document it can read, yet reports it by
+    position, sets ``text`` so that Get Text still works. Keywords that tap use it as
+    any other point.
+    """
+
+    text: str | None
+
+    def __new__(cls, x: int, y: int, text: str | None = None) -> "ScreenPoint":
+        point = super().__new__(cls, (x, y))
+        point.text = text
+        return point
+
+
 class ElementSourceInterface(ABC):
     """
     Abstract base class for element source drivers.
