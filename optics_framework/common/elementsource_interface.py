@@ -4,18 +4,15 @@ import numpy
 from optics_framework.common.session_liveness import raise_if_session_dead
 
 class ScreenPoint(tuple):
-    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` that carries the text shown there.
-
-    A source that finds an element in a document it can read, yet reports it by
-    position, sets ``text`` so that Get Text still works. Keywords that tap use it as
-    any other point.
-    """
+    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` with the ``text`` shown there and whether it is ``covered``."""
 
     text: str | None
+    covered: bool
 
-    def __new__(cls, x: int, y: int, text: str | None = None) -> "ScreenPoint":
+    def __new__(cls, x: int, y: int, text: str | None = None, covered: bool = False) -> "ScreenPoint":
         point = super().__new__(cls, (x, y))
         point.text = text
+        point.covered = covered
         return point
 
 
