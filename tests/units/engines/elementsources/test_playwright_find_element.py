@@ -15,19 +15,15 @@ def test_rule_all_needs_every_element_on_the_same_poll():
     source = PlaywrightFindElement(driver=MagicMock())
     polls = iter([{"A": True, "B": False}, {"A": False, "B": True}] * 3)
     seen = {}
-
-    def check(page, element, exact):
+    def check(driver, element, exact):
         if element == "A":
             seen.update(next(polls))
         return seen[element]
-
     with pytest.raises(TimeoutError):
         source._poll_until(["A", "B"], 0.5, "all", check)
 
 
 def test_rule_all_passes_when_every_element_shows_together():
     source = PlaywrightFindElement(driver=MagicMock())
-
-    status, _ = source._poll_until(["A", "B"], 1, "all", lambda page, element, exact: True)
-
+    status, _ = source._poll_until(["A", "B"], 1, "all", lambda driver, element, exact: True)
     assert status is True
