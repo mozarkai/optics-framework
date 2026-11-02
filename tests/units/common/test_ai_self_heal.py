@@ -109,13 +109,13 @@ class TestHandlerActions:
     def test_press_element_completes(self):
         """LLM emits press_element with text target — single step, completed."""
         llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["Meesho"],
+            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
              "completed": True, "reason": "press target"},
         ])
         executor = FakeExecutor()
         res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
         assert res.ok is True
-        assert executor.calls == ['press_element Meesho']
+        assert executor.calls == ['press_element Shop']
         assert llm.calls == 1
 
     def test_scroll_then_press_element(self):
@@ -123,13 +123,13 @@ class TestHandlerActions:
         llm = FakeLLM([
             {"action": "keyword", "keyword": "scroll", "params": ["down"],
              "completed": False, "reason": "reveal target"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Meesho"],
+            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
              "completed": True, "reason": "press target"},
         ])
         executor = FakeExecutor()
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is True
-        assert executor.calls == ['scroll down', 'press_element Meesho']
+        assert executor.calls == ['scroll down', 'press_element Shop']
         assert llm.calls == 2
 
     def test_enter_text_completes(self):
@@ -242,13 +242,13 @@ class TestHandlerActions:
         llm = FakeLLM([
             {"action": "keyword", "keyword": "press_element", "params": ["Apps"],
              "completed": False, "reason": "open apps drawer"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Meesho"],
+            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
              "completed": True, "reason": "press target"},
         ])
         executor = FakeExecutor()
         res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
         assert res.ok is True
-        assert executor.calls == ['press_element Apps', 'press_element Meesho']
+        assert executor.calls == ['press_element Apps', 'press_element Shop']
 
     def test_swipe_uses_percentage(self):
         llm = FakeLLM([
@@ -599,7 +599,7 @@ class TestHealExecute:
         `shlex.split` and reaches the dispatched callable as separate positional args."""
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
         captured = []
-        ak._heal_dispatch["enter_text"] = lambda *args: captured.append(args)
+        ak._heal_dispatch["enter_text"] = lambda element, text: captured.append((element, text))
 
         line = AISelfHealHandler._build_line("enter_text", ["Search box", "hello world"])
         result = ak._heal_execute(line)
@@ -610,7 +610,7 @@ class TestHealExecute:
     def test_opticserror_from_dispatched_method_surfaces_message(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
 
-        def boom(*_args):
+        def boom(element):
             raise OpticsError(Code.E0201, message="element not found")
 
         ak._heal_dispatch["press_element"] = boom
@@ -626,7 +626,7 @@ class TestHealExecute:
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
         seen_enabled = []
 
-        def spy(*_args):
+        def spy(direction):
             seen_enabled.append(ak.ai_self_heal_enabled)
             raise RuntimeError("device offline")
 

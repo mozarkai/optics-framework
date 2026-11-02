@@ -1,5 +1,4 @@
 import collections
-import inspect
 import shlex
 import time
 import json
@@ -8,11 +7,13 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.base_factory import InstanceFallback
-from optics_framework.common import utils
+from optics_framework.common import keyword_outcome, utils
+from optics_framework.common.agent_core import bind, runner_params, visible_params
 from optics_framework.common.ai_self_heal import (
     AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
 )
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.screen_snapshot import read_screen
 from .verifier import Verifier
 
 # Class/tag substrings (case-insensitive) that identify a scrollable dropdown-list
@@ -152,28 +153,29 @@ def _raise_option_not_found(dropdown_element: str, option: str, interactive: Lis
 
 
 class _HealProviders:
-    """Screenshot / page-source providers for one AI self-heal attempt.
+    """Screenshot, page-source and screen-element providers for one AI self-heal attempt."""
 
-    The first ``screenshot()`` returns the seed frame captured at failure time;
-    later calls re-capture live. Both are best-effort and never raise.
-    """
-
-    def __init__(self, seed_png: bytes, strategy_manager: StrategyManager) -> None:
+    def __init__(self, seed_png: bytes, action_keyword: "ActionKeyword") -> None:
         self._seed_png: Optional[bytes] = seed_png
-        self._strategy_manager = strategy_manager
+        self._last_png: bytes | None = seed_png
+        self._action_keyword = action_keyword
 
     def screenshot(self) -> Optional[bytes]:
         if self._seed_png is not None:
             png, self._seed_png = self._seed_png, None
             return png
         try:
-            return utils.encode_numpy_to_png_bytes(self._strategy_manager.capture_screenshot())
+            self._last_png = utils.encode_numpy_to_png_bytes(self._action_keyword.strategy_manager.capture_screenshot())
         except Exception:  # noqa: BLE001 - best-effort re-capture
             return None
+        return self._last_png
+
+    def snapshot(self) -> list[dict] | None:
+        return read_screen(self._action_keyword, self._last_png)
 
     def pagesource(self) -> Optional[str]:
         try:
-            ps = self._strategy_manager.capture_pagesource()
+            ps = self._action_keyword.strategy_manager.capture_pagesource()
             return utils.strip_page_source(ps[0]) if ps else None
         except OpticsError:
             return None
@@ -246,7 +248,7 @@ class ActionKeyword:
         except ValueError:
             return False
 
-        providers = _HealProviders(seed_png, self.strategy_manager)
+        providers = _HealProviders(seed_png, self)
         ctx = HealContext(
             intent_keyword=func_name,
             intent_params=[str(a) for a in intent_args],
@@ -264,7 +266,9 @@ class ActionKeyword:
                 curate=True,
             )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
-        result = self._ai_healer.heal(ctx, providers.screenshot, providers.pagesource)
+        result = self._ai_healer.heal(
+            ctx, providers.screenshot, providers.pagesource, snapshot_provider=providers.snapshot
+        )
         self._log_heal_outcome(result, func_name, element, intent_args)
         return result.ok
 
@@ -279,8 +283,7 @@ class ActionKeyword:
 
         Exposes ``_last_heal_info`` with a human-readable ``summary`` and a structured
         ``suggested_steps`` list that reporting layers (HTTP/MCP) can persist as
-        replacement steps. ``suggested_steps`` is the clean replayable recovery, falling
-        back to the terminal keyword when the goal was already met with no dispatched steps.
+        replacement steps. ``suggested_steps`` is the clean replayable recovery, written as CSV steps.
         """
         if not result.ok:
             internal_logger.info(
@@ -291,7 +294,10 @@ class ActionKeyword:
         kw = action.keyword if action else "?"
         internal_logger.info("AI self-heal: recovered '%s' via keyword '%s'", func_name, kw)
         self._record_successful_step(func_name, element, args)
-        steps = result.suggested_steps or ([(action.keyword, list(action.params))] if action and action.keyword else [])
+        steps = []
+        for name, params in result.suggested_steps:
+            fn = self._heal_dispatch[name]
+            steps.append((name, runner_params(fn, bind(fn, params, *params[:1], drop_first=params[:1]))))
         rendered = [self._render_heal_step(name, params) for name, params in steps]
         if rendered:
             plural = "s" if len(rendered) != 1 else ""
@@ -345,12 +351,16 @@ class ActionKeyword:
             return KeywordExecResult(ok=False, message=f"Unknown keyword: {keyword_name}")
 
         try:
+            bound = bind(method, params, *params[:1], drop_first=params[:1])
+        except ValueError as exc:
+            return KeywordExecResult(ok=False, message=str(exc))
+        try:
             # Dispatched keywords go through the same locate ladder; self-heal is
             # temporarily disabled so a heal cannot recurse into itself.
             original_enabled = self.ai_self_heal_enabled
             self.ai_self_heal_enabled = False
             try:
-                method(*params)
+                method(**bound)
             finally:
                 self.ai_self_heal_enabled = original_enabled
             return KeywordExecResult(ok=True)
@@ -369,22 +379,8 @@ class ActionKeyword:
     @staticmethod
     def _heal_keyword_signature(name: str, method: Callable) -> str:
         """Build a ghost-text signature like ``press_element <element> [repeat] [offset_x]``."""
-        try:
-            sig = inspect.signature(method)
-        except (TypeError, ValueError):
-            return name
-        parts: List[str] = [name]
-        for pname, param in sig.parameters.items():
-            if pname == "self":
-                continue
-            # Skip locate-tuning params the healer never supplies (event_name, aoi_*)
-            if pname in ("event_name", "aoi_x", "aoi_y", "aoi_width", "aoi_height"):
-                continue
-            if param.default is inspect.Parameter.empty:
-                parts.append(f"<{pname}>")
-            else:
-                parts.append(f"[{pname}]")
-        return " ".join(parts)
+        params = (f"<{p.name}>" if p.default is p.empty else f"[{p.name}]" for p in visible_params(method))
+        return " ".join([name, *params])
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, returning None on failure (e.g. secure/protected pages)."""
@@ -470,10 +466,12 @@ class ActionKeyword:
             try:
                 ret = act(result.value)
             except Exception as e:  # noqa: BLE001 - try the next strategy's result
-                internal_logger.error(
+                internal_logger.warning(
                     f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
+                keyword_outcome.act_failed()
                 last_exception = e
                 continue
+            keyword_outcome.acted(result.strategy)
             # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
             # appending after a bare `return` would be unreachable).
             self._record_successful_step(func_name, element, intent_args)
@@ -870,11 +868,11 @@ class ActionKeyword:
         Scroll the current view one step in a direction.
 
         ``direction`` names the way you move through the content: "down" reveals content
-        further down. Every driver supports up/down; left/right work only on Selenium
-        (Appium logs and ignores them, Playwright treats anything but "down" as up). The
-        keyword succeeds whether or not the view actually moved.
+        further down. Every driver supports up/down; left/right work on Appium, Selenium and
+        Playwright (BLE logs and ignores them). The keyword succeeds whether or not the view
+        actually moved.
 
-        :param direction: up or down (left/right on Selenium only).
+        :param direction: up, down, left or right (left/right not on BLE).
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self._capture_screenshot_safe()
@@ -987,11 +985,7 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "enter_text_keyboard", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "enter_text_keyboard")
         internal_logger.info(f'Entering text directly: {text}')
         self.driver.enter_text(text, event_name=event_name)
 
@@ -1009,11 +1003,7 @@ class ActionKeyword:
         parsed = utils.parse_special_key(text_input)
         if parsed is not None:
             text_input = parsed
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "enter_text_using_keyboard", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "enter_text_using_keyboard")
         internal_logger.info(f'Entering text using keyboard: {text_input}')
         self.driver.enter_text_using_keyboard(text_input, event_name=event_name)
 
@@ -1056,11 +1046,7 @@ class ActionKeyword:
         :param keycode: The keycode to be pressed.
         :param event_name: The event triggering the press.
         """
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "press_keycode", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "press_keycode")
 
         internal_logger.info(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(keycode, event_name=event_name)
@@ -1187,11 +1173,7 @@ class ActionKeyword:
         :return: The result of the script execution.
         :rtype: Any
         """
-        try:
-            screenshot_np = self.strategy_manager.capture_screenshot()
-            utils.save_screenshot(screenshot_np, "execute_script", output_dir=self.execution_dir)
-        except Exception as e:
-            internal_logger.error(f"Error capturing screenshot: {e}")
+        self._save_screenshot_if_available(self._capture_screenshot_safe(), "execute_script")
 
         script, args = self._parse_script_and_args(script_or_json)
 

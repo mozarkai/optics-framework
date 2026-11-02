@@ -1,4 +1,5 @@
 from typing import Optional
+from optics_framework.common import keyword_outcome
 from optics_framework.common.logging_config import execution_logger
 
 class ExecutionTracer:
@@ -30,5 +31,6 @@ class ExecutionTracer:
             log_line = f"Trying {strategy.__class__.__name__} on '{element_str}' ... {status_str}{duration_str}"
 
         execution_logger.info(log_line)
+        keyword_outcome.looked(strategy, status_str == "SUCCESS")
 
 execution_tracer = ExecutionTracer()
