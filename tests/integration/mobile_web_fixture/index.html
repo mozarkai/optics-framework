@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Optics Shop</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    input, button { box-sizing: border-box; display: block; font-size: 20px; margin: 16px 0; padding: 12px; width: 100%; }
+    .spacer { height: 1600px; }
+    #promo { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Optics Shop</h1>
+  <p id="promo">Hidden promo</p>
+  <div class="spacer"></div>
+  <form id="sign-in">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email">
+    <button type="submit">Sign in</button>
+  </form>
+  <p id="welcome" hidden></p>
+  <script>
+    document.getElementById("sign-in").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const welcome = document.getElementById("welcome");
+      welcome.textContent = "Welcome, " + document.getElementById("email").value;
+      welcome.hidden = false;
+    });
+  </script>
+</body>
+</html>
