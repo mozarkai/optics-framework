@@ -219,6 +219,16 @@ Extracts and parses Appium page source XML.
 - Element hierarchy navigation
 - Interactive element detection
 
+#### AppiumWeb
+
+**Location:** `optics_framework/engines/elementsources/appium_web.py`
+
+Finds CSS and DOM XPath locators in the web content of the Android app in front.
+
+- Picks the foreground package's web context and its front tab via `mobile: getContexts`
+- Returns the element centre in screen coordinates; the session stays native
+- Skipped on iOS and for native locators
+
 #### SeleniumPageSource
 
 **Location:** `optics_framework/engines/elementsources/selenium_page_source.py`
