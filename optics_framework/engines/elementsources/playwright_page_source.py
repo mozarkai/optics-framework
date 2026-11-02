@@ -6,7 +6,6 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common import utils
-from optics_framework.common.async_utils import run_async
 from optics_framework.engines.drivers import playwright_locator
 
 
@@ -112,7 +111,7 @@ class PlaywrightPageSource(ElementSourceInterface):
         self.driver.wait_for_page_settled()
         timestamp = utils.get_timestamp()
 
-        html: str = run_async(page.content())
+        html: str = self.driver.run(page.content())
         internal_logger.debug(
             "[PlaywrightPageSource] Page source fetched, length=%d",
             len(html)
@@ -238,7 +237,7 @@ class PlaywrightPageSource(ElementSourceInterface):
         if not xpaths:
             return []
         try:
-            rects = run_async(page.evaluate(self._BOUNDS_BATCH_SCRIPT, xpaths))
+            rects = self.driver.run(page.evaluate(self._BOUNDS_BATCH_SCRIPT, xpaths))
         except Exception as e:
             # The batch call itself failed (e.g. page mid-navigation). Falling back to one
             # evaluate() per node here would reintroduce the exact per-node round-trip cost
@@ -395,9 +394,9 @@ class PlaywrightPageSource(ElementSourceInterface):
                 return None, None
 
             locator = page.locator(f"xpath={xpath}")
-            count = run_async(locator.count())
+            count = self.driver.run(locator.count())
             if count > 0:
-                inner_text = run_async(locator.first.inner_text())
+                inner_text = self.driver.run(locator.first.inner_text())
                 if inner_text and inner_text.strip():
                     return inner_text.strip(), "innerText"
         except Exception as e:
@@ -606,9 +605,9 @@ class PlaywrightPageSource(ElementSourceInterface):
             entry["loc"] = locator
         return entry
 
-    def _suggest_locators(self, page: Any, xpaths: list[str | None]) -> list[str | None]:
+    def _suggest_locators(self, xpaths: list[str | None]) -> list[str | None]:
         try:
-            return playwright_locator.suggest_locators(page, xpaths)
+            return playwright_locator.suggest_locators(self.driver, xpaths)
         except Exception as e:
             internal_logger.debug("[PlaywrightPageSource] Locator suggestions failed: %s", e)
             return [None] * len(xpaths)
@@ -657,7 +656,7 @@ class PlaywrightPageSource(ElementSourceInterface):
                 Code.E0202,
                 message="Batched bounds lookup failed; compact elements unavailable.",
             )
-        locators = self._suggest_locators(page, xpaths) if xpaths else []
+        locators = self._suggest_locators(xpaths) if xpaths else []
         entries = []
         for (node, (label, actions)), rect, locator in zip(candidates, rects, locators):
             bounds = self._rect_to_bounds(rect)
@@ -1146,12 +1145,12 @@ class PlaywrightPageSource(ElementSourceInterface):
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """Locate without waiting; PlaywrightFindElement is the source that waits."""
-        page = self._require_page()
+        self._require_page()
 
         original_element, element = self._resolve_optics_element(element)
         try:
             return playwright_locator.find(
-                page, element, index=int(index or 0), exact=self._strict_element_match()
+                self.driver, element, index=int(index or 0), exact=self._strict_element_match()
             )
         except Exception as e:
             internal_logger.error(
@@ -1170,9 +1169,9 @@ class PlaywrightPageSource(ElementSourceInterface):
     # Assertions
     # ---------------------------------------------------------
 
-    def _check_single_element_presence(self, page: Any, element: str) -> bool:
+    def _check_single_element_presence(self, element: str) -> bool:
         try:
-            return playwright_locator.is_present(page, element, exact=self._strict_element_match())
+            return playwright_locator.is_present(self.driver, element, exact=self._strict_element_match())
         except Exception as e:
             internal_logger.debug(
                 "[PlaywrightPageSource] Error checking '%s': %s",
@@ -1181,21 +1180,20 @@ class PlaywrightPageSource(ElementSourceInterface):
             return False
 
     def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
-        page = self._require_page()
-        return [self._check_single_element_presence(page, element) for element in elements]
+        self._require_page()
+        return [self._check_single_element_presence(element) for element in elements]
 
-    def _check_elements_batch(self, page: Any, elements: List[str], rule: str) -> Tuple[bool, List[bool]]:
+    def _check_elements_batch(self, elements: List[str], rule: str) -> Tuple[bool, List[bool]]:
         """
         Check a batch of elements and return results.
 
-        :param page: Playwright page object
         :param elements: List of element selectors
         :param rule: Assertion rule ("any" or "all")
         :return: Tuple of (should_return_early, results_list)
         """
         results = []
         for element in elements:
-            found = self._check_single_element_presence(page, element)
+            found = self._check_single_element_presence(element)
             results.append(found)
 
             if rule == "any" and found:
@@ -1225,7 +1223,7 @@ class PlaywrightPageSource(ElementSourceInterface):
             elements = [elements]
 
         # Ensure driver is initialized before entering the loop (OpticsError propagates if not)
-        page = self._require_page()
+        self._require_page()
 
         start_time = time.time()
 
@@ -1235,7 +1233,7 @@ class PlaywrightPageSource(ElementSourceInterface):
         )
 
         while time.time() - start_time < timeout:
-            should_return, _ = self._check_elements_batch(page, elements, rule)
+            should_return, _ = self._check_elements_batch(elements, rule)
             if should_return:
                 return True, utils.get_timestamp()
 
