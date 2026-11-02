@@ -216,6 +216,7 @@ class KeywordInfo(BaseModel):
     parameters: List[KeywordParameter]
     # Lets a client offer store_as only where there is a value to keep.
     returns: bool = True
+    deprecated: bool = False
 
 
 def _humanize_keyword(name: str) -> str:
@@ -379,6 +380,7 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
                 description=doc,
                 parameters=params,
                 returns=sig.return_annotation not in (None, type(None), "None"),
+                deprecated=".. deprecated::" in doc,
             )
         )
     return keywords
