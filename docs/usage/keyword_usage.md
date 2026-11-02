@@ -380,18 +380,19 @@ Clear Element Text,text_field.png,0,0,100,100,clear_field
 
 ### Get Text
 
-Gets the text from a specified element. For a text field (`input` or `textarea`) or a dropdown (`select`) on the web, it returns its current value.
+Gets the text from a specified element, including a CSS or DOM XPath locator in a mobile web page through `appium_web`. For a text field (`input` or `textarea`) or a dropdown (`select`) on the web, it returns its current value.
 
 **Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `element` | Required | The target element (Text or XPath) | - |
+| `element` | Required | The target element (Text, XPath, or a web locator) | - |
 
 **Example:**
 
 ```csv
 Get Text,//android.widget.TextView[@resource-id="title"]
+Get Text,css=h1#firstHeading
 ```
 
 **Note:** To keep the text for later steps, add `store_as=<name>`, then reference it as `${name}`:
