@@ -477,6 +477,8 @@ If the element is not found, the step fails with an element-not-found error, so 
 
 The element must be in the UI tree. An element found only by OCR or image fails the step at once.
 
+An expected value with the `@:` prefix is compared without the prefix, and the error shows `****` in place of both texts.
+
 **Parameters:**
 
 | Parameter | Type | Description | Default |

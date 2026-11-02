@@ -2,7 +2,7 @@ import time
 from typing import Optional, Any, List, Union
 
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -119,11 +119,14 @@ class Verifier:
         Waits until the element's text, or a field's value, equals ``expected``, failing the step if it never does.
 
         :param element: The element to read (Text, XPath or CSS locator).
-        :param expected: The text to expect. Surrounding spaces are ignored on both sides.
+        :param expected: The text to expect. Surrounding spaces are ignored on both sides; with an ``@:``
+            prefix it is compared without the prefix and both texts are masked in the error.
         :param timeout: The time to wait for the text in seconds.
         :param event_name: The name of the event associated with the check, if any.
         """
-        want = str(expected).strip()
+        expected = str(expected).strip()
+        sensitive = expected.startswith("@:")
+        want = utils.strip_sensitive_prefix(expected).strip()
         deadline = time.monotonic() + float(timeout)
         while True:
             actual = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
@@ -132,7 +135,10 @@ class Verifier:
             if time.monotonic() >= deadline:
                 if actual is None:
                     raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
-                raise OpticsError(Code.E0401, message=f"Element '{element}' shows '{actual.strip()}' but expected '{want}'.")
+                shown = actual.strip()
+                if sensitive:
+                    shown, want = "****", "****"
+                raise OpticsError(Code.E0401, message=mask_secrets(f"Element '{element}' shows '{shown}' but expected '{want}'."))
             time.sleep(self._TEXT_POLL_INTERVAL_S)
         if event_name:
             self.event_sdk.capture_event(event_name)
