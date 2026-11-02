@@ -24,7 +24,8 @@ _IN_VIEWPORT_JS = (
 # One round trip: the page geometry web_rects_to_screen needs, the rects, and the locators.
 _INSPECT_JS = (
     "const v = window.visualViewport;"
-    "return [[window.devicePixelRatio, v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1],"
+    "return [[window.devicePixelRatio, v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1,"
+    " v ? v.width : window.innerWidth, v ? v.height : window.innerHeight],"
     f" ({BOUNDS_JS})(arguments[0]),"
     f" arguments[1] ? ({SUGGEST_LOCATORS_JS})(arguments[1]) : null];"
 )

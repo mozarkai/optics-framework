@@ -66,18 +66,23 @@ WebViews, use 8.6.0 or later, so each element is placed in the WebView that hold
 | Visible text | `Sign in` | native tree, then OCR |
 | HTML id | `searchInput` | native tree (Chrome reports HTML ids as resource ids) |
 | CSS | `css=input[name='q']`, `#searchInput` | `appium_web` |
-| DOM XPath | `//button[@type='submit']` | native sources first, then `appium_web` |
+| DOM XPath | `//button[@type='submit']` | native sources first, then `appium_web` (assertions skip the native sources for HTML-only paths) |
 
 An XPath that names an Android or iOS class (`android.widget.Button`,
 `XCUIElementTypeButton`) or a native attribute (`@resource-id`, `@content-desc`, `@text`,
 `@bounds`, `@clickable` and the other UiAutomator2 and XCUITest attributes) is left to the
 native sources. Text inside quotes does not count, so `//a[contains(@href,'android.com')]`
-is still a web locator. A web locator that matches an element hidden by the page
-(`display: none`, zero size) fails with "not displayed" instead of tapping blindly.
+is still a web locator. An assertion leaves an XPath whose path names only HTML
+elements (`//input[@name='email']`, `//button`) to `appium_web` alone; `//*` and other
+XPaths are still checked natively too. In an iOS app session, where `appium_web` does not
+run, such an assertion fails at once. A web locator that matches an element hidden by the
+page (`display: none`, zero size) fails with "not displayed" instead of tapping blindly.
 
 `Assert Presence` with a web locator checks the DOM, so it passes for any element in the
 page, including one scrolled off screen or hidden. `Assert Visibility` passes only for an
-element that is displayed and inside the visible part of the page.
+element that is displayed and inside the visible part of the page. An assertion checks
+every source that can take its locator in turn, round after round, until it passes or the
+timeout runs out, so the web check does not wait for the native sources to give up.
 
 ## Screen elements
 
@@ -169,6 +174,14 @@ An app's WebView is reachable only when the app enables WebView debugging
 (`WebView.setWebContentsDebuggingEnabled(true)`), which debug builds usually do. Without
 it, web locators fail with "No web content found in the foreground app". Native
 locators and OCR still work on the WebView's content.
+
+Every app with WebView debugging on keeps a DevTools socket open, including apps in the
+background, and Android freezes background apps so their sockets stop answering. Optics
+keeps web lookups from waiting on those sockets:
+it starts Android sessions with `ensureWebviewsHavePages: false`,
+`enableWebviewDetailsCollection: false` and `extractChromeAndroidPackageFromContextName: true`
+(values in your `capabilities` take precedence), and it remembers the web context of each app
+instead of listing the device's contexts on every lookup.
 
 ## Limits
 
