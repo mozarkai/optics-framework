@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 from lxml import etree  # type: ignore
 from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
+from appium.common.exceptions import NoSuchContextException
 from appium.webdriver.appium_connection import AppiumConnection
 from appium.webdriver.webdriver import WebDriver
 from appium.webdriver.client_config import AppiumClientConfig
@@ -38,6 +39,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     normalize_platform,
     supported_platforms,
     supported_on,
+    ANDROID,
     MOBILE,
     KEYCODE_RC_NAMED,
 )
@@ -181,6 +183,8 @@ class Appium(DriverInterface):
     }
     MOBILE_PREFIX = "mobile:"
     NATIVE_CONTEXT = "NATIVE_APP"
+    BROWSER_SESSION_CONTEXT = "CHROMIUM"
+    ANDROID_BROWSER_PACKAGES = {"chrome": "com.android.chrome"}
     MOBILE_CLEAR = "mobile: clear"
     CAP_APP_PACKAGE = "appium:appPackage"
     CAP_APP_PACKAGE_LEGACY = "appPackage"
@@ -289,8 +293,10 @@ class Appium(DriverInterface):
         return normalize_platform(platform)
 
     def native_ui_platform(self) -> str | None:
-        """``android`` or ``ios`` in a native phone session; None on TVs and in browser or web view sessions."""
+        """``android`` or ``ios`` in a native phone session; None on TVs and in iOS browser or web view sessions."""
         platform = self._active_platform()
+        if platform == ANDROID:
+            return platform  # browser and autoWebview sessions are parked in NATIVE_APP on creation
         return platform if platform in MOBILE and not _starts_in_web(self._session_capabilities()) else None
 
     def _require_profile(self) -> PlatformProfile:
@@ -388,6 +394,9 @@ class Appium(DriverInterface):
             new_session_id = self.driver.session_id
             internal_logger.info(f"NEW Appium session created with session_id: {new_session_id}")
             self.ui_helper = UIHelper(self)
+            if self._active_platform() == ANDROID and _starts_in_web(options.to_capabilities()):
+                # Web lookups enter the web per call, so a browser or autoWebview session goes back to native.
+                self.driver.switch_to.context(self.NATIVE_CONTEXT)
             return new_session_id
         except Exception as e:
             internal_logger.debug(f"Failed to create new Appium session: {e}")
@@ -877,8 +886,13 @@ class Appium(DriverInterface):
         app_activity: Optional[str] = None,
         event_name: Optional[str] = None,
     ) -> str:
-        """Launch the app, activating it on the driver if a session is already alive."""
+        """Launch the app, or open a URL or deep link in the app that handles it, starting a session if none is alive."""
         session_id = self.get_session_id()
+        if app_identifier and self._is_deeplink(app_identifier):
+            if self.driver is None or not self._is_session_alive():
+                session_id = self.start_session(event_name=event_name)
+            self._open_deeplink(self._require_driver(), app_identifier)
+            return session_id
         if self.driver is None or not self._is_session_alive():
             session_id = self.start_session(
                 app_package=app_identifier,
@@ -959,15 +973,15 @@ class Appium(DriverInterface):
         """
         Simulates a tap gesture at the specified screen coordinates using Appium's `tap` method.
         """
+        driver = self._require_driver()
+        timestamp = self.event_sdk.get_current_time_for_events()
         try:
-            driver = self._require_driver()
-            timestamp = self.event_sdk.get_current_time_for_events()
             driver.tap([(x, y)], 100)
-            if event_name:
-                self.event_sdk.capture_event_with_time_input(event_name, timestamp)
-            internal_logger.debug(f"Tapped at coordinates ({x}, {y})")
-        except Exception as e:
-            internal_logger.debug(f"Failed to tap at ({x}, {y}): {e}")
+        except WebDriverException as e:
+            raise OpticsError(Code.E0401, message=f"Failed to tap at ({x}, {y})", cause=e) from e
+        if event_name:
+            self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+        internal_logger.debug(f"Tapped at coordinates ({x}, {y})")
 
     @supported_on(*MOBILE)
     def swipe(
@@ -1583,6 +1597,12 @@ class Appium(DriverInterface):
             context, page_url, app_webviews = self._foreground_web_context(driver, package)
             try:
                 driver.switch_to.context(context)
+            except NoSuchContextException:
+                # A browserName session exposes its browser under one fixed context name.
+                if self.BROWSER_SESSION_CONTEXT not in driver.contexts:
+                    raise
+                context = self.BROWSER_SESSION_CONTEXT
+                driver.switch_to.context(context)
             except WebDriverException as e:
                 # Seen with Samsung Internet, whose DevTools socket chromedriver cannot attach to.
                 reason = e.msg.splitlines()[0] if e.msg else type(e).__name__
@@ -1790,22 +1810,16 @@ class Appium(DriverInterface):
             deeplink: str,
     ) -> None:
 
+        args = {"url": deeplink}
+        # A browser session opens web links in its own browser, not the device default.
+        browser = self.ANDROID_BROWSER_PACKAGES.get(str(self._session_capabilities().get("browserName", "")).lower())
+        if browser and urlsplit(deeplink).scheme in ("http", "https"):
+            args["package"] = browser
         try:
-            driver.execute_script(
-                "mobile: deepLink",
-                {"url": deeplink},
-            )
-            internal_logger.debug(
-                f"Android deep link launched: {deeplink}"
-            )
-            return
-
-        except Exception:
-            internal_logger.debug(
-                "mobile:deepLink failed, using adb fallback"
-            )
-
-        subprocess.run(["adb","shell","am","start","-a","android.intent.action.VIEW","-d",deeplink,],check=True,)  # nosec - adb command executed with static trusted arguments for Android deeplink fallback
+            driver.execute_script("mobile: deepLink", args)
+        except WebDriverException as e:
+            raise OpticsError(Code.E0401, message=f"Failed to open '{deeplink}': {e.msg}", cause=e) from e
+        internal_logger.debug(f"Android deep link launched: {deeplink}")
 
     def _open_ios_deeplink(
             self,

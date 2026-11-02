@@ -32,7 +32,8 @@ included), and `optics configure <folder>` generates a `config.yaml` for an exis
 folder.
 
 See `optics_framework/samples/` for ready-made configs: `contact` (Appium/Android),
-`gmail_web` (Selenium), `playwright` (Playwright). Named elements from the project are
+`gmail_web` (Selenium), `playwright` (Playwright), `mobile_web` (Appium, Chrome on
+Android). Named elements from the project are
 loaded lazily the first time they are needed.
 
 The session is opened automatically on launch (a `launch_app` action appears as the
