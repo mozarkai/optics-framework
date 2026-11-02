@@ -75,45 +75,44 @@ class Verifier:
         :param event_name: The name of the event associated with the check, if any.
         """
         state = element_state.strip().lower()
-
         if state in ("visible", "invisible"):
-            try:
-                present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
-            except OpticsError:
-                present = False
-            if state == "visible" and not present:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
-            if state == "invisible" and present:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
-            if event_name:
-                self.event_sdk.capture_event(event_name)
-
+            self._check_visibility(element, state, timeout)
         elif state in self._ELEMENT_STATES:
-            located = None
-            try:
-                for result in self.strategy_manager.locate(element):
-                    located = result.value
-                    break
-            except OpticsError:
-                pass
-
-            if located is None:
-                raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
-            if isinstance(located, tuple):
-                raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
-
-            check, positive, opposite = self._ELEMENT_STATES[state]
-            if getattr(self.driver, check)(located) != positive:
-                raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
-            if event_name:
-                self.event_sdk.capture_event(event_name)
-
+            self._check_state(element, state)
         else:
             raise OpticsError(
                 Code.E0403,
                 message=f"Unknown element_state '{element_state}'. "
                         "Expected: visible, invisible, enabled, disabled, checked, unchecked."
             )
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+    def _check_visibility(self, element: str, state: str, timeout: int) -> None:
+        try:
+            present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
+        except OpticsError:
+            present = False
+        if state == "visible" and not present:
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
+        if state == "invisible" and present:
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
+
+    def _check_state(self, element: str, state: str) -> None:
+        located = None
+        try:
+            for result in self.strategy_manager.locate(element):
+                located = result.value
+                break
+        except OpticsError:
+            pass
+        if located is None:
+            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+        if isinstance(located, tuple):
+            raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
+        check, positive, opposite = self._ELEMENT_STATES[state]
+        if getattr(self.driver, check)(located) != positive:
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
 
     def assert_text(self, element: str, expected: str, timeout: str = "10", event_name: Optional[str] = None) -> None:
         """
