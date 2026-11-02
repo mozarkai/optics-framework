@@ -215,6 +215,8 @@ screen 4436bc · changed (+2 -0 ~0)
   `screen="full"` for every row, or `screen="none"` for no screen line.
 - A ref never moves to a different element. A ref that is gone from the
   screen is an error that lists the current rows.
+- `(off-screen)` marks a web row that is on the page but scrolled out of view.
+  A tap on it scrolls it into view.
 
 The verdict rule:
 
@@ -459,7 +461,7 @@ explicit **empty** list is passed through and disables element sources entirely
 | Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |
 | Screenshots & image-based location | `appium_screenshot` |
 | Page source, `observe`, `get_interactive_elements`, source-based extraction | `appium_page_source` |
-| `css=` / DOM XPath in Chrome or a debuggable WebView (Android) | `appium_web` |
+| `css=` / DOM XPath in Chrome or a debuggable WebView (Android), and that page's elements in `get_interactive_elements` | `appium_web` |
 | OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |
 | Image template matching | an `image_detection` source (e.g. `templatematch`) |
 

@@ -79,6 +79,40 @@ is still a web locator. A web locator that matches an element hidden by the page
 page, including one scrolled off screen or hidden. `Assert Visibility` passes only for an
 element that is displayed and inside the visible part of the page.
 
+## Screen elements
+
+`Get Interactive Elements`, `Get Screen Elements`, the MCP `elements` resource and the
+natural-language mode of `optics live` list the web page next to the app's native
+elements. With `appium_web` enabled, one call returns:
+
+- the native elements (Chrome's toolbar, the app around a WebView), as before;
+- every control and every piece of text of the web page, top to bottom, with screen-pixel
+  bounds. A sentence with links or bold words inside is one row, and the links get
+  their own rows; images, icons and canvases are listed too. Layout wrappers that hold
+  nothing of their own are left out. An element
+  outside the visible part of the page carries `offscreen: true`: scroll toward it, or
+  press it by locator, which scrolls it into view first;
+- a `loc` on each web element that the compact list reports (controls and visible
+  text): a `css=` or `xpath=` locator that matches only that element. Put it in your
+  elements file. The full list carries the same `loc` next to its `xpath`.
+
+The page's on-screen elements appear once. UiAutomator2 also shows them in the native
+tree, without locators; the web entry replaces that copy.
+
+`loc` is built to stay the same from run to run. It uses, in order, a test attribute
+(`data-testid` and similar), a hand-written id, `name`, `placeholder`, `aria-label`,
+`title` or `alt`, a link's `href`, the element's own text, and a class. When those are
+shared, it names the element inside the card or row that holds it, for example
+`xpath=//article[.//h2[normalize-space()='Red Mug']]//button[normalize-space()='Add to cart']`.
+When nothing else is unique, it falls back to a CSS path. Generated ids and classes
+(`r-7f3a91c2`, `nav-help-83412`) are skipped. Text with digits, such as "Cart (0)", is
+matched by its leading words (`starts-with(normalize-space(), 'Cart (')`), so a count
+or a price that changes does not change the locator. The Playwright page source builds
+`loc` the same way.
+
+The listing adds about half a second on a local emulator, mostly finding and entering
+the page. On a screen with no web content, the cost is one check for web content.
+
 ## Moving between apps and the browser
 
 Nothing in a test says which app is in front. Every lookup looks at the screen as it is
@@ -145,5 +179,5 @@ locators and OCR still work on the WebView's content.
 - When several Chrome tabs show the same address and Optics cannot tell them apart (three
   or more, or two it has not looked at), web locators fail with "Cannot tell which
   browser tab is on screen". Close the extra tabs.
-- Each web lookup switches context twice and costs about one to two seconds on a
-  remote device. Prefer native locators where they work, and use `css=` where they do not.
+- Each web lookup, and each element listing with web content in front, switches context
+  twice and costs about one to two seconds on a remote device. Prefer native locators where they work, and use `css=` where they do not.
