@@ -17,6 +17,7 @@ from prompt_toolkit.key_binding.key_processor import KeyPress
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.utils import get_cwidth
 
+from optics_framework.common.agent_core import Focus
 from optics_framework.common.models import ElementData
 from optics_framework.helper import live_tui
 from optics_framework.helper.live import ActionStatus, LiveController
@@ -47,6 +48,7 @@ def _controller(keyword_map):
     ctrl.keyword_map = keyword_map
     ctrl.recorded = []
     ctrl.saved = True
+    ctrl._focus = Focus()
     return ctrl
 
 

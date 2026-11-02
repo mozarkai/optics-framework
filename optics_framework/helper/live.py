@@ -28,17 +28,26 @@ from datetime import datetime
 from itertools import product
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
-import cv2
-import numpy as np
 import yaml
 
-from optics_framework.common import utils
+from optics_framework.common import keyword_outcome, utils
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.agent_core import (
+    TYPED_VALUE_PARAMS,
+    VAR_RE,
+    Field,
+    Focus,
+    Value,
+    bind,
+    runner_params,
+    secret_element,
+    secret_hint,
+    typed_secret,
+)
+from optics_framework.common.screen_snapshot import REDACTED, RefTable, Row, Snapshot, element_name, read_screen
 from optics_framework.common.logging_config import (
     internal_logger,
-    execution_logger,
-    LogCaptureBuffer,
     initialize_handlers,
 )
 from optics_framework.common.models import ModuleData, ElementData, ApiData, TemplateData
@@ -52,8 +61,6 @@ from optics_framework.common.runner.data_reader import (
 from optics_framework.common.utils import escape_csv_value
 from optics_framework.common.nl_agent import (
     NaturalLanguageAgent,
-    KeywordSpec,
-    ExecResult,
     AgentStep,
     AgentResult,
 )
@@ -64,16 +71,8 @@ from optics_framework.helper.execute import discover_templates, identify_file_co
 # Canonical optics logger names, referenced in several handler-management helpers.
 _INTERNAL_LOGGER_NAME = "optics.internal"
 _EXECUTION_LOGGER_NAME = "optics.execution"
+Typing = tuple[dict[str, Value], Field | None, Field | None]
 
-
-# Map locator-strategy class names (logged by ExecutionTracer) to short labels.
-_STRATEGY_LABELS: Dict[str, str] = {
-    "XPathStrategy": "XPath",
-    "TextElementStrategy": "Text",
-    "TextDetectionStrategy": "OCR",
-    "ImageDetectionStrategy": "Image",
-}
-_STRATEGY_SUCCESS_RE = re.compile(r"Trying (\w+) on .*? \.\.\. SUCCESS", re.IGNORECASE)
 
 class ActionStatus(str, Enum):
     """Status of a single keyword execution (str-valued, so it compares as a string)."""
@@ -82,12 +81,14 @@ class ActionStatus(str, Enum):
     FAIL = "FAIL"
     INFO = "INFO"
     RUNNING = "RUNNING"
+    WARN = "WARN"
 
 
 class NLRunStatus(str, Enum):
     """Terminal status of a natural-language run."""
 
     PASS = "PASS"  # nosec B105 - enum member name, not a credential
+    UNVERIFIED = "UNVERIFIED"
     FAIL = "FAIL"
     ABORTED = "ABORTED"
     MAX_STEPS = "MAX_STEPS"
@@ -104,6 +105,7 @@ class NLStepKind(str, Enum):
 # Map NaturalLanguageAgent terminal statuses to the live-session summary status.
 _NL_STATUS_MAP: Dict[str, NLRunStatus] = {
     "done": NLRunStatus.PASS,
+    "done_unverified": NLRunStatus.UNVERIFIED,
     "failed": NLRunStatus.FAIL,
     "aborted": NLRunStatus.ABORTED,
     "exhausted": NLRunStatus.MAX_STEPS,
@@ -121,6 +123,8 @@ class ActionResult:
     elapsed: float = 0.0
     strategy: Optional[str] = None
     message: Optional[str] = None
+    error: BaseException | None = None
+    value: Any = None
     recorded: bool = False
     # Set by the TUI when this entry belongs to a natural-language run, so the
     # history pane can render it as an indented child / muted thinking line.
@@ -188,7 +192,7 @@ class SaveResult:
 
 _CONFIG_KEYS = frozenset({
     "driver_sources", "element_sources", "elements_sources",
-    "text_detection", "image_detection", "llm_models",
+    "text_detection", "image_detection", "llm_models", "nl_agent",
     "log_level", "json_log", "file_log",
 })
 
@@ -362,6 +366,9 @@ class LiveController:
         # availability flag is computed from config (an enabled llm_models entry).
         self._nl_agent: Optional[NaturalLanguageAgent] = None
         self._nl_available: Optional[bool] = None
+        self._agent_elements: set[str] = set()
+        self._secret_names: set[str] = set()
+        self._focus = Focus()
 
     # -- Logging ------------------------------------------------------------------
 
@@ -517,6 +524,8 @@ class LiveController:
         """First (highest-priority) locator for an element, for inline autocomplete display."""
         if self.session.elements is None:
             return None
+        if name in self._secret_names:
+            return REDACTED
         return self.session.elements.get_first(name)
 
     # -- Keyword execution --------------------------------------------------------
@@ -526,18 +535,7 @@ class LiveController:
 
         Mirrors the batch runner's parameter handling: bare ``${element}`` positional
         arguments expand into fallback candidates tried in order, ``key=value`` tokens
-        become keyword arguments, and the winning locator strategy is read back from the
-        execution tracer's logs.
-        """
-        return self._execute_line(raw, record=True)
-
-    def _execute_line(self, raw: str, *, record: bool) -> ActionResult:
-        """Execute one keyword call. ``record`` gates the recording side-effect only.
-
-        The manual flow (:meth:`run_keyword`) records every success so the session is
-        ``/save``-able. The natural-language agent runs with ``record=False`` and buffers
-        its own steps, committing only when the whole instruction succeeds — this keeps
-        wandering/exploratory keywords out of the saved module.
+        become keyword arguments.
         """
         raw = raw.strip()
         start = time.time()
@@ -571,37 +569,17 @@ class LiveController:
                 params=params,
                 status=ActionStatus.FAIL,
                 message=self._format_error(exc),
+                error=exc,
                 elapsed=time.time() - start,
             )
 
-        strategy_capture = LogCaptureBuffer()
-        strategy_capture.setLevel(logging.DEBUG)
-        execution_logger.addHandler(strategy_capture)
-        # ExecutionTracer logs the winning strategy at INFO; make sure that level
-        # reaches our buffer even if the project configured a higher log level.
-        prev_level = execution_logger.level
-        if prev_level == logging.NOTSET or prev_level > logging.INFO:
-            execution_logger.setLevel(logging.INFO)
-
-        # Many framework methods (appium swipe with a bad direction, scroll with an
-        # unsupported direction, force_terminate failures, etc.) report problems via
-        # ``internal_logger.error(...)`` and then RETURN — they never raise. Without
-        # watching the logger we'd record those as passes. Capture internal_logger
-        # records per-combo so we can flag a "silent" failure after method() returns.
-        internal_capture = LogCaptureBuffer()
-        internal_capture.setLevel(logging.DEBUG)
-        internal_logger_obj = logging.getLogger(_INTERNAL_LOGGER_NAME)
-        internal_logger_obj.addHandler(internal_capture)
-
-        try:
-            return self._attempt_combos(
-                method, param_candidates, internal_capture, strategy_capture,
-                raw, func_name, params, start, record=record,
-            )
-        finally:
-            execution_logger.removeHandler(strategy_capture)
-            execution_logger.setLevel(prev_level)
-            internal_logger_obj.removeHandler(internal_capture)
+        typing = self._typing(method, func_name, params)
+        result = self._attempt_combos(method, param_candidates, raw, func_name, params, start)
+        if result.status is ActionStatus.PASS:
+            self.recorded.append((func_name, self._redact_typed_secret(method, func_name, params, typing)))
+            self.saved = False
+            result.recorded = True
+        return result
 
     def _match_keyword(self, tokens: List[str]) -> Tuple[Optional[str], List[str]]:
         """Resolve the leading tokens to a keyword in ``self.keyword_map``.
@@ -657,58 +635,40 @@ class LiveController:
 
     def _run_single_combo(
         self, method: Callable[..., Any], combo: Tuple[str, ...],
-        internal_capture: LogCaptureBuffer,
-    ) -> Optional[BaseException]:
-        """Run one parameter combination. Returns the failing exception, or None on success.
-
-        Many framework methods (appium swipe with a bad direction, force_terminate
-        failures, etc.) report problems via ``internal_logger.error(...)`` and then
-        RETURN — they never raise. We watch the captured records so those "silent"
-        failures surface as an :class:`OpticsError` instead of a false pass.
-        """
-        internal_capture.clear()
-        try:
-            positional, keywords = self._resolve_candidate(method, combo)
-            method(*positional, **keywords)
-        except OpticsError as exc:
-            return exc
-        # Surfaced to the user, never crashes the controller.
-        except Exception as exc:  # noqa: BLE001
-            return exc
-        silent_error = self._find_error_log(internal_capture)
-        if silent_error is not None:
-            return OpticsError(Code.E0401, message=silent_error)
-        return None
+    ) -> tuple[Any, BaseException | None, str | None]:
+        """Run one combination; returns its value, the failing exception (E0401 for a logged error) and the strategy."""
+        with keyword_outcome.capture() as outcome:
+            try:
+                positional, keywords = self._resolve_candidate(method, combo)
+                value = method(*positional, **keywords)
+            # Surfaced to the user, never crashes the controller.
+            except Exception as exc:  # noqa: BLE001
+                return None, exc, None
+        if outcome.silent is not None:
+            return None, OpticsError(Code.E0401, message=outcome.silent), None
+        return value, None, outcome.strategy
 
     def _attempt_combos(
         self, method: Callable[..., Any], param_candidates: List[List[str]],
-        internal_capture: LogCaptureBuffer, strategy_capture: LogCaptureBuffer,
-        raw: str, func_name: str, params: List[str], start: float, *, record: bool,
+        raw: str, func_name: str, params: List[str], start: float,
     ) -> ActionResult:
-        """Try each fallback combination in order; record and return the first success.
-
-        ``record`` gates only the ``self.recorded`` side-effect; the actual keyword
-        execution and ``${element}`` fallback are identical regardless.
-        """
+        """Try each fallback combination in order; return the first success."""
         last_exc: Optional[BaseException] = None
         for combo in product(*param_candidates):
-            outcome = self._run_single_combo(method, combo, internal_capture)
-            if outcome is not None:
-                last_exc = outcome
-                if isinstance(outcome, OpticsError) and self._is_fallback_error(outcome):
+            value, error, strategy = self._run_single_combo(method, combo)
+            if error is not None:
+                last_exc = error
+                if isinstance(error, OpticsError) and self._is_fallback_error(error):
                     continue
                 break
-            if record:
-                self.recorded.append((func_name, params))
-                self.saved = False
             return ActionResult(
                 raw=raw,
                 keyword=func_name,
                 params=params,
                 status=ActionStatus.PASS,
                 elapsed=time.time() - start,
-                strategy=self._winning_strategy(strategy_capture),
-                recorded=record,
+                strategy=strategy,
+                value=value,
             )
         if isinstance(last_exc, (TypeError, ValueError)):
             internal_logger.debug(
@@ -724,7 +684,60 @@ class LiveController:
             status=ActionStatus.FAIL,
             elapsed=time.time() - start,
             message=message,
+            error=last_exc,
         )
+
+    def _agent_call(self, keyword: str, params: dict[str, Value]) -> tuple[Any, str | None]:
+        """Run one agent call as ``name=value`` params, each list a fallback; returns its value and strategy."""
+        candidates = [
+            [f"{name}={v}" for v in (value if isinstance(value, list) else self._build_candidates([value])[0])]
+            for name, value in params.items()
+        ]
+        result = self._attempt_combos(self.keyword_map[keyword], candidates, keyword, keyword, [], time.time())
+        if result.error is not None:
+            raise result.error
+        return result.value, result.strategy
+
+    def _typing(self, method: Callable[..., Any], func_name: str, params: list[str]) -> Typing:
+        """``params`` bound, the field they name and the field their typed value goes into, read before the step."""
+        value_param = TYPED_VALUE_PARAMS.get(func_name, "")
+        try:
+            typed = {value_param, "element"} & inspect.signature(method).parameters.keys()
+            bound = bind(method, params, hidden=True) if typed else {}
+        except ValueError:
+            return {}, None, None
+        element = str(bound.get("element", ""))
+        var = element[2:-1].strip() if VAR_RE.fullmatch(element) else ""
+        locators = (self.session.elements.get_element(var) if var and self.session.elements else None) or [element]
+        named = (None, None, (var, *locators)) if element else None
+        if not bound.get(value_param):
+            return bound, named, None
+        row, snap, raws = self._focus.into(named, self._screen)
+        return bound, named, (row, snap or self._screen(), raws)
+
+    def _redact_typed_secret(
+        self, method: Callable[..., Any], func_name: str, params: list[str], typing: Typing,
+    ) -> list[str]:
+        """``params`` with a raw value typed into a secret field moved to a secret element."""
+        bound, named, into = typing
+        self._focus.moved(func_name, named)
+        value_param = TYPED_VALUE_PARAMS.get(func_name, "")
+        value = str(bound.get(value_param, ""))
+        if into is None or not typed_secret(into, value, self._session_elements().elements):
+            return params
+        elements = self._session_elements().elements
+        name = secret_element(elements, self._secret_names, secret_hint(into), value, {n.lower() for n in elements})
+        self._agent_elements.add(name)
+        return runner_params(method, {**bound, value_param: "${" + name + "}"})
+
+    def _screen(self) -> Snapshot:
+        return RefTable().snapshot(read_screen(self._action_keyword) or [])
+
+    def _session_elements(self) -> ElementData:
+        self.ensure_elements_loaded()
+        if self.session.elements is None:
+            self.session.elements = ElementData()
+        return self.session.elements
 
     def _build_candidates(self, params: List[str]) -> List[List[str]]:
         """Expand each positional ``${element}`` into its list of fallback locators."""
@@ -772,37 +785,6 @@ class LiveController:
                 message=f"Named element '{var_name}' is not defined in this project's elements.",
             )
         return resolved
-
-    @staticmethod
-    def _find_error_log(log_capture: LogCaptureBuffer) -> Optional[str]:
-        """Return the message of the first ERROR+ record in ``log_capture``, or None.
-
-        Used to detect cases where the framework reports a failure via logging
-        instead of raising (the appium driver's "Unknown swipe direction" path
-        is the canonical example). A returned value means the keyword "succeeded"
-        in the Python sense but didn't actually do what was asked.
-        """
-        for record in log_capture.records:
-            if isinstance(record, logging.LogRecord) and record.levelno >= logging.ERROR:
-                try:
-                    return record.getMessage()
-                except Exception:  # pragma: no cover - defensive
-                    return str(record)
-        return None
-
-    @staticmethod
-    def _winning_strategy(log_capture: LogCaptureBuffer) -> Optional[str]:
-        """Read the last successful locator strategy from captured execution logs."""
-        for record in reversed(log_capture.records):
-            try:
-                message = record.getMessage() if isinstance(record, logging.LogRecord) else str(record)
-            except Exception:  # nosec B112 # pragma: no cover - defensive
-                continue
-            match = _STRATEGY_SUCCESS_RE.search(message)
-            if match:
-                cls_name = match.group(1)
-                return _STRATEGY_LABELS.get(cls_name, cls_name.replace("Strategy", ""))
-        return None
 
     @staticmethod
     def _format_error(exc: Optional[BaseException]) -> str:
@@ -972,15 +954,7 @@ class LiveController:
             csv.writer(fh).writerow(["Element_Name", "Element_ID"])
 
     def _write_elements(self) -> str:
-        """Merge the session's elements into the project's tracked elements CSV.
-
-        An existing elements CSV anywhere under the project is preferred over
-        creating a second file (the scaffolds track elements in
-        ``test_data/elements.csv``, and a fresh ``elements/elements.csv`` stub
-        would scatter element data across two folders). Only names not already
-        present are appended; with no elements CSV anywhere, today's header-only
-        ``elements/elements.csv`` stub is created. Returns the file written.
-        """
+        """Append new session elements to the project's elements CSV, else write the agent's to a new one."""
         self.ensure_elements_loaded()
         existing = self._find_elements_csv()
         if existing is not None:
@@ -989,6 +963,7 @@ class LiveController:
         elements_path = os.path.join(self.folder_path, "elements", "elements.csv")
         os.makedirs(os.path.dirname(elements_path), exist_ok=True)
         self._ensure_elements_stub(elements_path)
+        self._append_new_elements(elements_path, only=self._agent_elements)
         return elements_path
 
     def _find_elements_csv(self) -> Optional[str]:
@@ -1029,7 +1004,7 @@ class LiveController:
                         names.add(name.lower())
         return names
 
-    def _append_new_elements(self, path: str) -> None:
+    def _append_new_elements(self, path: str, only: Optional[set[str]] = None) -> None:
         """Append session element rows missing from ``path`` (never duplicates).
 
         Dedupe is case-insensitive on element name; rows are appended verbatim
@@ -1041,12 +1016,7 @@ class LiveController:
         if elements is None or not elements.elements:
             return
         present = self._existing_element_names(path)
-        rows = [
-            (escape_csv_value(name), escape_csv_value(value))
-            for name, values in elements.elements.items()
-            if name.strip().lower() not in present
-            for value in values
-        ]
+        rows = [(escape_csv_value(name), escape_csv_value(value)) for name, value in self._elements_to_save(present, only)]
         if not rows:
             return
         with open(path, "r", encoding="utf-8", newline="") as fh:
@@ -1263,12 +1233,6 @@ class LiveController:
             self._nl_available = _has_enabled(self.session.config.llm_models)
         return self._nl_available
 
-    def _nl_catalog(self) -> List[KeywordSpec]:
-        return [
-            KeywordSpec(name=name, signature=self.keyword_signature(name) or name)
-            for name in self.keyword_names()
-        ]
-
     def page_source(self) -> Optional[str]:
         """Condensed UI hierarchy of the current screen (stripped page source).
 
@@ -1289,43 +1253,8 @@ class LiveController:
         return utils.strip_page_source(xml_source) or None
 
     def screen_elements(self, png: bytes) -> Optional[List[dict]]:
-        """Compact interactive elements for the current screen, with bounds.
-
-        Best-effort: returns ``None`` when the active element source cannot extract
-        elements, so the NL agent falls back to ``page_source``. Bounds are scaled
-        against ``png`` -- the screenshot the agent already captured for the LLM this
-        step -- rather than a second device capture; the decode is skipped for
-        non-Appium sources, where the scaling is a no-op anyway.
-        """
-        if self._action_keyword is None:  # pragma: no cover - defensive
-            return None
-        try:
-            elements = self._action_keyword.strategy_manager.get_interactive_elements(
-                None, compact=True
-            )
-        except OpticsError as exc:
-            internal_logger.debug("Structured screen elements unavailable: %s", exc)
-            return None
-        element_source = self._action_keyword.element_source
-        active_source = getattr(element_source, "active_instance", None) or element_source
-        screenshot_np = None
-        if getattr(active_source, "REQUIRED_DRIVER_TYPE", None) == "appium":
-            try:
-                screenshot_np = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
-            except Exception as exc:  # noqa: BLE001
-                internal_logger.debug("Screenshot decode for bounds scaling failed: %s", exc)
-        utils.scale_interactive_element_bounds(elements, element_source, screenshot_np)
-        return elements
-
-    def _nl_execute(self, raw: str) -> ExecResult:
-        """Agent executor: run one keyword WITHOUT recording, mapped to an ExecResult."""
-        result = self._execute_line(raw, record=False)
-        return ExecResult(
-            ok=(result.status == ActionStatus.PASS),
-            strategy=result.strategy,
-            message=result.message,
-            elapsed=result.elapsed,
-        )
+        """Compact interactive elements for the current screen, with bounds scaled against ``png``."""
+        return read_screen(self._action_keyword, png)
 
     def _get_nl_agent(self) -> NaturalLanguageAgent:
         """Build (and cache) the NL agent. Raises OpticsError if no LLM is usable."""
@@ -1338,17 +1267,35 @@ class LiveController:
                 message="No LLM engine enabled. Enable a gemini, openai or anthropic entry "
                 "under llm_models in config.yaml.",
             )
+        settings = self.config.nl_agent
         self._nl_agent = NaturalLanguageAgent(
-            llm=llm,
-            screenshot_provider=self.screenshot_png_bytes,
-            keyword_executor=self._nl_execute,
-            keyword_catalog=self._nl_catalog,
-            element_names=self.element_names,
+            llm,
+            self.screenshot_png_bytes,
+            self.screen_elements,
+            self._agent_call,
+            self.keyword_map,
+            elements=lambda: self._session_elements().elements,
             pagesource_provider=self.page_source,
-            screen_elements_provider=self.screen_elements,
+            max_steps=settings.max_steps,
             curate_on_done=True,
+            vision=settings.vision,
+            escalation_llm=self._escalation_llm(llm, settings.escalation_model),
         )
         return self._nl_agent
+
+    def _escalation_llm(self, llm: Any, model: str) -> Any | None:
+        """The first enabled engine rebuilt with ``model``; built directly because the factory caches one instance per engine."""
+        if not model:
+            return None
+        entry = next(
+            (details for item in self.config.llm_models for _name, details in item.items() if details.enabled),
+            None,
+        )
+        if entry is None:
+            return None
+        config = entry.model_dump()
+        config["capabilities"] = {**config.get("capabilities", {}), "model": model}
+        return type(llm.instances[0])(config)
 
     @staticmethod
     def _nl_action_result(step: AgentStep) -> ActionResult:
@@ -1378,9 +1325,11 @@ class LiveController:
             if step.thought:
                 on_step(NLStep(kind=NLStepKind.THINKING, text=step.thought))
             return
-        if step.action == "keyword":
+        if step.action == "keyword" and step.keyword:
             action_result = self._nl_action_result(step)
             on_step(NLStep(kind=NLStepKind.KEYWORD, text=action_result.raw, result=action_result))
+        else:
+            on_step(NLStep(kind=NLStepKind.NOTE, text=step.observation))
 
     def run_natural_language(
         self,
@@ -1391,9 +1340,10 @@ class LiveController:
         """Translate a natural-language instruction into keyword calls (ReAct loop).
 
         Blocking — callers run this off the UI thread. ``on_step`` is invoked per agent
-        step (thinking lines + executed keyword results). Recording is commit-on-done: the
-        buffered successful steps are appended to ``self.recorded`` only when the whole
-        instruction succeeds, so an incomplete run never pollutes ``/save``.
+        step (thinking lines, executed keyword results and notes). Recording is
+        commit-on-done: the buffered steps, and the elements the agent named, are kept only
+        when the instruction ends done (verified or not), so an incomplete run never
+        pollutes ``/save``. AI self-heal is off during the run.
         """
         start = time.time()
         instruction = instruction.strip()
@@ -1405,6 +1355,8 @@ class LiveController:
         except OpticsError as exc:
             return NLSummary(instruction, NLRunStatus.FAIL, 0, time.time() - start, self._format_error(exc))
 
+        heal = self._action_keyword.ai_self_heal_enabled
+        self._action_keyword.ai_self_heal_enabled = False
         try:
             result: AgentResult = agent.run(
                 instruction,
@@ -1415,11 +1367,12 @@ class LiveController:
             return NLSummary(
                 instruction, NLRunStatus.FAIL, 0, time.time() - start, f"{type(exc).__name__}: {exc}"
             )
+        finally:
+            self._action_keyword.ai_self_heal_enabled = heal
+            self._focus = Focus()
 
-        # Commit-on-done: only a fully successful run is added to the recording.
-        if result.status == "done" and result.successful_steps:
-            self.recorded.extend(result.successful_steps)
-            self.saved = False
+        if result.status in ("done", "done_unverified"):
+            self._commit(result)
 
         return NLSummary(
             instruction=instruction,
@@ -1428,6 +1381,29 @@ class LiveController:
             elapsed=time.time() - start,
             message=result.message,
         )
+
+    def _commit(self, result: AgentResult) -> None:
+        """Keep a done run's steps and elements, renaming a new name that matches a session name but for case."""
+        steps = result.successful_steps
+        session = self._session_elements().elements if result.elements else {}
+        for name, values in result.elements.items():
+            new = name
+            if name.lower() in {n.lower() for n in session}:
+                new = element_name(Row("", name, "", ()), {n.lower() for n in [*session, *result.elements]})
+                steps = [(keyword, [t.replace(f"${{{name}}}", f"${{{new}}}") for t in tokens]) for keyword, tokens in steps]
+            session[new] = values
+            self._agent_elements.add(new)
+            if name in result.secrets:
+                self._secret_names.add(new)
+        if steps:
+            self.recorded.extend(steps)
+            self.saved = False
+
+    def _elements_to_save(self, present: set[str], only: set[str] | None = None) -> Iterator[tuple[str, str]]:
+        """Session element rows not in ``present`` (and in ``only`` when given), with secrets redacted."""
+        for name, values in self.session.elements.elements.items():
+            if name.strip().lower() not in present and (only is None or name in only):
+                yield from ((name, REDACTED if name in self._secret_names else value) for value in values)
 
     # -- Teardown -----------------------------------------------------------------
 
