@@ -124,4 +124,6 @@ un-escapes it on read.
 
 ## Running
 `optics execute <project>` runs every test case; JUnit XML, logs and screenshots
-land in `<project>/execution_output/`.
+land in `<project>/execution_output/`. When a step fails, `failed_steps_elements.json`
+there holds the same compact element list as the elements resource for the screen
+at that moment, so a broken locator can be fixed from it.
