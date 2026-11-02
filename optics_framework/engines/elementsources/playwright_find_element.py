@@ -91,6 +91,7 @@ class PlaywrightFindElement(ElementSourceInterface):
                 index=int(index or 0),
                 exact=self._strict_element_match(),
                 timeout_s=self._element_timeout_s(),
+                warn_if_ambiguous=True,
             )
         except Exception as e:
             internal_logger.error(f"Error locating element: {element}", exc_info=True)
