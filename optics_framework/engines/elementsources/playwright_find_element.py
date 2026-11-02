@@ -126,10 +126,11 @@ class PlaywrightFindElement(ElementSourceInterface):
     def get_bbox_for_element(
         self, element: Any
     ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
-        """One evaluate, since ``bounding_box()`` costs several remote round trips and waits on a missing element."""
+        """Return the bounding box of an already-located Playwright locator, or None."""
         if element is None:
             return None
         try:
+            # One round trip; bounding_box() costs several and waits on a missing element.
             rect = self.driver.run(element.evaluate_all(_RECT_SCRIPT))
             if rect is None:
                 box = self.driver.run(element.first.bounding_box())
