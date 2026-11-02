@@ -80,7 +80,7 @@ elements_sources:
 ```
 
 ### appium_web
-- What it does: Finds `css=` and DOM XPath locators in Chrome or a debuggable WebView on Android, then acts natively.
+- What it does: Finds `css=` and DOM XPath locators in a mobile browser or debuggable WebView on Android and iOS, then acts natively.
 ```bash
 elements_sources:
   - appium_web:

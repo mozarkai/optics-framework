@@ -83,8 +83,8 @@ or `key` are masked too.
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
 `{driver}_page_source`, `{driver}_screenshot`. appium is only an example here —
-selenium and playwright follow the same shape. appium adds `appium_web`, which
-resolves `css=` and DOM XPath locators in Chrome or a debuggable WebView on Android.
+selenium and playwright follow the same shape. appium adds `appium_web` for `css=`
+and DOM XPath locators in mobile browsers and debuggable WebViews.
     driver_sources:
       - appium:            # or selenium / playwright / ...
           enabled: true
