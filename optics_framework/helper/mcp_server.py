@@ -109,7 +109,8 @@ SERVER_INSTRUCTIONS = (
     "with `url` and `capabilities`. For the mobile site, add `\"device\": \"Pixel 7\"` (any "
     "Playwright device name) to `capabilities` to emulate that phone with touch input.\n"
     "2. A row looks like `e7 button \"Sign in\" [tap] #id`. Quoted text is on the screen; "
-    "`#id` is not. A row without `[...]` is read-only text. Target elements by ref.\n"
+    "`#id` is not. A row without `[...]` is read-only text. A web row marked `(off-screen)` is "
+    "scrolled out of view; a tap scrolls it in. Target elements by ref.\n"
     "3. Every action returns what changed on the screen. Call `observe` only for a `query`, "
     "a screenshot or the full list.\n"
     "4. `ok` means only that the keyword ran. Add `expect_present`/`expect_absent` with text "
@@ -714,10 +715,12 @@ def _add_resources(mcp: "FastMCP") -> None:
 
     @mcp.resource("optics://session/{session_id}/elements", mime_type="application/json")
     async def interactive_elements(session_id: str) -> Any:
-        """Compact on-screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?}:
+        """Compact screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}:
         actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
-        read-only text (act: []). Appium and Playwright page sources answer the compact
-        projection; a source without it returns its full element list. Use the
+        read-only text (act: []). A web element carries loc, a locator matching only it, and
+        offscreen: true when it is on the page but scrolled out of view. Appium, Appium web
+        and Playwright page sources answer the compact projection; a source without it
+        returns its full element list. Use the
         get_interactive_elements tool with compact=false for the full untrimmed list."""
         return await _observe(session_id, "get_interactive_elements", {"compact": "true"})
 

@@ -5,6 +5,7 @@ import pytest
 from lxml import etree
 
 from optics_framework.api.verifier import Verifier
+from optics_framework.engines.elementsources.playwright_page_source import BOUNDS_JS
 from optics_framework.engines.elementsources.playwright_page_source import (
     PlaywrightPageSource,
 )
@@ -27,14 +28,13 @@ def _page() -> MagicMock:
     # exercise the real extraction path and a helper that disappears fails here.
     page = MagicMock()
     page.evaluate.side_effect = lambda script, xpaths: [
-        dict(RECT) if script == PlaywrightPageSource._BOUNDS_BATCH_SCRIPT else None for _ in xpaths
+        dict(RECT) if script == BOUNDS_JS else None for _ in xpaths
     ]
     return page
 
 
 def _compact(html: str) -> list[dict]:
-    source = _source(html)
-    return source._extract_compact_web_interactives(source.driver.page)
+    return _source(html)._extract_compact_web_interactives()
 
 
 def _by_label(entries: list[dict]) -> dict[str, dict]:
@@ -122,8 +122,8 @@ class TestWebCompactTextAndDrops:
 
 class TestWebCompactProjectsToMCPShape:
     def test_verifier_projects_web_records_to_compact_shape(self):
-        source = _source('<button id="go"><span>Go</span></button><span>Hello</span>')
-        entries = source._extract_compact_web_interactives(source.driver.page)
+        entries = _compact('<button id="go"><span>Go</span></button><span>Hello</span>')
+
         assert Verifier._to_compact_shape(entries) == [
             {"i": 0, "label": "Go", "cls": "button", "bounds": [1, 2, 3, 4],
              "act": ["tap"], "rid": "go"},

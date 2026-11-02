@@ -129,6 +129,8 @@ e7 button "Sign in" [tap] #login
 - Words in quotes are on the screen. #login is an id; it is not on the screen.
 - [tap,input,...] lists what the element accepts. A row with no [...] is read-only text: use it \
 to judge the screen, never as a target.
+- (off-screen) marks a web element that is on the page but scrolled out of view. A tap on its ref \
+scrolls it in.
 - Act only on refs from the current SCREEN, never on something you see only in the image. When \
 the element is not in SCREEN, scroll to show it first.
 

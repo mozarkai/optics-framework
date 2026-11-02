@@ -46,6 +46,7 @@ class Row:
     holds_value: bool = False
     web: bool = False
     name: str | None = None
+    offscreen: bool = False
 
     def __post_init__(self) -> None:
         if self.name is None:
@@ -196,6 +197,7 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     return {
         "label": label, "cls": cls, "act": act, "rid": rid, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
+        "offscreen": el.get("offscreen") is True,
     }
 
 
@@ -224,7 +226,7 @@ def _names_by_text(loc: str, label: str) -> bool:
 
 
 def digest(rows: Iterable[Row]) -> str:
-    lines = sorted(f"{r.cls}|{r.label}|{','.join(r.act)}" for r in rows)
+    lines = sorted(f"{r.cls}|{r.label}|{','.join(r.act)}|{r.offscreen}" for r in rows)
     return hashlib.sha1("\n".join(lines).encode("utf-8"), usedforsecurity=False).hexdigest()[:6]
 
 
@@ -585,7 +587,8 @@ def effect(d: Diff, secret: str) -> str:
 def render_row(row: Row) -> str:
     act = f"[{','.join(row.act)}]" if row.act else ""
     rid = f"#{row.rid.rsplit('/', 1)[-1]}" if row.rid else ""
-    return " ".join(p for p in (row.ref, row.cls, _label_part(row.label), act, rid) if p)
+    offscreen = "(off-screen)" if row.offscreen else ""
+    return " ".join(p for p in (row.ref, row.cls, _label_part(row.label), act, rid, offscreen) if p)
 
 
 def _row_lines(snap: Snapshot) -> list[str]:
