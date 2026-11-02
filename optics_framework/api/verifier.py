@@ -1,3 +1,4 @@
+import time
 from typing import Optional, Any, List, Union
 
 from optics_framework.common.error import OpticsError, Code
@@ -7,6 +8,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.eventSDK import EventSDK
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 class Verifier:
     """
@@ -19,6 +21,9 @@ class Verifier:
         "checked": ("is_element_checked", True, "unchecked"),
         "unchecked": ("is_element_checked", False, "checked"),
     }
+    _TEXT_POLL_INTERVAL_S = 0.5
+    # The assertion loop gives each strategy whole seconds, so a shorter lookup would check nothing.
+    _TEXT_MIN_LOOKUP_S = 1.0
 
     def __init__(self, builder: OpticsBuilder):
         self.driver: InstanceFallback = builder.get_driver()
@@ -109,6 +114,51 @@ class Verifier:
                 message=f"Unknown element_state '{element_state}'. "
                         "Expected: visible, invisible, enabled, disabled, checked, unchecked."
             )
+
+    def assert_text(self, element: str, expected: str, timeout: str = "10", event_name: Optional[str] = None) -> None:
+        """
+        Waits until the element's text, or a field's value, equals ``expected``, failing the step if it never does.
+
+        :param element: The element to read (Text, XPath or CSS locator).
+        :param expected: The text to expect. Surrounding spaces are ignored on both sides.
+        :param timeout: The time to wait for the text in seconds.
+        :param event_name: The name of the event associated with the check, if any.
+        """
+        want = str(expected).strip()
+        deadline = time.monotonic() + float(timeout)
+        while True:
+            actual = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
+            if actual is not None and actual.strip() == want:
+                break
+            if time.monotonic() >= deadline:
+                if actual is None:
+                    raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+                raise OpticsError(Code.E0401, message=f"Element '{element}' shows '{actual.strip()}' but expected '{want}'.")
+            time.sleep(self._TEXT_POLL_INTERVAL_S)
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+    def _read_text(self, element: str, timeout: float) -> Optional[str]:
+        try:
+            # Wait through the assertion loop, which keeps to the timeout; a locate waits as long as the driver does.
+            self.strategy_manager.assert_presence([element], utils.determine_element_type(element), timeout=timeout)
+            result = next(iter(self.strategy_manager.locate(element)), None)
+        except OpticsError as e:
+            if not (e.code.value.startswith("E02") or e.code == Code.X0201):
+                raise
+            return None
+        if result is None:
+            return None
+        if isinstance(result.value, tuple):
+            raise OpticsError(Code.E0401, message=f"Cannot read the text of '{element}': it was found only by OCR or image.")
+        try:
+            return self.driver.get_text_element(result.value)
+        except Exception as e:
+            if isinstance(e, OpticsError):
+                raise
+            raise_if_session_dead(e)
+            internal_logger.debug(f"Reading the text of '{element}' failed: {e}")
+            return None
 
     def _resolve_param(self, param: str) -> str:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
