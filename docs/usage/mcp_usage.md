@@ -448,9 +448,9 @@ names. An element param of a keyword tool also accepts a ref from the latest
 
 The keywords you can use depend on which `elements_sources` (and detection
 sources) you enable in `start_session` — same rules as a normal optics project.
-When you omit `elements_sources`, `start_session` enables the driver's canonical
-trio automatically (appium → `appium_find_element`/`appium_page_source`/
-`appium_screenshot`); pass the argument only to narrow or extend that. An
+When you omit `elements_sources`, `start_session` enables the driver's element
+sources automatically (appium → `appium_find_element`/`appium_page_source`/
+`appium_web`/`appium_screenshot`); pass the argument only to narrow or extend that. An
 explicit **empty** list is passed through and disables element sources entirely
 (the session then fails to start) — omit the argument for the defaults:
 
@@ -459,6 +459,7 @@ explicit **empty** list is passed through and disables element sources entirely
 | Locate by `xpath` / `text` / `id`, tap, type | `appium_find_element` |
 | Screenshots & image-based location | `appium_screenshot` |
 | Page source, `observe`, `get_interactive_elements`, source-based extraction | `appium_page_source` |
+| `css=` / DOM XPath in Chrome or a debuggable WebView (Android) | `appium_web` |
 | OCR / locate visible text on screen | a `text_detection` source (e.g. `googlevision`) |
 | Image template matching | an `image_detection` source (e.g. `templatematch`) |
 

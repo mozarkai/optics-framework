@@ -124,10 +124,12 @@ driver_sources:
         headless: false
 
 elements_sources:
-  # Appium locators / page source / screenshots:
+  # Appium locators / page source / web pages / screenshots:
   - appium_find_element:
       enabled: false
   - appium_page_source:
+      enabled: false
+  - appium_web:
       enabled: false
   - appium_screenshot:
       enabled: false
