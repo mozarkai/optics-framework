@@ -2,6 +2,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 from appium.webdriver.common.appiumby import AppiumBy
+from lxml import etree  # type: ignore
 from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
 from optics_framework.common import utils
 from optics_framework.common.elementsource_interface import ElementSourceInterface
@@ -9,6 +10,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_liveness import raise_if_session_dead
 from optics_framework.engines.drivers.appium_platforms import ANDROID
+from optics_framework.engines.elementsources.playwright_page_source import BOUNDS_JS, SUGGEST_LOCATORS_JS, WebDomInspector
 
 _SCROLL_INTO_VIEW_JS = "arguments[0].scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});"
 _IN_VIEWPORT_JS = (
@@ -19,30 +21,65 @@ _IN_VIEWPORT_JS = (
     "return r.width > 0 && r.height > 0 && r.bottom > top && r.right > left"
     " && r.top < bottom && r.left < right;"
 )
+# One round trip: the page geometry web_rects_to_screen needs, the rects, and the locators.
+_INSPECT_JS = (
+    "const v = window.visualViewport;"
+    "return [[window.devicePixelRatio, v ? v.offsetLeft : 0, v ? v.offsetTop : 0, v ? v.scale : 1],"
+    f" ({BOUNDS_JS})(arguments[0]),"
+    f" arguments[1] ? ({SUGGEST_LOCATORS_JS})(arguments[1]) : null];"
+)
 _SETTLE_TIMEOUT_S = 2.0
 _SETTLE_INTERVAL_S = 0.15
 
 
-class AppiumWeb(ElementSourceInterface):
-    """Finds CSS and DOM XPath locators in the web content of the Android app in front.
+class AppiumWeb(ElementSourceInterface, WebDomInspector):
+    """Finds CSS and DOM XPath locators in the foreground Android app's web content (Chrome or a debuggable WebView).
 
-    Each lookup enters the page served by the foreground app (Chrome, or a debuggable
-    WebView), finds the element in the DOM, and returns its centre in device-screen
-    coordinates. The session stays in the native context, so the press, typing and
-    screenshots that follow are native actions, and the native locators keep working
-    between web lookups.
+    It returns screen coordinates, so the session and the actions that follow stay native.
     """
 
     REQUIRED_DRIVER_TYPE = "appium"
+    SUPPLEMENTS_SCREEN_ELEMENTS = True
 
     def __init__(self, driver: Any = None):
         self.driver = driver
+        self._page_driver: Any = None
 
     def capture(self):
         raise NotImplementedError("AppiumWeb does not capture screenshots.")
 
     def get_interactive_elements(self, filter_config: list[str] | None = None, compact: bool = False) -> list:
-        raise NotImplementedError("AppiumWeb does not list interactive elements.")
+        """The whole web page the app in front shows, in device-screen pixels; out-of-view elements are ``offscreen``."""
+        if not self._reads_native_android():
+            return []
+        try:
+            with self._web_context() as driver:
+                self._page_driver = driver
+                try:
+                    self.tree = etree.HTML(driver.page_source)
+                    return self._web_interactive_elements(filter_config, utils.to_bool(compact))
+                finally:
+                    self._page_driver = None
+        except _Unsupported:
+            return []
+
+    def _inspect_nodes(
+        self, xpaths: list[str | None], locate: list[str | None]
+    ) -> tuple[list[dict[str, Any] | None] | None, list[str | None]]:
+        if not xpaths:
+            return [], []
+        try:
+            metrics, rects, found = self._page_driver.execute_script(
+                _INSPECT_JS, xpaths, locate if any(locate) else None
+            )
+        except WebDriverException as e:
+            raise_if_session_dead(e)
+            internal_logger.debug(f"AppiumWeb: the page could not be measured: {e.msg}")
+            return None, [None] * len(xpaths)
+        if not isinstance(rects, list) or len(rects) != len(xpaths):
+            internal_logger.debug("AppiumWeb: measuring the page returned a malformed payload.")
+            return None, [None] * len(xpaths)
+        return self.driver.web_rects_to_screen(rects, metrics), found or [None] * len(xpaths)
 
     def can_locate(self, element: str) -> bool:
         return self._dom_query(element) is not None and self._reads_native_android()

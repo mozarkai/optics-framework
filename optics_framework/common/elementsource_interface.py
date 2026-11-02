@@ -15,6 +15,9 @@ class ElementSourceInterface(ABC):
     as needed.
     """
 
+    #: True when this source's elements sit inside another source's screen (a web page in an app) and add to it.
+    SUPPLEMENTS_SCREEN_ELEMENTS: bool = False
+
     @abstractmethod
     def capture(self) -> numpy.ndarray:
         """
@@ -54,7 +57,7 @@ class ElementSourceInterface(ABC):
         pass
 
     def can_locate(self, element: str) -> bool:
-        """Whether this source can look ``element`` up; an assertion leaves out sources that cannot."""
+        """Whether this source can look ``element`` up."""
         return True
 
     @abstractmethod
