@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fields</title></head>
+<body>
+  <section>
+    <div><span>Enter Mobile Number</span></div>
+    <div><input type="tel" aria-label="Mobile Number&#10;Enter here"></div>
+  </section>
+  <section>
+    <div><span>First Name</span></div>
+    <div><span>Last Name</span></div>
+    <input aria-label="First Name&#10;Enter here">
+    <input aria-label="Last Name&#10;Enter here">
+  </section>
+  <p id="typed"></p>
+  <script>
+    const inputs = [...document.querySelectorAll('input')];
+    const show = () => { document.getElementById('typed').textContent = inputs.map((i) => i.value).join('/'); };
+    inputs.forEach((i) => i.addEventListener('input', show));
+  </script>
+</body>
+</html>
