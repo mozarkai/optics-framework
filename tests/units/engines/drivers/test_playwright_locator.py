@@ -4,6 +4,7 @@ import pytest
 
 from playwright.async_api import Error as PlaywrightError
 
+from optics_framework.common import utils
 from optics_framework.engines.drivers import playwright_locator
 
 pytestmark = pytest.mark.white_box
@@ -73,6 +74,20 @@ def test_find_skips_hidden_matches(monkeypatch):
 
     assert found is locator.nth.return_value
     locator.nth.assert_called_once_with(1)
+
+
+def test_find_warns_when_a_locator_matches_several_elements(monkeypatch):
+    monkeypatch.setattr(playwright_locator, "run_async", lambda coro, **_: coro)
+    logger = MagicMock()
+    monkeypatch.setattr(utils, "execution_logger", logger)
+    page = MagicMock()
+    page.locator.return_value.evaluate_all.return_value = [True, False, True]
+
+    playwright_locator.find(page, "#go", warn_if_ambiguous=True)
+    playwright_locator.find(page, "#go")
+
+    logger.warning.assert_called_once()
+    assert "matches 2 elements" in logger.warning.call_args.args[0]
 
 
 def test_find_gives_up_after_the_timeout(monkeypatch):
