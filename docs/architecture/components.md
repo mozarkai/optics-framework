@@ -1612,6 +1612,7 @@ Provides assertion and validation capabilities.
 - `validate_element()` - Verify single element
 - `validate_screen()` - Verify multiple elements
 - `assert_presence()` - Assert with rules (any/all)
+- `assert_text()` - Assert the text of an element or the value of a field
 - `assert_images_vision()` - Vision-based image assertion
 - `assert_texts_vision()` - Vision-based text assertion
 - `get_interactive_elements()` - Get UI elements

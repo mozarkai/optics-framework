@@ -1187,6 +1187,25 @@ class Optics:
             event_name=cast(Optional[str], event_name),
         )
 
+    @keyword("Assert Text")
+    @fallback_params
+    def assert_text(
+        self,
+        element: fallback_str,
+        expected: fallback_str,
+        timeout: fallback_str = "10",
+        event_name: Optional[fallback_str] = None,
+    ) -> None:
+        """Fail unless the element's text, or a field's value, equals the expected text within the timeout."""
+        if not self.verifier:
+            raise ValueError(INVALID_SETUP)
+        self.verifier.assert_text(
+            element=cast(str, element),
+            expected=cast(str, expected),
+            timeout=cast(str, timeout),
+            event_name=cast(Optional[str], event_name),
+        )
+
     @keyword("Get Interactive Elements")
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List:
         """

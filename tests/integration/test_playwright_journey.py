@@ -142,6 +142,16 @@ def test_typing_into_a_caption_reaches_the_field_it_names(tmp_path):
     assert run_project(project, use_printer=False) is True
 
 
+def test_assert_text_reads_a_field_and_fails_on_a_wrong_value(tmp_path):
+    fields = (FIXTURE / "fields.html").as_uri()
+    steps = [f"Launch App,{fields}", "Enter Text,Mobile Number,9876543210"]
+    right = _project(tmp_path / "right", [*steps, 'Assert Text,css=input[type="tel"],9876543210,2'])
+    wrong = _project(tmp_path / "wrong", [*steps, 'Assert Text,css=input[type="tel"],1234567890,2'])
+
+    assert run_project(right, use_printer=False) is True
+    assert run_project(wrong, use_printer=False) is False
+
+
 def test_visibility_fails_for_an_element_its_parent_clips(tmp_path):
     orders = (FIXTURE / "orders.html").as_uri()
     visible = _project(tmp_path / "visible", [f"Launch App,{orders}", "Assert Visibility,Your orders,2"])
