@@ -31,18 +31,19 @@ def test_native_sources_keep_dom_xpath_off_phones(source_cls):
     assert source_cls(driver=_driver(None)).can_locate("//input") is True
 
 
-def test_appium_web_accepts_web_locators_on_android_native_sessions_only():
-    assert AppiumWeb(driver=_driver("android")).can_locate("css=#q") is True
-    assert AppiumWeb(driver=_driver("android")).can_locate("//input") is True
-    for platform in (None, "ios"):
-        assert AppiumWeb(driver=_driver(platform)).can_locate("css=#q") is False
-        assert AppiumWeb(driver=_driver(platform)).can_locate("//input") is False
+@pytest.mark.parametrize("platform", ["android", "ios"])
+def test_appium_web_accepts_web_locators_on_native_phone_sessions(platform):
+    assert AppiumWeb(driver=_driver(platform)).can_locate("css=#q") is True
+    assert AppiumWeb(driver=_driver(platform)).can_locate("//input") is True
+    assert AppiumWeb(driver=_driver(None)).can_locate("css=#q") is False
+    assert AppiumWeb(driver=_driver(None)).can_locate("//input") is False
 
 
 def test_appium_web_leaves_a_browser_session_in_its_web_context():
     driver = _driver(None)
 
     assert AppiumWeb(driver=driver).locate("css=#q") is None
+    assert AppiumWeb(driver=driver).get_interactive_elements() == []
     driver.web_context.assert_not_called()
 
 
@@ -56,7 +57,7 @@ def test_check_once_reraises_dead_session():
     driver = _driver("android")
 
     @contextmanager
-    def web_context():
+    def web_context(queries=()):
         raise OpticsError(Code.E0106, message="gone")
         yield
 
@@ -76,7 +77,7 @@ def test_appium_web_check_elements_answers_per_element_in_one_web_context():
     entries = []
 
     @contextmanager
-    def web_context():
+    def web_context(queries=()):
         entries.append(1)
         yield page
 

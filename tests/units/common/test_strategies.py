@@ -366,9 +366,9 @@ class TestVisibilityExcludesPresenceOnlySources:
             manager.assert_visibility(["//*[@id=\"offscreen\"]"], "XPath", timeout=1, rule="any")
 
 
-def _sm(source, *, text_detection=None, image_detection=None):
+def _sm(*sources, text_detection=None, image_detection=None):
     return StrategyManager(
-        element_source=InstanceFallback([source]),
+        element_source=InstanceFallback(list(sources)),
         text_detection=text_detection,
         image_detection=image_detection,
     )
@@ -407,8 +407,9 @@ class TestTryStrategyLocateAoiFallthrough:
         source = MagicMock()
         source.get_bbox_for_element.return_value = bbox
         # spec omits locate_with_aoi, so the manager takes the non-native-AOI path.
-        strategy = MagicMock(spec=["supports", "locate", "element_source"])
+        strategy = MagicMock(spec=["supports", "can_assert", "locate", "element_source"])
         strategy.supports.return_value = True
+        strategy.can_assert.return_value = True
         strategy.locate.return_value = MagicMock(name="webelement")
         strategy.element_source = source
         return strategy
@@ -478,9 +479,6 @@ class TestAssertPresenceContract:
         assert "Text detection is not available" not in str(exc_info.value.__cause__)
 
 
-# --- StrategyManager._assert interleaved polling ---
-
-
 class _CheckSource(ElementSourceInterface):
     """Answers single checks from ``hits``; accepts only ``accepts`` when given."""
 
@@ -527,16 +525,12 @@ class _LegacySource(_CheckSource):
         raise TimeoutError(f"not found: {elements}")
 
 
-def _manager(*sources, text_detection=None):
-    return StrategyManager(InstanceFallback(list(sources)), text_detection=text_detection, image_detection=None)
-
-
 class TestInterleavedAssert:
     def test_a_matching_source_wins_without_waiting_out_a_missing_one(self):
         miss, hit = _CheckSource(), _CheckSource(hits={"//a"})
         start = time.monotonic()
 
-        result, _, _ = _manager(miss, hit).assert_presence(["//a"], "XPath", timeout=30)
+        result, _, _ = _sm(miss, hit).assert_presence(["//a"], "XPath", timeout=30)
 
         assert result is True
         assert time.monotonic() - start < 1
@@ -546,7 +540,7 @@ class TestInterleavedAssert:
         a = _CheckSource(hits={"//a"}, accepts={"//a"})
         b = _CheckSource(hits={"//b"}, accepts={"//b"})
 
-        result, _, _ = _manager(a, b).assert_presence(["//a", "//b"], "XPath", timeout=5, rule="all")
+        result, _, _ = _sm(a, b).assert_presence(["//a", "//b"], "XPath", timeout=5, rule="all")
 
         assert result is True
         assert a.calls == [["//a"]]
@@ -554,7 +548,7 @@ class TestInterleavedAssert:
 
     def test_rule_all_with_an_unlocatable_element_fails_at_once(self):
         source = _CheckSource(accepts={"//a"})
-        manager = _manager(source)
+        manager = _sm(source)
 
         with pytest.raises(OpticsError) as exc_info:
             manager.assert_presence(["//a", "//c"], "XPath", timeout=30, rule="all")
@@ -567,10 +561,10 @@ class TestInterleavedAssert:
         assert _LegacySource(hits={"//a"}).check_elements(["//a"]) == [True]
         assert _LegacySource().check_elements(["//a"]) == [False]
         assert _LegacySource(error=RuntimeError("not found")).check_elements(["//a"]) == [False]
-        result, _, _ = _manager(_LegacySource(hits={"//a"})).assert_presence(["//a"], "XPath", timeout=5)
+        result, _, _ = _sm(_LegacySource(hits={"//a"})).assert_presence(["//a"], "XPath", timeout=5)
         assert result is True
 
-        dead = _manager(_LegacySource(error=InvalidSessionIdException("A session is either terminated or not started")))
+        dead = _sm(_LegacySource(error=InvalidSessionIdException("A session is either terminated or not started")))
         with pytest.raises(OpticsError) as exc_info:
             dead.assert_presence(["//a"], "XPath", timeout=5)
         assert exc_info.value.code == Code.E0106
