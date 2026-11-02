@@ -239,7 +239,9 @@ class Verifier:
 
     def validate_screen(self, elements: str, timeout: str = "30", rule: str = 'any', event_name: Optional[str] = None) -> bool:
         """
-        Verifies the specified screen by checking element presence.
+        Waits for elements and returns whether they appeared, without failing the step.
+
+        Use ``assert_presence`` when a missing element must fail the test.
 
         :param elements: Comma-separated string of elements to verify (Image templates, OCR templates, or XPaths).
         :param timeout: The time to wait for verification in seconds.

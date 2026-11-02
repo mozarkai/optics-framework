@@ -136,7 +136,7 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - Add a wrapper on `optics.py:Optics` with `@keyword("Pretty Name")` and (if it has element/fallback args) `@fallback_params` — without this it won't be reachable from Robot Framework or the public SDK.
 - Add `"Pretty Name": "method_name"` to `TestFrameworkGenerator.keyword_registry` (`generate.py:240`) so `optics generate` emits it.
 - Add `"Pretty Name"` to the `keyword_registry` set inside `YAMLDataReader.read_modules` (`generate.py:172`) so YAML step parsing recognises multi-word names.
-- Re-run `optics list` to confirm reflection picks it up; `tests/feature/` and `tests/units/` may need fixtures.
+- Re-run `optics list` to confirm reflection picks it up; `tests/units/` and `tests/integration/` may need fixtures.
 
 ## Where else to put things
 
@@ -224,8 +224,8 @@ CI runs static analysis on every push to `main` via `.github/workflows/mozarkson
 - **`Session` mutates the passed-in `Config`.** `_maybe_setup_junit` (`session_manager.py:40`) sets `config.json_path`; `ConfigHandler.__init__` (`config_handler.py:136`) sets `execution_output_path` and creates the directory. Don't share a `Config` instance across sessions.
 - **`OPTICS_EVENT_DRAIN_TIMEOUT_S`** (`execution.py:292`, default `2.0`) caps shutdown-side event flushing. Truncated JUnit XML on long runs → raise this env before debugging logic.
 - **Robot Framework is optional.** `keyword` (`optics.py:54`) / `library` (`optics.py:65`) provide no-op decorators when `robotframework` isn't installed. Don't hard-import `robot.api`; mirror the try/except.
-- **`element_source.locate` stubs hide strategies.** `LocatorStrategy._is_method_implemented` (`strategies.py:71`) reads source to detect bodies that just `raise NotImplementedError` and excludes that source from the strategy. A poorly-stubbed new element source can silently disappear from the strategy list.
-- **Two test trees.** `tests/units/` and `tests/feature/` both run under one `pytest` invocation (`pytest.toml`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
+- **`element_source.locate` stubs hide strategies.** `LocatorStrategy._is_method_implemented` (`strategies.py:81`) reads source to detect bodies that just `raise NotImplementedError` and excludes that source from the strategy. A poorly-stubbed new element source can silently disappear from the strategy list.
+- **Two test trees.** `tests/units/` and `tests/integration/` both run under one `pytest` invocation (`pytest.toml`, `testpaths = ["tests"]`). Markers (`white_box`, `black_box`, `hybrid`, `generate`) scope: `pytest -m white_box`. `tests/conftest.py` injects shared fixtures.
 
 ## Commands
 

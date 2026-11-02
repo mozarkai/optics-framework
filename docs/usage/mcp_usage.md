@@ -190,8 +190,8 @@ keywords you called and their args, so you can author an optics project directly
 2. Write those files (the keyword *display names* come from the `optics://keywords`
    catalog). Parameterize by putting run-specific values in `elements.csv` and
    referencing them as `${name}`, so "set alarm to 22:00" becomes a reusable
-   `${time}`. A whole cell must be exactly `${name}` — the runner substitutes
-   whole values only, not `${name}` inside a larger string.
+   `${time}`. A cell that is exactly `${name}` tries each of its values in order;
+   `${name}` inside a longer value is replaced by its first value.
 3. For loops, branching, computed values or API calls in a suite, author the
    control-flow keywords (`Run Loop`, `Condition`, `Evaluate`, `Invoke Api`, …)
    into the modules — they run under `optics execute`. Live, you drive that logic
