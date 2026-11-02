@@ -173,6 +173,7 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
 | **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |
 | **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |
 | **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |
+| **Natural-language agent** | `nl_agent` | `vision: auto`, `max_steps: 15` |
 
 ## Configuration Structure
 
@@ -352,6 +353,21 @@ All configurations are defined in YAML format. The main configuration file (`con
     ```
 
     See [LLM Models](#llm-models) below for backend configuration.
+
+=== "Natural-Language Agent"
+
+    ### `nl_agent`
+
+    **Type:** `object` | **Default:** `{vision: auto, max_steps: 15, escalation_model: ""}`
+
+    Settings of the natural-language mode of `optics live` (`Ctrl-N`). They have an effect
+    only when an entry under `llm_models` is enabled.
+
+    | Key | Meaning |
+    |-----|---------|
+    | `vision` | When the agent sends the screenshot. `auto` sends it on the first turn, after a step that code did not confirm, when the screen has few or unlabelled controls, and when no element list is available. `always` sends it on every turn. `never` sends no image, for text-only models. |
+    | `max_steps` | The most actions the agent takes for one instruction. |
+    | `escalation_model` | A model ID for the same engine as the first enabled `llm_models` entry. The agent sends hard turns to it: a second try after a bad reply, a turn after two failures in a row, and a turn with a guard note. Empty means one model for all turns. |
 
 ---
 
@@ -828,6 +844,10 @@ this section out has no cost for projects that don't use either feature.
 Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the
 `llm` extra installs all three. Keys are read from environment variables only. If you enable
 more than one entry, a failed call falls through to the next one in list order.
+
+Every engine takes `capabilities.timeout_s` (default `60`): the seconds one request may take.
+A request that takes longer fails like any other LLM error, so a stalled connection cannot hang
+a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before it fails.
 
 | You have | Engine |
 |----------|--------|
