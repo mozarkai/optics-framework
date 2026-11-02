@@ -52,6 +52,8 @@ class ElementSourceInterface(ABC):
         :param element: The element to search for (e.g., template image, UI component).
         :type element: Any
         :return: A tuple (x, y) representing the center of the element, or None if not found.
+            Coordinates must be in the driver's window space (``get_window_size``), which
+            AOI filtering compares them against.
         :rtype: Optional[Tuple[int, int]]
         """
         pass
