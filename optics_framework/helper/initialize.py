@@ -97,7 +97,7 @@ _STARTER_CONFIG = """\
 #   2. Enable the matching elements_sources for that driver.
 #   3. Install the driver's packages, e.g.  optics setup --install appium
 #
-# Full reference: https://optics-framework.org/docs/reference/config
+# Full reference: https://optics-framework.org/docs/reference/config?ref=config
 
 driver_sources:
   # Native Android/iOS via Appium. Needs a running Appium server and a connected
