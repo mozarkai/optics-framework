@@ -218,6 +218,10 @@ class KeywordInfo(BaseModel):
     returns: bool = True
 
 
+# /keywords says `returns` only for these, so a client offers store_as only where a step's result is worth keeping. The runner still accepts store_as on any keyword that returns a value.
+_STORABLE_KEYWORDS = frozenset({"get_text", "get_app_version", "get_driver_session_id", "execute_script"})
+
+
 def _humanize_keyword(name: str) -> str:
     """Convert a snake_case method name into a human-friendly title.
 
@@ -378,7 +382,7 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
                 keyword_slug=meth_name,
                 description=doc,
                 parameters=params,
-                returns=sig.return_annotation not in (None, type(None), "None"),
+                returns=meth_name in _STORABLE_KEYWORDS and sig.return_annotation not in (None, type(None), "None"),
             )
         )
     return keywords
