@@ -110,8 +110,9 @@ def test_discover_keywords_finds_real_api_keywords():
 
 def test_discover_keywords_says_which_keywords_return_a_value():
     returns = {i.keyword_slug: i.returns for i in expose_api.discover_keywords()}
-    assert returns["get_text"] and returns["assert_presence"]
-    assert not returns["press_element"] and not returns["sleep"]
+    assert {slug for slug, value in returns.items() if value} == {
+        "get_text", "get_app_version", "get_driver_session_id", "execute_script",
+    }
 
 
 # ---------------------------------------------------------------------------
