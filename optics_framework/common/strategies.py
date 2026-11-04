@@ -773,7 +773,9 @@ class StrategyManager:
                 )
             except Exception as e:
                 raise_if_session_dead(e)
-                last_error = e
+                # A missing OCR engine explains nothing when a native lookup also ran.
+                if text_only or not _is_unconfigured_ocr(strategy):
+                    last_error = e
                 continue
             if locate_result:
                 yielded = True
