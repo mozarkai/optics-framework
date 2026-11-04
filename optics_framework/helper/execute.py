@@ -740,6 +740,8 @@ _MAX_LISTED_TEST_CASES = 20
 class BaseRunner:
     """Base class for running test cases from CSV and YAML files using ExecutionEngine."""
 
+    _announce_selection = True
+
     def __init__(self, args: RunnerArgs):
         self.folder_path = args.folder_path
         self.runner = args.runner
@@ -927,7 +929,8 @@ class BaseRunner:
                 else "--include names only setup/teardown test cases"
             )
             self._exit_selection_error(f"Nothing to run: {reason} in {self.folder_path}.")
-        print(f"Selected {len(selected)} of {total} test cases: {', '.join(selected)}")
+        if self._announce_selection:
+            print(f"Selected {len(selected)} of {total} test cases: {', '.join(selected)}")
 
     def _exit_unknown_test_cases(self, unmatched: List[str]) -> None:
         known = {normalize_test_case_name(name): name for name in self.test_cases_data}
@@ -941,7 +944,7 @@ class BaseRunner:
         lines.append("Test cases in this project:")
         lines.extend(f"  {name}" for name in names[:_MAX_LISTED_TEST_CASES])
         if len(names) > _MAX_LISTED_TEST_CASES:
-            lines.append(f"  … and {len(names) - _MAX_LISTED_TEST_CASES} more")
+            lines.append(f"  … and {len(names) - _MAX_LISTED_TEST_CASES} more (--list prints them all)")
         lines.append("Names match whole test case names; case and extra spaces are ignored.")
         self._exit_selection_error("\n".join(lines))
 
@@ -1032,6 +1035,27 @@ class DryRunRunner(BaseRunner):
         return await self.run("dry_run")
 
 
+class ListRunner(BaseRunner):
+    """Loads and selects test cases exactly like a run, but opens no session."""
+
+    _announce_selection = False
+
+    def _setup_session(self):
+        pass
+
+    def print_test_cases(self) -> None:
+        """Selected test cases on stdout, one per line, ready to paste into --include."""
+        regular = [n for n in self.filtered_test_cases if not is_setup_or_teardown(n)]
+        always = [n.strip() for n in self.filtered_test_cases if is_setup_or_teardown(n)]
+        for name in regular:
+            print(name.strip())
+        if always:
+            print(f"Always run: {', '.join(always)}", file=sys.stderr)
+        if self.config.get("include") or self.config.get("exclude"):
+            total = sum(1 for n in self.test_cases_data if not is_setup_or_teardown(n))
+            print(f"Selected {len(regular)} of {total} test cases", file=sys.stderr)
+
+
 def _has_failed_results(results: Any) -> bool:
     return isinstance(results, dict) and any(
         getattr(tc, "status", None) != "PASS" for tc in results.values()
@@ -1090,3 +1114,14 @@ def dryrun_main(
     results = asyncio.run(runner_instance.execute())
     if _has_failed_results(results):
         sys.exit(1)
+
+
+def list_test_cases_main(
+    folder_path: str,
+    *,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> None:
+    """Entry point for ``--list``: print what a run would select, touching no driver."""
+    args = RunnerArgs(folder_path=folder_path, include=include, exclude=exclude)
+    ListRunner(args).print_test_cases()

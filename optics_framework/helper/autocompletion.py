@@ -203,7 +203,7 @@ _optics_completions() {
       if [[ $prev == "--runner" ]]; then
         COMPREPLY=( $(compgen -W "$runner_options" -- "$cur") )
       else
-        COMPREPLY=( $(compgen -W "--runner --use-printer --no-use-printer --include --exclude -h --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--runner --use-printer --no-use-printer --include --exclude --list -h --help" -- "$cur") )
       fi
       ;;
 

@@ -22,7 +22,7 @@ try:
     from optics_framework.helper.list_keyword import main as list_main
     from optics_framework.helper.initialize import create_project, available_templates
     from optics_framework.helper.version import VERSION
-    from optics_framework.helper.execute import execute_main, dryrun_main
+    from optics_framework.helper.execute import execute_main, dryrun_main, list_test_cases_main
     from optics_framework.helper.live import live_main
     from optics_framework.helper.generate import generate_test_file as generate_framework_code
     from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines, print_install_next_steps
@@ -376,6 +376,8 @@ def _selection_epilog(command: str) -> str:
         f"  optics {command} ./project --include \"Login Test\"\n"
         f"  optics {command} ./project --include \"Login Test\" \"Checkout Test\"\n"
         f"  optics {command} ./project --exclude \"Slow Test\" --exclude \"Flaky Test\"\n"
+        f"  optics {command} ./project --list\n"
+        f"  optics {command} ./project --include \"Login Test\" --list\n"
         "\nPut the project folder before --include/--exclude: every argument after\n"
         "the flag is read as a test case name until the next option."
     )
@@ -401,6 +403,20 @@ def _add_test_case_selection(parser: argparse.ArgumentParser) -> None:
         help="Skip these test cases (whole names, case-insensitive; "
              "overrides include/exclude in config.yaml). Repeatable.",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        dest="list_test_cases",
+        help="Print the test cases this command would run, one per line, "
+             "then exit without starting a session.",
+    )
+
+
+def _list_if_requested(args) -> bool:
+    if not args.list_test_cases:
+        return False
+    list_test_cases_main(args.folder_path, include=args.include, exclude=args.exclude)
+    return True
 
 
 class DryRunArgs(BaseModel):
@@ -446,6 +462,8 @@ class DryRunCommand(Command):
         parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
+        if _list_if_requested(args):
+            return
         dry_run_args = DryRunArgs(
             folder_path=args.folder_path,
             runner=args.runner,
@@ -505,6 +523,8 @@ class ExecuteCommand(Command):
         parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
+        if _list_if_requested(args):
+            return
         execute_args = ExecuteArgs(
             folder_path=args.folder_path,
             runner=args.runner,
