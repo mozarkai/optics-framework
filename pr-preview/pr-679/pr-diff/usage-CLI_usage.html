@@ -1,0 +1,168 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/usage/CLI_usage.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to2__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/CLI_usage.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/usage/CLI_usage.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to2__0"></td><td class="diff_header" id="from2_61">61</td><td nowrap="nowrap">Run test cases from a project folder. The runner discovers test cases (and modules, elements, config) from that folder:</td><td class="diff_next"></td><td class="diff_header" id="to2_61">61</td><td nowrap="nowrap">Run test cases from a project folder. The runner discovers test cases (and modules, elements, config) from that folder:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_62">62</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_62">62</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_63">63</td><td nowrap="nowrap">```bash</td><td class="diff_next"></td><td class="diff_header" id="to2_63">63</td><td nowrap="nowrap">```bash</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_64">64</td><td nowrap="nowrap">optics execute &lt;folder_path&gt; [--runner &lt;runner_name&gt;] [--use-printer | --no-use-printer]</td><td class="diff_next"></td><td class="diff_header" id="to2_64">64</td><td nowrap="nowrap">optics execute &lt;folder_path&gt; [--runner &lt;runner_name&gt;] [--use-printer | --no-use-printer]</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__1">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to2__1">n</a></td><td class="diff_header" id="to2_65">65</td><td nowrap="nowrap"><span class="diff_add">               [--include TEST_CASE [TEST_CASE ...] | --exclude TEST_CASE [TEST_CASE ...]]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_66">66</td><td nowrap="nowrap"><span class="diff_add">               [--list]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_65">65</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to2_67">67</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_66">66</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_68">68</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_67">67</td><td nowrap="nowrap">**Options:**</td><td class="diff_next"></td><td class="diff_header" id="to2_69">69</td><td nowrap="nowrap">**Options:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_68">68</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_70">70</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to2__1"></td><td class="diff_header" id="from2_69">69</td><td nowrap="nowrap">- `&lt;folder_path&gt;`: Path to the project directory. The runner discovers test cases, modules, elements, and `config.yaml` by content, so either the sample subdir layout (`test_cases/`, `modules/`, `test_data/`) or flat CSVs work.</td><td class="diff_next"></td><td class="diff_header" id="to2_71">71</td><td nowrap="nowrap">- `&lt;folder_path&gt;`: Path to the project directory. The runner discovers test cases, modules, elements, and `config.yaml` by content, so either the sample subdir layout (`test_cases/`, `modules/`, `test_data/`) or flat CSVs work.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_70">70</td><td nowrap="nowrap">- `--runner &lt;runner_name&gt;`: Test runner to use. Supported: `test_runner` (default), `pytest`.</td><td class="diff_next"></td><td class="diff_header" id="to2_72">72</td><td nowrap="nowrap">- `--runner &lt;runner_name&gt;`: Test runner to use. Supported: `test_runner` (default), `pytest`.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_71">71</td><td nowrap="nowrap">- `--use-printer` (default): Enable live result printer.</td><td class="diff_next"></td><td class="diff_header" id="to2_73">73</td><td nowrap="nowrap">- `--use-printer` (default): Enable live result printer.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_72">72</td><td nowrap="nowrap">- `--no-use-printer`: Disable live result printer.</td><td class="diff_next"></td><td class="diff_header" id="to2_74">74</td><td nowrap="nowrap">- `--no-use-printer`: Disable live result printer.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__2">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to2__2">n</a></td><td class="diff_header" id="to2_75">75</td><td nowrap="nowrap"><span class="diff_add">- `--include TEST_CASE [TEST_CASE ...]`: Run only these test cases. See [Running selected test cases](#running-selected-test-cases).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_76">76</td><td nowrap="nowrap"><span class="diff_add">- `--exclude TEST_CASE [TEST_CASE ...]`: Run every test case except these.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_77">77</td><td nowrap="nowrap"><span class="diff_add">- `--list`: Print the test cases this command would run, then exit. See [Listing test cases](#listing-test-cases).</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to2__2"></td><td class="diff_header" id="from2_73">73</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_78">78</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_74">74</td><td nowrap="nowrap">**Preflight check:** before running anything, `optics execute` verifies the enabled driver's backend is actually reachable — the Appium server (plus at least one attached Android device via `adb`) for Appium projects, or the remote WebDriver URL for Selenium projects. If something is missing it stops with the exact fix (e.g. "Start one in another terminal: `appium`") and a non-zero exit code instead of running tests that cannot reach a target. Set `OPTICS_SKIP_PREFLIGHT=1` to bypass this check.</td><td class="diff_next"></td><td class="diff_header" id="to2_79">79</td><td nowrap="nowrap">**Preflight check:** before running anything, `optics execute` verifies the enabled driver's backend is actually reachable — the Appium server (plus at least one attached Android device via `adb`) for Appium projects, or the remote WebDriver URL for Selenium projects. If something is missing it stops with the exact fix (e.g. "Start one in another terminal: `appium`") and a non-zero exit code instead of running tests that cannot reach a target. Set `OPTICS_SKIP_PREFLIGHT=1` to bypass this check.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_75">75</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_80">80</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_76">76</td><td nowrap="nowrap">**Failure details:** when any step fails, a *Failure details* panel is printed below the summary with each failing step and its reason; unknown steps include a `Did you mean '…'?` suggestion when a close keyword match exists.</td><td class="diff_next"></td><td class="diff_header" id="to2_81">81</td><td nowrap="nowrap">**Failure details:** when any step fails, a *Failure details* panel is printed below the summary with each failing step and its reason; unknown steps include a `Did you mean '…'?` suggestion when a close keyword match exists.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__3">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to2__3">n</a></td><td class="diff_header" id="to2_82">82</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_83">83</td><td nowrap="nowrap"><span class="diff_add">### Running selected test cases</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_84">84</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_85">85</td><td nowrap="nowrap"><span class="diff_add">Pick test cases by name without editing `config.yaml`:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_86">86</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_87">87</td><td nowrap="nowrap"><span class="diff_add">```bash</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_88">88</td><td nowrap="nowrap"><span class="diff_add">optics execute ./my_project --include "Login Test"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_89">89</td><td nowrap="nowrap"><span class="diff_add">optics execute ./my_project --include "Login Test" "Checkout Test"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_90">90</td><td nowrap="nowrap"><span class="diff_add">optics execute ./my_project --exclude "Slow Test" --exclude "Flaky Test"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_91">91</td><td nowrap="nowrap"><span class="diff_add">optics dry_run ./my_project --include "Login Test"</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_92">92</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_93">93</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_94">94</td><td nowrap="nowrap"><span class="diff_add">- **Whole names, any case.** A name must match a full test case name. Case and extra spaces are ignored (`"login   TEST"` matches `Login Test`), but there is no prefix, substring or wildcard matching.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_95">95</td><td nowrap="nowrap"><span class="diff_add">- **Several names.** List them after one flag, repeat the flag, or both. Quote names that contain spaces.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_96">96</td><td nowrap="nowrap"><span class="diff_add">- **One or the other.** `--include` and `--exclude` cannot be combined.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_97">97</td><td nowrap="nowrap"><span class="diff_add">- **Overrides `config.yaml`.** Either flag replaces the project's `include`/`exclude` settings for that run. Without the flags, `config.yaml` applies as before.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_98">98</td><td nowrap="nowrap"><span class="diff_add">- **Setup and teardown always run.** Test cases whose name contains `setup` or `teardown` still wrap the selection. Excluding one prints a note and has no effect.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_99">99</td><td nowrap="nowrap"><span class="diff_add">- **Order.** Selected test cases run in project order, not in the order you list them.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_100">100</td><td nowrap="nowrap"><span class="diff_add">- **Folder first.** Put the project folder before `--include`/`--exclude`: every argument after the flag is read as a test case name until the next option.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_101">101</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_102">102</td><td nowrap="nowrap"><span class="diff_add">Before anything runs, the command prints `Selected N of M test cases: …`. It stops with exit code `3` (invalid input) and no session started when:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_103">103</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_104">104</td><td nowrap="nowrap"><span class="diff_add">- a name matches no test case. The error suggests the closest name (`Did you mean 'Checkout Test'?`) and lists the project's test cases.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_105">105</td><td nowrap="nowrap"><span class="diff_add">- `--exclude` removes every test case, or `--include` names only setup/teardown test cases.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_106">106</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_107">107</td><td nowrap="nowrap"><span class="diff_add">A malformed command line exits with code `2` instead: a blank name, or `--include` and `--exclude` together.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_108">108</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_109">109</td><td nowrap="nowrap"><span class="diff_add">An unknown name in `config.yaml`'s `include`/`exclude` only prints a warning, so existing projects keep running.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_110">110</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_111">111</td><td nowrap="nowrap"><span class="diff_add">### Listing test cases</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_112">112</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_113">113</td><td nowrap="nowrap"><span class="diff_add">`--list` prints the test cases a run would select, one per line, and exits. It starts no session, runs no preflight and needs no enabled driver, so it works before a device is set up.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_114">114</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_115">115</td><td nowrap="nowrap"><span class="diff_add">```bash</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_116">116</td><td nowrap="nowrap"><span class="diff_add">optics execute ./my_project --list                         # every test case</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_117">117</td><td nowrap="nowrap"><span class="diff_add">optics execute ./my_project --include "Login Test" --list  # preview a selection</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_118">118</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_119">119</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_120">120</td><td nowrap="nowrap"><span class="diff_add">- The names go to stdout exactly as `--include`/`--exclude` accept them, so they can be piped or pasted back into a command.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_121">121</td><td nowrap="nowrap"><span class="diff_add">- Selection from `--include`/`--exclude` or `config.yaml` applies. When one is active, `Selected N of M test cases` is printed to stderr.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_122">122</td><td nowrap="nowrap"><span class="diff_add">- Setup and teardown test cases are listed on stderr as `Always run: …`, since they run around every selection.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_123">123</td><td nowrap="nowrap"><span class="diff_add">- An unknown name or an empty selection exits with code `3`, the same as a real run.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_77">77</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_124">124</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_78">78</td><td nowrap="nowrap">## Initializing a New Project</td><td class="diff_next"></td><td class="diff_header" id="to2_125">125</td><td nowrap="nowrap">## Initializing a New Project</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_79">79</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_126">126</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_80">80</td><td nowrap="nowrap">Use the following command to initialize a new project:</td><td class="diff_next"></td><td class="diff_header" id="to2_127">127</td><td nowrap="nowrap">Use the following command to initialize a new project:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to2__3"></td><td class="diff_header" id="from2_133">133</td><td nowrap="nowrap">Validate test cases without executing actions (keyword and parameter checks):</td><td class="diff_next"></td><td class="diff_header" id="to2_180">180</td><td nowrap="nowrap">Validate test cases without executing actions (keyword and parameter checks):</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_134">134</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_181">181</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_135">135</td><td nowrap="nowrap">```bash</td><td class="diff_next"></td><td class="diff_header" id="to2_182">182</td><td nowrap="nowrap">```bash</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_136">136</td><td nowrap="nowrap">optics dry_run &lt;folder_path&gt; [--runner &lt;runner_name&gt;] [--use-printer | --no-use-printer]</td><td class="diff_next"></td><td class="diff_header" id="to2_183">183</td><td nowrap="nowrap">optics dry_run &lt;folder_path&gt; [--runner &lt;runner_name&gt;] [--use-printer | --no-use-printer]</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__4">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to2__4">n</a></td><td class="diff_header" id="to2_184">184</td><td nowrap="nowrap"><span class="diff_add">               [--include TEST_CASE [TEST_CASE ...] | --exclude TEST_CASE [TEST_CASE ...]]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_185">185</td><td nowrap="nowrap"><span class="diff_add">               [--list]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_137">137</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to2_186">186</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_138">138</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_187">187</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_139">139</td><td nowrap="nowrap">**Options:**</td><td class="diff_next"></td><td class="diff_header" id="to2_188">188</td><td nowrap="nowrap">**Options:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_140">140</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_189">189</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to2__4"></td><td class="diff_header" id="from2_141">141</td><td nowrap="nowrap">- `&lt;folder_path&gt;`: Path to the project directory.</td><td class="diff_next"></td><td class="diff_header" id="to2_190">190</td><td nowrap="nowrap">- `&lt;folder_path&gt;`: Path to the project directory.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_142">142</td><td nowrap="nowrap">- `--runner &lt;runner_name&gt;`: Test runner to use (default: `test_runner`).</td><td class="diff_next"></td><td class="diff_header" id="to2_191">191</td><td nowrap="nowrap">- `--runner &lt;runner_name&gt;`: Test runner to use (default: `test_runner`).</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_143">143</td><td nowrap="nowrap">- `--use-printer` (default): Enable live result printer.</td><td class="diff_next"></td><td class="diff_header" id="to2_192">192</td><td nowrap="nowrap">- `--use-printer` (default): Enable live result printer.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_144">144</td><td nowrap="nowrap">- `--no-use-printer`: Disable live result printer.</td><td class="diff_next"></td><td class="diff_header" id="to2_193">193</td><td nowrap="nowrap">- `--no-use-printer`: Disable live result printer.</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to2__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to2__top">t</a></td><td class="diff_header" id="to2_194">194</td><td nowrap="nowrap"><span class="diff_add">- `--include` / `--exclude`: Validate only the selected test cases, exactly as for [`optics execute`](#running-selected-test-cases).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_195">195</td><td nowrap="nowrap"><span class="diff_add">- `--list`: Print the test cases a dry run would validate, then exit (see [Listing test cases](#listing-test-cases)).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_145">145</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_196">196</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_146">146</td><td nowrap="nowrap">Unknown steps and unresolved `${variables}` are flagged per step, with reasons collected in a *Failure details* panel below the summary (`Did you mean '…'?` suggestions included for close keyword matches). `optics dry_run` never touches a device — unlike `optics execute`, no driver preflight runs.</td><td class="diff_next"></td><td class="diff_header" id="to2_197">197</td><td nowrap="nowrap">Unknown steps and unresolved `${variables}` are flagged per step, with reasons collected in a *Failure details* panel below the summary (`Did you mean '…'?` suggestions included for close keyword matches). `optics dry_run` never touches a device — unlike `optics execute`, no driver preflight runs.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_147">147</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to2_198">198</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from2_148">148</td><td nowrap="nowrap">## Serving the REST API</td><td class="diff_next"></td><td class="diff_header" id="to2_199">199</td><td nowrap="nowrap">## Serving the REST API</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
