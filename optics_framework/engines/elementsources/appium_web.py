@@ -41,7 +41,7 @@ _TEXT_AND_REACH_JS = (
     "const e = arguments[0]; const r = e.getBoundingClientRect();"
     "const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
     f"const text = ({utils.TEXT_OR_VALUE_JS})(e);"
-    "return [text, !!hit && (e.contains(hit) || hit.contains(e) || hit.control === e)];"
+    "return [text, !!hit && (e.contains(hit) || hit.contains(e) || hit.closest('label')?.control === e)];"
 )
 _SETTLE_TIMEOUT_S = 2.0
 _SETTLE_INTERVAL_S = 0.15
