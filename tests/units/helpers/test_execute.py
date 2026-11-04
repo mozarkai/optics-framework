@@ -179,14 +179,14 @@ class TestProbeTcp:
         finally:
             server.close()
 
-    def test_default_port_used_when_url_has_none(self):
+    def test_default_port_used_when_url_has_no_scheme_or_port(self):
         server = socket.socket()
         server.bind(("127.0.0.1", 0))
         server.listen(1)
         port = server.getsockname()[1]
         try:
             assert execute_module._probe_tcp(
-                "http://127.0.0.1", default_port=port) is True
+                "//127.0.0.1", default_port=port) is True
         finally:
             server.close()
 
@@ -197,6 +197,18 @@ class TestProbeTcp:
     @pytest.mark.parametrize("url", [None, "", "   ", "http://:4723/wd/hub"])
     def test_missing_or_unparseable_url_returns_false(self, url):
         assert execute_module._probe_tcp(url, default_port=4723) is False
+
+    @pytest.mark.parametrize("url, expected_port", [
+        ("https://appium-hub.example.com:8443/wd/hub", 8443),
+        ("http://appium-hub.example.com:4723/wd/hub", 4723),
+        ("https://appium-hub.example.com/wd/hub", 443),
+        ("http://appium-hub.example.com/wd/hub", 80),
+        ("//appium-hub.example.com", 4723),
+    ])
+    def test_port_comes_from_url_then_scheme_then_default(self, url, expected_port):
+        with patch.object(execute_module.socket, "create_connection") as connect:
+            assert execute_module._probe_tcp(url, default_port=4723) is True
+        assert connect.call_args.args[0] == ("appium-hub.example.com", expected_port)
 
 
 def _fake_adb_run(stdout):
