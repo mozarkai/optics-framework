@@ -256,7 +256,7 @@ class TestRunnerSelection:
         assert exc.value.code == 3
         no_session.assert_not_called()
         err = capsys.readouterr().err
-        assert "No test case named 'Chekout Tst'" in err
+        assert err.startswith("Error: No test case named 'Chekout Tst'")
         assert "Did you mean 'Checkout Test'?" in err
         assert "  Login Test\n  Checkout Test" in err
         assert "Unexpected error" not in err
@@ -280,7 +280,9 @@ class TestRunnerSelection:
         with pytest.raises(SystemExit) as exc:
             _runner(tmp_path, exclude=["login test", "checkout test"])
         assert exc.value.code == 3
-        assert "Nothing to run: --exclude skips every test case" in capsys.readouterr().err
+        assert capsys.readouterr().err.startswith(
+            f"Error: --exclude skips every test case in {tmp_path}, so there is nothing to run."
+        )
         no_session.assert_not_called()
 
     def test_cli_include_only_setup_exits(self, tmp_path, no_session, capsys):
@@ -288,7 +290,7 @@ class TestRunnerSelection:
         with pytest.raises(SystemExit) as exc:
             _runner(tmp_path, include=["suite setup"])
         assert exc.value.code == 3
-        assert "--include names only setup/teardown" in capsys.readouterr().err
+        assert capsys.readouterr().err.startswith("Error: --include names only setup/teardown")
 
     def test_cli_excluding_setup_prints_note(self, tmp_path, no_session, capsys):
         _make_project(tmp_path, ["Setup", "Login Test", "Checkout Test"])

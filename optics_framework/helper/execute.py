@@ -928,7 +928,7 @@ class BaseRunner:
                 if self.config.get("exclude")
                 else "--include names only setup/teardown test cases"
             )
-            self._exit_selection_error(f"Nothing to run: {reason} in {self.folder_path}.")
+            self._exit_selection_error(f"{reason} in {self.folder_path}, so there is nothing to run.")
         if self._announce_selection:
             print(f"Selected {len(selected)} of {total} test cases: {', '.join(selected)}")
 
@@ -950,7 +950,7 @@ class BaseRunner:
 
     def _exit_selection_error(self, message: str) -> None:
         internal_logger.debug(message)
-        print(message, file=sys.stderr)
+        print(f"Error: {message}", file=sys.stderr)
         sys.exit(_SELECTION_EXIT_CODE)
 
     def _exit_no_test_cases(self) -> None:
