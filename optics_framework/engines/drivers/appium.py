@@ -67,7 +67,7 @@ _ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"}
 # A zero-size page reports visible too: Firefox runs its translations engine in one.
 _PAGE_SHOWN_JS = "return document.visibilityState === 'visible' && innerWidth > 0 && innerHeight > 0;"
 _KEYBOARD_TIMEOUT_S = 2.0
-_KEYBOARD_POLL_S = 0.1
+_POLL_S = 0.1
 _PROBE_TIMEOUT_S = 2.0
 
 
@@ -1244,7 +1244,7 @@ class Appium(DriverInterface):
             if top < bottom and top == last:
                 return
             last = top
-            time.sleep(_KEYBOARD_POLL_S)
+            time.sleep(_POLL_S)
 
     @supported_on(*MOBILE)
     def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
@@ -1731,11 +1731,14 @@ class Appium(DriverInterface):
         try:
             driver.switch_to.context(self.NATIVE_CONTEXT)
             try:
-                rects: list[dict[str, int]] = []
+                rects: list[dict[str, int]]
                 deadline = time.monotonic() + _PROBE_TIMEOUT_S
                 # Android lists a new node in its accessibility tree a moment after the page adds it.
-                while not rects and time.monotonic() < deadline:
+                while True:
                     rects = [element.rect for element in driver.find_elements(AppiumBy.ACCESSIBILITY_ID, label)]
+                    if rects or time.monotonic() >= deadline:
+                        break
+                    time.sleep(_POLL_S)
             finally:
                 driver.switch_to.context(context)
         finally:
