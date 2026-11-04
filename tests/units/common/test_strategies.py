@@ -464,6 +464,13 @@ class _MissingTextSource(_PresenceOnlySource):
         raise OpticsError(Code.E0201, message="Timeout reached")
 
 
+class _RaisingTextSource(_MissingTextSource):
+    """A native source whose locate reports the miss by raising."""
+
+    def locate(self, element, index=None):
+        raise OpticsError(Code.E0201, message=f"no such element: {element}")
+
+
 class TestAssertPresenceContract:
     @pytest.mark.parametrize("rule", ["maybe", "none", ""])
     def test_invalid_rule_raises_e0205(self, rule):
@@ -477,6 +484,13 @@ class TestAssertPresenceContract:
             manager.assert_presence(["Submit"], "Text", timeout=0, rule="any")
         assert "OCR was not tried" in exc_info.value.message
         assert "Text detection is not available" not in str(exc_info.value.__cause__)
+
+    def test_unconfigured_ocr_does_not_mask_a_locate_miss(self):
+        manager = _sm(_RaisingTextSource())
+        with pytest.raises(OpticsError) as exc_info:
+            list(manager.locate("Submit"))
+        assert "OCR was not tried" in exc_info.value.message
+        assert "no such element: Submit" in str(exc_info.value.__cause__)
 
 
 class _CheckSource(ElementSourceInterface):
