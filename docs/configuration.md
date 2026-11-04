@@ -301,7 +301,10 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     List of test case names to include in execution. Only the specified test cases will be executed; all others will be skipped.
 
-    Names match whole test case names, ignoring case and extra spaces. Setup and teardown test cases always run. A name that matches no test case prints a warning. `include` and `exclude` cannot both be set. The `--include`/`--exclude` flags on `optics execute` and `optics dry_run` override both settings for one run (see [Running selected test cases](usage/CLI_usage.md#running-selected-test-cases)).
+    This is the normal place to choose which test cases a project runs. Names match whole test case names, ignoring case and extra spaces. A name that matches no test case prints a warning. `include` and `exclude` cannot both be set. To change the selection for one run without editing this file, pass `--include` or `--exclude` to `optics execute` or `optics dry_run`; the flag replaces both settings for that run (see [Running selected test cases](usage/CLI_usage.md#running-selected-test-cases)).
+
+    !!! warning "Test case names containing setup or teardown always run"
+        Any test case whose name contains `setup` or `teardown`, in any case, always runs and cannot be excluded. Avoid those words in the names of ordinary test cases.
 
     ```yaml
     include:

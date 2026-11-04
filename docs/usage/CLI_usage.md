@@ -82,7 +82,14 @@ optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 
 ### Running selected test cases
 
-Pick test cases by name without editing `config.yaml`:
+The usual way to pick test cases is `include` or `exclude` in the project's `config.yaml`, so the selection lives with the suite (see [`include`](../configuration.md)):
+
+```yaml
+include:
+  - "Login Test"
+```
+
+To change the selection for a single run without editing `config.yaml`, pass `--include` or `--exclude`:
 
 ```bash
 optics execute ./my_project --include "Login Test"
@@ -91,20 +98,24 @@ optics execute ./my_project --exclude "Slow Test" --exclude "Flaky Test"
 optics dry_run ./my_project --include "Login Test"
 ```
 
+- **Override, not merge.** Either flag replaces both `include` and `exclude` from `config.yaml` for that run. Without the flags, `config.yaml` applies.
 - **Whole names, any case.** A name must match a full test case name. Case and extra spaces are ignored (`"login   TEST"` matches `Login Test`), but there is no prefix, substring or wildcard matching.
 - **Several names.** List them after one flag, repeat the flag, or both. Quote names that contain spaces.
 - **One or the other.** `--include` and `--exclude` cannot be combined.
-- **Overrides `config.yaml`.** Either flag replaces the project's `include`/`exclude` settings for that run. Without the flags, `config.yaml` applies as before.
-- **Setup and teardown always run.** Test cases whose name contains `setup` or `teardown` still wrap the selection. Excluding one prints a note and has no effect.
 - **Order.** Selected test cases run in project order, not in the order you list them.
 - **Folder first.** Put the project folder before `--include`/`--exclude`: every argument after the flag is read as a test case name until the next option.
 
-Before anything runs, the command prints `Selected N of M test cases: …`. It stops with exit code `3` (invalid input) and no session started when:
+!!! warning "Test case names containing setup or teardown always run"
+    Any test case whose name contains `setup` or `teardown` (in any case) is treated as setup or teardown. It runs around every selection and cannot be excluded, by the flags or by `config.yaml`. Avoid those words in the names of ordinary test cases: `Test Setup Wizard` would always run.
 
-- a name matches no test case. The error suggests the closest name (`Did you mean 'Checkout Test'?`) and lists the project's test cases.
-- `--exclude` removes every test case, or `--include` names only setup/teardown test cases.
+Before anything runs, the command prints `Selected N of M test cases: …`.
 
-A malformed command line exits with code `2` instead: a blank name, or `--include` and `--exclude` together.
+**Exit codes for selection:**
+
+| Code | When |
+|---|---|
+| `3` | The selection is invalid input: a name matches no test case (the message suggests the closest name and lists the project's test cases), `--exclude` removes every test case, or `--include` names only setup/teardown test cases. The message starts with `Error:` and no session is started. |
+| `2` | The command line is malformed, as rejected by argparse: a blank name, `--include` with `--exclude`, or a missing argument. |
 
 An unknown name in `config.yaml`'s `include`/`exclude` only prints a warning, so existing projects keep running.
 
