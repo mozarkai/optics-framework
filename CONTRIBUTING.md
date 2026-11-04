@@ -24,6 +24,8 @@ poetry run mkdocs serve               # live-reload docs preview on :8000
 poetry build                          # wheel + sdist
 ```
 
+Rather not install any of this? `.devcontainer/` builds the same environment for you — open the repository in a GitHub Codespace or in VS Code's Dev Containers and everything above is already installed. See [Dev Container and Codespaces](https://mozarkai.github.io/optics-framework/contribution/dev_container/).
+
 ## Ways to contribute
 
 | If you want to… | Start here |
