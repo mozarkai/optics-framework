@@ -63,6 +63,7 @@ Run test cases from a project folder. The runner discovers test cases (and modul
 ```bash
 optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-printer]
                [--include TEST_CASE [TEST_CASE ...] | --exclude TEST_CASE [TEST_CASE ...]]
+               [--list]
 ```
 
 **Options:**
@@ -73,6 +74,7 @@ optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 - `--no-use-printer`: Disable live result printer.
 - `--include TEST_CASE [TEST_CASE ...]`: Run only these test cases. See [Running selected test cases](#running-selected-test-cases).
 - `--exclude TEST_CASE [TEST_CASE ...]`: Run every test case except these.
+- `--list`: Print the test cases this command would run, then exit. See [Listing test cases](#listing-test-cases).
 
 **Preflight check:** before running anything, `optics execute` verifies the enabled driver's backend is actually reachable — the Appium server (plus at least one attached Android device via `adb`) for Appium projects, or the remote WebDriver URL for Selenium projects. If something is missing it stops with the exact fix (e.g. "Start one in another terminal: `appium`") and a non-zero exit code instead of running tests that cannot reach a target. Set `OPTICS_SKIP_PREFLIGHT=1` to bypass this check.
 
@@ -103,6 +105,20 @@ Before anything runs, the command prints `Selected N of M test cases: …`. It s
 - `--exclude` removes every test case, or `--include` names only setup/teardown test cases.
 
 An unknown name in `config.yaml`'s `include`/`exclude` only prints a warning, so existing projects keep running.
+
+### Listing test cases
+
+`--list` prints the test cases a run would select, one per line, and exits. It starts no session, runs no preflight and needs no enabled driver, so it works before a device is set up.
+
+```bash
+optics execute ./my_project --list                         # every test case
+optics execute ./my_project --include "Login Test" --list  # preview a selection
+```
+
+- The names go to stdout exactly as `--include`/`--exclude` accept them, so they can be piped or pasted back into a command.
+- Selection from `--include`/`--exclude` or `config.yaml` applies. When one is active, `Selected N of M test cases` is printed to stderr.
+- Setup and teardown test cases are listed on stderr as `Always run: …`, since they run around every selection.
+- An unknown name or an empty selection exits with code `2`, the same as a real run.
 
 ## Initializing a New Project
 
@@ -164,6 +180,7 @@ Validate test cases without executing actions (keyword and parameter checks):
 ```bash
 optics dry_run <folder_path> [--runner <runner_name>] [--use-printer | --no-use-printer]
                [--include TEST_CASE [TEST_CASE ...] | --exclude TEST_CASE [TEST_CASE ...]]
+               [--list]
 ```
 
 **Options:**
@@ -173,6 +190,7 @@ optics dry_run <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 - `--use-printer` (default): Enable live result printer.
 - `--no-use-printer`: Disable live result printer.
 - `--include` / `--exclude`: Validate only the selected test cases, exactly as for [`optics execute`](#running-selected-test-cases).
+- `--list`: Print the test cases a dry run would validate, then exit (see [Listing test cases](#listing-test-cases)).
 
 Unknown steps and unresolved `${variables}` are flagged per step, with reasons collected in a *Failure details* panel below the summary (`Did you mean '…'?` suggestions included for close keyword matches). `optics dry_run` never touches a device — unlike `optics execute`, no driver preflight runs.
 

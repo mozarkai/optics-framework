@@ -105,6 +105,7 @@ optics execute ./my_project --runner test_runner --use-printer
 - `--runner` (optional): Test runner to use (default: test_runner)
 - `--use-printer` / `--no-use-printer`: Enable/disable live result printer
 - `--include` / `--exclude` (optional, mutually exclusive): Test case names to run or skip; override `include`/`exclude` in `config.yaml` for this run
+- `--list` (optional): Print the selected test case names and exit; `ListRunner` loads and selects like a run but creates no session
 
 **Flow:**
 
