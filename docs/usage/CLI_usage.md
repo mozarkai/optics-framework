@@ -99,10 +99,12 @@ optics dry_run ./my_project --include "Login Test"
 - **Order.** Selected test cases run in project order, not in the order you list them.
 - **Folder first.** Put the project folder before `--include`/`--exclude`: every argument after the flag is read as a test case name until the next option.
 
-Before anything runs, the command prints `Selected N of M test cases: …`. It stops with exit code `2` and no session started when:
+Before anything runs, the command prints `Selected N of M test cases: …`. It stops with exit code `3` (invalid input) and no session started when:
 
 - a name matches no test case. The error suggests the closest name (`Did you mean 'Checkout Test'?`) and lists the project's test cases.
 - `--exclude` removes every test case, or `--include` names only setup/teardown test cases.
+
+A malformed command line exits with code `2` instead: a blank name, or `--include` and `--exclude` together.
 
 An unknown name in `config.yaml`'s `include`/`exclude` only prints a warning, so existing projects keep running.
 
@@ -118,7 +120,7 @@ optics execute ./my_project --include "Login Test" --list  # preview a selection
 - The names go to stdout exactly as `--include`/`--exclude` accept them, so they can be piped or pasted back into a command.
 - Selection from `--include`/`--exclude` or `config.yaml` applies. When one is active, `Selected N of M test cases` is printed to stderr.
 - Setup and teardown test cases are listed on stderr as `Always run: …`, since they run around every selection.
-- An unknown name or an empty selection exits with code `2`, the same as a real run.
+- An unknown name or an empty selection exits with code `3`, the same as a real run.
 
 ## Initializing a New Project
 

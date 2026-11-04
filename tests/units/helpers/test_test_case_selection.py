@@ -253,7 +253,7 @@ class TestRunnerSelection:
         _make_project(tmp_path, ["Login Test", "Checkout Test"])
         with pytest.raises(SystemExit) as exc:
             _runner(tmp_path, include=["Login Test", "Chekout Tst"])
-        assert exc.value.code == 2
+        assert exc.value.code == 3
         no_session.assert_not_called()
         err = capsys.readouterr().err
         assert "No test case named 'Chekout Tst'" in err
@@ -279,7 +279,7 @@ class TestRunnerSelection:
         _make_project(tmp_path, ["Setup", "Login Test", "Checkout Test"])
         with pytest.raises(SystemExit) as exc:
             _runner(tmp_path, exclude=["login test", "checkout test"])
-        assert exc.value.code == 2
+        assert exc.value.code == 3
         assert "Nothing to run: --exclude skips every test case" in capsys.readouterr().err
         no_session.assert_not_called()
 
@@ -287,7 +287,7 @@ class TestRunnerSelection:
         _make_project(tmp_path, ["Suite Setup", "Login Test"])
         with pytest.raises(SystemExit) as exc:
             _runner(tmp_path, include=["suite setup"])
-        assert exc.value.code == 2
+        assert exc.value.code == 3
         assert "--include names only setup/teardown" in capsys.readouterr().err
 
     def test_cli_excluding_setup_prints_note(self, tmp_path, no_session, capsys):
@@ -438,11 +438,11 @@ class TestListTestCases:
         assert out == "Checkout Test\n"
         assert "Selected 1 of 2 test cases" in err
 
-    def test_unknown_name_still_exits_2(self, tmp_path, no_session):
+    def test_unknown_name_still_exits_3(self, tmp_path, no_session):
         _make_project(tmp_path, ["Login Test"])
         with pytest.raises(SystemExit) as exc:
             execute_module.list_test_cases_main(str(tmp_path), include=["Logn Test"])
-        assert exc.value.code == 2
+        assert exc.value.code == 3
 
     def test_truncated_error_points_at_list(self, tmp_path, no_session, capsys):
         _make_project(tmp_path, [f"Case {i:02d}" for i in range(21)])

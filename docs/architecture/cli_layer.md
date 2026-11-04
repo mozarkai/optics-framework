@@ -129,7 +129,7 @@ sequenceDiagram
     CLI-->>User: Results displayed (+ failure details when steps failed)
 ```
 
-Selection runs before the preflight. `select_test_cases` (`helper/execute.py`) matches whole names, ignoring case and whitespace, and always keeps setup/teardown test cases. `BaseRunner._report_selection` is strict for command-line names: an unknown name, or a selection with nothing left to run, exits with code 2 before any session is created. Unknown names in `config.yaml` only warn.
+Selection runs before the preflight. `select_test_cases` (`helper/execute.py`) matches whole names, ignoring case and whitespace, and always keeps setup/teardown test cases. `BaseRunner._report_selection` is strict for command-line names: an unknown name, or a selection with nothing left to run, exits with code 3 (invalid input) before any session is created; malformed flags stay argparse's code 2. Unknown names in `config.yaml` only warn.
 
 The preflight aborts with a non-zero exit and fix instructions when the enabled driver's backend is unreachable (Appium server / Android device, Selenium remote URL). `OPTICS_SKIP_PREFLIGHT=1` bypasses it.
 

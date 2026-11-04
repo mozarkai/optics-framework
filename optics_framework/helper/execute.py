@@ -733,7 +733,7 @@ class RunnerArgs(BaseModel):
         return self
 
 
-_SELECTION_EXIT_CODE = 2
+_SELECTION_EXIT_CODE = 3
 _MAX_LISTED_TEST_CASES = 20
 
 
