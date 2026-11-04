@@ -1,7 +1,7 @@
 import argparse
 import os
 import sys
-from typing import Literal, NoReturn, Optional
+from typing import List, Literal, NoReturn, Optional
 
 from optics_framework.helper.abort import abort_with_panel, reinstall_guidance
 
@@ -364,17 +364,61 @@ class InitCommand(Command):
         create_project(init_args)
 
 
+def _test_case_name(value: str) -> str:
+    if not value.strip():
+        raise argparse.ArgumentTypeError("test case name must not be blank")
+    return value
+
+
+def _selection_epilog(command: str) -> str:
+    return (
+        "examples:\n"
+        f"  optics {command} ./project --include \"Login Test\"\n"
+        f"  optics {command} ./project --include \"Login Test\" \"Checkout Test\"\n"
+        f"  optics {command} ./project --exclude \"Slow Test\" --exclude \"Flaky Test\"\n"
+        "\nPut the project folder before --include/--exclude: every argument after\n"
+        "the flag is read as a test case name until the next option."
+    )
+
+
+def _add_test_case_selection(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--include",
+        nargs="+",
+        action="extend",
+        type=_test_case_name,
+        metavar="TEST_CASE",
+        help="Run only these test cases (whole names, case-insensitive; "
+             "overrides include/exclude in config.yaml). Repeatable.",
+    )
+    group.add_argument(
+        "--exclude",
+        nargs="+",
+        action="extend",
+        type=_test_case_name,
+        metavar="TEST_CASE",
+        help="Skip these test cases (whole names, case-insensitive; "
+             "overrides include/exclude in config.yaml). Repeatable.",
+    )
+
+
 class DryRunArgs(BaseModel):
     """Arguments for the dry_run command."""
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
 
 
 class DryRunCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "dry_run", help="Validate a project's test cases without running them"
+            "dry_run",
+            help="Validate a project's test cases without running them",
+            epilog=_selection_epilog("dry_run"),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         parser.add_argument(
             "folder_path", type=str, help="Path to the folder containing CSV files"
@@ -398,18 +442,23 @@ class DryRunCommand(Command):
             action="store_false",
             help="Disable live result printer"
         )
+        _add_test_case_selection(parser)
         parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
         dry_run_args = DryRunArgs(
             folder_path=args.folder_path,
             runner=args.runner,
-            use_printer=args.use_printer
+            use_printer=args.use_printer,
+            include=args.include,
+            exclude=args.exclude,
         )
         dryrun_main(
             dry_run_args.folder_path,
             dry_run_args.runner,
-            use_printer=dry_run_args.use_printer
+            use_printer=dry_run_args.use_printer,
+            include=dry_run_args.include,
+            exclude=dry_run_args.exclude,
         )
 
 
@@ -418,12 +467,17 @@ class ExecuteArgs(BaseModel):
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
 
 
 class ExecuteCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "execute", help="Execute test cases from CSV files"
+            "execute",
+            help="Execute test cases from CSV files",
+            epilog=_selection_epilog("execute"),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         parser.add_argument(
             "folder_path", type=str, help="Path to the folder containing CSV files"
@@ -447,19 +501,23 @@ class ExecuteCommand(Command):
             action="store_false",
             help="Disable live result printer"
         )
+        _add_test_case_selection(parser)
         parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
         execute_args = ExecuteArgs(
             folder_path=args.folder_path,
             runner=args.runner,
-            use_printer=args.use_printer
+            use_printer=args.use_printer,
+            include=args.include,
+            exclude=args.exclude,
         )
-        # Pass only required arguments for backward compatibility
         execute_main(
             execute_args.folder_path,
             execute_args.runner,
-            use_printer=execute_args.use_printer
+            use_printer=execute_args.use_printer,
+            include=execute_args.include,
+            exclude=execute_args.exclude,
         )
 
 

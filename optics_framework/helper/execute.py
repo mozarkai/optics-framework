@@ -5,10 +5,12 @@ import socket
 import subprocess  # nosec B404
 import sys
 import asyncio
+import difflib
+from dataclasses import dataclass, field
 from typing import Optional, Tuple, List, Dict, Set, Any
 from urllib.parse import urlparse
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from pathlib import Path
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
@@ -291,22 +293,74 @@ def validate_required_files(
         sys.exit(1)
 
 
-def _should_include_test_case(
-    name: str, include_set: Set[str], exclude_set: Set[str]
-) -> bool:
-    """
-    Determine if a test case should be included based on include/exclude sets.
+def normalize_test_case_name(name: Any) -> str:
+    """Key two test case names compare equal under: case- and whitespace-insensitive."""
+    return " ".join(str(name).split()).casefold()
 
-    :param name: Test case name (lowercase).
-    :param include_set: Set of test case names to include.
-    :param exclude_set: Set of test case names to exclude.
-    :return: True if the test case should be included, False otherwise.
+
+def is_setup_or_teardown(name: str) -> bool:
+    """Mirror ``categorize_test_cases``: these run around the selection, never filtered out."""
+    lname = name.lower()
+    return "setup" in lname or "teardown" in lname
+
+
+@dataclass(frozen=True)
+class SelectionResult:
+    """Outcome of applying an include/exclude list to a project's test cases.
+
+    ``unmatched`` holds requested names that match no test case, in request order.
+    ``always_run`` holds excluded names that name a setup/teardown, which run anyway.
     """
-    if include_set:
-        return name in include_set
-    if exclude_set:
-        return name not in exclude_set
-    return True
+
+    test_cases: Dict[str, Any]
+    unmatched: List[str] = field(default_factory=list)
+    always_run: List[str] = field(default_factory=list)
+
+
+def select_test_cases(
+    test_cases_dict: Dict[str, Any],
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> SelectionResult:
+    """
+    Apply an include or exclude list, reporting names that matched nothing.
+
+    Names match whole test case names, ignoring case and runs of whitespace.
+    Setup and teardown test cases are always kept.
+
+    :param test_cases_dict: Dictionary of test case names and their steps.
+    :param include: Test case names to run; every other non-setup test case is dropped.
+    :param exclude: Test case names to skip.
+    :return: The selected test cases, in project order, plus what could not be applied.
+    """
+    if include and exclude:
+        raise OpticsError(Code.E0403, message="Provide either include or exclude list, not both.")
+
+    requested = include or exclude or []
+    wanted = {normalize_test_case_name(tc) for tc in requested}
+    known = {normalize_test_case_name(name): name for name in test_cases_dict}
+
+    unmatched: List[str] = []
+    always_run: List[str] = []
+    seen: Set[str] = set()
+    for tc in requested:
+        key = normalize_test_case_name(tc)
+        if key in seen:
+            continue
+        seen.add(key)
+        if key not in known:
+            unmatched.append(str(tc))
+        elif exclude and is_setup_or_teardown(known[key]):
+            always_run.append(known[key])
+
+    selected = {
+        name: steps
+        for name, steps in test_cases_dict.items()
+        if is_setup_or_teardown(name)
+        or not requested
+        or (normalize_test_case_name(name) in wanted) == bool(include)
+    }
+    return SelectionResult(selected, unmatched, always_run)
 
 
 def filter_test_cases(
@@ -323,23 +377,7 @@ def filter_test_cases(
     :param exclude: List of test case names to exclude (case-insensitive).
     :return: Filtered dictionary with test case names as keys.
     """
-    if include and exclude:
-        raise OpticsError(Code.E0403, message="Provide either include or exclude list, not both.")
-
-    include_set = {tc.strip().lower() for tc in include} if include else set()
-    exclude_set = {tc.strip().lower() for tc in exclude} if exclude else set()
-    filtered = {}
-
-    for name, steps in test_cases_dict.items():
-        lname = name.lower()
-        if (
-            "setup" in lname
-            or "teardown" in lname
-            or _should_include_test_case(lname, include_set, exclude_set)
-        ):
-            filtered[name] = steps
-
-    return filtered
+    return select_test_cases(test_cases_dict, include, exclude).test_cases
 
 
 def categorize_test_cases(
@@ -659,6 +697,8 @@ class RunnerArgs(BaseModel):
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
 
     @field_validator("folder_path")
     @classmethod
@@ -675,6 +715,27 @@ class RunnerArgs(BaseModel):
         """Strip whitespace from runner."""
         return v.strip()
 
+    @field_validator("include", "exclude")
+    @classmethod
+    def names_must_be_non_blank(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        if not v:
+            raise OpticsError(Code.E0403, message="Give at least one test case name to include or exclude.")
+        if any(not name.strip() for name in v):
+            raise OpticsError(Code.E0403, message="Test case names to include or exclude must not be blank.")
+        return v
+
+    @model_validator(mode="after")
+    def include_or_exclude(self) -> "RunnerArgs":
+        if self.include is not None and self.exclude is not None:
+            raise OpticsError(Code.E0403, message="Provide either include or exclude list, not both.")
+        return self
+
+
+_SELECTION_EXIT_CODE = 2
+_MAX_LISTED_TEST_CASES = 20
+
 
 class BaseRunner:
     """Base class for running test cases from CSV and YAML files using ExecutionEngine."""
@@ -683,6 +744,8 @@ class BaseRunner:
         self.folder_path = args.folder_path
         self.runner = args.runner
         self.use_printer = args.use_printer
+        self.cli_include = args.include
+        self.cli_exclude = args.exclude
         internal_logger.debug(f"Using runner: {self.runner}")
 
         (
@@ -710,6 +773,7 @@ class BaseRunner:
             self.config.project_path = self.folder_path
         else:
             self.config = Config()
+        self._apply_cli_selection()
 
         # Load templates after config is set
         self._load_templates()
@@ -808,14 +872,83 @@ class BaseRunner:
     def _filter_and_build_execution_queue(self):
         if not self.test_cases_data:
             self._exit_no_test_cases()
-        included = self.config.get("include")
-        excluded = self.config.get("exclude")
-        self.filtered_test_cases: Dict[str, Any] = filter_test_cases(
-            self.test_cases_data, included, excluded
+        selection = select_test_cases(
+            self.test_cases_data, self.config.get("include"), self.config.get("exclude")
         )
+        self._report_selection(selection)
+        self.filtered_test_cases: Dict[str, Any] = selection.test_cases
         self.execution_queue: TestCaseNode = build_linked_list(
             self.filtered_test_cases, self.modules_data
         )
+
+    @property
+    def selection_from_cli(self) -> bool:
+        return getattr(self, "cli_include", None) is not None or getattr(self, "cli_exclude", None) is not None
+
+    def _apply_cli_selection(self) -> None:
+        """Command-line names replace config.yaml's include/exclude wholesale, never merge with them."""
+        if not self.selection_from_cli:
+            return
+        if self.config.include or self.config.exclude:
+            internal_logger.info(
+                "Command-line test case selection overrides include/exclude in config.yaml"
+            )
+        self.config.include = self.cli_include
+        self.config.exclude = self.cli_exclude
+
+    def _selection_source(self) -> str:
+        key = "include" if self.config.get("include") else "exclude"
+        return f"--{key}" if self.selection_from_cli else f"`{key}` in config.yaml"
+
+    def _report_selection(self, selection: SelectionResult) -> None:
+        """Lenient for config.yaml (warn), strict for the command line (exit before any session)."""
+        source = self._selection_source()
+        for name in selection.always_run:
+            print(
+                f"Note: '{name}' is a setup/teardown test case and always runs; "
+                f"{source} does not skip it.",
+                file=sys.stderr,
+            )
+        if selection.unmatched:
+            if self.selection_from_cli:
+                self._exit_unknown_test_cases(selection.unmatched)
+            for name in selection.unmatched:
+                message = f"{source} names '{name}', which matches no test case; ignoring it."
+                internal_logger.debug(message)
+                print(f"Warning: {message}", file=sys.stderr)
+        if not self.selection_from_cli:
+            return
+        selected = [n for n in selection.test_cases if not is_setup_or_teardown(n)]
+        total = sum(1 for n in self.test_cases_data if not is_setup_or_teardown(n))
+        if not selected:
+            reason = (
+                "--exclude skips every test case"
+                if self.config.get("exclude")
+                else "--include names only setup/teardown test cases"
+            )
+            self._exit_selection_error(f"Nothing to run: {reason} in {self.folder_path}.")
+        print(f"Selected {len(selected)} of {total} test cases: {', '.join(selected)}")
+
+    def _exit_unknown_test_cases(self, unmatched: List[str]) -> None:
+        known = {normalize_test_case_name(name): name for name in self.test_cases_data}
+        lines = []
+        for name in unmatched:
+            lines.append(f"No test case named '{name}' in {self.folder_path}.")
+            close = difflib.get_close_matches(normalize_test_case_name(name), list(known), n=1)
+            if close:
+                lines.append(f"  Did you mean '{known[close[0]]}'?")
+        names = list(self.test_cases_data)
+        lines.append("Test cases in this project:")
+        lines.extend(f"  {name}" for name in names[:_MAX_LISTED_TEST_CASES])
+        if len(names) > _MAX_LISTED_TEST_CASES:
+            lines.append(f"  … and {len(names) - _MAX_LISTED_TEST_CASES} more")
+        lines.append("Names match whole test case names; case and extra spaces are ignored.")
+        self._exit_selection_error("\n".join(lines))
+
+    def _exit_selection_error(self, message: str) -> None:
+        internal_logger.debug(message)
+        print(message, file=sys.stderr)
+        sys.exit(_SELECTION_EXIT_CODE)
 
     def _exit_no_test_cases(self) -> None:
         """Exit with actionable guidance when the project has no test cases."""
@@ -906,21 +1039,34 @@ def _has_failed_results(results: Any) -> bool:
 
 
 def execute_main(
-    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+    folder_path: str,
+    runner: str = "test_runner",
+    use_printer: bool = True,
+    *,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
 ):
     """Entry point for execute command."""
-    if not run_project(folder_path, runner, use_printer):
+    if not run_project(folder_path, runner, use_printer, include=include, exclude=exclude):
         sys.exit(1)
 
 
 def run_project(
-    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+    folder_path: str,
+    runner: str = "test_runner",
+    use_printer: bool = True,
+    *,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
 ) -> bool:
     """Execute a project; True when nothing failed.
 
     Split out of ``execute_main`` so an in-process caller can read the outcome
     instead of catching the ``SystemExit`` the CLI reports failure with."""
-    args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
+    args = RunnerArgs(
+        folder_path=folder_path, runner=runner, use_printer=use_printer,
+        include=include, exclude=exclude,
+    )
     runner_instance = ExecuteRunner(args)
     _preflight_or_exit(getattr(runner_instance, "config", None), folder_path)
     results = asyncio.run(runner_instance.execute())
@@ -928,10 +1074,18 @@ def run_project(
 
 
 def dryrun_main(
-    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+    folder_path: str,
+    runner: str = "test_runner",
+    use_printer: bool = True,
+    *,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
 ):
     """Entry point for dry run command."""
-    args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
+    args = RunnerArgs(
+        folder_path=folder_path, runner=runner, use_printer=use_printer,
+        include=include, exclude=exclude,
+    )
     runner_instance = DryRunRunner(args)
     results = asyncio.run(runner_instance.execute())
     if _has_failed_results(results):
