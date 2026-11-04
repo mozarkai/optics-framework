@@ -262,7 +262,7 @@ class Playwright(DriverInterface):
     def _storage_state(self) -> dict:
         """The ``storage_state`` setting: a state object, or a file path read from the project folder."""
         state = self._setting("storage_state", None)
-        if not isinstance(state, dict):
+        if isinstance(state, str):
             try:
                 project = self.event_sdk.config_handler.config.project_path or ""
             except AttributeError:
@@ -272,6 +272,8 @@ class Playwright(DriverInterface):
                 state = json.loads(path.read_text())
             except (OSError, json.JSONDecodeError) as e:
                 raise OpticsError(Code.E0501, f"storage_state must be a state file saved by Playwright: {e}") from None
+        if not isinstance(state, dict):
+            raise OpticsError(Code.E0501, "storage_state must be a state object or the path of a state file saved by Playwright")
         # A profile export carries cookies partitioned under an extension, which Chromium refuses to set.
         cookies = [c for c in state.get("cookies", []) if not str(c.get("partitionKey", "")).startswith("chrome-extension://")]
         return {**state, "cookies": cookies}
