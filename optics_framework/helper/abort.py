@@ -38,14 +38,16 @@ def abort_with_panel(lines: list[str]) -> NoReturn:
 
     rich is imported lazily: when the install is broken enough that rich
     itself is missing, the caller must still get the guidance, not a
-    second traceback.
+    second traceback. Lines are rendered as plain text, not markup, since
+    they carry test names, paths and exception messages verbatim.
     """
     try:
         from rich.console import Console
         from rich.panel import Panel
+        from rich.text import Text
 
         Console(file=sys.stderr).print(
-            Panel("\n".join(lines), title="Cannot start", border_style="red"))
+            Panel(Text("\n".join(lines)), title="Cannot start", border_style="red"))
     except ImportError:
         print("\n".join(lines), file=sys.stderr)
     sys.exit(1)
