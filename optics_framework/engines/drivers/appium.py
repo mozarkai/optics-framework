@@ -1596,13 +1596,14 @@ class Appium(DriverInterface):
         if not self._reenter_web_context(driver, package):
             context, page_url, app_webviews = self._foreground_web_context(driver, package)
             try:
-                driver.switch_to.context(context)
-            except NoSuchContextException:
-                # A browserName session exposes its browser under one fixed context name.
-                if self.BROWSER_SESSION_CONTEXT not in driver.contexts:
-                    raise
-                context = self.BROWSER_SESSION_CONTEXT
-                driver.switch_to.context(context)
+                try:
+                    driver.switch_to.context(context)
+                except NoSuchContextException:
+                    # A browserName session exposes its browser under one fixed context name.
+                    if self.BROWSER_SESSION_CONTEXT not in driver.contexts:
+                        raise
+                    context = self.BROWSER_SESSION_CONTEXT
+                    driver.switch_to.context(context)
             except WebDriverException as e:
                 # Seen with Samsung Internet, whose DevTools socket chromedriver cannot attach to.
                 reason = e.msg.splitlines()[0] if e.msg else type(e).__name__

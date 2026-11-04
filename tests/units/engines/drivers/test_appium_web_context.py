@@ -225,3 +225,23 @@ def test_a_browser_session_remembers_the_context_it_entered():
     assert instance._known_web_contexts[(webdriver.session_id, "com.android.chrome")] == (
         Appium.BROWSER_SESSION_CONTEXT, 0
     )
+
+
+def test_a_web_context_that_is_gone_reports_the_page_as_unreadable():
+    instance = _driver_instance({"platformName": "Android"})
+    webdriver = instance.driver
+    webdriver.current_package = "com.example.app"
+    webdriver.contexts = [Appium.NATIVE_CONTEXT]
+    instance._known_web_contexts = {}
+
+    def switch(context):
+        if context == "WEBVIEW_com.example.app":
+            raise NoSuchContextException("no such context")
+
+    webdriver.switch_to.context.side_effect = switch
+
+    with patch.object(instance, "_foreground_web_context", return_value=("WEBVIEW_com.example.app", None, 0)), \
+            pytest.raises(OpticsError) as err, instance.web_context():
+        pass
+
+    assert err.value.code == Code.E0201
