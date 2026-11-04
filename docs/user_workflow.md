@@ -145,6 +145,8 @@ exclude:
 - **include**: Test cases to be executed, the rest of the test cases will be skipped.
 - **exclude**: Specified test cases to be skipped, all other test cases will be executed.
 
+For a one-off run, `optics execute <folder> --include "<name>"` (or `--exclude`) overrides both lists without editing `config.yaml`. Matching is case-insensitive and accepts `*`/`?` wildcards (see [Selecting test cases](usage/CLI_usage.md#selecting-test-cases)).
+
 ## Project Structure
 
 Your project folder should look like this:
