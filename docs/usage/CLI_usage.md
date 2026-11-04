@@ -62,6 +62,7 @@ Run test cases from a project folder. The runner discovers test cases (and modul
 
 ```bash
 optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-printer]
+               [--include TEST_CASE [TEST_CASE ...] | --exclude TEST_CASE [TEST_CASE ...]]
 ```
 
 **Options:**
@@ -70,10 +71,38 @@ optics execute <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 - `--runner <runner_name>`: Test runner to use. Supported: `test_runner` (default), `pytest`.
 - `--use-printer` (default): Enable live result printer.
 - `--no-use-printer`: Disable live result printer.
+- `--include TEST_CASE [TEST_CASE ...]`: Run only these test cases. See [Running selected test cases](#running-selected-test-cases).
+- `--exclude TEST_CASE [TEST_CASE ...]`: Run every test case except these.
 
 **Preflight check:** before running anything, `optics execute` verifies the enabled driver's backend is actually reachable — the Appium server (plus at least one attached Android device via `adb`) for Appium projects, or the remote WebDriver URL for Selenium projects. If something is missing it stops with the exact fix (e.g. "Start one in another terminal: `appium`") and a non-zero exit code instead of running tests that cannot reach a target. Set `OPTICS_SKIP_PREFLIGHT=1` to bypass this check.
 
 **Failure details:** when any step fails, a *Failure details* panel is printed below the summary with each failing step and its reason; unknown steps include a `Did you mean '…'?` suggestion when a close keyword match exists.
+
+### Running selected test cases
+
+Pick test cases by name without editing `config.yaml`:
+
+```bash
+optics execute ./my_project --include "Login Test"
+optics execute ./my_project --include "Login Test" "Checkout Test"
+optics execute ./my_project --exclude "Slow Test" --exclude "Flaky Test"
+optics dry_run ./my_project --include "Login Test"
+```
+
+- **Whole names, any case.** A name must match a full test case name. Case and extra spaces are ignored (`"login   TEST"` matches `Login Test`), but there is no prefix, substring or wildcard matching.
+- **Several names.** List them after one flag, repeat the flag, or both. Quote names that contain spaces.
+- **One or the other.** `--include` and `--exclude` cannot be combined.
+- **Overrides `config.yaml`.** Either flag replaces the project's `include`/`exclude` settings for that run. Without the flags, `config.yaml` applies as before.
+- **Setup and teardown always run.** Test cases whose name contains `setup` or `teardown` still wrap the selection. Excluding one prints a note and has no effect.
+- **Order.** Selected test cases run in project order, not in the order you list them.
+- **Folder first.** Put the project folder before `--include`/`--exclude`: every argument after the flag is read as a test case name until the next option.
+
+Before anything runs, the command prints `Selected N of M test cases: …`. It stops with exit code `2` and no session started when:
+
+- a name matches no test case. The error suggests the closest name (`Did you mean 'Checkout Test'?`) and lists the project's test cases.
+- `--exclude` removes every test case, or `--include` names only setup/teardown test cases.
+
+An unknown name in `config.yaml`'s `include`/`exclude` only prints a warning, so existing projects keep running.
 
 ## Initializing a New Project
 
@@ -134,6 +163,7 @@ Validate test cases without executing actions (keyword and parameter checks):
 
 ```bash
 optics dry_run <folder_path> [--runner <runner_name>] [--use-printer | --no-use-printer]
+               [--include TEST_CASE [TEST_CASE ...] | --exclude TEST_CASE [TEST_CASE ...]]
 ```
 
 **Options:**
@@ -142,6 +172,7 @@ optics dry_run <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
 - `--runner <runner_name>`: Test runner to use (default: `test_runner`).
 - `--use-printer` (default): Enable live result printer.
 - `--no-use-printer`: Disable live result printer.
+- `--include` / `--exclude`: Validate only the selected test cases, exactly as for [`optics execute`](#running-selected-test-cases).
 
 Unknown steps and unresolved `${variables}` are flagged per step, with reasons collected in a *Failure details* panel below the summary (`Did you mean '…'?` suggestions included for close keyword matches). `optics dry_run` never touches a device — unlike `optics execute`, no driver preflight runs.
 

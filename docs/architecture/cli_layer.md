@@ -104,6 +104,7 @@ optics execute ./my_project --runner test_runner --use-printer
 - `folder_path` (required): Path to project folder
 - `--runner` (optional): Test runner to use (default: test_runner)
 - `--use-printer` / `--no-use-printer`: Enable/disable live result printer
+- `--include` / `--exclude` (optional, mutually exclusive): Test case names to run or skip; override `include`/`exclude` in `config.yaml` for this run
 
 **Flow:**
 
@@ -119,12 +120,15 @@ sequenceDiagram
     CLI->>ExecuteHelper: execute_main(folder_path)
     ExecuteHelper->>ConfigHandler: Load configuration
     ExecuteHelper->>ExecuteHelper: Load test cases
+    ExecuteHelper->>ExecuteHelper: Select test cases (--include/--exclude, else config.yaml)
     ExecuteHelper->>ExecuteHelper: Driver preflight (server/device reachable)
     ExecuteHelper->>ExecutionEngine: Execute tests
     ExecutionEngine-->>ExecuteHelper: Results
     ExecuteHelper-->>CLI: Execution complete
     CLI-->>User: Results displayed (+ failure details when steps failed)
 ```
+
+Selection runs before the preflight. `select_test_cases` (`helper/execute.py`) matches whole names, ignoring case and whitespace, and always keeps setup/teardown test cases. `BaseRunner._report_selection` is strict for command-line names: an unknown name, or a selection with nothing left to run, exits with code 2 before any session is created. Unknown names in `config.yaml` only warn.
 
 The preflight aborts with a non-zero exit and fix instructions when the enabled driver's backend is unreachable (Appium server / Android device, Selenium remote URL). `OPTICS_SKIP_PREFLIGHT=1` bypasses it.
 
@@ -144,6 +148,7 @@ optics dry_run ./my_project --runner test_runner
 - `folder_path` (required): Path to project folder
 - `--runner` (optional): Test runner to use
 - `--use-printer` / `--no-use-printer`: Enable/disable result printer
+- `--include` / `--exclude` (optional, mutually exclusive): Same selection as `optics execute`
 
 **Behavior:** Similar to ExecuteCommand but validates test cases without performing actual actions, useful for syntax checking and validation.
 

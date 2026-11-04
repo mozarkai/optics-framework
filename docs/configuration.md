@@ -301,6 +301,8 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     List of test case names to include in execution. Only the specified test cases will be executed; all others will be skipped.
 
+    Names match whole test case names, ignoring case and extra spaces. Setup and teardown test cases always run. A name that matches no test case prints a warning. `include` and `exclude` cannot both be set. The `--include`/`--exclude` flags on `optics execute` and `optics dry_run` override both settings for one run (see [Running selected test cases](usage/CLI_usage.md#running-selected-test-cases)).
+
     ```yaml
     include:
       - "Test Login Flow"
@@ -311,7 +313,7 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     **Type:** `Optional[List[str]]` | **Default:** `null`
 
-    List of test case names to exclude from execution. All other test cases will be executed.
+    List of test case names to exclude from execution. All other test cases will be executed. Matching follows the same rules as `include`.
 
     ```yaml
     exclude:
