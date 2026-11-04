@@ -387,3 +387,89 @@ class TestEndToEndDryRun:
         _run_cli(["dry_run", str(tmp_path), "--no-use-printer", "--include", "good test"])
         _run_cli(["dry_run", str(tmp_path), "--no-use-printer", "--exclude", "BROKEN TEST"])
         assert capsys.readouterr().out.count("Selected 1 of 2 test cases: Good Test") == 2
+
+
+_NO_DRIVER_CONFIG = """\
+driver_sources:
+  - selenium:
+      enabled: false
+elements_sources:
+  - selenium_find_element:
+      enabled: false
+"""
+
+
+class TestListTestCases:
+    def test_lists_every_case_one_per_line_without_a_session(self, tmp_path, no_session, capsys):
+        _make_project(tmp_path, ["Login Test  ", "Checkout Test"])
+        execute_module.list_test_cases_main(str(tmp_path))
+        out, err = capsys.readouterr()
+        assert out == "Login Test\nCheckout Test\n"
+        assert err == ""
+        no_session.assert_not_called()
+
+    def test_needs_no_enabled_driver(self, tmp_path, capsys):
+        _make_project(tmp_path, ["Login Test"])
+        (tmp_path / "config.yaml").write_text(_NO_DRIVER_CONFIG)
+        with patch.object(execute_module, "SessionManager") as manager:
+            execute_module.list_test_cases_main(str(tmp_path))
+        manager.assert_not_called()
+        assert capsys.readouterr().out == "Login Test\n"
+
+    def test_setup_and_teardown_go_to_stderr(self, tmp_path, no_session, capsys):
+        _make_project(tmp_path, ["Suite Setup", "Login Test", "Teardown"])
+        execute_module.list_test_cases_main(str(tmp_path))
+        out, err = capsys.readouterr()
+        assert out == "Login Test\n"
+        assert "Always run: Suite Setup, Teardown" in err
+
+    def test_honours_cli_selection(self, tmp_path, no_session, capsys):
+        _make_project(tmp_path, ["Login Test", "Checkout Test", "Search Test"])
+        execute_module.list_test_cases_main(str(tmp_path), exclude=["CHECKOUT test"])
+        out, err = capsys.readouterr()
+        assert out == "Login Test\nSearch Test\n"
+        assert "Selected 2 of 3 test cases" in err
+        assert "Selected 2 of 3 test cases:" not in out
+
+    def test_honours_yaml_selection(self, tmp_path, no_session, capsys):
+        _make_project(tmp_path, ["Login Test", "Checkout Test"], 'include:\n  - "checkout test"\n')
+        execute_module.list_test_cases_main(str(tmp_path))
+        out, err = capsys.readouterr()
+        assert out == "Checkout Test\n"
+        assert "Selected 1 of 2 test cases" in err
+
+    def test_unknown_name_still_exits_2(self, tmp_path, no_session):
+        _make_project(tmp_path, ["Login Test"])
+        with pytest.raises(SystemExit) as exc:
+            execute_module.list_test_cases_main(str(tmp_path), include=["Logn Test"])
+        assert exc.value.code == 2
+
+    def test_truncated_error_points_at_list(self, tmp_path, no_session, capsys):
+        _make_project(tmp_path, [f"Case {i:02d}" for i in range(21)])
+        with pytest.raises(SystemExit):
+            _runner(tmp_path, include=["nope"])
+        assert "… and 1 more (--list prints them all)" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("command", ["execute", "dry_run"])
+    def test_flag_lists_instead_of_running(self, command):
+        with patch.object(cli, "list_test_cases_main") as lister, \
+                patch.object(cli, "execute_main") as run, \
+                patch.object(cli, "dryrun_main") as dry:
+            _run_cli([command, "proj", "--include", "A", "B", "--list"])
+        lister.assert_called_once_with("proj", include=["A", "B"], exclude=None)
+        run.assert_not_called()
+        dry.assert_not_called()
+
+    def test_without_flag_does_not_list(self):
+        with patch.object(cli, "list_test_cases_main") as lister, \
+                patch.object(cli, "execute_main"):
+            _run_cli(["execute", "proj"])
+        lister.assert_not_called()
+
+    def test_end_to_end_through_cli(self, tmp_path, capsys):
+        _make_project(tmp_path, ["Setup", "Login Test", "Checkout Test"])
+        (tmp_path / "config.yaml").write_text(_NO_DRIVER_CONFIG)
+        _run_cli(["execute", str(tmp_path), "--exclude", "login test", "--list"])
+        out, err = capsys.readouterr()
+        assert out == "Checkout Test\n"
+        assert "Always run: Setup" in err
