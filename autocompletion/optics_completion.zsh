@@ -61,6 +61,8 @@ _optics_completions() {
             '--runner=[Runner]:runner:(${runners[@]})' \
             '--use-printer[Enable printer]' \
             '--no-use-printer[Disable printer]' \
+            '*--include=[Run only these test cases]:test case:' \
+            '*--exclude=[Skip these test cases]:test case:' \
             '--help[-h]'
           ;;
 

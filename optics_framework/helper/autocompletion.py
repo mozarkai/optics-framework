@@ -90,6 +90,8 @@ _optics_completions() {
             '--runner=[Runner]:runner:(${runners[@]})' \
             '--use-printer[Enable printer]' \
             '--no-use-printer[Disable printer]' \
+            '*--include=[Run only these test cases]:test case:' \
+            '*--exclude=[Skip these test cases]:test case:' \
             '--help[-h]'
           ;;
 
@@ -203,7 +205,7 @@ _optics_completions() {
       if [[ $prev == "--runner" ]]; then
         COMPREPLY=( $(compgen -W "$runner_options" -- "$cur") )
       else
-        COMPREPLY=( $(compgen -W "--runner --use-printer --no-use-printer -h --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--runner --use-printer --no-use-printer --include --exclude -h --help" -- "$cur") )
       fi
       ;;
 

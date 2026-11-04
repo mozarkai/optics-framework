@@ -371,11 +371,35 @@ class InitCommand(Command):
         create_project(init_args)
 
 
+def _add_selection_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add --include/--exclude, which replace the project config's selection."""
+    names_help = (
+        "Matching ignores case and accepts * and ? wildcards. Takes one or more "
+        "names; repeatable. Overrides include/exclude in config.yaml."
+    )
+    parser.add_argument(
+        "--include",
+        nargs="+",
+        action="extend",
+        metavar="TEST_CASE",
+        help=f"Run only these test cases. {names_help}",
+    )
+    parser.add_argument(
+        "--exclude",
+        nargs="+",
+        action="extend",
+        metavar="TEST_CASE",
+        help=f"Skip these test cases. {names_help}",
+    )
+
+
 class DryRunArgs(BaseModel):
     """Arguments for the dry_run command."""
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    include: list[str] | None = None
+    exclude: list[str] | None = None
 
 
 class DryRunCommand(Command):
@@ -405,18 +429,23 @@ class DryRunCommand(Command):
             action="store_false",
             help="Disable live result printer"
         )
+        _add_selection_arguments(parser)
         parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
         dry_run_args = DryRunArgs(
             folder_path=args.folder_path,
             runner=args.runner,
-            use_printer=args.use_printer
+            use_printer=args.use_printer,
+            include=args.include,
+            exclude=args.exclude,
         )
         dryrun_main(
             dry_run_args.folder_path,
             dry_run_args.runner,
-            use_printer=dry_run_args.use_printer
+            use_printer=dry_run_args.use_printer,
+            include=dry_run_args.include,
+            exclude=dry_run_args.exclude,
         )
 
 
@@ -425,6 +454,8 @@ class ExecuteArgs(BaseModel):
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    include: list[str] | None = None
+    exclude: list[str] | None = None
 
 
 class ExecuteCommand(Command):
@@ -454,19 +485,23 @@ class ExecuteCommand(Command):
             action="store_false",
             help="Disable live result printer"
         )
+        _add_selection_arguments(parser)
         parser.set_defaults(func=self.execute, use_printer=True)
 
     def execute(self, args):
         execute_args = ExecuteArgs(
             folder_path=args.folder_path,
             runner=args.runner,
-            use_printer=args.use_printer
+            use_printer=args.use_printer,
+            include=args.include,
+            exclude=args.exclude,
         )
-        # Pass only required arguments for backward compatibility
         execute_main(
             execute_args.folder_path,
             execute_args.runner,
-            use_printer=execute_args.use_printer
+            use_printer=execute_args.use_printer,
+            include=execute_args.include,
+            exclude=execute_args.exclude,
         )
 
 
