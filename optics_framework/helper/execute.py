@@ -626,6 +626,8 @@ class RunnerArgs(BaseModel):
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    include: list[str] | None = None
+    exclude: list[str] | None = None
 
     @field_validator("folder_path")
     @classmethod
@@ -650,6 +652,7 @@ class BaseRunner:
         self.folder_path = args.folder_path
         self.runner = args.runner
         self.use_printer = args.use_printer
+        self.selection_override = args.include is not None or args.exclude is not None
         internal_logger.debug(f"Using runner: {self.runner}")
 
         (
@@ -677,6 +680,9 @@ class BaseRunner:
             self.config.project_path = self.folder_path
         else:
             self.config = Config()
+        if self.selection_override:
+            self.config.include = args.include
+            self.config.exclude = args.exclude
 
         # Load templates after config is set
         self._load_templates()
@@ -802,12 +808,16 @@ class BaseRunner:
         sys.exit(1)
 
     def _exit_invalid_selection(self, error: OpticsError) -> NoReturn:
+        source = (
+            "--include/--exclude"
+            if self.selection_override
+            else "include/exclude in the project's config.yaml"
+        )
         internal_logger.debug("Invalid test case selection: %s", error.message)
         abort_with_panel([
             *error.message.splitlines(),
             "",
-            "Fix the include/exclude names in the project's config.yaml; matching ignores case and "
-            "accepts * and ? wildcards.",
+            f"Fix the names given via {source}; matching ignores case and accepts * and ? wildcards.",
         ])
 
     def _setup_session(self):
@@ -883,21 +893,34 @@ def _has_failed_results(results: Any) -> bool:
 
 
 def execute_main(
-    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+    folder_path: str,
+    runner: str = "test_runner",
+    use_printer: bool = True,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
 ):
     """Entry point for execute command."""
-    if not run_project(folder_path, runner, use_printer):
+    if not run_project(folder_path, runner, use_printer, include, exclude):
         sys.exit(1)
 
 
 def run_project(
-    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+    folder_path: str,
+    runner: str = "test_runner",
+    use_printer: bool = True,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
 ) -> bool:
     """Execute a project; True when nothing failed.
 
-    Split out of ``execute_main`` so an in-process caller can read the outcome
-    instead of catching the ``SystemExit`` the CLI reports failure with."""
-    args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
+    ``include``/``exclude`` replace the selection in config.yaml when either
+    is given. Split out of ``execute_main`` so an in-process caller can read
+    the outcome instead of catching the ``SystemExit`` the CLI reports
+    failure with."""
+    args = RunnerArgs(
+        folder_path=folder_path, runner=runner, use_printer=use_printer,
+        include=include, exclude=exclude,
+    )
     runner_instance = ExecuteRunner(args)
     _preflight_or_exit(getattr(runner_instance, "config", None), folder_path)
     results = asyncio.run(runner_instance.execute())
@@ -905,10 +928,17 @@ def run_project(
 
 
 def dryrun_main(
-    folder_path: str, runner: str = "test_runner", use_printer: bool = True
+    folder_path: str,
+    runner: str = "test_runner",
+    use_printer: bool = True,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
 ):
     """Entry point for dry run command."""
-    args = RunnerArgs(folder_path=folder_path, runner=runner, use_printer=use_printer)
+    args = RunnerArgs(
+        folder_path=folder_path, runner=runner, use_printer=use_printer,
+        include=include, exclude=exclude,
+    )
     runner_instance = DryRunRunner(args)
     results = asyncio.run(runner_instance.execute())
     if _has_failed_results(results):
