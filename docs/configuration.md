@@ -300,7 +300,7 @@ All configurations are defined in YAML format. The main configuration file (`con
 
     **Type:** `Optional[List[str]]` | **Default:** `null`
 
-    List of test case names to include in execution. Only the specified test cases will be executed; all others will be skipped.
+    List of test case names to include in execution. Only the specified test cases will be executed; all others will be skipped. Setup and teardown test cases always run.
 
     ```yaml
     include:
@@ -319,6 +319,8 @@ All configurations are defined in YAML format. The main configuration file (`con
       - "Test Legacy Feature"
       - "Test Deprecated Flow"
     ```
+
+    Names in `include` and `exclude` are matched case-insensitively, ignoring extra whitespace, and accept `*` and `?` wildcards. The two lists can be combined: `include` narrows the set and `exclude` then removes from it. A name that matches no test case stops the run with a suggestion instead of silently running nothing. The `--include` / `--exclude` flags of `optics execute` and `optics dry_run` replace both lists for a single run (see [Selecting test cases](usage/CLI_usage.md#selecting-test-cases)).
 
     ### `event_attributes_json`
 

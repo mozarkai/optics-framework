@@ -104,6 +104,7 @@ optics execute ./my_project --runner test_runner --use-printer
 - `folder_path` (required): Path to project folder
 - `--runner` (optional): Test runner to use (default: test_runner)
 - `--use-printer` / `--no-use-printer`: Enable/disable live result printer
+- `--include` / `--exclude` (optional): Select test cases by name (case-insensitive, `*`/`?` wildcards). Either flag replaces the `include`/`exclude` lists from `config.yaml` for the run. Matching lives in `optics_framework/helper/case_selection.py`, and unknown names abort before a session is created.
 
 **Flow:**
 
@@ -116,9 +117,10 @@ sequenceDiagram
     participant ExecutionEngine
 
     User->>CLI: optics execute ./project
-    CLI->>ExecuteHelper: execute_main(folder_path)
+    CLI->>ExecuteHelper: execute_main(folder_path, include, exclude)
     ExecuteHelper->>ConfigHandler: Load configuration
     ExecuteHelper->>ExecuteHelper: Load test cases
+    ExecuteHelper->>ExecuteHelper: Apply include/exclude selection
     ExecuteHelper->>ExecuteHelper: Driver preflight (server/device reachable)
     ExecuteHelper->>ExecutionEngine: Execute tests
     ExecutionEngine-->>ExecuteHelper: Results
@@ -144,6 +146,7 @@ optics dry_run ./my_project --runner test_runner
 - `folder_path` (required): Path to project folder
 - `--runner` (optional): Test runner to use
 - `--use-printer` / `--no-use-printer`: Enable/disable result printer
+- `--include` / `--exclude` (optional): Same test case selection as `optics execute`
 
 **Behavior:** Similar to ExecuteCommand but validates test cases without performing actual actions, useful for syntax checking and validation.
 

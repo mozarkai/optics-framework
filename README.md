@@ -328,7 +328,7 @@ optics configure   Write/edit a project's config.yaml (guided prompts; --edit op
 optics doctor      Diagnose engines, tooling and a project's config (--check for CI)
 optics setup       Install engine backends (--list, --install); bare command opens a TUI
 optics dry_run     Validate a project without touching a device
-optics execute     Run a project (--runner test_runner|pytest)
+optics execute     Run a project (--runner test_runner|pytest; --include/--exclude test cases)
 optics live        Interactive keyword session against a live target
 optics generate    Emit pytest or Robot Framework code from a project
 optics list        Print every discoverable keyword
