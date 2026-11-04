@@ -5,7 +5,7 @@ import socket
 import subprocess  # nosec B404
 import sys
 import asyncio
-from typing import Optional, Tuple, List, Dict, Set, Any
+from typing import Optional, Tuple, List, Dict, Set, Any, NoReturn
 from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, field_validator
@@ -32,6 +32,7 @@ from optics_framework.common.models import (
     ErrorDefinitions,
 )
 from optics_framework.helper.abort import abort_with_panel
+from optics_framework.helper.case_selection import select_test_cases
 
 
 def _reader_accepts_module_names(reader) -> bool:
@@ -291,55 +292,21 @@ def validate_required_files(
         sys.exit(1)
 
 
-def _should_include_test_case(
-    name: str, include_set: Set[str], exclude_set: Set[str]
-) -> bool:
-    """
-    Determine if a test case should be included based on include/exclude sets.
-
-    :param name: Test case name (lowercase).
-    :param include_set: Set of test case names to include.
-    :param exclude_set: Set of test case names to exclude.
-    :return: True if the test case should be included, False otherwise.
-    """
-    if include_set:
-        return name in include_set
-    if exclude_set:
-        return name not in exclude_set
-    return True
-
-
 def filter_test_cases(
     test_cases_dict: Dict[str, Any],
-    include: Optional[List[str]] = None,
-    exclude: Optional[List[str]] = None,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
 ) -> Dict[str, Any]:
+    """Narrow test cases to the include/exclude selection (see ``case_selection``).
+
+    Setup/teardown cases are the ones ``categorize_test_cases`` wires around
+    every test, so they always run; a name that merely contains "setup" but
+    runs as a regular test is filtered like any other.
     """
-    Filter a dictionary of test cases based on include or exclude list.
-    Always include setup or teardown test cases.
-
-    :param test_cases_dict: Dictionary of test case names and their steps.
-    :param include: List of test case names to include (case-insensitive).
-    :param exclude: List of test case names to exclude (case-insensitive).
-    :return: Filtered dictionary with test case names as keys.
-    """
-    if include and exclude:
-        raise OpticsError(Code.E0403, message="Provide either include or exclude list, not both.")
-
-    include_set = {tc.strip().lower() for tc in include} if include else set()
-    exclude_set = {tc.strip().lower() for tc in exclude} if exclude else set()
-    filtered = {}
-
-    for name, steps in test_cases_dict.items():
-        lname = name.lower()
-        if (
-            "setup" in lname
-            or "teardown" in lname
-            or _should_include_test_case(lname, include_set, exclude_set)
-        ):
-            filtered[name] = steps
-
-    return filtered
+    *_, regular_test_cases = categorize_test_cases(test_cases_dict)
+    return select_test_cases(
+        test_cases_dict, include, exclude, selectable=regular_test_cases.keys()
+    )
 
 
 def categorize_test_cases(
@@ -808,11 +775,12 @@ class BaseRunner:
     def _filter_and_build_execution_queue(self):
         if not self.test_cases_data:
             self._exit_no_test_cases()
-        included = self.config.get("include")
-        excluded = self.config.get("exclude")
-        self.filtered_test_cases: Dict[str, Any] = filter_test_cases(
-            self.test_cases_data, included, excluded
-        )
+        try:
+            self.filtered_test_cases: Dict[str, Any] = filter_test_cases(
+                self.test_cases_data, self.config.include, self.config.exclude
+            )
+        except OpticsError as e:
+            self._exit_invalid_selection(e)
         self.execution_queue: TestCaseNode = build_linked_list(
             self.filtered_test_cases, self.modules_data
         )
@@ -832,6 +800,15 @@ class BaseRunner:
         internal_logger.error("No test cases found in %s", self.folder_path)
         print(message, file=sys.stderr)
         sys.exit(1)
+
+    def _exit_invalid_selection(self, error: OpticsError) -> NoReturn:
+        internal_logger.debug("Invalid test case selection: %s", error.message)
+        abort_with_panel([
+            *error.message.splitlines(),
+            "",
+            "Fix the include/exclude names in the project's config.yaml; matching ignores case and "
+            "accepts * and ? wildcards.",
+        ])
 
     def _setup_session(self):
         if not self._has_enabled_driver():
