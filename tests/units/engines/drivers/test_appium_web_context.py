@@ -4,6 +4,7 @@ import pytest
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.engines.drivers import appium as appium_driver
 from optics_framework.engines.drivers.appium import Appium
 
 
@@ -170,6 +171,21 @@ def test_web_rects_map_css_pixels_through_the_probe():
 
     assert rects == [{"x": 24, "y": 86, "width": 354, "height": 38}, None]
     assert webdriver.switch_to.context.call_args_list[-1].args == ("WEBVIEW_100.1",)
+
+
+def test_the_probe_lookup_pauses_until_the_accessibility_tree_lists_it(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(appium_driver.time, "sleep", sleeps.append)
+    instance = _driver_instance({"platformName": "Android"})
+    webdriver = instance.driver
+    webdriver.current_context = "WEBVIEW_chrome"
+    webdriver.execute_script.return_value = [0, 0, 400, 800]
+    probe = MagicMock()
+    probe.rect = {"x": 0, "y": 100, "width": 400, "height": 800}
+    webdriver.find_elements.side_effect = [[], [probe]]
+
+    assert instance._web_transform(webdriver) == (0, 100, 1.0, 1.0)
+    assert sleeps == [appium_driver._POLL_S]
 
 
 @pytest.mark.parametrize(
