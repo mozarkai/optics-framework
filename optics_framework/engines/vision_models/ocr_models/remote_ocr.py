@@ -9,6 +9,9 @@ from optics_framework.common import utils
 from optics_framework.common.config_handler import Config
 from optics_framework.common.logging_config import internal_logger
 
+# Below this, a match is likely noise misread as containing the target substring.
+_MIN_MATCH_CONFIDENCE = 0.3
+
 
 class RemoteOCR(TextInterface):
     DEPENDENCY_TYPE = "text_detection"
@@ -163,32 +166,37 @@ class RemoteOCR(TextInterface):
             return input_data
         return None
 
-    def _find_matching_elements(self, detections: List[Tuple[List[Tuple[int, int]], str, float]], text: str) -> List[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Find all matching elements for the given text."""
+    def _find_matching_elements(self, detections: List[Tuple[List[Tuple[int, int]], str, float]], text: str) -> List[Tuple[float, Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]]:
+        """Find all matching elements for the given text, paired with their confidence.
+
+        Filters out low-confidence noise that happens to contain `text` as a substring
+        (same reasoning as EasyOCRHelper.find_element).
+        """
         matching_elements = []
-        for bbox, detected_text, _ in detections:
-            if text.lower() in detected_text.lower() and len(bbox) >= 4:
+        for bbox, detected_text, confidence in detections:
+            if text.lower() in detected_text.lower() and len(bbox) >= 4 and confidence >= _MIN_MATCH_CONFIDENCE:
                 top_left = (int(bbox[0][0]), int(bbox[0][1]))
                 bottom_right = (int(bbox[2][0]), int(bbox[2][1]))
                 center_x = (top_left[0] + bottom_right[0]) // 2
                 center_y = (top_left[1] + bottom_right[1]) // 2
                 matching_elements.append(
-                    (True, (center_x, center_y), (top_left, bottom_right))
+                    (confidence, (True, (center_x, center_y), (top_left, bottom_right)))
                 )
+        matching_elements.sort(key=lambda m: m[0], reverse=True)
         return matching_elements
 
-    def _select_matching_result(self, matching_elements: List[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]], text: str, index: Optional[int]) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Select the matching result based on index or return the first match."""
+    def _select_matching_result(self, matching_elements: List[Tuple[float, Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]], text: str, index: Optional[int]) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
+        """Select the matching result based on index (highest confidence first) or the best match."""
         if not matching_elements:
             internal_logger.debug(f"Text '{text}' not found in the image")
             return None
         if index is not None:
             if 0 <= index < len(matching_elements):
-                return matching_elements[index]
+                return matching_elements[index][1]
             internal_logger.debug(
                 f"Index {index} out of bounds for {len(matching_elements)} matches")
             return None
-        return matching_elements[0]
+        return matching_elements[0][1]
 
     def _annotate_and_save(self, img: "np.ndarray", result: Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]) -> None:
         """Annotate the image with bounding box and center, then save."""
