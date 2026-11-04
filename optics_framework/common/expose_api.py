@@ -256,19 +256,25 @@ def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = N
         # Unknown scalar -> keep enabled True and defaults
         pass
 
+    _refuse_server_side_reads(name, url, capabilities)
+    return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
+
+
+def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str, Any]) -> None:
+    """Refuse caller values that would make the server read its own environment or files."""
     headers = capabilities.get("headers")
     values = [url, *(headers.values() if isinstance(headers, dict) else [])]
     if any(env_names(str(value)) for value in values if value):
         # A remote caller must not choose which server env var is read and where it is sent.
         raise OpticsError(Code.E0501, f"{name}: ${{NAME}} references are only read from a project's config.yaml; send the value")
-    if isinstance(capabilities.get("storage_state"), str):
+    storage_state = capabilities.get("storage_state")
+    if storage_state is not None and not isinstance(storage_state, dict):
         # A path would let a remote caller load any server file into the browser.
         raise OpticsError(Code.E0501, f"{name}: storage_state must be sent as the state object, not a file path")
-    return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
 
 
 def _loggable(sources: dict[str, list[dict[str, DependencyConfig]]]) -> dict:
-    """Session sources for the log, with urls cut to scheme and host and header values masked."""
+    """Session sources for the log, with urls cut to scheme and host, header values and storage_state masked."""
     def redacted(dependency: DependencyConfig) -> dict:
         data = dependency.model_dump()
         if data["url"]:
@@ -276,6 +282,9 @@ def _loggable(sources: dict[str, list[dict[str, DependencyConfig]]]) -> dict:
         headers = data["capabilities"].get("headers")
         if isinstance(headers, dict):
             data["capabilities"]["headers"] = dict.fromkeys(headers, "***")
+        if "storage_state" in data["capabilities"]:
+            # The state object carries live session cookies and tokens.
+            data["capabilities"]["storage_state"] = "***"
         return data
 
     return {

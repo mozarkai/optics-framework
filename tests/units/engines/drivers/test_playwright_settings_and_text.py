@@ -182,6 +182,19 @@ async def test_a_missing_storage_state_file_fails_the_launch(monkeypatch, tmp_pa
     assert err.value.code == Code.E0501
 
 
+@pytest.mark.parametrize("setting, content", [("auth.json", "[]"), (["auth.json"], None)])
+async def test_a_storage_state_that_is_not_an_object_fails_the_launch(monkeypatch, tmp_path, setting, content):
+    _fake_playwright(monkeypatch)
+    if content is not None:
+        (tmp_path / "auth.json").write_text(content)
+    event_sdk = SimpleNamespace(config_handler=SimpleNamespace(config=SimpleNamespace(project_path=str(tmp_path))))
+    driver = Playwright({"capabilities": {"browser": "firefox", "storage_state": setting}}, event_sdk)
+
+    with pytest.raises(OpticsError) as err:
+        await driver._start_browser()
+    assert err.value.code == Code.E0501
+
+
 def test_storage_state_is_refused_with_the_browsers_own_context():
     config = {"url": "http://127.0.0.1:9222", "capabilities": {"context": "existing", "storage_state": "auth.json"}}
     driver = Playwright(config)

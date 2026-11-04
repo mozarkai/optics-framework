@@ -167,6 +167,22 @@ def test_make_dependency_entry_refuses_a_storage_state_path():
     assert entry["playwright"].capabilities["storage_state"] == state
 
 
+def test_make_dependency_entry_refuses_a_storage_state_that_is_not_an_object():
+    with pytest.raises(OpticsError) as err:
+        expose_api._make_dependency_entry("playwright", {"capabilities": {"storage_state": ["/etc/auth.json"]}})
+    assert err.value.code == Code.E0501
+
+
+def test_loggable_masks_storage_state():
+    state = {"cookies": [{"name": "sid", "value": "secret-session"}], "origins": []}
+    sources = {"driver_sources": [expose_api._make_dependency_entry("playwright", {"capabilities": {"storage_state": state}})]}
+
+    logged = expose_api._loggable(sources)
+
+    assert logged["driver_sources"][0]["playwright"]["capabilities"]["storage_state"] == "***"
+    assert state["cookies"][0]["value"] == "secret-session"
+
+
 def test_make_dependency_entry_dict_falls_back_to_top_level_url_for_appium():
     entry = expose_api._make_dependency_entry(
         "appium", {"enabled": True}, top_level_url="http://hub"
