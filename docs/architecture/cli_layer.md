@@ -396,10 +396,13 @@ The CLI includes comprehensive error handling with appropriate exit codes:
 
 **Exit Codes:**
 - `0`: Success
-- `1`: Unexpected error
+- `1`: A test failed, the run could not start, or an unexpected error
 - `2`: Argument error
 - `3`: Value error
 - `130`: User cancellation (Ctrl+C)
+- `143`: Stopped with SIGTERM (`execute` and `dry_run` still write the JUnit report)
+
+See [Exit codes](../usage/CLI_usage.md#exit-codes) for what `optics execute` reports in each case.
 
 Error handling covers:
 
