@@ -1272,15 +1272,6 @@ class PlaywrightPageSource(ElementSourceInterface, WebDomInspector):
         )
         self.tree = etree.HTML(html)
         self.root = self.tree
-
-        internal_logger.debug(
-            "========== PLAYWRIGHT PAGE SOURCE FETCHED =========="
-        )
-        internal_logger.debug(
-            "========== XML tree ========== %s ",html
-        )
-        internal_logger.debug("Timestamp: %s", timestamp)
-
         return html, str(timestamp)
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[Dict]:
