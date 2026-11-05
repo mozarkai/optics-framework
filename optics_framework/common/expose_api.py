@@ -260,6 +260,9 @@ def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = N
     return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
 
 
+host_profiles_allowed = False
+
+
 def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str, Any]) -> None:
     """Refuse caller values that would make the server read its own environment or files."""
     headers = capabilities.get("headers")
@@ -271,6 +274,11 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
     if storage_state is not None and not isinstance(storage_state, dict):
         # A path would let a remote caller load any server file into the browser.
         raise OpticsError(Code.E0501, f"{name}: storage_state must be sent as the state object, not a file path")
+    if "user_data_dir" in capabilities:
+        raise OpticsError(Code.E0501, f"{name}: user_data_dir is read only from a project's config.yaml")
+    if "profile" in capabilities and not host_profiles_allowed:
+        # A host profile carries the server owner's sign-ins, so only a local stdio client may use one.
+        raise OpticsError(Code.E0501, f"{name}: a browser profile works only through a local stdio MCP server")
 
 
 def _loggable(sources: dict[str, list[dict[str, DependencyConfig]]]) -> dict:
