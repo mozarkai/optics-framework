@@ -54,13 +54,16 @@ ERR_009,Session expired,User session timed out,high
 | `description`  | no       | Human-readable explanation.                                    |
 | `severity`     | no       | Free-form severity label (e.g. `critical`, `high`, `medium`).  |
 
-At the end of an `optics execute` run, any matches are:
+An `optics execute` run reads the final screen once: before the suite teardown
+when the suite has one (a teardown often closes the app), otherwise after the
+last test case. Any matches are:
 
 - logged as warnings in the execution log,
 - written to `execution_output/detected_errors_<session_id>.json`,
-- and added to `junit_output.xml` as a synthetic `on-screen-error-detection`
-  testcase with one `<failure>` per match — so CI tools (Jenkins, GitLab CI,
-  GitHub Actions) surface them and fail the build.
+- added to `junit_output.xml` as a synthetic `on-screen-error-detection`
+  testcase, after the other test cases, with one `<failure>` per match — so CI
+  tools (Jenkins, GitLab CI, GitHub Actions) surface them and fail the build,
+- and counted as a failed test case, so the run exits with `1`.
 
 ## Defining errors via the library (Python)
 
