@@ -141,7 +141,7 @@ def _try_load_config_from_yaml(file_path: str, current_config: Config | None, fo
 
         return current_config
     except OpticsError as e:
-        abort_with_panel([e.message, "", f"Fix it in {file_path}, then re-run."])
+        abort_with_panel([e.message, "", f"Fix it in {file_path}, then re-run."], e.code.value)
     except Exception as e:
         internal_logger.error(f"Failed to load config from {file_path}: {e}")
         return current_config
@@ -293,8 +293,7 @@ def validate_required_files(
             "Run `optics init <name>` to scaffold a complete project."
         )
         internal_logger.error(error_msg)
-        print(f"Error: {error_msg}", file=sys.stderr)
-        sys.exit(1)
+        abort_with_panel([error_msg], Code.E0501.value)
 
 
 def filter_test_cases(
@@ -595,7 +594,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             "",
             "Start one in another terminal:  appium",
             f"Then re-run:  optics execute {folder_path}",
-        ])
+        ], Code.E0102.value)
     platform = str(details.capabilities.get("platformName", "")).lower()
     if platform != "android" or not _is_local_server(url):
         return
@@ -607,7 +606,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             "Install Android platform-tools (any option that puts adb on PATH),",
             "then check:  adb devices",
             f"Then re-run:  optics execute {folder_path}",
-        ])
+        ], Code.E0102.value)
     if device_count == 0:
         abort_with_panel([
             "No Android device/emulator attached (adb reports none).",
@@ -615,7 +614,7 @@ def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
             "Connect a device (USB debugging on) or start an emulator,",
             "then check:  adb devices",
             f"Then re-run:  optics execute {folder_path}",
-        ])
+        ], Code.E0102.value)
 
 
 def _preflight_selenium(details: DependencyConfig, folder_path: str) -> None:
@@ -627,7 +626,7 @@ def _preflight_selenium(details: DependencyConfig, folder_path: str) -> None:
             "",
             "Start one, e.g.:  docker run -d -p 4444:4444 selenium/standalone",
             f"Then re-run:  optics execute {folder_path}",
-        ])
+        ], Code.E0102.value)
 
 
 class RunnerArgs(BaseModel):
@@ -814,8 +813,7 @@ class BaseRunner:
             f"Then re-run:  optics dry_run {self.folder_path}"
         )
         internal_logger.error("No test cases found in %s", self.folder_path)
-        print(message, file=sys.stderr)
-        sys.exit(1)
+        abort_with_panel(message.splitlines(), Code.E0702.value)
 
     def _exit_invalid_selection(self, error: OpticsError) -> NoReturn:
         source = (
@@ -828,16 +826,15 @@ class BaseRunner:
             *error.message.splitlines(),
             "",
             f"Fix the names given via {source}; matching ignores case and accepts * and ? wildcards.",
-        ])
+        ], error.code.value)
 
     def _setup_session(self):
         if not self._has_enabled_driver() and self._needs_driver():
             config_path = os.path.join(self.folder_path, "config.yaml")
-            print(
-                f"No driver enabled in {config_path}. "
-                f"Run `optics configure {self.folder_path}`, then re-run."
-            )
-            sys.exit(1)
+            abort_with_panel([
+                f"No driver enabled in {config_path}.",
+                f"Run `optics configure {self.folder_path}`, then re-run.",
+            ], Code.E0104.value)
         self.manager: SessionManager = SessionManager()
         self.session_id: str = self.manager.create_session(
             self.config,

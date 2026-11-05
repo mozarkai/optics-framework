@@ -33,8 +33,8 @@ def reinstall_guidance() -> tuple[str, ...]:
     )
 
 
-def abort_with_panel(lines: list[str]) -> NoReturn:
-    """Print ``lines`` in a red "Cannot start" panel on stderr, then exit 1.
+def abort_with_panel(lines: list[str], code: str | None = None) -> NoReturn:
+    """Print ``lines`` in a red "Cannot start" panel on stderr, titled with ``code`` when given, then exit 1.
 
     rich is imported lazily: when the install is broken enough that rich
     itself is missing, the caller must still get the guidance, not a
@@ -46,8 +46,9 @@ def abort_with_panel(lines: list[str]) -> NoReturn:
         from rich.panel import Panel
         from rich.text import Text
 
+        title = f"Cannot start: {code}" if code else "Cannot start"
         Console(file=sys.stderr).print(
-            Panel(Text("\n".join(lines)), title="Cannot start", border_style="red"))
+            Panel(Text("\n".join(lines)), title=title, border_style="red"))
     except ImportError:
-        print("\n".join(lines), file=sys.stderr)
+        print("\n".join([code, *lines] if code else lines), file=sys.stderr)
     sys.exit(1)
