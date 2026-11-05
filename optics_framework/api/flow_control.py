@@ -1258,6 +1258,12 @@ class FlowControl:
             internal_logger.debug("No expected_result defined in API definition.")
             return
 
+        expected_status = api_def.expected_result.expected_status
+        if expected_status is not None and response.status_code != expected_status:
+            raise AssertionError(
+                f"API '{api_def.name}' returned status {response.status_code}, expected {expected_status}."
+            )
+
         if self.session is None:
             raise ValueError(NO_SESSION_PRESENT)
         response_data = self._parse_response_json(response)

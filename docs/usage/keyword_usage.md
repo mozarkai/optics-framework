@@ -1028,6 +1028,10 @@ expected_result:
 
 The bare form (`resultObj.total`) still works and may include JSONPath array expressions.
 
+**Checking the response status**
+
+When `expected_result.expected_status` is set, `Invoke API` fails if the response has a different HTTP status. The check runs before any value is extracted.
+
 **Data source: API definition YAML**
 
 Invoke API does **not** use element files. It uses **API definition YAML files** only. The format is different from element CSV/YAML: definitions live under a top-level `api` (or `apis`) key, with `collections` → each collection has `base_url`, `global_headers`, and `apis` → each API has `endpoint`, `request` (e.g. `method`, `headers`, `body`), and optionally `expected_result`, `extract`, and so on.
