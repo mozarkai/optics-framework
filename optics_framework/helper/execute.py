@@ -22,6 +22,7 @@ from optics_framework.common.runner.data_reader import (
 )
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.Junit_eventhandler import get_junit_handler_registry, run_plan
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams
 from optics_framework.common.models import (
     TestCaseNode,
@@ -540,7 +541,18 @@ def _adb_device_count() -> int | None:
     return count if in_list else 0
 
 
-def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> None:
+class StartProblem(BaseModel):
+    """Why a run cannot start: the panel lines, the first of which names the problem, and the error code."""
+
+    lines: list[str]
+    code: str
+
+    @property
+    def reason(self) -> str:
+        return f"{self.code}: {self.lines[0]}"
+
+
+def _preflight(config: Config | None, folder_path: str = "<folder>") -> StartProblem | None:
     """
     Beginner-facing environment gate for ``optics execute``, run before any
     test executes so failures surface as guidance instead of a fake
@@ -554,8 +566,8 @@ def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> 
       say Android, additionally requires adb on PATH and one attached device.
       iOS projects get the server probe only.
 
-    On failure prints exactly what is wrong and how to fix it, then exits 1
-    without executing tests (dry_run never invokes this gate). Callers pass
+    On failure returns what is wrong and how to fix it, so the caller can
+    report it before it stops the run (dry_run never invokes this gate). Callers pass
     ``None`` when no Config is available (e.g. test doubles) and the gate
     quietly steps aside; a no-driver-enabled config is likewise left to the
     existing gate in ``BaseRunner._setup_session``.
@@ -568,7 +580,7 @@ def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> 
     :param folder_path: Project folder, used in the re-run hint.
     """
     if os.environ.get(_PREFLIGHT_SKIP_ENV, "").strip().lower() in {"1", "true"}:
-        return
+        return None
     enabled = next(
         ((name, details)
          for source in (config.driver_sources if config else [])
@@ -576,13 +588,14 @@ def _preflight_or_exit(config: Config | None, folder_path: str = "<folder>") -> 
          if details.enabled),
         None,
     )
-    if enabled is None or enabled[0] == "playwright":
-        return
+    if enabled is None:
+        return None
     name, details = enabled
     if name == "appium":
-        _preflight_appium(details, folder_path)
-    elif name == "selenium":
-        _preflight_selenium(details, folder_path)
+        return _preflight_appium(details, folder_path)
+    if name == "selenium":
+        return _preflight_selenium(details, folder_path)
+    return None
 
 
 def _is_local_server(url: str) -> bool:
@@ -590,48 +603,50 @@ def _is_local_server(url: str) -> bool:
     return urlparse(url).hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}  # nosec B104 - a host name compared, not bound
 
 
-def _preflight_appium(details: DependencyConfig, folder_path: str) -> None:
+def _preflight_appium(details: DependencyConfig, folder_path: str) -> StartProblem | None:
     """Probe the Appium server and, for Android, adb + an attached device."""
     url = details.url or _APPIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4723):
-        abort_with_panel([
+        return StartProblem(lines=[
             f"No Appium server reachable at {url}.",
             "",
             "Start one in another terminal:  appium",
             f"Then re-run:  optics execute {folder_path}",
-        ], Code.E0102.value)
+        ], code=Code.E0102.value)
     platform = str(details.capabilities.get("platformName", "")).lower()
     if platform != "android" or not _is_local_server(url):
-        return
+        return None
     device_count = _adb_device_count()
     if device_count is None:
-        abort_with_panel([
+        return StartProblem(lines=[
             "Android run requested, but the adb tool was not found.",
             "",
             "Install Android platform-tools (any option that puts adb on PATH),",
             "then check:  adb devices",
             f"Then re-run:  optics execute {folder_path}",
-        ], Code.E0102.value)
+        ], code=Code.E0102.value)
     if device_count == 0:
-        abort_with_panel([
+        return StartProblem(lines=[
             "No Android device/emulator attached (adb reports none).",
             "",
             "Connect a device (USB debugging on) or start an emulator,",
             "then check:  adb devices",
             f"Then re-run:  optics execute {folder_path}",
-        ], Code.E0102.value)
+        ], code=Code.E0102.value)
+    return None
 
 
-def _preflight_selenium(details: DependencyConfig, folder_path: str) -> None:
+def _preflight_selenium(details: DependencyConfig, folder_path: str) -> StartProblem | None:
     """Probe the configured Selenium/WebDriver URL."""
     url = details.url or _SELENIUM_DEFAULT_URL
     if not _probe_tcp(url, default_port=4444):
-        abort_with_panel([
+        return StartProblem(lines=[
             f"No Selenium/WebDriver server reachable at {url}.",
             "",
             "Start one, e.g.:  docker run -d -p 4444:4444 selenium/standalone",
             f"Then re-run:  optics execute {folder_path}",
-        ], Code.E0102.value)
+        ], code=Code.E0102.value)
+    return None
 
 
 class RunnerArgs(BaseModel):
@@ -899,6 +914,12 @@ class BaseRunner:
         finally:
             self.cleanup()
 
+    def report_start_failure(self, reason: str) -> None:
+        """Report every queued test case as an error: the run could not start."""
+        handler = get_junit_handler_registry().get_handler(self.session_id)
+        if handler is not None:
+            handler.plan_run(self.session_id, run_plan(self.execution_queue), start_error=reason)
+
     def cleanup(self):
         """Clean up session resources."""
         try:
@@ -955,7 +976,10 @@ def run_project(
         include=include, exclude=exclude,
     )
     runner_instance = ExecuteRunner(args)
-    _preflight_or_exit(getattr(runner_instance, "config", None), folder_path)
+    problem = _preflight(getattr(runner_instance, "config", None), folder_path)
+    if problem is not None:
+        runner_instance.report_start_failure(problem.reason)
+        abort_with_panel(problem.lines, problem.code)
     results = _run_until_stopped(runner_instance.execute())
     return not _has_failed_results(results)
 

@@ -11,6 +11,7 @@ import threading
 from optics_framework.common.logging_config import internal_logger, execution_logger, mask_secrets, mask_secret_values
 from optics_framework.common.config_handler import Config
 from optics_framework.common.error_detection import ON_SCREEN_ERROR_CASE
+from optics_framework.common.models import TestCaseNode
 
 
 
@@ -169,13 +170,18 @@ class JUnitEventHandler(EventSubscriber):
         self.json_events: List[Dict] = []
         self.run_plans: Dict[str, List[Tuple[str, CasePlan]]] = {}
         self.started_names: Dict[str, set[str]] = {}
+        self.start_errors: Dict[str, str] = {}
 
         internal_logger.debug(f"Initialized JUnitEventHandler with output: {self.output_path}")
 
-    def plan_run(self, session_id: str, plan: List[Tuple[str, CasePlan]]) -> None:
-        """Give the test cases the run will start, so the report lists every step and test case that never ran."""
-        self.run_plans[session_id] = list(plan)
+    def plan_run(self, session_id: str, plan: List[Tuple[str, CasePlan]], start_error: str | None = None) -> None:
+        """Give the test cases the run will start, so the report lists every step and test case that never ran.
 
+        With ``start_error`` the run could not start: each test case is reported as an error with that message.
+        """
+        self.run_plans[session_id] = list(plan)
+        if start_error:
+            self.start_errors[session_id] = start_error
 
     async def on_event(self, event: Event) -> None:
         internal_logger.debug(
@@ -371,39 +377,69 @@ class JUnitEventHandler(EventSubscriber):
                 suite.append(testcase)
 
     def _mark_unfinished(self) -> None:
-        """Give an error to each test case that has no result, and list as not run each one that never started."""
         for session_id, suite in self.session_suites.items():
             for testcase in suite.findall("testcase"):
-                case_id = testcase.get("id", "")
-                if case_id not in self.testcase_cases:
-                    continue
-                for kw in testcase.iter("kw"):
-                    if kw.get("status") == EventStatus.RUNNING.value:
-                        kw.set("status", EventStatus.ERROR.value)
-                unfinished = Event(
-                    entity_type="test_case", entity_id=case_id, name=testcase.get("name", ""),
-                    status=EventStatus.ERROR, message="The run ended before this test case reported a result.",
-                )
-                self._handle_test_case_event(unfinished, suite, session_id)
+                if testcase.get("id", "") in self.testcase_cases:
+                    self._end_with_error(testcase, suite, session_id)
         for session_id, plan in self.run_plans.items():
-            started = self.started_names.get(session_id, set())
-            for name, case_plan in plan:
-                if name not in started:
-                    self._add_not_run(self._session_suite(session_id), session_id, name, case_plan)
+            self._add_never_started(session_id, plan)
         self.run_plans.clear()
+        self.start_errors.clear()
+
+    def _end_with_error(self, testcase: ET.Element, suite: ET.Element, session_id: str) -> None:
+        """Give an error to a test case that started but has no result."""
+        for kw in testcase.iter("kw"):
+            if kw.get("status") == EventStatus.RUNNING.value:
+                kw.set("status", EventStatus.ERROR.value)
+        unfinished = Event(
+            entity_type="test_case", entity_id=testcase.get("id", ""), name=testcase.get("name", ""),
+            status=EventStatus.ERROR, message="The run ended before this test case reported a result.",
+        )
+        self._handle_test_case_event(unfinished, suite, session_id)
+
+    def _add_never_started(self, session_id: str, plan: List[Tuple[str, CasePlan]]) -> None:
+        started = self.started_names.get(session_id, set())
+        for name, case_plan in plan:
+            if name not in started:
+                self._add_not_run(self._session_suite(session_id), session_id, name, case_plan)
 
     def _case_plan(self, session_id: str, name: str) -> CasePlan:
         return next((case_plan for case, case_plan in self.run_plans.get(session_id, []) if case == name), [])
 
     def _add_not_run(self, suite: ET.Element, session_id: str, name: str, case_plan: CasePlan) -> None:
+        start_error = self.start_errors.get(session_id)
+        status = EventStatus.ERROR if start_error else EventStatus.NOT_RUN
         testcase = ET.SubElement(
-            suite, "testcase", name=name, classname=self._classname(session_id), time="0",
-            status=EventStatus.NOT_RUN.value,
+            suite, "testcase", name=name, classname=self._classname(session_id), time="0", status=status.value,
         )
         _add_not_run_steps(testcase, case_plan)
-        ET.SubElement(testcase, "skipped", message="The run ended before this test case started.")
+        if start_error:
+            ET.SubElement(testcase, "error", message=start_error, type="Error").text = start_error
+            suite.set("errors", str(int(suite.get("errors", "0")) + 1))
+        else:
+            ET.SubElement(testcase, "skipped", message="The run ended before this test case started.")
+            suite.set("skipped", str(int(suite.get("skipped", "0")) + 1))
         suite.set("tests", str(int(suite.get("tests", "0")) + 1))
-        suite.set("skipped", str(int(suite.get("skipped", "0")) + 1))
+
+
+def run_plan(test_cases: Optional[TestCaseNode]) -> List[Tuple[str, CasePlan]]:
+    """The test cases of an execution queue, each with its modules and their keywords, in run order."""
+    plan = []
+    case = test_cases
+    while case:
+        modules = []
+        module = case.modules_head
+        while module:
+            keywords = []
+            keyword = module.keywords_head
+            while keyword:
+                keywords.append(keyword.name)
+                keyword = keyword.next
+            modules.append((module.name, keywords))
+            module = module.next
+        plan.append((case.name, modules))
+        case = case.next
+    return plan
 
 
 def _add_not_run_steps(testcase: ET.Element, case_plan: CasePlan) -> None:
