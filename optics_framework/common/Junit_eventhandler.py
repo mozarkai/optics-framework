@@ -30,7 +30,7 @@ class JUnitHandlerRegistry:
             # Create session-specific output path
             junit_path = self._get_session_junit_path(session_id, config)
             json_log_path = self._get_json_log_path(config)
-            handler = JUnitEventHandler(junit_path, json_output_path=json_log_path)
+            handler = JUnitEventHandler(junit_path, json_output_path=json_log_path, suite_name=_suite_name(config))
 
             # Subscribe to session-specific EventManager
             event_manager = get_event_manager(session_id)
@@ -116,10 +116,22 @@ class LogCaptureBuffer(logging.Handler):
     def get_records(self):
         return self.records
 
+
+_MASKED_EVENT_FIELDS = ("message", "args", "logs")
+
+
+def _suite_name(config: Config) -> str | None:
+    """The project folder's name, which names the test suite and each test case's class."""
+    if not config.project_path:
+        return None
+    return Path(config.project_path).resolve().name or None
+
+
 class JUnitEventHandler(EventSubscriber):
-    def __init__(self, output_path: Path, json_output_path: Optional[Path] = None):
+    def __init__(self, output_path: Path, json_output_path: Optional[Path] = None, suite_name: str | None = None):
         self.output_path = output_path
         self.json_output_path = json_output_path
+        self.suite_name = suite_name
         self.testsuites = ET.Element("testsuites")
         self.session_suites: Dict[str, ET.Element] = {}
         self.testcase_cases: Dict[str, ET.Element] = {}
@@ -159,11 +171,14 @@ class JUnitEventHandler(EventSubscriber):
         if session_suite is None:
             session_suite = ET.SubElement(
                 self.testsuites, "testsuite",
-                name=f"session_{session_id}",
+                name=self._classname(session_id), id=session_id,
                 tests="0", failures="0", errors="0", skipped="0", time="0"
             )
             self.session_suites[session_id] = session_suite
         return session_suite
+
+    def _classname(self, session_id: str) -> str:
+        return self.suite_name or f"session_{session_id}"
 
     def _handle_test_case_event(self, event: Event, session_suite: ET.Element, session_id: str) -> None:
         event_time = getattr(event, 'timestamp', time.time())
@@ -172,7 +187,7 @@ class JUnitEventHandler(EventSubscriber):
         if event.status == EventStatus.RUNNING:
             testcase = ET.SubElement(
                 session_suite, "testcase",
-                name=event.name, id=event.entity_id, classname=f"session_{session_id}", time="0"
+                name=event.name, id=event.entity_id, classname=self._classname(session_id), time="0"
             )
             self.testcase_cases[event.entity_id] = testcase
             self.start_times[event.entity_id] = event_time
@@ -276,7 +291,7 @@ class JUnitEventHandler(EventSubscriber):
         testcase = ET.SubElement(
             session_suite, "testcase",
             name="on-screen-error-detection",
-            classname=f"session_{session_id}",
+            classname=self._classname(session_id),
             time="0",
         )
         for err in detected:

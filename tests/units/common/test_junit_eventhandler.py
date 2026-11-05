@@ -256,3 +256,17 @@ class TestDetectedErrorsBeforeTestCaseEvents:
         handler.add_detected_errors("none", [])
         assert handler.session_suites == {}
         registry.cleanup_session("none")
+
+
+class TestSuiteName:
+    async def test_project_folder_names_the_suite_and_each_testcase_class(self, tmp_path):
+        registry = JUnitHandlerRegistry()
+        config = _config(tmp_path)
+        config.project_path = str(tmp_path / "checkout_suite") + "/"
+        registry.setup_junit_for_session("named", config)
+        await _run_testcase(registry.get_handler("named"), "named", "tc-1", "Login")
+        registry.cleanup_session("named")
+
+        suite = ET.parse(tmp_path / "junit_output.xml").getroot().find("testsuite")
+        assert (suite.get("name"), suite.get("id")) == ("checkout_suite", "named")
+        assert [tc.get("classname") for tc in suite.iter("testcase")] == ["checkout_suite"]
