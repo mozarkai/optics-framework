@@ -13,16 +13,9 @@ class GoogleVisionHelper(TextInterface):
     specific reference text.
     """
 
-    def __init__(self, language: str = "en"):
-        """
-        Initializes the EasyOCR reader.
-
-        :param language: Language code for OCR (default: "en").
-        :type language: str
-
-        :raises RuntimeError: If EasyOCR fails to initialize.
-        """
-        pass
+    def __init__(self, config=None):
+        """Use the service account file in ``capabilities.credentials_path``, else Application Default Credentials."""
+        self.credentials_path = ((config or {}).get("capabilities") or {}).get("credentials_path")
 
     def find_element(self, frame, text, index=None):
         """
@@ -90,7 +83,11 @@ class GoogleVisionHelper(TextInterface):
         _, encoded_image = cv2.imencode('.jpg', frame)
         image_bytes = encoded_image.tobytes()
 
-        client = ImageAnnotatorClient()
+        client = (
+            ImageAnnotatorClient.from_service_account_file(self.credentials_path)
+            if self.credentials_path
+            else ImageAnnotatorClient()
+        )
         image = vision.Image(content=image_bytes)
 
         response = client.text_detection(image=image)
