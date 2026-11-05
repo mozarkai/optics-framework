@@ -133,7 +133,8 @@ elements_sources:
 
 
 class TestEmptyProjectGuard:
-    def test_empty_test_cases_exits_with_guidance(self, tmp_path, capsys):
+    def test_empty_test_cases_exits_with_guidance(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv("COLUMNS", "300")
         runner = BaseRunner.__new__(BaseRunner)
         runner.folder_path = str(tmp_path)
         runner.test_cases_data = {}
@@ -149,17 +150,19 @@ class TestEmptyProjectGuard:
 
 class TestNoEnabledDriverGate:
     @pytest.mark.parametrize("main", [execute_main, dryrun_main])
-    def test_gate_prints_guidance_and_skips_session(self, tmp_path, capsys, main):
+    def test_gate_prints_guidance_and_skips_session(self, tmp_path, capsys, monkeypatch, main):
+        monkeypatch.setenv("COLUMNS", "300")
         _make_project(tmp_path, _ALL_DISABLED_CONFIG)
         with patch.object(execute_module, "SessionManager") as session_manager:
             with pytest.raises(SystemExit) as exc:
                 main(str(tmp_path))
         assert exc.value.code == 1
         session_manager.assert_not_called()
-        out = capsys.readouterr().out
-        assert f"No driver enabled in {tmp_path / 'config.yaml'}" in out
-        assert f"optics configure {tmp_path}" in out
-        assert "Unexpected error" not in out
+        err = capsys.readouterr().err
+        assert "Cannot start: E0104" in err
+        assert f"No driver enabled in {tmp_path / 'config.yaml'}" in err
+        assert f"optics configure {tmp_path}" in err
+        assert "Unexpected error" not in err
 
     def test_driver_free_suite_runs_without_a_driver(self, tmp_path):
         _make_project(tmp_path, _ALL_DISABLED_CONFIG)
