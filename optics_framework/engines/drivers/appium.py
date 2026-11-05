@@ -44,7 +44,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     KEYCODE_RC_NAMED,
 )
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.session_liveness import raise_if_session_dead
+from optics_framework.common.session_liveness import is_webdriver_server_unreachable, raise_if_session_dead
 
 _MAX_ERROR_OUTPUT_LINES = 20
 
@@ -447,7 +447,7 @@ class Appium(DriverInterface):
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
-        return isinstance(exc, InvalidSessionIdException)
+        return isinstance(exc, InvalidSessionIdException) or is_webdriver_server_unreachable(exc)
 
     def _is_session_alive(self) -> bool:
         if self.driver is None:

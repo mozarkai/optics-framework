@@ -49,6 +49,7 @@ from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
+from optics_framework.common.session_liveness import is_dead_session_error
 from optics_framework.common.error_detection import (
     ON_SCREEN_ERROR_CASE,
     extract_visible_text,
@@ -130,6 +131,7 @@ class TestRunner(Runner):
         self.config = session.config
         self.event_manager = event_manager
         self._last_failure_reason: Optional[str] = None
+        self._last_failure_status = EventStatus.FAIL
         if hasattr(self.modules, "modules"):
             execution_logger.debug(
                 "Initialized test_state: %s with %d modules",
@@ -144,9 +146,10 @@ class TestRunner(Runner):
         except (ValueError, OpticsError):
             return param
 
-    def _note_failure(self, reason: str) -> None:
+    def _note_failure(self, reason: str, status: EventStatus = EventStatus.FAIL) -> None:
         """Record the latest failure reason and log it so failures aren't silent."""
         self._last_failure_reason = reason
+        self._last_failure_status = status
         execution_logger.error(reason)
 
     def _suggest_keyword(self, name: str) -> str:
@@ -533,12 +536,13 @@ class TestRunner(Runner):
     async def _handle_keyword_exception(self, keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler):
         keyword_node.state = State.COMPLETED_FAILED
         reason = f"Keyword '{keyword_node.name}' failed: {exc}"
-        self._note_failure(reason)
+        status = EventStatus.ERROR if is_dead_session_error(exc) else EventStatus.FAIL
+        self._note_failure(reason, status)
         keyword_result.reason = reason
         await self._send_event(
             "keyword",
             keyword_node,
-            EventStatus.FAIL,
+            status,
             reason,
             parent_id=module_node.id,
             start_time=start_time,
@@ -757,7 +761,7 @@ class TestRunner(Runner):
                 await self._send_event(
                     "module",
                     module_node,
-                    EventStatus.FAIL,
+                    self._last_failure_status,
                     reason=self._last_failure_reason,
                     parent_id=test_case_result.id,
                     start_time=start_time,
@@ -866,7 +870,7 @@ class TestRunner(Runner):
                     await self._send_event(
                         "test_case",
                         current,
-                        EventStatus.FAIL,
+                        self._last_failure_status,
                         reason=self._last_failure_reason,
                         start_time=start_time,
                         end_time=time.time(),

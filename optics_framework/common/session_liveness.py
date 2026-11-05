@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib3.exceptions import MaxRetryError, NewConnectionError
+
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 
@@ -8,6 +10,15 @@ DEAD_SESSION_MESSAGE = (
     "The framework does not reconnect automatically: terminate this session and "
     "start a new one."
 )
+
+
+def is_webdriver_server_unreachable(exc: BaseException) -> bool:
+    """True when a command on a WebDriver session cannot connect to its server; other HTTP calls do not count."""
+    return (
+        isinstance(exc, MaxRetryError)
+        and isinstance(exc.reason, NewConnectionError)
+        and "/session/" in (exc.url or "")
+    )
 
 
 def _loaded_driver_classes() -> list[type]:
@@ -61,4 +72,4 @@ def raise_if_session_dead(exc: BaseException) -> None:
         raise OpticsError(Code.E0106, message=DEAD_SESSION_MESSAGE, cause=exc) from exc
 
 
-__all__ = ["DEAD_SESSION_MESSAGE", "is_dead_session_error", "raise_if_session_dead"]
+__all__ = ["DEAD_SESSION_MESSAGE", "is_dead_session_error", "is_webdriver_server_unreachable", "raise_if_session_dead"]
