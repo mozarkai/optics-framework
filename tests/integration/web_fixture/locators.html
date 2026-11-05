@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Locators</title></head>
+<body>
+  <p id="status">idle</p>
+  <button onclick="hit('save')">Save changes</button>
+  <button onclick="hit('alt')"><img alt="Company logo" width="40" height="40"
+       src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'/%3E"></button>
+  <button title="Close dialog" onclick="hit('title')">X</button>
+  <button data-testid="buy-btn" onclick="hit('testid')">Buy</button>
+  <a href="/pricing" onclick="hit('href'); return false">See plans</a>
+  <label>Email <input id="email" onfocus="hit('css')"></label>
+  <script>
+    function hit(name) { document.getElementById('status').textContent = 'hit ' + name; }
+  </script>
+</body>
+</html>

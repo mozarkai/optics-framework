@@ -1,5 +1,6 @@
 """Turns an Optics element value into a Playwright locator, for every Playwright source."""
 
+import json
 import time
 from typing import Any, Callable
 
@@ -9,6 +10,9 @@ from optics_framework.common import utils
 from optics_framework.engines.drivers.playwright import Playwright
 
 _ENGINE_PREFIXES = ("role=", "id=", "data-testid=", "data-test=", "data-test-id=")
+# Other agent browsers' spellings of the same locators.
+_ALIASES = {"loc=css:": "css=", "loc=role:": "role=", "testid=": "data-testid="}
+_SEMANTIC_PREFIXES = {"text=": "text", "label=": "label", "placeholder=": "placeholder", "alt=": "alt", "title=": "title"}
 _POLL_INTERVAL_S = 0.25
 
 _VISIBLE_FLAGS_SCRIPT = """
@@ -45,6 +49,8 @@ def _semantic(page: Any, value: str, kinds: tuple, exact: bool) -> list[Any]:
         "text": lambda e: page.get_by_text(value, exact=e),
         "label": lambda e: page.get_by_label(value, exact=e),
         "placeholder": lambda e: page.get_by_placeholder(value, exact=e),
+        "alt": lambda e: page.get_by_alt_text(value, exact=e),
+        "title": lambda e: page.get_by_title(value, exact=e),
         "button": lambda e: page.get_by_role("button", name=value, exact=e),
         "link": lambda e: page.get_by_role("link", name=value, exact=e),
     }
@@ -52,19 +58,34 @@ def _semantic(page: Any, value: str, kinds: tuple, exact: bool) -> list[Any]:
     return [builders[kind](e) for e in passes for kind in kinds]
 
 
-def candidates(page: Any, element: str, *, exact: bool = False) -> list[Any]:
-    """The locators ``element`` may mean, most specific first."""
-    element = element.strip()
+def _prefixed(page: Any, element: str, exact: bool) -> list[Any] | None:
+    """The locators a prefixed ``element`` names, or ``None`` when it has no known prefix."""
     if (value := _strip_prefix(element, "xpath=")) is not None:
         return [page.locator(f"xpath={value}")]
     if (value := _strip_prefix(element, "css=")) is not None:
         return [page.locator(value)]
-    if (value := _strip_prefix(element, "text=")) is not None:
-        return _semantic(page, value, ("text",), exact)
-    if (value := _strip_prefix(element, "label=")) is not None:
-        return _semantic(page, value, ("label",), exact)
-    if (value := _strip_prefix(element, "placeholder=")) is not None:
-        return _semantic(page, value, ("placeholder",), exact)
+    if (value := _strip_prefix(element, "loc=href:")) is not None:
+        return [page.locator(f"[href={json.dumps(value, ensure_ascii=False)}]")]
+    for prefix, kind in _SEMANTIC_PREFIXES.items():
+        if (value := _strip_prefix(element, prefix)) is not None:
+            inner = _unquote(value)
+            return _semantic(page, value if inner is None else inner, (kind,), exact or inner is not None)
+    return None
+
+
+def _unquote(value: str) -> str | None:
+    """The text inside ``"..."``, which asks for an exact match, or ``None`` when ``value`` is not quoted."""
+    return value[1:-1] if len(value) > 1 and value[0] == value[-1] == '"' else None
+
+
+def candidates(page: Any, element: str, *, exact: bool = False) -> list[Any]:
+    """The locators ``element`` may mean, most specific first."""
+    element = element.strip()
+    for alias, prefix in _ALIASES.items():
+        if (value := _strip_prefix(element, alias)) is not None:
+            element = prefix + value
+    if (found := _prefixed(page, element, exact)) is not None:
+        return found
     if element.lower().startswith(_ENGINE_PREFIXES):
         return [page.locator(element)]
     element_type = utils.determine_element_type(element)
