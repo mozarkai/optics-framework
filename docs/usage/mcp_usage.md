@@ -175,6 +175,7 @@ the client at the URL:
    The launch is step 1 of the session. `elements_sources` default per driver,
    so a `driver` alone is enough. A device is named in `capabilities` (for
    example `deviceName` or `udid`); the MCP needs no `adb` of its own.
+   For a website that needs a sign-in, see [Start signed in](#start-signed-in).
 2. **Act** with `tap`, `type_text`, `scroll`, `press_key` and `launch_app`.
    Give a ref from the latest screen as the `target`. An exact visible label or a
    locator (`css=`, `xpath=`, `text=`, an id, an image file) also works, but a ref
@@ -184,14 +185,16 @@ the client at the URL:
    that you already know and that the action shows or removes. A value typed
    with `type_text` or a typing keyword such as `enter_text` is not checked,
    because the rows often do not hold it. `ok` only means that the keyword ran;
-   it does not mean that the step worked. Use `check` for a verdict without an
-   action.
+   it does not mean that the step worked. An action waits up to 5 seconds for
+   its expectations before it judges them, so a page that loads after a redirect
+   still passes. Use `check` for a verdict without an action.
 4. **Observe** only when you need more than the change list: `observe(query=…)`
    finds rows on a long screen, and `observe(screenshot=true)` adds a JPEG.
 5. **Build a reusable suite** (see below).
 6. **`terminate_session`** releases the driver when you are done.
 
-`session_id` can be left out when only one session is open. A session that is
+`session_id` can be left out when only one session is open. With more than one
+open, the error lists their ids. A session that is
 idle for longer than the idle lease (15 minutes by default) is ended on the
 next call to the server. `terminate_session` is never refused as `busy`: it
 waits until a running keyword ends. An unknown or ended `session_id` gives an
@@ -212,7 +215,12 @@ screen 4436bc · changed (+2 -0 ~0)
 - One line follows for each expectation.
 - The screen line is `unchanged`, `changed` with the added (`+`), removed
   (`-`) and relabelled (`~`) rows, or `new screen` with every row. Pass
-  `screen="full"` for every row, or `screen="none"` for no screen line.
+  `screen="full"` for every row, or `screen="none"` for no screen line and
+  only `digest`, `changed` and `new_screen` in `structuredContent.screen`.
+- After an action the server reads the screen until it stops changing. A
+  screen with no rows counts as a page that is still loading, so a sign-in hop
+  or a redirect is read again for up to 6 seconds. A read-only keyword or
+  `execute_script` that leaves the screen as it was is read once.
 - A ref never moves to a different element. A ref that is gone from the
   screen is an error that lists the current rows.
 - `(off-screen)` marks a web row that is on the page but scrolled out of view.
@@ -241,7 +249,8 @@ Each acting tool also returns `structuredContent`:
 ```
 
 `error` (`{code, kind, message}`) is set when the call failed, `screen.rows`
-holds every row on a new screen, after an error and with `screen="full"`, and
+holds every row on a new screen (with no `added`/`removed` lists), after an
+error and with `screen="full"`, and
 `result` holds the keyword's return value (for example from `get_text` through
 `run_keyword`).
 
@@ -322,8 +331,42 @@ capabilities (auth token, device id) just as you would in `config.yaml`.
 ```
 
 `launch_app(app="<url>")` later navigates the same browser. The capabilities are the
-Playwright driver's `config.yaml` capabilities (`browser`, `headless`, `viewport`,
-`element_timeout_ms`, …; see [Configuration](../configuration.md#driver-sources)).
+Playwright driver's `config.yaml` capabilities (`browser`, `channel`, `headless`,
+`viewport`, `profile`, `element_timeout_ms`, …; see
+[Configuration](../configuration.md#driver-sources)).
+
+### Start signed in
+
+When a web flow signs in, the agent reads `optics://browser-profiles`. It lists
+the Chrome and Edge profiles on the machine that runs `optics mcp`, with the
+account in each:
+
+```json
+[{"channel": "chrome", "directory": "Default", "name": "Work", "email": "me@example.com"}]
+```
+
+The agent shows the list to the user and asks which profile to use. Then it
+passes the profile's `directory`, `name` or `email` as `capabilities.profile`:
+
+```json
+{
+  "driver": "playwright",
+  "capabilities": { "profile": "me@example.com" },
+  "app": "https://app.example.com"
+}
+```
+
+The browser starts with that profile's sign-ins. If the user picks no profile,
+the agent asks the user for the credentials and types them with `type_text`. A
+`profile` that matches no profile, or several, fails with `E0501` and lists
+them; pass `channel` (`chrome`, `chrome-beta` or `msedge`) to choose between
+browsers.
+
+A profile carries the sign-ins of the person who runs the server, so only a
+stdio server lists and accepts profiles. An HTTP server (`--transport http`)
+and `optics serve` refuse `profile`, and every API session refuses
+`user_data_dir`; set those in a project's `config.yaml` instead. See [Configuration](../configuration.md#driver-sources) for what a profile
+carries over.
 
 ### AI self-heal
 
@@ -387,7 +430,7 @@ also take `expect_present`, `expect_absent` and `screen`.
 | `tap` | `target`, `repeat` (1–20) | taps an element |
 | `type_text` | `target`, `text`, `clear_first` | types into a field |
 | `scroll` | `direction` (up/down/left/right), `until`, `timeout_s` (1–60) | scrolls; `direction` is the way the content moves, so `down` shows what is below. Left and right swipe on a device and scroll the page on a web driver; a step records them as `Scroll`. `until` works with up and down only |
-| `press_key` | `key` | `back` goes one screen back on every driver; otherwise an Android KeyEvent number (such as `66`) or a web key name |
+| `press_key` | `key` | `back` goes one screen back on every driver; otherwise a key name (`Enter`, `Escape`, `esc`, `ArrowDown`; case and a `KEYCODE_` prefix do not matter on the web) or an Android KeyEvent number (such as `66`). A ref is refused with a hint to use `tap` |
 | `launch_app` | `app` | opens a URL, a package or a bundle id; empty opens the configured app |
 | `check` | `present`, `absent`, `timeout_s` (0–30) | waits for the texts or refs, then gives a verdict (`passed`); a locator in `present` is checked with `assert_presence`. `timeout_s` is the limit for the whole check |
 | `run_keyword` | `keyword`, `params` | runs any other keyword; an element param can be the ref of a row that has a locator |
@@ -416,11 +459,12 @@ line of fact and one `Next:` line:
 | `invalid_params` | what is wrong, the real params and one correct call |
 | `unsupported` | `[E0105] <tool> is not supported on this platform.` |
 | `session_lost` | `[E0106] the driver session ended.` The session is closed. |
-| `silent_failure` | `[E0401] the keyword logged an error and did not raise: …` and the screen change |
+| `silent_failure` | `[E0401] <keyword> reported an error: …` and the screen change |
 | `timeout` | the call took longer than `OPTICS_MCP_CALL_TIMEOUT_S` |
 | `no_locator` | `run_keyword` got the ref of a row without a unique locator; pass a locator or the label |
 | `busy` | an earlier call that timed out is still running on the device |
-| `unknown_session` | the session ended after the idle lease or `terminate_session`, or never started |
+| `unknown_session` | no such session; the reply says when it ended after the idle lease |
+| `session_required` | more than one session is open and `session_id` was left out; the ids are listed |
 | `loop` | `<action> ran 3 times in a row without progress; not run again.` The fourth try did not run. |
 
 ### Full toolset (`--toolset full`)
@@ -440,6 +484,7 @@ names. An element param of a keyword tool also accepts a ref from the latest
 |-----|---------|
 | `optics://keywords` | the keywords `run_keyword` accepts (name, slug, description, params) |
 | `optics://project-format` | how optics stores a suite (CSV layout and `${var}`) |
+| `optics://browser-profiles` | the Chrome and Edge profiles on this machine (`channel`, `directory`, `name`, `email`), for `capabilities.profile` |
 | `optics://session/{session_id}/steps` | the session's actions and `modules_csv`/`elements_csv` rows to replay them |
 | `optics://session/{session_id}/screenshot` | screen as raw PNG bytes |
 | `optics://session/{session_id}/source` | page source / UI hierarchy |
