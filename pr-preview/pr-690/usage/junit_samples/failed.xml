@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="4328ea22-dbb8-4921-8c73-4e7328a2a09e" tests="6" failures="1" errors="0" skipped="0" time="4.99">
+    <testcase name="Suite Setup" id="f7b4b673-f2dc-4efb-ad8d-b6247b7e016f" classname="checkout_suite" time="2.08" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS">
+        <kw name="Launch App" status="RUNNING" starttime="20261105 22:55:53"/>
+        <kw name="Launch App" status="PASS" starttime="20261105 22:55:53" endtime="20261105 22:55:55" elapsed="2.08"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Heading Shown)" id="7a56c8f9-6226-4345-9585-8d396f936729" classname="checkout_suite" time="0.11" status="PASS">
+      <kw name="Check Heading" type="setup" status="PASS">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:55:55"/>
+        <kw name="Assert Presence" status="PASS" starttime="20261105 22:55:55" endtime="20261105 22:55:55" elapsed="0.11">
+          <log>Asserting (assert_elements) elements: ['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC1 Heading Shown" id="1a249e7d-6e19-4595-a4a6-86e2fce5b03a" classname="checkout_suite" time="0.03" status="PASS">
+      <kw name="Check Heading" type="setup" status="PASS">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:55:55"/>
+        <kw name="Assert Presence" status="PASS" starttime="20261105 22:55:55" endtime="20261105 22:55:55" elapsed="0.03">
+          <log>Asserting (assert_elements) elements: ['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC2 Missing Text)" id="707ffd85-613c-4564-bba2-992e678e1a55" classname="checkout_suite" time="0.05" status="PASS">
+      <kw name="Check Heading" type="setup" status="PASS">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:55:55"/>
+        <kw name="Assert Presence" status="PASS" starttime="20261105 22:55:55" endtime="20261105 22:55:55" elapsed="0.05">
+          <log>Asserting (assert_elements) elements: ['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC2 Missing Text" id="09301785-99ac-43f8-aad4-c5521a4b0113" classname="checkout_suite" time="2.67" status="FAIL">
+      <kw name="Check Missing Text" type="setup" status="FAIL">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:55:55"/>
+        <kw name="Assert Presence" status="FAIL" message="Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." starttime="20261105 22:55:55" endtime="20261105 22:55:57" elapsed="2.01">
+          <log>Asserting (assert_elements) elements: ['text=This text is not on the page'] with rule: any and timeout: 2s</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</log>
+        </kw>
+      </kw>
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." type="Failure">Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</failure>
+    </testcase>
+    <testcase name="Suite Teardown" id="afc58ef9-6043-411d-a861-d3137fbab35e" classname="checkout_suite" time="0.05" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS">
+        <kw name="Close And Terminate App" status="RUNNING" starttime="20261105 22:55:58"/>
+        <kw name="Close And Terminate App" status="PASS" starttime="20261105 22:55:58" endtime="20261105 22:55:58" elapsed="0.05">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,39 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="112731ef-94ad-492d-b2b2-ca385220555f" tests="4" failures="0" errors="0" skipped="0" time="3.08">
+    <testcase name="Suite Setup" id="f5370786-7248-488e-a32e-d5c94746465b" classname="checkout_suite" time="2.92" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS">
+        <kw name="Launch App" status="RUNNING" starttime="20261105 22:56:08"/>
+        <kw name="Launch App" status="PASS" starttime="20261105 22:56:08" endtime="20261105 22:56:11" elapsed="2.92"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Heading Shown)" id="e5160777-d9fa-4fbc-866e-311303bc0e69" classname="checkout_suite" time="0.09" status="PASS">
+      <kw name="Check Heading" type="setup" status="PASS">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:56:11"/>
+        <kw name="Assert Presence" status="PASS" starttime="20261105 22:56:11" endtime="20261105 22:56:11" elapsed="0.09">
+          <log>Asserting (assert_elements) elements: ['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC1 Heading Shown" id="0939e758-6c7f-4d06-933e-1477ae59a8ae" classname="checkout_suite" time="0.04" status="PASS">
+      <kw name="Check Heading" type="setup" status="PASS">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:56:11"/>
+        <kw name="Assert Presence" status="PASS" starttime="20261105 22:56:11" endtime="20261105 22:56:11" elapsed="0.03">
+          <log>Asserting (assert_elements) elements: ['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="Suite Teardown" id="54ef8106-41c0-4fd4-b492-f8a1987c8e24" classname="checkout_suite" time="0.03" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS">
+        <kw name="Close And Terminate App" status="RUNNING" starttime="20261105 22:56:11"/>
+        <kw name="Close And Terminate App" status="PASS" starttime="20261105 22:56:11" endtime="20261105 22:56:11" elapsed="0.03">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>

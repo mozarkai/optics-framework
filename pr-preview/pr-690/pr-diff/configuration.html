@@ -1,0 +1,134 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/configuration.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_875">875</td><td nowrap="nowrap">          capabilities:</td><td class="diff_next"></td><td class="diff_header" id="to1_875">875</td><td nowrap="nowrap">          capabilities:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_876">876</td><td nowrap="nowrap">            credentials_path: "./config/google_credentials.json"</td><td class="diff_next"></td><td class="diff_header" id="to1_876">876</td><td nowrap="nowrap">            credentials_path: "./config/google_credentials.json"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_877">877</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to1_877">877</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_878">878</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_878">878</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="from1_879">879</td><td nowrap="nowrap"><span class="diff_sub">    !!! warning "API Credentials Required"</span></td><td class="diff_next"><a href="#difflib_chg_to1__1">n</a></td><td class="diff_header" id="to1_879">879</td><td nowrap="nowrap"><span class="diff_add">    `credentials_path` is a service account key file. Without it, the engine uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`). If the file is missing or is not a service account key, the run stops with `E0501` before the first test.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_880">880</td><td nowrap="nowrap"><span class="diff_sub">        You must provide valid Google Cloud credentials in the `credentials_path` capability.</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_881">881</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_880">880</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_882">882</td><td nowrap="nowrap">=== "Remote OCR"</td><td class="diff_next"></td><td class="diff_header" id="to1_881">881</td><td nowrap="nowrap">=== "Remote OCR"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_883">883</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_882">882</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_884">884</td><td nowrap="nowrap">    **Purpose:** Remote OCR service for text extraction. Useful for distributed or cloud-based OCR.</td><td class="diff_next"></td><td class="diff_header" id="to1_883">883</td><td nowrap="nowrap">    **Purpose:** Remote OCR service for text extraction. Useful for distributed or cloud-based OCR.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__1"></td><td class="diff_header" id="from1_968">968</td><td nowrap="nowrap">            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)</td><td class="diff_next"></td><td class="diff_header" id="to1_967">967</td><td nowrap="nowrap">            # temperature: 0.0         # optional; unset uses the model default (Gemini 3 recommends 1.0)</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_969">969</td><td nowrap="nowrap">            # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI</td><td class="diff_next"></td><td class="diff_header" id="to1_968">968</td><td nowrap="nowrap">            # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI</td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to1__2"></td><td class="diff_header" id="from1_970">970</td><td nowrap="nowrap">            # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT</td><td class="diff_next"></td><td class="diff_header" id="to1_969">969</td><td nowrap="nowrap">            # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_971">971</td><td nowrap="nowrap">            # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION</td><td class="diff_next"></td><td class="diff_header" id="to1_970">970</td><td nowrap="nowrap">            # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__2">n</a></td><td class="diff_header" id="to1_971">971</td><td nowrap="nowrap"><span class="diff_add">            # credentials_path: ./credentials/vertex.json  # optional Vertex service account key</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_972">972</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to1_972">972</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__3">n</a></td><td class="diff_header" id="to1_973">973</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_974">974</td><td nowrap="nowrap"><span class="diff_add">    `credentials_path` selects Vertex AI and uses the key's `project_id` as the project, unless `use_vertexai` or `project` say otherwise. The location defaults to `global`. If the file is missing or is not a service account key, the run stops with `E0501`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_973">973</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_975">975</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_974">974</td><td nowrap="nowrap">    With no `capabilities` set, the SDK auto-detects everything from environment variables:</td><td class="diff_next"></td><td class="diff_header" id="to1_976">976</td><td nowrap="nowrap">    With no `capabilities` set, the SDK auto-detects everything from environment variables:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_975">975</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_977">977</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_976">976</td><td nowrap="nowrap">    | Variable | Purpose |</td><td class="diff_next"></td><td class="diff_header" id="to1_978">978</td><td nowrap="nowrap">    | Variable | Purpose |</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__3"></td><td class="diff_header" id="from1_1111">1111</td><td nowrap="nowrap">- A value that starts with `./` or `../` is a path from the project folder (the folder you give to `optics execute`), not from the folder you run the command in. If the file is not there, the run stops and shows the full path it looked for. Output paths (`execution_output_path`, `log_path`, `json_path`, `project_path`) are resolved the same way but need not exist yet.</td><td class="diff_next"></td><td class="diff_header" id="to1_1113">1113</td><td nowrap="nowrap">- A value that starts with `./` or `../` is a path from the project folder (the folder you give to `optics execute`), not from the folder you run the command in. If the file is not there, the run stops and shows the full path it looked for. Output paths (`execution_output_path`, `log_path`, `json_path`, `project_path`) are resolved the same way but need not exist yet.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1112">1112</td><td nowrap="nowrap">- An environment variable can hold a relative path: `$CREDS_FILE` set to `./creds/key.json` is resolved like the literal value.</td><td class="diff_next"></td><td class="diff_header" id="to1_1114">1114</td><td nowrap="nowrap">- An environment variable can hold a relative path: `$CREDS_FILE` set to `./creds/key.json` is resolved like the literal value.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1113">1113</td><td nowrap="nowrap">- The result is always a string. Optics fields such as `enabled: ${USE_APPIUM}` accept `true` and `false`, but a capability that needs a number gets the number as text.</td><td class="diff_next"></td><td class="diff_header" id="to1_1115">1115</td><td nowrap="nowrap">- The result is always a string. Optics fields such as `enabled: ${USE_APPIUM}` accept `true` and `false`, but a capability that needs a number gets the number as text.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1114">1114</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1116">1116</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_1117">1117</td><td nowrap="nowrap"><span class="diff_add">To take a whole map from one environment variable, put `$from` in the map and set the variable to a JSON object. The keys next to `$from` are added to that object and replace the keys it already has:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1118">1118</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1119">1119</td><td nowrap="nowrap"><span class="diff_add">```yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1120">1120</td><td nowrap="nowrap"><span class="diff_add">driver_sources:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1121">1121</td><td nowrap="nowrap"><span class="diff_add">  - appium:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1122">1122</td><td nowrap="nowrap"><span class="diff_add">      enabled: true</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1123">1123</td><td nowrap="nowrap"><span class="diff_add">      url: $APPIUM_URL</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1124">1124</td><td nowrap="nowrap"><span class="diff_add">      capabilities:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1125">1125</td><td nowrap="nowrap"><span class="diff_add">        $from: $APPIUM_CAPABILITIES</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1126">1126</td><td nowrap="nowrap"><span class="diff_add">        appium:appPackage: com.android.settings</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1127">1127</td><td nowrap="nowrap"><span class="diff_add">        appium:appActivity: com.android.settings.Settings</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1128">1128</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1129">1129</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1130">1130</td><td nowrap="nowrap"><span class="diff_add">```bash</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1131">1131</td><td nowrap="nowrap"><span class="diff_add">export APPIUM_CAPABILITIES='{"platformName": "Android", "appium:automationName": "UiAutomator2", "appium:udid": "emulator-5554"}'</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1132">1132</td><td nowrap="nowrap"><span class="diff_add">```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1133">1133</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1134">1134</td><td nowrap="nowrap"><span class="diff_add">Values from the JSON object are used as they are: Optics does not expand references or resolve paths in them. If the value is not a JSON object, the run stops and names the variable, but does not show its value.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1135">1135</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1136">1136</td><td nowrap="nowrap"><span class="diff_add">Optics writes `****` in place of secrets in the console, the log files, `logs.json`, `junit_output.xml` and error messages. A value is a secret when the environment variable or the capability that holds it has a word such as `token`, `password`, `pwd`, `pin`, `secret` or `key` in its name (`HUB_TOKEN`, `appium:keystorePassword`). Passwords in URLs (`https://user:****@host`) and query parameters with such names (`?token=****`) are masked wherever they appear.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1137">1137</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1115">1115</td><td nowrap="nowrap">`optics execute`, `optics dry_run`, `optics live` and `optics doctor` resolve these values when they read the file. The Playwright driver's `url` and `capabilities.headers` are the exception: the driver expands them, with the same rules, when it connects, so it can mask the values in its error messages. An unset variable in them still stops the command when it reads the file. `optics configure --edit` keeps them as written when it saves the file. The Python SDK and the `optics serve` and `optics mcp` session APIs take the config as data, not as a file, and do not expand references.</td><td class="diff_next"></td><td class="diff_header" id="to1_1138">1138</td><td nowrap="nowrap">`optics execute`, `optics dry_run`, `optics live` and `optics doctor` resolve these values when they read the file. The Playwright driver's `url` and `capabilities.headers` are the exception: the driver expands them, with the same rules, when it connects, so it can mask the values in its error messages. An unset variable in them still stops the command when it reads the file. `optics configure --edit` keeps them as written when it saves the file. The Python SDK and the `optics serve` and `optics mcp` session APIs take the config as data, not as a file, and do not expand references.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1116">1116</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1139">1139</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1117">1117</td><td nowrap="nowrap">---</td><td class="diff_next"></td><td class="diff_header" id="to1_1140">1140</td><td nowrap="nowrap">---</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_1118">1118</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_1141">1141</td><td nowrap="nowrap"></td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>

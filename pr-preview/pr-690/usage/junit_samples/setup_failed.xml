@@ -1,0 +1,41 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="bef51b0d-5785-4813-bb3a-fc0a53bec2a0" tests="4" failures="1" errors="0" skipped="0" time="5.81">
+    <testcase name="Suite Setup" id="7fb84123-962a-4f65-bbfd-eb53e335e089" classname="checkout_suite" time="3.02" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS">
+        <kw name="Launch App" status="RUNNING" starttime="20261105 22:56:12"/>
+        <kw name="Launch App" status="PASS" starttime="20261105 22:56:12" endtime="20261105 22:56:16" elapsed="3.02"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Heading Shown)" id="aadf0c69-e82b-4e4a-958a-50417fe3dfb7" classname="checkout_suite" time="2.66" status="FAIL">
+      <kw name="Check Missing Text" type="setup" status="FAIL">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:56:16"/>
+        <kw name="Assert Presence" status="FAIL" message="Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." starttime="20261105 22:56:16" endtime="20261105 22:56:18" elapsed="2.01">
+          <log>Asserting (assert_elements) elements: ['text=This text is not on the page'] with rule: any and timeout: 2s</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</log>
+        </kw>
+      </kw>
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." type="Failure">Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</failure>
+    </testcase>
+    <testcase name="TC1 Heading Shown" id="b9f68ac6-ac05-4ff3-98bf-21c86ccbb75f" classname="checkout_suite" time="0.11" status="PASS">
+      <kw name="Check Heading" type="setup" status="PASS">
+        <kw name="Assert Presence" status="RUNNING" starttime="20261105 22:56:18"/>
+        <kw name="Assert Presence" status="PASS" starttime="20261105 22:56:18" endtime="20261105 22:56:18" elapsed="0.11">
+          <log>Asserting (assert_elements) elements: ['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="Suite Teardown" id="0568de20-022d-41c9-bb64-6341985ebc11" classname="checkout_suite" time="0.02" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS">
+        <kw name="Close And Terminate App" status="RUNNING" starttime="20261105 22:56:18"/>
+        <kw name="Close And Terminate App" status="PASS" starttime="20261105 22:56:18" endtime="20261105 22:56:18" elapsed="0.02">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>
