@@ -58,12 +58,11 @@ class SeleniumDriver(DriverInterface):
 
         all_caps = self.capabilities.copy() if self.capabilities else {}
         browser_name_val = self._get_browser_name(all_caps, browser_name)
-        options, default_options = self._get_browser_options(browser_name_val)
+        options = self._get_browser_options(browser_name_val)
         self._update_browser_url(all_caps, browser_url)
-        final_caps = self._merge_capabilities(default_options, all_caps)
-        internal_logger.debug(f"Final capabilities being applied: {final_caps}")
+        internal_logger.debug(f"Final capabilities being applied: {all_caps}")
 
-        self._set_options_capabilities(options, final_caps)
+        self._set_options_capabilities(options, all_caps)
 
         try:
             self.driver = webdriver.Remote(
@@ -93,34 +92,36 @@ class SeleniumDriver(DriverInterface):
     def _get_browser_options(self, browser_name_val: str):
         if browser_name_val == "chrome":
             options = ChromeOptions()
-            default_options = {
-                "goog:chromeOptions": {
-                    "args": [
-                        "--remote-debugging-address=0.0.0.0",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                    ]
-                }
-            }
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
         elif browser_name_val == "firefox":
             options = FirefoxOptions()
-            default_options = {}
         else:
             raise ValueError(f"Unsupported browser: {browser_name_val}")
-        return options, default_options
+        return options
 
     def _update_browser_url(self, all_caps: dict, browser_url: str | None):
         if browser_url:
             self.browser_url = browser_url
             all_caps["browserURL"] = self.browser_url
 
-    def _merge_capabilities(self, default_options: dict, all_caps: dict) -> dict:
-        return {**default_options, **all_caps}
-
     def _set_options_capabilities(self, options: Any, final_caps: dict):
         for key, value in final_caps.items():
-            options.set_capability(key, value)
+            if isinstance(options, ChromeOptions) and key == options.KEY:
+                self._add_chrome_options(options, value)
+            else:
+                options.set_capability(key, value)
+
+    @staticmethod
+    def _add_chrome_options(options: ChromeOptions, chrome_options: dict):
+        # to_capabilities() rebuilds goog:chromeOptions from the options object, so a capability set directly is dropped.
+        for arg in chrome_options.get("args", []):
+            options.add_argument(arg)
+        for name, value in chrome_options.items():
+            if name == "excludeSwitches":
+                value = list(dict.fromkeys([*options.experimental_options.get(name, []), *value]))
+            if name != "args":
+                options.add_experimental_option(name, value)
 
     def terminate(self, event_name: str | None = None) -> None:
         """End the current Selenium session."""
