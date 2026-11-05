@@ -190,7 +190,7 @@ class Verifier:
         actual = self._resolve_param(str(output)).strip()
         expected = self._resolve_param(str(expression)).strip()
         if actual != expected:
-            raise OpticsError(Code.E0401, message=mask_secrets(f"'{actual}' does not equal '{expected}'."))
+            raise OpticsError(Code.E0401, message=mask_secrets(f"Expected '{expected}', got '{actual}'."))
         if event_name:
             self.event_sdk.capture_event(event_name)
         return True
