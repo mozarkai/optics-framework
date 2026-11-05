@@ -103,6 +103,60 @@ optics execute ./my_project --include "login*" --exclude "Login Slow"
 
 The same flags work with [`optics dry_run`](#executing-dry-run), so you can check a selection before running it.
 
+### Exit codes
+
+`optics execute` and `optics dry_run` exit with:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Every test case passed. |
+| `1` | A test case failed, or the run could not start: a config or environment variable error, an unknown `--include`/`--exclude` name, missing test files, an unreachable driver, or a credentials file that is not valid. |
+| `2` | The command line is not valid, for example an unknown flag or no project folder. |
+| `3` | Any other value that is not valid (a `ValueError`). |
+| `130` | Stopped with Ctrl-C (SIGINT). |
+| `143` | Stopped with SIGTERM. |
+
+When the run cannot start, stderr shows a *Cannot start* panel titled with the error code, for example `Cannot start: E0501`. Other errors print `Code.<code>: <message>`. See [Error Handling](../architecture/error_handling.md) for the codes.
+
+### Results
+
+A run writes its results to `execution_output/` in the project folder, or to `execution_output_path` when the config sets it:
+
+- `junit_output.xml`: the JUnit report, written once when the run ends, also when it is stopped with Ctrl-C or SIGTERM. A run has one `<testsuite>` with one `<testcase>` per test case it ran, including suite setup and teardown. Each per-test setup and teardown is a test case of its own, named after the test it wraps, such as `Setup (Login Test)`. The suite `name` and every `classname` are the project folder's name, so unpack a project into a folder named after the suite. The suite `id` is the session id.
+- `junit_output_<session_id>.xml` instead, only when two sessions in one process share the output folder (the Python SDK or `optics serve`). `optics execute` and `optics dry_run` always write `junit_output.xml`.
+- Screenshots, `failed_steps_elements.json`, `interactable_elements.json`, and `logs.json` when `json_log: true`.
+
+| Outcome | Exit | `junit_output.xml` |
+|---------|------|--------------------|
+| All test cases passed | `0` | Every `<testcase>` has `status="PASS"`. |
+| A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. |
+| A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. |
+| Config, environment variable or selection error | `1` | Not written: the run stops before a session starts. |
+| Error after the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. |
+| Stopped with Ctrl-C or SIGTERM | `130` / `143` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`. Later test cases and the suite teardown do not run. |
+
+A run where one test fails and the next is stopped with SIGTERM gives (keyword details cut):
+
+```xml
+<testsuites>
+  <testsuite name="checkout_suite" id="2cadb1eb-a58e-429e-8685-7136c46e9db7" tests="7" failures="1" errors="1" skipped="0" time="4.30">
+    <testcase name="Suite Setup" id="5e111a2d-..." classname="checkout_suite" time="1.47" status="PASS">...</testcase>
+    <testcase name="Setup (TC1 Heading Shown)" id="2225c4bd-..." classname="checkout_suite" time="0.07" status="PASS">...</testcase>
+    <testcase name="TC1 Heading Shown" id="0813321d-..." classname="checkout_suite" time="0.04" status="PASS">...</testcase>
+    <testcase name="Setup (TC2 Missing Text)" id="234e032f-..." classname="checkout_suite" time="0.04" status="PASS">...</testcase>
+    <testcase name="TC2 Missing Text" id="a4197485-..." classname="checkout_suite" time="2.64" status="FAIL">
+      ...
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. ..." type="Failure">...</failure>
+    </testcase>
+    <testcase name="Setup (TC3 Slow)" id="2c38f9a0-..." classname="checkout_suite" time="0.04" status="PASS">...</testcase>
+    <testcase name="TC3 Slow" id="0ede90da-..." classname="checkout_suite" time="0" status="ERROR">
+      ...
+      <error message="The run stopped before this test case finished." type="Error">The run stopped before this test case finished.</error>
+    </testcase>
+  </testsuite>
+</testsuites>
+```
+
 ## Initializing a New Project
 
 Use the following command to initialize a new project:
