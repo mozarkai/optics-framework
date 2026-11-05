@@ -53,7 +53,8 @@ def http_server():
         def do_GET(self):
             received.append((self.path, self.headers.get("Authorization")))
             if self.headers.get("Authorization") != f"Bearer {TOKEN}":
-                return self._json(401, "UNAUTHORIZED", "bad token")
+                self._json(401, "UNAUTHORIZED", "bad token")
+                return
             if server.mode == "ok":
                 self.send_response(200)
                 self.send_header("Content-Type", "image/jpeg")

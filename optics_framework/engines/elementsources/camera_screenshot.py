@@ -27,7 +27,7 @@ class CameraScreenshotHttpError(RuntimeError):
     body. The bearer token is never part of the message.
     """
 
-    def __init__(self, status: int, code: Optional[str], message: Optional[str]):
+    def __init__(self, status: int, code: str | None, message: str | None):
         self.status = status
         self.code = code
         self.server_message = message
@@ -46,7 +46,7 @@ class CapabilitiesConfig(BaseModel):
             "(e.g., 127.0.0.1:3000 or http://127.0.0.1:3000/screenshot)"
         ),
     )
-    token: Optional[SecretStr] = Field(
+    token: SecretStr | None = Field(
         None,
         description="Bearer token sent to an http(s):// url; masked in repr and dumps",
     )
@@ -109,8 +109,8 @@ class CameraScreenshot(ElementSourceInterface):
         self.header_size: int = capabilities.header_size
         self.byte_order: str = capabilities.byte_order
 
-        self.http_url: Optional[str] = None
-        self._http_token: Optional[str] = None
+        self.http_url: str | None = None
+        self._http_token: str | None = None
         self.sock = None
         self.cap = None
         self.ip_address = None
@@ -135,7 +135,7 @@ class CameraScreenshot(ElementSourceInterface):
         self.camera_screenshot_config = config
 
     @staticmethod
-    def _parse_ip_port(endpoint: str) -> tuple:
+    def _parse_ip_port(endpoint: str) -> tuple[str, int]:
         """Split an ``ip:port`` endpoint for the raw-TCP protocol."""
         try:
             ip_port = str(endpoint).split(":")
@@ -151,10 +151,10 @@ class CameraScreenshot(ElementSourceInterface):
 
     def capture(self) -> np.ndarray:
         """
-        Capture an image from the webcam or TCP connection.
+        Capture an image from the webcam, the HTTP endpoint or the TCP connection.
 
         Returns:
-            np.ndarray: The captured image as a NumPy array, or an empty array on failure.
+            np.ndarray: The captured image, or an empty array when a TCP read fails.
         """
         if self.http_url:
             return self.take_http_screenshot()
@@ -249,7 +249,7 @@ class CameraScreenshot(ElementSourceInterface):
             return None
 
     @staticmethod
-    def _endpoint_from_env() -> Optional[str]:
+    def _endpoint_from_env() -> str | None:
         """Return the controller-injected endpoint, or None when none is set.
 
         The HTTP URL wins over the legacy raw-TCP port.
@@ -263,7 +263,7 @@ class CameraScreenshot(ElementSourceInterface):
         return None
 
     @staticmethod
-    def _resolve_token(capabilities: "CapabilitiesConfig") -> Optional[str]:
+    def _resolve_token(capabilities: "CapabilitiesConfig") -> str | None:
         """Config token first, then ``WEBCAM_SCREENSHOT_TOKEN``."""
         if capabilities.token is not None:
             return capabilities.token.get_secret_value()
@@ -271,8 +271,8 @@ class CameraScreenshot(ElementSourceInterface):
 
     @staticmethod
     def _http_error(response: requests.Response) -> CameraScreenshotHttpError:
-        code: Optional[str] = None
-        message: Optional[str] = None
+        code: str | None = None
+        message: str | None = None
         try:
             body = response.json()
             if isinstance(body, dict):
@@ -292,7 +292,8 @@ class CameraScreenshot(ElementSourceInterface):
 
         Raises:
             CameraScreenshotHttpError: the server answered with a non-200 status.
-            RuntimeError: the request failed or the body is not a decodable image.
+            RuntimeError: the request failed.
+            ValueError: the body is not a decodable image.
         """
         headers = {}
         if self._http_token:
