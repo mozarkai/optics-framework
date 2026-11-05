@@ -26,6 +26,12 @@ TEXT_OR_VALUE_JS = "el => ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) ?
 WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
 
 
+def whole_var_name(param: Any) -> str | None:
+    """The name in a param that is exactly one ``${name}``; ``${a} ${b}`` is not one."""
+    match = WHOLE_VAR_PATTERN.match(param.strip()) if isinstance(param, str) else None
+    return match.group(1).strip() if match else None
+
+
 def resolve_scalar_param(session: Any, param: str) -> str:
     """
     Resolve a `${name}` reference from `session.elements`, returning its first value as a string.

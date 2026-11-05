@@ -70,9 +70,7 @@ class Runner:
         ])
         resolved_kw_params = {}
         for key, value in kw_params.items():
-            if value.startswith("${") and value.endswith("}"):
-                value = self.resolve_param(value)
-            resolved_kw_params[key] = value
+            resolved_kw_params[key] = self.resolve_param(value)
         return resolved_positional_params, resolved_kw_params
 
     def execute_test_case(self, test_case: str) -> Optional[TestCaseResult]:
@@ -240,9 +238,9 @@ class TestRunner(Runner):
         }
 
     def resolve_param(self, param: str) -> str:
-        if not param.startswith("${") or not param.endswith("}"):
-            return param  # If param is not a variable reference, return it as is.
-        var_name = param[2:-1].strip()
+        var_name = utils.whole_var_name(param)
+        if var_name is None:
+            return param
         resolved_value = self.elements.get_first(var_name)
         if resolved_value is None:
             raise OpticsError(Code.E0201, f"Element not found: {var_name}")
@@ -454,8 +452,8 @@ class TestRunner(Runner):
     async def _build_param_candidates(self, keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler, raw=frozenset()):
         param_candidates = []
         for i, param in enumerate(params):
-            if i not in raw and isinstance(param, str) and param.startswith("${") and param.endswith("}"):
-                var_name = param[2:-1].strip()
+            var_name = None if i in raw else utils.whole_var_name(param)
+            if var_name is not None:
                 values = self.elements.get_element(var_name)
                 if not values:
                     # Await error handler to ensure error is processed before returning
@@ -1034,9 +1032,9 @@ class PytestRunner(Runner):
         PytestRunner.instance = self
 
     def resolve_param(self, param: str) -> str:
-        if not param.startswith("${") or not param.endswith("}"):
+        var_name = utils.whole_var_name(param)
+        if var_name is None:
             return param
-        var_name = param[2:-1].strip()
         value = self.elements.get_first(var_name)
         if value is None:
             pytest.fail(f"Variable '{var_name}' not found")
@@ -1130,8 +1128,8 @@ class PytestRunner(Runner):
     def _build_param_candidates_pytest(self, params, keyword_id, keyword, module_id, raw=frozenset()):
         param_candidates = []
         for i, param in enumerate(params):
-            if i not in raw and isinstance(param, str) and param.startswith("${") and param.endswith("}"):
-                var_name = param[2:-1].strip()
+            var_name = None if i in raw else utils.whole_var_name(param)
+            if var_name is not None:
                 values = self.elements.get_element(var_name)
                 if not values:
                     queue_event_sync(
