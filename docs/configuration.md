@@ -497,6 +497,8 @@ Driver sources define the automation frameworks used to control devices or brows
     | `protocol` | `"cdp"`, `"playwright"` | How to connect to the remote browser in `url` (default `"cdp"`) |
     | `context` | `"new"`, `"existing"` | Open a fresh context in the remote browser, or use the one it already has (default `"new"`) |
 
+    A local Chromium starts without the automation flags, so `navigator.webdriver` is `false`, as in a browser a person opens. Sites with bot protection then load as they do for a user. The Selenium driver starts Chrome the same way.
+
     **Remote browser:** set `url` to a remote browser's endpoint and Optics connects to that browser instead of launching one. It works with any browser grid or service that speaks one of Playwright's two remote protocols:
 
     | `protocol` | Playwright call | Speaks to |
