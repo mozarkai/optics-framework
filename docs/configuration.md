@@ -889,8 +889,7 @@ Text detection engines provide OCR (Optical Character Recognition) capabilities 
             credentials_path: "./config/google_credentials.json"
     ```
 
-    !!! warning "API Credentials Required"
-        You must provide valid Google Cloud credentials in the `credentials_path` capability.
+    `credentials_path` is a service account key file. Without it, the engine uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`). If the file is missing or is not a service account key, the run stops with `E0501` before the first test.
 
 === "Remote OCR"
 
@@ -982,7 +981,10 @@ a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before 
             # use_vertexai: true       # optional; else uses GOOGLE_GENAI_USE_VERTEXAI
             # project: your-project    # optional Vertex override; else GOOGLE_CLOUD_PROJECT
             # location: us-east4       # optional Vertex override; else GOOGLE_CLOUD_LOCATION
+            # credentials_path: ./credentials/vertex.json  # optional Vertex service account key
     ```
+
+    `credentials_path` selects Vertex AI and uses the key's `project_id` as the project, unless `use_vertexai` or `project` say otherwise. The location defaults to `global`. If the file is missing or is not a service account key, the run stops with `E0501`.
 
     With no `capabilities` set, the SDK auto-detects everything from environment variables:
 
