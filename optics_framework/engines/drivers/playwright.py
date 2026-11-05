@@ -26,6 +26,8 @@ _FIELD_SELECTOR = (
     " textarea, [contenteditable=''], [contenteditable=true], [role=textbox], [role=searchbox]"
 )
 _IS_FIELD_JS = "(el, selector) => el.matches(selector)"
+# A WebDriver script is a function body that reads arguments[i]; evaluate() takes an expression.
+_FUNCTION_BODY_JS = "args => (function () {{\n{}\n}}).apply(null, args)"
 _LABEL_CONTROL_JS = "el => { const label = el.closest('label'); return label ? label.control : null; }"
 # The only field in the nearest container that holds one; none when that container holds several.
 _NEARBY_FIELD_JS = """(el, selector) => {
@@ -757,13 +759,18 @@ class Playwright(DriverInterface):
         try:
             # Playwright's evaluate takes a script and a single argument
             # If multiple args provided, pass as a list; if one arg, pass as-is; if none, pass None
-            if len(args) == 0:
-                result = await self.page.evaluate(script)
-            elif len(args) == 1:
-                result = await self.page.evaluate(script, args[0])
-            else:
-                # Multiple args - pass as a list
-                result = await self.page.evaluate(script, list(args))
+            try:
+                if len(args) == 0:
+                    result = await self.page.evaluate(script)
+                elif len(args) == 1:
+                    result = await self.page.evaluate(script, args[0])
+                else:
+                    # Multiple args - pass as a list
+                    result = await self.page.evaluate(script, list(args))
+            except PlaywrightError as e:
+                if "Illegal return statement" not in str(e):
+                    raise
+                result = await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
 
             internal_logger.debug(f"[Playwright] Executed script: {script[:100]}...")  # Log first 100 chars
             internal_logger.debug(f"[Playwright] Script execution result: {result}")
