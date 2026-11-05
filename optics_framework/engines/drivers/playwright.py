@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import pathlib
+import re
 from dataclasses import dataclass, field
 from typing import Optional, Any
 from urllib.parse import urlsplit
@@ -28,6 +29,8 @@ _FIELD_SELECTOR = (
 _IS_FIELD_JS = "(el, selector) => el.matches(selector)"
 # A WebDriver script is a function body that reads arguments[i]; evaluate() takes an expression.
 _FUNCTION_BODY_JS = "args => (function () {{\n{}\n}}).apply(null, args)"
+_FUNCTION_JS = re.compile(r"^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[\w$]+\s*=>)")
+_ARGUMENTS_JS = re.compile(r"\barguments\b")
 _LABEL_CONTROL_JS = "el => { const label = el.closest('label'); return label ? label.control : null; }"
 # The only field in the nearest container that holds one; none when that container holds several.
 _NEARBY_FIELD_JS = """(el, selector) => {
@@ -757,22 +760,7 @@ class Playwright(DriverInterface):
             self.event_sdk.capture_event(event_name)
 
         try:
-            # Playwright's evaluate takes a script and a single argument
-            # If multiple args provided, pass as a list; if one arg, pass as-is; if none, pass None
-            try:
-                if len(args) == 0:
-                    result = await self.page.evaluate(script)
-                elif len(args) == 1:
-                    result = await self.page.evaluate(script, args[0])
-                else:
-                    # Multiple args - pass as a list
-                    result = await self.page.evaluate(script, list(args))
-            except PlaywrightError as e:
-                # Each engine words it differently: "Illegal return statement", "return not in function", ...
-                if "SyntaxError" not in str(e) or "return" not in str(e).lower():
-                    raise
-                result = await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
-
+            result = await self._evaluate(script, args)
             internal_logger.debug(f"[Playwright] Executed script: {script[:100]}...")  # Log first 100 chars
             internal_logger.debug(f"[Playwright] Script execution result: {result}")
 
@@ -780,3 +768,18 @@ class Playwright(DriverInterface):
         except Exception as e:
             internal_logger.debug(f"[Playwright] Failed to execute script: {e}")
             raise OpticsError(Code.E0401, message=f"Failed to execute script: {e}", cause=e) from e
+
+    async def _evaluate(self, script: str, args: tuple) -> Any:
+        """Run a Playwright expression or function, or a WebDriver-style body that uses ``return`` or ``arguments``."""
+        if _ARGUMENTS_JS.search(script) and not _FUNCTION_JS.match(script):
+            return await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
+        try:
+            if not args:
+                return await self.page.evaluate(script)
+            # evaluate() takes one argument, so several are passed as a list.
+            return await self.page.evaluate(script, args[0] if len(args) == 1 else list(args))
+        except PlaywrightError as e:
+            # Each engine words it differently: "Illegal return statement", "return not in function", ...
+            if "SyntaxError" not in str(e) or "return" not in str(e).lower():
+                raise
+            return await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
