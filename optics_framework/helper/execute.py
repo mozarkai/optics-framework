@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
+from optics_framework.api import ActionKeyword, AppManagement, Verifier
 from optics_framework.common.config_handler import Config, DependencyConfig, resolve_config_file
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
@@ -830,7 +831,7 @@ class BaseRunner:
         ])
 
     def _setup_session(self):
-        if not self._has_enabled_driver():
+        if not self._has_enabled_driver() and self._needs_driver():
             config_path = os.path.join(self.folder_path, "config.yaml")
             print(
                 f"No driver enabled in {config_path}. "
@@ -855,6 +856,27 @@ class BaseRunner:
             for source in self.config.driver_sources
             for details in source.values()
         )
+
+    def _needs_driver(self) -> bool:
+        device_keywords = {
+            name
+            for api_class in (ActionKeyword, AppManagement, Verifier)
+            for name in dir(api_class)
+            if not name.startswith("_")
+        }
+        modules = self.modules_data.modules
+        pending = [name for steps in self.filtered_test_cases.values() for name in steps]
+        seen: set[str] = set()
+        while pending:
+            name = pending.pop().removeprefix("!").strip()
+            if name in seen or name not in modules:
+                continue
+            seen.add(name)
+            for keyword, params in modules[name]:
+                if "_".join(keyword.split()).lower() in device_keywords:
+                    return True
+                pending.extend([keyword, *params])
+        return False
 
     async def run(self, mode: str):
         """Run the specified mode using ExecutionEngine."""
