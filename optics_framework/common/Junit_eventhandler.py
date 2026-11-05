@@ -334,4 +334,20 @@ class JUnitEventHandler(EventSubscriber):
         self._flush_json()
 
     def close(self):
+        self._mark_unfinished()
         self.flush()
+
+    def _mark_unfinished(self) -> None:
+        """Give an error to each test case that has no result, such as the one running when the run was stopped."""
+        for session_id, suite in self.session_suites.items():
+            for testcase in suite.findall("testcase"):
+                case_id = testcase.get("id", "")
+                if case_id not in self.testcase_cases:
+                    continue
+                for module_kw in testcase.findall("kw[@status='RUNNING']"):
+                    module_kw.set("status", EventStatus.ERROR.value)
+                unfinished = Event(
+                    entity_type="test_case", entity_id=case_id, name=testcase.get("name", ""),
+                    status=EventStatus.ERROR, message="The run ended before this test case reported a result.",
+                )
+                self._handle_test_case_event(unfinished, suite, session_id)

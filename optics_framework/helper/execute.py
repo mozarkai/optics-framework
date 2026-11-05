@@ -1,6 +1,8 @@
 import inspect
 import os
 import shutil
+import signal
+import threading
 import socket
 import subprocess  # nosec B404
 import sys
@@ -951,8 +953,32 @@ def run_project(
     )
     runner_instance = ExecuteRunner(args)
     _preflight_or_exit(getattr(runner_instance, "config", None), folder_path)
-    results = asyncio.run(runner_instance.execute())
+    results = _run_until_stopped(runner_instance.execute())
     return not _has_failed_results(results)
+
+
+_STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+
+
+def _run_until_stopped(coroutine):
+    """Run ``coroutine``; Ctrl-C and SIGTERM stop it at once, through the session cleanup that writes the JUnit report."""
+    if threading.current_thread() is not threading.main_thread():
+        return asyncio.run(coroutine)
+    previous = {stop: signal.signal(stop, _stop_run) for stop in _STOP_SIGNALS}
+    try:
+        return asyncio.run(coroutine)
+    finally:
+        for stop, handler in previous.items():
+            signal.signal(stop, handler)
+
+
+def _stop_run(signum: int, _frame) -> NoReturn:
+    # A second stop would cut short the cleanup that writes the report and closes the driver.
+    for stop in _STOP_SIGNALS:
+        signal.signal(stop, signal.SIG_IGN)
+    if signum == signal.SIGINT:
+        raise KeyboardInterrupt
+    raise SystemExit(128 + signum)
 
 
 def dryrun_main(
@@ -968,6 +994,6 @@ def dryrun_main(
         include=include, exclude=exclude,
     )
     runner_instance = DryRunRunner(args)
-    results = asyncio.run(runner_instance.execute())
+    results = _run_until_stopped(runner_instance.execute())
     if _has_failed_results(results):
         sys.exit(1)
