@@ -31,6 +31,7 @@ from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.common import utils
 from optics_framework.common.models import (
     TemplateData,
     TestCaseNode,
@@ -220,11 +221,9 @@ class Optics:
         If param is a string of the form ${...}, resolve it using session elements (with fallback).
         If the resolved value is a list, return the list (for fallback attempts). Otherwise, return as is.
         """
-        if not (
-            isinstance(param, str) and param.startswith("${") and param.endswith("}")
-        ):
+        var_name = utils.whole_var_name(param)
+        if var_name is None:
             return [param]  # Always return as list for uniformity
-        var_name = param[2:-1].strip()
         if not self.session_id or self.session_id not in self.session_manager.sessions:
             raise ValueError(INVALID_SETUP)
         session = self.session_manager.sessions[self.session_id]

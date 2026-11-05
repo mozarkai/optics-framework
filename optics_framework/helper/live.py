@@ -556,7 +556,7 @@ class LiveController:
                 message=self._unknown_keyword_message(guessed),
             )
 
-        if any(p.startswith("${") for p in params):
+        if any("${" in p for p in params):
             self.ensure_elements_loaded()
         method = self.keyword_map[func_name]
 
@@ -743,8 +743,8 @@ class LiveController:
         """Expand each positional ``${element}`` into its list of fallback locators."""
         candidates: List[List[str]] = []
         for param in params:
-            if param.startswith("${") and param.endswith("}"):
-                var_name = param[2:-1].strip()
+            var_name = utils.whole_var_name(param)
+            if var_name is not None:
                 values = self.session.elements.get_element(var_name) if self.session.elements else None
                 if not values:
                     raise OpticsError(
@@ -764,20 +764,21 @@ class LiveController:
         positional (the keyword's ``element`` argument).
         """
         combo_list = list(combo)
+        if any("${" in p for p in combo_list):
+            combo_list = utils.substitute_inline(method, combo_list, self._session_elements())
         positional, kw_params = DataReader.split_params_by_signature(method, combo_list)
-        resolved_positional = [self._resolve_value(p) for p in positional]
-        resolved_kw: Dict[str, str] = {}
-        for key, value in kw_params.items():
-            if value.startswith("${") and value.endswith("}"):
-                value = self._resolve_value(value)
-            resolved_kw[key] = value
+        raw = utils.raw_param_indices(method)
+        resolved_positional = utils.unescape_vars(
+            method, [p if i in raw else self._resolve_value(p) for i, p in enumerate(positional)]
+        )
+        resolved_kw = {key: self._resolve_value(value) for key, value in kw_params.items()}
         return resolved_positional, resolved_kw
 
     def _resolve_value(self, value: str) -> str:
         """Resolve a single ``${element}`` reference to its first locator; pass through otherwise."""
-        if not (value.startswith("${") and value.endswith("}")):
+        var_name = utils.whole_var_name(value)
+        if var_name is None:
             return value
-        var_name = value[2:-1].strip()
         resolved = self.session.elements.get_first(var_name) if self.session.elements else None
         if resolved is None:
             raise OpticsError(
