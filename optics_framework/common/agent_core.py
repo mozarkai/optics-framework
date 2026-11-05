@@ -68,6 +68,7 @@ ADVICE = {
     "timeout": "The device may still be busy; wait, then observe the screen.",
     "busy": "The previous action is still running; retry shortly.",
     "unknown_session": "Start a session.",
+    "session_required": "Pass session_id with one of them.",
     "loop": "Call observe, then try a different target or approach.",
     "other": "Read the error, then try a different action.",
 }
@@ -91,6 +92,8 @@ UNREADABLE = "The screen could not be read."
 _POLL_S = 0.5
 _SETTLE_PAUSE_S = 0.6
 _SETTLE_READS = 2
+_LOADING_WAIT_S = 6.0
+EXPECT_WAIT_S = 5.0
 VAR_RE = re.compile(r"\$\{([^}]*)\}")
 
 Value = str | list[str]
@@ -203,7 +206,7 @@ def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) ->
         "not_found": f"not found: tried {' | '.join(tried) or keyword}.",
         "unsupported": f"{keyword} is not supported on this platform.",
         "session_lost": "the driver session ended.",
-        "silent_failure": f"the keyword logged an error and did not raise: {message}.",
+        "silent_failure": f"{keyword or 'the keyword'} reported an error: {message}.",
     }
     return Fail(kind, facts.get(kind, message), code=code, message=message)
 
@@ -214,6 +217,23 @@ def _invalid(hint: str) -> Fail:
 
 def is_read_only(keyword: str) -> bool:
     return keyword.startswith(_READ_ONLY_PREFIXES) or keyword == "is_element"
+
+
+def _waits_for_change(p: "Prepared") -> bool:
+    """Whether settling waits for the screen to change: not for reads and scripts, which usually leave it."""
+    return not all(is_read_only(c.keyword) or c.keyword == "execute_script" for c in p.calls)
+
+
+def _awaits_expectation(action: Action, after: Snapshot | None, verdict: Verdict) -> bool:
+    """Whether a check is unmet, or expectations went unjudged because the screen could not be read."""
+    if after is None:
+        return bool(action.present or action.absent)
+    return not all(c.met for c in verdict.checks)
+
+
+def _stable(last: Snapshot, snap: Snapshot | None, digest: str) -> bool:
+    """A screen with rows that differs from ``digest`` and read the same twice."""
+    return snap is not None and bool(snap.all_rows) and last.digest != digest and snap.digest == last.digest
 
 
 def keyword_catalog(keywords: Keywords, coordinates: bool = False) -> dict[str, Callable[..., Any]]:
@@ -444,6 +464,8 @@ def _key_calls(action: Action, row: Row | None, element: Value, refs: RefTable) 
     text = action.text.strip()
     if not text:
         raise _invalid("key needs a key: back, or a driver key such as 66")
+    if REF_RE.match(text):
+        raise _invalid(f'"{text}" is a ref, not a key; tap it with tap(target="{text}")')
     return [Call("go_back", {}) if text.lower() == "back" else Call("press_keycode", {"keycode": text})]
 
 
@@ -660,16 +682,37 @@ class AgentSession:
             raise as_fail(exc) from exc
         return None if elements is None else self.refs.snapshot(elements, max_rows=max_rows, query=query)
 
+    async def _after(self, p: Prepared, typed: str, error: Fail | None, before: Snapshot | None) -> Snapshot | None:
+        """The screen an action left: one read after an error, a typing or a read that changed nothing, else settled."""
+        if error is not None:
+            return await self._read(ERROR_ROWS)
+        if typed:
+            return await self._read()
+        digest = before.digest if before else ""
+        if not _waits_for_change(p):
+            snap = await self._read()
+            if snap is None or snap.digest == digest:
+                return snap
+        return await self._settle(digest)
+
     async def _settle(self, digest: str) -> Snapshot | None:
-        """Read until the screen differs from ``digest`` and two reads in a row agree."""
+        """Read until the screen differs from ``digest`` and two reads in a row agree, then past any loading."""
         snap = await self._read()
         for _ in range(_SETTLE_READS):
             if snap is None:
                 return None
             await asyncio.sleep(_SETTLE_PAUSE_S)
             last, snap = snap, await self._read()
-            if snap is not None and last.digest != digest and snap.digest == last.digest:
+            if _stable(last, snap, digest):
                 break
+        return await self._past_loading(snap)
+
+    async def _past_loading(self, snap: Snapshot | None) -> Snapshot | None:
+        """Read an empty screen, a page still loading after a redirect or sign-in hop, until it has rows."""
+        deadline = time.monotonic() + _LOADING_WAIT_S
+        while snap is not None and not snap.all_rows and time.monotonic() < deadline:
+            await asyncio.sleep(_SETTLE_PAUSE_S)
+            snap = await self._read()
         return snap
 
     async def _run(
@@ -721,17 +764,17 @@ class AgentSession:
             strategy = won or strategy
         return result, strategy, error
 
-    async def _poll(self, texts: list[str], absent: list[str], deadline: float) -> tuple[Snapshot, list[Check]]:
-        """Read until every text check is met or ``deadline`` passes."""
-        while True:
-            snap = await self._read()
-            checks = list(verify(True, None, snap, texts, absent).checks) if snap is not None else []
-            left = deadline - time.monotonic()
-            if (snap is not None and all(c.met for c in checks)) or left <= 0:
-                break
-            await asyncio.sleep(min(_POLL_S, left))
+    async def _poll(
+        self, judge: Callable[[Snapshot], Sequence[Check]], deadline: float, snap: Snapshot | None = None,
+    ) -> tuple[Snapshot | None, list[Check]]:
+        """Read until every check ``judge`` gives is met or ``deadline`` passes, starting from ``snap`` when given."""
         if snap is None:
-            raise Fail("other", UNREADABLE)
+            snap = await self._read()
+        checks = list(judge(snap)) if snap is not None else []
+        while not (snap is not None and all(c.met for c in checks)) and (left := deadline - time.monotonic()) > 0:
+            await asyncio.sleep(min(_POLL_S, left))
+            snap = await self._read()
+            checks = list(judge(snap)) if snap is not None else []
         return snap, checks
 
     async def act(self, action: Action) -> Step:
@@ -747,22 +790,32 @@ class AgentSession:
         secret = typed_secret(into, written, self.elements or ())
         result, strategy, error = await self._run_calls(p)
         typed = _value(p.calls, TYPED_VALUE_PARAMS)
-        if error is not None:
-            after = await self._read(ERROR_ROWS)
-        elif typed:
-            after = await self._read()
-        else:
-            after = await self._settle(before.digest if before else "")
+        after = await self._after(p, typed, error, before)
         ok = error is None
-        verdict = verify(
-            ok, before, after, action.present, action.absent, typed=typed, strategy=strategy, exact=p.exact,
-        )
+
+        def judge(snap: Snapshot | None) -> Verdict:
+            return verify(ok, before, snap, action.present, action.absent, typed=typed, strategy=strategy, exact=p.exact)
+
+        verdict = judge(after)
+        if ok and _awaits_expectation(action, after, verdict):
+            after, _ = await self._poll(lambda snap: judge(snap).checks, time.monotonic() + EXPECT_WAIT_S, after)
+            verdict = judge(after)
         step = Step(action, ok, verdict, before, after, p, result, strategy, error, key, typed, secret)
         if ok:
             self._focus.moved(p.calls[-1].keyword if p.calls else "", named)
             self.recorder.add(len(self.steps) + 1, p, secret, secret_hint(into))
         self.steps.append(step)
         return step
+
+    async def _look(self, locators: list[str], deadline: float) -> list[Check]:
+        """One presence look per locator, each within what is left of ``deadline``."""
+        checks = []
+        for item in locators:
+            remaining = str(max(1, math.ceil(deadline - time.monotonic())))
+            look = {"elements": item, "timeout_str": remaining, "rule": "any", "fail": "False"}
+            found, _, _ = await self._run("assert_presence", look, (item,))
+            checks.append(Check(item, "present", bool(found)))
+        return checks
 
     async def check(
         self, present: Sequence[str], absent: Sequence[str] = (), timeout_s: float = 5, record: bool = True,
@@ -777,12 +830,10 @@ class AgentSession:
             raise _invalid(f'absent "{bad}" is a locator; use visible text or a ref')
         texts = [p.removeprefix("text=") for p in present if not _is_locator(p)]
         deadline = time.monotonic() + timeout_s
-        snap, checks = await self._poll(texts, absent, deadline)
-        for item in filter(_is_locator, present):
-            remaining = str(max(1, math.ceil(deadline - time.monotonic())))
-            look = {"elements": item, "timeout_str": remaining, "rule": "any", "fail": "False"}
-            found, _, _ = await self._run("assert_presence", look, (item,))
-            checks.append(Check(item, "present", bool(found)))
+        snap, checks = await self._poll(lambda s: verify(True, None, s, texts, absent).checks, deadline)
+        if snap is None:
+            raise Fail("other", UNREADABLE)
+        checks += await self._look(list(filter(_is_locator, present)), deadline)
         passed = all(c.met for c in checks)
         verdict = Verdict("pass" if passed else "fail", tuple(checks), (), None, False)
         step = Step(Action("check", present=tuple(present), absent=tuple(absent)), passed, verdict, after=snap)
