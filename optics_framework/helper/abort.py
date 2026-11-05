@@ -41,6 +41,7 @@ def abort_with_panel(lines: list[str], code: str | None = None, status: int = 1)
     second traceback. Lines are rendered as plain text, not markup, since
     they carry test names, paths and exception messages verbatim.
     """
+    text = _masked("\n".join(lines))
     try:
         from rich.console import Console
         from rich.panel import Panel
@@ -48,7 +49,16 @@ def abort_with_panel(lines: list[str], code: str | None = None, status: int = 1)
 
         title = f"Cannot start: {code}" if code else "Cannot start"
         Console(file=sys.stderr).print(
-            Panel(Text("\n".join(lines)), title=title, border_style="red"))
+            Panel(Text(text), title=title, border_style="red"))
     except ImportError:
-        print("\n".join([code, *lines] if code else lines), file=sys.stderr)
+        print(f"{code}\n{text}" if code else text, file=sys.stderr)
     sys.exit(status)
+
+
+def _masked(text: str) -> str:
+    try:
+        from optics_framework.common.logging_config import mask_secrets
+    except ImportError:
+        # An install that cannot load logging_config cannot have loaded a config, so it holds no secret.
+        return text
+    return mask_secrets(text)

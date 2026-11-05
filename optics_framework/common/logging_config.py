@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from rich.logging import RichHandler
 from pydantic import BaseModel
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from pathlib import Path
 
 class LoggingConfig(BaseModel):
@@ -114,10 +114,14 @@ class LoggingManager:
         self.execution_listener = None
         self.junit_handler = None
 
-SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", "pin", "otp", "secret", "token", "key", "apikey"})
+SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", "pin", "otp", "secret", "token", "key", "apikey", "auth", "authorization", "bearer", "credential"})
 # Shorter values, like otp_length=6, would mask digits all over the log.
 MIN_SECRET_LENGTH = 4
 _active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
+# Replaced, never mutated, so a reader on another thread always sees a whole set.
+_config_secrets: frozenset[str] = frozenset()
+_URL_PASSWORD = re.compile(r"(://[^/\s:@'\"]+:)[^/\s@'\"]+@")
+_QUERY_PARAM = re.compile(r"([?&;]([^=&;\s'\"<>]+)=)([^&\s'\"<>#]+)")
 
 
 # Fixed-width lookarounds only, so a long name cannot make the match backtrack.
@@ -138,18 +142,60 @@ def use_secrets(secrets: set[str]) -> None:
     _active_secrets.set(secrets)
 
 
+def _is_secret(name: str | None, text: str) -> bool:
+    return is_secret_name(name) and len(text) >= MIN_SECRET_LENGTH
+
+
+def is_secret_entry(name: str, value: Any) -> bool:
+    """Whether a config key holds a secret: a secret name and a text value, but not an ``*_env`` variable name."""
+    return isinstance(value, str) and not name.endswith("_env") and is_secret_name(name)
+
+
+def redact_secret_values(value: Any, name: str = "") -> Any:
+    """``value`` with each secret-named text value in it, at any depth, replaced by ``****``."""
+    if isinstance(value, dict):
+        return {key: redact_secret_values(item, str(key)) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_secret_values(item, name) for item in value]
+    return "****" if is_secret_entry(name, value) else value
+
+
 def register_secret(secrets: set[str], name: str, value) -> None:
     text = str(value)
-    if is_secret_name(name) and len(text) >= MIN_SECRET_LENGTH:
+    if _is_secret(name, text):
         secrets.add(text)
     use_secrets(secrets)
 
 
+def register_config_secret(name: str, value: str) -> None:
+    """Mask ``value`` in every log and report of this process when ``name`` reads as a secret."""
+    global _config_secrets
+    if _is_secret(name, value):
+        _config_secrets = _config_secrets | {value}
+
+
 def mask_secrets(text: str) -> str:
     # Longest first, so overlapping secrets mask whole.
-    for secret in sorted(_active_secrets.get() or (), key=len, reverse=True):
+    for secret in sorted({*(_active_secrets.get() or ()), *_config_secrets}, key=len, reverse=True):
         text = text.replace(secret, "****")
+    text = _URL_PASSWORD.sub(r"\1****@", text)
+    text = _QUERY_PARAM.sub(_mask_secret_param, text)
     return re.sub(r"@:([^\s,\)\]]+)", "****", text)
+
+
+def mask_secret_values(value: Any) -> Any:
+    """``value`` with every string in it, including those nested in dicts and lists, passed through ``mask_secrets``."""
+    if isinstance(value, str):
+        return mask_secrets(value)
+    if isinstance(value, dict):
+        return {key: mask_secret_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [mask_secret_values(item) for item in value]
+    return value
+
+
+def _mask_secret_param(param: re.Match[str]) -> str:
+    return f"{param.group(1)}****" if is_secret_name(param.group(2)) else param.group(0)
 
 
 _held_records: ContextVar[list | None] = ContextVar("_held_records", default=None)
@@ -186,15 +232,7 @@ class SecretMaskingFilter(logging.Filter):
 
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):
-        if isinstance(record.msg, str):
-            record.msg = self._sanitize(record.msg)
-        elif hasattr(record, "args") and record.args:
-            record.args = tuple(self._sanitize(str(arg)) for arg in record.args)
-        return super().format(record)
-
-    def _sanitize(self, message: str) -> str:
-        # Remove duplicate characters in regex character class
-        return re.sub(r"@:([^\s,\)\]]+)", "****", message)
+        return mask_secrets(super().format(record))
 
 
 logging_manager = LoggingManager()

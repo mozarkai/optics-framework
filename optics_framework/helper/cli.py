@@ -32,6 +32,7 @@ try:
     from optics_framework.helper.onboarding import welcome, is_first_run, mark_onboarded
     from optics_framework.helper.doctor import run_doctor
     from optics_framework.helper.quickstart import run_quickstart
+    from optics_framework.common.logging_config import mask_secrets
 except ImportError as exc:
     _abort_on_import_error(exc)
 
@@ -614,13 +615,13 @@ def main():
             print("Operation cancelled by user.", file=sys.stderr)
             sys.exit(130)
         except argparse.ArgumentError as e:
-            print(f"Argument error: {e}", file=sys.stderr)
+            print(mask_secrets(f"Argument error: {e}"), file=sys.stderr)
             sys.exit(2)
         except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
+            print(mask_secrets(f"Error: {e}"), file=sys.stderr)
             sys.exit(3)
         except Exception as e:
-            print(f"Unexpected error ({type(e).__name__}): {e}", file=sys.stderr)
+            print(mask_secrets(f"Unexpected error ({type(e).__name__}): {e}"), file=sys.stderr)
             print(
                 "Run `optics doctor` to check your setup, "
                 "or `optics <command> --help` for usage.",

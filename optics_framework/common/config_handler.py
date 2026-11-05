@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.logging_config import initialize_handlers
+from optics_framework.common.logging_config import initialize_handlers, is_secret_entry, register_config_secret
 
 _ENV_REFERENCE = re.compile(r"\$(?:\$|\{([A-Za-z_]\w*)(?::-([^}]*))?\}|([A-Za-z_]\w*))")
 _RELATIVE_PREFIXES = ("./", "../")
@@ -29,12 +29,14 @@ def env_names(value: str) -> list[str]:
 
 def resolve_config_file(data: dict, base_dir: str) -> dict:
     """Expand environment references and resolve ``./`` paths against ``base_dir`` in a parsed config file."""
-    return {
+    resolved = {
         key: [_resolve_driver(entry, base_dir) for entry in value]
         if key == "driver_sources" and isinstance(value, list)
         else _resolve(value, base_dir, key not in _OUTPUT_PATH_FIELDS)
         for key, value in data.items()
     }
+    _register_secret_values(resolved)
+    return resolved
 
 
 def _resolve_driver(entry: Any, base_dir: str) -> Any:
@@ -83,13 +85,13 @@ def _base_map(reference: Any) -> dict:
 def _checked(value: Any) -> Any:
     """Raise for an unset reference in ``value``, but return it unexpanded."""
     if isinstance(value, dict):
-        for item in value.values():
-            _checked(item)
         if _BASE_KEY in value:
             raise OpticsError(
                 Code.E0501,
                 message="The config takes $from in a map the driver expands at run time, such as Playwright headers. Give its keys one by one.",
             )
+        for item in value.values():
+            _checked(item)
     elif isinstance(value, str):
         expand_env(value)
     return value
@@ -106,6 +108,7 @@ def _env_value(reference: re.Match[str]) -> str:
             Code.E0501,
             message=f"The config uses {reference.group(0)}, but the {name} environment variable is not set or is empty.",
         )
+    register_config_secret(name, value)
     return value
 
 
@@ -116,6 +119,18 @@ class DependencyConfig(BaseModel):
     capabilities: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+def _register_secret_values(value: Any, name: str = "") -> None:
+    """Mask secret-named string values of a config file, such as ``appium:keystorePassword``, in logs and reports."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _register_secret_values(item, str(key))
+    elif isinstance(value, list):
+        for item in value:
+            _register_secret_values(item, name)
+    elif is_secret_entry(name, value):
+        register_config_secret(name, value)
 
 
 class NLAgentConfig(BaseModel):

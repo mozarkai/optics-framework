@@ -180,27 +180,15 @@ self.execution_logger.addHandler(self.execution_queue_handler)
 
 ## Sensitive Data Sanitization
 
-The framework automatically sanitizes sensitive data in log messages:
+`mask_secrets` in `logging_config.py` writes `****` in place of secrets. `SecretMaskingFilter` and `SensitiveDataFormatter` apply it to every log record. The JUnit handler applies it to the text and `message` values of `junit_output.xml` and to the `message`, `args` and `logs` of each `logs.json` event, before it writes them. The CLI applies it to error output and the *Cannot start* panel.
 
-```python
-class SensitiveDataFormatter(logging.Formatter):
-    def _sanitize(self, message: str) -> str:
-        # Removes patterns like @:password, @:api_key
-        return re.sub(r"@:([^\s,\)\]]+)", "****", message)
-```
+It masks:
 
-**Sanitization Pattern:**
-
-- Matches: `@:password`, `@:api_key`, `@:token`
-- Replaces with: `****`
-- Prevents accidental credential exposure
-
-**Usage:**
-```python
-# This will be sanitized
-internal_logger.info("Connecting with @:api_key")
-# Output: "Connecting with ****"
-```
+- The secrets of the current session (`register_secret`, for example a value that a keyword keeps with `store_as` under a secret name).
+- Secret-named text values from the config file and the environment variables it uses (`register_config_secret`, called by `resolve_config_file`). See [Configuration](../configuration.md) for the names that count as secret.
+- Passwords in URLs: `https://user:****@host`.
+- Query parameters with a secret name: `?token=****`.
+- `@:name` references: `@:api_key` becomes `****`.
 
 ## Session Context Logging
 
