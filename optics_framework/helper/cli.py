@@ -540,7 +540,7 @@ class EngineInstaller(Command):
         parser.add_argument(
             "--install", nargs="+", metavar="NAME",
             help="Install the given engines, e.g. --install appium easyocr. "
-                 "Append a version to pin it, e.g. --install appium==5.0.0")
+                 "Append a version to pin it, e.g. --install appium==6.1.2")
         parser.add_argument("--list", action="store_true",
                         help="List all available engines")
         parser.set_defaults(func=self.execute)
