@@ -113,9 +113,11 @@ class Verifier:
         if isinstance(located, tuple):
             actual = getattr(located, check, None)
             if actual is None:
-                raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
+                raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of '{element}': it was found only by OCR or image.")
+        elif check == "enabled":
+            actual = self.driver.is_element_enabled(located)
         else:
-            actual = getattr(self.driver, f"is_element_{check}")(located)
+            actual = self.driver.is_element_checked(located)
         if actual != positive:
             raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
 

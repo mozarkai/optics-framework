@@ -4,8 +4,7 @@ import numpy
 from optics_framework.common.session_liveness import raise_if_session_dead
 
 class ScreenPoint(tuple):
-    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` with the ``text`` shown there, whether it is
-    ``covered``, and the ``enabled`` and ``checked`` states of the element there when the source reads them."""
+    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` with whatever the source read about the element there."""
 
     text: str | None
     covered: bool
@@ -13,7 +12,7 @@ class ScreenPoint(tuple):
     checked: bool | None
 
     def __new__(
-        cls, x: int, y: int, text: str | None = None, covered: bool = False,
+        cls, x: int, y: int, *, text: str | None = None, covered: bool = False,
         enabled: bool | None = None, checked: bool | None = None,
     ) -> "ScreenPoint":
         point = super().__new__(cls, (x, y))

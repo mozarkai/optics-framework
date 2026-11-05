@@ -118,7 +118,8 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
             rect = self._settled_rect(target)
             text, reachable, enabled, checked = driver.execute_script(_TEXT_REACH_AND_STATE_JS, target)
         return ScreenPoint(
-            rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text, not reachable, enabled, checked,
+            rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2,
+            text=text, covered=not reachable, enabled=enabled, checked=checked,
         )
 
     @staticmethod
