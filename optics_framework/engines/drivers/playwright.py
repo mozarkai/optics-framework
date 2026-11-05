@@ -29,8 +29,9 @@ _FIELD_SELECTOR = (
 _IS_FIELD_JS = "(el, selector) => el.matches(selector)"
 # A WebDriver script is a function body that reads arguments[i]; evaluate() takes an expression.
 _FUNCTION_BODY_JS = "args => (function () {{\n{}\n}}).apply(null, args)"
-_FUNCTION_JS = re.compile(r"^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[\w$]+\s*=>)")
-_ARGUMENTS_JS = re.compile(r"\barguments\b")
+_FUNCTION_SOURCE_RE = re.compile(r"^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[\w$]+\s*=>)")
+_ARGUMENTS_RE = re.compile(r"\barguments\b")
+_STRING_LITERAL_RE = re.compile(r"(['\"`])(?:\\.|(?!\1).)*\1", re.DOTALL)
 _LABEL_CONTROL_JS = "el => { const label = el.closest('label'); return label ? label.control : null; }"
 # The only field in the nearest container that holds one; none when that container holds several.
 _NEARBY_FIELD_JS = """(el, selector) => {
@@ -771,15 +772,14 @@ class Playwright(DriverInterface):
 
     async def _evaluate(self, script: str, args: tuple) -> Any:
         """Run a Playwright expression or function, or a WebDriver-style body that uses ``return`` or ``arguments``."""
-        if _ARGUMENTS_JS.search(script) and not _FUNCTION_JS.match(script):
-            return await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
-        try:
-            if not args:
-                return await self.page.evaluate(script)
-            # evaluate() takes one argument, so several are passed as a list.
-            return await self.page.evaluate(script, args[0] if len(args) == 1 else list(args))
-        except PlaywrightError as e:
-            # Each engine words it differently: "Illegal return statement", "return not in function", ...
-            if "SyntaxError" not in str(e) or "return" not in str(e).lower():
-                raise
-            return await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
+        uses_arguments = _ARGUMENTS_RE.search(_STRING_LITERAL_RE.sub("", script))
+        if not uses_arguments or _FUNCTION_SOURCE_RE.match(script):
+            try:
+                if not args:
+                    return await self.page.evaluate(script)
+                return await self.page.evaluate(script, args[0] if len(args) == 1 else list(args))
+            except PlaywrightError as e:
+                # Each engine words it differently: "Illegal return statement", "return not in function", ...
+                if "SyntaxError" not in str(e) or "return" not in str(e).lower():
+                    raise
+        return await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
