@@ -213,6 +213,64 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
             await client.call_tool("terminate_session", {"session_id": session_id})
 
 
+async def _core_session(client, page):
+    started = await client.call_tool(
+        "start_session",
+        {"driver": "playwright", "app": (FIXTURE / page).as_uri(), "capabilities": {"headless": True}},
+    )
+    return started.data["session_id"]
+
+
+async def test_mcp_tap_waits_through_a_blank_sign_in_hop():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "sign_in.html")
+        try:
+            tapped = await client.call_tool(
+                "tap", {"target": "Continue with Microsoft", "expect_present": ["Settings"]}
+            )
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    assert tapped.structured_content["verified"] == "pass"
+    assert any(row["label"] == "Settings" for row in tapped.structured_content["screen"]["rows"])
+
+
+async def test_mcp_offers_and_taps_an_option_a_script_handles():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "settings.html")
+        try:
+            seen = await client.call_tool("observe", {"query": "No meetings"})
+            tapped = await client.call_tool(
+                "tap", {"target": seen.structured_content["rows"][0]["ref"], "expect_present": ["Picked No meetings"]}
+            )
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    assert seen.structured_content["rows"][0]["act"] == ["tap"]
+    assert tapped.structured_content["verified"] == "pass"
+
+
+async def test_mcp_press_key_takes_key_names_and_points_refs_to_tap():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "settings.html")
+        try:
+            escape = await client.call_tool("press_key", {"key": "esc"})
+            ref = await client.call_tool("press_key", {"key": "e1"}, raise_on_error=False)
+            unknown = await client.call_tool("press_key", {"key": "27"}, raise_on_error=False)
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    assert escape.structured_content["ok"] is True
+    assert 'tap(target="e1")' in ref.content[0].text
+    assert "Escape" in unknown.content[0].text
+
+
 def test_stopping_serve_closes_its_browsers():
     from fastapi.testclient import TestClient
     from optics_framework.common import expose_api
