@@ -1399,10 +1399,10 @@ def runner():
 """)
 
         test_code = "import pytest\n\n" + "".join(
-            f"def test_{tc.replace(' ', '_')}(runner):\n"
+            f"def test_{i}_{tc.replace(' ', '_')}(runner):\n"
             f"    result = runner.execute_test_case_sync('{tc}', dry_run={dry_run})\n"
             f"    assert result.status == 'PASS', 'Test case failed with status: ' + result.status\n"
-            for tc in test_cases
+            for i, tc in enumerate(test_cases)
         )
         internal_logger.debug(f"Generated test code:\n{test_code}", extra=extra)
         with open(test_file_path, "w") as f:

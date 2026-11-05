@@ -346,14 +346,14 @@ def categorize_test_cases(
     return suite_setup, suite_teardown, setup, teardown, regular_test_cases
 
 
-def get_execution_queue(test_cases_data: Dict) -> Dict:
+def get_execution_queue(test_cases_data: Dict) -> List[Tuple[str, Any]]:
     """
     Build and return the execution queue including suite-level and per-test setup/teardown.
 
     :param test_cases_data: Dictionary of all test case names and their steps.
-    :return: Ordered dictionary of test execution plan.
+    :return: Ordered ``(name, steps)`` pairs; per-test setup and teardown appear once per test.
     """
-    execution_dict: Dict[str, Any] = {}
+    queue: List[Tuple[str, Any]] = []
 
     # Categorize test cases
     suite_setup, suite_teardown, setup, teardown, regular_test_cases = (
@@ -362,30 +362,30 @@ def get_execution_queue(test_cases_data: Dict) -> Dict:
 
     # Add suite setup if present
     if suite_setup:
-        execution_dict[suite_setup[0]] = suite_setup[1]
+        queue.append(suite_setup)
 
     for name, steps in regular_test_cases.items():
         if setup:
-            execution_dict[setup[0]] = setup[1]
-        execution_dict[name] = steps
+            queue.append(setup)
+        queue.append((name, steps))
         if teardown:
-            execution_dict[teardown[0]] = teardown[1]
+            queue.append(teardown)
 
     if suite_teardown:
-        execution_dict[suite_teardown[0]] = suite_teardown[1]
+        queue.append(suite_teardown)
 
-    return execution_dict
+    return queue
 
 
-def create_test_case_nodes(execution_dict: Dict) -> Optional[TestCaseNode]:
+def create_test_case_nodes(queue: List[Tuple[str, Any]]) -> Optional[TestCaseNode]:
     """
-    Create a linked list of TestCaseNode objects from the execution dictionary.
+    Create a linked list of TestCaseNode objects from the execution queue.
 
-    :param execution_dict: Ordered dictionary of test case names and their modules.
+    :param queue: Ordered ``(name, modules)`` pairs.
     :return: Head of the TestCaseNode linked list, or None if empty.
     """
     test_suite = TestSuite()
-    for tc_name in execution_dict:
+    for tc_name, _ in queue:
         tc_node = TestCaseNode(name=tc_name)
         test_suite.add_test_case(tc_node)
     return test_suite.test_cases_head
@@ -442,17 +442,22 @@ def build_linked_list(
     """
     try:
         # Get the ordered execution dict
-        execution_dict = get_execution_queue(test_cases_data)
+        queue = get_execution_queue(test_cases_data)
 
         # Create TestCaseNode linked list
-        head = create_test_case_nodes(execution_dict)
+        head = create_test_case_nodes(queue)
         if head is None:
             raise OpticsError(Code.E0702, message="No test cases found to build execution linked list.")
 
-        # Populate modules and keywords for each test case
+        # A repeated setup/teardown shares its first node's modules, so its results resolve by name.
+        first_by_name: Dict[str, TestCaseNode] = {}
         current = head
-        while current:
-            populate_module_nodes(current, execution_dict[current.name], modules_data)
+        for name, modules in queue:
+            if name in first_by_name:
+                current.modules_head = first_by_name[name].modules_head
+            else:
+                populate_module_nodes(current, modules, modules_data)
+                first_by_name[name] = current
             current = current.next
         return head
     except Exception as e:
