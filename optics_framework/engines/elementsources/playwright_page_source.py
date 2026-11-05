@@ -71,6 +71,7 @@ BOUNDS_JS = r"""
             return {
                 x: rect.x, y: rect.y, width: rect.width, height: rect.height,
                 offscreen: !shows(el, rect),
+                pointer: style.cursor === 'pointer',
             };
         } catch (e) {
             return null;
@@ -740,6 +741,9 @@ class WebDomInspector:
         for (node, (label, actions)), rect, locator in zip(candidates, rects, locators):
             bounds = self._rect_to_bounds(rect)
             if bounds:
+                # A click handler added by script leaves no attribute; the hand cursor a person sees is the sign.
+                if rect.get("pointer") and "tap" not in actions and not self._is_web_disabled(node):
+                    actions = ["tap", *actions]
                 entries.append(
                     self._compact_web_entry(node, label, actions, bounds, locator, bool(rect.get("offscreen")))
                 )
