@@ -70,3 +70,20 @@ def test_playwright_url_and_headers_are_left_for_the_driver(env, tmp_path):
         "enabled": True, "url": "wss://$HUB?token=$${X}",
         "capabilities": {"headers": {"Authorization": "Bearer ${HUB}"}, "browser": "hub.example.com"},
     }
+
+
+def test_from_takes_a_base_map_that_the_keys_beside_it_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAPS", '{"platformName": "Android", "appium:udid": "emulator-5554"}')
+    caps = {"$from": "$CAPS", "appium:udid": "R58M", "appium:appPackage": "com.android.settings"}
+    resolved = resolve_config_file({"driver_sources": [{"appium": {"capabilities": caps}}]}, str(tmp_path))
+    assert resolved["driver_sources"][0]["appium"]["capabilities"] == {
+        "platformName": "Android", "appium:udid": "R58M", "appium:appPackage": "com.android.settings",
+    }
+
+
+@pytest.mark.parametrize("value", ['["secret"]', "secret"])
+def test_from_needs_a_json_object_and_keeps_its_value_out_of_the_error(monkeypatch, tmp_path, value):
+    monkeypatch.setenv("CAPS", value)
+    with pytest.raises(OpticsError, match=r"\$from: \$CAPS") as error:
+        resolve_config_file({"capabilities": {"$from": "$CAPS"}}, str(tmp_path))
+    assert "secret" not in error.value.message

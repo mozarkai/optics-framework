@@ -1125,6 +1125,25 @@ optics execute my_project
 - An environment variable can hold a relative path: `$CREDS_FILE` set to `./creds/key.json` is resolved like the literal value.
 - The result is always a string. Optics fields such as `enabled: ${USE_APPIUM}` accept `true` and `false`, but a capability that needs a number gets the number as text.
 
+To take a whole map from one environment variable, put `$from` in the map and set the variable to a JSON object. The keys next to `$from` are added to that object and replace the keys it already has:
+
+```yaml
+driver_sources:
+  - appium:
+      enabled: true
+      url: $APPIUM_URL
+      capabilities:
+        $from: $APPIUM_CAPABILITIES
+        appium:appPackage: com.android.settings
+        appium:appActivity: com.android.settings.Settings
+```
+
+```bash
+export APPIUM_CAPABILITIES='{"platformName": "Android", "appium:automationName": "UiAutomator2", "appium:udid": "emulator-5554"}'
+```
+
+Values from the JSON object are used as they are: Optics does not expand references or resolve paths in them. If the value is not a JSON object, the run stops and names the variable, but does not show its value. Do not use `$from` in the Playwright `capabilities.headers`: the driver expands that map when it connects, so give each header on its own line.
+
 `optics execute`, `optics dry_run`, `optics live` and `optics doctor` resolve these values when they read the file. The Playwright driver's `url` and `capabilities.headers` are the exception: the driver expands them, with the same rules, when it connects, so it can mask the values in its error messages. An unset variable in them still stops the command when it reads the file. `optics configure --edit` keeps them as written when it saves the file. The Python SDK and the `optics serve` and `optics mcp` session APIs take the config as data, not as a file, and do not expand references.
 
 ---
