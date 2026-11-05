@@ -441,7 +441,7 @@ These keywords handle verification and validation operations.
 
 ### Assert Equality
 
-Compares two values for equality. Both values are converted to strings and stripped of leading/trailing whitespace before comparison. Returns `true` if equal, `false` otherwise. Either value can be a `${variable}` reference.
+Compares two values for equality and fails the step when they differ. Both values are converted to strings and stripped of leading/trailing whitespace before comparison. Either value can be a `${variable}` reference.
 
 **Usage note:** `Evaluate` writes its result directly into `session.elements`, so `${var}` from `Evaluate` can be passed straight into `Assert Equality`.
 
@@ -468,7 +468,7 @@ Evaluate,${price},'9.99'
 Assert Equality,${price},9.99
 ```
 
-`Assert Equality` does not fail the step when the values differ. To fail the step when an element shows the wrong text, use [Assert Text](#assert-text).
+To check the text an element shows, use [Assert Text](#assert-text).
 
 ### Assert Text
 

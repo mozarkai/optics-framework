@@ -178,15 +178,15 @@ class Verifier:
         :param output: The actual value or ``${variable}`` reference.
         :param expression: The expected value or ``${variable}`` reference.
         :param event_name: The name of the event associated with the comparison, if any.
-        :return: True if equal, False otherwise.
+        :return: True when the values are equal; otherwise the step fails.
         """
         actual = self._resolve_param(str(output)).strip()
         expected = self._resolve_param(str(expression)).strip()
-        result = actual == expected
-        if result and event_name:
+        if actual != expected:
+            raise OpticsError(Code.E0401, message=mask_secrets(f"'{actual}' does not equal '{expected}'."))
+        if event_name:
             self.event_sdk.capture_event(event_name)
-        return result
-
+        return True
 
     def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
