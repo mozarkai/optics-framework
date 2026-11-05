@@ -125,11 +125,25 @@ def test_a_failed_step_leaves_the_screen_elements(tmp_path):
     assert any(e.get("label") == "Sign in" for e in failures[0]["elements"])
 
 
-def test_pressing_a_disabled_button_fails(tmp_path):
+PHONE_CONFIG = CONFIG.replace("headless: true\n", "headless: true\n        device: Pixel 7\n")
+
+
+# Neither page sets a meta viewport, so the phone profile zooms them out and taps by hand.
+@pytest.mark.parametrize("config", [CONFIG, PHONE_CONFIG], ids=["desktop", "zoomed_phone"])
+def test_pressing_a_disabled_button_fails(tmp_path, config):
     project = _project(tmp_path, [
         f"Launch App,{(FIXTURE / 'orders.html').as_uri()}",
         "Press Element,Reorder",
-    ])
+    ], config=config)
+    assert run_project(project, use_printer=False) is False
+
+
+@pytest.mark.parametrize("config", [CONFIG, PHONE_CONFIG], ids=["desktop", "zoomed_phone"])
+def test_pressing_a_covered_button_fails(tmp_path, config):
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / 'covered.html').as_uri()}",
+        "Press Element,Pay",
+    ], config=config)
     assert run_project(project, use_printer=False) is False
 
 
@@ -244,7 +258,6 @@ async def test_stopping_mcp_closes_its_browsers():
 # A page without a meta viewport is zoomed out to fit the phone.
 @pytest.mark.parametrize("page", ["phone.html", "desktop_site.html"])
 def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path, page):
-    config = CONFIG.replace("headless: true\n", "headless: true\n        device: Pixel 7\n")
     project = _project(tmp_path, [
         f"Launch App,{(FIXTURE / page).as_uri()}",
         "Assert Presence,Phone layout",
@@ -254,7 +267,7 @@ def test_a_phone_profile_taps_and_scrolls_with_touch(tmp_path, page):
         "Assert Presence,Scrolled",
         "Press Element,Buy",
         "Assert Presence,Bought",
-    ], config=config)
+    ], config=PHONE_CONFIG)
     assert run_project(project, use_printer=False) is True
 
 
