@@ -68,6 +68,7 @@ class ModuleNode(Node):
 
 class TestCaseNode(Node):
     modules_head: Optional[ModuleNode] = None
+    suite_teardown: bool = False
     next: Optional['TestCaseNode'] = None
 
     def add_module(self, module: 'ModuleNode'):

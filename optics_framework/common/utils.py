@@ -490,6 +490,29 @@ def compare_text(given_text, target_text, strict: bool = False):
     internal_logger.debug(f"No match found for '{given_text}' and '{target_text}' using all matching algorithms.")
     return False
 
+def capture_time_stamp() -> str:
+    return datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f')
+
+
+def _capture_file_path(name: str, output_dir: str, extension: str, time_stamp=None) -> str:
+    name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
+    if time_stamp is None:
+        time_stamp = capture_time_stamp()
+    file_stamp = str(time_stamp).replace(":", "-")
+    return os.path.join(output_dir, f"{file_stamp}-{name}.{extension}")
+
+
+def is_html_source(page_source: str) -> bool:
+    return page_source.lstrip().lower().startswith(("<html", "<!doctype"))
+
+
+def save_page_source_file(page_source: str, name: str, output_dir: str, time_stamp=None) -> None:
+    """Save a page source to its own file, named like ``save_screenshot`` names an image."""
+    extension = "html" if is_html_source(page_source) else "xml"
+    with open(_capture_file_path(name, output_dir, extension, time_stamp), "w", encoding="utf-8") as f:
+        f.write(page_source)
+
+
 def save_screenshot(img, name, output_dir, time_stamp=None):
     """
     Save the screenshot with a timestamp and keyword in the filename.
@@ -506,14 +529,9 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
     if output_dir is None:
         internal_logger.info(OUTPUT_PATH_NOT_SET_MSG)
         return
-    name = re.sub(r'[^a-zA-Z0-9\s_]', '', name)
-    if time_stamp is None:
-        time_stamp = str(datetime.now().astimezone().strftime('%Y-%m-%dT%H-%M-%S-%f'))
-    file_stamp = str(time_stamp).replace(":", "-")
-    screenshot_file_path = os.path.join(output_dir, f"{file_stamp}-{name}.jpg")
+    screenshot_file_path = _capture_file_path(name, output_dir, "jpg", time_stamp)
     try:
         cv2.imwrite(screenshot_file_path, img)
-        internal_logger.debug(f'Screenshot saved as : {file_stamp}-{name}.jpg')
         internal_logger.debug(f"Screenshot saved to :{screenshot_file_path}")
 
     except Exception as e:
