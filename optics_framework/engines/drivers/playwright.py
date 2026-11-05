@@ -31,7 +31,7 @@ _IS_FIELD_JS = "(el, selector) => el.matches(selector)"
 _FUNCTION_BODY_JS = "args => (function () {{\n{}\n}}).apply(null, args)"
 _FUNCTION_SOURCE_RE = re.compile(r"^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[\w$]+\s*=>)")
 _ARGUMENTS_RE = re.compile(r"\barguments\b")
-_STRING_LITERAL_RE = re.compile(r"(['\"`])(?:\\.|(?!\1).)*\1", re.DOTALL)
+_STRING_LITERAL_RE = re.compile(r"(['\"`])(?:\\.|(?!\1)[^\\])*\1", re.DOTALL)
 _LABEL_CONTROL_JS = "el => { const label = el.closest('label'); return label ? label.control : null; }"
 # The only field in the nearest container that holds one; none when that container holds several.
 _NEARBY_FIELD_JS = """(el, selector) => {
