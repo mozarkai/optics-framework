@@ -16,10 +16,10 @@ class Verifier:
     """
 
     _ELEMENT_STATES = {
-        "enabled": ("is_element_enabled", True, "disabled"),
-        "disabled": ("is_element_enabled", False, "enabled"),
-        "checked": ("is_element_checked", True, "unchecked"),
-        "unchecked": ("is_element_checked", False, "checked"),
+        "enabled": ("enabled", True, "disabled"),
+        "disabled": ("enabled", False, "enabled"),
+        "checked": ("checked", True, "unchecked"),
+        "unchecked": ("checked", False, "checked"),
     }
     _TEXT_POLL_INTERVAL_S = 0.5
     # The assertion loop gives each strategy whole seconds, so a shorter lookup would check nothing.
@@ -109,10 +109,14 @@ class Verifier:
             pass
         if located is None:
             raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
-        if isinstance(located, tuple):
-            raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
         check, positive, opposite = self._ELEMENT_STATES[state]
-        if getattr(self.driver, check)(located) != positive:
+        if isinstance(located, tuple):
+            actual = getattr(located, check, None)
+            if actual is None:
+                raise OpticsError(Code.E0401, message=f"Cannot check the {state} state of a coordinate-based element.")
+        else:
+            actual = getattr(self.driver, f"is_element_{check}")(located)
+        if actual != positive:
             raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
 
     def assert_text(self, element: str, expected: str, timeout: str = "10", event_name: Optional[str] = None) -> None:
@@ -156,7 +160,10 @@ class Verifier:
         if result is None:
             return None
         if isinstance(result.value, tuple):
-            raise OpticsError(Code.E0401, message=f"Cannot read the text of '{element}': it was found only by OCR or image.")
+            text = getattr(result.value, "text", None)
+            if text is None:
+                raise OpticsError(Code.E0401, message=f"Cannot read the text of '{element}': it was found only by OCR or image.")
+            return text
         try:
             return self.driver.get_text_element(result.value)
         except Exception as e:

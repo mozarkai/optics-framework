@@ -523,7 +523,7 @@ Checks if an element is in a given state: `visible`, `invisible`, `enabled`, `di
 - **enabled / disabled** — locates the element and checks its interactive state via the accessibility tree. On the web, `aria-disabled="true"` counts as disabled.
 - **checked / unchecked** — locates a checkbox, radio button or switch and checks whether it is on. On the web, `aria-checked` counts too.
 
-Coordinate-based results (e.g. from OCR) are not supported for the enabled, disabled, checked and unchecked states.
+OCR and image matches are not supported for the enabled, disabled, checked and unchecked states.
 
 **Parameters:**
 
