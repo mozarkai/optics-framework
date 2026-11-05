@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
-from optics_framework.common.config_handler import Config, DependencyConfig
+from optics_framework.common.config_handler import Config, DependencyConfig, resolve_config_file
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
@@ -93,7 +93,7 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
 
             # Only consider common file extensions
             if lname.endswith((".yml", ".yaml")):
-                config_obj = _process_yaml_file(file_path, file_collections, config_obj)
+                config_obj = _process_yaml_file(file_path, file_collections, config_obj, folder_path)
             elif lname.endswith(".csv"):
                 _process_csv_file(file_path, file_collections)
 
@@ -119,24 +119,28 @@ def _initialize_file_collections():
     }
 
 
-def _process_yaml_file(file_path: str, file_collections: dict, current_config: Config | None) -> Config | None:
+def _process_yaml_file(
+    file_path: str, file_collections: dict, current_config: Config | None, folder_path: str
+) -> Config | None:
     """Process a YAML file for config detection and content categorization."""
-    config_obj = _try_load_config_from_yaml(file_path, current_config)
+    config_obj = _try_load_config_from_yaml(file_path, current_config, folder_path)
     _categorize_file_by_content(file_path, file_collections)
     return config_obj
 
 
-def _try_load_config_from_yaml(file_path: str, current_config: Config | None) -> Config | None:
+def _try_load_config_from_yaml(file_path: str, current_config: Config | None, folder_path: str) -> Config | None:
     """Attempt to load configuration from YAML file."""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f) or {}
 
         if _is_config_file(yaml_data):
-            yaml_data = _normalize_element_sources_key(yaml_data)
+            yaml_data = _normalize_element_sources_key(resolve_config_file(yaml_data, folder_path))
             return Config(**yaml_data)
 
         return current_config
+    except OpticsError as e:
+        abort_with_panel([e.message, "", f"Fix it in {file_path}, then re-run."])
     except Exception as e:
         internal_logger.error(f"Failed to load config from {file_path}: {e}")
         return current_config

@@ -12,6 +12,7 @@ from playwright.async_api import (
     Error as PlaywrightError,
     TimeoutError as PlaywrightTimeoutError,
 )
+from optics_framework.common.config_handler import env_names, expand_env
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.eventSDK import EventSDK
@@ -56,13 +57,13 @@ class RemoteBrowser:
         return f"RemoteBrowser(url={utils.redact_url(self.url)!r}, protocol={self.protocol!r})"
 
     def expanded_headers(self) -> dict[str, str] | None:
-        return {name: utils.expand_env(str(value)) for name, value in self.headers.items()} or None
+        return {name: expand_env(str(value)) for name, value in self.headers.items()} or None
 
     def mask(self, message: str) -> str:
         """``message`` with this browser's credentials masked; connect errors repeat the full endpoint."""
         templates = [self.url, *map(str, self.headers.values())]
-        names = {name for template in templates for name in utils.env_names(template)}
-        url = urlsplit(utils.expand_env(self.url))
+        names = {name for template in templates for name in env_names(template)}
+        url = urlsplit(expand_env(self.url))
         if url.path.strip("/"):
             message = message.replace(url.path, "/***")
         secrets = [os.environ.get(name) for name in names]
@@ -321,7 +322,7 @@ class Playwright(DriverInterface):
         # Any Playwright error from here on can repeat the endpoint, not only connect's.
         try:
             self._browser = await connect(
-                utils.expand_env(remote.url), headers=remote.expanded_headers(), timeout=self._connect_timeout_ms()
+                expand_env(remote.url), headers=remote.expanded_headers(), timeout=self._connect_timeout_ms()
             )
             if remote.context == "existing" and self._browser.contexts:
                 self._context = self._browser.contexts[0]

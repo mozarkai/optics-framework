@@ -28,9 +28,9 @@ from optics_framework.common.execution import (
 )
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging
 from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
-from optics_framework.common.config_handler import Config, DependencyConfig
+from optics_framework.common.config_handler import Config, DependencyConfig, env_names
 from optics_framework.common.runner.keyword_register import KeywordRegistry
-from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, env_names, redact_url
+from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, redact_url
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.api.flow_control import reads_environment
 from optics_framework.helper.execute import discover_templates
@@ -266,7 +266,7 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
     values = [url, *(headers.values() if isinstance(headers, dict) else [])]
     if any(env_names(str(value)) for value in values if value):
         # A remote caller must not choose which server env var is read and where it is sent.
-        raise OpticsError(Code.E0501, f"{name}: ${{NAME}} references are only read from a project's config.yaml; send the value")
+        raise OpticsError(Code.E0501, f"{name}: $NAME references are only read from a project's config.yaml; send the value")
     storage_state = capabilities.get("storage_state")
     if storage_state is not None and not isinstance(storage_state, dict):
         # A path would let a remote caller load any server file into the browser.

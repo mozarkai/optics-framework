@@ -337,25 +337,6 @@ def to_bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in ("true", "1", "yes", "on")
 
 
-_ENV_REFERENCE = re.compile(r"\$\{(\w+)\}")
-
-
-def env_names(value: str) -> list[str]:
-    """The NAMEs of the ``${NAME}`` references in ``value``."""
-    return _ENV_REFERENCE.findall(value)
-
-
-def expand_env(value: str) -> str:
-    """Replace each ``${NAME}`` with its environment variable; unset or empty fails so a missing secret is never sent."""
-    def lookup(match: re.Match) -> str:
-        name = match.group(1)
-        if not os.environ.get(name):
-            raise OpticsError(Code.E0501, f"Environment variable {name} is not set")
-        return os.environ[name]
-
-    return _ENV_REFERENCE.sub(lookup, value)
-
-
 def redact_url(url: str) -> str:
     """``url`` cut to scheme and host for logs, since credentials can ride in the userinfo, path or query."""
     try:
