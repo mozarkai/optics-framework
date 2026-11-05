@@ -240,9 +240,15 @@ class Playwright(DriverInterface):
             await self._open_remote(browser_type, remote)
         else:
             internal_logger.info("[Playwright] Launching browser")
-            self._browser = await browser_type.launch(headless=self._setting("headless", False))
+            self._browser = await browser_type.launch(headless=self._setting("headless", False), **self._launch_options())
             await self._open_new_context()
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
+
+    def _launch_options(self) -> dict:
+        if self._setting("browser", "chromium") != "chromium":
+            return {}
+        # Sites block a browser that reports navigator.webdriver; Playwright's own MCP hides it the same way.
+        return {"args": ["--disable-blink-features=AutomationControlled"], "ignore_default_args": ["--enable-automation"]}
 
     async def _open_new_context(self):
         options = {"viewport": {"width": 1280, "height": 800}}

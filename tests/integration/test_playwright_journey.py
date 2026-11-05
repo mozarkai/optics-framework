@@ -291,3 +291,14 @@ def test_serve_refuses_read_data_from_its_environment():
 
     assert refused.status_code == 400, refused.text
     assert os.environ["PATH"] not in refused.text
+
+
+def test_a_launched_browser_does_not_announce_automation():
+    from optics_framework.engines.drivers.playwright import Playwright
+
+    driver = Playwright({"capabilities": {"headless": True}})
+    try:
+        driver.launch_app(STORE_URL)
+        assert driver.execute_script("() => navigator.webdriver") is False
+    finally:
+        driver.terminate()
