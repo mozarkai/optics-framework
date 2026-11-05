@@ -52,7 +52,7 @@ Pin a specific version by appending a specifier to any engine (handy for reprodu
 optics setup --install appium==6.1.2 "easyocr>=1.7,<2.0"
 ```
 
-The version applies to the engine's main package and is intersected with the extra's supported range, so an out-of-range pin fails loudly instead of silently downgrading. A malformed specifier (e.g. `appium=5.0.0` with a single `=`), two conflicting versions for the same engine, or a specifier on a bundle (e.g. `all==1.0`) are all rejected up front with a clear error.
+The version applies to the engine's main package and is intersected with the extra's supported range, so an out-of-range pin fails loudly instead of silently downgrading. A malformed specifier (e.g. `appium=6.1.2` with a single `=`), two conflicting versions for the same engine, or a specifier on a bundle (e.g. `all==1.0`) are all rejected up front with a clear error.
 
 After a successful install, Optics prints the recommended next steps (`optics init` → `optics configure` → `optics doctor`).
 

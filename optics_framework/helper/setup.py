@@ -46,7 +46,7 @@ class EngineCategory(BaseModel):
 class InstallRequest(BaseModel):
     """One engine to install, optionally with a user-supplied version specifier.
 
-    ``version`` is the raw PEP 508 tail (e.g. ``"==6.1.2"``, ``">=5.0,<5.4"``)
+    ``version`` is the raw PEP 508 tail (e.g. ``"==6.1.2"``, ``">=6.1,<6.3"``)
     parsed off the CLI token; ``None`` means "let the extra's own bound decide"."""
     engine: EngineBackend
     version: Optional[str] = None
