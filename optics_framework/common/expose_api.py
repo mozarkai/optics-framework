@@ -26,7 +26,7 @@ from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
 )
-from optics_framework.common.logging_config import internal_logger, reconfigure_logging
+from optics_framework.common.logging_config import internal_logger, reconfigure_logging, redact_secret_values
 from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
 from optics_framework.common.config_handler import Config, DependencyConfig, env_names
 from optics_framework.common.runner.keyword_register import KeywordRegistry
@@ -282,9 +282,9 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
 
 
 def _loggable(sources: dict[str, list[dict[str, DependencyConfig]]]) -> dict:
-    """Session sources for the log, with urls cut to scheme and host, header values and storage_state masked."""
+    """Session sources for the log, with urls cut to scheme and host, header values, storage_state and secret-named values masked."""
     def redacted(dependency: DependencyConfig) -> dict:
-        data = dependency.model_dump()
+        data = redact_secret_values(dependency.model_dump())
         if data["url"]:
             data["url"] = redact_url(data["url"])
         headers = data["capabilities"].get("headers")

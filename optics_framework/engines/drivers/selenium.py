@@ -6,7 +6,7 @@ from selenium.webdriver.common.keys import Keys
 from typing import Any, Dict, Optional, Union
 from optics_framework.common.utils import TEXT_OR_VALUE_JS, SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, redact_secret_values
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 
@@ -60,7 +60,7 @@ class SeleniumDriver(DriverInterface):
         browser_name_val = self._get_browser_name(all_caps, browser_name)
         options = self._get_browser_options(browser_name_val)
         self._update_browser_url(all_caps, browser_url)
-        internal_logger.debug(f"Final capabilities being applied: {all_caps}")
+        internal_logger.debug(f"Final capabilities being applied: {redact_secret_values(all_caps)}")
 
         self._set_options_capabilities(options, all_caps)
 

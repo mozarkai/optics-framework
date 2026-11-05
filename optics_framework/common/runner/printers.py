@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.progress import Progress, TaskID
 from rich.console import Group
 from rich import get_console
-from optics_framework.common.logging_config import quiet_console_logs, restore_console_logs
+from optics_framework.common.logging_config import mask_secret_values, mask_secrets, quiet_console_logs, restore_console_logs
 
 
 class TestCaseResult(BaseModel):
@@ -203,7 +203,7 @@ class TreeResultPrinter(IResultPrinter):
             for module in tc_result.modules:
                 lines.extend(
                     self._module_failure_lines(tc_result.name, module))
-        return lines
+        return [mask_secrets(line) for line in lines]
 
     @staticmethod
     def _module_failure_lines(test_name: str,
@@ -267,6 +267,7 @@ class TreeResultPrinter(IResultPrinter):
             self._live.update(self._render_tree())
 
     def print_event_log(self, event_data: dict) -> None:
+        event_data = mask_secret_values(event_data)
         if not self._live:
             print(event_data)
             return

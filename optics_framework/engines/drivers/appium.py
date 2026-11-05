@@ -27,7 +27,7 @@ from selenium.webdriver.common.actions.action_builder import ActionBuilder  # ty
 from selenium.webdriver.common.actions.pointer_input import PointerInput  # type: ignore
 from selenium.webdriver.common.actions import interaction  # type: ignore
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, redact_secret_values
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
@@ -428,7 +428,7 @@ class Appium(DriverInterface):
 
         options, default_options = self._get_platform_and_options(all_caps)
         final_caps = _merge_capabilities(default_options, all_caps)
-        internal_logger.debug(f"Final capabilities being applied: {final_caps}")
+        internal_logger.debug(f"Final capabilities being applied: {redact_secret_values(final_caps)}")
         for key, value in final_caps.items():
             options.set_capability(key, value)
 
@@ -666,7 +666,7 @@ class Appium(DriverInterface):
                 raise OpticsError(Code.E0104, message=f"'{self.CAP_PLATFORM_NAME}' capability is required.")
 
         internal_logger.debug(f"Appium Server URL: {self.appium_server_url}")
-        internal_logger.debug(f"All capabilities from config: {all_caps}")
+        internal_logger.debug(f"All capabilities from config: {redact_secret_values(all_caps)}")
 
         profile = get_profile(platform)
         if profile is None:

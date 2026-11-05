@@ -7,7 +7,7 @@ import xml.dom.minidom  #nosec B408
 import time
 import logging
 import threading
-from optics_framework.common.logging_config import internal_logger, execution_logger, SensitiveDataFormatter
+from optics_framework.common.logging_config import internal_logger, execution_logger, mask_secrets, mask_secret_values
 from optics_framework.common.config_handler import Config
 
 
@@ -248,13 +248,10 @@ class JUnitEventHandler(EventSubscriber):
             for arg in event.args:
                 ET.SubElement(args_element, "arg").text = str(arg)
 
-        sensitive_formatter = SensitiveDataFormatter()
         if event.logs:
             internal_logger.debug(f"Keyword {event.name} has logs: {event.logs}")
             for message in event.logs:
-                senitised_message = sensitive_formatter._sanitize(message)
-                log_element = ET.SubElement(kw_element, "log")
-                log_element.text = senitised_message
+                ET.SubElement(kw_element, "log").text = message
 
     def _update_testcase_status(self, testcase: ET.Element, event: Event, testsuite: ET.Element) -> None:
         testcase.set("status", event.status.value)
@@ -313,7 +310,7 @@ class JUnitEventHandler(EventSubscriber):
         try:
             self.json_output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.json_output_path, "w", encoding="utf-8") as f:
-                json.dump(self.json_events, f, indent=2)
+                f.write(json.dumps([_masked_event(event) for event in self.json_events], indent=2))
         except Exception as e:
             internal_logger.error(f"Failed to flush JSON events: {str(e)}")
 
@@ -322,6 +319,7 @@ class JUnitEventHandler(EventSubscriber):
             internal_logger.debug(f"Flushing Robot-style XML to {self.output_path}")
             self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
+            _mask_tree(self.testsuites)
             # Convert ElementTree to string
             rough_string = ET.tostring(self.testsuites, encoding="utf-8")   #nosec B318
             reparsed = xml.dom.minidom.parseString(rough_string) #nosec B318
@@ -351,3 +349,16 @@ class JUnitEventHandler(EventSubscriber):
                     status=EventStatus.ERROR, message="The run ended before this test case reported a result.",
                 )
                 self._handle_test_case_event(unfinished, suite, session_id)
+
+
+def _mask_tree(root: ET.Element) -> None:
+    """Mask secrets in the report's text and messages, but not in its names, ids and times."""
+    for element in root.iter():
+        if element.text:
+            element.text = mask_secrets(element.text)
+        if "message" in element.attrib:
+            element.set("message", mask_secrets(element.attrib["message"]))
+
+
+def _masked_event(event: dict) -> dict:
+    return {**event, **{field: mask_secret_values(event[field]) for field in _MASKED_EVENT_FIELDS if field in event}}
