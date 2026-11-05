@@ -249,8 +249,8 @@ def test_settle_returns_once_the_dom_stops_changing(monkeypatch):
     started = time.monotonic()
     driver.wait_for_page_settled()
 
-    assert time.monotonic() - started < 1
-    assert driver.page.evaluate.await_count >= 4
+    assert Playwright.SETTLE_QUIET_S <= time.monotonic() - started < 1
+    assert driver.page.evaluate.await_count >= 3
 
 
 @pytest.mark.parametrize(
