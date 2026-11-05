@@ -18,6 +18,7 @@ local -a _optics_subcommands=(
   'doctor: Diagnose a project setup (engines, config, tooling)'
   'quickstart: Guided walkthrough to create and configure a first project'
   'dry_run: Run tests in dry-run mode'
+  'dry-run: Run tests in dry-run mode'
   'init: Initialize a new project'
   'execute: Execute tests'
   'live: Interactive session against a live target'
@@ -85,7 +86,7 @@ _optics_completions() {
             '--help[-h]'
           ;;
 
-        dry_run|execute)
+        dry_run|dry-run|execute)
           _arguments \
             '--runner=[Runner]:runner:(${runners[@]})' \
             '--use-printer[Enable printer]' \
@@ -150,7 +151,7 @@ _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list configure config doctor quickstart dry_run init execute live generate setup serve mcp completion"
+  local subcommands="list configure config doctor quickstart dry_run dry-run init execute live generate setup serve mcp completion"
 
   local template_options="__OPTICS_TEMPLATES_BASH__"
   local runner_options="test_runner pytest"
@@ -201,7 +202,7 @@ _optics_completions() {
       fi
       ;;
 
-    dry_run|execute)
+    dry_run|dry-run|execute)
       if [[ $prev == "--runner" ]]; then
         COMPREPLY=( $(compgen -W "$runner_options" -- "$cur") )
       else
