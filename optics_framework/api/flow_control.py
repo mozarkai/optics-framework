@@ -176,7 +176,7 @@ class FlowControl:
             raise OpticsError(Code.E0702, message=NO_SESSION_PRESENT)
         if len(args) == 1:
             internal_logger.debug(f"[RUN_LOOP] Looping by count: {args[0]}")
-            return self._loop_by_count(target, args[0])
+            return self._loop_by_count(target, self._resolve_param(args[0]))
         internal_logger.debug(f"[RUN_LOOP] Looping with variables: {args}")
         return self._loop_with_variables(target, args)
 
@@ -1013,8 +1013,7 @@ class FlowControl:
         result = base_date.strftime(output_format)
 
         # Store in session.elements
-        runner_elements = self._get_or_create_session_elements()
-        runner_elements.add_element(var_name, result)
+        self._get_or_create_session_elements().store(var_name, result)
         return result
 
     def invoke_api(self, api_identifier: str) -> dict[str, Any]:
