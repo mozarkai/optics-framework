@@ -278,6 +278,12 @@ class TestValidateProject:
         rows = doctor.validate_project(folder)
         assert any(r.status == "fail" and "no driver enabled" in r.detail for r in rows)
 
+    def test_driver_enabled_through_an_environment_variable_counts(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USE_APPIUM", "true")
+        starter = project_config.render_project_config(ANDROID_ANSWERS).replace("enabled: true", "enabled: $USE_APPIUM", 1)
+        rows = doctor.validate_project(_write_config(tmp_path, raw=starter))
+        assert not any(r.status == "fail" for r in rows)
+
     def test_multiple_enabled_drivers_warn(self, tmp_path):
         # The framework deliberately supports multi-driver fallback
         # (InstanceFallback), so >1 enabled driver stays a warning — but the

@@ -31,7 +31,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 import yaml
 
 from optics_framework.common import keyword_outcome, utils
-from optics_framework.common.config_handler import Config, DependencyConfig
+from optics_framework.common.config_handler import Config, DependencyConfig, resolve_config_file
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.agent_core import (
     TYPED_VALUE_PARAMS,
@@ -197,7 +197,7 @@ _CONFIG_KEYS = frozenset({
 })
 
 
-def _config_from_yaml(path: str) -> Optional[Config]:
+def _config_from_yaml(path: str, folder_path: str) -> Optional[Config]:
     """Parse a single YAML file into a ``Config`` if it looks like one, else None.
 
     Surfaces real errors rather than masking them: a malformed conventional
@@ -220,6 +220,7 @@ def _config_from_yaml(path: str) -> Optional[Config]:
         return None
     if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS):
         return None
+    data = resolve_config_file(data, folder_path)
     if "element_sources" in data and "elements_sources" not in data:
         data["elements_sources"] = data.pop("element_sources")
     try:
@@ -234,7 +235,7 @@ def _load_partial_config(folder_path: str) -> Optional[Config]:
         for fname in files:
             if not fname.lower().endswith((".yml", ".yaml")):
                 continue
-            config = _config_from_yaml(os.path.join(root, fname))
+            config = _config_from_yaml(os.path.join(root, fname), folder_path)
             if config is not None:
                 return config
     return None

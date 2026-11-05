@@ -25,9 +25,12 @@ from typing import NamedTuple
 from urllib.parse import urlparse
 
 import yaml
+from pydantic import TypeAdapter, ValidationError
 from rich.cells import cell_len
 from rich.text import Text
 
+from optics_framework.common.config_handler import resolve_config_file
+from optics_framework.common.error import OpticsError
 from optics_framework.helper.console import can_encode, safe_console
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
@@ -46,6 +49,7 @@ _APPIUM_SERVER = "appium server"
 _PLAYWRIGHT_BROWSER = "playwright browser"
 _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
+_CONFIG_FILE = "config: file"
 
 
 class _Glyphs(NamedTuple):
@@ -261,21 +265,27 @@ def _selenium_row() -> Check:
 # Project checks                                                               #
 # --------------------------------------------------------------------------- #
 
-def _load_project_yaml(folder: str) -> tuple[dict | None, str | None]:
-    """Read ``<folder>/config.yaml`` with plain yaml.safe_load. Returns
-    ``(data, None)`` or ``(None, reason)`` — never constructs ConfigHandler,
+def _load_project_yaml(folder: str) -> tuple[dict | None, Check | None]:
+    """Read ``<folder>/config.yaml`` with plain yaml.safe_load and resolve its
+    environment references and relative paths. Returns
+    ``(data, None)`` or ``(None, failing row)`` — never constructs ConfigHandler,
     whose constructor would create execution_output/ as a side effect."""
     path = os.path.join(folder, "config.yaml")
+    recreate = "Re-create the project with `optics quickstart`."
     if not os.path.isfile(path):
-        return None, f"no config.yaml in {folder}"
+        return None, Check(_CONFIG_FILE, "fail", f"no config.yaml in {folder}", recreate)
     try:
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
     except (yaml.YAMLError, OSError) as exc:
-        return None, f"could not parse config.yaml: {exc}"
+        return None, Check(_CONFIG_FILE, "fail", f"could not parse config.yaml: {exc}", recreate)
     if not isinstance(data, dict):
-        return None, "config.yaml is not a mapping"
-    return data, None
+        return None, Check(_CONFIG_FILE, "fail", "config.yaml is not a mapping", recreate)
+    try:
+        return resolve_config_file(data, folder), None
+    except OpticsError as exc:
+        return None, Check("config: references", "fail", exc.message,
+                           "Set the variable or add the file, then re-run.")
 
 
 def _enabled_entries(section: object) -> dict[str, dict]:
@@ -285,9 +295,17 @@ def _enabled_entries(section: object) -> dict[str, dict]:
     for entry in section or []:
         if isinstance(entry, dict):
             for name, cfg in entry.items():
-                if isinstance(cfg, dict) and cfg.get("enabled") is True:
+                if isinstance(cfg, dict) and _is_enabled(cfg.get("enabled")):
                     enabled[str(name)] = cfg
     return enabled
+
+
+def _is_enabled(value: object) -> bool:
+    """``value`` read with the bool rules ``Config`` applies, so ``enabled: ${USE_APPIUM}`` counts."""
+    try:
+        return TypeAdapter(bool).validate_python(value)
+    except ValidationError:
+        return False
 
 
 def validate_project(folder: str) -> list[Check]:
@@ -297,10 +315,9 @@ def validate_project(folder: str) -> list[Check]:
     matching ``<driver>_*`` element source, and that the settings needed to
     open a session are present. Failing rows are what ``run_doctor(check=True)``
     turns into a non-zero exit."""
-    data, error = _load_project_yaml(folder)
-    if error:
-        return [Check("config: file", "fail", error,
-                      "Re-create the project with `optics quickstart`.")]
+    data, problem = _load_project_yaml(folder)
+    if problem:
+        return [problem]
 
     rows: list[Check] = []
     drivers = _enabled_entries(data.get("driver_sources"))

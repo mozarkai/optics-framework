@@ -1,4 +1,5 @@
 import os
+import re
 from collections.abc import Mapping
 from typing import Any, Dict, List, Literal, Optional
 
@@ -6,6 +7,78 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import initialize_handlers
+
+_ENV_REFERENCE = re.compile(r"\$(?:\$|\{([A-Za-z_]\w*)(?::-([^}]*))?\}|([A-Za-z_]\w*))")
+_RELATIVE_PREFIXES = ("./", "../")
+_OUTPUT_PATH_FIELDS = frozenset({"project_path", "execution_output_path", "log_path", "json_path"})
+# Expanded by the driver at connect time, which also masks the referenced values out of its errors.
+_DRIVER_EXPANDED = {"playwright": frozenset({"url", "headers"})}
+
+
+def expand_env(value: str) -> str:
+    """Replace ``$NAME``, ``${NAME}`` and ``${NAME:-default}`` with the environment; ``$$`` is a literal ``$``."""
+    return _ENV_REFERENCE.sub(_env_value, value)
+
+
+def env_names(value: str) -> list[str]:
+    """The NAMEs of the environment references in ``value``."""
+    return [braced or bare for braced, _default, bare in _ENV_REFERENCE.findall(value) if braced or bare]
+
+
+def resolve_config_file(data: dict, base_dir: str) -> dict:
+    """Expand environment references and resolve ``./`` paths against ``base_dir`` in a parsed config file."""
+    return {
+        key: [_resolve_driver(entry, base_dir) for entry in value]
+        if key == "driver_sources" and isinstance(value, list)
+        else _resolve(value, base_dir, key not in _OUTPUT_PATH_FIELDS)
+        for key, value in data.items()
+    }
+
+
+def _resolve_driver(entry: Any, base_dir: str) -> Any:
+    if not isinstance(entry, dict):
+        return _resolve(entry, base_dir, True)
+    return {name: _resolve(details, base_dir, True, _DRIVER_EXPANDED.get(name, frozenset())) for name, details in entry.items()}
+
+
+def _resolve(value: Any, base_dir: str, must_exist: bool, keep: frozenset[str] = frozenset()) -> Any:
+    if isinstance(value, dict):
+        return {key: _checked(item) if key in keep else _resolve(item, base_dir, must_exist, keep) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve(item, base_dir, must_exist, keep) for item in value]
+    if not isinstance(value, str):
+        return value
+    value = expand_env(value)
+    if not value.startswith(_RELATIVE_PREFIXES):
+        return value
+    path = os.path.abspath(os.path.join(base_dir, value))
+    if must_exist and not os.path.exists(path):
+        raise OpticsError(Code.E0501, message=f"The config refers to {value}, but {path} does not exist.")
+    return path
+
+
+def _checked(value: Any) -> Any:
+    """Raise for an unset reference in ``value``, but return it unexpanded."""
+    if isinstance(value, dict):
+        for item in value.values():
+            _checked(item)
+    elif isinstance(value, str):
+        expand_env(value)
+    return value
+
+
+def _env_value(reference: re.Match[str]) -> str:
+    if reference.group(0) == "$$":
+        return "$"
+    braced, default, bare = reference.groups()
+    name = braced or bare
+    value = os.environ.get(name) or default
+    if value is None:
+        raise OpticsError(
+            Code.E0501,
+            message=f"The config uses {reference.group(0)}, but the {name} environment variable is not set or is empty.",
+        )
+    return value
 
 
 class DependencyConfig(BaseModel):
