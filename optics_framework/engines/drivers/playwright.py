@@ -768,7 +768,8 @@ class Playwright(DriverInterface):
                     # Multiple args - pass as a list
                     result = await self.page.evaluate(script, list(args))
             except PlaywrightError as e:
-                if "Illegal return statement" not in str(e):
+                # Each engine words it differently: "Illegal return statement", "return not in function", ...
+                if "SyntaxError" not in str(e) or "return" not in str(e).lower():
                     raise
                 result = await self.page.evaluate(_FUNCTION_BODY_JS.format(script), list(args))
 
