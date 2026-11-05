@@ -111,6 +111,12 @@ class Playwright(DriverInterface):
         **{SpecialKey(f"f{n}"): f"F{n}" for n in range(1, 13)},
     }
 
+    _KEY_ALIASES = {
+        "esc": "escape", "return": "enter", "del": "delete", "spacebar": "space",
+        "arrowleft": "left", "arrowright": "right", "arrowup": "up", "arrowdown": "down",
+        "dpadleft": "left", "dpadright": "right", "dpadup": "up", "dpaddown": "down", "moveend": "end", "movehome": "home",
+    }
+
     _CLOSED_SESSION_MARKERS = ("has been closed", "target closed", "target crashed")
 
     @staticmethod
@@ -505,28 +511,8 @@ class Playwright(DriverInterface):
             await self._press_at(x, y)
 
     def press_keycode(self, keycode: str, event_name=None):
-        """
-        Press a keycode/key. Supports common keys like "Enter", "Tab", "Escape", etc.
-        For Playwright, we use keyboard.press() which accepts key names.
-        """
-        # Map common keycode names to Playwright key names
-        key_map = {
-            "Enter": "Enter",
-            "Return": "Enter",
-            "Tab": "Tab",
-            "Escape": "Escape",
-            "Backspace": "Backspace",
-            "Delete": "Delete",
-            "Space": " ",
-            "ArrowUp": "ArrowUp",
-            "ArrowDown": "ArrowDown",
-            "ArrowLeft": "ArrowLeft",
-            "ArrowRight": "ArrowRight",
-        }
-
-        # Use mapped key or the keycode string directly (Playwright accepts key names)
-        key = key_map.get(keycode, keycode)
-        self.run(self.page.keyboard.press(key))
+        """Press a key by its web name, such as Escape, Enter, ArrowDown or Control+A."""
+        self.run(self._press_key(self._web_key(keycode)))
 
         if event_name and self.event_sdk:
             self.event_sdk.capture_event(event_name)
@@ -576,6 +562,29 @@ class Playwright(DriverInterface):
         if isinstance(text, SpecialKey):
             return keyboard.press(self._key_name(text))
         return keyboard.type(utils.strip_sensitive_prefix(str(text)))
+
+    def _web_key(self, keycode) -> str:
+        """The Playwright name of ``keycode``; case, ``<...>``, ``_`` and an Android ``KEYCODE_`` prefix are ignored."""
+        if len(str(keycode)) == 1:
+            return str(keycode)
+        name = str(keycode).strip().strip("<>")
+        if len(name) == 1 or "+" in name:
+            return name
+        folded = name.upper().removeprefix("KEYCODE_").replace("_", "").lower()
+        folded = self._KEY_ALIASES.get(folded, folded)
+        try:
+            return self._SPECIAL_KEYS[SpecialKey(folded)]
+        except (ValueError, KeyError):
+            return name
+
+    async def _press_key(self, key: str):
+        try:
+            await self.page.keyboard.press(key)
+        except PlaywrightError as e:
+            if "Unknown key" not in str(e):
+                raise
+            names = ", ".join(sorted(set(self._SPECIAL_KEYS.values())))
+            raise OpticsError(Code.E0403, f"Unknown key {key!r}; use a web key name: {names}, or a character") from None
 
     def _key_name(self, key: SpecialKey) -> str:
         if key not in self._SPECIAL_KEYS:
