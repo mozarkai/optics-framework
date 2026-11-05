@@ -455,9 +455,12 @@ def build_linked_list(
             raise OpticsError(Code.E0702, message="No test cases found to build execution linked list.")
 
         # Populate modules and keywords for each test case
+        suite_teardown = categorize_test_cases(test_cases_data)[1]
         current = head
         for _, modules in queue:
             populate_module_nodes(current, modules, modules_data)
+            if current.next is None and suite_teardown:
+                current.suite_teardown = True
             current = current.next
         return head
     except Exception as e:

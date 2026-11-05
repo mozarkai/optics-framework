@@ -17,6 +17,9 @@ except ImportError:
     _BeautifulSoup = None  # type: ignore[assignment,misc]
     _BS4_AVAILABLE = False
 
+# The JUnit test case and run result that report the errors found on the final screen.
+ON_SCREEN_ERROR_CASE = "on-screen-error-detection"
+
 # Attributes in mobile XML (Appium/XCUITest) that carry user-visible text.
 # NOTE: kept platform-neutral on purpose — these names are common across
 # Android (uiautomator) and iOS (XCUITest) page sources. Add new on-screen-text

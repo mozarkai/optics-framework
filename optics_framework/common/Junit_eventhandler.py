@@ -2,13 +2,15 @@ from optics_framework.common.events import EventSubscriber, Event, EventStatus, 
 import json
 import xml.etree.ElementTree as ET #nosec B405
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import xml.dom.minidom  #nosec B408
 import time
+from datetime import datetime
 import logging
 import threading
 from optics_framework.common.logging_config import internal_logger, execution_logger, mask_secrets, mask_secret_values
 from optics_framework.common.config_handler import Config
+from optics_framework.common.error_detection import ON_SCREEN_ERROR_CASE
 
 
 
@@ -119,12 +121,36 @@ class LogCaptureBuffer(logging.Handler):
 
 _MASKED_EVENT_FIELDS = ("message", "args", "logs")
 
+# A test case's modules in order, each with its keywords in order.
+CasePlan = List[Tuple[str, List[str]]]
+
 
 def _suite_name(config: Config) -> str | None:
     """The project folder's name, which names the test suite and each test case's class."""
     if not config.project_path:
         return None
     return Path(config.project_path).resolve().name or None
+
+
+def _iso_time(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch).astimezone().isoformat(timespec="milliseconds")
+
+
+def _robot_time(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch).strftime("%Y%m%d %H:%M:%S.%f")[:-3]
+
+
+def _set_step_result(element: ET.Element, event: Event) -> None:
+    """Write a module or keyword event's status, failure message and times onto its ``kw`` element."""
+    element.set("status", event.status.value)
+    if event.status in (EventStatus.FAIL, EventStatus.ERROR) and event.message:
+        element.set("message", event.message)
+    if event.start_time:
+        element.set("starttime", _robot_time(event.start_time))
+    if event.end_time:
+        element.set("endtime", _robot_time(event.end_time))
+    if event.elapsed:
+        element.set("elapsed", f"{event.elapsed:.2f}")
 
 
 class JUnitEventHandler(EventSubscriber):
@@ -141,8 +167,14 @@ class JUnitEventHandler(EventSubscriber):
         self.active_keyword_elements: Dict[str, ET.Element] = {}  # Per keyword_id for update during execution
         self.keyword_log_buffers: Dict[str, LogCaptureBuffer] = {}
         self.json_events: List[Dict] = []
+        self.run_plans: Dict[str, List[Tuple[str, CasePlan]]] = {}
+        self.started_names: Dict[str, set[str]] = {}
 
         internal_logger.debug(f"Initialized JUnitEventHandler with output: {self.output_path}")
+
+    def plan_run(self, session_id: str, plan: List[Tuple[str, CasePlan]]) -> None:
+        """Give the test cases the run will start, so the report lists every step and test case that never ran."""
+        self.run_plans[session_id] = list(plan)
 
 
     async def on_event(self, event: Event) -> None:
@@ -185,12 +217,16 @@ class JUnitEventHandler(EventSubscriber):
         internal_logger.debug(
             f"Handling test_case event: id={event.entity_id}, status={event.status}, timestamp={event_time}")
         if event.status == EventStatus.RUNNING:
+            timestamp = _iso_time(event.start_time or event_time)
+            session_suite.attrib.setdefault("timestamp", timestamp)
             testcase = ET.SubElement(
                 session_suite, "testcase",
-                name=event.name, id=event.entity_id, classname=self._classname(session_id), time="0"
+                name=event.name, id=event.entity_id, classname=self._classname(session_id), time="0",
+                timestamp=timestamp,
             )
             self.testcase_cases[event.entity_id] = testcase
             self.start_times[event.entity_id] = event_time
+            self.started_names.setdefault(session_id, set()).add(event.name)
             session_suite.set("tests", str(
                 int(session_suite.get("tests", "0")) + 1))
             internal_logger.debug(
@@ -199,6 +235,7 @@ class JUnitEventHandler(EventSubscriber):
             testcase = self.testcase_cases[event.entity_id]
             elapsed = event_time - self.start_times.get(event.entity_id, event_time)
             testcase.set("time", f"{elapsed:.2f}")
+            _add_not_run_steps(testcase, self._case_plan(session_id, event.name))
             self._update_testcase_status(testcase, event, session_suite)
 
             total_time = float(session_suite.get("time", "0")) + elapsed
@@ -211,37 +248,26 @@ class JUnitEventHandler(EventSubscriber):
                 del self.module_names[event.entity_id]
 
     def _handle_module_event(self, event: Event) -> None:
-        testcase_id = event.parent_id
-        if not testcase_id or testcase_id not in self.testcase_cases:
+        testcase = self.testcase_cases.get(event.parent_id or "")
+        if testcase is None:
             return
-
-        if event.status == EventStatus.RUNNING:
-            testcase = self.testcase_cases[testcase_id]
-            module_kw = ET.SubElement(testcase, "kw", name=event.name, type="setup", status="RUNNING")
-            self.module_elements[event.entity_id] = module_kw
-
-        elif event.status in [EventStatus.PASS, EventStatus.FAIL, EventStatus.ERROR]:
-            module_kw = self.module_elements.get(event.entity_id)
-            if module_kw:
-                module_kw.set("status", event.status.value)
+        if event.status in (EventStatus.RUNNING, EventStatus.NOT_RUN):
+            self.module_elements[event.entity_id] = ET.SubElement(testcase, "kw", name=event.name, type="setup")
+        module_kw = self.module_elements.get(event.entity_id)
+        if module_kw is not None:
+            _set_step_result(module_kw, event)
 
     def _handle_keyword_event(self, event: Event) -> None:
-        module_id = event.parent_id
-        module_kw = self.module_elements.get(module_id)
+        module_kw = self.module_elements.get(event.parent_id or "")
         if module_kw is None:
             return  # Module not active yet
 
-        kw_element = ET.SubElement(module_kw, "kw", name=event.name, status=event.status.value)
-
-        if event.status == EventStatus.FAIL and event.message:
-            kw_element.set("message", event.message)
-
-        if event.start_time:
-            kw_element.set("starttime", time.strftime('%Y%m%d %H:%M:%S', time.localtime(event.start_time)))
-        if event.end_time:
-            kw_element.set("endtime", time.strftime('%Y%m%d %H:%M:%S', time.localtime(event.end_time)))
-        if event.elapsed:
-            kw_element.set("elapsed", f"{event.elapsed:.2f}")
+        kw_element = self.active_keyword_elements.pop(event.entity_id, None)
+        if kw_element is None:
+            kw_element = ET.SubElement(module_kw, "kw", name=event.name)
+        if event.status == EventStatus.RUNNING:
+            self.active_keyword_elements[event.entity_id] = kw_element
+        _set_step_result(kw_element, event)
 
         if event.args:
             args_element = ET.SubElement(kw_element, "arguments")
@@ -287,9 +313,10 @@ class JUnitEventHandler(EventSubscriber):
         session_suite = self._session_suite(session_id)
         testcase = ET.SubElement(
             session_suite, "testcase",
-            name="on-screen-error-detection",
+            name=ON_SCREEN_ERROR_CASE,
             classname=self._classname(session_id),
             time="0",
+            status=EventStatus.FAIL.value,
         )
         for err in detected:
             parts = filter(None, [
@@ -333,22 +360,63 @@ class JUnitEventHandler(EventSubscriber):
 
     def close(self):
         self._mark_unfinished()
+        self._move_detection_last()
         self.flush()
 
+    def _move_detection_last(self) -> None:
+        """Put the on-screen error test case after the test cases, which may still have been queued when it was added."""
+        for suite in self.session_suites.values():
+            for testcase in suite.findall(f"testcase[@name='{ON_SCREEN_ERROR_CASE}']"):
+                suite.remove(testcase)
+                suite.append(testcase)
+
     def _mark_unfinished(self) -> None:
-        """Give an error to each test case that has no result, such as the one running when the run was stopped."""
+        """Give an error to each test case that has no result, and list as not run each one that never started."""
         for session_id, suite in self.session_suites.items():
             for testcase in suite.findall("testcase"):
                 case_id = testcase.get("id", "")
                 if case_id not in self.testcase_cases:
                     continue
-                for module_kw in testcase.findall("kw[@status='RUNNING']"):
-                    module_kw.set("status", EventStatus.ERROR.value)
+                for kw in testcase.iter("kw"):
+                    if kw.get("status") == EventStatus.RUNNING.value:
+                        kw.set("status", EventStatus.ERROR.value)
                 unfinished = Event(
                     entity_type="test_case", entity_id=case_id, name=testcase.get("name", ""),
                     status=EventStatus.ERROR, message="The run ended before this test case reported a result.",
                 )
                 self._handle_test_case_event(unfinished, suite, session_id)
+        for session_id, plan in self.run_plans.items():
+            started = self.started_names.get(session_id, set())
+            for name, case_plan in plan:
+                if name not in started:
+                    self._add_not_run(self._session_suite(session_id), session_id, name, case_plan)
+        self.run_plans.clear()
+
+    def _case_plan(self, session_id: str, name: str) -> CasePlan:
+        return next((case_plan for case, case_plan in self.run_plans.get(session_id, []) if case == name), [])
+
+    def _add_not_run(self, suite: ET.Element, session_id: str, name: str, case_plan: CasePlan) -> None:
+        testcase = ET.SubElement(
+            suite, "testcase", name=name, classname=self._classname(session_id), time="0",
+            status=EventStatus.NOT_RUN.value,
+        )
+        _add_not_run_steps(testcase, case_plan)
+        ET.SubElement(testcase, "skipped", message="The run ended before this test case started.")
+        suite.set("tests", str(int(suite.get("tests", "0")) + 1))
+        suite.set("skipped", str(int(suite.get("skipped", "0")) + 1))
+
+
+def _add_not_run_steps(testcase: ET.Element, case_plan: CasePlan) -> None:
+    """Add the planned modules and keywords a test case did not reach, after the ones it ran, as NOT_RUN."""
+    ran = testcase.findall("kw")
+    if ran and len(ran) <= len(case_plan):
+        last = ran[-1]
+        for keyword in case_plan[len(ran) - 1][1][len(last.findall("kw")):]:
+            ET.SubElement(last, "kw", name=keyword, status=EventStatus.NOT_RUN.value)
+    for module, keywords in case_plan[len(ran):]:
+        module_kw = ET.SubElement(testcase, "kw", name=module, type="setup", status=EventStatus.NOT_RUN.value)
+        for keyword in keywords:
+            ET.SubElement(module_kw, "kw", name=keyword, status=EventStatus.NOT_RUN.value)
 
 
 def _mask_tree(root: ET.Element) -> None:

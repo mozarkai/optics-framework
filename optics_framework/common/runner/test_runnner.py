@@ -50,6 +50,7 @@ from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
 from optics_framework.common.error_detection import (
+    ON_SCREEN_ERROR_CASE,
     extract_visible_text,
     detect_errors_in_text,
 )
@@ -576,8 +577,8 @@ class TestRunner(Runner):
         get_elements = self.keyword_map.get("get_interactive_elements")
         if get_elements is None:
             return
-        output_dir = self.config.execution_output_path
-        if not output_dir or not self.config.save_captures or not self._end_of_run_driver_open():
+        output_dir = self._capture_dir()
+        if output_dir is None:
             return
         try:
             self._failed_steps_elements.append({"test_case": test_case, "step": step, "elements": get_elements(compact=True)})
@@ -586,6 +587,13 @@ class TestRunner(Runner):
                 f.write(mask_secrets(text))
         except Exception as e:
             internal_logger.warning("Element list for the failed step skipped: %s", e)
+
+    def _capture_dir(self) -> Optional[str]:
+        """Where a failure's captures go, or None when captures are off or the driver is closed."""
+        output_dir = self.config.execution_output_path
+        if not output_dir or not self.config.save_captures or not self._end_of_run_driver_open():
+            return None
+        return output_dir
 
     def _end_of_run_driver_open(self) -> bool:
         """Best-effort check that the driver session is still alive.
@@ -616,16 +624,34 @@ class TestRunner(Runner):
             return
         try:
             output_dir = self.session.config.execution_output_path
-            strategy_manager = StrategyManager(
-                self.session.optics.get_element_source(),
-                self.session.optics.get_text_detection(),
-                self.session.optics.get_image_detection(),
-            )
+            strategy_manager = self._strategy_manager()
             self._save_end_of_run_screenshot(strategy_manager, output_dir)
             page_source, timestamp = self._save_end_of_run_pagesource(strategy_manager, output_dir)
             self._run_end_of_run_detection(page_source, timestamp, output_dir)
         except Exception as e:
             internal_logger.warning("End-of-run artifact capture failed: %s", e)
+
+    def _strategy_manager(self) -> StrategyManager:
+        return StrategyManager(
+            self.session.optics.get_element_source(),
+            self.session.optics.get_text_detection(),
+            self.session.optics.get_image_detection(),
+        )
+
+    def _capture_failure_artifacts(self, test_case: str) -> None:
+        """Save the screenshot and page source a failed test case ended on, both named after it."""
+        output_dir = self._capture_dir()
+        if output_dir is None:
+            return
+        try:
+            strategy_manager = self._strategy_manager()
+            label = f"failure_{test_case}"
+            time_stamp = utils.capture_time_stamp()
+            utils.save_screenshot(strategy_manager.capture_screenshot(), label, output_dir, time_stamp)
+            page_source, _ = strategy_manager.capture_pagesource()
+            utils.save_page_source_file(mask_secrets(page_source), label, output_dir, time_stamp)
+        except Exception as e:
+            internal_logger.warning("Failure capture for '%s' skipped: %s", test_case, e)
 
     def _save_end_of_run_screenshot(self, strategy_manager: StrategyManager, output_dir: str) -> None:
         try:
@@ -640,7 +666,7 @@ class TestRunner(Runner):
     ) -> tuple[Optional[str], Optional[str]]:
         try:
             page_source, timestamp = strategy_manager.capture_pagesource()
-            if page_source.lstrip().lower().startswith(("<html", "<!doctype")):
+            if utils.is_html_source(page_source):
                 utils.save_page_source_html(page_source, timestamp, output_dir)
             else:
                 utils.save_page_source(page_source, timestamp, output_dir)
@@ -672,6 +698,9 @@ class TestRunner(Runner):
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump({"timestamp": timestamp, "detected": matched}, f, indent=2)
             internal_logger.debug("Detected errors written to %s", out_path)
+            detection = TestCaseResult(id=str(uuid.uuid4()), name=ON_SCREEN_ERROR_CASE, elapsed="0.00s", status="FAIL")
+            self.result_printer.test_state[ON_SCREEN_ERROR_CASE] = detection
+            self.result_printer.print_tree_log(detection)
             handler = get_junit_handler_registry().get_handler(self.session_id)
             if handler:
                 handler.add_detected_errors(self.session_id, matched)
@@ -833,6 +862,7 @@ class TestRunner(Runner):
                     module_current, test_case_result, extra
                 ):
                     current.state = State.COMPLETED_FAILED
+                    self._capture_failure_artifacts(current.name)
                     await self._send_event(
                         "test_case",
                         current,
@@ -987,19 +1017,48 @@ class TestRunner(Runner):
         return await self._process_test_case(test_case, dry_run=True)
 
     async def run_all(self) -> None:
+        self._start_run()
         current = self.test_cases
-        self.result_printer.start_run(len(self.result_printer.test_state))
-        self.result_printer.start_live()
+        captured = False
         while current:
+            # The suite teardown may close the app, so the final screen is read before it.
+            if current.suite_teardown:
+                self._capture_end_of_run_artifacts()
+                captured = True
             await self.execute_test_case(current.name)
             current = current.next
+        if not captured:
+            self._capture_end_of_run_artifacts()
         self.result_printer.stop_live()
-        self._capture_end_of_run_artifacts()
 
-    async def dry_run_all(self) -> None:
-        current = self.test_cases
+    def _start_run(self) -> None:
+        handler = get_junit_handler_registry().get_handler(self.session_id)
+        if handler is not None:
+            handler.plan_run(self.session_id, self._run_plan())
         self.result_printer.start_run(len(self.result_printer.test_state))
         self.result_printer.start_live()
+
+    def _run_plan(self) -> list:
+        plan = []
+        case = self.test_cases
+        while case:
+            modules = []
+            module = case.modules_head
+            while module:
+                keywords = []
+                keyword = module.keywords_head
+                while keyword:
+                    keywords.append(keyword.name)
+                    keyword = keyword.next
+                modules.append((module.name, keywords))
+                module = module.next
+            plan.append((case.name, modules))
+            case = case.next
+        return plan
+
+    async def dry_run_all(self) -> None:
+        self._start_run()
+        current = self.test_cases
         while current:
             await self.dry_run_test_case(current.name)
             current = current.next
