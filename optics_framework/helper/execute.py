@@ -351,7 +351,7 @@ def get_execution_queue(test_cases_data: Dict) -> List[Tuple[str, Any]]:
     Build and return the execution queue including suite-level and per-test setup/teardown.
 
     :param test_cases_data: Dictionary of all test case names and their steps.
-    :return: Ordered ``(name, steps)`` pairs; per-test setup and teardown appear once per test.
+    :return: Ordered ``(name, steps)`` pairs; per-test setup and teardown appear once per test, named after it.
     """
     queue: List[Tuple[str, Any]] = []
 
@@ -366,10 +366,10 @@ def get_execution_queue(test_cases_data: Dict) -> List[Tuple[str, Any]]:
 
     for name, steps in regular_test_cases.items():
         if setup:
-            queue.append(setup)
+            queue.append((f"{setup[0]} ({name})", setup[1]))
         queue.append((name, steps))
         if teardown:
-            queue.append(teardown)
+            queue.append((f"{teardown[0]} ({name})", teardown[1]))
 
     if suite_teardown:
         queue.append(suite_teardown)
@@ -449,15 +449,10 @@ def build_linked_list(
         if head is None:
             raise OpticsError(Code.E0702, message="No test cases found to build execution linked list.")
 
-        # A repeated setup/teardown shares its first node's modules, so its results resolve by name.
-        first_by_name: Dict[str, TestCaseNode] = {}
+        # Populate modules and keywords for each test case
         current = head
-        for name, modules in queue:
-            if name in first_by_name:
-                current.modules_head = first_by_name[name].modules_head
-            else:
-                populate_module_nodes(current, modules, modules_data)
-                first_by_name[name] = current
+        for _, modules in queue:
+            populate_module_nodes(current, modules, modules_data)
             current = current.next
         return head
     except Exception as e:

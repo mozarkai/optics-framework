@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import time
 import uuid
@@ -1399,8 +1400,8 @@ def runner():
 """)
 
         test_code = "import pytest\n\n" + "".join(
-            f"def test_{i}_{tc.replace(' ', '_')}(runner):\n"
-            f"    result = runner.execute_test_case_sync('{tc}', dry_run={dry_run})\n"
+            f"def test_{i}_{re.sub(r'\W', '_', tc)}(runner):\n"
+            f"    result = runner.execute_test_case_sync({tc!r}, dry_run={dry_run})\n"
             f"    assert result.status == 'PASS', 'Test case failed with status: ' + result.status\n"
             for i, tc in enumerate(test_cases)
         )
