@@ -2,10 +2,10 @@
 
 Covers the exit-code contract of ``execute_main`` / ``dryrun_main`` (non-zero when
 any returned test case did not PASS), the friendly pre-session gate that stops
-the run when no driver is enabled in the project's ``config.yaml`` — before any
-``SessionManager`` is constructed — and the execute-only environment preflight
-that probes Selenium/Appium servers and attached Android devices before any
-test runs. Heavy collaborators are patched; nothing real executes.
+a run needing a device when no driver is enabled in the project's ``config.yaml``
+— before any ``SessionManager`` is constructed — and the execute-only environment
+preflight that probes Selenium/Appium servers and attached Android devices before
+any test runs. Heavy collaborators are patched, except in the driver-free run.
 """
 from __future__ import annotations
 
@@ -161,6 +161,16 @@ class TestNoEnabledDriverGate:
         assert f"optics configure {tmp_path}" in out
         assert "Unexpected error" not in out
 
+    def test_driver_free_suite_runs_without_a_driver(self, tmp_path):
+        _make_project(tmp_path, _ALL_DISABLED_CONFIG)
+        (tmp_path / "test_cases" / "test_cases.csv").write_text(
+            "test_case,test_step\nTC One,Compute Total\n"
+        )
+        (tmp_path / "modules" / "modules.csv").write_text(
+            "module_name,module_step,param_1,param_2\n"
+            "Compute Total,Evaluate,total,1 + 1\n"
+        )
+        assert execute_module.run_project(str(tmp_path), use_printer=False) is True
 
 
 def _config_for(driver: str, **dep_kwargs) -> Config:

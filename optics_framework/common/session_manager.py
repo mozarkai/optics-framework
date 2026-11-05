@@ -10,7 +10,6 @@ from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData, TemplateData, ErrorDefinitions
 from optics_framework.common.eventSDK import EventSDK
-from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.events import get_event_manager_registry
 from optics_framework.common.logging_config import internal_logger
 
@@ -128,9 +127,6 @@ class Session:
         enabled_image_configs = _get_enabled_config_list(self.config, "image_detection")
         enabled_llm_configs = _get_enabled_config_list(self.config, "llm_models")
 
-        if not enabled_driver_configs:
-            raise OpticsError(Code.E0501, message="No enabled drivers found in configuration")
-
         self.event_sdk = EventSDK(self.config_handler)
         self.optics = OpticsBuilder(self)
         self.optics.add_driver(enabled_driver_configs)
@@ -142,7 +138,7 @@ class Session:
         self.optics.add_llm(enabled_llm_configs)
         _maybe_setup_junit(config, self.session_id, self.config.execution_output_path)
 
-        self.driver = self.optics.get_driver()
+        self.driver = self.optics.get_driver() if enabled_driver_configs else None
         self.event_queue = asyncio.Queue()
         self.keyword_lock = asyncio.Lock()
 

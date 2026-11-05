@@ -247,12 +247,9 @@ class RunnerFactory:
     ) -> Runner:
 
         registry = KeywordRegistry()
-        action_keyword = session.optics.build(ActionKeyword)
-        app_management = session.optics.build(AppManagement)
-        verifier = session.optics.build(Verifier)
-        registry.register(action_keyword)
-        registry.register(app_management)
-        registry.register(verifier)
+        if session.driver is not None:
+            for api_class in (ActionKeyword, AppManagement, Verifier):
+                registry.register(session.optics.build(api_class))
         registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
 
         if runner_type == "test_runner":
