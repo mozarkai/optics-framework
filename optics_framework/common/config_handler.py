@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from collections.abc import Mapping
@@ -13,6 +14,7 @@ _RELATIVE_PREFIXES = ("./", "../")
 _OUTPUT_PATH_FIELDS = frozenset({"project_path", "execution_output_path", "log_path", "json_path"})
 # Expanded by the driver at connect time, which also masks the referenced values out of its errors.
 _DRIVER_EXPANDED = {"playwright": frozenset({"url", "headers"})}
+_BASE_KEY = "$from"
 
 
 def expand_env(value: str) -> str:
@@ -43,7 +45,7 @@ def _resolve_driver(entry: Any, base_dir: str) -> Any:
 
 def _resolve(value: Any, base_dir: str, must_exist: bool, keep: frozenset[str] = frozenset()) -> Any:
     if isinstance(value, dict):
-        return {key: _checked(item) if key in keep else _resolve(item, base_dir, must_exist, keep) for key, item in value.items()}
+        return _resolve_map(value, base_dir, must_exist, keep)
     if isinstance(value, list):
         return [_resolve(item, base_dir, must_exist, keep) for item in value]
     if not isinstance(value, str):
@@ -57,11 +59,37 @@ def _resolve(value: Any, base_dir: str, must_exist: bool, keep: frozenset[str] =
     return path
 
 
+def _resolve_map(value: dict, base_dir: str, must_exist: bool, keep: frozenset[str]) -> dict:
+    resolved = {
+        key: _checked(item) if key in keep else _resolve(item, base_dir, must_exist, keep)
+        for key, item in value.items()
+        if key != _BASE_KEY
+    }
+    return {**_base_map(value[_BASE_KEY]), **resolved} if _BASE_KEY in value else resolved
+
+
+def _base_map(reference: Any) -> dict:
+    """The JSON object a ``$from`` value names; the keys beside ``$from`` override it."""
+    try:
+        base = json.loads(expand_env(reference))
+    except (TypeError, json.JSONDecodeError):
+        base = None
+    if not isinstance(base, dict):
+        named = reference if isinstance(reference, str) and env_names(reference) else "a value"
+        raise OpticsError(Code.E0501, message=f"The config takes $from: {named}, but its value is not a JSON object.")
+    return base
+
+
 def _checked(value: Any) -> Any:
     """Raise for an unset reference in ``value``, but return it unexpanded."""
     if isinstance(value, dict):
         for item in value.values():
             _checked(item)
+        if _BASE_KEY in value:
+            raise OpticsError(
+                Code.E0501,
+                message="The config takes $from in a map the driver expands at run time, such as Playwright headers. Give its keys one by one.",
+            )
     elif isinstance(value, str):
         expand_env(value)
     return value
