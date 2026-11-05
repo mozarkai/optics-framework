@@ -398,7 +398,7 @@ The CLI includes comprehensive error handling with appropriate exit codes:
 - `0`: Success
 - `1`: A test failed, the run could not start, or an unexpected error
 - `2`: Argument error
-- `3`: Value error
+- `3`: Invalid test selection (`execute`, `dry_run`) or another value error
 - `130`: User cancellation (Ctrl+C)
 - `143`: Stopped with SIGTERM (`execute` and `dry_run` still write the JUnit report)
 

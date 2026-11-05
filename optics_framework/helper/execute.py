@@ -828,7 +828,7 @@ class BaseRunner:
             *error.message.splitlines(),
             "",
             f"Fix the names given via {source}; matching ignores case and accepts * and ? wildcards.",
-        ], error.code.value)
+        ], error.code.value, status=3)
 
     def _setup_session(self):
         if not self._has_enabled_driver() and self._needs_driver():
