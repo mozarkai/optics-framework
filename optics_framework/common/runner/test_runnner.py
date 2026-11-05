@@ -48,7 +48,7 @@ from optics_framework.common.events import (
 from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import utils
-from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
+from optics_framework.common.Junit_eventhandler import get_junit_handler_registry, run_plan
 from optics_framework.common.session_liveness import is_dead_session_error
 from optics_framework.common.error_detection import (
     ON_SCREEN_ERROR_CASE,
@@ -1038,27 +1038,9 @@ class TestRunner(Runner):
     def _start_run(self) -> None:
         handler = get_junit_handler_registry().get_handler(self.session_id)
         if handler is not None:
-            handler.plan_run(self.session_id, self._run_plan())
+            handler.plan_run(self.session_id, run_plan(self.test_cases))
         self.result_printer.start_run(len(self.result_printer.test_state))
         self.result_printer.start_live()
-
-    def _run_plan(self) -> list:
-        plan = []
-        case = self.test_cases
-        while case:
-            modules = []
-            module = case.modules_head
-            while module:
-                keywords = []
-                keyword = module.keywords_head
-                while keyword:
-                    keywords.append(keyword.name)
-                    keyword = keyword.next
-                modules.append((module.name, keywords))
-                module = module.next
-            plan.append((case.name, modules))
-            case = case.next
-        return plan
 
     async def dry_run_all(self) -> None:
         self._start_run()

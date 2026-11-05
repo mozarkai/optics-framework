@@ -258,58 +258,49 @@ class TestPreflightGate:
         config = _config_for("playwright")
         with patch.object(execute_module, "_probe_tcp") as probe, \
                 patch.object(execute_module, "_adb_device_count") as adb:
-            execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is None
         probe.assert_not_called()
         adb.assert_not_called()
 
-    def test_appium_unreachable_aborts_with_fix(self, capsys):
+    def test_appium_unreachable_names_the_fix(self):
         config = _config_for("appium", url="http://127.0.0.1:9999")
         with patch.object(execute_module, "_probe_tcp", return_value=False):
-            with pytest.raises(SystemExit) as exc:
-                execute_module._preflight_or_exit(config, folder_path="/proj")
-        assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "No Appium server reachable at http://127.0.0.1:9999" in err
-        assert "appium" in err
-        assert "optics execute /proj" in err
+            problem = execute_module._preflight(config, folder_path="/proj")
+        assert problem.reason == "E0102: No Appium server reachable at http://127.0.0.1:9999."
+        assert "Start one in another terminal:  appium" in problem.lines
+        assert "Then re-run:  optics execute /proj" in problem.lines
 
     def test_appium_reachable_non_android_passes_without_adb_check(self):
         config = _config_for("appium", url="http://127.0.0.1:4723",
                              capabilities={"platformName": "iOS"})
         with patch.object(execute_module, "_probe_tcp", return_value=True), \
                 patch.object(execute_module, "_adb_device_count") as adb:
-            execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is None
         adb.assert_not_called()
 
     def test_android_with_attached_device_passes(self):
         config = _config_for("appium", capabilities={"platformName": "Android"})
         with patch.object(execute_module, "_probe_tcp", return_value=True), \
                 patch.object(execute_module, "_adb_device_count", return_value=1):
-            execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is None
 
-    def test_android_without_devices_aborts(self, capsys):
+    def test_android_without_devices_is_a_problem(self):
         config = _config_for("appium", capabilities={"platformName": "Android"})
         with patch.object(execute_module, "_probe_tcp", return_value=True), \
                 patch.object(execute_module, "_adb_device_count", return_value=0):
-            with pytest.raises(SystemExit) as exc:
-                execute_module._preflight_or_exit(config)
-        assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "No Android device/emulator attached" in err
-        assert "adb devices" in err
+            problem = execute_module._preflight(config)
+        assert problem.reason == "E0102: No Android device/emulator attached (adb reports none)."
+        assert "then check:  adb devices" in problem.lines
 
-    def test_android_without_adb_aborts(self, capsys):
+    def test_android_without_adb_is_a_problem(self):
         config = _config_for("appium", capabilities={"platformName": "android"})
         with patch.object(execute_module, "_probe_tcp", return_value=True), \
                 patch.object(execute_module, "_adb_device_count", return_value=None):
-            with pytest.raises(SystemExit) as exc:
-                execute_module._preflight_or_exit(config)
-        assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "adb" in err
-        assert "platform-tools" in err
+            problem = execute_module._preflight(config)
+        assert problem.reason == "E0102: Android run requested, but the adb tool was not found."
+        assert any("platform-tools" in line for line in problem.lines)
 
-    def test_appium_default_url_used_when_config_url_missing(self, capsys):
+    def test_appium_default_url_used_when_config_url_missing(self):
         config = _config_for("appium")
         seen = {}
 
@@ -318,23 +309,19 @@ class TestPreflightGate:
             return False
 
         with patch.object(execute_module, "_probe_tcp", side_effect=_fake_probe):
-            with pytest.raises(SystemExit):
-                execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is not None
         assert seen["url"] == "http://127.0.0.1:4723"
 
-    def test_selenium_unreachable_aborts_with_fix(self, capsys):
+    def test_selenium_unreachable_names_the_server(self):
         config = _config_for("selenium", url="http://localhost:4444/wd/hub")
         with patch.object(execute_module, "_probe_tcp", return_value=False):
-            with pytest.raises(SystemExit) as exc:
-                execute_module._preflight_or_exit(config)
-        assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "No Selenium/WebDriver server reachable at http://localhost:4444/wd/hub" in err
+            problem = execute_module._preflight(config)
+        assert problem.reason == "E0102: No Selenium/WebDriver server reachable at http://localhost:4444/wd/hub."
 
     def test_selenium_reachable_passes(self):
         config = _config_for("selenium")
         with patch.object(execute_module, "_probe_tcp", return_value=True):
-            execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is None
 
     @pytest.mark.parametrize("value", ["1", "true", "TRUE"])
     def test_skip_env_bypasses_every_probe(self, monkeypatch, value):
@@ -342,18 +329,18 @@ class TestPreflightGate:
         config = _config_for("appium", capabilities={"platformName": "Android"})
         with patch.object(execute_module, "_probe_tcp") as probe, \
                 patch.object(execute_module, "_adb_device_count") as adb:
-            execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is None
         probe.assert_not_called()
         adb.assert_not_called()
 
     def test_no_enabled_driver_is_left_to_the_existing_gate(self):
         config = Config(driver_sources=[{"selenium": DependencyConfig(enabled=False)}])
         with patch.object(execute_module, "_probe_tcp") as probe:
-            execute_module._preflight_or_exit(config)
+            assert execute_module._preflight(config) is None
         probe.assert_not_called()
 
     def test_none_config_steps_aside(self):
-        execute_module._preflight_or_exit(None)
+        assert execute_module._preflight(None) is None
 
 
 class TestPreflightWiring:
@@ -372,16 +359,17 @@ class TestPreflightWiring:
         def _spy_preflight(config, folder_path="<folder>"):
             assert config is sentinel_config
             order.append("preflight")
+            return None
 
         with patch.object(execute_module, "RunnerArgs", _StubArgs), \
                 patch.object(execute_module, "ExecuteRunner", _RunnerWithConfig), \
-                patch.object(execute_module, "_preflight_or_exit",
+                patch.object(execute_module, "_preflight",
                              side_effect=_spy_preflight):
             execute_main("proj")
         assert order == ["preflight", "execute"]
 
     def test_dry_run_never_preflights(self):
-        with patch.object(execute_module, "_preflight_or_exit") as preflight, \
+        with patch.object(execute_module, "_preflight") as preflight, \
                 patch.object(execute_module, "RunnerArgs", _StubArgs), \
                 patch.object(execute_module, "DryRunRunner", _runner_cls({})):
             dryrun_main("proj")
