@@ -432,10 +432,6 @@ class Playwright(DriverInterface):
         locator = self._as_locator(element)
         timeout_ms = timeout_s * 1000
         zoomed = self._touch and await self._zoom() != 1
-        if zoomed:
-            # click() and tap() wait for visibility themselves; the hand-computed tap reads a bounding box.
-            await locator.wait_for(state="visible", timeout=timeout_ms)
-
         for _ in range(int(repeat)):
             if zoomed:
                 await self._tap_on_screen(locator, timeout_ms)
@@ -449,8 +445,9 @@ class Playwright(DriverInterface):
         return self.page.evaluate("visualViewport.scale")
 
     async def _tap_on_screen(self, locator, timeout_ms):
-        # Playwright's tap misses on a page zoomed out to fit a phone, so tap the centre where the screen shows it.
-        await locator.scroll_into_view_if_needed(timeout=timeout_ms)
+        # Playwright's tap misses on a page zoomed out to fit a phone, so tap the centre where the screen shows it,
+        # after a trial tap has waited for the element to be visible, enabled and not covered.
+        await locator.tap(trial=True, timeout=timeout_ms)
         box = await locator.bounding_box(timeout=timeout_ms)
         zoom, left, top = await self.page.evaluate(
             "[visualViewport.scale, visualViewport.offsetLeft, visualViewport.offsetTop]"
