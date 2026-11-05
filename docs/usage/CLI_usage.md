@@ -126,37 +126,17 @@ A run writes its results to `execution_output/` in the project folder, or to `ex
 - `junit_output_<session_id>.xml` instead, only when two sessions in one process share the output folder (the Python SDK or `optics serve`). `optics execute` and `optics dry_run` always write `junit_output.xml`.
 - Screenshots, `failed_steps_elements.json`, `interactable_elements.json`, and `logs.json` when `json_log: true`.
 
-| Outcome | Exit | `junit_output.xml` |
-|---------|------|--------------------|
-| All test cases passed | `0` | Every `<testcase>` has `status="PASS"`. |
-| A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. |
-| A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. |
-| Config or environment variable error | `1` | Not written: the run stops before a session starts. |
-| Test selection error | `3` | Not written: the run stops before a session starts. |
-| Error after the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. |
-| Stopped with Ctrl-C or SIGTERM | `130` / `143` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`. Later test cases and the suite teardown do not run. |
+| Outcome | Exit | `junit_output.xml` | Sample |
+|---------|------|--------------------|--------|
+| All test cases passed | `0` | Every `<testcase>` has `status="PASS"`. | [passed.xml](junit_samples/passed.xml) |
+| A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. | [failed.xml](junit_samples/failed.xml) |
+| A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. | [setup_failed.xml](junit_samples/setup_failed.xml) |
+| Config or environment variable error | `1` | Not written: the run stops before a session starts. | |
+| Test selection error | `3` | Not written: the run stops before a session starts. | |
+| Error after the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. | |
+| Stopped with Ctrl-C or SIGTERM | `130` / `143` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`. Later test cases and the suite teardown do not run. | [stopped.xml](junit_samples/stopped.xml) |
 
-A run where one test fails and the next is stopped with SIGTERM gives (keyword details cut):
-
-```xml
-<testsuites>
-  <testsuite name="checkout_suite" id="2cadb1eb-a58e-429e-8685-7136c46e9db7" tests="7" failures="1" errors="1" skipped="0" time="4.30">
-    <testcase name="Suite Setup" id="5e111a2d-..." classname="checkout_suite" time="1.47" status="PASS">...</testcase>
-    <testcase name="Setup (TC1 Heading Shown)" id="2225c4bd-..." classname="checkout_suite" time="0.07" status="PASS">...</testcase>
-    <testcase name="TC1 Heading Shown" id="0813321d-..." classname="checkout_suite" time="0.04" status="PASS">...</testcase>
-    <testcase name="Setup (TC2 Missing Text)" id="234e032f-..." classname="checkout_suite" time="0.04" status="PASS">...</testcase>
-    <testcase name="TC2 Missing Text" id="a4197485-..." classname="checkout_suite" time="2.64" status="FAIL">
-      ...
-      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: Code.E0201: ['text=This text is not on the page'] not found based on rule 'any'. ..." type="Failure">...</failure>
-    </testcase>
-    <testcase name="Setup (TC3 Slow)" id="2c38f9a0-..." classname="checkout_suite" time="0.04" status="PASS">...</testcase>
-    <testcase name="TC3 Slow" id="0ede90da-..." classname="checkout_suite" time="0" status="ERROR">
-      ...
-      <error message="The run stopped before this test case finished." type="Error">The run stopped before this test case finished.</error>
-    </testcase>
-  </testsuite>
-</testsuites>
-```
+The samples are real reports from `optics execute` on a Playwright project named `checkout_suite`.
 
 ## Initializing a New Project
 
