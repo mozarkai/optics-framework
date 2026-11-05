@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error, request_timeout_s
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.google_credentials import service_account_credentials
 
 # The google-genai SDK is an optional extra (``optics-framework[gemini]``). Import is guarded
 # so merely importing this module never fails when the extra is absent; the actionable error
@@ -19,6 +20,20 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
 
 
 _DEFAULT_MODEL = "gemini-2.5-flash"
+
+
+def _vertex_kwargs(caps: dict[str, Any]) -> dict[str, Any]:
+    """The Vertex AI client settings in ``caps``; a ``credentials_path`` key selects Vertex AI in the key's project."""
+    kwargs: dict[str, Any] = {key: caps[key] for key in ("project", "location") if caps.get(key)}
+    if "use_vertexai" in caps:
+        kwargs["vertexai"] = bool(caps["use_vertexai"])
+    if caps.get("credentials_path"):
+        credentials = service_account_credentials(caps["credentials_path"])
+        kwargs["credentials"] = credentials
+        kwargs.setdefault("vertexai", True)
+        if kwargs["vertexai"]:
+            kwargs.setdefault("project", credentials.project_id)
+    return kwargs
 
 
 class GeminiLLM(LLMInterface):
@@ -41,10 +56,11 @@ class GeminiLLM(LLMInterface):
         # output below 1.0, so pinning 0.0 is an explicit capabilities opt-in.
         self.temperature: Optional[float] = caps.get("temperature")
 
-        client_kwargs: Dict[str, Any] = {"http_options": genai_types.HttpOptions(timeout=int(request_timeout_s(caps) * 1000))}
         # Explicit overrides win over env vars; absent kwargs fall back to SDK env auto-config.
-        if "use_vertexai" in caps:
-            client_kwargs["vertexai"] = bool(caps["use_vertexai"])
+        client_kwargs: Dict[str, Any] = {
+            "http_options": genai_types.HttpOptions(timeout=int(request_timeout_s(caps) * 1000)),
+            **_vertex_kwargs(caps),
+        }
         api_key = caps.get("api_key") or caps.get("gemini_api_key")
         if api_key:
             client_kwargs["api_key"] = api_key
@@ -53,10 +69,6 @@ class GeminiLLM(LLMInterface):
                 "secrets in a plaintext config is insecure — prefer the GOOGLE_API_KEY / "
                 "GEMINI_API_KEY environment variables, and never commit a config with a key."
             )
-        if caps.get("project"):
-            client_kwargs["project"] = caps["project"]
-        if caps.get("location"):
-            client_kwargs["location"] = caps["location"]
 
         try:
             self.client = genai.Client(**client_kwargs)

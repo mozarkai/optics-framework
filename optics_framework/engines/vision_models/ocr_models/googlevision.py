@@ -1,3 +1,4 @@
+from optics_framework.common.google_credentials import service_account_credentials
 from optics_framework.common.text_interface import TextInterface
 import cv2
 import numpy as np
@@ -15,7 +16,17 @@ class GoogleVisionHelper(TextInterface):
 
     def __init__(self, config=None):
         """Use the service account file in ``capabilities.credentials_path``, else Application Default Credentials."""
-        self.credentials_path = ((config or {}).get("capabilities") or {}).get("credentials_path")
+        credentials_path = ((config or {}).get("capabilities") or {}).get("credentials_path")
+        self._client = (
+            ImageAnnotatorClient(credentials=service_account_credentials(credentials_path))
+            if credentials_path
+            else None
+        )
+
+    def _annotator(self) -> ImageAnnotatorClient:
+        if self._client is None:
+            self._client = ImageAnnotatorClient()
+        return self._client
 
     def find_element(self, frame, text, index=None):
         """
@@ -83,14 +94,9 @@ class GoogleVisionHelper(TextInterface):
         _, encoded_image = cv2.imencode('.jpg', frame)
         image_bytes = encoded_image.tobytes()
 
-        client = (
-            ImageAnnotatorClient.from_service_account_file(self.credentials_path)
-            if self.credentials_path
-            else ImageAnnotatorClient()
-        )
         image = vision.Image(content=image_bytes)
 
-        response = client.text_detection(image=image)
+        response = self._annotator().text_detection(image=image)
         texts = response.text_annotations
 
         results = []

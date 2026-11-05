@@ -214,13 +214,15 @@ class ActionKeyword:
         # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
         # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
         # (e.g. the engine's optional extra missing) must disable the feature, not
-        # crash the run.
+        # crash the run. A config error (E0501), such as a bad credentials_path, still stops it.
         self.ai_self_heal_enabled = bool(getattr(builder.session_config, "ai_self_heal", False))
         self._llm = None
         if self.ai_self_heal_enabled:
             try:
                 self._llm = builder.get_llm()
-            except Exception as e:  # noqa: BLE001 - degrade to inert, never fatal
+            except Exception as e:  # noqa: BLE001 - degrade to inert
+                if isinstance(e, OpticsError) and e.code is Code.E0501:
+                    raise
                 internal_logger.warning(
                     "AI self-heal enabled but no usable LLM (%s); self-heal disabled.", e
                 )
