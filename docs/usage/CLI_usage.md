@@ -99,7 +99,7 @@ optics execute ./my_project --include "login*" --exclude "Login Slow"
 - **Combining:** `--include` narrows the set first, then `--exclude` removes test cases from it.
 - **Setup and teardown always run.** Suite setup/teardown and per-test setup/teardown test cases are kept for whichever tests are selected, and they cannot be selected or excluded by name.
 - **Overrides config.yaml:** when either flag is given, the `include`/`exclude` lists in `config.yaml` are ignored for that run. Without flags, `config.yaml` applies as before.
-- **Typos fail fast:** a name that matches no test case stops the run before any device or browser session starts, with a `Did you mean '…'?` suggestion and the list of available test cases. A selection that leaves nothing to run is rejected the same way.
+- **Typos fail fast:** a name that matches no test case stops the run with exit code `3` before any device or browser session starts, with a `Did you mean '…'?` suggestion and the list of available test cases. A selection that leaves nothing to run is rejected the same way.
 
 The same flags work with [`optics dry_run`](#executing-dry-run), so you can check a selection before running it.
 
@@ -110,9 +110,9 @@ The same flags work with [`optics dry_run`](#executing-dry-run), so you can chec
 | Code | Meaning |
 |------|---------|
 | `0` | Every test case passed. |
-| `1` | A test case failed, or the run could not start: a config or environment variable error, an unknown `--include`/`--exclude` name, missing test files, an unreachable driver, or a credentials file that is not valid. |
+| `1` | A test case failed, or the run could not start: a config or environment variable error, missing test files, an unreachable driver, or a credentials file that is not valid. |
 | `2` | The command line is not valid, for example an unknown flag or no project folder. |
-| `3` | Any other value that is not valid (a `ValueError`). |
+| `3` | The test selection is not valid: a name in `--include`/`--exclude` (or in `include`/`exclude` in `config.yaml`) matches no test case, or nothing is left to run. Also any other value that is not valid (a `ValueError`). |
 | `130` | Stopped with Ctrl-C (SIGINT). |
 | `143` | Stopped with SIGTERM. |
 
@@ -131,7 +131,8 @@ A run writes its results to `execution_output/` in the project folder, or to `ex
 | All test cases passed | `0` | Every `<testcase>` has `status="PASS"`. |
 | A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. |
 | A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. |
-| Config, environment variable or selection error | `1` | Not written: the run stops before a session starts. |
+| Config or environment variable error | `1` | Not written: the run stops before a session starts. |
+| Test selection error | `3` | Not written: the run stops before a session starts. |
 | Error after the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. |
 | Stopped with Ctrl-C or SIGTERM | `130` / `143` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`. Later test cases and the suite teardown do not run. |
 
