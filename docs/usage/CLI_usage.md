@@ -122,19 +122,24 @@ When the run cannot start, stderr shows a *Cannot start* panel titled with the e
 
 A run writes its results to `execution_output/` in the project folder, or to `execution_output_path` when the config sets it:
 
-- `junit_output.xml`: the JUnit report, written once when the run ends, also when it is stopped with Ctrl-C or SIGTERM. A run has one `<testsuite>` with one `<testcase>` per test case it ran, including suite setup and teardown. Each per-test setup and teardown is a test case of its own, named after the test it wraps, such as `Setup (Login Test)`. The suite `name` and every `classname` are the project folder's name, so unpack a project into a folder named after the suite. The suite `id` is the session id.
+- `junit_output.xml`: the JUnit report, written once when the run ends, also when it is stopped with Ctrl-C or SIGTERM. A run has one `<testsuite>` with one `<testcase>` per test case, including suite setup and teardown. Each `<testcase>` has a `timestamp` (its start) and a `time` (its duration in seconds). Each module is a `<kw type="setup">` and each keyword a `<kw>` inside it, with `status`, `starttime`, `endtime` and `elapsed`; a failed one also has a `message`. The modules and keywords a failure or a stop kept from running have `status="NOT_RUN"`. Each per-test setup and teardown is a test case of its own, named after the test it wraps, such as `Setup (Login Test)`. The suite `name` and every `classname` are the project folder's name, so unpack a project into a folder named after the suite. The suite `id` is the session id.
 - `junit_output_<session_id>.xml` instead, only when two sessions in one process share the output folder (the Python SDK or `optics serve`). `optics execute` and `optics dry_run` always write `junit_output.xml`.
-- Screenshots, `failed_steps_elements.json`, `interactable_elements.json`, and `logs.json` when `json_log: true`.
+- `<time>-failure_<test case>.jpg` and `<time>-failure_<test case>.xml` (`.html` for a web page): the screen and page source when a test case fails.
+- `<time>-end_of_run.jpg` and `page_sources_log.xml` (`.html` for a web page): the final screen, read before the suite teardown. `detected_errors_<session_id>.json` when an [on-screen error](error_detection.md) matches it.
+- Other screenshots, `failed_steps_elements.json`, `interactable_elements.json`, and `logs.json` when `json_log: true`.
 
 | Outcome | Exit | `junit_output.xml` | Sample |
 |---------|------|--------------------|--------|
 | All test cases passed | `0` | Every `<testcase>` has `status="PASS"`. | [passed.xml](junit_samples/passed.xml) |
-| A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. | [failed.xml](junit_samples/failed.xml) |
+| A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. Its modules and keywords after the failed one are `NOT_RUN`. | [failed.xml](junit_samples/failed.xml) |
+| An on-screen error matched the final screen | `1` | An `on-screen-error-detection` `<testcase>` with one `<failure>` per match. | [on_screen_error.xml](junit_samples/on_screen_error.xml) |
 | A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. | [setup_failed.xml](junit_samples/setup_failed.xml) |
 | Config or environment variable error | `1` | Not written: the run stops before a session starts. | |
 | Test selection error | `3` | Not written: the run stops before a session starts. | |
-| Error after the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. | |
-| Stopped with Ctrl-C or SIGTERM | `130` / `143` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`. Later test cases and the suite teardown do not run. | [stopped.xml](junit_samples/stopped.xml) |
+| Error while the session starts, such as an Appium server that is not reachable or a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. | |
+| Stopped with Ctrl-C | `130` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`; its keyword that was running is `ERROR` and the rest are `NOT_RUN`. Later test cases and the suite teardown do not run: each is a `<testcase status="NOT_RUN">` with a `<skipped>`. | [interrupted.xml](junit_samples/interrupted.xml) |
+| Stopped with SIGTERM | `143` | The same as Ctrl-C. | [stopped.xml](junit_samples/stopped.xml) |
+| Killed with SIGKILL | `137` (shell) or `-9` (`subprocess`) | Not written: the process ends at once. | |
 
 The samples are real reports from `optics execute` on a Playwright project named `checkout_suite`.
 
