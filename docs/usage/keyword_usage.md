@@ -1000,6 +1000,8 @@ Add API,path/to/api.yaml
 
 Invokes an API call based on a definition from the session's API data.
 
+A run needs no driver when the selected test cases use only flow-control keywords (`Invoke API`, `Evaluate`, `Condition`, `Read Data`, ...) and modules made of them. Set every `driver_sources` entry to `enabled: false` and run it with `optics execute`.
+
 **Parameters:**
 
 | Parameter | Type | Description | Default |

@@ -505,13 +505,13 @@ def get_session(self, session_id: str) -> Optional[Session]:
 During session creation, validation occurs:
 
 ```python
-if not enabled_driver_configs:
-    raise OpticsError(Code.E0501, message="No enabled drivers found")
+self.driver = self.optics.get_driver() if enabled_driver_configs else None
 ```
 
 **Validations:**
 
-- At least one driver must be enabled
+- An enabled driver is created at once, so a bad driver configuration fails at session creation
+- A session with no enabled driver runs only the keywords that need no device (`FlowControl`: Invoke API, Evaluate, Condition, ...)
 - Configuration must be valid
 - Dependencies must be properly configured
 
