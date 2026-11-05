@@ -1071,6 +1071,35 @@ driver_sources:
 
 When you run `optics execute` or `optics dry_run`, the framework reads the target folder's own `config.yaml`. Any field you leave out falls back to the built-in defaults (for example, every source defaults to `enabled: false`). A project's `config.yaml` is the single source of truth for that run — there is no global config layer to merge.
 
+### Environment variables and relative paths
+
+Any string value in `config.yaml` can refer to an environment variable or to a file in the project. Use this for values that must not go into the file, such as an Appium hub URL that contains a token, and to keep a project that you copy or unzip somewhere else runnable:
+
+```yaml
+driver_sources:
+  - appium:
+      enabled: true
+      url: $APPIUM_URL
+      capabilities:
+        udid: ${DEVICE_UDID:-emulator-5554}
+        app: ./apps/app.apk
+event_attributes_json: ./creds/event_attributes.json
+```
+
+```bash
+export APPIUM_URL="https://hub.example.com/wd/hub?token=..."
+optics execute my_project
+```
+
+- `$NAME` and `${NAME}` are replaced with the value of `NAME`. If `NAME` is not set or is empty, the run stops and tells you which variable it needs.
+- `${NAME:-default}` uses `default` when `NAME` is not set or is empty.
+- A reference can be part of a longer string, for example `https://${HUB_HOST}/wd/hub`. Write `$$` for a literal `$`.
+- A value that starts with `./` or `../` is a path from the project folder (the folder you give to `optics execute`), not from the folder you run the command in. If the file is not there, the run stops and shows the full path it looked for. Output paths (`execution_output_path`, `log_path`, `json_path`, `project_path`) are resolved the same way but need not exist yet.
+- An environment variable can hold a relative path: `$CREDS_FILE` set to `./creds/key.json` is resolved like the literal value.
+- The result is always a string. Optics fields such as `enabled: ${USE_APPIUM}` accept `true` and `false`, but a capability that needs a number gets the number as text.
+
+`optics execute`, `optics dry_run`, `optics live` and `optics doctor` resolve these values when they read the file. The Playwright driver's `url` and `capabilities.headers` are the exception: the driver expands them, with the same rules, when it connects, so it can mask the values in its error messages. An unset variable in them still stops the command when it reads the file. `optics configure --edit` keeps them as written when it saves the file. The Python SDK and the `optics serve` and `optics mcp` session APIs take the config as data, not as a file, and do not expand references.
+
 ---
 
 ## Best Practices
