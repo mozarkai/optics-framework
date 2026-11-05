@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Settings</title></head>
+<body>
+  <h1>Settings</h1>
+  <div class="options">
+    <div class="option" style="cursor: pointer">All meetings</div>
+    <div class="option" style="cursor: pointer">No meetings</div>
+  </div>
+  <p id="picked"></p>
+  <script>
+    for (const option of document.querySelectorAll('.option')) {
+      option.addEventListener('click', () => { document.getElementById('picked').textContent = `Picked ${option.textContent}`; });
+    }
+  </script>
+</body>
+</html>
