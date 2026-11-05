@@ -136,7 +136,9 @@ A run writes its results to `execution_output/` in the project folder, or to `ex
 | A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. | [setup_failed.xml](junit_samples/setup_failed.xml) |
 | Config or environment variable error | `1` | Not written: the run stops before a session starts. | |
 | Test selection error | `3` | Not written: the run stops before a session starts. | |
-| Error while the session starts, such as an Appium server that is not reachable or a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. | |
+| The Appium or Selenium server is not reachable, or no Android device is attached | `1` | Each test case has `status="ERROR"` and an `<error>` that names the problem. Its modules and keywords are `NOT_RUN`. | |
+| Other error while the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. | |
+| The driver session is lost during the run, such as when the Appium server stops | `1` | The test case that was running and each later one have `status="ERROR"` and an `<error>` with `E0106`. | |
 | Stopped with Ctrl-C | `130` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`; its keyword that was running is `ERROR` and the rest are `NOT_RUN`. Later test cases and the suite teardown do not run: each is a `<testcase status="NOT_RUN">` with a `<skipped>`. | [interrupted.xml](junit_samples/interrupted.xml) |
 | Stopped with SIGTERM | `143` | The same as Ctrl-C. | [stopped.xml](junit_samples/stopped.xml) |
 | Killed with SIGKILL | `137` (shell) or `-9` (`subprocess`) | Not written: the process ends at once. | |
