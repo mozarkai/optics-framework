@@ -22,12 +22,12 @@ class TestTextFactoryGoogleVisionResolution:
 
     def test_text_factory_resolves_googlevision(self):
         TextFactory.clear_instances()
-        fallback = TextFactory.get_driver([{"googlevision": DependencyConfig(enabled=True)}])
+        fallback = TextFactory.get_driver([{"googlevision": DependencyConfig(enabled=True).model_dump()}])
         assert fallback is not None
         assert isinstance(fallback.active_instance, CanonicalGoogleVisionHelper)
 
     def test_text_factory_resolves_google_vision_alias(self):
         TextFactory.clear_instances()
-        fallback = TextFactory.get_driver([{"google_vision": DependencyConfig(enabled=True)}])
+        fallback = TextFactory.get_driver([{"google_vision": DependencyConfig(enabled=True).model_dump()}])
         assert fallback is not None
         assert isinstance(fallback.active_instance, CanonicalGoogleVisionHelper)
