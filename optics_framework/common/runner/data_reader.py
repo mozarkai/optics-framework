@@ -47,13 +47,12 @@ def _tokens(step: str) -> List[str]:
     out = []
     for token in _TOKEN.findall(step):
         key, sep, value = token.partition("=")
-        found = _WRAPPED.match(value if sep else token)
-        if not found:
-            out.append(token)
-        elif sep:
+        if whole := _WRAPPED.match(token):
+            out.append(whole["body"])
+        elif sep and (found := _WRAPPED.match(value)):
             out.append(f"{key}={found['body']}")
         else:
-            out.append(found["body"])
+            out.append(token)
     return out
 
 
