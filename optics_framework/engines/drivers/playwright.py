@@ -3,6 +3,8 @@ import json
 import os
 import pathlib
 import re
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from typing import Optional, Any
 from urllib.parse import urlsplit
@@ -20,6 +22,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.async_utils import run_async
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
+from optics_framework.engines.drivers import playwright_profiles
 
 
 _FIELD_SELECTOR = (
@@ -111,6 +114,12 @@ class Playwright(DriverInterface):
         **{SpecialKey(f"f{n}"): f"F{n}" for n in range(1, 13)},
     }
 
+    _CAPABILITIES = frozenset({
+        "action_timeout_ms", "browser", "channel", "connect_timeout_ms", "context", "device", "element_timeout_ms",
+        "headers", "headless", "navigation_timeout_ms", "navigation_wait_until", "profile", "protocol",
+        "settle_timeout_ms", "storage_state", "user_data_dir", "viewport",
+    })
+
     _KEY_ALIASES = {
         "esc": "escape", "return": "enter", "del": "delete", "spacebar": "space",
         "arrowleft": "left", "arrowright": "right", "arrowup": "up", "arrowdown": "down",
@@ -135,6 +144,7 @@ class Playwright(DriverInterface):
         self._context = None
         self.page: Optional[Page] = None
         self._touch = False
+        self._profile_copy: pathlib.Path | None = None
 
         internal_logger.info("[Playwright] Driver initialized")
 
@@ -246,24 +256,64 @@ class Playwright(DriverInterface):
             raise OpticsError(Code.E0102, str(e), cause=e)
 
     async def _start_browser(self):
+        unknown = sorted(set(self.config.get("capabilities") or {}) - self._CAPABILITIES)
+        if unknown:
+            internal_logger.warning("[Playwright] Ignoring capabilities it does not use: %s", ", ".join(unknown))
         remote = self._remote()
+        local_only = next((key for key in ("profile", "user_data_dir") if self._setting(key, None)), None)
+        if remote and local_only:
+            raise OpticsError(Code.E0501, f"{local_only} applies to a browser Optics launches, not to a remote one in url")
         self._pw = await async_playwright().start()
         browser_type = getattr(self._pw, self._setting("browser", "chromium"))
         if remote:
             await self._open_remote(browser_type, remote)
+        elif self._setting("profile", None) or self._setting("user_data_dir", None):
+            await self._open_persistent(browser_type)
         else:
             internal_logger.info("[Playwright] Launching browser")
             self._browser = await browser_type.launch(headless=self._setting("headless", False), **self._launch_options())
             await self._open_new_context()
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
 
-    def _launch_options(self) -> dict:
+    def _launch_options(self, channel: str | None = None) -> dict:
+        channel = channel or self._setting("channel", None)
+        options = {"channel": channel} if channel else {}
         if self._setting("browser", "chromium") != "chromium":
-            return {}
+            return options
         # Sites block a browser that reports navigator.webdriver; Playwright's own MCP hides it the same way.
-        return {"args": ["--disable-blink-features=AutomationControlled"], "ignore_default_args": ["--enable-automation"]}
+        return options | {
+            "args": ["--disable-blink-features=AutomationControlled"], "ignore_default_args": ["--enable-automation"],
+        }
 
-    async def _open_new_context(self):
+    async def _open_persistent(self, browser_type):
+        """Launch with a user data directory: ``user_data_dir`` as is, or a copy of the local ``profile``."""
+        if self._setting("storage_state", None):
+            raise OpticsError(Code.E0501, "storage_state applies to a new context; a profile or user_data_dir has its own")
+        options = self._launch_options()
+        user_data = self._setting("user_data_dir", None)
+        choice = self._setting("profile", None)
+        if choice:
+            if user_data:
+                raise OpticsError(Code.E0501, "Set profile or user_data_dir, not both")
+            profile = playwright_profiles.find_profile(str(choice), self._setting("channel", ""))
+            self._profile_copy = pathlib.Path(tempfile.mkdtemp(prefix="optics-profile-"))
+            playwright_profiles.copy_sign_in_state(profile, self._profile_copy)
+            user_data = self._profile_copy
+            options = self._launch_options(profile.channel)
+            options["args"] = [*options.get("args", []), f"--profile-directory={profile.directory}"]
+            # Playwright's mock keychain cannot decrypt the copied cookies; the OS keychain can.
+            options["ignore_default_args"] = [
+                *options.get("ignore_default_args", []), "--use-mock-keychain", "--password-store=basic",
+            ]
+        internal_logger.info("[Playwright] Launching browser with a user data directory")
+        self._context = await browser_type.launch_persistent_context(
+            str(pathlib.Path(user_data).expanduser()), headless=self._setting("headless", False),
+            **options, **self._context_options(),
+        )
+        pages = self._context.pages
+        self.page = pages[0] if pages else await self._context.new_page()
+
+    def _context_options(self) -> dict:
         options = {"viewport": {"width": 1280, "height": 800}}
         device = self._setting("device", None)
         if device:
@@ -272,9 +322,13 @@ class Playwright(DriverInterface):
             options = {k: v for k, v in self._pw.devices[device].items() if k != "default_browser_type"}
         if self._setting("viewport", None):
             options["viewport"] = self._setting("viewport", None)
+        self._touch = bool(options.get("has_touch"))
+        return options
+
+    async def _open_new_context(self):
+        options = self._context_options()
         if self._setting("storage_state", None):
             options["storage_state"] = self._storage_state()
-        self._touch = bool(options.get("has_touch"))
         self._context = await self._browser.new_context(**options)
         self.page = await self._context.new_page()
 
@@ -480,7 +534,7 @@ class Playwright(DriverInterface):
         if not self._touch:
             return await self.page.mouse.click(x, y)
         # Chromium places touches in page pixels, which a zoomed page's screenshot does not use.
-        if self._browser.browser_type.name == "chromium":
+        if self._setting("browser", "chromium") == "chromium":
             zoom = await self._zoom()
             x, y = x / zoom, y / zoom
         await self.page.touchscreen.tap(x, y)
@@ -723,14 +777,16 @@ class Playwright(DriverInterface):
 
     async def _cleanup_resources(self):
         """Close the browser, ending any remote session but leaving an adopted context's tabs open, then stop Playwright."""
-        browser, pw = self._browser, self._pw
-        self.page = self._context = self._browser = self._pw = None
+        browser, pw, copy = self._browser or self._context, self._pw, self._profile_copy
+        self.page = self._context = self._browser = self._pw = self._profile_copy = None
         try:
             if browser is not None:
                 await browser.close()
         except Exception as e:
             internal_logger.warning("[Playwright] Error closing the browser: %s", e)
         finally:
+            if copy is not None:
+                shutil.rmtree(copy, ignore_errors=True)
             # Also on cancellation: stopping Playwright ends its driver and any connection a stuck close left open.
             try:
                 if pw is not None:
