@@ -302,3 +302,29 @@ def test_a_launched_browser_does_not_announce_automation():
         assert driver.execute_script("() => navigator.webdriver") is False
     finally:
         driver.terminate()
+
+
+@pytest.mark.parametrize("locator, reaction", [
+    ("alt=Company logo", "hit alt"),
+    ("title=Close dialog", "hit title"),
+    ("testid=buy-btn", "hit testid"),
+    ('text="Save changes"', "hit save"),
+    ("loc=css:#email", "hit css"),
+    ("loc=role:button[name='Save changes']", "hit save"),
+    ("loc=href:/pricing", "hit href"),
+])
+def test_suite_presses_by_each_locator_form(tmp_path, locator, reaction):
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / 'locators.html').as_uri()}",
+        f"Press Element,{locator}",
+        f"Assert Presence,{reaction}",
+    ])
+    assert run_project(project, use_printer=False) is True
+
+
+def test_quoted_text_matches_only_the_whole_text(tmp_path):
+    project = _project(tmp_path, [
+        f"Launch App,{(FIXTURE / 'locators.html').as_uri()}",
+        'Press Element,text="Save"',
+    ])
+    assert run_project(project, use_printer=False) is False

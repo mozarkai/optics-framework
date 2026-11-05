@@ -50,10 +50,13 @@ last:
     login_button,[data-test="login-button"],Login
 
 Web element values understand `xpath=`, `css=`, `text=`, `label=`,
-`placeholder=`, `role=button[name="Sign in"]`, `data-testid=...`, `#id`/`.class`
-CSS, and plain visible text (also matched as a label, placeholder, or button or
-link name). Write `text=Gold Loan` without quotes: the quotes are searched for
-too. An exact match wins over a partial one; when several elements match, the
+`placeholder=`, `alt=`, `title=`, `role=button[name="Sign in"]`,
+`data-testid=...` (or `testid=`), `loc=css:`/`loc=role:`/`loc=href:`,
+`#id`/`.class` CSS, `css=li >> nth=-1` for the last match, and plain visible
+text (also matched as a label, placeholder, or button or link name). Quotes ask
+for the whole text: `text="Save"` does not match "Save changes", while
+`text=Save` does. A YAML module step removes the quotes from a value, so put a
+quoted locator in the elements file. An exact match wins over a partial one; when several elements match, the
 first visible one is used, so pick another with `index=2` or a `loc`. Enter Text
 and Clear Element Text on a caption type into the field it names when only one
 field fits; a text field's own `loc` (its `act` is `input`) is the surest locator.
