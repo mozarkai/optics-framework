@@ -37,11 +37,14 @@ _INSPECT_JS = (
     f"return [({BOUNDS_JS})(arguments[0]),"
     f" arguments[1] ? ({SUGGEST_LOCATORS_JS})(arguments[1]) : null];"
 )
-_TEXT_AND_REACH_JS = (
+_TEXT_REACH_AND_STATE_JS = (
     "const e = arguments[0]; const r = e.getBoundingClientRect();"
     "const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
     f"const text = ({utils.TEXT_OR_VALUE_JS})(e);"
-    "return [text, !!hit && (e.contains(hit) || hit.contains(e) || hit.closest('label')?.control === e)];"
+    "const aria = e.getAttribute('aria-checked');"
+    "return [text, !!hit && (e.contains(hit) || hit.contains(e) || hit.closest('label')?.control === e),"
+    " !e.matches(':disabled') && e.getAttribute('aria-disabled') !== 'true',"
+    " aria === 'true' || aria === 'false' ? aria === 'true' : !!(e.checked || e.selected)];"
 )
 _SETTLE_TIMEOUT_S = 2.0
 _SETTLE_INTERVAL_S = 0.15
@@ -113,8 +116,10 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
             driver.execute_script(_SCROLL_INTO_VIEW_JS, target)
             self._uncover(driver, target)
             rect = self._settled_rect(target)
-            text, reachable = driver.execute_script(_TEXT_AND_REACH_JS, target)
-        return ScreenPoint(rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text, not reachable)
+            text, reachable, enabled, checked = driver.execute_script(_TEXT_REACH_AND_STATE_JS, target)
+        return ScreenPoint(
+            rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2, text, not reachable, enabled, checked,
+        )
 
     @staticmethod
     def _await_keyboard(driver: Any, target: Any) -> None:

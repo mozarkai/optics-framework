@@ -4,15 +4,23 @@ import numpy
 from optics_framework.common.session_liveness import raise_if_session_dead
 
 class ScreenPoint(tuple):
-    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` with the ``text`` shown there and whether it is ``covered``."""
+    """An ``(x, y)`` point from :meth:`ElementSourceInterface.locate` with the ``text`` shown there, whether it is
+    ``covered``, and the ``enabled`` and ``checked`` states of the element there when the source reads them."""
 
     text: str | None
     covered: bool
+    enabled: bool | None
+    checked: bool | None
 
-    def __new__(cls, x: int, y: int, text: str | None = None, covered: bool = False) -> "ScreenPoint":
+    def __new__(
+        cls, x: int, y: int, text: str | None = None, covered: bool = False,
+        enabled: bool | None = None, checked: bool | None = None,
+    ) -> "ScreenPoint":
         point = super().__new__(cls, (x, y))
         point.text = text
         point.covered = covered
+        point.enabled = enabled
+        point.checked = checked
         return point
 
 
