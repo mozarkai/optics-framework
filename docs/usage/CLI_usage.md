@@ -220,6 +220,8 @@ optics dry_run <folder_path> [--runner <runner_name>] [--use-printer | --no-use-
                [--include <test_case> ...] [--exclude <test_case> ...]
 ```
 
+`optics dry-run` is the same command.
+
 **Options:**
 
 - `<folder_path>`: Path to the project directory.

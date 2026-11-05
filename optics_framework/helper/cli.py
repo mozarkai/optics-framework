@@ -405,7 +405,7 @@ class DryRunArgs(BaseModel):
 class DryRunCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "dry_run", help="Validate a project's test cases without running them"
+            "dry_run", aliases=["dry-run"], help="Validate a project's test cases without running them"
         )
         parser.add_argument(
             "folder_path", type=str, help="Path to the folder containing CSV files"
