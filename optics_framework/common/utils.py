@@ -44,10 +44,9 @@ def resolve_scalar_param(session: Any, param: str) -> str:
     if not isinstance(param, str):
         param = str(param)
     param = param.strip()
-    match = WHOLE_VAR_PATTERN.match(param)
-    if not match:
+    var_name = whole_var_name(param)
+    if var_name is None:
         return param
-    var_name = match.group(1).strip()
     elements = getattr(session, "elements", None)
     if not isinstance(elements, ElementData):
         raise OpticsError(Code.E0702, message=f"Cannot resolve '{param}': no element data in session.")
@@ -101,7 +100,7 @@ def split_store_as(params: list) -> tuple[list, str | None]:
     for param in params:
         match = STORE_AS_PATTERN.match(param) if isinstance(param, str) else None
         if match:
-            name = WHOLE_VAR_PATTERN.sub(r"\1", match.group(1).strip()).strip()
+            name = whole_var_name(match.group(1)) or match.group(1).strip()
         else:
             rest.append(param)
     return rest, name

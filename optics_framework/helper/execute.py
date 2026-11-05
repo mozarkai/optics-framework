@@ -381,7 +381,7 @@ def create_test_case_nodes(queue: List[Tuple[str, Any]]) -> Optional[TestCaseNod
     """
     Create a linked list of TestCaseNode objects from the execution queue.
 
-    :param queue: Ordered ``(name, modules)`` pairs.
+    :param queue: Ordered ``(name, steps)`` pairs.
     :return: Head of the TestCaseNode linked list, or None if empty.
     """
     test_suite = TestSuite()
@@ -441,7 +441,6 @@ def build_linked_list(
     :return: Head of the linked list of TestCaseNode objects representing the full execution flow.
     """
     try:
-        # Get the ordered execution dict
         queue = get_execution_queue(test_cases_data)
 
         # Create TestCaseNode linked list

@@ -69,9 +69,7 @@ class Runner:
         resolved_positional_params = utils.unescape_vars(method, [
             param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
         ])
-        resolved_kw_params = {}
-        for key, value in kw_params.items():
-            resolved_kw_params[key] = self.resolve_param(value)
+        resolved_kw_params = {key: self.resolve_param(value) for key, value in kw_params.items()}
         return resolved_positional_params, resolved_kw_params
 
     def execute_test_case(self, test_case: str) -> Optional[TestCaseResult]:
@@ -929,7 +927,7 @@ class TestRunner(Runner):
                     utils.require_store_name(store_as)
                     self.elements.store(store_as, f"<{store_as}>")
                 if getattr(method, "_defines_variable", False) and params:
-                    defined = utils.WHOLE_VAR_PATTERN.sub(r"\1", str(params[0]).strip()).strip()
+                    defined = utils.whole_var_name(str(params[0])) or str(params[0]).strip()
                     self.elements.remove_element(defined)
                     self.elements.add_element(defined, f"<{defined}>")
                 if isinstance(keyword_result, KeywordResult):
