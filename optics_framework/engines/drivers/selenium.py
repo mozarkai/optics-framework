@@ -6,6 +6,7 @@ from selenium.webdriver.common.keys import Keys
 from typing import Any, Dict, Optional, Union
 from optics_framework.common.utils import TEXT_OR_VALUE_JS, SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
+from optics_framework.common.session_liveness import is_webdriver_server_unreachable
 from optics_framework.common.logging_config import internal_logger, redact_secret_values
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
@@ -19,7 +20,7 @@ class SeleniumDriver(DriverInterface):
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
-        return isinstance(exc, InvalidSessionIdException)
+        return isinstance(exc, InvalidSessionIdException) or is_webdriver_server_unreachable(exc)
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
         self.driver: Optional[webdriver.Remote] = None
