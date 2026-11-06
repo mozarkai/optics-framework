@@ -15,27 +15,6 @@ _ALIASES = {"loc=css:": "css=", "loc=role:": "role=", "testid=": "data-testid="}
 _SEMANTIC_PREFIXES = {"text=": "text", "label=": "label", "placeholder=": "placeholder", "alt=": "alt", "title=": "title"}
 _POLL_INTERVAL_S = 0.25
 
-_VISIBLE_FLAGS_SCRIPT = """
-(els, onScreen) => els.map((el) => {
-    const rect = el.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-    if (window.getComputedStyle(el).visibility === 'hidden') return false;
-    if (!onScreen) return true;
-    let [top, left, bottom, right] = [rect.top, rect.left, rect.bottom, rect.right];
-    for (let node = el.parentElement; node; node = node.parentElement) {
-        if (window.getComputedStyle(node).overflow === 'visible') continue;
-        const clip = node.getBoundingClientRect();
-        [top, left] = [Math.max(top, clip.top), Math.max(left, clip.left)];
-        [bottom, right] = [Math.min(bottom, clip.bottom), Math.min(right, clip.right)];
-    }
-    top = Math.max(top, 0);
-    left = Math.max(left, 0);
-    bottom = Math.min(bottom, window.innerHeight);
-    right = Math.min(right, window.innerWidth);
-    return bottom > top && right > left;
-})
-"""
-
 
 def _strip_prefix(element: str, prefix: str) -> str | None:
     if element[: len(prefix)].lower() == prefix:
@@ -103,7 +82,7 @@ def _nth_match(locator: Any, index: int, visible_only: bool, on_screen: bool, ru
         if not visible_only:
             count = run(locator.count())
             return (locator.nth(index) if count > index else None), count
-        flags = run(locator.evaluate_all(_VISIBLE_FLAGS_SCRIPT, on_screen))
+        flags = run(locator.evaluate_all(utils.VISIBLE_FLAGS_JS, on_screen))
     except PlaywrightError as e:
         if Playwright.is_dead_session_error(e):
             raise
