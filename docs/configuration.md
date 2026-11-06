@@ -616,10 +616,17 @@ Driver sources define the automation frameworks used to control devices or brows
     | Platform | Notes |
     |----------|-------|
     | **Android TV** | Supported via Android profile — same as phone automation |
-    | **Samsung Tizen** | D-pad navigation + DOM access (limited) |
-    | **LG webOS** | D-pad navigation only (blind remote control) |
+    | **Samsung Tizen** | D-pad focus on the app's DOM; screenshots from a camera |
+    | **LG webOS** | D-pad focus on the app's DOM |
 
-    Both Tizen and webOS use D-pad buttons (UP/DOWN/ENTER/BACK) for navigation, not touch. Touch-based methods (`click_element`, `swipe`, `enter_text`) raise an error on TVs.
+    A Tizen or webOS app is a web page, so `appium_find_element` finds `text=` (visible text, `aria-label`, `title` or `alt`) and `css=` locators in its DOM. A TV has no touch, so the element keywords move the remote's focus instead:
+
+    - `Press Element` presses arrow keys until the element has focus, then presses ENTER. Focus is read from the page after each key press, so you do not count presses.
+    - `Enter Text` types into a real `<input>` directly. For a field the app draws itself, it walks the app's on-screen keyboard key by key, switches its layers (`123`, `abc`) when a character is not shown, and reads the field after. If the field does not show the text, the step fails with `E0405` and no fallback types it again. A letter case that the app picks itself (a capital first letter) gives only a warning.
+    - `Clear Element Text` presses the keyboard's backspace key until the field stops changing.
+    - `Get Text` reads the element's text or a field's value.
+    - `Enter Text` with `<space>`, `<backspace>` or `<enter>` presses that key of the on-screen keyboard; `<escape>` and the arrows press remote keys.
+    - Use `Assert Presence` to wait for a screen in place of `Sleep`.
 
     **Samsung Tizen prerequisites:**
     - **Tizen Studio** installed; `TIZEN_HOME` set
@@ -645,9 +652,7 @@ Driver sources define the automation frameworks used to control devices or brows
             appium:chromedriverExecutableDir: /path/to/chromedrivers
 
     elements_sources:
-      - appium_page_source:
-          enabled: true
-      - appium_screenshot:
+      - appium_find_element:
           enabled: true
     ```
 
@@ -674,16 +679,17 @@ Driver sources define the automation frameworks used to control devices or brows
             appium:newCommandTimeout: 600
 
     elements_sources:
+      - appium_find_element:
+          enabled: true
       - appium_screenshot:
           enabled: true
     ```
 
     **Limitations:**
 
-    - Methods that raise an error on TVs — Touch: `click_element`, `press_element`, `press_coordinates`, `tap_at_coordinates`, `swipe*`; Keyboard: `enter_text`, `clear_text`; Other: `scroll`, `get_text_element`, `press_xpath_using_coordinates`.
-    - Methods that work everywhere: `launch_app`, `press_keycode`, `execute_script`, `terminate`.
-    - Text input isn't supported — use a sequence of `Press Keycode` steps for D-pad navigation through on-screen keyboards.
-    - Native screenshots can hang on Tizen; Optics renders the DOM to canvas instead. DRM/video content appears black — judge playback from UI elements.
+    - Keywords that raise `E0105` on TVs: coordinate taps, swipes, scrolls, `Select Dropdown Option`, the checked state in `Is Element`, typing without an element, and `Go Back` (use `Press Keycode` with `BACK`). `Press Keycode` sends remote keys; an unknown key name fails with `E0104`.
+    - Each focus move costs one remote key press (about 1–2 s on a TV), so typing a long text takes time.
+    - A native screenshot hangs a Tizen TV, so `appium_screenshot` refuses it there: use `camera_screenshot`. DRM/video content appears black, so judge playback from UI elements.
     - Chromedriver version must match the TV's Chromium exactly (e.g. webOS 6 → Chromium 79 → chromedriver 79.x). Mismatches cause "cannot connect to chrome" errors.
     - webOS and Tizen drivers require Appium 2.x (no Appium 3 support yet).
 

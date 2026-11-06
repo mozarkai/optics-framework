@@ -23,7 +23,7 @@ This framework was designed primarily for the following use cases:
 - **Smart TVs** - Android TV (Android profile), Samsung Tizen, and LG webOS via Appium platform profiles
 - **Non-intrusive targets** - Production devices driven as a Bluetooth HID mouse/keyboard, with capture via an external camera. Coordinate-driven only: the BLE driver exposes no page source, so element location relies on the OCR and image strategies
 
-Each Appium platform carries its own options class, app-identifier capability names, and keycode-delivery strategy. TVs are navigated with D-pad remote keys rather than touch, so touch- and keyboard-based keywords raise `E0105` naming the unsupported platform instead of failing deep inside a driver call. See [Configuration](configuration.md) for per-platform setup.
+Each Appium platform carries its own options class, app-identifier capability names, and keycode-delivery strategy. TVs are navigated with D-pad remote keys rather than touch: `Press Element`, `Enter Text`, `Clear Element Text` and `Get Text` move the remote's focus through the app's DOM, and touch keywords raise `E0105` naming the unsupported platform. See [Configuration](configuration.md) for per-platform setup.
 
 ## Key Features
 
