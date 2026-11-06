@@ -2,7 +2,7 @@ import time
 from typing import Optional, Any, List, Union
 
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.logging_config import internal_logger, mask_secrets
+from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -132,7 +132,7 @@ class Verifier:
         :param event_name: The name of the event associated with the check, if any.
         """
         expected = str(expected).strip()
-        sensitive = expected.startswith("@:")
+        sensitive = expected.startswith(SENSITIVE_PREFIX)
         want = utils.strip_sensitive_prefix(expected).strip()
         deadline = time.monotonic() + float(timeout)
         while True:

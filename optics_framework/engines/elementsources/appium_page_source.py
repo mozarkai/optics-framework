@@ -91,7 +91,7 @@ class AppiumPageSource(ElementSourceInterface):
             return False
 
     def _locate_by_text(self, driver: WebDriver, element: str, element_type: str, index: Optional[int] = None) -> Any:
-        locator = element[len("text="):] if element.lower().startswith("text=") else element
+        locator = utils.without_prefix(element, "text=")
         strict = self._strict_element_match()
         if index is not None:
             xpath = self.find_xpath_from_text_index(locator, index, strict=strict)

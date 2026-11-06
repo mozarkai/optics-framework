@@ -11,6 +11,10 @@ from pydantic import BaseModel
 from typing import Any, Optional, Tuple
 from pathlib import Path
 
+SENSITIVE_PREFIX = "@:"
+_INLINE_SECRET = re.compile(re.escape(SENSITIVE_PREFIX) + r"([^\s,\)\]]+)")
+
+
 class LoggingConfig(BaseModel):
     log_level: str = "INFO"
     log_path: Optional[str] = None
@@ -180,7 +184,7 @@ def mask_secrets(text: str) -> str:
         text = text.replace(secret, "****")
     text = _URL_PASSWORD.sub(r"\1****@", text)
     text = _QUERY_PARAM.sub(_mask_secret_param, text)
-    return re.sub(r"@:([^\s,\)\]]+)", "****", text)
+    return _INLINE_SECRET.sub("****", text)
 
 
 def mask_secret_values(value: Any) -> Any:

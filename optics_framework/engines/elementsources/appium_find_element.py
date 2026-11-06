@@ -93,7 +93,21 @@ class AppiumFindElement(ElementSourceInterface):
         element_type = utils.determine_element_type(element)
         if element_type == "XPath":
             return not (utils.is_dom_only_xpath(element) and self.driver is not None and self.driver.native_ui_platform())
-        return element_type in ("Text", "Class")
+        return element_type in ("Text", "Class") or (element_type == "CSS" and self._web_ui())
+
+    def _web_ui(self) -> bool:
+        return bool(getattr(self.driver, "is_web_ui", lambda: False)())
+
+    def _query(self, element: str, element_type: str) -> tuple[str, str]:
+        """How the driver looks ``element`` up; on a TV the app's DOM holds the text."""
+        if element_type == "CSS":
+            return AppiumBy.CSS_SELECTOR, utils.without_prefix(element, "css=")
+        if element_type == "Class":
+            return AppiumBy.CLASS_NAME, element
+        text = utils.without_prefix(element, "text=")
+        if self._web_ui():
+            return AppiumBy.XPATH, utils.dom_text_xpath(text)
+        return AppiumBy.ACCESSIBILITY_ID, text
 
     def locate(self, element: str, index: Optional[int] = None) -> Any:
         """
@@ -119,11 +133,8 @@ class AppiumFindElement(ElementSourceInterface):
             except (AttributeError, TypeError) as e:
                 internal_logger.error('Error finding element: %s', element, exc_info=True)
                 raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
-        elif element_type in ('Text', 'Class'):
-            by, value = AppiumBy.CLASS_NAME, element
-            if element_type == 'Text':
-                by = AppiumBy.ACCESSIBILITY_ID
-                value = element[len("text="):] if element.lower().startswith("text=") else element
+        elif element_type in ('Text', 'Class') or (element_type == 'CSS' and self._web_ui()):
+            by, value = self._query(element, element_type)
             position = 0 if index is None else index
             try:
                 found_element = self._find_nth(driver, by, value, position)

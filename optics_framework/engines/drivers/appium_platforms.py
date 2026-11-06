@@ -77,6 +77,7 @@ class PlatformProfile:
     rc_key_map: dict[str, str] = field(default_factory=dict)
     rc_extra_payload: dict[str, Any] = field(default_factory=dict)
     rc_passthrough_unknown: bool = False  # webOS accepts bare names like "ENTER"
+    web_ui: bool = False  # the session's own context is the app's DOM, with no native tree
 
     def resolve_rc_key(self, keycode: str) -> str:
         key = str(keycode).strip().upper()
@@ -179,6 +180,7 @@ register_profile(PlatformProfile(
     rc_command="tizen: pressKey",
     rc_key_map=_TIZEN_KEYS,
     rc_passthrough_unknown=False,
+    web_ui=True,
 ))
 
 # webOS accepts bare names ("ENTER", "UP") in rc mode; map is identity for nav/media.
@@ -203,4 +205,5 @@ register_profile(PlatformProfile(
     rc_key_map=_WEBOS_KEYS,
     rc_extra_payload={"duration": 200},
     rc_passthrough_unknown=True,
+    web_ui=True,
 ))
