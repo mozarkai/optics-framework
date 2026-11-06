@@ -102,19 +102,35 @@ def find(
     on_screen: bool = False,
     warn_if_ambiguous: bool = False,
 ) -> Any | None:
-    """The ``index``-th (visible) match of ``element``, or ``None`` after ``timeout_s``."""
-    options = candidates(driver.page, element, exact=exact)
+    """The ``index``-th (visible) match of ``element`` on the page in front, or ``None`` after ``timeout_s``."""
     deadline = time.monotonic() + timeout_s
     while True:
-        for locator in options:
-            match, count = _nth_match(locator, index, visible_only, on_screen, driver.run)
-            if match is not None:
-                if warn_if_ambiguous:
-                    utils.warn_if_ambiguous(element, count, index)
-                return match
+        page = driver.page
+        try:
+            match, count = _first_match(candidates(page, element, exact=exact), index, visible_only, on_screen, driver.run)
+        except PlaywrightError:
+            if driver.page is page:
+                raise
+            continue
+        # A tab the last action opened can take over during the lookup.
+        if driver.page is not page:
+            continue
+        if match is not None:
+            if warn_if_ambiguous:
+                utils.warn_if_ambiguous(element, count, index)
+            return match
         if time.monotonic() >= deadline:
             return None
         time.sleep(_POLL_INTERVAL_S)
+
+
+def _first_match(options: list[Any], index: int, visible_only: bool, on_screen: bool, run: Callable) -> tuple[Any | None, int]:
+    count = 0
+    for locator in options:
+        match, count = _nth_match(locator, index, visible_only, on_screen, run)
+        if match is not None:
+            return match, count
+    return None, count
 
 
 def is_present(driver: Playwright, element: str, *, exact: bool = False) -> bool:

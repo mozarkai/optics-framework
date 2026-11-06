@@ -228,6 +228,7 @@ def test_secret_prefix_is_not_typed():
 
 def test_go_back_uses_browser_history():
     driver = _driver()
+    driver.page.opener = AsyncMock(return_value=None)
     driver.page.go_back = AsyncMock()
 
     driver.go_back()

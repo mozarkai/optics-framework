@@ -276,6 +276,7 @@ class Appium(DriverInterface):
         self._frozen_web_contexts: set[tuple[str, str, str]] = set()
         self._tv: tuple[str, TvWebApp] | None = None
         self._ios_web_context: str | None = None
+        self._attached_tabs: list[str] = []
 
     def _require_driver(self) -> WebDriver:
         """Helper to ensure self.driver is initialized, else raise error."""
@@ -408,7 +409,7 @@ class Appium(DriverInterface):
         if event_name:
             self.event_sdk.capture_event(event_name)
         internal_logger.debug(
-            f"Starting Appium session with capabilities: {options.to_capabilities()}"
+            f"Starting Appium session with capabilities: {redact_secret_values(options.to_capabilities())}"
         )
         internal_logger.debug(
             f"Connection/session-creation timeout: {self.CONNECTION_TIMEOUT}s"
@@ -1704,6 +1705,9 @@ class Appium(DriverInterface):
         try:
             driver.switch_to.context(context)
             handles = driver.window_handles
+            # Once the attached tab closes (NoSuchWindowException), only Chrome's page list says which tab it shows.
+            if driver.current_window_handle not in handles:
+                return False
             if len(handles) > 1 and (app_webviews or not self._attached_tab_visible(driver)):
                 return False
         except WebDriverException:
@@ -1727,10 +1731,10 @@ class Appium(DriverInterface):
                     "WebView is automatable only when the app enables WebView debugging.",
         )
 
-    @staticmethod
-    def _focus_window(driver: WebDriver, page_url: str | None) -> None:
+    def _focus_window(self, driver: WebDriver, page_url: str | None) -> None:
         """Focus the tab showing the front page, matched by URL in the DevTools target list, which has no tab order."""
         handles = driver.window_handles
+        attached = self._attach_open_tab(driver, handles)
         if len(handles) < 2 or not page_url:
             return
         driver.command_executor.add_command(_CDP_EXECUTE, "POST", "/session/$sessionId/goog/cdp/execute")
@@ -1739,13 +1743,9 @@ class Appium(DriverInterface):
             target["targetId"] for target in targets
             if target.get("url") == page_url and target.get("targetId") in handles
         ]
-        try:
-            attached = driver.current_window_handle
-        except NoSuchWindowException:
-            attached = None
         if len(matches) > 1 and attached in matches:
             # Same-URL tabs (a reopened Custom Tab link): keep the attached one only if it is the visible one.
-            matches = [attached] if Appium._attached_tab_visible(driver) else [h for h in matches if h != attached]
+            matches = [attached] if self._attached_tab_visible(driver) else [h for h in matches if h != attached]
         if len(matches) != 1:
             reason = "several tabs show" if matches else "no tab shows"
             raise OpticsError(
@@ -1755,6 +1755,19 @@ class Appium(DriverInterface):
             )
         if matches[0] != attached:
             driver.switch_to.window(matches[0])
+            self._attached_tabs.append(matches[0])
+
+    def _attach_open_tab(self, driver: WebDriver, handles: list[str]) -> str:
+        """The attached tab, or once it closed, the most recently attached one still open."""
+        try:
+            attached = driver.current_window_handle
+        except NoSuchWindowException:
+            # DevTools commands need an open tab. Chrome goes back to the tab it showed before the closed one, so
+            # this is usually the one in front; switching to any other brings it forward until the URL match.
+            attached = next((h for h in reversed(self._attached_tabs) if h in handles), handles[0])
+            driver.switch_to.window(attached)
+        self._attached_tabs = [h for h in self._attached_tabs if h in handles and h != attached] + [attached]
+        return attached
 
     @staticmethod
     def _attached_tab_visible(driver: WebDriver) -> bool:
@@ -1784,17 +1797,19 @@ class Appium(DriverInterface):
         label = f"optics-probe-{uuid.uuid4().hex}"
         context = driver.current_context
         left, top, width, height = driver.execute_script(_PROBE_JS, label)
+        # Some Chrome builds report an image's aria-label as its text rather than its content description.
+        query = (AppiumBy.ACCESSIBILITY_ID, label) if self._is_ios() else (
+            AppiumBy.ANDROID_UIAUTOMATOR, f'new UiSelector().description("{label}");new UiSelector().text("{label}")'
+        )
         try:
             driver.switch_to.context(self.NATIVE_CONTEXT)
             try:
-                rects: list[dict[str, int]]
-                deadline = time.monotonic() + _PROBE_TIMEOUT_S
-                # Android lists a new node in its accessibility tree a moment after the page adds it.
-                while True:
-                    rects = [element.rect for element in driver.find_elements(AppiumBy.ACCESSIBILITY_ID, label)]
-                    if rects or time.monotonic() >= deadline:
-                        break
-                    time.sleep(_POLL_S)
+                rects = self._probe_rects(driver, query)
+                if not rects and not self._is_ios() and driver.current_package in self.ANDROID_BROWSER_PACKAGES.values():
+                    # Chrome drops the page from the accessibility tree when a tab is activated just after the
+                    # one in front closed, until the browser is shown again.
+                    driver.execute_script("mobile: backgroundApp", {"seconds": 0})
+                    rects = self._probe_rects(driver, query)
             finally:
                 driver.switch_to.context(context)
         finally:
@@ -1807,6 +1822,16 @@ class Appium(DriverInterface):
         native = rects[0]
         factor_x, factor_y = native["width"] / width, native["height"] / height
         return native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y
+
+    @staticmethod
+    def _probe_rects(driver: WebDriver, query: tuple[str, str]) -> list[dict[str, int]]:
+        deadline = time.monotonic() + _PROBE_TIMEOUT_S
+        # Android lists a new node in its accessibility tree a moment after the page adds it.
+        while not (rects := [element.rect for element in driver.find_elements(*query)]):
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(_POLL_S)
+        return rects
 
     def _open_deeplink(
             self,
