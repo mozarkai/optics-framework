@@ -247,7 +247,7 @@ class AppiumPageSource(ElementSourceInterface):
     def _in_page_source(self, element: str, strict: bool) -> bool:
         element_type = utils.determine_element_type(element)
         if element_type == "Text":
-            return bool(self.ui_text_search([element], strict=strict))
+            return bool(self.ui_text_search([utils.without_prefix(element, "text=")], strict=strict))
         if element_type == "XPath" and getattr(self.driver, "ui_helper", None) is not None:
             return bool(self.driver.ui_helper.find_xpath(element, strict=strict)[0])
         return False
