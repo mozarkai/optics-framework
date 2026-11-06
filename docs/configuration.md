@@ -464,6 +464,7 @@ Driver sources define the automation frameworks used to control devices or brows
     | `browserName` | `"chrome"`, `"firefox"`, `"safari"`, `"edge"` | Browser type |
     | `browserVersion` | Version string | Browser version |
     | `platformName` | `"Windows"`, `"Linux"`, `"macOS"` | Operating system |
+    | `browserURL` | URL | Page `Launch App` opens when it gets no URL. Optics reads it and does not send it to the server. |
 
 === "Playwright"
 
