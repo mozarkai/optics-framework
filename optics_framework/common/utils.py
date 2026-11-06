@@ -14,7 +14,9 @@ from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_
 from urllib.parse import urlsplit
 import inspect
 from skimage.metrics import structural_similarity as ssim
-from optics_framework.common.logging_config import internal_logger, execution_logger, register_secret, holding_logs_for_secret, mask_secrets
+from optics_framework.common.logging_config import (
+    SENSITIVE_PREFIX, internal_logger, execution_logger, register_secret, holding_logs_for_secret, mask_secrets,
+)
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import ElementData
 
@@ -243,6 +245,21 @@ def escape_csv_value(s: str) -> str:
     if not isinstance(s, str):
         raise TypeError(f"escape_csv_value expects str, got {type(s).__name__}")
     return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+
+def xpath_literal(text: str) -> str:
+    if '"' not in text:
+        return f'"{text}"'
+    if "'" not in text:
+        return f"'{text}'"
+    return "concat(" + ", '\"', ".join(f'"{p}"' for p in text.split('"')) + ")"
+
+
+def dom_text_xpath(text: str) -> str:
+    """The innermost HTML elements whose visible text, label, title or alt text is ``text``, spaces collapsed."""
+    literal = xpath_literal(" ".join(text.split()))
+    named = f"normalize-space()={literal} or @aria-label={literal} or @title={literal} or @alt={literal}"
+    return f"//*[{named}][not(.//*[{named}])]"
 
 
 def determine_element_type(element):
@@ -774,9 +791,12 @@ def save_page_source_html(html: str, time_stamp, output_dir):
     internal_logger.debug(f"HTML page source saved to: {page_source_file_path}")
 
 def strip_sensitive_prefix(value: str) -> str:
-    if isinstance(value, str) and value.startswith("@:"):
-        return value[len("@:"):]
-    return value
+    return without_prefix(value, SENSITIVE_PREFIX) if isinstance(value, str) else value
+
+
+def without_prefix(element: str, prefix: str) -> str:
+    """``element`` less a leading ``prefix``, matched in any letter case."""
+    return element[len(prefix):] if element.lower().startswith(prefix.lower()) else element
 
 
 def save_interactable_elements(elements, output_dir):

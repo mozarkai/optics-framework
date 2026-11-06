@@ -454,7 +454,7 @@ def _label_rung(row: Row, snap: Snapshot) -> str:
     if not row.web:
         raise TargetError(f"{row.ref} has no unique locator; pick another row or pass a locator.", kind="no_locator")
     index = next(i for i, r in enumerate((r for r in same if r.cls == row.cls), 1) if r.ref == row.ref)
-    return f"xpath=(//{row.cls}[normalize-space()={_xpath_literal(' '.join(row.label.split()))}])[{index}]"
+    return f"xpath=(//{row.cls}[normalize-space()={utils.xpath_literal(' '.join(row.label.split()))}])[{index}]"
 
 
 def ladder(row: Row, snap: Snapshot, act_only: bool = False) -> Ladder:
@@ -496,14 +496,6 @@ def is_secret(row: Row | None, snap: Snapshot | None, raw: str = "") -> bool:
 
 def _text_rung(label: str) -> str:
     return label if utils.determine_element_type(label) == "Text" else f"text={label}"
-
-
-def _xpath_literal(text: str) -> str:
-    if '"' not in text:
-        return f'"{text}"'
-    if "'" not in text:
-        return f"'{text}'"
-    return "concat(" + ", '\"', ".join(f'"{p}"' for p in text.split('"')) + ")"
 
 
 def recordable_present(present: Sequence[str], snap: Snapshot) -> tuple[list[str], list[str]]:

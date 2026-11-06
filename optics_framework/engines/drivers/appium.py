@@ -299,6 +299,11 @@ class Appium(DriverInterface):
             return platform  # browser and autoWebview sessions are parked in NATIVE_APP on creation
         return platform if platform in MOBILE and not _starts_in_web(self._session_capabilities()) else None
 
+    def is_web_ui(self) -> bool:
+        """Whether the app is a web page in the session's own context (a TV), so its DOM is the element tree."""
+        profile = get_profile(self._active_platform())
+        return bool(profile and profile.web_ui)
+
     def _require_profile(self) -> PlatformProfile:
         profile = get_profile(self._active_platform())
         if profile is None:

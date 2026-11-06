@@ -195,12 +195,8 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
     def _dom_query(element: str) -> tuple[str, str] | None:
         element_type = utils.determine_element_type(element)
         if element_type == "CSS":
-            return AppiumBy.CSS_SELECTOR, _without_prefix(element, "css=")
+            return AppiumBy.CSS_SELECTOR, utils.without_prefix(element, "css=")
         if element_type == "XPath":
-            xpath = _without_prefix(element, "xpath=")
+            xpath = utils.without_prefix(element, "xpath=")
             return None if utils.is_native_xpath(xpath) else (AppiumBy.XPATH, xpath)
         return None
-
-
-def _without_prefix(element: str, prefix: str) -> str:
-    return element[len(prefix):] if element.lower().startswith(prefix) else element
