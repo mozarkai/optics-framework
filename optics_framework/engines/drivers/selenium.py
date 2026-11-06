@@ -57,10 +57,11 @@ class SeleniumDriver(DriverInterface):
         if self.driver is not None:
             return self.driver
 
-        all_caps = self.capabilities.copy() if self.capabilities else {}
+        all_caps = {key: value for key, value in self.capabilities.items() if key != "browserURL"}
         browser_name_val = self._get_browser_name(all_caps, browser_name)
         options = self._get_browser_options(browser_name_val)
-        self._update_browser_url(all_caps, browser_url)
+        if browser_url:
+            self.browser_url = browser_url
         internal_logger.debug(f"Final capabilities being applied: {redact_secret_values(all_caps)}")
 
         self._set_options_capabilities(options, all_caps)
@@ -100,11 +101,6 @@ class SeleniumDriver(DriverInterface):
         else:
             raise ValueError(f"Unsupported browser: {browser_name_val}")
         return options
-
-    def _update_browser_url(self, all_caps: dict, browser_url: str | None):
-        if browser_url:
-            self.browser_url = browser_url
-            all_caps["browserURL"] = self.browser_url
 
     def _set_options_capabilities(self, options: Any, final_caps: dict):
         for key, value in final_caps.items():
