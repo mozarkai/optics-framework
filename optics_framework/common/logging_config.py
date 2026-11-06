@@ -178,6 +178,11 @@ def register_config_secret(name: str, value: str) -> None:
         _config_secrets = _config_secrets | {value}
 
 
+def is_secret_value(text: str) -> bool:
+    """Whether ``text`` is marked secret inline (``@:``) or is a value registered as a secret."""
+    return text.startswith(SENSITIVE_PREFIX) or text in (_active_secrets.get() or ())
+
+
 def mask_secrets(text: str) -> str:
     # Longest first, so overlapping secrets mask whole.
     for secret in sorted({*(_active_secrets.get() or ()), *_config_secrets}, key=len, reverse=True):

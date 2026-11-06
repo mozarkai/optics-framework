@@ -449,6 +449,25 @@ class ActionKeyword:
             results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered
         )
 
+    def _act_on(
+        self, result: Any, act: Callable[[Any], Any], element: Any, func_name: str, allow_covered: bool
+    ) -> tuple[Any, Exception | None]:
+        """``act``'s return value on one locate result, or the error that sends the caller to the next result."""
+        try:
+            _refuse_covered(result.value, element, allow_covered)
+            # Only the driver behind this result's element source can use its element handle.
+            with self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
+                return act(result.value), None
+        except OpticsError as e:
+            if e.code == Code.E0405:
+                raise  # the action ran, so acting again would repeat it
+            error: Exception = e
+        except Exception as e:  # noqa: BLE001 - try the next strategy's result
+            error = e
+        internal_logger.warning(f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {error}")
+        keyword_outcome.act_failed()
+        return None, error
+
     def _act_until_success(
         self,
         results: Any,
@@ -478,16 +497,9 @@ class ActionKeyword:
                 break
             result_count += 1
             _save_annotated_for_result(result, screenshot_np, self.capture_output_dir, func_name)
-            try:
-                _refuse_covered(result.value, element, allow_covered)
-                # Only the driver behind this result's element source can use its element handle.
-                with self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
-                    ret = act(result.value)
-            except Exception as e:  # noqa: BLE001 - try the next strategy's result
-                internal_logger.warning(
-                    f"Action '{func_name}' failed with {result.strategy.__class__.__name__}: {e}")
-                keyword_outcome.act_failed()
-                last_exception = e
+            ret, error = self._act_on(result, act, element, func_name, allow_covered)
+            if error is not None:
+                last_exception = error
                 continue
             keyword_outcome.acted(result.strategy)
             # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
