@@ -25,16 +25,20 @@ TEXT_ONLY_PREFIX = "text_only:"
 XPATH_PREFIX = "xpath="
 # A web field's innerText is empty; what it shows is its value.
 TEXT_OR_VALUE_JS = "el => ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) ? el.value : el.innerText"
-# Per element: rendered, not visibility:hidden and, when onScreen, not clipped by the viewport or an overflow ancestor.
+# Per element: rendered, not visibility:hidden and, when onScreen, neither transparent nor clipped by the viewport or an overflow ancestor.
 VISIBLE_FLAGS_JS = """
 (els, onScreen) => els.map((el) => {
     const rect = el.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-    if (window.getComputedStyle(el).visibility === 'hidden') return false;
+    const style = window.getComputedStyle(el);
+    if (style.visibility === 'hidden') return false;
     if (!onScreen) return true;
+    if (style.opacity === '0') return false;
     let [top, left, bottom, right] = [rect.top, rect.left, rect.bottom, rect.right];
     for (let node = el.parentElement; node; node = node.parentElement) {
-        if (window.getComputedStyle(node).overflow === 'visible') continue;
+        const nodeStyle = window.getComputedStyle(node);
+        if (nodeStyle.opacity === '0') return false;
+        if (nodeStyle.overflow === 'visible') continue;
         const clip = node.getBoundingClientRect();
         [top, left] = [Math.max(top, clip.top), Math.max(left, clip.left)];
         [bottom, right] = [Math.min(bottom, clip.bottom), Math.min(right, clip.right)];
