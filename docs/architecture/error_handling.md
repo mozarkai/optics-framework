@@ -190,6 +190,7 @@ Keyword execution errors:
 - **E0402**: Keyword not found
 - **E0403**: Invalid keyword parameters
 - **W0404**: Keyword deprecated
+- **E0405**: Action ran, but the screen does not show its result (no fallback retries it)
 
 **Example:**
 ```python

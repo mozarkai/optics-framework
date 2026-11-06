@@ -75,7 +75,7 @@ ADVICE = {
 _CODE_KINDS = {
     "X0201": "not_found", "E0105": "unsupported", "E0101": "session_lost", "E0103": "session_lost",
     "E0106": "session_lost", "E0402": "invalid_params", "E0403": "invalid_params", "E0205": "invalid_params",
-    "E0901": "invalid_params", "E0401": "silent_failure",
+    "E0901": "invalid_params", "E0401": "silent_failure", "E0405": "silent_failure",
 }
 _FATAL_KINDS = frozenset({"session_lost", "unknown_session"})
 _READ_ONLY_PREFIXES = ("get_", "assert_", "validate_")

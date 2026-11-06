@@ -4,6 +4,7 @@ import cv2
 from appium.webdriver.webdriver import WebDriver
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.utils import capture_base64_screenshot_bytes
 
 
@@ -56,6 +57,8 @@ class AppiumScreenshot(ElementSourceInterface):
         truncated-response ("Incorrect padding") base64 failures occasionally seen
         against busy remote hubs.
         """
+        if not getattr(self.driver, "can_native_screenshot", lambda: True)():
+            raise OpticsError(Code.E0303, message="This TV cannot take a screenshot through Appium; use camera_screenshot")
         driver = self._require_driver()
         return capture_base64_screenshot_bytes(driver.get_screenshot_as_base64, "Appium")
 

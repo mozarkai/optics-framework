@@ -61,6 +61,7 @@ class Code(str, Enum):
     E0402 = "E0402"
     E0403 = "E0403"
     W0404 = "W0404"
+    E0405 = "E0405"
 
     # Config/File issues
     E0501 = "E0501"
@@ -240,6 +241,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Keyword deprecated",
         category=Category.KEYWORD,
         default_status=200,
+    ),
+    "E0405": ErrorSpec(
+        code=Code.E0405,
+        default_message="Action ran, but the screen does not show its result",
+        category=Category.KEYWORD,
+        default_status=500,
     ),
     # Config/File issues
     "E0501": ErrorSpec(

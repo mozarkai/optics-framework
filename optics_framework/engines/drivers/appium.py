@@ -1,9 +1,10 @@
+import functools
 import json
 import subprocess  # nosec
 import time
 import uuid
 from contextlib import contextmanager
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any, Dict, List, Optional, Union
 from lxml import etree  # type: ignore
 from urllib.parse import urlsplit, urlunsplit
@@ -33,6 +34,7 @@ from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from optics_framework.engines.drivers import appium_fields
+from optics_framework.engines.drivers.appium_tv import TvWebApp
 from optics_framework.engines.drivers.appium_platforms import (
     PlatformProfile,
     get_profile,
@@ -170,6 +172,16 @@ def _command_executor_and_config(
     return connection, None
 
 
+def _on_tv(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Runs the TV web app's method of the same name when the session is a TV."""
+    @functools.wraps(method)
+    def wrapper(self: "Appium", *args: Any, **kwargs: Any) -> Any:
+        tv = self._tv_app()
+        return method(self, *args, **kwargs) if tv is None else getattr(tv, method.__name__)(*args, **kwargs)
+
+    return wrapper
+
+
 class Appium(DriverInterface):
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "appium"
@@ -262,6 +274,7 @@ class Appium(DriverInterface):
         self.initialized: bool = True
         self._known_web_contexts: dict[tuple[str, str], tuple[str, int]] = {}
         self._frozen_web_contexts: set[tuple[str, str, str]] = set()
+        self._tv: tuple[str, TvWebApp] | None = None
         self._ios_web_context: str | None = None
 
     def _require_driver(self) -> WebDriver:
@@ -303,6 +316,19 @@ class Appium(DriverInterface):
         """Whether the app is a web page in the session's own context (a TV), so its DOM is the element tree."""
         profile = get_profile(self._active_platform())
         return bool(profile and profile.web_ui)
+
+    def can_native_screenshot(self) -> bool:
+        profile = get_profile(self._active_platform())
+        return profile is None or profile.native_screenshot
+
+    def _tv_app(self) -> TvWebApp | None:
+        """The element keywords of a TV web app; a new session starts without the focus marker the last app used."""
+        if not self.is_web_ui():
+            return None
+        driver = self._require_driver()
+        if self._tv is None or self._tv[0] != driver.session_id:
+            self._tv = (str(driver.session_id), TvWebApp(driver.execute_script, self.press_keycode, self.event_sdk))
+        return self._tv[1]
 
     def _require_profile(self) -> PlatformProfile:
         profile = get_profile(self._active_platform())
@@ -1175,6 +1201,7 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.debug(f"Failed to scroll {direction}: {e}")
 
+    @_on_tv
     @supported_on(*MOBILE)
     def enter_text_element(self, element: Any, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
         if event_name:
@@ -1197,6 +1224,7 @@ class Appium(DriverInterface):
             internal_logger.debug(f"Entering text '{text}' into element: {element}")
             self._field_for(element).send_keys(utils.strip_sensitive_prefix(str(text)))
 
+    @_on_tv
     @supported_on(*MOBILE)
     def clear_text_element(self, element: Any, event_name: Optional[str] = None) -> None:
         if event_name:
@@ -1450,6 +1478,7 @@ class Appium(DriverInterface):
             self.event_sdk.capture_event(event_name)
         driver.back()
 
+    @_on_tv
     @supported_on(*MOBILE)
     def get_text_element(self, element: Any) -> str:
         text = element.get_attribute("text")
@@ -1487,6 +1516,7 @@ class Appium(DriverInterface):
 
     # action keywords
 
+    @_on_tv
     @supported_on(*MOBILE)
     def press_element(self, element: Any, repeat: int, event_name: Optional[str] = None) -> None:
         timestamp = None

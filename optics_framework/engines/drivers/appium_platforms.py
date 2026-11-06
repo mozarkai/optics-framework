@@ -25,7 +25,7 @@ TIZEN = "tizentv"   # Samsung Tizen TV  (platformName: TizenTV)
 WEBOS = "lgtv"      # LG webOS TV       (platformName: LGTV)
 
 #: Phone/tablet platforms — the historical Appium surface. Used by ``@supported_on``
-#: to fence off touch/keyboard actions that a TV D-pad cannot perform.
+#: to fence off touch actions that a TV D-pad cannot perform.
 MOBILE = (ANDROID, IOS)
 
 # --- keycode delivery strategies --------------------------------------------
@@ -76,15 +76,15 @@ class PlatformProfile:
     rc_command: str | None = None  # only meaningful when keycode_strategy == KEYCODE_RC_NAMED
     rc_key_map: dict[str, str] = field(default_factory=dict)
     rc_extra_payload: dict[str, Any] = field(default_factory=dict)
-    rc_passthrough_unknown: bool = False  # webOS accepts bare names like "ENTER"
     web_ui: bool = False  # the session's own context is the app's DOM, with no native tree
+    native_screenshot: bool = True
 
     def resolve_rc_key(self, keycode: str) -> str:
         key = str(keycode).strip().upper()
         mapped = self.rc_key_map.get(key)
         if mapped is not None:
             return mapped
-        if key.startswith("KEY_") or self.rc_passthrough_unknown:
+        if key.startswith("KEY_"):
             return key
         raise OpticsError(
             Code.E0104,
@@ -179,17 +179,19 @@ register_profile(PlatformProfile(
     default_options={"newCommandTimeout": 3600, "rcMode": "remote", "noReset": True},
     rc_command="tizen: pressKey",
     rc_key_map=_TIZEN_KEYS,
-    rc_passthrough_unknown=False,
     web_ui=True,
+    native_screenshot=False,  # hangs on the TV's hardware compositor and stalls every later command
 ))
 
-# webOS accepts bare names ("ENTER", "UP") in rc mode; map is identity for nav/media.
+# The webOS driver's remote buttons and media keys; it sends any other name to the TV, which ignores it.
 _WEBOS_KEYS = {
     "UP": "UP", "DOWN": "DOWN", "LEFT": "LEFT", "RIGHT": "RIGHT",
     "ENTER": "ENTER", "SELECT": "ENTER", "OK": "ENTER",
     "BACK": "BACK", "HOME": "HOME",
     "PLAY": "PLAY", "PAUSE": "PAUSE", "STOP": "STOP",
     "REWIND": "REWIND", "FF": "FF", "FAST_FORWARD": "FF",
+    "VOL_UP": "VOL_UP", "VOLUME_UP": "VOL_UP", "VOL_DOWN": "VOL_DOWN", "VOLUME_DOWN": "VOL_DOWN",
+    "MUTE": "MUTE", "UNMUTE": "UNMUTE", "CHAN_UP": "CHAN_UP", "CHAN_DOWN": "CHAN_DOWN",
 }
 register_profile(PlatformProfile(
     name=WEBOS,
@@ -204,6 +206,5 @@ register_profile(PlatformProfile(
     rc_command="webos: pressKey",
     rc_key_map=_WEBOS_KEYS,
     rc_extra_payload={"duration": 200},
-    rc_passthrough_unknown=True,
     web_ui=True,
 ))
