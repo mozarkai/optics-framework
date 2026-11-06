@@ -1,0 +1,65 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="56c16a2f-85d6-4a7e-b6a5-de29bdd4aac2" tests="8" failures="0" errors="1" skipped="3" time="7.04" timestamp="2026-11-06T00:52:37.152+05:30">
+    <testcase name="Suite Setup" id="d25d1b9f-c6ac-4706-a44e-50894e3e8ce3" classname="checkout_suite" time="1.38" timestamp="2026-11-06T00:52:37.152+05:30" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261106 00:52:37.153" endtime="20261106 00:52:38.535" elapsed="1.38">
+        <kw name="Launch App" status="PASS" starttime="20261106 00:52:37.153" endtime="20261106 00:52:38.534" elapsed="1.38"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Notice Shown)" id="31a50185-d058-454d-bbb9-6ed4df02a209" classname="checkout_suite" time="0.16" timestamp="2026-11-06T00:52:38.537+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261106 00:52:38.538" endtime="20261106 00:52:38.700" elapsed="0.16">
+        <kw name="Assert Presence" status="PASS" starttime="20261106 00:52:38.538" endtime="20261106 00:52:38.699" elapsed="0.16">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC1 Notice Shown" id="84aaa586-adfe-4fbe-9558-5c929676c7f9" classname="checkout_suite" time="0.05" timestamp="2026-11-06T00:52:38.702+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261106 00:52:38.703" endtime="20261106 00:52:38.750" elapsed="0.05">
+        <kw name="Assert Presence" status="PASS" starttime="20261106 00:52:38.703" endtime="20261106 00:52:38.750" elapsed="0.05">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC2 Slow)" id="5f94f9e5-7b42-4dc7-8113-6680271ffac0" classname="checkout_suite" time="0.06" timestamp="2026-11-06T00:52:38.751+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261106 00:52:38.751" endtime="20261106 00:52:38.809" elapsed="0.06">
+        <kw name="Assert Presence" status="PASS" starttime="20261106 00:52:38.751" endtime="20261106 00:52:38.808" elapsed="0.06">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC2 Slow" id="0cffe534-80b1-4c90-8ce6-0541d6142dfd" classname="checkout_suite" time="5.39" timestamp="2026-11-06T00:52:38.810+05:30" status="ERROR">
+      <kw name="Wait Long" type="setup" status="ERROR" starttime="20261106 00:52:38.810">
+        <kw name="Sleep" status="ERROR" starttime="20261106 00:52:38.811"/>
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <error message="The run ended before this test case reported a result." type="Error">The run ended before this test case reported a result.</error>
+    </testcase>
+    <testcase name="Setup (TC3 Never Started)" classname="checkout_suite" time="0" status="NOT_RUN">
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <skipped message="The run ended before this test case started."/>
+    </testcase>
+    <testcase name="TC3 Never Started" classname="checkout_suite" time="0" status="NOT_RUN">
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <skipped message="The run ended before this test case started."/>
+    </testcase>
+    <testcase name="Suite Teardown" classname="checkout_suite" time="0" status="NOT_RUN">
+      <kw name="Close Browser" type="setup" status="NOT_RUN">
+        <kw name="Close And Terminate App" status="NOT_RUN"/>
+      </kw>
+      <skipped message="The run ended before this test case started."/>
+    </testcase>
+  </testsuite>
+</testsuites>
