@@ -269,7 +269,8 @@ Direct element location using Appium's find element methods.
 Direct element location using Selenium's find element methods.
 
 - `css=` and bare CSS selectors, DOM XPath, visible text
-- One look per call; `Assert Presence` does the waiting
+- Waits up to the driver's `element_timeout_ms` for an element before acting on it
+- `Assert Visibility` counts only elements on screen, not hidden or clipped ones
 
 #### PlaywrightFindElement
 
