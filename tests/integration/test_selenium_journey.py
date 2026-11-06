@@ -1,5 +1,6 @@
 """Web journeys through a chromedriver WebDriver server against the local fixture site."""
 
+import json
 import pathlib
 import socket
 import subprocess
@@ -16,6 +17,8 @@ from optics_framework.helper.execute import run_project  # noqa: E402
 pytestmark = pytest.mark.black_box
 
 FIXTURE = pathlib.Path(__file__).parent / "web_fixture"
+STORE_URL = (FIXTURE / "index.html").as_uri()
+CAPABILITIES = {"browserName": "chrome", "goog:chromeOptions": {"args": ["--headless=new"]}}
 
 CONFIG = """\
 driver_sources:
@@ -77,7 +80,7 @@ def server_url():
 def _project(tmp_path, server_url, steps):
     modules = [
         "module_name,module_step,param_1,param_2",
-        f"Open Store,Launch App,{(FIXTURE / 'index.html').as_uri()}",
+        f"Open Store,Launch App,{STORE_URL}",
         *(f"Journey,{step}" for step in steps),
         "Close Store,Close And Terminate App",
     ]
@@ -127,3 +130,44 @@ def test_visibility_fails_for_an_element_its_parent_clips(tmp_path, server_url):
 def test_a_missing_element_fails_the_run(tmp_path, server_url):
     project = _project(tmp_path, server_url, ["Assert Presence,css=#not-on-the-page,2"])
     assert run_project(project, use_printer=False) is False
+
+
+def test_a_failed_step_leaves_the_screen_elements(tmp_path, server_url):
+    project = _project(tmp_path, server_url, ["Press Element,#not-on-the-page"])
+
+    assert run_project(project, use_printer=False) is False
+    failures = json.loads((tmp_path / "execution_output" / "failed_steps_elements.json").read_text())
+    assert [f["step"] for f in failures] == ["Press Element (#not-on-the-page)"]
+    assert any(e.get("label") == "Sign in" for e in failures[0]["elements"])
+
+
+async def test_mcp_session_offers_unique_locators_for_the_suite(server_url, monkeypatch):
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    monkeypatch.setenv("OPTICS_MCP_TOOLSET", "full")
+    async with fastmcp.Client(build_server()) as client:
+        started = await client.call_tool(
+            "start_session",
+            {"driver": "selenium", "url": server_url, "capabilities": {**CAPABILITIES, "browserURL": STORE_URL}},
+        )
+        session_id = started.data["session_id"]
+        try:
+            resource = await client.read_resource(f"optics://session/{session_id}/elements")
+            compact = json.loads(resource[0].text)
+            locators = {el["label"]: el.get("loc") for el in compact}
+
+            assert locators["Email"] == "css=#email"
+            assert locators["Password"] == 'css=[data-testid="password"]'
+            screen = await client.read_resource(f"optics://session/{session_id}/screen_elements")
+            full = json.loads(screen[0].text)["elements"]
+            assert len(full) == len(compact)
+            assert {el.get("loc") for el in full} == {el.get("loc") for el in compact}
+
+            for element, text in ((locators["Email"], "ava@example.com"), (locators["Password"], "secret")):
+                await client.call_tool("enter_text", {"session_id": session_id, "element": element, "text": text})
+            await client.call_tool("press_element", {"session_id": session_id, "element": "Sign in"})
+            await client.call_tool(
+                "assert_presence", {"session_id": session_id, "elements": "Welcome, ava@example.com"}
+            )
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
