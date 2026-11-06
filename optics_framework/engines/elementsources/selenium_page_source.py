@@ -3,6 +3,7 @@ from typing import Optional, Any, Tuple, List
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
+from optics_framework.engines.drivers import selenium_locator
 from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 
 
@@ -71,68 +72,9 @@ class SeleniumPageSource(ElementSourceInterface):
         internal_logger.exception(msg)
         raise NotImplementedError(msg)
 
-    def _strict_element_match(self) -> bool:
-        """Whether project config requests exact-only matching (Config.strict_element_match).
-
-        Governs both locate and presence/assert checks so the two stay uniform -- see
-        assert_elements. Defaults False (fuzzy) when the config chain is unavailable.
-        """
-        try:
-            return bool(self.driver.event_sdk.config_handler.config.strict_element_match)
-        except AttributeError:
-            return False
-
     def locate(self, element: str, index: Optional[int] = None) -> Any:
-        """
-        Locate an element on the current webpage using Selenium.
-
-        Args:
-            element (str): The identifier of the element to locate. Can be an XPath string, visible text, or element ID.
-            index (int, optional): Index-based selection is not supported for Selenium and will raise a ValueError if provided.
-
-        Returns:
-            WebElement or None: The located Selenium WebElement if found, otherwise None.
-
-        Raises:
-            ValueError: If the `index` argument is provided, as it's unsupported in Selenium.
-        """
-        driver = self._require_webdriver()
-        element_type = utils.determine_element_type(element)
-        if index is not None:
-            msg = 'Selenium Page Source does not support locating elements using index.'
-            internal_logger.error(msg)
-            raise ValueError(msg)
-        strict = self._strict_element_match()
-        try:
-            if element_type == "Image":
-                internal_logger.debug("Selenium does not support locating elements by image.")
-                return None
-            elif element_type == "XPath":
-                internal_logger.debug(f"Locating by XPath: {element}")
-                found_element = driver.find_element("xpath", element)
-                return found_element if found_element else None
-            elif element_type == "Text":
-                return self._locate_text(driver, element, strict)
-        except Exception as e:
-            internal_logger.error(f"Unexpected error locating element {element}: {e}")
-            return None
-
-    def _locate_text(self, driver: Any, element: str, strict: bool) -> Any:
-        try:
-            xpath = (
-                f"//*[normalize-space(text())='{element}']"
-                if strict
-                else f"//*[contains(text(), '{element}') or normalize-space(text())='{element}']"
-            )
-            internal_logger.debug(f"Trying text-based XPath: {xpath}")
-            found_element = driver.find_element("xpath", xpath)
-            return found_element if found_element else None
-        except Exception:
-            if strict:
-                internal_logger.debug(f"Strict matching enabled; no exact text match found for: {element}")
-                return None
-            internal_logger.debug(f"Text not found, falling back to ID: {element}")
-            return self._find_element_by_any(driver, element, strict=strict)
+        self._require_webdriver()
+        return selenium_locator.find(self.driver, element, index or 0)
 
     def get_element_bboxes(
         self, elements: list
@@ -152,39 +94,6 @@ class SeleniumPageSource(ElementSourceInterface):
     ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
         """Return bounding box for an already-located WebElement."""
         return utils.bbox_from_webelement_like(element)
-
-    def _find_element_by_any(self, driver: Any, locator_value: str, strict: bool = False) -> Any:
-        """
-        Try locating an element using all known Selenium strategies.
-
-        strict=True skips "partial link text" -- the one strategy here that matches on
-        a substring rather than an exact value.
-        """
-        strategies = [
-            ("id", locator_value),
-            ("name", locator_value),
-            ("class name", locator_value),
-            ("tag name", locator_value),
-            ("link text", locator_value),
-        ]
-        if not strict:
-            strategies.append(("partial link text", locator_value))
-        strategies += [
-            ("css selector", locator_value),
-            ("xpath", locator_value),
-        ]
-        for strategy, value in strategies:
-            try:
-                internal_logger.debug(f"Trying {strategy}: {value}")
-                found_element = driver.find_element(strategy, value)
-                if found_element:
-                    return found_element
-            except Exception as e:
-                internal_logger.debug(f"Strategy {strategy} failed for value {value}: {e}")
-                continue
-        internal_logger.warning(f"No matching element found using any strategy for: {locator_value}")
-        return None
-
 
     def locate_using_index(self) -> None:
         msg = 'Selenium Page Source does not support locating elements using index.'
