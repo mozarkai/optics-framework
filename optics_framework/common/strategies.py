@@ -114,13 +114,13 @@ class LocatorStrategy(ABC):
         except Exception as e:
             internal_logger.exception("Failed to capture screenshot for an assertion: %s", e)
             frame = None
-        bboxes = []
-        if hasattr(self.element_source, 'get_element_bboxes'):
-            bboxes = [
-                b for b in self.element_source.get_element_bboxes(elements)
-                if b is not None
-            ]
         if frame is not None:
+            bboxes = []
+            if hasattr(self.element_source, 'get_element_bboxes'):
+                bboxes = [
+                    b for b in self.element_source.get_element_bboxes(elements)
+                    if b is not None
+                ]
             if bboxes:
                 # Element bboxes are in the driver's window coordinate space;
                 # scale them to the screenshot's pixel space before drawing
