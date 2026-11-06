@@ -74,10 +74,11 @@ def _queries(element: str, strict: bool) -> list[tuple[str, str]]:
         return []
     value = utils.without_prefix(element, "text=")
     literal = utils.xpath_literal(value)
-    queries = [(By.XPATH, f"{_RENDERED}[normalize-space(text())={literal}]")]
-    if not strict:
-        queries.append((By.XPATH, f"{_RENDERED}[contains(text(), {literal})]"))
-    queries += [(By.ID, value), (By.NAME, value), (By.CLASS_NAME, value), (By.TAG_NAME, value), (By.LINK_TEXT, value)]
-    if not strict:
-        queries.append((By.PARTIAL_LINK_TEXT, value))
-    return queries + [(By.CSS_SELECTOR, value), (By.XPATH, value)]
+    exact = (By.XPATH, f"{_RENDERED}[normalize-space(text())={literal}]")
+    if strict:
+        return [exact]
+    return [
+        exact, (By.XPATH, f"{_RENDERED}[contains(text(), {literal})]"),
+        (By.ID, value), (By.NAME, value), (By.CLASS_NAME, value), (By.TAG_NAME, value),
+        (By.LINK_TEXT, value), (By.PARTIAL_LINK_TEXT, value), (By.CSS_SELECTOR, value), (By.XPATH, value),
+    ]
