@@ -3,7 +3,6 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
 from optics_framework.engines.drivers import selenium_locator
-from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 
 
 class SeleniumPageSource(ElementSourceInterface):
@@ -27,9 +26,6 @@ class SeleniumPageSource(ElementSourceInterface):
             driver: The Selenium driver instance (should be passed explicitly).
         """
         self.driver = driver
-        self.ui_helper: Optional[UIHelper] = (
-            getattr(self.driver, "ui_helper", None) if self.driver is not None else None
-        )
         self.tree = None
         self.root = None
 
@@ -37,8 +33,6 @@ class SeleniumPageSource(ElementSourceInterface):
         if self.driver is None:
             internal_logger.error("Selenium driver is not initialized for SeleniumPageSource.")
             raise RuntimeError("Selenium driver is not initialized for SeleniumPageSource.")
-        if self.ui_helper is None and hasattr(self.driver, "ui_helper"):
-            self.ui_helper = self.driver.ui_helper
         return self.driver.require_webdriver()
 
     def capture(self):
@@ -48,8 +42,6 @@ class SeleniumPageSource(ElementSourceInterface):
         msg = 'Selenium Page Source does not support capturing the screen state.'
         internal_logger.exception(msg)
         raise NotImplementedError(msg)
-
-
 
     def get_page_source(self) -> Tuple[str, str]:
         """
@@ -99,7 +91,6 @@ class SeleniumPageSource(ElementSourceInterface):
         internal_logger.error(msg)
         raise NotImplementedError(msg)
 
-
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> None:
         self._require_webdriver()
         selenium_locator.wait_for(self.driver, elements, timeout, rule)
@@ -111,24 +102,3 @@ class SeleniumPageSource(ElementSourceInterface):
     def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
         self._require_webdriver()
         return selenium_locator.check(self.driver, elements, visible)
-
-    # ----- Supporting Methods -----
-    def _is_text_found(self, text: str) -> bool:
-        if self.ui_helper is None:
-            internal_logger.warning("UIHelper is not initialized.")
-            return False
-        try:
-            self.ui_helper.find_html_element_by_text(text)
-            return True
-        except ValueError:
-            return False
-
-    def _is_xpath_found(self, xpath: str) -> bool:
-        if self.ui_helper is None:
-            internal_logger.warning("UIHelper is not initialized.")
-            return False
-        try:
-            self.ui_helper.find_html_element_by_xpath(xpath)
-            return True
-        except ValueError:
-            return False
