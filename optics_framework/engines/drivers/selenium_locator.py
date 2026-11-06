@@ -13,14 +13,19 @@ _ON_SCREEN_FLAGS = f"return ({utils.VISIBLE_FLAGS_JS})(arguments[0], true);"
 _POLL_INTERVAL_S = 0.25
 
 
-def find(driver: Any, element: str, index: int = 0, *, visible: bool = False) -> Any:
-    """The ``index``-th match of ``element`` (on screen when ``visible``), or ``None`` when nothing matches."""
+def find(driver: Any, element: str, index: int = 0, *, visible: bool = False, timeout_s: float = 0.0) -> Any:
+    """The ``index``-th match of ``element`` (on screen when ``visible``), or ``None`` after ``timeout_s``."""
     webdriver = driver.require_webdriver()
-    for query in _queries(element, _strict_element_match(driver)):
-        matches = _matches(webdriver, query, visible)
-        if len(matches) > index:
-            return matches[index]
-    return None
+    queries = _queries(element, _strict_element_match(driver))
+    deadline = time.monotonic() + timeout_s
+    while True:
+        for query in queries:
+            matches = _matches(webdriver, query, visible)
+            if len(matches) > index:
+                return matches[index]
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(_POLL_INTERVAL_S)
 
 
 def check(driver: Any, elements: list[str], visible: bool = False) -> list[bool]:

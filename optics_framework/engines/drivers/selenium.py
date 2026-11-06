@@ -17,6 +17,8 @@ class SeleniumDriver(DriverInterface):
     NAME = "selenium"
     ACTION_NOT_SUPPORTED = "Action not supported in Selenium."
     SETUP_NOT_INITIALIZED = "Selenium setup not initialized. Call start_session() first."
+    DEFAULT_ELEMENT_TIMEOUT_MS = 10000
+    _OPTICS_CAPABILITIES = frozenset({"browserURL", "element_timeout_ms"})
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
@@ -41,6 +43,7 @@ class SeleniumDriver(DriverInterface):
             raise ValueError("Selenium capabilities not found in config")
 
         self.browser_url: str = str(self.capabilities.get("browserURL", "about:blank"))
+        self.element_timeout_s: float = int(self.capabilities.get("element_timeout_ms", self.DEFAULT_ELEMENT_TIMEOUT_MS)) / 1000
         self.initialized = True
         self.ui_helper = None
 
@@ -57,7 +60,7 @@ class SeleniumDriver(DriverInterface):
         if self.driver is not None:
             return self.driver
 
-        all_caps = {key: value for key, value in self.capabilities.items() if key != "browserURL"}
+        all_caps = {key: value for key, value in self.capabilities.items() if key not in self._OPTICS_CAPABILITIES}
         browser_name_val = self._get_browser_name(all_caps, browser_name)
         options = self._get_browser_options(browser_name_val)
         if browser_url:
