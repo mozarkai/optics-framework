@@ -88,6 +88,7 @@ class Playwright(DriverInterface):
     _CONNECT_METHODS = {"cdp": "connect_over_cdp", "playwright": "connect"}
     SETTLE_QUIET_S = 0.5
     SETTLE_POLL_S = 0.1
+    _CAN_GO_BACK_SCRIPT = "() => window.navigation && 'canGoBack' in navigation ? navigation.canGoBack : history.length > 1"
     # None while the document is still parsing, so "loading" never counts as stable.
     _DOM_FINGERPRINT_SCRIPT = """() => {
         if (document.readyState === 'loading' || !document.body) return null;
@@ -274,6 +275,27 @@ class Playwright(DriverInterface):
             self._browser = await browser_type.launch(headless=self._setting("headless", False), **self._launch_options())
             await self._open_new_context()
         self._context.set_default_timeout(self.element_timeout_s() * 1000)
+        self._follow_pages()
+
+    def _follow_pages(self):
+        """Keep ``self.page`` on the tab in front: a tab or popup the page opens, and its opener once it closes."""
+        self._context.on("page", self._on_page_opened)
+        for page in self._context.pages:
+            page.on("close", self._on_page_closed)
+
+    def _on_page_opened(self, page: Page):
+        page.on("close", self._on_page_closed)
+        self.page = page
+
+    async def _on_page_closed(self, page: Page):
+        if page is not self.page or self._context is None:
+            return
+        open_pages = [p for p in self._context.pages if not p.is_closed()]
+        if not open_pages:
+            return
+        opener = await page.opener()
+        self.page = opener if opener in open_pages else open_pages[-1]
+        await self.page.bring_to_front()
 
     def _launch_options(self, channel: str | None = None) -> dict:
         channel = channel or self._setting("channel", None)
@@ -752,6 +774,10 @@ class Playwright(DriverInterface):
     async def _go_back_async(self):
         if not self.page:
             raise OpticsError(Code.E0102, self.PAGE_NOT_INITIALIZED_MSG)
+        if await self.page.opener() is not None and not await self.page.evaluate(self._CAN_GO_BACK_SCRIPT):
+            # Back in a tab another page opened closes it, as a mobile browser does.
+            await self.page.close()
+            return
         await self.page.go_back(
             timeout=self._navigation_timeout_ms(),
             wait_until=self._setting("navigation_wait_until", "domcontentloaded"),
