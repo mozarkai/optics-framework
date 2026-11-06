@@ -120,6 +120,11 @@ class SeleniumDriver(DriverInterface):
             if name != "args":
                 options.add_experimental_option(name, value)
 
+    def require_webdriver(self) -> webdriver.Remote:
+        if self.driver is None:
+            raise RuntimeError(self.SETUP_NOT_INITIALIZED)
+        return self.driver
+
     def terminate(self, event_name: str | None = None) -> None:
         """End the current Selenium session."""
         if self.driver is not None:

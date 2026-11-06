@@ -260,12 +260,12 @@ class TestSeleniumScreenshotBytes:
     def test_returns_decoded_base64(self):
         png = b"\x89PNG\r\n\x1a\nDATA"
         drv = _FakeWD([base64.b64encode(png).decode("ascii")])
-        assert SeleniumScreenshot(driver=drv).capture_screenshot_bytes() == png
+        assert SeleniumScreenshot(driver=SimpleNamespace(require_webdriver=lambda: drv)).capture_screenshot_bytes() == png
 
     def test_retries_then_succeeds(self, _no_backoff):
         png = b"\x89PNGok"
         drv = _FakeWD(["bad!!!", base64.b64encode(png).decode("ascii")])
-        assert SeleniumScreenshot(driver=drv).capture_screenshot_bytes() == png
+        assert SeleniumScreenshot(driver=SimpleNamespace(require_webdriver=lambda: drv)).capture_screenshot_bytes() == png
         assert drv.calls == 2
 
 

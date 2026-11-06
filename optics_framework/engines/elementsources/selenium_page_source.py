@@ -39,7 +39,7 @@ class SeleniumPageSource(ElementSourceInterface):
             raise RuntimeError("Selenium driver is not initialized for SeleniumPageSource.")
         if self.ui_helper is None and hasattr(self.driver, "ui_helper"):
             self.ui_helper = self.driver.ui_helper
-        return self.driver
+        return self.driver.require_webdriver()
 
     def capture(self):
         """
