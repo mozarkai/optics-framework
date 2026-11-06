@@ -123,3 +123,41 @@ def test_launch_app_without_an_app_only_starts_the_session():
     assert instance.launch_app() == "session-1"
 
     instance.start_session.assert_called_once_with(app_package=None, app_activity=None, event_name=None)
+
+
+def _first_launch(instance: Appium) -> Appium:
+    webdriver = instance.driver
+    instance.driver = None
+
+    def start_session(**_):
+        instance.driver = webdriver
+        return "session-1"
+
+    instance.start_session = MagicMock(side_effect=start_session)
+    return instance
+
+
+def test_first_launch_brings_the_app_to_the_front_when_the_session_did_not_open_it():
+    instance = _first_launch(_android("com.google.android.apps.nexuslauncher", "com.example.app"))
+
+    assert instance.launch_app("com.example.app") == "session-1"
+
+    instance.driver.activate_app.assert_called_once_with("com.example.app")
+
+
+def test_first_launch_leaves_an_app_the_session_opened_alone():
+    instance = _first_launch(_android("com.example.app", "com.example.app"))
+
+    instance.launch_app("com.example.app")
+
+    instance.driver.activate_app.assert_not_called()
+
+
+def test_first_launch_fails_when_the_app_does_not_stay_in_front():
+    instance = _first_launch(_ios("com.apple.springboard"))
+    instance.LAUNCH_SETTLE_TIMEOUT_S = 0
+
+    with pytest.raises(OpticsError) as excinfo:
+        instance.launch_app("com.apple.Preferences")
+
+    assert excinfo.value.code == Code.E0401

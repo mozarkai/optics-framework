@@ -932,21 +932,15 @@ class Appium(DriverInterface):
                 session_id = self.start_session(event_name=event_name)
             self._open_deeplink(self._require_driver(), app_identifier)
             return session_id
-        if self.driver is None or not self._is_session_alive():
+        session_opened_app = self.driver is None or not self._is_session_alive()
+        if session_opened_app:
             session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,
                 event_name=event_name,
             )
-        elif app_identifier:
-            driver = self._require_driver()
-            try:
-                driver.activate_app(app_identifier)
-            except Exception as exc:
-                raise OpticsError(
-                    Code.E0401, message=f"Failed to launch: {app_identifier}", cause=exc
-                ) from exc
-            self._wait_until_in_front(driver, app_identifier)
+        if app_identifier:
+            self._bring_to_front(self._require_driver(), app_identifier, session_opened_app)
 
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
@@ -971,16 +965,12 @@ class Appium(DriverInterface):
         if event_name and capture_event_here:
             self.event_sdk.capture_event(event_name)
 
+        if not self._is_deeplink(app_name):
+            self._bring_to_front(driver, app_name)
+            return
         try:
-            if self._is_deeplink(app_name):
-                self._open_deeplink(driver, app_name)
-                return
-
-            driver.activate_app(app_name)
-            internal_logger.debug(f"Activated app: {app_name}")
-
+            self._open_deeplink(driver, app_name)
         except OpticsError:
-            # Preserve original OpticsError without wrapping
             raise
         except Exception as exc:
             raise OpticsError(
@@ -988,7 +978,16 @@ class Appium(DriverInterface):
                 message=f"Failed to launch: {app_name}",
                 cause=exc,
             ) from exc
-        self._wait_until_in_front(driver, app_name)
+
+    def _bring_to_front(self, driver: WebDriver, app_id: str, session_opened_app: bool = False) -> None:
+        """Activate the app unless the new session shows it (an attached session or autoLaunch off may not), then wait for it."""
+        if not session_opened_app or self._front_app(driver) not in (app_id, None):
+            try:
+                driver.activate_app(app_id)
+            except Exception as exc:
+                raise OpticsError(Code.E0401, message=f"Failed to launch: {app_id}", cause=exc) from exc
+            internal_logger.debug(f"Activated app: {app_id}")
+        self._wait_until_in_front(driver, app_id)
 
     def _front_app(self, driver: WebDriver) -> str | None:
         """Package or bundle id of the app in front; None where the platform cannot tell."""

@@ -674,7 +674,7 @@ These keywords handle application lifecycle operations.
 
 Launches the specified application.
 
-On Android and iOS, the keyword then waits up to 5 seconds for the app to come to the front. If another app stays in front (for example, the app closed at once), the keyword fails with `E0401` and names that app. A permission prompt or system alert over the app counts as a launch.
+On Android and iOS, if the keyword starts the session and another app is in front (for example, the session attached to a running session, or `autoLaunch` is `false`), the keyword opens the app. The keyword then waits up to 5 seconds for the app to come to the front. If another app stays in front (for example, the app closed at once), the keyword fails with `E0401` and names that app. A permission prompt or system alert over the app counts as a launch.
 
 **Parameters:**
 
