@@ -465,6 +465,7 @@ Driver sources define the automation frameworks used to control devices or brows
     | `browserVersion` | Version string | Browser version |
     | `platformName` | `"Windows"`, `"Linux"`, `"macOS"` | Operating system |
     | `browserURL` | URL | Page `Launch App` opens when it gets no URL. Optics reads it and does not send it to the server. |
+    | `element_timeout_ms` | Milliseconds, default `10000` | How long `SeleniumFindElement` waits for an element before acting on it. Optics reads it and does not send it to the server. |
 
 === "Playwright"
 
