@@ -9,7 +9,6 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.session_liveness import is_webdriver_server_unreachable
 from optics_framework.common.logging_config import internal_logger, redact_secret_values
 from optics_framework.common.eventSDK import EventSDK
-from optics_framework.engines.drivers.selenium_UI_helper import UIHelper
 
 
 class SeleniumDriver(DriverInterface):
@@ -45,7 +44,6 @@ class SeleniumDriver(DriverInterface):
         self.browser_url: str = str(self.capabilities.get("browserURL", "about:blank"))
         self.element_timeout_s: float = int(self.capabilities.get("element_timeout_ms", self.DEFAULT_ELEMENT_TIMEOUT_MS)) / 1000
         self.initialized = True
-        self.ui_helper = None
 
     def start_session(
         self,
@@ -78,7 +76,6 @@ class SeleniumDriver(DriverInterface):
                 internal_logger.debug(
                     f"Starting Selenium session with event: {event_name}")
                 self.event_sdk.capture_event(event_name)
-            self.ui_helper = UIHelper(self.driver)
             internal_logger.debug(
                 f"Started Selenium session at {self.selenium_server_url} with browser: {browser_name_val}")
         except Exception as e:
