@@ -1,4 +1,3 @@
-import time
 from typing import Optional, Any, Tuple, List
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
@@ -102,40 +101,16 @@ class SeleniumPageSource(ElementSourceInterface):
 
 
     def assert_elements(self, elements: list, timeout: int = 30, rule: str = 'any') -> None:
-        """
-        Assert the presence of elements on the current page.
+        self._require_webdriver()
+        selenium_locator.wait_for(self.driver, elements, timeout, rule)
 
-        Args:
-            elements (list): List of elements to assert on the page.
-            timeout (int): Maximum time to wait for the elements to appear.
-            rule (str): Rule to apply ("any" or "all").
-
-        Returns:
-            None
-
-        Raises:
-            Exception: If elements are not found based on the rule within the timeout.
-        """
-        if rule not in ["any", "all"]:
-            raise ValueError("Invalid rule. Use 'any' or 'all'.")
-
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            found_elements = self.check_elements(elements)
-
-            if (rule == "all" and all(found_elements)) or (rule == "any" and any(found_elements)):
-                internal_logger.debug(f"Assertion passed with rule '{rule}' for elements: {elements}")
-                return
-
-            time.sleep(0.3)
-        internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
-        raise TimeoutError(
-            f"Timeout reached: Elements not found based on rule '{rule}': {elements}"
-        )
+    def assert_elements_visible(self, elements: list, timeout: int = 30, rule: str = 'any') -> None:
+        self._require_webdriver()
+        selenium_locator.wait_for(self.driver, elements, timeout, rule, visible=True)
 
     def check_elements(self, elements: list[str], visible: bool = False) -> list[bool]:
-        return [self.locate(element) is not None for element in elements]
+        self._require_webdriver()
+        return selenium_locator.check(self.driver, elements, visible)
 
     # ----- Supporting Methods -----
     def _is_text_found(self, text: str) -> bool:
