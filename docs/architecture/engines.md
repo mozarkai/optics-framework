@@ -234,11 +234,11 @@ Finds CSS and DOM XPath locators in the web page of the app in front. See [Mobil
 
 **Location:** `optics_framework/engines/elementsources/selenium_page_source.py`
 
-Extracts and parses Selenium page source HTML.
+Reads the page HTML and finds elements through the WebDriver session.
 
-- HTML DOM parsing
-- CSS selector support
-- Element attribute extraction
+- `css=` and bare CSS selectors, DOM XPath
+- Visible text: exact match first, then partial, then id, name and link text
+- Same lookup as `SeleniumFindElement` (`engines/drivers/selenium_locator.py`)
 
 #### PlaywrightPageSource
 
@@ -268,9 +268,8 @@ Direct element location using Appium's find element methods.
 
 Direct element location using Selenium's find element methods.
 
-- WebDriver locator strategies
-- Element waiting
-- Element interaction
+- `css=` and bare CSS selectors, DOM XPath, visible text
+- One look per call; `Assert Presence` does the waiting
 
 #### PlaywrightFindElement
 
