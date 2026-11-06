@@ -45,6 +45,13 @@ class TestAssertElementsTextPresence:
 
         source.assert_elements(["Buy 101 devices"], timeout=1, rule="any")
 
+    @pytest.mark.parametrize("strict", [True, False])
+    @pytest.mark.parametrize("element", ["text=Login", "TEXT=Login"])
+    def test_text_prefixed_locator_is_found(self, element, strict):
+        tree = '<hierarchy><android.widget.Button text="Login" bounds="[0,0][200,50]"/></hierarchy>'
+
+        assert _source(tree, strict_element_match=strict).check_elements([element]) == [True]
+
     def test_fuzzy_near_miss_rejected_when_strict(self):
         source = _source(strict_element_match=True)
 
