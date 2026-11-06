@@ -46,8 +46,8 @@ class SeleniumScreenshot(ElementSourceInterface):
         bytes. The retry (shared with :class:`AppiumScreenshot`) absorbs
         transient/truncated responses from remote Grid nodes.
         """
-        driver = self._require_driver()
-        return capture_base64_screenshot_bytes(driver.get_screenshot_as_base64, "Selenium")
+        webdriver = self._require_driver().require_webdriver()
+        return capture_base64_screenshot_bytes(webdriver.get_screenshot_as_base64, "Selenium")
 
     def capture_screenshot_as_numpy(self) -> np.ndarray:
         """

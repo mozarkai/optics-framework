@@ -13,6 +13,8 @@ class SeleniumFindElement(ElementSourceInterface):
     Selenium Find Element Class
     """
 
+    REQUIRED_DRIVER_TYPE = "selenium"
+
     def __init__(self, driver: Any = None):
         """
         Initialize the Selenium Find Element Class.
@@ -40,7 +42,7 @@ class SeleniumFindElement(ElementSourceInterface):
         if self.driver is None:
             internal_logger.error(NOT_INITIALISED_MSG)
             raise RuntimeError(NOT_INITIALISED_MSG)
-        page_source = self.driver.page_source
+        page_source = self.driver.require_webdriver().page_source
         timestamp = utils.get_timestamp()
         return str(page_source), str(timestamp)
 
