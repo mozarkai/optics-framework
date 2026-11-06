@@ -239,6 +239,7 @@ Reads the page HTML and finds elements through the WebDriver session.
 - `css=` and bare CSS selectors, DOM XPath
 - Visible text: exact match first, then partial, then id, name and link text
 - Same lookup as `SeleniumFindElement` (`engines/drivers/selenium_locator.py`)
+- Screen elements with bounds and a verified `loc`, the same list as `PlaywrightPageSource`
 
 #### PlaywrightPageSource
 
