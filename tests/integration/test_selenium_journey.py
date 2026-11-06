@@ -94,6 +94,13 @@ def _project(tmp_path, server_url, steps):
     return str(tmp_path)
 
 
+SIGN_IN_TO_ORDERS = [
+    "Enter Text,${password_field},secret",
+    "Press Element,Sign in",
+    "Press Element,${orders_link}",
+]
+
+
 def test_suite_replays_a_sign_in_journey(tmp_path, server_url):
     project = _project(tmp_path, server_url, [
         "Enter Text,${password_field},secret",
@@ -107,15 +114,13 @@ def test_suite_replays_a_sign_in_journey(tmp_path, server_url):
     assert run_project(project, use_printer=False) is True
 
 
+def test_a_press_waits_for_content_rendered_after_a_click(tmp_path, server_url):
+    project = _project(tmp_path, server_url, [*SIGN_IN_TO_ORDERS, "Assert Presence,Gift wrap"])
+    assert run_project(project, use_printer=False) is True
+
+
 def test_visibility_fails_for_an_element_its_parent_clips(tmp_path, server_url):
-    project = _project(tmp_path, server_url, [
-        "Enter Text,${password_field},secret",
-        "Press Element,Sign in",
-        "Assert Presence,Welcome",
-        "Press Element,${orders_link}",
-        "Assert Presence,Gift wrap",
-        "Assert Visibility,Gift wrap,2",
-    ])
+    project = _project(tmp_path, server_url, [*SIGN_IN_TO_ORDERS, "Assert Presence,Gift wrap", "Assert Visibility,Gift wrap,2"])
     assert run_project(project, use_printer=False) is False
 
 

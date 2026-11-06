@@ -53,13 +53,13 @@ class SeleniumFindElement(ElementSourceInterface):
         if self.driver is None:
             internal_logger.error(NOT_INITIALISED_MSG)
             raise RuntimeError(NOT_INITIALISED_MSG)
-        return selenium_locator.find(self.driver, element, index or 0)
+        return selenium_locator.find(self.driver, element, index or 0, timeout_s=self.driver.element_timeout_s)
 
     def get_element_bboxes(
         self, elements: list
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """Return bounding boxes for each element using WebElement location and size."""
-        return utils.bboxes_from_webelements(self.locate, elements)
+        return utils.bboxes_from_webelements(lambda element: selenium_locator.find(self.driver, element), elements)
 
     def get_bbox_for_element(
         self, element: Any
