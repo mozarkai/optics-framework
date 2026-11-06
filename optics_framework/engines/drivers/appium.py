@@ -220,6 +220,14 @@ class Appium(DriverInterface):
     DEFAULT_APPIUM_URL = "http://127.0.0.1:4723"
     CONNECTION_TIMEOUT = 300
     VERSION_NAME_PREFIX = "versionName="
+    LAUNCH_SETTLE_TIMEOUT_S = 5.0
+    LAUNCH_POLL_INTERVAL_S = 0.5
+    IOS_HOME_BUNDLE_ID = "com.apple.springboard"
+    ANDROID_PERMISSION_PACKAGES = frozenset({
+        "com.google.android.permissioncontroller",
+        "com.android.permissioncontroller",
+        "com.android.packageinstaller",
+    })
     KEY_PLATFORMNAME = "platformname"
     CAP_UDID = "udid"
     CAP_APPIUM_UDID = "appium:udid"
@@ -924,19 +932,15 @@ class Appium(DriverInterface):
                 session_id = self.start_session(event_name=event_name)
             self._open_deeplink(self._require_driver(), app_identifier)
             return session_id
-        if self.driver is None or not self._is_session_alive():
+        session_opened_app = self.driver is None or not self._is_session_alive()
+        if session_opened_app:
             session_id = self.start_session(
                 app_package=app_identifier,
                 app_activity=app_activity,
                 event_name=event_name,
             )
-        elif app_identifier:
-            try:
-                self._require_driver().activate_app(app_identifier)
-            except Exception as exc:
-                raise OpticsError(
-                    Code.E0401, message=f"Failed to launch: {app_identifier}", cause=exc
-                ) from exc
+        if app_identifier:
+            self._bring_to_front(self._require_driver(), app_identifier, session_opened_app)
 
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
@@ -961,16 +965,12 @@ class Appium(DriverInterface):
         if event_name and capture_event_here:
             self.event_sdk.capture_event(event_name)
 
+        if not self._is_deeplink(app_name):
+            self._bring_to_front(driver, app_name)
+            return
         try:
-            if self._is_deeplink(app_name):
-                self._open_deeplink(driver, app_name)
-                return
-
-            driver.activate_app(app_name)
-            internal_logger.debug(f"Activated app: {app_name}")
-
+            self._open_deeplink(driver, app_name)
         except OpticsError:
-            # Preserve original OpticsError without wrapping
             raise
         except Exception as exc:
             raise OpticsError(
@@ -979,6 +979,56 @@ class Appium(DriverInterface):
                 cause=exc,
             ) from exc
 
+    def _bring_to_front(self, driver: WebDriver, app_id: str, session_opened_app: bool = False) -> None:
+        """Activate the app unless the new session shows it (an attached session or autoLaunch off may not), then wait for it."""
+        if not session_opened_app or self._front_app(driver) not in (app_id, None):
+            try:
+                driver.activate_app(app_id)
+            except Exception as exc:
+                raise OpticsError(Code.E0401, message=f"Failed to launch: {app_id}", cause=exc) from exc
+            internal_logger.debug(f"Activated app: {app_id}")
+        self._wait_until_in_front(driver, app_id)
+
+    def _front_app(self, driver: WebDriver) -> str | None:
+        """Package or bundle id of the app in front; None where the platform cannot tell."""
+        platform = self._active_platform()
+        if platform not in MOBILE:
+            return None
+        try:
+            if platform == ANDROID:
+                return driver.current_package
+            return driver.execute_script("mobile: activeAppInfo").get("bundleId")
+        except Exception as e:
+            raise_if_session_dead(e)
+            internal_logger.debug(f"Could not read the app in front: {e}")
+        return None
+
+    def _is_system_prompt(self, driver: WebDriver, front: str) -> bool:
+        """Whether a permission prompt or system alert, which the next step may answer, covers the launched app."""
+        if front in self.ANDROID_PERMISSION_PACKAGES:
+            return True
+        if front != self.IOS_HOME_BUNDLE_ID:
+            return False
+        try:
+            driver.execute_script("mobile: alert", {"action": "getButtons"})
+        except Exception as e:
+            raise_if_session_dead(e)
+            return False
+        return True
+
+    def _wait_until_in_front(self, driver: WebDriver, app_id: str) -> None:
+        """Raise E0401 when the launched app does not reach the front; the launch call returns before it does."""
+        deadline = time.monotonic() + self.LAUNCH_SETTLE_TIMEOUT_S
+        while True:
+            front = self._front_app(driver)
+            if front is None or front == app_id or self._is_system_prompt(driver, front):
+                return
+            if time.monotonic() >= deadline:
+                raise OpticsError(
+                    Code.E0401,
+                    message=f"Launched '{app_id}', but '{front}' is in front: the app closed or did not open",
+                )
+            time.sleep(self.LAUNCH_POLL_INTERVAL_S)
 
     def get_driver(self) -> Optional[WebDriver]:
         """Return the Appium driver instance."""
