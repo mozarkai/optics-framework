@@ -402,13 +402,13 @@ class Verifier:
             entry = {
                 "i": i,
                 "label": el.get("text") or "",
-                "cls": (extra.get("class") or "").split(".")[-1],
+                "cls": extra.get("class") or "",
                 "bounds": [bounds.get("x1"), bounds.get("y1"), bounds.get("x2"), bounds.get("y2")],
                 "act": el.get("act") or [],
             }
             rid = extra.get("resource-id")
             if rid:
-                entry["rid"] = rid.split("/")[-1]
+                entry["rid"] = rid
             if el.get("loc"):
                 entry["loc"] = el["loc"]
             if el.get("offscreen"):

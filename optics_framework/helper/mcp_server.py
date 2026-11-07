@@ -237,7 +237,7 @@ def _lean_inputs(schema: dict[str, Any]) -> dict[str, Any]:
 
 def _row_out(row: Row, *, scale: float | None = None, was: str | None = None) -> dict[str, Any]:
     bounds = [round(v * scale) for v in row.bounds] if scale is not None and row.bounds else None
-    out = {"ref": row.ref, "label": row.label, "cls": row.cls, "act": list(row.act)}
+    out = {"ref": row.ref, "label": row.label, "cls": row.tag or row.cls, "act": list(row.act)}
     extra = {"rid": row.rid or None, "loc": row.loc or None, "bounds": bounds, "was": was}
     return out | {k: v for k, v in extra.items() if v is not None}
 
