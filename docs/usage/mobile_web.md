@@ -70,7 +70,7 @@ No extra driver is needed; XCUITest reads web pages through Safari's Web Inspect
   Settings > Content Settings > Web Inspector.
 
 Native iOS sessions start with `includeSafariInWebviews: true`,
-`additionalWebviewBundleIds: ["*"]`, `webviewConnectRetries: 1` and
+`additionalWebviewBundleIds: ["*"]`, `webviewConnectRetries: 3` and
 `webviewAtomWaitTimeout: 5000`, so Optics sees every app's web content and a page that
 cannot answer costs seconds, not minutes. Values in your `capabilities` take precedence.
 

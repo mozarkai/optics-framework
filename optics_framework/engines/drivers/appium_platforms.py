@@ -53,11 +53,12 @@ _ANDROID_CONTEXT_OPTIONS: dict[str, Any] = {
 }
 
 # Web Inspector lists every app's pages ("*" covers WebViews and any browser) and fails fast: without these,
-# an empty listing retries for 10 s and a frozen page blocks each script for 2 min.
+# an empty listing retries for 10 s and a frozen page blocks each script for 2 min. A single try is too few:
+# system daemons connecting right after the inspector attaches void it, so an open WebView is missed.
 _IOS_CONTEXT_OPTIONS: dict[str, Any] = {
     "includeSafariInWebviews": True,
     "additionalWebviewBundleIds": ["*"],
-    "webviewConnectRetries": 1,
+    "webviewConnectRetries": 3,
     "webviewAtomWaitTimeout": 5000,
 }
 
