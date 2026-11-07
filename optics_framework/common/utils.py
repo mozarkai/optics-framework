@@ -627,10 +627,9 @@ _BOUNDS_ATTRS = ("bounds",)  # Android-style "[x1,y1][x2,y2]"
 _RECT_ATTRS = ("x", "y", "width", "height")  # iOS-style separate attributes
 
 
-def _short_class(el) -> str:
-    """Short class/tag label — works for any XML-based UI hierarchy."""
-    cls = el.get("class") or str(el.tag) or "node"
-    return cls.rsplit(".", 1)[-1]
+def _class_name(el) -> str:
+    """Full class or tag, as an XPath over the page source names it."""
+    return str(el.tag) or el.get("class") or "node"
 
 
 def _is_interesting(el) -> bool:
@@ -656,32 +655,30 @@ def _is_interesting(el) -> bool:
 
 
 def _descriptor_text(el) -> Optional[str]:
-    """First non-empty text-bearing attribute as ``label="value"`` (one is enough)."""
+    """First non-empty text-bearing attribute as ``attr="value"`` (one is enough)."""
     for attr in _TEXT_ATTRS:
         val = " ".join((el.get(attr) or "").split())
         if val:
-            label = "desc" if attr == "content-desc" else attr
-            return f'{label}="{val}"'
+            return f'{attr}="{val}"'
     return None
 
 
 def _descriptor_id(el) -> Optional[str]:
-    """First non-empty id attribute as ``id=<short>`` (package prefix stripped)."""
+    """First non-empty id attribute as ``attr="value"``."""
     for attr in _ID_ATTRS:
         rid = el.get(attr) or ""
         if rid:
-            return f"id={rid.split('/', 1)[-1]}"
+            return f'{attr}="{rid}"'
     return None
 
 
 def _descriptor_bounds(el) -> Optional[str]:
-    """Android-style ``bounds=...`` or, failing that, an iOS/web ``rect=(...)``."""
+    """Android ``bounds`` or, failing that, the iOS/web ``x y width height`` attributes."""
     bounds = el.get("bounds")
     if bounds:
-        return f"bounds={bounds}"
-    x, y, w, h = el.get("x"), el.get("y"), el.get("width"), el.get("height")
-    if x is not None and y is not None:
-        return f"rect=({x},{y},{w or '?'},{h or '?'})"
+        return f'bounds="{bounds}"'
+    if el.get("x") is not None and el.get("y") is not None:
+        return " ".join(f'{attr}="{el.get(attr)}"' for attr in _RECT_ATTRS if el.get(attr) is not None)
     return None
 
 
@@ -689,7 +686,7 @@ def _descriptor(el) -> str:
     """One-line human-readable description of a UI node (platform-agnostic)."""
     hint = " ".join((el.get("hint") or "").split())
     parts = [
-        _short_class(el),
+        _class_name(el),
         _descriptor_text(el),
         _descriptor_id(el),
         _descriptor_bounds(el),

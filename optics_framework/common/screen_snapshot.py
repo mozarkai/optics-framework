@@ -2,6 +2,7 @@
 import bisect
 import hashlib
 import re
+import string
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ REDACTED = "<redacted>"
 _ACTIONS = ("tap", "long", "toggle", "input", "scroll")
 _CSS_ID_RE = re.compile(r"^[A-Za-z_-][\w-]*$")
 _BARE_TAG_RE = re.compile(r"(?:xpath=|css=)?/{0,2}[\w.:*-]+")
+_PACKAGE_CHARS = string.ascii_letters + string.digits + "_."
 _QUOTED_RE = re.compile(r'"([^"]*)"|\'([^\']*)\'')
 _POSITIONAL_RE = re.compile(r"\[\s*\d+\s*\]|position\(|last\(|:nth-")
 _VALUE_ATTR_RE = re.compile(r"@(?:text|label|value)\b|text\(\)|normalize-space\(")
@@ -47,6 +49,7 @@ class Row:
     web: bool = False
     name: str | None = None
     offscreen: bool = False
+    tag: str = ""
 
     def __post_init__(self) -> None:
         if self.name is None:
@@ -128,6 +131,12 @@ def _bounds(raw: Any) -> tuple[int, int, int, int] | None:
     return x1, y1, x2, y2
 
 
+def _names_secret(text: str) -> bool:
+    """A secret word in ``text``, ignoring the app package of any Android resource id in it."""
+    *heads, tail = text.split(":id/")
+    return is_secret_name("".join(h.rstrip(_PACKAGE_CHARS) for h in heads) + tail)
+
+
 def _masked(act: tuple[str, ...], label: str) -> bool:
     """A field showing a masked value such as ``••••••``."""
     return "input" in act and bool(label.strip()) and not any(c.isalnum() for c in label)
@@ -181,7 +190,8 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     cls = short.removeprefix("XCUIElementType") or short
     loc = str(el.get("loc") or ("" if "act" in el else el.get("xpath")) or "")
     web = _is_web(loc, cls)
-    if not web and label in {rid, rid.rsplit("/", 1)[-1], raw_cls, cls} - {""}:
+    own_id = rid.rsplit("/", 1)[-1]
+    if not web and label in {rid, own_id, raw_cls, cls} - {""}:
         label = ""
     act = _acts(el.get("act"))
     if not label and not act:
@@ -190,14 +200,14 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     hint = _row_hint(str(el.get("hint") or extra.get("hint") or "").strip(), label, holds_value, before)
     secret = (
         extra.get("password") is True or "SecureTextField" in cls or _masked(act, label)
-        or _secret_caption(act, before) or any(is_secret_name(text) for text in (label, rid, loc, hint))
+        or _secret_caption(act, before) or any(_names_secret(text) for text in (label, rid, loc, hint))
     )
     # A native label that differs from its hint is the typed value, so the hint (even empty) names the row.
     name = hint if label and not web and holds_value and fold(label) != fold(hint) else label
     return {
         "label": label, "cls": cls, "act": act, "rid": rid, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
-        "offscreen": el.get("offscreen") is True,
+        "offscreen": el.get("offscreen") is True, "tag": raw_cls,
     }
 
 
@@ -277,7 +287,8 @@ def _ref_ranges(refs: Iterable[str]) -> str:
 
 
 def _describe(row: Row) -> str:
-    return f'"{clean_label(row.label)}" {row.cls}' if row.label else f"{row.cls}, no text"
+    cls = row.tag or row.cls
+    return f'"{clean_label(row.label)}" {cls}' if row.label else f"{cls}, no text"
 
 
 class RefTable:
@@ -311,7 +322,7 @@ class RefTable:
             self._issued[row.ref] = row
             every.append(row)
         needle = fold(query)
-        pool = [r for r in every if needle in fold(r.label) or needle in r.rid.casefold()] if query else every
+        pool = [r for r in every if needle in fold(r.label) or needle in r.rid.rsplit("/", 1)[-1].casefold()] if query else every
         actionable_first = sorted(range(len(pool)), key=lambda i: not pool[i].act)
         rows = tuple(pool[i] for i in sorted(actionable_first[:max_rows]))
         self.latest = Snapshot(rows=rows, digest=digest(every), all_rows=tuple(every), hidden=len(pool) - len(rows))
@@ -491,7 +502,7 @@ def is_secret(row: Row | None, snap: Snapshot | None, raw: str = "") -> bool:
         # A value typed into no known input goes into the focused field, so any secret field on the screen counts.
         if unknown and any(_holds_secret(r) for r in snap.all_rows):
             return True
-    return (row is not None and row.secret) or "SecureTextField" in raw or is_secret_name(raw)
+    return (row is not None and row.secret) or "SecureTextField" in raw or _names_secret(raw)
 
 
 def _text_rung(label: str) -> str:
@@ -578,9 +589,9 @@ def effect(d: Diff, secret: str) -> str:
 
 def render_row(row: Row) -> str:
     act = f"[{','.join(row.act)}]" if row.act else ""
-    rid = f"#{row.rid.rsplit('/', 1)[-1]}" if row.rid else ""
+    rid = f"#{row.rid}" if row.rid else ""
     offscreen = "(off-screen)" if row.offscreen else ""
-    return " ".join(p for p in (row.ref, row.cls, _label_part(row.label), act, rid, offscreen) if p)
+    return " ".join(p for p in (row.ref, row.tag or row.cls, _label_part(row.label), act, rid, offscreen) if p)
 
 
 def _row_lines(snap: Snapshot) -> list[str]:

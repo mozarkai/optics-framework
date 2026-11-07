@@ -22,12 +22,12 @@ _SAMPLE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 class TestStripPageSource:
     def test_keeps_text_desc_and_interactive_nodes(self):
         out = utils.strip_page_source(_SAMPLE)
-        assert 'EditText text="gullak"' in out
-        assert "id=search_edit_text" in out
+        assert 'android.widget.EditText text="gullak"' in out
+        assert 'resource-id="com.sonyliv:id/search_edit_text"' in out
         assert 'hint="Search for movies"' in out
-        assert 'TextView text="Gullak - Sony LIV Originals"' in out
-        assert 'desc="Home"' in out
-        assert "bounds=[26,162][1054,293]" in out
+        assert 'android.widget.TextView text="Gullak - Sony LIV Originals"' in out
+        assert 'content-desc="Home"' in out
+        assert 'bounds="[26,162][1054,293]"' in out
         assert "clickable" in out
 
     def test_drops_pure_layout_wrappers(self):
@@ -37,9 +37,11 @@ class TestStripPageSource:
         # The outer bare FrameLayout/LinearLayout wrappers are not emitted.
         assert "LinearLayout" not in out
 
-    def test_resource_id_package_prefix_stripped(self):
+    def test_names_match_the_page_source_for_xpath(self):
         out = utils.strip_page_source(_SAMPLE)
-        assert "com.sonyliv:id/" not in out  # only the short id remains
+        assert "android.widget.FrameLayout content-desc=\"Home\"" in out
+        assert "desc=" not in out.replace("content-desc=", "")
+        assert "id=card_show_name" not in out
 
     def test_empty_and_invalid_return_empty(self):
         assert utils.strip_page_source("") == ""
@@ -90,7 +92,7 @@ class TestStripPageSource:
         )
         out = utils.strip_page_source(xml)
         assert "XCUIElementTypeTextField" in out
-        assert "rect=(10,20,200,44)" in out
+        assert 'XCUIElementTypeTextField name="username" x="10" y="20" width="200" height="44"' in out
         assert 'value="Welcome"' in out
 
     def test_secure_and_password_fields_are_interactive(self):
@@ -106,7 +108,7 @@ class TestStripPageSource:
         )
         out = utils.strip_page_source(xml)
         assert "XCUIElementTypeSecureTextField" in out
-        assert "id=pwd" in out
+        assert 'resource-id="pkg:id/pwd"' in out
 
     def test_extra_state_flags_are_shown(self):
         # Beyond clickable, the descriptor surfaces scrollable/selected/checked.
@@ -119,3 +121,8 @@ class TestStripPageSource:
         out = utils.strip_page_source(xml)
         assert "scrollable" in out
         assert "selected" in out
+
+    def test_web_nodes_show_the_tag_not_the_css_class(self):
+        xml = "<html><body><button class='btn primary' id='go' title='Go'/></body></html>"
+        out = utils.strip_page_source(xml)
+        assert 'button title="Go" id="go"' in out

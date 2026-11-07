@@ -490,8 +490,8 @@ class AISelfHealHandler:
         if page_source:
             lines.append("")
             lines.append(
-                "CURRENT SCREEN ELEMENTS (condensed UI hierarchy — class, text, desc, "
-                "resource id, bounds [x1,y1][x2,y2], state flags):"
+                "CURRENT SCREEN ELEMENTS (condensed UI hierarchy with the page source's own class "
+                "and attribute names, then state flags):"
             )
             lines.append(page_source)
         if ctx.recent_steps:
