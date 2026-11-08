@@ -1,8 +1,12 @@
 # Description: Zsh completion script for the Optics CLI tool
 local -a _optics_subcommands=(
   'list: List available API methods'
-  'config: Manage configuration'
+  'configure: Edit a project config.yaml (guided prompts or --edit TUI)'
+  'config: Deprecated alias for configure'
+  'doctor: Diagnose a project setup (engines, config, tooling)'
+  'quickstart: Guided walkthrough to create and configure a first project'
   'dry_run: Run tests in dry-run mode'
+  'dry-run: Run tests in dry-run mode'
   'init: Initialize a new project'
   'execute: Execute tests'
   'live: Interactive session against a live target'
@@ -14,7 +18,7 @@ local -a _optics_subcommands=(
 )
 
 # Static or dynamic values
-local -a templates=("calendar" "clock" "contact" "gmail_web" "playwright" "youtube")
+local -a templates=("calendar" "clock" "contact" "gmail_web" "mobile_web" "playwright" "youtube")
 local -a runners=("test_runner" "pytest")
 local -a frameworks=("pytest" "robot")
 local -a transports=("stdio" "http")
@@ -38,8 +42,22 @@ _optics_completions() {
       ;;
     args)
       case $words[2] in
-        list|config|completion)
+        list|config|completion|quickstart)
           _arguments '--help[-h]'
+          ;;
+
+        configure)
+          _arguments \
+            '*:project_folder:_files -/' \
+            '--edit[Launch the full-field Textual editor]' \
+            '--help[-h]'
+          ;;
+
+        doctor)
+          _arguments \
+            '*:project_folder:_files -/' \
+            '--check[Exit non-zero if any check fails]' \
+            '--help[-h]'
           ;;
 
         live)
@@ -56,7 +74,7 @@ _optics_completions() {
             '--help[-h]'
           ;;
 
-        dry_run|execute)
+        dry_run|dry-run|execute)
           _arguments \
             '--runner=[Runner]:runner:(${runners[@]})' \
             '--use-printer[Enable printer]' \
@@ -68,7 +86,8 @@ _optics_completions() {
 
         init)
           _arguments \
-            '--name=[Project name]' \
+            '1:project_name:' \
+            '--name=[Project name (deprecated; use the positional)]' \
             '--path=[Project path]' \
             '--force[Override existing]' \
             "--template=[Template name]:template:(${templates[@]})" \

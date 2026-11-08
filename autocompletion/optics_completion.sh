@@ -1,12 +1,23 @@
 #!/bin/bash
 
+# mapfile keeps each candidate one word: no splitting on spaces, no glob expansion.
+_optics_words() {
+  mapfile -t COMPREPLY < <(compgen -W "$1" -- "$cur")
+}
+
+# Files and folders: readline quotes the inserted names instead of letting the shell parse them.
+_optics_paths() {
+  compopt -o filenames 2>/dev/null
+  mapfile -t COMPREPLY < <(compgen "$1" -- "$cur")
+}
+
 _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list config dry_run init execute live generate setup serve mcp completion"
+  local subcommands="list configure config doctor quickstart dry_run dry-run init execute live generate setup serve mcp completion"
 
-  local template_options="calendar clock contact gmail_web playwright youtube"
+  local template_options="calendar clock contact gmail_web mobile_web playwright youtube"
   local runner_options="test_runner pytest"
   # Only the two-space-indented lines are engine keys; category headers are not
   # indented, so this needs no per-header filter.
@@ -14,7 +25,7 @@ _optics_completions() {
 
   case ${COMP_CWORD} in
     1)
-      COMPREPLY=( $(compgen -W "$subcommands --version --help -h" -- "$cur") )
+      _optics_words "$subcommands --version --help -h"
       return 0
       ;;
     *)
@@ -23,49 +34,65 @@ _optics_completions() {
   esac
 
   case ${COMP_WORDS[1]} in
-    list|config|completion)
-      COMPREPLY=( $(compgen -W "--help -h" -- "$cur") )
+    list|config|completion|quickstart)
+      _optics_words "--help -h"
+      ;;
+
+    configure)
+      if [[ $cur == -* ]]; then
+        _optics_words "--edit -h --help"
+      else
+        _optics_paths -d
+      fi
+      ;;
+
+    doctor)
+      if [[ $cur == -* ]]; then
+        _optics_words "--check -h --help"
+      else
+        _optics_paths -d
+      fi
       ;;
 
     live)
-      COMPREPLY=( $(compgen -d -- "$cur") )
+      _optics_paths -d
       ;;
 
     mcp)
       if [[ $prev == "--transport" ]]; then
-        COMPREPLY=( $(compgen -W "stdio http" -- "$cur") )
+        _optics_words "stdio http"
       else
-        COMPREPLY=( $(compgen -W "--transport --host --port -h --help" -- "$cur") )
+        _optics_words "--transport --host --port -h --help"
       fi
       ;;
 
-    dry_run|execute)
+    dry_run|dry-run|execute)
       if [[ $prev == "--runner" ]]; then
-        COMPREPLY=( $(compgen -W "$runner_options" -- "$cur") )
+        _optics_words "$runner_options"
       else
-        COMPREPLY=( $(compgen -W "--runner --use-printer --no-use-printer --include --exclude -h --help" -- "$cur") )
+        _optics_words "--runner --use-printer --no-use-printer --include --exclude -h --help"
       fi
       ;;
 
     init)
       case $prev in
         --template)
-          COMPREPLY=( $(compgen -W "$template_options" -- "$cur") )
+          _optics_words "$template_options"
           ;;
         *)
-          COMPREPLY=( $(compgen -W "--name --path --force --template --git-init -h --help" -- "$cur") )
+          _optics_words "--name --path --force --template --git-init -h --help"
           ;;
       esac
       ;;
 
     generate)
-      COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
+      _optics_words "-h --help"
       if [[ $prev == "--framework" ]]; then
-        COMPREPLY=( $(compgen -W "pytest robot" -- "$cur") )
+        _optics_words "pytest robot"
       elif [[ $prev == "--output" ]]; then
-        COMPREPLY=( $(compgen -f -- "$cur") )
+        _optics_paths -f
       elif [[ $prev == "--project_path" ]]; then
-        COMPREPLY=( $(compgen -d -- "$cur") )
+        _optics_paths -d
       else
         : # keep the default --help completion set above
       fi
@@ -74,21 +101,21 @@ _optics_completions() {
     setup)
       case $prev in
         --install)
-          COMPREPLY=( $(compgen -W "$engine_options" -- "$cur") )
+          _optics_words "$engine_options"
           ;;
         *)
-          COMPREPLY=( $(compgen -W "--install --list -h --help" -- "$cur") )
+          _optics_words "--install --list -h --help"
           ;;
       esac
       ;;
 
     serve)
-      COMPREPLY=( $(compgen -W "--host --port -h --help" -- "$cur") )
+      _optics_words "--host --port -h --help"
       ;;
 
     *)
       # Unknown subcommand: offer only --help.
-      COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
+      _optics_words "-h --help"
       ;;
   esac
 }

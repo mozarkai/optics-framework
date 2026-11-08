@@ -124,7 +124,8 @@ jobs:
               repo: context.repo.repo,
               issue_number: prNumber,
             });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            const ours = (c) => c.user?.login === "github-actions[bot]" && c.body?.includes(marker);
+            const existing = comments.find(ours);
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -169,8 +170,9 @@ jobs:
               repo: context.repo.repo,
               issue_number: prNumber,
             });
+            const ours = (c) => c.user?.login === "github-actions[bot]" && c.body?.includes(marker);
             for (const c of comments) {
-              if (c.body && c.body.includes(marker)) {
+              if (ours(c)) {
                 await github.rest.issues.deleteComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,

@@ -1,16 +1,19 @@
 import re
 import os
 import inspect
+import keyword as keyword_module
+import unicodedata
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from functools import lru_cache
+from collections.abc import Mapping
 from typing import Dict, List, Tuple, Optional, Union, Any, Iterator
 import logging
 import pandas as pd
-import yaml
 import json
-import shutil
 
-
+from optics_framework.common import safe_fs
+from optics_framework.common.config_handler import load_project_yaml
 from optics_framework.common.utils import unescape_csv_value
 
 _KWARG = re.compile(r"^([A-Za-z_]\w*)=(.*)$", re.DOTALL)
@@ -42,12 +45,94 @@ def _keyword_argument(param: str, accepted: Optional[frozenset]) -> Optional[Tup
     match = _KWARG.match(param)
     if not match or (accepted is not None and match.group(1) not in accepted):
         return None
+    if not match.group(1).isidentifier() or keyword_module.iskeyword(match.group(1)):
+        return None
     name, value = match.groups()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
         value = value[1:-1]
     return name, value
 
 TestCaseKey = "Test Cases"
+
+_CONFIG_SECTIONS = ("driver_sources", "elements_sources", "text_detection", "image_detection")
+_PYTEST_RESERVED = frozenset(
+    {"os", "pytest", "Optics", "load_config", "optics", "CONFIG", "ELEMENTS", "PROJECT_PATH", "EXECUTION_OUTPUT_PATH"}
+)
+_ROBOT_ESCAPES = {"\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+_ROBOT_CONTROL_WORDS = frozenset(
+    {"FOR", "END", "IF", "ELSE", "ELSE IF", "WHILE", "TRY", "EXCEPT", "FINALLY", "BREAK", "CONTINUE", "RETURN", "VAR", "GROUP"}
+)
+
+
+@dataclass(frozen=True)
+class _Arg:
+    """One step argument: an element name, a named argument or a positional literal."""
+
+    value: str
+    name: str | None = None
+    element: bool = False
+    looks_named: bool = False
+
+
+class _Identifiers:
+    """Maps free-text project names to unique, valid Python identifiers."""
+
+    def __init__(self, reserved: frozenset = frozenset()):
+        self._taken = set(reserved)
+        self._assigned: dict[tuple[str, str], str] = {}
+
+    def module(self, name: Any) -> str:
+        return self._identifier("module", str(name))
+
+    def test(self, name: Any) -> str:
+        return self._identifier("test", f"test {name}")
+
+    def _identifier(self, kind: str, text: str) -> str:
+        if (kind, text) not in self._assigned:
+            base = _identifier_base(text)
+            candidate, n = base, 2
+            while candidate in self._taken:
+                candidate, n = f"{base}_{n}", n + 1
+            self._taken.add(candidate)
+            self._assigned[(kind, text)] = candidate
+        return self._assigned[(kind, text)]
+
+
+def _identifier_base(text: str) -> str:
+    words = "_".join(unicodedata.normalize("NFKC", text).lower().split())
+    base = "".join(c if f"_{c}".isidentifier() else "_" for c in words)
+    if not base.isidentifier() or keyword_module.iskeyword(base):
+        base = f"_{base}"
+    return base
+
+
+def _plain(value: Any) -> Any:
+    """Reduce YAML data to JSON types so every value has a literal form."""
+    return json.loads(json.dumps(value, default=str, allow_nan=False))
+
+
+def _python_literal(value: Any) -> str:
+    return repr(_plain(value))
+
+
+def _robot_cell(value: str) -> str:
+    """Encode ``value`` as one Robot Framework data cell that reads back as exactly ``value``."""
+    if not value:
+        return "${EMPTY}"
+    cell = "".join(_ROBOT_ESCAPES.get(c, c if c.isprintable() else _robot_codepoint(c)) for c in value)
+    cell = re.sub(r"[$@&%]\{", lambda m: "\\" + m.group(), cell)
+    cell = re.sub(r"^ | $|(?<= ) ", r"\\ ", cell)
+    if cell[0] in "#|[" or cell == "..." or cell in _ROBOT_CONTROL_WORDS:
+        cell = "\\" + cell
+    return cell
+
+
+def _robot_codepoint(char: str) -> str:
+    code = ord(char)
+    if code < 0x100:
+        return f"\\x{code:02x}"
+    return f"\\u{code:04x}" if code < 0x10000 else f"\\U{code:08x}"
+
 
 logger = logging.getLogger(__name__)
 
@@ -130,16 +215,14 @@ class CSVDataReader(DataReader):
         )
 
     def read_config(self, source: str) -> Config:
-        with open(source, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        return load_project_yaml(source) or {}
 
 
 class YAMLDataReader(DataReader):
     """Reader for YAML-based test data."""
 
     def read_test_cases(self, source: str) -> TestCases:
-        with open(source, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_project_yaml(source) or {}
         test_cases = {}
         test_cases_list = data.get(TestCaseKey, [])
         if isinstance(test_cases_list, list):
@@ -170,8 +253,7 @@ class YAMLDataReader(DataReader):
         return keyword, params
 
     def read_modules(self, source: str) -> Modules:
-        with open(source, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_project_yaml(source) or {}
         modules = {}
         keyword_registry = {
             "Launch App",
@@ -225,13 +307,11 @@ class YAMLDataReader(DataReader):
         return modules
 
     def read_elements(self, source: str) -> Elements:
-        with open(source, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_project_yaml(source) or {}
         return data.get("Elements", {})
 
     def read_config(self, source: str) -> Config:
-        with open(source, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        return load_project_yaml(source) or {}
 
 
 class TestFrameworkGenerator(ABC):
@@ -287,11 +367,14 @@ class TestFrameworkGenerator(ABC):
         pass
 
     def _method_name(self, keyword: str) -> str:
-        return self.keyword_registry.get(keyword, "_".join(keyword.lower().split()))
+        method = self.keyword_registry.get(keyword, "_".join(keyword.lower().split()))
+        if not method.isidentifier() or keyword_module.iskeyword(method) or method.startswith("_"):
+            raise ValueError(f"'{keyword}' is not a keyword name.")
+        return method
 
-    def _resolve_params(
-        self, params: List[str], elements: Elements, framework: str, method_name: str
-    ) -> List[str]:
+    def _arguments(
+        self, params: list[str], elements: Mapping[str, Any], method_name: str
+    ) -> list[_Arg]:
         accepted = _sdk_parameters(method_name)
         kwargs = [_keyword_argument(param, accepted) for param in params]
         # Named arguments can only follow the positional ones, so only a trailing run
@@ -299,24 +382,35 @@ class TestFrameworkGenerator(ABC):
         first_named = len(params)
         while first_named and kwargs[first_named - 1]:
             first_named -= 1
-        resolved = []
-        for i, param in enumerate(params):
-            kwarg = kwargs[i]
-            if i >= first_named and kwarg:
-                name, value = kwarg
-                resolved.append(f"{name}={value!r}" if framework == "pytest" else f"{name}={value}")
-            elif param.startswith("${") and param.endswith("}"):
-                var_name = param[2:-1]
-                if var_name not in elements:
-                    raise ValueError(f"Element '{var_name}' not found in elements.")
-                resolved.append(f"ELEMENTS['{var_name}']" if framework == "pytest" else f"${{ELEMENTS.{var_name}}}")
-            elif framework == "pytest":
-                resolved.append(repr(param))
-            elif kwarg and accepted is not None:
-                resolved.append(param.replace("=", "\\=", 1))
-            else:
-                resolved.append(param)
-        return resolved
+        return [
+            _Arg(kwarg[1], name=kwarg[0]) if i >= first_named and kwarg
+            else _positional(param, elements, looks_named=bool(kwarg) and accepted is not None)
+            for i, (param, kwarg) in enumerate(zip(params, kwargs))
+        ]
+
+
+def _positional(param: str, elements: Mapping[str, Any], looks_named: bool) -> _Arg:
+    if param.startswith("${") and param.endswith("}"):
+        var_name = param[2:-1]
+        if var_name not in elements:
+            raise ValueError(f"Element '{var_name}' not found in elements.")
+        return _Arg(var_name, element=True)
+    return _Arg(param, looks_named=looks_named)
+
+
+_PYTEST_HEADER = """# Auto-generated by generate.py. Do not edit manually.
+import os
+import pytest
+from optics_framework.optics import Optics
+from optics_framework.common.utils import load_config
+"""
+_PYTEST_SETUP = """@pytest.fixture(scope='module')
+def optics():
+    optics = Optics()
+    optics.setup(config=CONFIG)
+    yield optics
+    optics.quit()
+"""
 
 
 class PytestGenerator(TestFrameworkGenerator):
@@ -329,35 +423,26 @@ class PytestGenerator(TestFrameworkGenerator):
         elements: Elements,
         config: Config,
     ) -> str:
+        names = _Identifiers(_PYTEST_RESERVED)
         code_parts = [
-            self._generate_header(),
+            _PYTEST_HEADER,
             self._generate_config(config),
             self._generate_elements(elements),
-            self._generate_setup(),
+            _PYTEST_SETUP,
             "# Module functions\n",
         ]
         for module_name, steps in modules.items():
             code_parts.append(
-                self._generate_module_function(module_name, steps, elements)
+                self._generate_module_function(names.module(module_name), steps, elements)
             )
         code_parts.append("# Test functions\n")
         for test_case_name, module_names in test_cases.items():
             code_parts.append(
-                self._generate_test_function(test_case_name, module_names)
+                self._generate_test_function(
+                    names.test(test_case_name), [names.module(m) for m in module_names]
+                )
             )
         return "\n".join(code_parts)
-
-    def _generate_header(self) -> str:
-        return "\n".join(
-            [
-                "# Auto-generated by generate.py. Do not edit manually.",
-                "import os",
-                "import pytest",
-                "from optics_framework.optics import Optics",
-                "from optics_framework.common.utils import load_config",
-                "",
-            ]
-        )
 
     def _generate_config(self, config: Config) -> str:
         return "\n".join(
@@ -366,30 +451,15 @@ class PytestGenerator(TestFrameworkGenerator):
                 "PROJECT_PATH = os.path.dirname(os.path.abspath(__file__))",
                 "EXECUTION_OUTPUT_PATH = os.environ.get('EXEC_OUTPUT', os.path.join(PROJECT_PATH, 'execution_outputs'))",
                 "os.makedirs(EXECUTION_OUTPUT_PATH, exist_ok=True)",
-                "env_config = os.environ.get('TEST_SESSION_ENV_VARIABLES')",
-                "print(f'test env_config: {env_config}')",
-
                 "",
                 "CONFIG = {",
-                f"    'driver_sources': {config.get('driver_sources', [])},"
-                if config.get("driver_sources")
-                else "    'driver_sources': [],",
-                f"    'elements_sources': {config.get('elements_sources', [])},"
-                if config.get("elements_sources")
-                else "    'elements_sources': [],",
-                f"    'text_detection': {config.get('text_detection', [])},"
-                if config.get("text_detection")
-                else "    'text_detection': [],",
-                f"    'image_detection': {config.get('image_detection', [])},"
-                if config.get("image_detection")
-                else "    'image_detection': [],",
+                *(f"    {key!r}: {_python_literal(config.get(key) or [])}," for key in _CONFIG_SECTIONS),
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
                 "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
                 "}\n",
                 "# Override with environment values if available",
                 "CONFIG = load_config(CONFIG)",
-                "print(f'config: {CONFIG}')",
                 "",
             ]
         )
@@ -397,43 +467,34 @@ class PytestGenerator(TestFrameworkGenerator):
     def _generate_elements(self, elements: Elements) -> str:
         lines = ["ELEMENTS = {"]
         for name, value in elements.items():
-            lines.append(f"    {name!r}: {value!r},")
+            lines.append(f"    {_python_literal(name)}: {_python_literal(value)},")
         lines.append("}\n")
         return "\n".join(lines)
 
-    def _generate_setup(self) -> str:
-        return "\n".join(
-            [
-                "@pytest.fixture(scope='module')",
-                "def optics():",
-                "    optics = Optics()",
-                "    optics.setup(config=CONFIG)",
-                "    print(f'Optics setup complete. Config: {optics.config}')",
-                "    yield optics",
-                "    optics.quit()\n",
-            ]
-        )
+    def _resolve_params(self, params: list[str], elements: Elements, method_name: str) -> list[str]:
+        return [self._render(arg) for arg in self._arguments(params, elements, method_name)]
+
+    @staticmethod
+    def _render(arg: _Arg) -> str:
+        if arg.element:
+            return f"ELEMENTS[{_python_literal(arg.value)}]"
+        if arg.name:
+            return f"{arg.name}={_python_literal(arg.value)}"
+        return _python_literal(arg.value)
 
     def _generate_module_function(
-        self, module_name: str, steps: List[Tuple[str, List[str]]], elements: Elements
+        self, func_name: str, steps: List[Tuple[str, List[str]]], elements: Elements
     ) -> str:
-        func_name = "_".join(module_name.lower().split())
         lines = [f"def {func_name}(optics: Optics) -> None:"]
         for keyword, params in steps:
             method_name = self._method_name(keyword)
-            resolved_params = self._resolve_params(params, elements, "pytest", method_name)
-            param_str = ", ".join(resolved_params)
+            param_str = ", ".join(self._resolve_params(params, elements, method_name))
             lines.append(f"    optics.{method_name}({param_str})")
         return "\n".join(lines) + "\n"
 
-    def _generate_test_function(
-        self, test_case_name: str, module_names: List[str]
-    ) -> str:
-        func_name = f"test_{'_'.join(test_case_name.lower().split())}"
+    def _generate_test_function(self, func_name: str, module_funcs: list[str]) -> str:
         lines = [f"def {func_name}(optics):"]
-        for module_name in module_names:
-            module_func_name = "_".join(module_name.lower().split())
-            lines.append(f"    {module_func_name}(optics)")
+        lines.extend(f"    {module_func}(optics)" for module_func in module_funcs)
         return "\n".join(lines) + "\n"
 
 
@@ -447,11 +508,13 @@ class RobotGenerator(TestFrameworkGenerator):
         elements: Elements,
         config: Config,
     ) -> str:
+        names = _Identifiers()
+        keys = {name: names.module(name) for name in elements}
         code_parts = [
             self._generate_header(),
-            self._generate_variables(elements, config),
+            self._generate_variables(elements, keys, config),
             self._generate_test_cases(test_cases),
-            self._generate_keywords(modules, elements),
+            self._generate_keywords(modules, keys),
         ]
         return "\n".join(code_parts)
 
@@ -467,175 +530,110 @@ class RobotGenerator(TestFrameworkGenerator):
         )
 
     def _transform_config_structure(self, config: Config) -> Dict[str, Any]:
-        """
-        Transform the config object to match the expected Optics setup structure.
-
-        Args:
-            config: The original config object
-
-        Returns:
-            Dict with the structure expected by the new Optics setup method
-        """
+        """Keep the config sections Optics setup reads, dropping empty optional ones."""
         transformed = {
             "driver_sources": config.get('driver_sources', []),
             "elements_sources": config.get('elements_sources', []),
-            "project_path": "${EXECDIR}"
         }
-
-        # Add optional configurations only if they exist and are not empty
         if config.get('image_detection'):
             transformed["image_detection"] = config.get('image_detection', [])
-
         if config.get('text_detection'):
             transformed["text_detection"] = config.get('text_detection', [])
-
         if config.get('execution_output_path'):
             transformed["execution_output_path"] = config.get('execution_output_path')
-
         return transformed
 
-    def _escape_json_for_robot(self, json_str: str) -> str:
-        """
-        Escape JSON string for Robot Framework variable assignment.
-
-        Args:
-            json_str: JSON string to escape
-
-        Returns:
-            Escaped string suitable for Robot Framework
-        """
-        # Replace backslashes first, then quotes
-        escaped = json_str.replace('\\', '\\\\')
-        escaped = escaped.replace('"', '\\"')
-        escaped = escaped.replace('\n', '\\n')
-        escaped = escaped.replace('\r', '\\r')
-        escaped = escaped.replace('\t', '\\t')
-        return escaped
-
-    def _generate_variables(self, elements: Elements, config: Config) -> str:
-        lines = ["*** Variables ***"]
-
-        # Generate element dictionary
-        lines.extend(["# Element dictionary", "&{ELEMENTS}="])
+    def _generate_variables(self, elements: Elements, keys: dict[str, str], config: Config) -> str:
+        lines = ["*** Variables ***", "&{ELEMENTS}="]
         for name, value in elements.items():
-            lines.append(f"...    {name}={value}")
+            lines.append(f"...    {keys[name]}={_robot_cell(str(value)) if value else ''}")
         lines.append("")
-
-        # Transform config to the new structure
-        transformed_config = self._transform_config_structure(config)
-
-        # Generate configuration as JSON string
-        config_json = json.dumps(transformed_config, separators=(',', ':'))  # Compact format
-        escaped_config = self._escape_json_for_robot(config_json)
-
-        lines.extend([
-            "# Optics configuration as JSON string",
-            f"${{OPTICS_CONFIG_JSON}}=    {escaped_config}",
-            "",
-        ])
-
+        config_json = json.dumps(_plain(self._transform_config_structure(config)), separators=(',', ':'))
+        lines.extend([f"${{OPTICS_CONFIG_JSON}}=    {_robot_cell(config_json)}", ""])
         return "\n".join(lines)
 
     def _generate_test_cases(self, test_cases: TestCases) -> str:
         lines = ["*** Test Cases ***"]
-        for test_case_name in test_cases:
-            lines.append(test_case_name)
+        for test_case_name, module_names in test_cases.items():
+            lines.append(_robot_cell(str(test_case_name)))
             lines.append("    [Setup]    Setup Optics")
-            for module_name in test_cases[test_case_name]:
-                lines.append(f"    {module_name}")
+            lines.extend(f"    {_robot_cell(str(module_name))}" for module_name in module_names)
             lines.append("    [Teardown]    Quit Optics")
             lines.append("")
         return "\n".join(lines)
 
-    def _generate_keywords(self, modules: Modules, elements: Elements) -> str:
-        lines = ["*** Keywords ***"]
+    def _resolve_params(self, params: list[str], keys: dict[str, str], method_name: str) -> list[str]:
+        return [self._render(arg, keys) for arg in self._arguments(params, keys, method_name)]
 
-        # Setup keyword using JSON configuration
-        lines.extend([
+    @staticmethod
+    def _render(arg: _Arg, keys: dict[str, str]) -> str:
+        if arg.element:
+            return f"${{ELEMENTS}}[{keys[arg.value]}]"
+        if arg.name:
+            return f"{arg.name}={_robot_cell(arg.value)}"
+        cell = _robot_cell(arg.value)
+        # The name part is an identifier, so the first "=" is the one Robot would split on.
+        return cell.replace("=", "\\=", 1) if arg.looks_named else cell
+
+    def _generate_keywords(self, modules: Modules, keys: dict[str, str]) -> str:
+        lines = [
+            "*** Keywords ***",
             "Setup Optics",
-            "    # Parse JSON configuration and setup Optics",
-            "    ${config_dict}=    BuiltIn.Evaluate    json.loads(r'''${OPTICS_CONFIG_JSON}''')    json",
-            "    Setup    config=${config_dict}",
+            "    ${config}=    BuiltIn.Evaluate    json.loads($OPTICS_CONFIG_JSON)    modules=json",
+            "    Set To Dictionary    ${config}    project_path=${EXECDIR}",
+            "    Setup    config=${config}",
             "",
-        ])
-
-        # Quit keyword
-        lines.extend([
             "Quit Optics",
             "    Quit",
             "",
-        ])
-
-        # Generate module keywords
+        ]
         for module_name, steps in modules.items():
-            lines.append(module_name)
+            lines.append(_robot_cell(str(module_name)))
             for keyword, params in steps:
-                resolved_params = self._resolve_params(
-                    params, elements, "robot", self._method_name(keyword)
-                )
-                param_str = "    ".join(resolved_params)
-                lines.append(f"    {keyword}    {param_str}")
+                cells = [_robot_cell(" ".join(keyword.split()))]
+                cells.extend(self._resolve_params(params, keys, self._method_name(keyword)))
+                lines.append("    " + "    ".join(cells))
             lines.append("")
-
         return "\n".join(lines)
 
 
 class FileWriter:
-    """Handles writing generated code and requirements to files."""
+    """Writes generated code and requirements under a generated folder, never through a symlink."""
 
     def write(
         self, folder_path: str, filename: str, content: str, framework: str
     ) -> None:
-        # Create generated/Tests/ directory
-        tests_folder = os.path.join(folder_path, "Tests")
-        os.makedirs(tests_folder, exist_ok=True)
-        output_file = os.path.join(tests_folder, filename)
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(content)
+        output_file = safe_fs.write_text(
+            os.path.join(folder_path, "Tests", filename), content, root=folder_path
+        )
         logger.info(f"Generated test file: {output_file}")
-
-        # Create requirements.txt in generated/ directory
         requirements = [
-            "optics-framework",  # core framework for execution
-            "Appium-Python-Client",  # appium driver
+            "optics-framework",
+            "Appium-Python-Client",
             "pytest" if framework == "pytest" else "robotframework",
-            "easyocr",  # default ocr model
-            "pyserial",  # to communicate with BLE devices
-            "pytest-tagging"  # for tagging tests in pytest
+            "easyocr",
+            "pyserial",
+            "pytest-tagging",
         ]
-        requirements_file = os.path.join(folder_path, "requirements.txt")
-        with open(requirements_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(requirements) + "\n")
+        requirements_file = safe_fs.write_text(
+            os.path.join(folder_path, "requirements.txt"), "\n".join(requirements) + "\n", root=folder_path
+        )
         logger.info(f"Generated requirements file: {requirements_file}")
 
     def copy_input_templates(self, source_folder: str, generated_folder: str) -> None:
-        """
-        Copy input_templates folder to generated/Tests/ if it exists.
-
-        Args:
-            source_folder: Path to the source folder that may contain input_templates
-            generated_folder: Path to the generated folder where Tests/ is located
-        """
+        """Copy ``input_templates`` into ``generated/Tests/`` if the project has one."""
         input_templates_path = os.path.join(source_folder, "input_templates")
-
-        if os.path.exists(input_templates_path) and os.path.isdir(input_templates_path):
-            tests_folder = os.path.join(generated_folder, "Tests")
-            destination_path = os.path.join(tests_folder, "input_templates")
-
-            try:
-                # Remove destination if it already exists
-                if os.path.exists(destination_path):
-                    shutil.rmtree(destination_path)
-
-                # Copy the entire input_templates folder
-                shutil.copytree(input_templates_path, destination_path)
-                logger.info(f"Copied input_templates folder to: {destination_path}")
-
-            except Exception as e:
-                logger.exception(f"Failed to copy input_templates folder: {e}")
-        else:
+        if not os.path.isdir(input_templates_path):
             logger.debug("No input_templates folder found - skipping copy")
+            return
+        try:
+            destination = safe_fs.replace_tree(
+                input_templates_path, os.path.join(generated_folder, "Tests", "input_templates"), generated_folder
+            )
+        except OSError as e:
+            logger.exception(f"Failed to copy input_templates folder: {e}")
+            return
+        logger.info(f"Copied input_templates folder to: {destination}")
 
 
 def detect_file_type(file_path: str) -> Optional[Tuple[str, str]]:
@@ -668,8 +666,7 @@ def _detect_csv_type(file_path: str) -> Optional[Tuple[str, str]]:
 
 def _detect_yaml_type(file_path: str) -> Optional[Tuple[str, str]]:
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_project_yaml(file_path) or {}
         if os.path.basename(file_path) == "config.yaml":
             return "yaml", "config"
         if TestCaseKey in data:
@@ -686,8 +683,7 @@ def _detect_yaml_type(file_path: str) -> Optional[Tuple[str, str]]:
 def _assign_yaml_files(yaml_files, files):
     """Assign YAML files to test_cases, modules, and elements if not already assigned."""
     for yaml_file in yaml_files:
-        with open(yaml_file, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_project_yaml(yaml_file) or {}
         for content_type in ["test_cases", "modules", "elements"]:
             key = (
                 "Test Cases"
@@ -877,8 +873,7 @@ def generate_test_file(
     config = config_reader.read_config(all_files["config"][0])
 
     output_filename = output_filename or default_filename
-    generated_folder = os.path.join(folder_path, "generated")
-    os.makedirs(generated_folder, exist_ok=True)
+    generated_folder = str(safe_fs.make_dirs("generated", folder_path))
     code = generator.generate(test_cases, modules, elements, config)
     FileWriter().write(generated_folder, output_filename, code, framework)
 

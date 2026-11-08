@@ -22,24 +22,24 @@ import tempfile
 import subprocess  # nosec B404 - used only for local adb/idevice_id device discovery
 import inspect
 from contextlib import contextmanager
+from functools import partial
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
-from itertools import product
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import yaml
 
-from optics_framework.common import keyword_outcome, utils
-from optics_framework.common.config_handler import Config, DependencyConfig, resolve_config_file
+from optics_framework.common import fallback, keyword_outcome, utils
+from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.agent_core import (
     TYPED_VALUE_PARAMS,
-    VAR_RE,
     Field,
     Focus,
     Value,
     bind,
+    mask_typed_secret,
     runner_params,
     secret_element,
     secret_hint,
@@ -47,6 +47,7 @@ from optics_framework.common.agent_core import (
 )
 from optics_framework.common.screen_snapshot import REDACTED, RefTable, Row, Snapshot, element_name, read_screen
 from optics_framework.common.logging_config import (
+    TextLogFormatter,
     internal_logger,
     initialize_handlers,
 )
@@ -208,8 +209,7 @@ def _config_from_yaml(path: str, folder_path: str) -> Optional[Config]:
     """
     is_named_config = os.path.basename(path).lower() in ("config.yaml", "config.yml")
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
+        data = load_project_yaml(path) or {}
     except OSError as exc:
         internal_logger.debug("Skipping unreadable YAML %s: %s", path, exc)
         return None
@@ -393,7 +393,7 @@ class LiveController:
         handler = logging.FileHandler(log_path, encoding="utf-8")
         handler.setLevel(logging.DEBUG)  # let the loggers' own levels gate volume
         handler.setFormatter(
-            logging.Formatter(
+            TextLogFormatter(
                 "%(asctime)s %(levelname)-7s %(name)s | %(message)s",
                 datefmt="%Y-%m-%dT%H:%M:%S",
             )
@@ -573,9 +573,12 @@ class LiveController:
             )
 
         typing = self._typing(method, func_name, params)
+        secret = self._typed_secret(func_name, typing)
+        if secret:
+            mask_typed_secret(secret)
         result = self._attempt_combos(method, param_candidates, raw, func_name, params, start)
         if result.status is ActionStatus.PASS:
-            self.recorded.append((func_name, self._redact_typed_secret(method, func_name, params, typing)))
+            self.recorded.append((func_name, self._redact_typed_secret(method, func_name, params, typing, secret)))
             self.saved = False
             result.recorded = True
         return result
@@ -623,68 +626,48 @@ class LiveController:
             "check `optics list` or Tab-complete for the signature."
         )
 
-    @staticmethod
-    def _is_fallback_error(exc: OpticsError) -> bool:
-        """True for element-location codes (E02xx / X0201) — retry the next locator.
-
-        Uses ``.value`` because ``str(Code.X)`` renders as ``"Code.X"`` on the
-        str-Enum under Python 3.12.
-        """
-        return exc.code.value.startswith("E02") or exc.code == Code.X0201
-
-    def _run_single_combo(
-        self, method: Callable[..., Any], combo: Tuple[str, ...],
-    ) -> tuple[Any, BaseException | None, str | None]:
-        """Run one combination; returns its value, the failing exception (E0401 for a logged error) and the strategy."""
+    def _run_single_combo(self, method: Callable[..., Any], combo: Tuple[str, ...]) -> tuple[Any, str | None]:
+        """Run one combination; returns its value and strategy, raising E0401 for an error logged without a raise."""
         with keyword_outcome.capture() as outcome:
-            try:
-                positional, keywords = self._resolve_candidate(method, combo)
-                value = method(*positional, **keywords)
-            # Surfaced to the user, never crashes the controller.
-            except Exception as exc:  # noqa: BLE001
-                return None, exc, None
+            positional, keywords = self._resolve_candidate(method, combo)
+            value = method(*positional, **keywords)
         if outcome.silent is not None:
-            return None, OpticsError(Code.E0401, message=outcome.silent), None
-        return value, None, outcome.strategy
+            raise OpticsError(Code.E0401, message=outcome.silent)
+        return value, outcome.strategy
 
     def _attempt_combos(
         self, method: Callable[..., Any], param_candidates: List[List[str]],
         raw: str, func_name: str, params: List[str], start: float,
     ) -> ActionResult:
-        """Try each fallback combination in order; return the first success."""
-        last_exc: Optional[BaseException] = None
-        for combo in product(*param_candidates):
-            value, error, strategy = self._run_single_combo(method, combo)
-            if error is not None:
-                last_exc = error
-                if isinstance(error, OpticsError) and self._is_fallback_error(error):
-                    continue
-                break
+        """Try the fallback combinations in order; return the first success."""
+        try:
+            value, strategy = fallback.run(param_candidates, partial(self._run_single_combo, method), f"'{func_name}'")
+        # Surfaced to the user, never crashes the controller.
+        except Exception as exc:  # noqa: BLE001
             return ActionResult(
                 raw=raw,
                 keyword=func_name,
                 params=params,
-                status=ActionStatus.PASS,
+                status=ActionStatus.FAIL,
                 elapsed=time.time() - start,
-                strategy=strategy,
-                value=value,
+                message=self._failure_message(func_name, exc),
+                error=exc,
             )
-        if isinstance(last_exc, (TypeError, ValueError)):
-            internal_logger.debug(
-                "'%s' failed with %s: %s", func_name, type(last_exc).__name__, last_exc
-            )
-            message = self._signature_hint_message(func_name)
-        else:
-            message = self._format_error(last_exc)
         return ActionResult(
             raw=raw,
             keyword=func_name,
             params=params,
-            status=ActionStatus.FAIL,
+            status=ActionStatus.PASS,
             elapsed=time.time() - start,
-            message=message,
-            error=last_exc,
+            strategy=strategy,
+            value=value,
         )
+
+    def _failure_message(self, func_name: str, exc: Exception) -> str:
+        if isinstance(exc, (TypeError, ValueError)):
+            internal_logger.debug("'%s' failed with %s: %s", func_name, type(exc).__name__, exc)
+            return self._signature_hint_message(func_name)
+        return self._format_error(exc)
 
     def _agent_call(self, keyword: str, params: dict[str, Value]) -> tuple[Any, str | None]:
         """Run one agent call as ``name=value`` params, each list a fallback; returns its value and strategy."""
@@ -706,7 +689,7 @@ class LiveController:
         except ValueError:
             return {}, None, None
         element = str(bound.get("element", ""))
-        var = element[2:-1].strip() if VAR_RE.fullmatch(element) else ""
+        var = utils.whole_var_name(element) or ""
         locators = (self.session.elements.get_element(var) if var and self.session.elements else None) or [element]
         named = (None, None, (var, *locators)) if element else None
         if not bound.get(value_param):
@@ -714,20 +697,24 @@ class LiveController:
         row, snap, raws = self._focus.into(named, self._screen)
         return bound, named, (row, snap or self._screen(), raws)
 
+    def _typed_secret(self, func_name: str, typing: Typing) -> str:
+        """The raw value the step types into a secret field, else empty."""
+        bound, _, into = typing
+        value = str(bound.get(TYPED_VALUE_PARAMS.get(func_name, ""), ""))
+        return value if into is not None and typed_secret(into, value, self._session_elements().elements) else ""
+
     def _redact_typed_secret(
-        self, method: Callable[..., Any], func_name: str, params: list[str], typing: Typing,
+        self, method: Callable[..., Any], func_name: str, params: list[str], typing: Typing, secret: str,
     ) -> list[str]:
         """``params`` with a raw value typed into a secret field moved to a secret element."""
         bound, named, into = typing
         self._focus.moved(func_name, named)
-        value_param = TYPED_VALUE_PARAMS.get(func_name, "")
-        value = str(bound.get(value_param, ""))
-        if into is None or not typed_secret(into, value, self._session_elements().elements):
+        if into is None or not secret:
             return params
         elements = self._session_elements().elements
-        name = secret_element(elements, self._secret_names, secret_hint(into), value, {n.lower() for n in elements})
+        name = secret_element(elements, self._secret_names, secret_hint(into), secret, {n.lower() for n in elements})
         self._agent_elements.add(name)
-        return runner_params(method, {**bound, value_param: "${" + name + "}"})
+        return runner_params(method, {**bound, TYPED_VALUE_PARAMS[func_name]: "${" + name + "}"})
 
     def _screen(self) -> Snapshot:
         return RefTable().snapshot(read_screen(self._action_keyword) or [])
@@ -909,11 +896,7 @@ class LiveController:
                 writer.writerow({key: (row.get(key) or "") for key in header})
 
     def _append_module_csv(self, path: str, module_name: str) -> None:
-        """Append the recorded keywords as rows for ``module_name``.
-
-        The whole file is rewritten so the ``param_N`` header always spans the widest
-        row across both pre-existing and newly-recorded steps.
-        """
+        """Append the recorded keywords as rows for ``module_name``, keeping the file's columns in their order."""
         rows = self._read_rows(path)
         for func_name, params in self.recorded:
             row: Dict[str, str] = {
@@ -923,16 +906,10 @@ class LiveController:
             for index, value in enumerate(params, start=1):
                 row[f"param_{index}"] = escape_csv_value(value)
             rows.append(row)
-
-        max_params = 0
+        header = dict.fromkeys(["module_name", "module_step"])
         for row in rows:
-            for key, value in row.items():
-                if key.startswith("param_") and value and key[len("param_"):].isdigit():
-                    max_params = max(max_params, int(key[len("param_"):]))
-        header = ["module_name", "module_step"] + [
-            f"param_{i}" for i in range(1, max_params + 1)
-        ]
-        self._write_rows(path, header, rows)
+            header.update(dict.fromkeys(key for key in row if key))
+        self._write_rows(path, list(header), rows)
 
     def _append_test_case_csv(self, path: str, test_case: str, module_name: str) -> None:
         """Append a ``(test_case, module_name)`` step, skipping an exact duplicate row."""

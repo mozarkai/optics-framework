@@ -8,7 +8,7 @@ get a readable to-do list, not a wall of failures. Project checks
 is reported as a failure and makes ``run_doctor(check=True)`` exit non-zero so
 CI can gate on it.
 
-Project configs are parsed with plain ``yaml.safe_load`` — doctor deliberately
+Project configs are parsed with ``load_project_yaml`` — doctor deliberately
 never constructs ``ConfigHandler``, because its constructor creates an
 ``execution_output/`` directory as a side effect and a diagnostic command must
 not mutate the project it is inspecting.
@@ -29,8 +29,12 @@ from pydantic import TypeAdapter, ValidationError
 from rich.cells import cell_len
 from rich.text import Text
 
-from optics_framework.common.config_handler import resolve_config_file
+from optics_framework.common.config_handler import (
+    load_project_yaml,
+    resolve_config_file,
+)
 from optics_framework.common.error import OpticsError
+from optics_framework.common.logging_config import escape_control, mask_secrets
 from optics_framework.helper.console import can_encode, safe_console
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
@@ -266,7 +270,7 @@ def _selenium_row() -> Check:
 # --------------------------------------------------------------------------- #
 
 def _load_project_yaml(folder: str) -> tuple[dict | None, Check | None]:
-    """Read ``<folder>/config.yaml`` with plain yaml.safe_load and resolve its
+    """Read ``<folder>/config.yaml`` with load_project_yaml and resolve its
     environment references and relative paths. Returns
     ``(data, None)`` or ``(None, failing row)`` — never constructs ConfigHandler,
     whose constructor would create execution_output/ as a side effect."""
@@ -275,8 +279,7 @@ def _load_project_yaml(folder: str) -> tuple[dict | None, Check | None]:
     if not os.path.isfile(path):
         return None, Check(_CONFIG_FILE, "fail", f"no config.yaml in {folder}", recreate)
     try:
-        with open(path, encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
+        data = load_project_yaml(path) or {}
     except (yaml.YAMLError, OSError) as exc:
         return None, Check(_CONFIG_FILE, "fail", f"could not parse config.yaml: {exc}", recreate)
     if not isinstance(data, dict):
@@ -542,7 +545,7 @@ def print_report(sections: list[tuple[str, list[Check]]],
         if mandatory_hints:
             _console.print(f"[yellow]{glyphs.status['warn']} Before your first real run:[/yellow]")
             for hint in mandatory_hints:
-                _console.print(f"  • {hint}")
+                _console.print(Text("  • ").append(hint))
         else:
             _console.print(
                 f"Good enough to start — {glyphs.status['warn']} rows are optional extras you can add later.")
@@ -593,8 +596,19 @@ def diagnose(folder: str | None = None) -> Diagnosis:
                                            _NO_CONFIG_HINT)]))
     rows = [row for _, section_rows in sections for row in section_rows]
     drivers = _enabled_driver_names(folder) if folder else set()
-    return Diagnosis(sections, _mandatory_hints(rows, drivers),
-                     any(row.status == "fail" for row in rows))
+    # Hints read the raw row names, so a secret that matches a name cannot hide a blocking warning.
+    blocking = [_literal(hint) for hint in _mandatory_hints(rows, drivers)]
+    sections = [(title, [_literal_check(row) for row in section_rows]) for title, section_rows in sections]
+    return Diagnosis(sections, blocking, any(row.status == "fail" for row in rows))
+
+
+def _literal(text: str) -> str:
+    return escape_control(mask_secrets(text))
+
+
+def _literal_check(row: Check) -> Check:
+    """``row`` with secrets masked and control characters escaped, since project files supply its text."""
+    return row._replace(name=_literal(row.name), detail=_literal(row.detail), hint=_literal(row.hint))
 
 
 def print_diagnosis(diagnosis: Diagnosis) -> None:
