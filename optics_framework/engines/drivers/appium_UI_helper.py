@@ -53,6 +53,32 @@ class XPathUniquenessIndex(XPathIndex):
         super().__init__(root, XPATH_INDEXED_ATTRIBUTES)
 
 
+_LOCATOR_ATTRIBUTES = ("resource-id", "text", "content-desc", "name", "value", "label")
+_ANCHOR_ATTRIBUTES = ("resource-id", "name", "label")
+
+
+def _xpath_step(element) -> tuple[str, bool]:
+    """One XPath step for ``element`` and whether it is anchored enough to stop climbing."""
+    attributes = [f"@{a}={utils.xpath_literal(element.attrib[a])}" for a in _LOCATOR_ATTRIBUTES if element.attrib.get(a)]
+    if attributes:
+        return f"{element.tag}[{' and '.join(attributes)}]", any(a in element.attrib for a in _ANCHOR_ATTRIBUTES)
+    parent = element.getparent()
+    siblings = parent.findall(element.tag) if parent is not None else []
+    return f"{element.tag}[{siblings.index(element) + 1 if len(siblings) > 1 else 1}]", False
+
+
+def _element_xpath(element) -> str:
+    """An XPath that climbs from ``element`` to its nearest anchored ancestor."""
+    steps = []
+    while element is not None:
+        step, anchored = _xpath_step(element)
+        steps.insert(0, step)
+        if anchored:
+            break
+        element = element.getparent()
+    return "//" + "/".join(steps)
+
+
 class UIHelper:
     def __init__(self, appium_driver):
         """
@@ -535,71 +561,20 @@ class UIHelper:
         }
 
     def get_view_locator(self, strategy, locator):
-        """
-        Fetches the full XPath of the given element directly from the UI tree using the strategy found.
-        Supports both Android and iOS attributes with prioritized attribute selection.
-        """
+        """The full XPath of the first element whose ``strategy`` attribute equals ``locator``, as Appium accepts it."""
         try:
             self.get_page_source()
-            tree = self.tree
-            # Construct the XPath based on the strategy and platform-specific attributes
             if strategy == "xpath":
                 return locator
-            if strategy not in ("text", "resource-id", "content-desc", "name", "value", "label"):
+            if strategy not in _LOCATOR_ATTRIBUTES:
                 internal_logger.debug(f"Unsupported strategy: {strategy}")
                 return None
-            elements = tree.xpath(f"//*[@{strategy}=$value]", value=locator)
-            if elements:
-                # If an element is found, manually construct the full XPath of the first matching element
-                element = elements[0]
-                xpath_parts = []
-                # Define attribute priority for Android and iOS
-                android_priority = ["resource-id", "text", "content-desc"]
-                ios_priority = ["name", "value", "label"]
-
-                while element is not None:
-                    tag = element.tag
-                    attributes = []
-
-                    # Choose the highest-priority attribute that exists in the element
-                    for attr in android_priority + ios_priority:
-                        if attr in element.attrib and element.attrib[attr]:
-                            attributes.append(f"@{attr}={utils.xpath_literal(element.attrib[attr])}")
-                            # break
-
-                    # Construct the XPath part with the selected attribute
-                    xpath_part = tag
-                    if attributes:
-                        xpath_part += "[" + " and ".join(attributes) + "]"
-                        xpath_parts.insert(0, xpath_part)
-
-                        # Stop traversal if a high-priority identifier is found
-                        if (
-                            "resource-id" in element.attrib
-                            or "name" in element.attrib
-                            or "label" in element.attrib
-                        ):
-                            break
-                    else:
-                        # If no unique attributes, add an index if siblings have the same tag
-                        siblings = (
-                            element.getparent().findall(tag)
-                            if element.getparent() is not None
-                            else []
-                        )
-                        index = siblings.index(element) + 1 if len(siblings) > 1 else 1
-                        xpath_part += f"[{index}]"
-                        xpath_parts.insert(0, xpath_part)
-                    # Move to the parent element
-                    element = element.getparent()
-
-                # Combine the parts to form the final simplified XPath
-                full_xpath = "//" + "/".join(xpath_parts)
-                # Find the XPath that is acceptable by Appium
-                final_xpath, _ = self.find_xpath(full_xpath)
-                return final_xpath
-            internal_logger.debug(f"No element found for '{locator}' in the UI tree.")
-            return None
+            elements = self.tree.xpath(f"//*[@{strategy}=$value]", value=locator)
+            if not elements:
+                internal_logger.debug(f"No element found for '{locator}' in the UI tree.")
+                return None
+            final_xpath, _ = self.find_xpath(_element_xpath(elements[0]))
+            return final_xpath
         except Exception as e:
             internal_logger.debug(f"Error getting view locator from tree: {e}")
             return None
