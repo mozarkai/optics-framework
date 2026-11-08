@@ -12,6 +12,7 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
+      - OPTICS_ALLOWED_HOSTS=localhost
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 45s
@@ -38,6 +39,7 @@ services:
       - ..:/app:cached
     environment:
       - PYTHONUNBUFFERED=1
+      - OPTICS_ALLOWED_HOSTS=localhost
     command: ["optics", "serve", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -56,6 +58,7 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
+      - OPTICS_ALLOWED_HOSTS=localhost
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8090),2); s.close()\""]
       interval: 45s
@@ -82,6 +85,7 @@ services:
       - ..:/app:cached
     environment:
       - PYTHONUNBUFFERED=1
+      - OPTICS_ALLOWED_HOSTS=localhost
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8090),2); s.close()\""]
       interval: 45s
