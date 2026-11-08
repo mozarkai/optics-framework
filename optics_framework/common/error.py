@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from enum import Enum, StrEnum
-from typing import Dict, Optional, Any, NoReturn
+from typing import Dict, Optional, Any
 from pydantic import BaseModel
 from rich import get_console
 from rich.panel import Panel
@@ -54,6 +54,7 @@ class Code(StrEnum):
     E0301 = "E0301"
     W0302 = "W0302"
     E0303 = "E0303"
+    E0304 = "E0304"
 
     # Keyword Execution issues
     E0401 = "E0401"
@@ -62,6 +63,7 @@ class Code(StrEnum):
     E0403 = "E0403"
     W0404 = "W0404"
     E0405 = "E0405"
+    E0406 = "E0406"
 
     # Config/File issues
     E0501 = "E0501"
@@ -212,6 +214,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         category=Category.SCREENSHOT,
         default_status=500,
     ),
+    "E0304": ErrorSpec(
+        code=Code.E0304,
+        default_message="Image too large to decode or not a valid image",
+        category=Category.SCREENSHOT,
+        default_status=422,
+    ),
     # Keyword Execution issues
     "E0401": ErrorSpec(
         code=Code.E0401,
@@ -248,6 +256,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Action ran, but the screen does not show its result",
         category=Category.KEYWORD,
         default_status=500,
+    ),
+    "E0406": ErrorSpec(
+        code=Code.E0406,
+        default_message="Expression or filter refused: unsafe or too costly",
+        category=Category.KEYWORD,
+        default_status=400,
     ),
     # Config/File issues
     "E0501": ErrorSpec(
@@ -553,18 +567,6 @@ class OpticsError(Exception):
         )
         # return primitive dict for downstream compatibility
         return payload.model_dump()
-
-
-def raise_fallback_failure(subject: str, errors: list[tuple[Any, Exception]]) -> NoReturn:
-    """Re-raise a lone attempt's error as is; for several, list each under the last one's code."""
-    if not errors:
-        raise RuntimeError(f"No valid fallback values provided for {subject}")
-    if len(errors) == 1:
-        raise errors[0][1]
-    last = errors[-1][1]
-    tried = "\n".join(f"{values} -> {error}" for values, error in errors)
-    code = last.code if isinstance(last, OpticsError) else Code.E0401
-    raise OpticsError(code, message=f"All fallback values failed for {subject}:\n{tried}") from last
 
 
 def register_error(spec: ErrorSpec) -> None:
