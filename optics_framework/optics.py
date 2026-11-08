@@ -16,14 +16,16 @@ import inspect
 import json
 import os
 from pathlib import Path
-from itertools import product
 import yaml
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
+from optics_framework.common import fallback
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import (
     ConfigHandler,
     DependencyConfig,
     Config,
+    load_project_yaml,
+    parse_yaml,
 )
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.api.app_management import AppManagement
@@ -115,26 +117,13 @@ def fallback_params(func: Callable[..., Any]) -> Callable[..., Any]:
             for k in sig.parameters
             if k not in fallback_keys and k != "self"
         }
-        errors: List[tuple[Dict[str, str], Exception]] = []
         keys = list(fallback_lists.keys())
+        call_args = {k: v for k, v in bound.arguments.items() if k != "self"}
 
-        if not keys:
-            call_args = {k: v for k, v in bound.arguments.items() if k != "self"}
-            return func(self, **call_args)
+        def attempt(combo: tuple[str, ...]) -> Any:
+            return func(self, **{**call_args, **dict(zip(keys, combo)), **non_fallback})
 
-        for combo in product(*(fallback_lists[k] for k in keys)):
-            combo_kwargs = dict(zip(keys, combo))
-            call_args = {k: v for k, v in bound.arguments.items() if k != "self"}
-            call_args.update(combo_kwargs)
-            call_args.update(non_fallback)
-            try:
-                return func(self, **call_args)
-            except Exception as e:
-                if isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit)):
-                    raise
-                errors.append((combo_kwargs, e))
-
-        raise_fallback_failure(func.__name__, errors)
+        return fallback.run([fallback_lists[k] for k in keys], attempt, func.__name__)
 
     return wrapper
 
@@ -172,7 +161,7 @@ class Optics:
             if config_string.startswith(("{", "[")):
                 return json.loads(config_string)
             else:
-                return yaml.safe_load(config_string)
+                return parse_yaml(config_string, "the config string")
         except (json.JSONDecodeError, yaml.YAMLError) as e:
             raise OpticsError(
                 Code.E0503,
@@ -476,12 +465,11 @@ class Optics:
                     api_data = os.path.join(project_path, api_data)
             if not os.path.exists(api_data):
                 raise FileNotFoundError(f"API YAML file not found: {api_data}")
-            with open(api_data, "r", encoding="utf-8") as f:
-                try:
-                    data = yaml.safe_load(f)
-                except yaml.YAMLError as e:
-                    raise ValueError(f"Failed to parse API YAML file: {e}") from e
-                api_data_content = data.get("api", data)
+            try:
+                data = load_project_yaml(api_data)
+            except yaml.YAMLError as e:
+                raise ValueError(f"Failed to parse API YAML file: {e}") from e
+            api_data_content = data.get("api", data)
         elif isinstance(api_data, dict):
             api_data_content = api_data.get("api", api_data)
         else:

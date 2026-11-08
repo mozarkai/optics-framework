@@ -2,7 +2,6 @@
 import asyncio
 import base64
 import bisect
-import contextlib
 import functools
 import inspect
 import itertools
@@ -17,7 +16,6 @@ from functools import partial
 from typing import Annotated, Any, Literal
 
 import cv2
-import numpy as np
 from fastapi import HTTPException
 from pydantic import Field
 
@@ -48,6 +46,8 @@ from optics_framework.common.agent_core import (
 )
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.factories import ElementSourceFactory
+from optics_framework.common.http_guard import warn_if_exposed
+from optics_framework.common.image_decode import decode_image
 from optics_framework.common.logging_config import (
     decouple_console_logs,
     drain_console_logs,
@@ -90,6 +90,7 @@ def _default_sources_for_driver(driver: str) -> list[str]:
 try:
     from fastmcp import FastMCP
     from fastmcp.exceptions import ToolError
+    from fastmcp.server.dependencies import get_http_headers
     from fastmcp.tools import Tool, ToolResult
     from fastmcp.utilities.types import Image
     from mcp.types import TextContent, ToolAnnotations
@@ -98,7 +99,7 @@ try:
 except ImportError as _e:  # pragma: no cover - exercised only without the extra
     FastMCP = None  # type: ignore[assignment,misc]
     ToolError = RuntimeError  # type: ignore[assignment,misc]
-    Tool = ToolResult = Image = TextContent = ToolAnnotations = None  # type: ignore[assignment,misc]
+    Tool = ToolResult = Image = TextContent = ToolAnnotations = get_http_headers = None  # type: ignore[assignment,misc]
     _FASTMCP_IMPORT_ERROR = _e
 
 SERVER_NAME = "Optics MCP"
@@ -266,6 +267,7 @@ def _screen_out(d: Diff | None, cur: Snapshot, detail: str) -> dict[str, Any]:
 class _Slot:
     session: AgentSession
     shot: Callable[[], Awaitable[bytes]]
+    owner: str = ""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     busy: bool = False
     running: int = 0
@@ -275,6 +277,16 @@ class _Slot:
 _STATES: dict[str, _Slot] = {}
 _IDLE_ENDED: dict[str, int] = {}
 _IDLE_HISTORY = 256
+
+
+def _caller() -> str:
+    """The HTTP MCP session making this call; empty on stdio, which serves one client."""
+    return get_http_headers(include={"mcp-session-id"}).get("mcp-session-id", "")
+
+
+def _owned(sid: str) -> _Slot | None:
+    slot = _STATES.get(sid)
+    return slot if slot is not None and slot.owner == _caller() else None
 
 
 def _reply(lines: list[str], structured: dict[str, Any], is_error: bool = False, images: Sequence[Any] = ()) -> Any:
@@ -365,15 +377,16 @@ async def _slot(session_id: str) -> tuple[str, _Slot]:
     sessions = expose_api.session_manager.sessions
     sid = (session_id or "").strip()
     if not sid:
-        open_ids = sorted(s for s in sessions if s in _STATES)
+        open_ids = sorted(s for s in sessions if _owned(s) is not None)
         if not open_ids:
             raise Fail("unknown_session", "No session is open.")
         if len(open_ids) > 1:
             raise Fail("session_required", f"{len(open_ids)} sessions are open: {', '.join(open_ids)}.")
         sid = open_ids[0]
-    slot = _STATES.get(sid)
+    slot = _owned(sid)
     if slot is None or sid not in sessions:
-        _STATES.pop(sid, None)
+        if slot is not None:
+            _STATES.pop(sid, None)
         raise _unknown_session(sid)
     slot.last_used = time.monotonic()
     return sid, slot
@@ -444,7 +457,7 @@ async def _new_slot(sid: str) -> _Slot:
     keywords = keyword_catalog(_keyword_functions(), coordinates=True)
     read = partial(_driver_read, session, read_screen, observer)
     agent = AgentSession(read, partial(_run, sid), keywords, loop_limit=_LOOP_LIMIT)
-    return _Slot(agent, partial(_driver_read, session, observer.strategy_manager.capture_screenshot_bytes))
+    return _Slot(agent, partial(_driver_read, session, observer.strategy_manager.capture_screenshot_bytes), owner=_caller())
 
 
 def _head(action: Action, row: Row | None) -> str:
@@ -563,9 +576,10 @@ async def _check(_sid: str, slot: _Slot, present: list[str], absent: list[str], 
 
 
 def _jpeg(png: bytes) -> tuple[bytes, float]:
-    frame = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if frame is None:
-        raise Fail("other", "The screenshot could not be decoded.")
+    try:
+        frame = decode_image(png)
+    except OpticsError as exc:
+        raise Fail("other", f"The screenshot could not be decoded: {exc.message}") from exc
     height, width = frame.shape[:2]
     scale = min(1.0, _JPEG_EDGE / max(height, width))
     if scale < 1.0:
@@ -602,18 +616,19 @@ def _make_keyword_tool(slug: str, params: list[inspect.Parameter]) -> Callable[.
     async def wrapper(**kwargs: Any) -> Any:
         session_id = kwargs.pop("session_id")
         await _sweep()
-        slot = _STATES.get(session_id)
+        slot = _owned(session_id)
+        if slot is None:
+            raise ToolError(str(_unknown_session(session_id)))
         request_params = _stringify_params(kwargs)
         try:
-            async with slot.lock if slot is not None else contextlib.nullcontext():
-                if slot is not None:
-                    request_params = slot.session.expand_refs(request_params)
-                    slot.last_used = time.monotonic()
+            async with slot.lock:
+                request_params = slot.session.expand_refs(request_params)
+                slot.last_used = time.monotonic()
                 request = expose_api.ExecuteRequest(mode=expose_api.MODE_KEYWORD, keyword=slug, params=request_params)
                 try:
                     response = await expose_api.execute_keyword(session_id, request)
                 finally:
-                    if slot is not None and not is_read_only(slug):
+                    if not is_read_only(slug):
                         slot.session.refs.latest = None
         except Fail as exc:
             raise ToolError(str(exc)) from exc
@@ -635,6 +650,8 @@ def _make_keyword_tool(slug: str, params: list[inspect.Parameter]) -> Callable[.
 
 async def _observe(session_id: str, keyword: str, params: dict[str, Any] | None = None) -> Any:
     """Run a read-only observer keyword and return its unwrapped result."""
+    if _owned(session_id) is None:
+        raise ToolError(str(_unknown_session(session_id)))
     try:
         return _result(await expose_api.run_keyword_endpoint(session_id, keyword, params))
     except HTTPException as exc:
@@ -730,7 +747,7 @@ def _add_resources(mcp: "FastMCP") -> None:
     @mcp.resource("optics://browser-profiles", mime_type="application/json")
     def browser_profiles() -> list[dict[str, str]]:
         """The Chrome and Edge profiles on this machine, with the account in each; ask the user which to pass as capabilities.profile."""
-        if not expose_api.host_profiles_allowed:
+        if not expose_api.server_reads_allowed:
             raise ToolError("Browser profiles are listed only by a local stdio MCP server")
         return [profile.as_dict() for profile in playwright_profiles.list_profiles()]
 
@@ -765,7 +782,7 @@ def _add_resources(mcp: "FastMCP") -> None:
     @mcp.resource("optics://session/{session_id}/steps", mime_type="application/json")
     def session_steps(session_id: str) -> dict[str, Any]:
         """The steps this session ran, with the module and element CSV rows to replay them."""
-        slot = _STATES.get(session_id)
+        slot = _owned(session_id)
         if slot is None:
             raise ToolError(str(_unknown_session(session_id)))
         return _steps(slot.session)
@@ -931,7 +948,7 @@ def run_mcp_server(
     if transport == "stdio":
         # A stdio client may never read stderr; a full pipe must not block the logger.
         decouple_console_logs()
-        expose_api.host_profiles_allowed = True
+        expose_api.server_reads_allowed = True
     mcp = build_server(toolset)
     internal_logger.info(
         "Starting Optics MCP server (transport=%s%s)",
@@ -943,11 +960,13 @@ def run_mcp_server(
         if transport == "stdio":
             mcp.run(transport="stdio")
         else:
-            mcp.run(transport=transport, host=host, port=port)
+            warn_if_exposed("optics mcp", host)
+            mcp.run(transport=transport, host=host, port=port, host_origin_protection="auto")
     finally:
         signal.signal(signal.SIGTERM, previous_handler)
         _STATES.clear()
         expose_api.session_manager.terminate_all()
+        expose_api.server_reads_allowed = False
     if transport == "stdio" and not drain_console_logs():
         # The listener is stuck writing to an unread stderr while holding the stdout
         # buffer lock, so a normal interpreter shutdown would hang or abort.

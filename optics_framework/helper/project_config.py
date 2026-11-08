@@ -19,6 +19,7 @@ import os
 
 from rich.prompt import Confirm, Prompt
 
+from optics_framework.common import safe_fs
 from optics_framework.helper.onboarding import blank_line
 
 # Every platform maps to exactly ONE action driver; that driver owns the
@@ -259,8 +260,6 @@ def write_project_config(folder: str, text: str) -> str:
 
     Overwrites unconditionally — the caller owns any confirm-before-overwrite
     UX (see ``quickstart.py``, which asks before clobbering a template)."""
-    os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "config.yaml")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    safe_fs.write_text(path, text)
     return path

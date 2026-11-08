@@ -16,34 +16,19 @@ from typing import Optional, List, Dict, Any
 import binascii
 import os
 import base64
-import io
 import sys
 import asyncio
 import logging
-from PIL import Image
+import cv2
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from optics_framework.common.error import OpticsError
+from optics_framework.common.image_decode import decode_image
 
-# Optional heavy dependencies. We prefer lazy imports so the server can run even
-# when they are missing; endpoints will return 501 if easyocr isn't installed.
-# Mark heavy optional dependencies as Any so static analysis doesn't assume attributes
+# easyocr is imported lazily; endpoints return 501 when it isn't installed.
 easyocr: Any = None
-np: Any = None
-cv2: Any = None
-try:
-    import numpy as _np
-
-    np = _np
-except ImportError:
-    np = None
-
-try:
-    import cv2 as _cv2
-
-    cv2 = _cv2
-except ImportError:
-    cv2 = None
 
 logger = logging.getLogger("mock_remote_ocr")
 logging.basicConfig(level=logging.INFO)
@@ -80,6 +65,8 @@ class MockRemoteOCR:
 
     def __init__(self, base_path: Optional[str] = None):
         self.api_app = FastAPI(title="Mock Remote OCR")
+        # One decode at a time per worker bounds decoded pixels in memory to one image's budget.
+        self._decode_slots = asyncio.Semaphore(1)
 
         # allow override from env or parameter
         if base_path is None:
@@ -144,26 +131,12 @@ class MockRemoteOCR:
         self.api_app.add_event_handler("startup", _startup_schedule_reader)
 
     # ---- helpers now as instance methods ----
-    def _decode_image_bytes(self, img_bytes: bytes) -> Any:
-        if cv2 is not None and np is not None:
-            _decode_exc_types = (ValueError, TypeError, OSError)
-            if hasattr(cv2, "error"):
-                _decode_exc_types = _decode_exc_types + (cv2.error,)
+    async def _decode_image_bytes(self, img_bytes: bytes) -> np.ndarray:
+        async with self._decode_slots:
             try:
-                arr = np.frombuffer(img_bytes, np.uint8)
-                img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                return img
-            except _decode_exc_types:
-                logger.debug(
-                    "cv2-based decode failed, falling back to PIL", exc_info=True
-                )
-
-        try:
-            pil_im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-            return np.array(pil_im) if np is not None else pil_im
-        except (OSError, ValueError):
-            logger.debug("PIL-based decode failed", exc_info=True)
-            return None
+                return await asyncio.to_thread(decode_image, img_bytes)
+            except OpticsError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     def _lazy_import_easyocr(self) -> None:
         global easyocr
@@ -217,21 +190,7 @@ class MockRemoteOCR:
             return reader
 
     async def _run_readtext_async(self, reader: Any, img: Any) -> Any:
-        try:
-            if (
-                cv2 is not None
-                and np is not None
-                and isinstance(img, np.ndarray)
-                and img.ndim == 3
-                and img.shape[-1] == 3
-            ):
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        except (AttributeError, TypeError, ValueError):
-            logger.debug(
-                "Color conversion failed, continuing with original image", exc_info=True
-            )
-
-        return await asyncio.to_thread(reader.readtext, img)
+        return await asyncio.to_thread(reader.readtext, cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
     def _process_raw_results(self, raw_results: Any) -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
@@ -267,10 +226,7 @@ class MockRemoteOCR:
     # ---- route factories: return async functions that call instance methods ----
     def _make_detect_text(self):
         async def detect_text(req: DetectRequest) -> Dict[str, List[Dict[str, Any]]]:
-            img_bytes = self._get_image_bytes(req.image)
-            img = await asyncio.to_thread(self._decode_image_bytes, img_bytes)
-            if img is None:
-                return {"results": []}
+            img = await self._decode_image_bytes(self._get_image_bytes(req.image))
 
             self._lazy_import_easyocr()
             reader = getattr(self.api_app.state, "ocr_reader", None)

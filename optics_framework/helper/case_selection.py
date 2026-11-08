@@ -6,7 +6,6 @@ collapsed, and ``*`` / ``?`` are wildcards; every other character is literal.
 Test cases the caller marks as not selectable (setup/teardown) are always kept.
 """
 import difflib
-import re
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
@@ -22,25 +21,48 @@ def normalize_name(name: str) -> str:
 @dataclass(frozen=True)
 class NamePattern:
     text: str
-    _regex: re.Pattern[str]
+    normalized: str
 
     @classmethod
     def parse(cls, text: str) -> "NamePattern":
         normalized = normalize_name(text)
         if not normalized:
             raise OpticsError(Code.E0503, message="Test case names to include/exclude must not be empty.")
-        translated = "".join(
-            ".*" if char == "*" else "." if char == "?" else re.escape(char)
-            for char in normalized
-        )
-        return cls(text, re.compile(translated, re.DOTALL))
+        return cls(text, normalized)
 
     @property
     def has_wildcards(self) -> bool:
         return any(char in self.text for char in "*?")
 
     def matches(self, name: str) -> bool:
-        return self._regex.fullmatch(normalize_name(name)) is not None
+        return wildcard_match(self.normalized, normalize_name(name))
+
+
+def wildcard_match(pattern: str, name: str) -> bool:
+    """Whole-name match where ``*`` is any run and ``?`` any one character; each piece between ``*`` is placed leftmost, never retried."""
+    first, *middle = pattern.split("*")
+    if not middle:
+        return len(name) == len(first) and _fits(first, name, 0)
+    *middle, last = middle
+    if not _fits(first, name, 0):
+        return False
+    position = len(first)
+    for piece in middle:
+        position = _find(piece, name, position)
+        if position < 0:
+            return False
+        position += len(piece)
+    return len(name) - len(last) >= position and _fits(last, name, len(name) - len(last))
+
+
+def _fits(piece: str, name: str, at: int) -> bool:
+    return len(name) - at >= len(piece) and all(char in ("?", name[at + i]) for i, char in enumerate(piece))
+
+
+def _find(piece: str, name: str, start: int) -> int:
+    if "?" not in piece:
+        return name.find(piece, start)
+    return next((at for at in range(start, len(name) - len(piece) + 1) if _fits(piece, name, at)), -1)
 
 
 def select_test_cases[T](

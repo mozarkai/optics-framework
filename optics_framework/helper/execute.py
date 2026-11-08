@@ -13,7 +13,7 @@ import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
 from optics_framework.api import ActionKeyword, AppManagement, Verifier
-from optics_framework.common.config_handler import Config, DependencyConfig, resolve_config_file
+from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
 from optics_framework.common.logging_config import internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
@@ -136,8 +136,7 @@ def _process_yaml_file(
 def _try_load_config_from_yaml(file_path: str, current_config: Config | None, folder_path: str) -> Config | None:
     """Attempt to load configuration from YAML file."""
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            yaml_data = yaml.safe_load(f) or {}
+        yaml_data = load_project_yaml(file_path) or {}
 
         if _is_config_file(yaml_data):
             yaml_data = resolve_config_file(yaml_data, folder_path)
@@ -245,9 +244,7 @@ def identify_file_content(file_path: str) -> Set[str]:
             headers = read_csv_headers(file_path)
             return _identify_csv_content(headers)
         else:  # YAML file
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            return _identify_yaml_content(data)
+            return _identify_yaml_content(load_project_yaml(file_path) or {})
     except Exception as e:
         internal_logger.exception(f"Error reading {file_path}: {e}")
         return set()
@@ -431,14 +428,12 @@ def load_api_data(file_path: str) -> ApiData:
     """Loads API data from a YAML file and validates it."""
     if not os.path.exists(file_path):
         raise OpticsError(Code.E0501, message=f"API specification file not found: {file_path}")
-    with open(file_path, "r", encoding="utf-8") as f:
-        try:
-            data = yaml.safe_load(f)
-            return ApiData(**data)
-        except yaml.YAMLError as e:
-            raise OpticsError(Code.E0503, message=f"Error parsing YAML file: {e}", details={"exception": str(e)})
-        except Exception as e:
-            raise OpticsError(Code.E0503, message=f"Invalid API data structure: {e}", details={"exception": str(e)})
+    try:
+        return ApiData(**load_project_yaml(file_path))
+    except yaml.YAMLError as e:
+        raise OpticsError(Code.E0503, message=f"Error parsing YAML file: {e}", details={"exception": str(e)})
+    except Exception as e:
+        raise OpticsError(Code.E0503, message=f"Invalid API data structure: {e}", details={"exception": str(e)})
 
 
 def build_linked_list(

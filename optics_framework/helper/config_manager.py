@@ -7,7 +7,8 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Label, ListView, ListItem, Static
 
-from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig
+from optics_framework.common import safe_fs
+from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig, load_project_yaml
 
 _CONFIG_LIST_ID = "#config-list"
 
@@ -27,8 +28,7 @@ def _load_project_config(folder: str) -> Config:
     if not os.path.exists(path):
         return Config()
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_project_yaml(path) or {}
     except (yaml.YAMLError, OSError):
         return Config()
     return Config(**data)
@@ -265,9 +265,9 @@ class ProjectConfigTUI(App):
         # NOTE: rewriting config.yaml via yaml.safe_dump loses any YAML comments
         # the user wrote. This is acceptable for the --edit power-user path; the
         # beginner path (`optics configure`) writes a freshly rendered config.
-        os.makedirs(self.folder, exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(self.config.model_dump(), f, default_flow_style=False)
+        safe_fs.write_text(
+            self.config_path, yaml.safe_dump(self.config.model_dump(), default_flow_style=False)
+        )
 
     async def action_quit(self) -> None:
         self.push_screen(QuitConfirmScreen(), self.handle_quit)
