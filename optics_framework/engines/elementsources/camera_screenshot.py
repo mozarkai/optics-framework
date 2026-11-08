@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import cv2
 import numpy as np
 import requests
+import urllib3
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.image_decode import MAX_ENCODED_BYTES, check_encoded_length, decode_image
@@ -329,7 +330,7 @@ class CameraScreenshot(ElementSourceInterface):
     def _http_error(status: int, body: bytes) -> CameraScreenshotHttpError:
         try:
             fields = json.loads(body)
-        except ValueError:
+        except (ValueError, RecursionError):
             fields = {"message": body.decode("utf-8", "replace")}
         if not isinstance(fields, dict):
             fields = {}
@@ -338,11 +339,13 @@ class CameraScreenshot(ElementSourceInterface):
     @staticmethod
     def _read_capped(response: requests.Response, limit: int, deadline: float) -> bytes:
         body = bytearray()
-        for chunk in response.iter_content(READ_CHUNK_BYTES):
-            body += chunk
-            if len(body) >= limit:
-                break
+        # read1 returns whatever one socket read gives, so a slow drip cannot stretch a read past the deadline.
+        while len(body) < limit:
             _remaining(deadline)
+            chunk = response.raw.read1(READ_CHUNK_BYTES, decode_content=True)
+            if not chunk:
+                break
+            body += chunk
         return bytes(body[:limit])
 
     def take_http_screenshot(self) -> np.ndarray:
@@ -375,7 +378,7 @@ class CameraScreenshot(ElementSourceInterface):
                     internal_logger.error(str(error))
                     raise error
                 body = self._read_capped(response, MAX_ENCODED_BYTES + 1, deadline)
-        except requests.RequestException as e:
+        except (requests.RequestException, urllib3.exceptions.HTTPError) as e:
             internal_logger.error(f"HTTP screenshot request failed: {type(e).__name__}")
             raise RuntimeError(
                 f"Camera screenshot request to {self.http_url} failed: {type(e).__name__}"
