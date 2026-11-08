@@ -82,7 +82,7 @@ The core install has **no drivers, OCR, or LLM backends** — they are optional 
 | `ble` | pyserial | BLE mouse/keyboard action drivers |
 | `easyocr` | easyocr | On-screen text detection (OCR) |
 | `pytesseract` | pytesseract, pillow | OCR via a system Tesseract |
-| `google-vision` | google-cloud-vision | OCR via Google Cloud Vision |
+| `google-vision` | google-cloud-vision, google-auth | OCR via Google Cloud Vision |
 | `llm` | google-genai | Natural-language `optics live` + AI self-heal |
 | `mcp` | fastmcp | `optics mcp` server |
 

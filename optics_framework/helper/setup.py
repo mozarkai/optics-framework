@@ -75,7 +75,7 @@ TEXT_ENGINES = EngineCategory(
         "EasyOCR": EngineBackend(name="EasyOCR", extra="easyocr", packages=["easyocr"]),
         "Pytesseract": EngineBackend(name="Pytesseract", extra="pytesseract", packages=["pytesseract", "pillow"]),
         "Google Vision": EngineBackend(
-            name="Google Vision", extra="google-vision", packages=["google-cloud-vision"],
+            name="Google Vision", extra="google-vision", packages=["google-cloud-vision", "google-auth"],
             aliases=["google_vision", "googlevision"],
         ),
     }
