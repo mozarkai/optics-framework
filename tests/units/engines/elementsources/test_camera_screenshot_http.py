@@ -40,6 +40,22 @@ def _jpeg() -> bytes:
 JPEG = _jpeg()
 
 
+def _marked_png() -> bytes:
+    """A 40x30 camera frame: a white 20x20 screen inset at (10, 5) with a red block in its top-left corner."""
+    image = np.zeros((30, 40, 3), np.uint8)
+    image[5:25, 10:30] = (255, 255, 255)
+    image[5:10, 10:15] = (0, 0, 255)
+    return cv2.imencode(".png", image)[1].tobytes()
+
+
+MARKED = _marked_png()
+INSET = ["10,5", "29,5", "29,24", "10,24"]
+
+
+def _red(pixel) -> bool:
+    return pixel[2] > 200 and pixel[1] < 60
+
+
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     for name in ENV_VARS:
@@ -63,9 +79,9 @@ def http_server():
             if server.mode == "ok":
                 self.send_response(200)
                 self.send_header("Content-Type", "image/jpeg")
-                self.send_header("Content-Length", str(len(JPEG)))
+                self.send_header("Content-Length", str(len(server.body)))
                 self.end_headers()
-                self.wfile.write(JPEG)
+                self.wfile.write(server.body)
             elif server.mode == "redirect":
                 self.send_response(302)
                 self.send_header("Location", "http://127.0.0.1:1/elsewhere")
@@ -90,6 +106,7 @@ def http_server():
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
     server.mode = "ok"
+    server.body = JPEG
     server.received = received
     server.url = f"http://127.0.0.1:{server.server_port}/screenshot"
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -194,9 +211,13 @@ FULL_FRAME = ["0,0", "29,0", "29,19", "0,19"]
 
 
 class TestFrameProcessing:
-    def test_http_frame_is_deskewed_to_the_output_size(self, http_server):
-        source = _source(url=http_server.url, token=TOKEN, deskew_corners=FULL_FRAME, out_width=60, out_height=40)
-        assert source.capture().shape == (40, 60, 3)
+    def test_http_frame_is_cut_to_the_screen_and_stretched(self, http_server):
+        http_server.body = MARKED
+        source = _source(url=http_server.url, token=TOKEN, deskew_corners=INSET, out_width=40, out_height=40)
+        frame = source.capture()
+        assert frame.shape == (40, 40, 3)
+        assert _red(frame[2, 2])
+        assert frame[37, 37].min() > 200
 
     def test_tcp_frame_is_deskewed_then_rotated(self, tcp_server):
         port, _ = tcp_server
@@ -206,12 +227,23 @@ class TestFrameProcessing:
         assert source.capture().shape == (60, 40, 3)
 
     def test_rotation_without_deskew(self, http_server):
+        http_server.body = MARKED
         source = _source(url=http_server.url, token=TOKEN, rotation="Counterclockwise")
-        assert source.capture().shape == (30, 20, 3)
+        frame = source.capture()
+        assert frame.shape == (40, 30, 3)
+        assert _red(frame[27, 7])
+        assert not _red(frame[12, 22])
 
     @pytest.mark.parametrize(
         "capabilities",
-        [{"deskew_corners": FULL_FRAME[:3]}, {"deskew_corners": ["0,0", "1,0", "1,1", "zero"]}, {"rotation": "sideways"}],
+        [
+            {"deskew_corners": FULL_FRAME[:3]},
+            {"deskew_corners": ["0,0", "1,0", "1,1", "zero"]},
+            {"deskew_corners": ["nan,0", "1,0", "1,1", "0,1"]},
+            {"deskew_corners": ["0,0"] * 4},
+            {"out_width": 0},
+            {"rotation": "sideways"},
+        ],
     )
     def test_bad_frame_settings_are_refused(self, capabilities):
         with pytest.raises(ValidationError):
