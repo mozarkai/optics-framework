@@ -799,7 +799,9 @@ class AgentSession:
         before = self.refs.latest or await self._read()
         p = prepare(action, self.refs, self.keywords, self.elements)
         key = self._guard_loop(p)
-        named = (p.row, before, ("",) if p.row else p.tried) if p.tried else None
+        named = None
+        if p.tried:
+            named = (p.row, before, ("",) if p.row else p.tried)
         into = self._focus.into(named, lambda: before)
         secret = self._mask_if_secret(p, into)
         result, strategy, error = await self._run_calls(p)

@@ -52,7 +52,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.session_liveness import is_webdriver_server_unreachable, raise_if_session_dead
 
 _MAX_ERROR_OUTPUT_LINES = 20
-_ANDROID_PACKAGE = re.compile(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*")
+_ANDROID_PACKAGE = re.compile(r"[A-Za-z]\w*(?:\.[A-Za-z]\w*)*", re.ASCII)
 
 _CDP_EXECUTE = "opticsExecuteCdp"
 _WEB_RECT_JS = "const r = arguments[0].getBoundingClientRect(); return [r.left, r.top, r.width, r.height];"

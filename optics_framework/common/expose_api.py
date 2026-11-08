@@ -1,5 +1,4 @@
 import base64
-import binascii
 import json
 import os
 import re
@@ -870,7 +869,7 @@ async def _setup_request_template_overrides(
             raise HTTPException(status_code=400, detail=str(e)) from e
         try:
             raw = _decode_template_base64(b64_value)
-        except (binascii.Error, ValueError, OpticsError) as e:
+        except (ValueError, OpticsError) as e:
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
         path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
