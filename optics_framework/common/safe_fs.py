@@ -1,13 +1,13 @@
 """Project file writes that never follow a symlink out of the intended tree."""
 import os
+import secrets
 import shutil
 import stat
-import tempfile
 from pathlib import Path
 
 from optics_framework.common.error import Code, OpticsError
 
-_NEW_FILE_MODE = 0o644
+_NEW_FILE_MODE = 0o666
 
 
 def refuse_symlinks(path: str | os.PathLike, root: str | os.PathLike) -> Path:
@@ -40,11 +40,15 @@ def write_text(path: str | os.PathLike, text: str, root: str | os.PathLike | Non
     if root is not None:
         target = refuse_symlinks(target.parent, root) / target.name
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
+    tmp = target.parent / f".{target.name}.{secrets.token_hex(8)}.tmp"
+    existing = _regular_mode(target)
+    # O_EXCL refuses a planted file or symlink; a new file gets the user's umask, as open() would.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _NEW_FILE_MODE if existing is None else 0o600)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
-        os.chmod(tmp, _mode_of(target))
+        if existing is not None:
+            os.chmod(tmp, existing)
         os.replace(tmp, target)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
@@ -61,9 +65,9 @@ def replace_tree(source: str | os.PathLike, destination: str | os.PathLike, root
     return target
 
 
-def _mode_of(path: Path) -> int:
+def _regular_mode(path: Path) -> int | None:
     try:
         info = path.lstat()
     except FileNotFoundError:
-        return _NEW_FILE_MODE
-    return stat.S_IMODE(info.st_mode) if stat.S_ISREG(info.st_mode) else _NEW_FILE_MODE
+        return None
+    return stat.S_IMODE(info.st_mode) if stat.S_ISREG(info.st_mode) else None
