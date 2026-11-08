@@ -41,6 +41,7 @@ llm_models:
       capabilities:
         model: gpt-5-mini
         # api_key_env: OPENROUTER_API_KEY
+        # api_key: ${OPENROUTER_API_KEY}  # or the key itself; used before api_key_env
   - anthropic:                       # ANTHROPIC_API_KEY; platform: bedrock / vertex also work
       enabled: false
       capabilities:

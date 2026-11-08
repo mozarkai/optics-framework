@@ -108,8 +108,8 @@ A driver extra installs only the **Python client**. Each platform also needs its
 - **Web (Playwright):** `optics setup --install playwright` runs the [browser download](https://playwright.dev/python/docs/browsers) for you.
 - **Web (Selenium):** a running [Selenium/WebDriver server](https://www.selenium.dev/documentation/grid/); set its URL in `config.yaml`.
 - **OCR (`pytesseract`):** a system [Tesseract binary](https://tesseract-ocr.github.io/tessdoc/Installation.html).
-- **OCR (`google-vision`):** a service account key file in `capabilities.credentials_path`, or Google Cloud credentials in the environment (`GOOGLE_APPLICATION_CREDENTIALS`).
-- **LLM (`gemini`, `openai`, `anthropic`):** the provider's API key in the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), or a local OpenAI-compatible server such as Ollama. Never commit keys.
+- **OCR (`google-vision`):** a Vision API key in `capabilities.api_key`, a service account key file in `capabilities.credentials_path`, or Google Cloud credentials in the environment (`GOOGLE_APPLICATION_CREDENTIALS`).
+- **LLM (`gemini`, `openai`, `anthropic`):** the provider's API key in `capabilities.api_key` or in the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), or a local OpenAI-compatible server such as Ollama. Write `api_key: ${MY_KEY}` to keep the key out of a committed `config.yaml`.
 
 Point your project `config.yaml` at the device/browser once the tooling is running — see [Configuration](configuration.md).
 

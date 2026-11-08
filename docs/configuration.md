@@ -897,7 +897,7 @@ Text detection engines provide OCR (Optical Character Recognition) capabilities 
             credentials_path: "./config/google_credentials.json"
     ```
 
-    `credentials_path` is a service account key file. Without it, the engine uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`). If the file is missing or is not a service account key, the run stops with `E0501` before the first test.
+    `credentials_path` is a service account key file. To use a Vision API key, set `capabilities.api_key` instead (for example `api_key: ${VISION_API_KEY}`). Set only one of the two. Without them, the engine uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`). If the file is missing or is not a service account key, the run stops with `E0501` before the first test.
 
 === "Remote OCR"
 
@@ -961,8 +961,13 @@ below is enabled — the backend SDK is only imported when its engine is enabled
 this section out has no cost for projects that don't use either feature.
 
 Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the
-`llm` extra installs all three. Keys are read from environment variables only. If you enable
-more than one entry, a failed call falls through to the next one in list order.
+`llm` extra installs all three. If you enable more than one entry, a failed call falls
+through to the next one in list order.
+
+Each engine reads its API key from `capabilities.api_key` first, then from an environment
+variable. To keep the key out of `config.yaml`, write `api_key: ${MY_KEY}`: Optics reads the
+variable when it loads the file. Optics writes `****` in place of the key in logs and reports
+(see [Environment variables and relative paths](#environment-variables-and-relative-paths)).
 
 Every engine takes `capabilities.timeout_s` (default `60`): the seconds one request may take.
 A request that takes longer fails like any other LLM error, so a stalled connection cannot hang
@@ -1004,10 +1009,8 @@ a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before 
     | `GOOGLE_CLOUD_LOCATION` | Vertex AI location |
     | `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI service account credentials |
 
-    !!! warning "Don't hardcode credentials"
-        `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a
-        warning when used — prefer the environment variables above so keys never end up in
-        a committed `config.yaml`.
+    `capabilities.api_key` (or `gemini_api_key`) sets the Developer API key and overrides
+    the variables above.
 
 === "OpenAI-compatible"
 
@@ -1023,6 +1026,7 @@ a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before 
           capabilities:
             model: anthropic/claude-sonnet-5-5  # required; the name the server uses
             api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY
+            # api_key: ${OPENROUTER_API_KEY}    # optional; used before api_key_env
             # response_format: json_object     # for servers without JSON-schema output
             # max_tokens: 4096                  # optional cap per reply; unset = server default
             # temperature: 0.0
@@ -1061,7 +1065,7 @@ a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before 
 
     | Platform | Credentials |
     |----------|-------------|
-    | `anthropic` | `ANTHROPIC_API_KEY`, or the variable named by `api_key_env` |
+    | `anthropic` | `capabilities.api_key`, else `ANTHROPIC_API_KEY` or the variable named by `api_key_env` |
     | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |
     | `vertex` | Google application default credentials |
 
