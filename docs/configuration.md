@@ -966,7 +966,7 @@ through to the next one in list order.
 
 Each engine reads its API key from `capabilities.api_key` first, then from an environment
 variable. To keep the key out of `config.yaml`, write `api_key: ${MY_KEY}`: Optics reads the
-variable when it loads the file. Optics writes `****` in place of the key in logs and reports
+variable when it loads the file, and stops with `E0501` if the variable is not set. Optics writes `****` in place of the key in logs and reports
 (see [Environment variables and relative paths](#environment-variables-and-relative-paths)).
 
 Every engine takes `capabilities.timeout_s` (default `60`): the seconds one request may take.
