@@ -5,9 +5,9 @@ import cv2
 import numpy as np
 import base64
 from optics_framework.common.text_interface import TextInterface
-from optics_framework.common import utils
 from optics_framework.common.config_handler import Config
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.engines.vision_models.base_methods import save_match_annotation
 
 
 class RemoteOCR(TextInterface):
@@ -20,9 +20,7 @@ class RemoteOCR(TextInterface):
         Accept either a `Config` Pydantic object or a plain dict-like config for
         convenience in tests and REPL usage.
         """
-        self.execution_output_dir = (
-            config.get("execution_output_path", "") if config else ""
-        )
+        self.execution_output_dir = config.get("execution_output_path") if config else None
         if not config:
             internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
@@ -134,7 +132,6 @@ class RemoteOCR(TextInterface):
         - Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
             Tuple of (success, center coordinates, bounding box) if found, None if not found or index out of bounds
         """
-        img = self._decode_image_for_annotation(input_data)
         detect_result = self.detect_text(input_data)
         if not detect_result:
             return None
@@ -143,25 +140,10 @@ class RemoteOCR(TextInterface):
         matching_elements = self._find_matching_elements(detections, text)
         result = self._select_matching_result(matching_elements, text, index)
 
-        if result is not None and img is not None:
-            self._annotate_and_save(img, result)
+        if result is not None:
+            save_match_annotation(input_data, [result[1:]], "detected_text", self.execution_output_dir)
 
         return result
-
-    def _decode_image_for_annotation(self, input_data: Union[str, "np.ndarray"]) -> Optional["np.ndarray"]:
-        """Decode base64 string or return numpy array for annotation."""
-        if isinstance(input_data, str):
-            try:
-                img_data = base64.b64decode(input_data)
-                nparr = np.frombuffer(img_data, np.uint8)
-                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                return img
-            except Exception as e:
-                internal_logger.error(f"Failed to decode input image: {str(e)}")
-                return None
-        elif isinstance(input_data, np.ndarray):
-            return input_data
-        return None
 
     def _find_matching_elements(self, detections: List[Tuple[List[Tuple[int, int]], str, float]], text: str) -> List[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """Find all matching elements for the given text."""
@@ -189,23 +171,6 @@ class RemoteOCR(TextInterface):
                 f"Index {index} out of bounds for {len(matching_elements)} matches")
             return None
         return matching_elements[0]
-
-    def _annotate_and_save(self, img: "np.ndarray", result: Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]) -> None:
-        """Annotate the image with bounding box and center, then save."""
-        _, center, (top_left, bottom_right) = result
-        try:
-            cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)  # pylint: disable=no-member
-            cv2.circle(img, center, 5, (0, 0, 255), -1)  # pylint: disable=no-member
-            utils.save_screenshot(img, "detected_text", output_dir=self.execution_output_dir)
-        except Exception as ex:
-            try:
-                _cv2_error = getattr(cv2, 'error', None)
-                if _cv2_error is not None and isinstance(ex, _cv2_error):
-                    internal_logger.debug("OpenCV drawing failed: %s", ex)
-                else:
-                    internal_logger.debug("Failed to save annotated screenshot: %s", ex)
-            except Exception:
-                internal_logger.debug("Failed to save annotated screenshot: %s", ex)
 
     def element_exist(self, input_data: str, reference_data: str) -> Tuple[int, int] | None:
         """

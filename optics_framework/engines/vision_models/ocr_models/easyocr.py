@@ -2,7 +2,7 @@ from typing import List, Tuple, Optional
 import easyocr
 import cv2
 from optics_framework.common.text_interface import TextInterface
-from optics_framework.common import utils
+from optics_framework.engines.vision_models.base_methods import save_match_annotation
 from optics_framework.common.logging_config import internal_logger
 
 
@@ -25,7 +25,7 @@ class EasyOCRHelper(TextInterface):
         """
         # Extract parameters from config or use defaults
         language = config.get("language", "en") if config else "en"
-        self.execution_output_dir = config.get("execution_output_path", "") if config else ""
+        self.execution_output_dir = config.get("execution_output_path") if config else None
 
         try:
             self.reader = easyocr.Reader([language])
@@ -73,7 +73,6 @@ class EasyOCRHelper(TextInterface):
                         int(bottom_right_ocr[1]),
                     )
 
-                    # Create the (x,y) tuples for cv2.rectangle
                     pt1 = (x_top_left, y_top_left)
                     pt2 = (x_bottom_right, y_bottom_right)
 
@@ -86,10 +85,6 @@ class EasyOCRHelper(TextInterface):
 
                     detected_texts.append((True, (center_x, center_y), (pt1, pt2)))
 
-                    # Draw bounding box around the detected text
-                    cv2.rectangle(input_data, pt1, pt2, (0, 255, 0), 2)
-                    cv2.circle(input_data, (center_x, center_y), 5, (0, 0, 255), -1)
-
         if not detected_texts:
             return None
         if index is not None:
@@ -98,8 +93,9 @@ class EasyOCRHelper(TextInterface):
                 return detected_texts[index]
             return None
 
-        utils.save_screenshot(
-            input_data, "text_location_annotation", output_dir=self.execution_output_dir)
+        save_match_annotation(
+            input_data, [match[1:] for match in detected_texts], "text_location_annotation", self.execution_output_dir
+        )
 
         return detected_texts[0]
 

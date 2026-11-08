@@ -1,5 +1,4 @@
 from typing import Dict, Any, Optional, List, Tuple, Literal
-import base64
 import json
 import cv2
 import numpy as np
@@ -7,7 +6,7 @@ import requests
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.engines.vision_models.base_methods import load_template
+from optics_framework.engines.vision_models.base_methods import load_template, save_match_annotation
 
 class RemoteImageDetection(ImageInterface):
     DEPENDENCY_TYPE = "image_detection"
@@ -22,7 +21,7 @@ class RemoteImageDetection(ImageInterface):
 
         self.project_path: str = config.get("project_path", "")
         self.templates = config.get("templates", None)
-        self.execution_output_dir = config.get("execution_output_path", "")
+        self.execution_output_dir = config.get("execution_output_path")
         self.detection_url: str = config.get("url", "http://127.0.0.1:8080")
         self.capabilities: Dict[str, Any] = config.get("capabilities", {})
         self.timeout: int = self.capabilities.get("timeout", 30)
@@ -80,13 +79,13 @@ class RemoteImageDetection(ImageInterface):
             raise RuntimeError(
                 "Invalid response format from image detection API") from e
 
-    def find_element(self, input_data: str, image: str, index: Optional[int] = None) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
+    def find_element(self, input_data: str | np.ndarray, image: str, index: Optional[int] = None) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """
         Locate multiple instances of a template image in the given source image using remote detection
         and return the center coordinates and bounding box of the match at the given index.
 
         Parameters:
-        - input_data (str): Base64 encoded source image string
+        - input_data (str | np.ndarray): Base64 encoded source image string, or the frame itself
         - image (str): Template image path or identifier
         - index (int): The index of the match to retrieve (default: None, returns first match)
 
@@ -95,19 +94,10 @@ class RemoteImageDetection(ImageInterface):
             Tuple of (success, center coordinates, bounding box) if found, None if not found or index out of bounds
         """
         try:
-            img_data = base64.b64decode(input_data)
-            nparr = np.frombuffer(img_data, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        except Exception as e:
-            internal_logger.error(f"Failed to decode input image: {str(e)}")
-            return None
-
-        # fetch template image and decode to base64
-        try:
             if image is None:
                 internal_logger.error("Template image path or identifier is None.")
                 return None
-            template_image = load_template(image)
+            template_image = load_template(image, self.templates)
             template_base64 = utils.encode_numpy_to_base64(template_image)
         except Exception as e:
             internal_logger.error(f"Failed to load or encode template image: {str(e)}")
@@ -115,7 +105,8 @@ class RemoteImageDetection(ImageInterface):
 
         # Get all detected images
         try:
-            detected_images = self.detect_images(input_data, template_base64, self.method)
+            frame_base64 = input_data if isinstance(input_data, str) else utils.encode_numpy_to_base64(input_data)
+            detected_images = self.detect_images(frame_base64, template_base64, self.method)
         except Exception as e:
             internal_logger.error(f"Remote detection failed: {str(e)}")
             raise RuntimeError(f"Remote detection failed: {str(e)}")
@@ -141,12 +132,8 @@ class RemoteImageDetection(ImageInterface):
         else:
             result = matching_elements[0]
 
-        # Annotate and save screenshot if a match was found
         if result is not None:
-            _, center, (top_left, bottom_right) = result
-            cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)
-            cv2.circle(img, center, 5, (0, 0, 255), -1)
-            utils.save_screenshot(img, "detected_template", output_dir=self.execution_output_dir)
+            save_match_annotation(input_data, [result[1:]], "detected_template", self.execution_output_dir)
 
         return result
 
@@ -221,7 +208,7 @@ class RemoteImageDetection(ImageInterface):
                     internal_logger.error("Template path or identifier is empty.")
                     encoded[template] = None
                     continue
-                img = load_template(template)
+                img = load_template(template, self.templates)
                 encoded[template] = utils.encode_numpy_to_base64(img)
             except Exception as e:
                 internal_logger.error(f"Failed to load or encode template '{template}': {e}")

@@ -43,7 +43,6 @@ class TemplateMatchingHelper(ImageInterface):
             raise ValueError("Configuration must be provided.")
         self.project_path = self.config.get("project_path", "")
         self.templates = self.config.get("templates", None)
-        self.execution_output_dir = self.config.get("execution_output_path", "")
 
         capabilities = self.config.get("capabilities", {}) or {}
         # Uncapped SIFT on a 1080p frame yields 50k+ features -- the source of
