@@ -102,7 +102,7 @@ elements_sources:
 - `capabilities.url`: `ip:port` (raw TCP, unchanged) or an `http://` / `https://` URL (HTTP GET).
 - `capabilities.token`: bearer token sent as `Authorization: Bearer <token>` to an HTTP url (never logged; redirects are not followed).
 - `capabilities.camera_index`: local webcam index (used instead of `url`).
-- Env fallback, only when neither `url` nor `camera_index` is set: `WEBCAM_SCREENSHOT_URL` (+ `WEBCAM_SCREENSHOT_TOKEN`), else `WEBCAM_SCREENSHOT_TCP_PORT` (raw TCP to `127.0.0.1:<port>`). `token` falls back to `WEBCAM_SCREENSHOT_TOKEN`. Explicit config always wins over env.
+- Env fallback, only when neither `url` nor `camera_index` is set: `WEBCAM_SCREENSHOT_URL` (+ `WEBCAM_SCREENSHOT_TOKEN`), else `WEBCAM_SCREENSHOT_TCP_PORT` (raw TCP to `127.0.0.1:<port>`). `WEBCAM_SCREENSHOT_TOKEN` goes only to `WEBCAM_SCREENSHOT_URL`; for a `url` in config, set `token: ${WEBCAM_SCREENSHOT_TOKEN}`. Explicit config always wins over env.
 ```bash
 elements_sources:
   - camera_screenshot:

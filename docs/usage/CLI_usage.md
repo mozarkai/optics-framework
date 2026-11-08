@@ -235,6 +235,12 @@ optics serve [--host <host>] [--port <port>] [--workers <n>]
 - `--port`: Port to bind (default: `8000`).
 - `--workers`: Number of worker processes (default: `1`).
 
+The server has no authentication. Keep it on `127.0.0.1`, or put it behind an authenticating gateway or a network policy. A caller of the server cannot name anything on the server:
+
+- `project_path`, `credentials_path`, Read Data file and `ENV:` sources, and `file:` or browser-internal URLs are refused. Send data and templates in the request.
+- Each session writes its outputs to its own temporary folder. The server deletes the folder when the session ends.
+- Browser pages cannot read the server's responses or send preflighted requests (such as JSON bodies), unless you list their origins in `OPTICS_CORS_ORIGINS` (comma-separated, `*` is refused). CORS does not stop a simple cross-origin request from reaching the server.
+
 For endpoint details, request/response formats, and examples, see [REST API Usage](REST_API_usage.md).
 
 ## Interactive Live Session

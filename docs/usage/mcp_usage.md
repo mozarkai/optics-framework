@@ -88,6 +88,8 @@ optics mcp --transport http --host 127.0.0.1 --port 8090
 | `--port` | `8090` | bind port (http only) |
 | `--toolset` | `core` | `core` (ten tools) or `full` (also one tool per keyword); see §6 |
 
+An HTTP server has no authentication, so it applies the same limits as `optics serve` (see the [CLI usage](CLI_usage.md) for the list). A session belongs to the client connection that started it. Another client cannot use that session or see its id.
+
 | Environment variable | Default | Meaning |
 |----------------------|---------|---------|
 | `OPTICS_MCP_TOOLSET` | `core` | the toolset when `--toolset` is not given |
@@ -293,7 +295,7 @@ do not count.
 | `elements_sources` | list[str] | element sources to enable; **optional** — defaults to the driver's canonical set (see §8) |
 | `text_detection` | list[str] | optional OCR sources (e.g. `["googlevision"]`) |
 | `image_detection` | list[str] | optional template sources (e.g. `["templatematch"]`) |
-| `project_path` | str | optional project folder (loads bundled templates) |
+| `project_path` | str | optional project folder (loads bundled templates); stdio only, an HTTP server refuses it |
 | `ai_self_heal` | bool | optional per-session override of the server's `OPTICS_AI_SELF_HEAL` default (see below) |
 | `llm_provider` | str | optional per-session override of the server's `OPTICS_LLM_PROVIDER` default (see below) |
 | `llm_model` | str | optional per-session override of the server's `OPTICS_LLM_MODEL` default (see below) |
