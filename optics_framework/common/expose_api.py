@@ -23,7 +23,7 @@ from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
 )
-from optics_framework.common.logging_config import internal_logger, reconfigure_logging, redact_secret_values
+from optics_framework.common.logging_config import internal_logger, reconfigure_logging, redact_secret_values, use_secrets
 from optics_framework.common.http_guard import add_http_guards
 from optics_framework.common.image_decode import image_size
 from optics_framework.common import fallback
@@ -913,6 +913,8 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
 
     if request.mode != MODE_KEYWORD or not request.keyword:
         raise HTTPException(status_code=400, detail=MSG_ONLY_KEYWORD_MODE_SUPPORTED)
+    if isinstance(session.elements, ElementData):
+        use_secrets(session.elements.secrets)
 
     engine = ExecutionEngine(session_manager)
     execution_id = str(uuid.uuid4())

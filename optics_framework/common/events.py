@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Union, Optional, Dict, List, Any
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
+from optics_framework.common.logging_config import mask_secret_values
 
 internal_logger = logging.getLogger("optics.internal")
 
@@ -51,6 +52,12 @@ class Event(BaseModel):
     end_time: Optional[float] = Field(default=None, description="End time of keyword/module execution (seconds since epoch)")
     elapsed: Optional[float] = Field(default=None, description="Elapsed time for execution (seconds)")
     logs: Optional[List[str]] = None
+
+
+def redact_event(event: Event) -> Event:
+    """``event`` with the current context's secrets masked; the event task and subscribers run without them."""
+    return event.model_copy(update={field: mask_secret_values(getattr(event, field)) for field in ("message", "extra", "args", "logs")})
+
 
 class Command(BaseModel):
     """Structure for a command."""
@@ -123,6 +130,7 @@ class EventManager:
 
     async def publish_event(self, event: Event):
         """Publish an event to the queue."""
+        event = redact_event(event)
         internal_logger.debug(f"Publishing event: {event.model_dump()}")
         await self.event_queue.put(event)
 
