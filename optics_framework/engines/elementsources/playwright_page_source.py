@@ -901,10 +901,11 @@ class WebDomInspector:
         return self._probe(node, xpath, lambda index: index.matches(tag, ((a1, v1), (a2, v2))))
 
     def _text_xpath(self, node: etree.Element) -> Optional[str]:
-        text = " ".join(node.itertext()).strip()
+        raw = "".join(node.itertext()).strip()
         # Long or multi-line text makes a noisy selector.
-        if not text or len(text) > 80 or "\n" in text:
+        if not raw or len(raw) > 80 or "\n" in raw:
             return None
+        (text,) = _normalized_text(node)
         tag = node.tag
         xpath = f"//{tag}[normalize-space(.)={utils.xpath_literal(text)}]"
         return self._probe(node, xpath, lambda index: index.derived_matches(tag, "text", text, _normalized_text))
