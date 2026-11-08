@@ -241,6 +241,8 @@ class TestFrameProcessing:
             {"deskew_corners": ["0,0", "1,0", "1,1", "zero"]},
             {"deskew_corners": ["nan,0", "1,0", "1,1", "0,1"]},
             {"deskew_corners": ["0,0"] * 4},
+            {"deskew_corners": ["0,0", "10,0", "10,0", "0,10"]},
+            {"deskew_corners": ["0,0", "10,10", "10,0", "0,10"]},
             {"out_width": 0},
             {"rotation": "sideways"},
         ],

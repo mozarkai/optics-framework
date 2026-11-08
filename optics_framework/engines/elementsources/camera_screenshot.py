@@ -1,3 +1,4 @@
+from itertools import combinations
 from typing import Optional, Dict, Any, List, Literal
 import os
 import socket
@@ -39,7 +40,7 @@ class CameraScreenshotHttpError(RuntimeError):
 
 
 def corner_points(corners: list[str]) -> np.ndarray:
-    """The deskew corners as points; ``ValueError`` unless they are four finite 'x,y' points around a non-empty area."""
+    """The deskew corners as points; ``ValueError`` unless they are four finite 'x,y' corners of a convex screen, in order."""
     if len(corners) != 4:
         raise ValueError(f"deskew_corners needs 4 points, got {len(corners)}")
     try:
@@ -48,9 +49,13 @@ def corner_points(corners: list[str]) -> np.ndarray:
         raise ValueError(f"deskew_corners must be 'x,y' points, got {corners}") from exc
     if points.shape != (4, 2) or not np.isfinite(points).all():
         raise ValueError(f"deskew_corners must be finite 'x,y' points, got {corners}")
-    if cv2.contourArea(points) == 0:
-        raise ValueError(f"deskew_corners enclose no area: {corners}")
+    if any(_collinear(*trio) for trio in combinations(points, 3)) or not cv2.isContourConvex(points):
+        raise ValueError(f"deskew_corners must be the corners of a convex screen, in order: {corners}")
     return points
+
+
+def _collinear(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> bool:
+    return (b[0] - a[0]) * (c[1] - a[1]) == (b[1] - a[1]) * (c[0] - a[0])
 
 
 class CapabilitiesConfig(BaseModel):
