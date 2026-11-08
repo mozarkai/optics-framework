@@ -65,7 +65,7 @@ class GenericFactory(Generic[T]):
     def _locate_implementation(module: ModuleType, interface: Type[T]) -> Optional[Type[T]]:
         """Locates a class in the module that implements the given interface."""
         for _, obj in inspect.getmembers(module, inspect.isclass):
-            if issubclass(obj, interface) and not inspect.isabstract(obj):
+            if obj is not interface and issubclass(obj, interface) and not inspect.isabstract(obj):
                 return obj
         return None
 
