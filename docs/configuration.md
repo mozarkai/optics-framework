@@ -841,6 +841,24 @@ Element sources define methods for locating and capturing UI elements.
     | `url` | `ip:port` (raw TCP, unchanged) or an `http://` / `https://` URL fetched with `GET`. |
     | `token` | Sent as `Authorization: Bearer <token>` to an HTTP url. Masked in logs; redirects are not followed. |
     | `camera_index` | Local webcam index, used instead of `url`. |
+    | `deskew_corners` | The screen's four corners in the camera frame as `"x,y"`: top-left, top-right, bottom-right, bottom-left. The frame is cut to the screen and stretched to `out_width` x `out_height`. |
+    | `out_width`, `out_height` | Size of the deskewed frame (default `1080` x `1920`). Set them to the device's screenshot resolution. |
+    | `rotation` | `clockwise` or `counterclockwise`: a quarter turn after deskewing. |
+
+    Use it as a fallback for a screen the driver cannot capture (a protected screen gives a black screenshot): list it after the driver's screenshot source. With an Appium driver, OCR and image matches on the camera frame are mapped into the driver's window, as an Appium screenshot's matches are, so taps land on the device. For this, the deskewed frame must show only the screen, with the screenshot's aspect ratio. Other drivers get the frame's pixels unchanged.
+
+    ```yaml
+    elements_sources:
+      - appium_find_element: {enabled: true}
+      - appium_screenshot: {enabled: true}
+      - camera_screenshot:
+          enabled: true
+          capabilities:
+            url: http://127.0.0.1:8080/screenshot
+            deskew_corners: ["212,88", "868,95", "861,1262", "205,1255"]
+            out_width: 1080
+            out_height: 2400
+    ```
 
     !!! note "Environment fallback"
         When neither `url` nor `camera_index` is configured, the source reads
