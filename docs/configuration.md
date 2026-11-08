@@ -864,7 +864,8 @@ Element sources define methods for locating and capturing UI elements.
         When neither `url` nor `camera_index` is configured, the source reads
         `WEBCAM_SCREENSHOT_URL` and `WEBCAM_SCREENSHOT_TOKEN` (HTTP). If no URL is set but
         `WEBCAM_SCREENSHOT_TCP_PORT` is, it connects over raw TCP to `127.0.0.1:<port>`.
-        `token` falls back to `WEBCAM_SCREENSHOT_TOKEN`. Explicit config always wins over env.
+        `WEBCAM_SCREENSHOT_TOKEN` goes only to `WEBCAM_SCREENSHOT_URL`; for a `url` in config, set
+        `token: ${WEBCAM_SCREENSHOT_TOKEN}`. Explicit config always wins over env.
 
 ---
 

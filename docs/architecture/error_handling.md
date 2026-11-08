@@ -176,6 +176,7 @@ Screenshot-related errors:
 - **E0301**: Screenshot disabled
 - **W0302**: Fallback to next camera supported driver
 - **E0303**: Screenshot empty/black
+- **E0304**: Image too large to decode or not a valid image
 
 **Example:**
 ```python
@@ -193,6 +194,7 @@ Keyword execution errors:
 - **E0403**: Invalid keyword parameters
 - **W0404**: Keyword deprecated
 - **E0405**: Action ran, but the screen does not show its result (no fallback retries it)
+- **E0406**: Expression or filter refused: it uses something other than literals, names, indexing, arithmetic, comparisons, and/or/not and if/else (conditions also allow `len`, `str`, `int`, `float` and `bool` calls), or it would cost too much
 
 **Example:**
 ```python
