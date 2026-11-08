@@ -15,6 +15,7 @@ MAX_CHARS = 100_000
 MAX_NODES = 2_000
 MAX_INT_BITS = 10_000
 MAX_SIZE = 1_000_000
+MAX_BUILT = 4 * MAX_SIZE
 
 _BINARY: dict[type, Callable[[Any, Any], Any]] = {
     ast.Add: operator.add,
@@ -63,6 +64,7 @@ class _Evaluator:
         self.names = names
         self.functions = functions
         self.sizes: dict[int, tuple[Any, int]] = {}
+        self.built = 0
         self.handlers: dict[type, Callable[[Any], Any]] = {
             ast.Constant: lambda node: node.value,
             ast.Name: lambda node: self.name(node.id),
@@ -180,8 +182,14 @@ class _Evaluator:
         return "% formatting of text is not allowed" if isinstance(left, (str, bytes)) else None
 
     def _bounded(self, value: Any) -> Any:
-        if isinstance(value, _SEQUENCES) and self._size(value) > MAX_SIZE:
+        if not isinstance(value, _SEQUENCES):
+            return value
+        if self._size(value) > MAX_SIZE:
             raise _refuse(self.expression, f"a value grows past {MAX_SIZE} items")
+        # The size memo holds every value it measured, so intermediates count against one budget.
+        self.built += len(value)
+        if self.built > MAX_BUILT:
+            raise _refuse(self.expression, f"it builds more than {MAX_BUILT} items in total")
         return value
 
     def _size(self, value: Any) -> int:
