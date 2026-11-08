@@ -1172,9 +1172,11 @@ def _window_size_from_source(element_source: Any) -> Optional[Tuple[int, int]]:
 LETTERBOX_RATIO_TOLERANCE = 0.01
 
 
-def _driver_type(source: Any) -> Optional[str]:
-    """The driver a source works with: its required type, else the name of the driver it was given (a camera source takes any)."""
-    return getattr(source, "REQUIRED_DRIVER_TYPE", None) or getattr(getattr(source, "driver", None), "NAME", None)
+def is_appium_source(element_source: Any) -> bool:
+    """Whether a source's coordinates are an Appium window's: an Appium source, or a camera source given an Appium driver."""
+    source = getattr(element_source, "active_instance", None) or element_source
+    driver_type = getattr(source, "REQUIRED_DRIVER_TYPE", None) or getattr(getattr(source, "driver", None), "NAME", None)
+    return driver_type == "appium"
 
 
 def _pixel_scale_for_source(
@@ -1212,11 +1214,9 @@ def _pixel_scale_for_source(
     :return: ``(scale_x, scale_y, offset_x, offset_y)``, or ``None`` when the transform
         must not be applied.
     """
-    if screenshot is None:
+    if screenshot is None or not is_appium_source(element_source):
         return None
     source = getattr(element_source, "active_instance", None) or element_source
-    if _driver_type(source) != "appium":
-        return None
     window_size = _window_size_from_source(source)
     if window_size is None:
         return None
