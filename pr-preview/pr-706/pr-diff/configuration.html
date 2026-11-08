@@ -1,0 +1,141 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/configuration.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_896">896</td><td nowrap="nowrap">          capabilities:</td><td class="diff_next"></td><td class="diff_header" id="to0_896">896</td><td nowrap="nowrap">          capabilities:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_897">897</td><td nowrap="nowrap">            credentials_path: "./config/google_credentials.json"</td><td class="diff_next"></td><td class="diff_header" id="to0_897">897</td><td nowrap="nowrap">            credentials_path: "./config/google_credentials.json"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_898">898</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_898">898</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_899">899</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_899">899</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="from0_900">900</td><td nowrap="nowrap">    `credentials_path` is a service account key file. Without <span class="diff_chg">it</span>, the engine uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`). If the file is missing or is not a service account key, the run stops with `E0501` before the first test.</td><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="to0_900">900</td><td nowrap="nowrap">    `credentials_path` is a service account key file.<span class="diff_add"> To use a Vision API key, set `capabilities.api_key` instead (for example `api_key: ${VISION_API_KEY}`). Set only one of the two.</span> Without <span class="diff_chg">them</span>, the engine uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`). If the file is missing or is not a service account key, the run stops with `E0501` before the first test.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_901">901</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_901">901</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_902">902</td><td nowrap="nowrap">=== "Remote OCR"</td><td class="diff_next"></td><td class="diff_header" id="to0_902">902</td><td nowrap="nowrap">=== "Remote OCR"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_903">903</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_903">903</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_904">904</td><td nowrap="nowrap">    **Purpose:** Remote OCR service for text extraction. Useful for distributed or cloud-based OCR.</td><td class="diff_next"></td><td class="diff_header" id="to0_904">904</td><td nowrap="nowrap">    **Purpose:** Remote OCR service for text extraction. Useful for distributed or cloud-based OCR.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__1"></td><td class="diff_header" id="from0_960">960</td><td nowrap="nowrap">below is enabled — the backend SDK is only imported when its engine is enabled, so leaving</td><td class="diff_next"></td><td class="diff_header" id="to0_960">960</td><td nowrap="nowrap">below is enabled — the backend SDK is only imported when its engine is enabled, so leaving</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_961">961</td><td nowrap="nowrap">this section out has no cost for projects that don't use either feature.</td><td class="diff_next"></td><td class="diff_header" id="to0_961">961</td><td nowrap="nowrap">this section out has no cost for projects that don't use either feature.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_962">962</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_962">962</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_963">963</td><td nowrap="nowrap">Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the</td><td class="diff_next"></td><td class="diff_header" id="to0_963">963</td><td nowrap="nowrap">Each engine has an extra of the same name (`pip install 'optics-framework[openai]'`); the</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="from0_964">964</td><td nowrap="nowrap"><span class="diff_sub">`llm` extra installs all three. Keys are read from environment variables only. If you enable</span></td><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="to0_964">964</td><td nowrap="nowrap"><span class="diff_add">`llm` extra installs all three. If you enable more than one entry, a failed call falls</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_965">965</td><td nowrap="nowrap"><span class="diff_sub">more than one entry, a failed call falls through to the next one in list order.</span></td><td class="diff_next"></td><td class="diff_header" id="to0_965">965</td><td nowrap="nowrap"><span class="diff_add">through to the next one in list order.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_966">966</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_967">967</td><td nowrap="nowrap"><span class="diff_add">Each engine reads its API key from `capabilities.api_key` first, then from an environment</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_968">968</td><td nowrap="nowrap"><span class="diff_add">variable. To keep the key out of `config.yaml`, write `api_key: ${MY_KEY}`: Optics reads the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_969">969</td><td nowrap="nowrap"><span class="diff_add">variable when it loads the file. Optics writes `****` in place of the key in logs and reports</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_970">970</td><td nowrap="nowrap"><span class="diff_add">(see [Environment variables and relative paths](#environment-variables-and-relative-paths)).</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_966">966</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_971">971</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_967">967</td><td nowrap="nowrap">Every engine takes `capabilities.timeout_s` (default `60`): the seconds one request may take.</td><td class="diff_next"></td><td class="diff_header" id="to0_972">972</td><td nowrap="nowrap">Every engine takes `capabilities.timeout_s` (default `60`): the seconds one request may take.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_968">968</td><td nowrap="nowrap">A request that takes longer fails like any other LLM error, so a stalled connection cannot hang</td><td class="diff_next"></td><td class="diff_header" id="to0_973">973</td><td nowrap="nowrap">A request that takes longer fails like any other LLM error, so a stalled connection cannot hang</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_969">969</td><td nowrap="nowrap">a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before it fails.</td><td class="diff_next"></td><td class="diff_header" id="to0_974">974</td><td nowrap="nowrap">a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before it fails.</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__2"></td><td class="diff_header" id="from0_1003">1003</td><td nowrap="nowrap">    | `GOOGLE_CLOUD_PROJECT` | Vertex AI project |</td><td class="diff_next"></td><td class="diff_header" id="to0_1008">1008</td><td nowrap="nowrap">    | `GOOGLE_CLOUD_PROJECT` | Vertex AI project |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1004">1004</td><td nowrap="nowrap">    | `GOOGLE_CLOUD_LOCATION` | Vertex AI location |</td><td class="diff_next"></td><td class="diff_header" id="to0_1009">1009</td><td nowrap="nowrap">    | `GOOGLE_CLOUD_LOCATION` | Vertex AI location |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1005">1005</td><td nowrap="nowrap">    | `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI service account credentials |</td><td class="diff_next"></td><td class="diff_header" id="to0_1010">1010</td><td nowrap="nowrap">    | `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI service account credentials |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1006">1006</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1011">1011</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="from0_1007">1007</td><td nowrap="nowrap"><span class="diff_sub">    !!! warning "Don't hardcode credentials"</span></td><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="to0_1012">1012</td><td nowrap="nowrap"><span class="diff_add">    `capabilities.api_key` (or `gemini_api_key`) sets the Developer API key and overrides</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1008">1008</td><td nowrap="nowrap"><span class="diff_sub">        `capabilities.api_key` / `capabilities.gemini_api_key` are also accepted but log a</span></td><td class="diff_next"></td><td class="diff_header" id="to0_1013">1013</td><td nowrap="nowrap"><span class="diff_add">    the variables above.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1009">1009</td><td nowrap="nowrap"><span class="diff_sub">        warning when used — prefer the environment variables above so keys never end up in</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1010">1010</td><td nowrap="nowrap"><span class="diff_sub">        a committed `config.yaml`.</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1011">1011</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1014">1014</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1012">1012</td><td nowrap="nowrap">=== "OpenAI-compatible"</td><td class="diff_next"></td><td class="diff_header" id="to0_1015">1015</td><td nowrap="nowrap">=== "OpenAI-compatible"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1013">1013</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1016">1016</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1014">1014</td><td nowrap="nowrap">    **Purpose:** any server that speaks the OpenAI Chat Completions API, via the `openai`</td><td class="diff_next"></td><td class="diff_header" id="to0_1017">1017</td><td nowrap="nowrap">    **Purpose:** any server that speaks the OpenAI Chat Completions API, via the `openai`</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__3"></td><td class="diff_header" id="from0_1022">1022</td><td nowrap="nowrap">          url: https://openrouter.ai/api/v1   # omit for OpenAI; or OPENAI_BASE_URL</td><td class="diff_next"></td><td class="diff_header" id="to0_1025">1025</td><td nowrap="nowrap">          url: https://openrouter.ai/api/v1   # omit for OpenAI; or OPENAI_BASE_URL</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1023">1023</td><td nowrap="nowrap">          capabilities:</td><td class="diff_next"></td><td class="diff_header" id="to0_1026">1026</td><td nowrap="nowrap">          capabilities:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1024">1024</td><td nowrap="nowrap">            model: anthropic/claude-sonnet-5-5  # required; the name the server uses</td><td class="diff_next"></td><td class="diff_header" id="to0_1027">1027</td><td nowrap="nowrap">            model: anthropic/claude-sonnet-5-5  # required; the name the server uses</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1025">1025</td><td nowrap="nowrap">            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY</td><td class="diff_next"></td><td class="diff_header" id="to0_1028">1028</td><td nowrap="nowrap">            api_key_env: OPENROUTER_API_KEY     # optional; default OPENAI_API_KEY</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__4">n</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__4">n</a></td><td class="diff_header" id="to0_1029">1029</td><td nowrap="nowrap"><span class="diff_add">            # api_key: ${OPENROUTER_API_KEY}    # optional; used before api_key_env</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1026">1026</td><td nowrap="nowrap">            # response_format: json_object     # for servers without JSON-schema output</td><td class="diff_next"></td><td class="diff_header" id="to0_1030">1030</td><td nowrap="nowrap">            # response_format: json_object     # for servers without JSON-schema output</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1027">1027</td><td nowrap="nowrap">            # max_tokens: 4096                  # optional cap per reply; unset = server default</td><td class="diff_next"></td><td class="diff_header" id="to0_1031">1031</td><td nowrap="nowrap">            # max_tokens: 4096                  # optional cap per reply; unset = server default</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1028">1028</td><td nowrap="nowrap">            # temperature: 0.0</td><td class="diff_next"></td><td class="diff_header" id="to0_1032">1032</td><td nowrap="nowrap">            # temperature: 0.0</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1029">1029</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_1033">1033</td><td nowrap="nowrap">    ```</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__4"></td><td class="diff_header" id="from0_1060">1060</td><td nowrap="nowrap">    ```</td><td class="diff_next"></td><td class="diff_header" id="to0_1064">1064</td><td nowrap="nowrap">    ```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1061">1061</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1065">1065</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1062">1062</td><td nowrap="nowrap">    | Platform | Credentials |</td><td class="diff_next"></td><td class="diff_header" id="to0_1066">1066</td><td nowrap="nowrap">    | Platform | Credentials |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1063">1063</td><td nowrap="nowrap">    |----------|-------------|</td><td class="diff_next"></td><td class="diff_header" id="to0_1067">1067</td><td nowrap="nowrap">    |----------|-------------|</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_1064">1064</td><td nowrap="nowrap">    | `anthropic` | `ANTHROPIC_API_KEY`<span class="diff_sub">,</span> or the variable named by `api_key_env` |</td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_1068">1068</td><td nowrap="nowrap">    | `anthropic` |<span class="diff_add"> `capabilities.api_key`, else</span> `ANTHROPIC_API_KEY` or the variable named by `api_key_env` |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1065">1065</td><td nowrap="nowrap">    | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |</td><td class="diff_next"></td><td class="diff_header" id="to0_1069">1069</td><td nowrap="nowrap">    | `bedrock` | the standard AWS credential chain (`AWS_PROFILE`, `AWS_REGION`, …) |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1066">1066</td><td nowrap="nowrap">    | `vertex` | Google application default credentials |</td><td class="diff_next"></td><td class="diff_header" id="to0_1070">1070</td><td nowrap="nowrap">    | `vertex` | Google application default credentials |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1067">1067</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1071">1071</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1068">1068</td><td nowrap="nowrap">---</td><td class="diff_next"></td><td class="diff_header" id="to0_1072">1072</td><td nowrap="nowrap">---</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
