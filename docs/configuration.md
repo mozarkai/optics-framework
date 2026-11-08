@@ -1009,8 +1009,9 @@ a run. The `openai` and `anthropic` SDKs retry a timed-out request twice before 
     | `GOOGLE_CLOUD_LOCATION` | Vertex AI location |
     | `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI service account credentials |
 
-    `capabilities.api_key` (or `gemini_api_key`) sets the Developer API key and overrides
-    the variables above.
+    `capabilities.api_key` (or `gemini_api_key`) is used before `GEMINI_API_KEY` /
+    `GOOGLE_API_KEY`. It does not choose the backend: when `GOOGLE_GENAI_USE_VERTEXAI` selects
+    Vertex AI, also set `use_vertexai: false` to use the Developer API.
 
 === "OpenAI-compatible"
 

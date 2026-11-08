@@ -29,7 +29,7 @@ image_detection:
 
 # Natural-language mode for `optics live` (Ctrl-N) and AI self-heal. Enable one engine and
 # install its extra: pip install 'optics-framework[gemini]' (or [openai], [anthropic]).
-# Keys come from the environment only; never commit them here.
+# Keys come from capabilities.api_key or the environment; write api_key: ${MY_KEY} to keep them out of this file.
 llm_models:
   - gemini:                          # GEMINI_API_KEY, or Vertex AI via GOOGLE_GENAI_USE_VERTEXAI
       enabled: false
