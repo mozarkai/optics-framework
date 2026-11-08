@@ -245,11 +245,11 @@ class TestAppiumScreenshotBytes:
         assert drv.calls == 2
 
     def test_numpy_path_reuses_bytes(self, _no_backoff):
-        """capture_screenshot_as_numpy delegates to the bytes path (shared retry)."""
+        """capture delegates to the bytes path (shared retry)."""
         # A real 2x2 PNG so cv2.imdecode succeeds; corrupt first to exercise the shared retry.
         ok_png = cv2.imencode(".png", np.full((2, 2, 3), 255, np.uint8))[1].tobytes()
         drv = _FakeWD(["bad!!!", base64.b64encode(ok_png).decode("ascii")])
-        img = AppiumScreenshot(driver=drv).capture_screenshot_as_numpy()
+        img = AppiumScreenshot(driver=drv).capture()
         assert img.shape == (2, 2, 3)
         assert drv.calls == 2
 

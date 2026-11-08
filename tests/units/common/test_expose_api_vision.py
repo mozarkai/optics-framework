@@ -4,6 +4,8 @@ import os
 import tempfile
 
 from optics_framework.common.models import TemplateData
+import cv2
+import numpy as np
 import pytest
 from optics_framework.common.expose_api import (
     ExecuteRequest,
@@ -81,10 +83,13 @@ def test_session_template_resolver_none_when_no_templates():
     assert resolver.get_template_path("x") is None
 
 
+_TINY_PNG = cv2.imencode(".png", np.zeros((2, 2, 3), np.uint8))[1].tobytes()
+
+
 def test_decode_template_base64_raw():
     """_decode_template_base64 accepts raw base64."""
 
-    raw = b"\x89PNG\r\n\x1a\n"
+    raw = _TINY_PNG
     b64 = base64.b64encode(raw).decode("ascii")
     assert _decode_template_base64(b64) == raw
 
@@ -92,7 +97,7 @@ def test_decode_template_base64_raw():
 def test_decode_template_base64_data_url():
     """_decode_template_base64 accepts data URL."""
 
-    raw = b"\x89PNG\r\n\x1a\n"
+    raw = _TINY_PNG
     b64 = base64.b64encode(raw).decode("ascii")
     data_url = f"data:image/png;base64,{b64}"
     assert _decode_template_base64(data_url) == raw
@@ -136,11 +141,11 @@ def test_safe_template_filename_name_png_for_safe_names():
         _safe_template_filename("..")
 
 
-def test_terminate_cleans_inline_templates_dir():
+def test_terminate_cleans_session_dir():
     """terminate_session removes the session's inline-templates dir (server-created, not from user input)."""
 
     session_id = "test-session-terminate-cleanup"
-    # Session's _inline_templates_dir is created by the server (mkdtemp); simulate it for this test
+    # Session's _session_dir is created by the server (mkdtemp); simulate it for this test
     session_dir = tempfile.mkdtemp(prefix="optics_session_")
     marker = os.path.join(session_dir, "uploaded.png")
     with open(marker, "wb") as f:
@@ -148,7 +153,7 @@ def test_terminate_cleans_inline_templates_dir():
     assert os.path.isdir(session_dir)
 
     manager = SessionManager()
-    session = type("Session", (), {"driver": None, "inline_templates": {}, "_inline_templates_dir": session_dir})()
+    session = type("Session", (), {"driver": None, "inline_templates": {}, "_session_dir": session_dir})()
     manager.sessions[session_id] = session
     manager.terminate_session(session_id)
     assert not os.path.isdir(session_dir)

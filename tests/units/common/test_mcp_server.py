@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -36,6 +37,20 @@ from optics_framework.common.logging_config import (
 from optics_framework.helper import mcp_server
 
 pytestmark = pytest.mark.white_box
+
+
+@pytest.fixture
+def owned(monkeypatch):
+    """Make the given session ids belong to the test's MCP client."""
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
+
+    def own(*sids: str) -> None:
+        for sid in sids:
+            agent = SimpleNamespace(expand_refs=lambda params: params, refs=SimpleNamespace(latest=None))
+            slot = mcp_server._Slot(agent, AsyncMock(), owner="client")
+            monkeypatch.setitem(mcp_server._STATES, sid, slot)
+
+    return own
 
 
 def _run(coro):
@@ -110,7 +125,8 @@ def test_keyword_tool_schema_is_string_typed_with_session_id():
 # --- dispatch & coercion ---------------------------------------------------
 
 
-def test_tool_dispatch_forwards_stringified_params():
+def test_tool_dispatch_forwards_stringified_params(owned):
+    owned("sess-1")
     server = mcp_server.build_server("full")
     mock = AsyncMock(return_value=_exec_response("pressed"))
     with patch.object(expose_api, "execute_keyword", new=mock):
@@ -188,7 +204,8 @@ def test_mcp_dispatch_binds_real_self_healing_signatures(slug, params):
 
 
 @pytest.mark.parametrize("slug, params", _SELF_HEALING_KEYWORDS)
-def test_mcp_tool_to_dispatch_binds_real_signatures(slug, params):
+def test_mcp_tool_to_dispatch_binds_real_signatures(slug, params, owned):
+    owned("s1")
     server = mcp_server.build_server("full")
     engine = MagicMock()
     engine.execute = AsyncMock(return_value=_exec_response("ok"))
@@ -226,8 +243,8 @@ def test_mcp_tool_to_dispatch_binds_real_signatures(slug, params):
 # --- error translation -----------------------------------------------------
 
 
-def test_http_error_translates_to_tool_error():
-
+def test_http_error_translates_to_tool_error(owned):
+    owned("missing")
     server = mcp_server.build_server("full")
     mock = AsyncMock(side_effect=HTTPException(status_code=404, detail="session not found"))
     with patch.object(expose_api, "execute_keyword", new=mock):
@@ -258,7 +275,8 @@ def test_keywords_resource_returns_catalog():
     assert "capture_screenshot" not in slugs
 
 
-def test_screenshot_resource_returns_raw_bytes():
+def test_screenshot_resource_returns_raw_bytes(owned):
+    owned("sess-1")
     server = mcp_server.build_server("full")
     raw = b"\x89PNG\r\n\x1a\nfake-bytes"
     b64 = base64.b64encode(raw).decode()
@@ -283,8 +301,9 @@ def test_decode_screenshot_handles_data_url():
     assert mcp_server._decode_screenshot(data_url) == raw
 
 
-def test_screenshot_tool_returns_rendered_image():
+def test_screenshot_tool_returns_rendered_image(owned):
     """The screenshot tool yields image/png ImageContent (renders inline)."""
+    owned("s1")
     server = mcp_server.build_server("full")
     raw = b"\x89PNG\r\n\x1a\nfake"
     b64 = base64.b64encode(raw).decode()
