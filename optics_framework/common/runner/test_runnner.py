@@ -11,13 +11,13 @@ import shutil
 import sys
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from itertools import product
 from typing import Callable, Dict, List, Optional, Union, Any
 import pytest
 from optics_framework.common.session_manager import Session
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
+    mask_secret_values,
     mask_secrets,
     use_secrets,
     internal_logger,
@@ -50,7 +50,7 @@ from optics_framework.common.events import (
 )
 from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.strategies import StrategyManager
-from optics_framework.common import utils
+from optics_framework.common import fallback, utils
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry, run_plan
 from optics_framework.common.session_liveness import is_dead_session_error
 from optics_framework.common.error_detection import (
@@ -170,6 +170,13 @@ class SetupGuard:
             self._blocked[CaseKind.TEST] = f"Setup failed: {failure}"
 
 
+def failure_reason(keyword: str, exc: BaseException) -> str:
+    """A failed step's reason; a ran-out fallback ladder names its last error."""
+    if isinstance(exc, fallback.FallbackExhausted):
+        return f"Keyword '{keyword}' failed after fallback attempts; last error: {exc.last}{exc.limit_note}"
+    return f"Keyword '{keyword}' failed: {exc}"
+
+
 class TestRunner(Runner):
     def __init__(
         self,
@@ -185,7 +192,7 @@ class TestRunner(Runner):
         self.elements = self.session.elements if self.session.elements is not None else ElementData()
         self.apis = self.session.apis if self.session.apis is not None else ApiData()
         self.keyword_map = keyword_map
-        self._failed_steps_elements: List[dict] = []
+        self._failed_steps_elements: List[str] = []
         self.result_printer = result_printer
         self.config = session.config
         self.event_manager = event_manager
@@ -550,51 +557,34 @@ class TestRunner(Runner):
         self, method, param_candidates, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler,
         store_as=None,
     ):
-        # Try all combinations of param candidates (for fallback)
-        MAX_ATTEMPTS = 20
-        attempts = 0
-        last_error: OpticsError | None = None
-        for candidate_args in product(*param_candidates):
-            attempts += 1
-            if attempts > MAX_ATTEMPTS:
-                break
-            try:
-                resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(method, candidate_args)
-                _, stored = utils.call_and_store(self.elements, method, resolved_positional_params, resolved_kw_params, store_as)
-                keyword_result.stored = stored
-                keyword_node.state = State.COMPLETED_PASSED
-                await self._send_event(
-                    "keyword",
-                    keyword_node,
-                    EventStatus.PASS,
-                    parent_id=module_node.id,
-                    start_time=start_time,
-                    end_time=time.time(),
-                    elapsed=time.time() - start_time,
-                    logs=capture_handler.records,
-                    stored=stored,
-                )
-                self._update_status(keyword_result, "PASS", time.time() - start_time, test_case_result.name)
-                return True
-            except OpticsError as oe:
-                if oe.code.value.startswith("E02") or oe.code == Code.X0201:
-                    internal_logger.debug(f"Keyword fallback: tried {candidate_args}, error: {oe}")
-                    last_error = oe
-                    continue
-                else:
-                    await self._handle_keyword_exception(keyword_node, module_node, keyword_result, start_time, test_case_result, oe, capture_handler)
-                    return False
-            except Exception as e:
-                await self._handle_keyword_exception(keyword_node, module_node, keyword_result, start_time, test_case_result, e, capture_handler)
-                return False
-        await self._handle_fallback_exhausted(
-            keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler, last_error
-        )
-        return None
+        def attempt(candidate_args):
+            positional, keywords = self._resolve_candidate_params(method, candidate_args)
+            return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
 
-    async def _handle_keyword_exception(self, keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler):
+        try:
+            stored = fallback.run(param_candidates, attempt, f"keyword '{keyword_node.name}'")
+        except Exception as exc:
+            await self._handle_keyword_failure(keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler)
+            return None if isinstance(exc, fallback.FallbackExhausted) else False
+        keyword_result.stored = stored
+        keyword_node.state = State.COMPLETED_PASSED
+        await self._send_event(
+            "keyword",
+            keyword_node,
+            EventStatus.PASS,
+            parent_id=module_node.id,
+            start_time=start_time,
+            end_time=time.time(),
+            elapsed=time.time() - start_time,
+            logs=capture_handler.records,
+            stored=stored,
+        )
+        self._update_status(keyword_result, "PASS", time.time() - start_time, test_case_result.name)
+        return True
+
+    async def _handle_keyword_failure(self, keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler):
         keyword_node.state = State.COMPLETED_FAILED
-        reason = f"Keyword '{keyword_node.name}' failed: {exc}"
+        reason = failure_reason(keyword_node.name, exc)
         status = EventStatus.ERROR if is_dead_session_error(exc) else EventStatus.FAIL
         code = exc.code if isinstance(exc, OpticsError) else Code.X0401
         self._note_failure(reason, code, status)
@@ -614,51 +604,32 @@ class TestRunner(Runner):
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
         self._save_failure_elements(test_case_result.name, keyword_result.resolved_name)
 
-    async def _handle_fallback_exhausted(
-        self, keyword_node, module_node, keyword_result, start_time, test_case_result, capture_handler, last_error
-    ):
-        keyword_node.state = State.COMPLETED_FAILED
-        reason = f"Keyword '{keyword_node.name}' failed after fallback attempts"
-        if last_error is not None:
-            reason += f"; last error: {last_error}"
-        code = last_error.code if isinstance(last_error, OpticsError) else Code.X0201
-        self._note_failure(reason, code)
-        keyword_result.reason = reason
-        await self._send_event(
-            "keyword",
-            keyword_node,
-            EventStatus.FAIL,
-            reason,
-            code=code,
-            parent_id=module_node.id,
-            start_time=start_time,
-            end_time=time.time(),
-            elapsed=time.time() - start_time,
-            logs=capture_handler.records,
-        )
-        self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
-        self._save_failure_elements(test_case_result.name, keyword_result.resolved_name)
-
     def _save_failure_elements(self, test_case: str, step: str) -> None:
-        """Add the screen's compact element list to failed_steps_elements.json, to fix a failed step's locators."""
+        """Keep the screen's compact element list for failed_steps_elements.json, to fix a failed step's locators."""
         get_elements = self.keyword_map.get("get_interactive_elements")
-        if get_elements is None:
-            return
-        output_dir = self._capture_dir()
-        if output_dir is None:
+        if get_elements is None or self._capture_dir() is None:
             return
         try:
-            self._failed_steps_elements.append({"test_case": test_case, "step": step, "elements": get_elements(compact=True)})
-            text = json.dumps(self._failed_steps_elements, indent=2, ensure_ascii=False)
-            with open(os.path.join(output_dir, "failed_steps_elements.json"), "w", encoding="utf-8") as f:
-                f.write(mask_secrets(text))
+            record = {"test_case": test_case, "step": step, "elements": get_elements(compact=True)}
+            self._failed_steps_elements.append(json.dumps(mask_secret_values(record), indent=2, ensure_ascii=False))
         except Exception as e:
             internal_logger.warning("Element list for the failed step skipped: %s", e)
 
+    def _write_failed_steps_elements(self) -> None:
+        """Write the run's failed-step element lists once, as one JSON array."""
+        output_dir = self.config.capture_dir
+        if not self._failed_steps_elements or output_dir is None:
+            return
+        try:
+            with open(os.path.join(output_dir, "failed_steps_elements.json"), "w", encoding="utf-8") as f:
+                f.write("[\n" + ",\n".join(self._failed_steps_elements) + "\n]\n")
+        except OSError as e:
+            internal_logger.warning("failed_steps_elements.json not written: %s", e)
+
     def _capture_dir(self) -> Optional[str]:
         """Where a failure's captures go, or None when captures are off or the driver is closed."""
-        output_dir = self.config.execution_output_path
-        if not output_dir or not self.config.save_captures or not self._end_of_run_driver_open():
+        output_dir = self.config.capture_dir
+        if not output_dir or not self._end_of_run_driver_open():
             return None
         return output_dir
 
@@ -690,11 +661,12 @@ class TestRunner(Runner):
             )
             return
         try:
-            output_dir = self.session.config.execution_output_path
+            config = self.session.config
             strategy_manager = self._strategy_manager()
-            self._save_end_of_run_screenshot(strategy_manager, output_dir)
-            page_source, timestamp = self._save_end_of_run_pagesource(strategy_manager, output_dir)
-            self._run_end_of_run_detection(page_source, timestamp, output_dir)
+            if config.capture_dir is not None:
+                self._save_end_of_run_screenshot(strategy_manager, config.capture_dir)
+            page_source, timestamp = self._save_end_of_run_pagesource(strategy_manager, config.capture_dir)
+            self._run_end_of_run_detection(page_source, timestamp, config.execution_output_path)
         except Exception as e:
             internal_logger.warning("End-of-run artifact capture failed: %s", e)
 
@@ -729,14 +701,15 @@ class TestRunner(Runner):
             internal_logger.warning("End-of-run screenshot skipped: %s", e)
 
     def _save_end_of_run_pagesource(
-        self, strategy_manager: StrategyManager, output_dir: str
+        self, strategy_manager: StrategyManager, output_dir: str | None
     ) -> tuple[Optional[str], Optional[str]]:
+        """The final page source for error detection, saved masked only when captures are on."""
         try:
             page_source, timestamp = strategy_manager.capture_pagesource()
-            if utils.is_html_source(page_source):
-                utils.save_page_source_html(page_source, timestamp, output_dir)
-            else:
-                utils.save_page_source(page_source, timestamp, output_dir)
+            if output_dir is None:
+                return page_source, timestamp
+            save = utils.save_page_source_html if utils.is_html_source(page_source) else utils.save_page_source
+            save(mask_secrets(page_source), timestamp, output_dir)
             internal_logger.debug("End-of-run page source saved.")
             return page_source, timestamp
         except Exception as e:
@@ -1097,20 +1070,23 @@ class TestRunner(Runner):
         current = self.test_cases
         captured = False
         guard = SetupGuard()
-        while current:
-            # The suite teardown may close the app, so the final screen is read before it.
-            if current.kind is CaseKind.SUITE_TEARDOWN:
+        try:
+            while current:
+                # The suite teardown may close the app, so the final screen is read before it.
+                if current.kind is CaseKind.SUITE_TEARDOWN:
+                    self._capture_end_of_run_artifacts()
+                    captured = True
+                skip = guard.reason(current.kind)
+                if skip is not None:
+                    await self._skip_test_case(current, skip)
+                else:
+                    result = await self.execute_test_case(current.name)
+                    guard.record(current.kind, result.status == "PASS", self._last_failure_reason)
+                current = current.next
+            if not captured:
                 self._capture_end_of_run_artifacts()
-                captured = True
-            skip = guard.reason(current.kind)
-            if skip is not None:
-                await self._skip_test_case(current, skip)
-            else:
-                result = await self.execute_test_case(current.name)
-                guard.record(current.kind, result.status == "PASS", self._last_failure_reason)
-            current = current.next
-        if not captured:
-            self._capture_end_of_run_artifacts()
+        finally:
+            self._write_failed_steps_elements()
         self.result_printer.stop_live()
 
     async def _skip_test_case(self, node: TestCaseNode, reason: str) -> None:
@@ -1257,38 +1233,19 @@ class PytestRunner(Runner):
         return param_candidates
 
     def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id, store_as=None):
-        MAX_ATTEMPTS = 20
-        attempts = 0
-        last_exc = None
+        def attempt(candidate_args):
+            positional, keywords = self._resolve_candidate_params(method, candidate_args)
+            return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
 
-        for candidate_args in product(*param_candidates):
-            attempts += 1
-            if attempts > MAX_ATTEMPTS:
-                break
-            try:
-                resolved_positional_params, resolved_kw_params = self._resolve_candidate_params(method, candidate_args)
-                _, stored = utils.call_and_store(self.elements, method, resolved_positional_params, resolved_kw_params, store_as)
-                self._queue_keyword_pass_event(keyword, keyword_id, module_id, stored)
-                return True
-            except OpticsError as oe:
-                if oe.code.value.startswith("E02") or oe.code == Code.X0201:
-                    last_exc = oe
-                    continue
-                else:
-                    self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {oe}", oe.code)
-                    return False
-            except Exception as e:
-                self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {e}", Code.X0401)
-                return False
-
-        self._handle_keyword_fail(
-            keyword,
-            keyword_id,
-            module_id,
-            f"Keyword '{keyword}' failed after {attempts} attempts; last error: {last_exc}",
-            last_exc.code if last_exc is not None else Code.X0201,
-        )
-        return False
+        try:
+            stored = fallback.run(param_candidates, attempt, f"keyword '{keyword}'")
+        except Exception as exc:
+            failure = exc
+        else:
+            self._queue_keyword_pass_event(keyword, keyword_id, module_id, stored)
+            return True
+        # Outside the except block, so pytest does not print the unmasked error as the failure's context.
+        self._handle_keyword_fail(keyword, keyword_id, module_id, failure_reason(keyword, failure), failure.code if isinstance(failure, OpticsError) else Code.X0401)
 
     def _queue_keyword_pass_event(self, keyword, keyword_id, module_id, stored=None):
         queue_event_sync(
@@ -1304,6 +1261,7 @@ class PytestRunner(Runner):
         )
 
     def _handle_keyword_fail(self, keyword, keyword_id, module_id, msg, code):
+        msg = mask_secrets(msg)
         self._queue_event_fail(keyword, keyword_id, module_id, msg, code)
         pytest.fail(msg)
 

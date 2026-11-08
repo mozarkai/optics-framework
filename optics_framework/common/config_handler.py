@@ -4,6 +4,7 @@ import re
 from collections.abc import Mapping
 from typing import Any, Dict, List, Literal, Optional
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from optics_framework.common.error import OpticsError, Code
@@ -15,6 +16,7 @@ _OUTPUT_PATH_FIELDS = frozenset({"project_path", "execution_output_path", "log_p
 # Expanded by the driver at connect time, which also masks the referenced values out of its errors.
 _DRIVER_EXPANDED = {"playwright": frozenset({"url", "headers"})}
 _BASE_KEY = "$from"
+MAX_YAML_NODES = 1_000_000
 
 
 def expand_env(value: str) -> str:
@@ -27,6 +29,61 @@ def env_names(value: str) -> list[str]:
     return [braced or bare for braced, _default, bare in _ENV_REFERENCE.findall(value) if braced or bare]
 
 
+class ProjectYamlError(OpticsError, yaml.YAMLError):
+    """A project YAML file the loader refuses; also a YAMLError, so every reader reports it as a bad file."""
+
+
+def load_project_yaml(path: str) -> Any:
+    """Parse a project YAML file, refusing alias graphs that would expand past ``MAX_YAML_NODES`` nodes."""
+    with open(path, encoding="utf-8") as stream:
+        return parse_yaml(stream, path)
+
+
+def parse_yaml(source: Any, name: str) -> Any:
+    """Parse YAML text or a stream with the alias limit of ``load_project_yaml``; ``name`` labels errors."""
+    loader = yaml.SafeLoader(source)
+    try:
+        node = loader.get_single_node()
+        if node is None:
+            return None
+        _ExpandedSize(name).count(node)
+        return loader.construct_document(node)
+    finally:
+        loader.dispose()
+
+
+class _ExpandedSize:
+    """Nodes a YAML graph has once every alias is expanded, counted once per unique node."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.sizes: dict[int, int] = {}
+        self.open: set[int] = set()
+
+    def count(self, node: yaml.Node) -> int:
+        known = self.sizes.get(id(node))
+        if known is not None:
+            return known
+        if id(node) in self.open:
+            raise ProjectYamlError(Code.E0501, message=f"{self.path} has a YAML alias that refers to itself. Write the value out instead.")
+        self.open.add(id(node))
+        size = 1 + sum(self.count(child) for child in _children(node))
+        self.open.discard(id(node))
+        if size > MAX_YAML_NODES:
+            raise ProjectYamlError(
+                Code.E0501,
+                message=f"{self.path} expands to more than {MAX_YAML_NODES} values through YAML aliases. Use fewer aliases or split the file.",
+            )
+        self.sizes[id(node)] = size
+        return size
+
+
+def _children(node: yaml.Node) -> list[yaml.Node]:
+    if isinstance(node, yaml.MappingNode):
+        return [item for pair in node.value for item in pair]
+    return node.value if isinstance(node, yaml.SequenceNode) else []
+
+
 def resolve_config_file(data: dict, base_dir: str) -> dict:
     """Expand environment references and resolve ``./`` paths against ``base_dir`` in a parsed config file.
 
@@ -34,45 +91,54 @@ def resolve_config_file(data: dict, base_dir: str) -> dict:
     if "element_sources" in data:
         data = dict(data)
         data.setdefault("elements_sources", data.pop("element_sources"))
+    resolver = _Resolver(base_dir)
     resolved = {
-        key: [_resolve_driver(entry, base_dir) for entry in value]
+        key: [resolver.driver(entry) for entry in value]
         if key == "driver_sources" and isinstance(value, list)
-        else _resolve(value, base_dir, key not in _OUTPUT_PATH_FIELDS)
+        else resolver.value(value, key not in _OUTPUT_PATH_FIELDS)
         for key, value in data.items()
     }
     _register_secret_values(resolved)
     return resolved
 
 
-def _resolve_driver(entry: Any, base_dir: str) -> Any:
-    if not isinstance(entry, dict):
-        return _resolve(entry, base_dir, True)
-    return {name: _resolve(details, base_dir, True, _DRIVER_EXPANDED.get(name, frozenset())) for name, details in entry.items()}
+class _Resolver:
+    """Resolves one config file; a container that YAML aliases share is resolved once and stays shared."""
 
+    def __init__(self, base_dir: str) -> None:
+        self.base_dir = base_dir
+        self.done: dict[tuple[int, bool, frozenset[str]], Any] = {}
 
-def _resolve(value: Any, base_dir: str, must_exist: bool, keep: frozenset[str] = frozenset()) -> Any:
-    if isinstance(value, dict):
-        return _resolve_map(value, base_dir, must_exist, keep)
-    if isinstance(value, list):
-        return [_resolve(item, base_dir, must_exist, keep) for item in value]
-    if not isinstance(value, str):
-        return value
-    value = expand_env(value)
-    if not value.startswith(_RELATIVE_PREFIXES):
-        return value
-    path = os.path.abspath(os.path.join(base_dir, value))
-    if must_exist and not os.path.exists(path):
-        raise OpticsError(Code.E0501, message=f"The config refers to {value}, but {path} does not exist.")
-    return path
+    def driver(self, entry: Any) -> Any:
+        if not isinstance(entry, dict):
+            return self.value(entry, True)
+        return {name: self.value(details, True, _DRIVER_EXPANDED.get(name, frozenset())) for name, details in entry.items()}
 
+    def value(self, value: Any, must_exist: bool, keep: frozenset[str] = frozenset()) -> Any:
+        if isinstance(value, (dict, list)):
+            key = (id(value), must_exist, keep)
+            if key not in self.done:
+                self.done[key] = self._map(value, must_exist, keep) if isinstance(value, dict) else [
+                    self.value(item, must_exist, keep) for item in value
+                ]
+            return self.done[key]
+        if not isinstance(value, str):
+            return value
+        value = expand_env(value)
+        if not value.startswith(_RELATIVE_PREFIXES):
+            return value
+        path = os.path.abspath(os.path.join(self.base_dir, value))
+        if must_exist and not os.path.exists(path):
+            raise OpticsError(Code.E0501, message=f"The config refers to {value}, but {path} does not exist.")
+        return path
 
-def _resolve_map(value: dict, base_dir: str, must_exist: bool, keep: frozenset[str]) -> dict:
-    resolved = {
-        key: _checked(item) if key in keep else _resolve(item, base_dir, must_exist, keep)
-        for key, item in value.items()
-        if key != _BASE_KEY
-    }
-    return {**_base_map(value[_BASE_KEY]), **resolved} if _BASE_KEY in value else resolved
+    def _map(self, value: dict, must_exist: bool, keep: frozenset[str]) -> dict:
+        resolved = {
+            key: _checked(item) if key in keep else self.value(item, must_exist, keep)
+            for key, item in value.items()
+            if key != _BASE_KEY
+        }
+        return {**_base_map(value[_BASE_KEY]), **resolved} if _BASE_KEY in value else resolved
 
 
 def _base_map(reference: Any) -> dict:
@@ -126,14 +192,19 @@ class DependencyConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-def _register_secret_values(value: Any, name: str = "") -> None:
+def _register_secret_values(value: Any, name: str = "", seen: set[tuple[int, str]] | None = None) -> None:
     """Mask secret-named string values of a config file, such as ``appium:keystorePassword``, in logs and reports."""
+    seen = set() if seen is None else seen
+    if isinstance(value, (dict, list)):
+        if (id(value), name) in seen:
+            return
+        seen.add((id(value), name))
     if isinstance(value, dict):
         for key, item in value.items():
-            _register_secret_values(item, str(key))
+            _register_secret_values(item, str(key), seen)
     elif isinstance(value, list):
         for item in value:
-            _register_secret_values(item, name)
+            _register_secret_values(item, name, seen)
     elif is_secret_entry(name, value):
         register_config_secret(name, value)
 
@@ -156,6 +227,7 @@ class Config(BaseModel):
     file_log: bool = False
     json_log: bool = False
     save_captures: bool = True
+    remote_caller: bool = False
     json_path: Optional[str] = None
     log_level: str = "INFO"
     log_path: Optional[str] = None
@@ -206,6 +278,11 @@ class Config(BaseModel):
             ]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @property
+    def capture_dir(self) -> Optional[str]:
+        """Where screenshots, page sources and other screen captures go; None when captures are off."""
+        return self.execution_output_path if self.save_captures else None
 
     def get(self, key: str, default: Any = None) -> Any:
         """

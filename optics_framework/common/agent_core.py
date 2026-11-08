@@ -5,15 +5,18 @@ import difflib
 import inspect
 import io
 import math
-import re
 import time
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from optics_framework.common import utils
+from optics_framework.common.utils import substitute_vars, var_refs, whole_var_name
 from optics_framework.common.error import OpticsError
-from optics_framework.common.logging_config import is_secret_name
+from optics_framework.common.logging_config import (
+    is_secret_name,
+    register_config_secret,
+)
 from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.screen_snapshot import (
     REDACTED,
@@ -94,7 +97,6 @@ _SETTLE_PAUSE_S = 0.6
 _SETTLE_READS = 2
 _LOADING_WAIT_S = 6.0
 EXPECT_WAIT_S = 5.0
-VAR_RE = re.compile(r"\$\{([^}]*)\}")
 
 Value = str | list[str]
 Params = Mapping[str, Value] | Sequence[str]
@@ -398,9 +400,19 @@ def _check_vars(action: Action, elements: Mapping[str, Any] | None) -> None:
         return
     params = action.params.values() if isinstance(action.params, Mapping) else action.params
     for value in (action.target, action.text, action.until, *params):
-        for name in VAR_RE.findall(str(value)):
+        for name in (ref.name for ref in var_refs(str(value))):
             if name.strip() not in elements:
                 raise _invalid(f"${{{name}}} is not a named element; named elements: {', '.join(elements) or 'none'}")
+
+
+def _check_var_slots(calls: Sequence[Call]) -> None:
+    """Refuse a ``${name}`` anywhere but a locator or the text a text-entry keyword types, so no secret reaches a URL or script."""
+    for call in calls:
+        allowed = {*ELEMENT_SLOTS, TYPED_VALUE_PARAMS.get(call.keyword, "")}
+        for name, value in call.params.items():
+            items = value if isinstance(value, list) else [value]
+            if name not in allowed and any(next(var_refs(str(item)), None) for item in items):
+                raise _invalid(f'{call.keyword} cannot take a ${{name}} in "{name}"; use one only in a locator or the text to type')
 
 
 def _keyword_call(
@@ -503,6 +515,7 @@ def prepare(action: Action, refs: RefTable, keywords: Keywords, elements: Mappin
         calls = [call]
     else:
         calls = _CALLS[verb](action, row, element, refs)
+    _check_var_slots(calls)
     named = next((v for c in calls for n, v in c.params.items() if n in ELEMENT_SLOTS), None)
     tried: tuple[str, ...] = ()
     if verb != "scroll" and named:
@@ -560,7 +573,7 @@ class Recorder:
     def _literal(self, value: str) -> str:
         """``value`` with each ``${name}`` that names no element escaped, so a replay types it as written."""
         known = {*self.existing, *self.elements}
-        return VAR_RE.sub(lambda m: m.group(0) if m.group(1).strip() in known else "$" + m.group(0), value)
+        return substitute_vars(value, lambda ref: ("" if ref.name.strip() in known else "$") + "${" + ref.name + "}")
 
     def _element(self, row: Row, found: Ladder) -> str:
         for name, values in [*self.existing.items(), *self.elements.items()]:
@@ -602,7 +615,7 @@ class Recorder:
         """Keep only the rows of steps ``numbers`` and the elements they still use."""
         self._rows = [r for r in self._rows if r[0] in numbers]
         self._notes = [note for note in self._notes if note[0] in numbers]
-        used = {name.strip() for _, _, tokens in self._rows for token in tokens for name in VAR_RE.findall(token)}
+        used = {name.strip() for _, _, tokens in self._rows for token in tokens for name in (ref.name for ref in var_refs(token))}
         self.elements = {name: values for name, values in self.elements.items() if name in used}
         self.secrets &= used
 
@@ -644,10 +657,14 @@ class Focus:
 
 def typed_secret(field: Field, value: str, elements: Collection[str] = ()) -> bool:
     """True when ``value`` goes into a secret field and is not a ``${name}`` the caller fills from ``elements``."""
-    var = VAR_RE.fullmatch(value.strip())
-    if not value or (var is not None and var.group(1).strip() in elements):
+    if not value or whole_var_name(value) in elements:
         return False
     return any(is_secret(field[0], field[1], raw) for raw in field[2])
+
+
+def mask_typed_secret(value: str) -> None:
+    """Mask ``value`` in every log line from now on; called before the keyword that types it can log it."""
+    register_config_secret("secret", value)
 
 
 def secret_hint(field: Field) -> str:
@@ -782,12 +799,9 @@ class AgentSession:
         before = self.refs.latest or await self._read()
         p = prepare(action, self.refs, self.keywords, self.elements)
         key = self._guard_loop(p)
-        named = None
-        if p.tried:
-            named = (p.row, before, ("",) if p.row else p.tried)
+        named = (p.row, before, ("",) if p.row else p.tried) if p.tried else None
         into = self._focus.into(named, lambda: before)
-        written = _value(p.calls, VALUE_PARAMS)
-        secret = typed_secret(into, written, self.elements or ())
+        secret = self._mask_if_secret(p, into)
         result, strategy, error = await self._run_calls(p)
         typed = _value(p.calls, TYPED_VALUE_PARAMS)
         after = await self._after(p, typed, error, before)
@@ -806,6 +820,14 @@ class AgentSession:
             self.recorder.add(len(self.steps) + 1, p, secret, secret_hint(into))
         self.steps.append(step)
         return step
+
+    def _mask_if_secret(self, p: Prepared, into: Field) -> bool:
+        """Whether the value ``p`` types goes into a secret field; if so, mask it in the log."""
+        written = _value(p.calls, VALUE_PARAMS)
+        secret = typed_secret(into, written, self.elements or ())
+        if secret:
+            mask_typed_secret(written)
+        return secret
 
     async def _look(self, locators: list[str], deadline: float) -> list[Check]:
         """One presence look per locator, each within what is left of ``deadline``."""

@@ -2,7 +2,7 @@ from uuid import uuid4
 from enum import Enum
 from typing import Optional, Dict, List, Callable, Any
 from pydantic import BaseModel, Field
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.error import OpticsError, Code
 
 # State Enum
@@ -38,6 +38,10 @@ class KeywordNode(Node):
     params: List[str] = Field(default_factory=list)
     method_ref: Optional[Callable] = None
     next: Optional['KeywordNode'] = None
+
+    def model_post_init(self, _context: Any) -> None:
+        for param in self.params:
+            register_marked_secret(param)
 
 
 class ModuleNode(Node):
@@ -180,6 +184,7 @@ class ElementData(BaseModel):
             name: element key/name
             value: locator or representation string (xpath, image path, text, etc.)
         """
+        register_marked_secret(value)
         if name not in self.elements:
             self.elements[name] = []
         self.elements[name].append(value)

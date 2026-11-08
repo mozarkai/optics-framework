@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Tuple
 import numpy
+from optics_framework.common.image_decode import decode_image
 from optics_framework.common.session_liveness import raise_if_session_dead
 
 class ScreenPoint(tuple):
@@ -180,3 +181,14 @@ class ElementSourceInterface(ABC):
         :rtype: list
         """
         pass
+
+
+class EncodedScreenshotSource(ElementSourceInterface):
+    """A source whose backend returns encoded screenshots; the decode is shared, with its size limits."""
+
+    @abstractmethod
+    def capture_screenshot_bytes(self) -> bytes:
+        """The screen as encoded image bytes from the backend."""
+
+    def capture(self) -> numpy.ndarray:
+        return decode_image(self.capture_screenshot_bytes())

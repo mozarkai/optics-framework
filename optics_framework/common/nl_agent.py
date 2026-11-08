@@ -11,7 +11,6 @@ from typing import Any, Literal
 from optics_framework.common.agent_core import (
     ADVICE,
     NON_VERIFYING_KEYWORDS,
-    VAR_RE,
     Action,
     AgentSession,
     Fail,
@@ -27,6 +26,7 @@ from optics_framework.common.agent_core import (
 from optics_framework.common.error import OpticsError
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.utils import var_refs
 from optics_framework.common.screen_snapshot import (
     REF_RE,
     Snapshot,
@@ -289,7 +289,7 @@ class NaturalLanguageAgent:
         lines = [SYSTEM_PROMPT, "KEYWORD CATALOG (action keyword; name and params):"]
         lines += [f"  {sig}" for sig in extra or ["(none)"]]
         if elements:
-            lines += ["", "NAMED ELEMENTS (use as ${name} in target or text):"]
+            lines += ["", "NAMED ELEMENTS (use as ${name} only in a target or in the text you type):"]
             lines.append("  " + ", ".join("${" + name + "}" for name in sorted(elements)))
         lines += ["", "When SCREEN is a raw UI hierarchy instead of rows, put the element's text or a locator in `target`."]
         return "\n".join(lines)
@@ -424,7 +424,7 @@ class NaturalLanguageAgent:
         if session.repeats(attempt_key(p)):
             return p, "the same action already ran and did not change the screen; choose another", True
         wanted, rows = fold(a.text), snap.all_rows if snap is not None else ()
-        known = VAR_RE.search(a.text) or wanted in fold(instruction) or any(wanted in fold(r.label) for r in rows)
+        known = next(var_refs(a.text), None) or wanted in fold(instruction) or any(wanted in fold(r.label) for r in rows)
         if a.verb == "type" and not known:
             return p, (
                 f'"{clean_label(a.text, 40)}" is not in the GOAL or on SCREEN; type only given values, '

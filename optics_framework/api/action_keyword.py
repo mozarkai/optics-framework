@@ -3,7 +3,7 @@ import shlex
 import time
 import json
 from typing import Callable, Optional, Any, Tuple, List, Dict
-from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.elementsource_interface import ScreenPoint
@@ -11,7 +11,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import keyword_outcome, utils
 from optics_framework.common.agent_core import bind, runner_params, visible_params
 from optics_framework.common.ai_self_heal import (
-    AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
+    VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
 )
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.screen_snapshot import read_screen
@@ -159,6 +159,37 @@ def _raise_option_not_found(dropdown_element: str, option: str, interactive: Lis
     )
 
 
+MAX_REPEAT = 100
+_MAX_SCREEN_PX = 16_384
+
+
+def _bounded(value: Any, name: str, low: int, high: int, parse: Callable[[Any], Any] = int) -> Any:
+    """``value`` parsed by ``parse``; E0403 unless it is a number from ``low`` to ``high`` (NaN never is)."""
+    try:
+        number = parse(value)
+    except (TypeError, ValueError):
+        number = None
+    if number is None or not low <= number <= high:
+        raise OpticsError(Code.E0403, message=f"'{name}' must be a number from {low} to {high}, got '{str(value)[:20]}'")
+    return number
+
+
+def _repeat(value: Any) -> int:
+    return _bounded(value, "repeat", 1, MAX_REPEAT)
+
+
+def _pixel(value: Any, name: str) -> int:
+    return _bounded(value, name, 0, _MAX_SCREEN_PX)
+
+
+def _offset(value: Any, name: str) -> int:
+    return _bounded(value, name, -_MAX_SCREEN_PX, _MAX_SCREEN_PX)
+
+
+def _percent(value: Any, name: str, parse: Callable[[Any], Any] = float) -> Any:
+    return _bounded(value, name, 0, 100, parse)
+
+
 class _HealProviders:
     """Screenshot, page-source and screen-element providers for one AI self-heal attempt."""
 
@@ -210,7 +241,7 @@ class ActionKeyword:
             self.element_source, self.text_detection, self.image_detection
         )
         session_config = builder.session_config
-        self.capture_output_dir = session_config.execution_output_path if session_config.save_captures else None
+        self.capture_output_dir = session_config.capture_dir
         # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
         # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
         # (e.g. the engine's optional extra missing) must disable the feature, not
@@ -239,11 +270,12 @@ class ActionKeyword:
             "press_by_percentage": self.press_by_percentage,
         }
 
-    def _record_successful_step(self, func_name: str, element: Any, args: tuple) -> None:
-        self._recent_steps.append((func_name, [str(element), *map(str, args)]))
+    def _record_successful_step(self, func_name: str, element: Any, args: tuple, value: str | None = None) -> None:
+        typed = [VALUE_PLACEHOLDER] if value is not None else []
+        self._recent_steps.append((func_name, [str(element), *map(str, args), *typed]))
 
     def _ai_self_heal(
-        self, element: Any, func_name: str, intent_args: tuple, screenshot_np: Any
+        self, element: Any, func_name: str, intent_args: tuple, screenshot_np: Any, value: str | None = None
     ) -> bool:
         """Last-resort AI recovery after every locate strategy failed. Returns True if healed.
 
@@ -262,6 +294,7 @@ class ActionKeyword:
         ctx = HealContext(
             intent_keyword=func_name,
             intent_params=[str(a) for a in intent_args],
+            value=value,
             element=str(element),
             recent_steps=list(self._recent_steps),
             failed_strategies=sorted(
@@ -279,7 +312,7 @@ class ActionKeyword:
         result = self._ai_healer.heal(
             ctx, providers.screenshot, providers.pagesource, snapshot_provider=providers.snapshot
         )
-        self._log_heal_outcome(result, func_name, element, intent_args)
+        self._log_heal_outcome(result, func_name, element, intent_args, value)
         return result.ok
 
     def _ai_self_heal_ready(self, screenshot_np: Any) -> bool:
@@ -288,7 +321,7 @@ class ActionKeyword:
             return False
         return bool(getattr(self._llm, "instances", None))
 
-    def _log_heal_outcome(self, result: Any, func_name: str, element: Any, args: tuple) -> None:
+    def _log_heal_outcome(self, result: Any, func_name: str, element: Any, args: tuple, value: str | None) -> None:
         """Log the heal result and, on success, record it for reporting.
 
         Exposes ``_last_heal_info`` with a human-readable ``summary`` and a structured
@@ -303,12 +336,14 @@ class ActionKeyword:
         action = result.action
         kw = action.keyword if action else "?"
         internal_logger.info("AI self-heal: recovered '%s' via keyword '%s'", func_name, kw)
-        self._record_successful_step(func_name, element, args)
+        self._record_successful_step(func_name, element, args, value)
         steps = []
         for name, params in result.suggested_steps:
             fn = self._heal_dispatch[name]
             steps.append((name, runner_params(fn, bind(fn, params, *params[:1], drop_first=params[:1]))))
         rendered = [self._render_heal_step(name, params) for name, params in steps]
+        if value is not None:
+            steps = [(name, [value if p == VALUE_PLACEHOLDER else p for p in params]) for name, params in steps]
         if rendered:
             plural = "s" if len(rendered) != 1 else ""
             summary = (
@@ -416,6 +451,7 @@ class ActionKeyword:
         index: str = "0",
         aoi: Tuple[str, str, str, str] = ("0", "0", "100", "100"),
         allow_covered: bool = False,
+        value: str | None = None,
     ) -> Any:
         """Locate ``element`` through the strategy ladder and run ``act`` on it.
 
@@ -427,6 +463,7 @@ class ActionKeyword:
 
         ``intent_args`` are the keyword's action parameters (everything after the
         element, minus locate-tuning params); they feed the self-heal breadcrumbs.
+        ``value`` is the text the keyword types: self-heal may choose where it goes, but never sees it.
         A covered point is skipped like a failed action; a keyword that only reads it sets ``allow_covered``.
         """
         screenshot_np = self._capture_screenshot_safe()
@@ -446,7 +483,7 @@ class ActionKeyword:
             aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
         )
         return self._act_until_success(
-            results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered
+            results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
         )
 
     def _act_on(
@@ -477,6 +514,7 @@ class ActionKeyword:
         intent_args: tuple,
         screenshot_np: Any,
         allow_covered: bool = False,
+        value: str | None = None,
     ) -> Any:
         """Run ``act`` on each locate result until one succeeds; heal/wrap on failure."""
         last_exception: Optional[Exception] = None
@@ -504,10 +542,10 @@ class ActionKeyword:
             keyword_outcome.acted(result.strategy)
             # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
             # appending after a bare `return` would be unreachable).
-            self._record_successful_step(func_name, element, intent_args)
+            self._record_successful_step(func_name, element, intent_args, value)
             return ret
         if result_count == 0:
-            if self._ai_self_heal(element, func_name, intent_args, screenshot_np):
+            if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
                 return None
             raise OpticsError(
                 Code.E0201,
@@ -515,7 +553,7 @@ class ActionKeyword:
                 cause=locate_error,
             ) from locate_error
         if last_exception:
-            if self._ai_self_heal(element, func_name, intent_args, screenshot_np):
+            if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
                 return None
             raise OpticsError(
                 Code.X0201,
@@ -543,16 +581,16 @@ class ActionKeyword:
         :param aoi_width: Width percentage of Area of Interest (0-100). Default: 100.
         :param aoi_height: Height percentage of Area of Interest (0-100). Default: 100.
         """
+        count, dx, dy = _repeat(repeat), _offset(offset_x, "offset_x"), _offset(offset_y, "offset_y")
+
         def act(located: Any) -> None:
             if isinstance(located, tuple):
                 x, y = located
-                internal_logger.info(
-                    f"Pressing at coordinates ({x + int(offset_x)}, {y + int(offset_y)}) with offset ({offset_x}, {offset_y})")
-                self.driver.press_coordinates(
-                    x + int(offset_x), y + int(offset_y), event_name=event_name)
+                internal_logger.info(f"Pressing at coordinates ({x + dx}, {y + dy}) with offset ({dx}, {dy})")
+                self.driver.press_coordinates(x + dx, y + dy, event_name=event_name)
             else:
                 internal_logger.info(f"Pressing element '{element}'")
-                self.driver.press_element(located, int(repeat), event_name=event_name)
+                self.driver.press_element(located, count, event_name=event_name)
 
         self._locate_and_act(
             element, "press_element", act, (repeat, offset_x, offset_y),
@@ -568,11 +606,10 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
+        x, y, count = _percent(percent_x, "percent_x"), _percent(percent_y, "percent_y"), _repeat(repeat)
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "press_by_percentage")
-        self.driver.press_percentage_coordinates(
-            float(percent_x), float(percent_y), int(repeat), event_name=event_name
-        )
+        self.driver.press_percentage_coordinates(x, y, count, event_name=event_name)
 
     def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
         """
@@ -583,10 +620,11 @@ class ActionKeyword:
         :param repeat: Number of times to repeat the press.
         :param event_name: The event triggering the press.
         """
+        x, y = _pixel(coor_x, "coor_x"), _pixel(coor_y, "coor_y")
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "press_by_coordinates")
-        internal_logger.info(f'Pressing by coordinates: ({coor_x}, {coor_y})')
-        self.driver.press_coordinates(int(coor_x), int(coor_y), event_name=event_name)
+        internal_logger.info(f'Pressing by coordinates: ({x}, {y})')
+        self.driver.press_coordinates(x, y, event_name=event_name)
 
 
     def detect_and_press(self, element: str, timeout: str = "30", event_name: Optional[str] = None) -> None:
@@ -794,10 +832,11 @@ class ActionKeyword:
         :param swipe_length: Swipe distance in pixels.
         :param event_name: The event triggering the swipe.
         """
+        x, y, length = _pixel(coor_x, "coor_x"), _pixel(coor_y, "coor_y"), _pixel(swipe_length, "swipe_length")
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe")
-        internal_logger.info(f'Swiping from ({coor_x}, {coor_y}) to the {direction} with length {swipe_length}')
-        self.driver.swipe(int(coor_x), int(coor_y), direction, int(swipe_length), event_name=event_name)
+        internal_logger.info(f'Swiping from ({x}, {y}) to the {direction} with length {length}')
+        self.driver.swipe(x, y, direction, length, event_name=event_name)
 
     def swipe_by_percentage(self, percent_x: str, percent_y: str, direction: str = 'right', swipe_length: str = "50", event_name: Optional[str] = None) -> None:
         """
@@ -812,10 +851,12 @@ class ActionKeyword:
         :param swipe_length: Swipe distance as a percentage of screen height (up/down) or width (left/right).
         :param event_name: The event triggering the swipe.
         """
+        x, y = _percent(percent_x, "percent_x", int), _percent(percent_y, "percent_y", int)
+        length = _percent(swipe_length, "swipe_length", int)
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "swipe_percentage")
-        internal_logger.info(f'Swiping from ({percent_x}, {percent_y}) to the {direction} with length {swipe_length}')
-        self.driver.swipe_percentage(int(percent_x), int(percent_y), direction, int(swipe_length), event_name=event_name)
+        internal_logger.info(f'Swiping from ({x}, {y}) to the {direction} with length {length}')
+        self.driver.swipe_percentage(x, y, direction, length, event_name=event_name)
 
     def swipe_seekbar_to_right_android(self, element: str, event_name: Optional[str] = None) -> None:
         """
@@ -878,15 +919,16 @@ class ActionKeyword:
         :param event_name: The event triggering the swipe.
         :param index: Index of the element if multiple matches are found.
         """
+        length = _pixel(swipe_length, "swipe_length")
+
         def act(located: Any) -> None:
             if isinstance(located, tuple):
                 x, y = located
                 internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
-                self.driver.swipe(x, y, direction, int(swipe_length), event_name=event_name)
+                self.driver.swipe(x, y, direction, length, event_name=event_name)
             else:
                 internal_logger.debug(f"Swiping from element '{element}'")
-                self.driver.swipe_element(
-                    located, direction, int(swipe_length), event_name=event_name)
+                self.driver.swipe_element(located, direction, length, event_name=event_name)
 
         self._locate_and_act(
             element, "swipe_from_element", act, (direction, swipe_length),
@@ -957,15 +999,16 @@ class ActionKeyword:
         :param event_name: The event triggering the scroll.
         :param index: Index of the element if multiple matches are found.
         """
+        length = _pixel(scroll_length, "scroll_length")
+
         def act(located: Any) -> None:
             if isinstance(located, tuple):
                 x, y = located
                 internal_logger.debug(f"Swiping from coordinates ({x}, {y})")
-                self.driver.swipe(x, y, direction, int(scroll_length), event_name=event_name)
+                self.driver.swipe(x, y, direction, length, event_name=event_name)
             else:
                 internal_logger.debug(f"Swiping from element '{element}'")
-                self.driver.swipe_element(
-                    located, direction, int(scroll_length), event_name=event_name)
+                self.driver.swipe_element(located, direction, length, event_name=event_name)
 
         self._locate_and_act(
             element, "scroll_from_element", act, (direction, scroll_length),
@@ -987,23 +1030,22 @@ class ActionKeyword:
         :param event_name: The event triggering the input.
         :param index: Index of the element if multiple matches are found.
         """
-        parsed = utils.parse_special_key(text)
-        if parsed is not None:
-            text = parsed
+        register_marked_secret(text)
+        typed = utils.parse_special_key(text) or text
 
         def act(located: Any) -> None:
             if isinstance(located, tuple):
                 x, y = located
-                internal_logger.debug(f"Entering text '{text}' at coordinates ({x}, {y})")
+                internal_logger.debug(f"Entering text at coordinates ({x}, {y})")
                 self.driver.press_coordinates(x, y, event_name=event_name)
-                self.driver.enter_text(text, event_name=event_name)
+                self.driver.enter_text(typed, event_name=event_name)
             else:
-                internal_logger.debug(f"Entering text '{text}' into element '{element}'")
-                self.driver.enter_text_element(located, text, event_name=event_name)
+                internal_logger.debug(f"Entering text into element '{element}'")
+                self.driver.enter_text_element(located, typed, event_name=event_name)
 
         self._locate_and_act(
-            element, "enter_text", act, (text,),
-            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+            element, "enter_text", act,
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height), value=str(text),
         )
 
     def enter_text_direct(self, text: str, event_name: Optional[str] = None) -> None:
@@ -1015,8 +1057,9 @@ class ActionKeyword:
         :param text: The text to be entered.
         :param event_name: The event triggering the input.
         """
+        register_marked_secret(text)
         self._save_screenshot_if_available(self._capture_screenshot_safe(), "enter_text_keyboard")
-        internal_logger.info(f'Entering text directly: {text}')
+        internal_logger.info("Entering text directly")
         self.driver.enter_text(text, event_name=event_name)
 
     def enter_text_using_keyboard(self, text_input: str, event_name: Optional[str] = None) -> None:
@@ -1029,13 +1072,11 @@ class ActionKeyword:
         :param text_input: The text or special key identifier to send.
         :param event_name: Optional event label for logging.
         """
-
-        parsed = utils.parse_special_key(text_input)
-        if parsed is not None:
-            text_input = parsed
+        register_marked_secret(text_input)
+        special = utils.parse_special_key(text_input)
         self._save_screenshot_if_available(self._capture_screenshot_safe(), "enter_text_using_keyboard")
-        internal_logger.info(f'Entering text using keyboard: {text_input}')
-        self.driver.enter_text_using_keyboard(text_input, event_name=event_name)
+        internal_logger.info(f"Pressing {special.value} using keyboard" if special else "Entering text using keyboard")
+        self.driver.enter_text_using_keyboard(special or text_input, event_name=event_name)
 
     def enter_number(self, element: str, number: str, aoi_x: str = "0", aoi_y: str = "0", aoi_width: str = "100",
                      aoi_height: str = "100", event_name: Optional[str] = None, index: str = "0") -> None:
@@ -1051,19 +1092,21 @@ class ActionKeyword:
         :param event_name: The event triggering the input.
         :param index: Index of the element if multiple matches are found.
         """
+        register_marked_secret(number)
+
         def act(located: Any) -> None:
             if isinstance(located, tuple):
                 x, y = located
-                internal_logger.debug(f"Entering number '{number}' at coordinates ({x}, {y})")
+                internal_logger.debug(f"Entering a number at coordinates ({x}, {y})")
                 self.driver.press_coordinates(x, y, event_name=event_name)
                 self.driver.enter_text(str(number), event_name=event_name)
             else:
-                internal_logger.debug(f"Entering number '{number}' into element '{element}'")
+                internal_logger.debug(f"Entering a number into element '{element}'")
                 self.driver.enter_text_element(located, str(number), event_name=event_name)
 
         self._locate_and_act(
-            element, "enter_number", act, (number,),
-            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height),
+            element, "enter_number", act,
+            index=index, aoi=(aoi_x, aoi_y, aoi_width, aoi_height), value=str(number),
         )
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
@@ -1076,8 +1119,8 @@ class ActionKeyword:
         :param keycode: The keycode to be pressed.
         :param event_name: The event triggering the press.
         """
+        register_marked_secret(keycode)
         self._save_screenshot_if_available(self._capture_screenshot_safe(), "press_keycode")
-
         internal_logger.info(f"Pressing keycode: {keycode}")
         self.driver.press_keycode(keycode, event_name=event_name)
 

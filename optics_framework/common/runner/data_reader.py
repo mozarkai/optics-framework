@@ -5,6 +5,7 @@ import inspect
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from typing import Callable, Optional, Dict, Set, Union, List, Tuple, cast
+from optics_framework.common.config_handler import load_project_yaml
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import (
     ApiData,
@@ -467,9 +468,7 @@ class YAMLDataReader(DataReader):
         :rtype: dict
         """
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-                return data
+            return load_project_yaml(file_path) or {}
         except yaml.YAMLError as e:
             internal_logger.error(f"Error parsing YAML file {file_path}: {e}")
             return {}

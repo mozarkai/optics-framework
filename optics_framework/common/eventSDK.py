@@ -5,16 +5,29 @@ import threading
 import requests
 from datetime import datetime, timezone, timedelta
 from optics_framework.common.config_handler import ConfigHandler
-from optics_framework.common.logging_config import internal_logger, execution_logger
+from optics_framework.common.logging_config import (
+    execution_logger, internal_logger, is_secret_name, register_config_secret,
+)
 from optics_framework.common.runner.printers import TreeResultPrinter
 from optics_framework.common import test_context
+
+_EVENT_URL = "eventUrl"
+_BEARER = "testParameters_bearer"
 
 
 class EventSDK:
     def __init__(self, config_handler:ConfigHandler):
         self.config_handler = config_handler
         self.event_attributes_json_path = self.config_handler.config.event_attributes_json
-        self.event_attributes_data = self._load_event_attributes_json()
+        data = self._load_event_attributes_json()
+        self.event_url = data.get(_EVENT_URL)
+        self.bearer = data.get(_BEARER)
+        if isinstance(self.bearer, str):
+            register_config_secret(_BEARER, self.bearer)
+        # Event metadata is printed and sent with every event, so delivery settings and credentials stay out of it.
+        self.event_attributes_data = {
+            key: value for key, value in data.items() if key != _EVENT_URL and not is_secret_name(key)
+        }
         self.all_events = []
         self.real_time = False
 
@@ -26,10 +39,14 @@ class EventSDK:
 
         try:
             with open(self.event_attributes_json_path, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             execution_logger.error(f"Failed to load event attributes JSON from {self.event_attributes_json_path}: {e}")
             return {}
+        if not isinstance(data, dict):
+            execution_logger.error(f"Event attributes JSON in {self.event_attributes_json_path} is not an object")
+            return {}
+        return data
 
     def get_current_time_for_events(self):
         try:
@@ -64,19 +81,9 @@ class EventSDK:
             internal_logger.error(f"Unable to get {key} from JSON data", exc_info=e)
             return None
 
-    def get_event_attributes(self, file_path):
-        """Get event attributes from a separate file (used for mozark event attributes)"""
-        try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-            application_name = self.get_application_name()
-            app_name = {"applicationName" : application_name}
-            mozark_event_attributes = {'mozarkEventAttributes': data}
-            mozark_event_attributes['mozarkEventAttributes'].update(app_name)
-            return mozark_event_attributes
-        except Exception as e:
-            internal_logger.error("Unable to get data from Mozark event JSON", exc_info=e)
-            return {}
+    def get_event_attributes(self):
+        """The metadata attached to every event: the attributes file less its delivery settings and credentials."""
+        return {'mozarkEventAttributes': {**self.event_attributes_data, "applicationName": self.get_application_name()}}
 
     def set_event_name(self, event_name):
         return event_name
@@ -101,8 +108,7 @@ class EventSDK:
     def submit_single_event(self, event_name, event_attributes, real_time=False, time_interval=0):
         try:
             final_event_data = self.form_event_name(event_name) | self.form_event_attributes(event_attributes)
-            mozark_event_attributes = self.get_event_attributes(self.event_attributes_json_path)
-            event_data = {**final_event_data, **mozark_event_attributes}
+            event_data = {**final_event_data, **self.get_event_attributes()}
             self.all_events.append(event_data)
             self.event_sdk_initializer(real_time, time_interval)
         except Exception as e:
@@ -137,10 +143,7 @@ class EventSDK:
                 execution_logger.info("No events to send.")
                 return
 
-            # Use the cached JSON data instead of treating the path as a dict
-            event_url = self.event_attributes_data.get("eventUrl")
-            bearer = self.event_attributes_data.get("testParameters_bearer")
-
+            event_url, bearer = self.event_url, self.bearer
             if not event_url:
                 execution_logger.error("eventUrl not found in configuration")
                 return
@@ -236,13 +239,9 @@ class EventSDK:
         try:
             user_event_attrb = self.user_event_attributes(event_name=event_name, **args)
 
-            # Use the file path for getting event attributes
-            file_path = self.event_attributes_json_path
-            if not file_path:
+            if not self.event_attributes_json_path:
                 raise ValueError("Event attributes JSON file path is not set.")
-
-            event_attributes = self.get_event_attributes(file_path)
-            combined_dict = self.merge_dictionaries(user_event_attrb, event_attributes)
+            combined_dict = self.merge_dictionaries(user_event_attrb, self.get_event_attributes())
 
             # Print event to console
             self.print_event(combined_dict)
@@ -267,13 +266,9 @@ class EventSDK:
         try:
             user_event_attrb = self.user_event_attributes(event_name=event_name, timestamp=current_time, **event_attributes)
 
-            # Use the file path for getting event attributes
-            file_path = self.event_attributes_json_path
-            if not file_path:
+            if not self.event_attributes_json_path:
                 raise ValueError("Event attributes JSON file path is not set.")
-
-            mozark_event_attributes = self.get_event_attributes(file_path)
-            combined_dict = self.merge_dictionaries(user_event_attrb, mozark_event_attributes)
+            combined_dict = self.merge_dictionaries(user_event_attrb, self.get_event_attributes())
 
             # Print event to console
             self.print_event(combined_dict)

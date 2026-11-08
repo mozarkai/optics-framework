@@ -35,8 +35,7 @@ class Verifier:
             annotate_assertions=builder.session_config.save_captures,
         )
         self.event_sdk: EventSDK = builder.event_sdk
-        self.execution_dir = builder.session_config.execution_output_path
-        self.capture_output_dir = self.execution_dir if builder.session_config.save_captures else None
+        self.capture_output_dir = builder.session_config.capture_dir
         self.session = builder.session
 
     def validate_element(
@@ -461,7 +460,7 @@ class Verifier:
         elements = self._collect_interactive_elements(filter_config, screenshot_np, compact=compact)
         if compact:
             elements = self._to_compact_shape(elements)
-        utils.save_interactable_elements(elements, output_dir=self.execution_dir)
+        utils.save_interactable_elements(elements, output_dir=self.capture_output_dir)
         return elements
 
     def get_screen_elements(self) -> dict:
@@ -476,7 +475,7 @@ class Verifier:
         """
         screenshot_np = self._safe_capture_screenshot_np()
         elements = self._collect_interactive_elements(None, screenshot_np)
-        utils.save_interactable_elements(elements, output_dir=self.execution_dir)
+        utils.save_interactable_elements(elements, output_dir=self.capture_output_dir)
         if screenshot_np is not None and self.capture_output_dir is not None:
             utils.save_screenshot(screenshot_np, "capture_screenshot", output_dir=self.capture_output_dir)
         base64_screenshot = (

@@ -64,6 +64,9 @@ KeywordCatalog = Callable[[], List[HealKeywordSpec]]
 # Let the UI settle after a layout-changing action before re-screenshotting.
 _SETTLE_SECONDS = 1.5
 
+# What the model sees in place of the failed keyword's typed value; it never sees the value itself.
+VALUE_PLACEHOLDER = "<value>"
+
 # Keywords that just change what's on screen but don't complete a locate-based goal.
 _NON_COMPLETING_KEYWORDS = (
     "scroll", "swipe_by_percentage", "swipe", "press_keycode", "press_by_percentage",
@@ -76,10 +79,20 @@ class HealContext:
 
     intent_keyword: str          # e.g. "press_element"
     intent_params: List[str] = field(default_factory=list)
+    value: str | None = None     # the text the failed keyword types; only ever typed, never shown to the model
     element: str = ""            # the resolved locator the normal ladder failed to find
     resolved_vars: Dict[str, str] = field(default_factory=dict)
     recent_steps: List[Tuple[str, List[str]]] = field(default_factory=list)
     failed_strategies: List[str] = field(default_factory=list)
+
+    def intent(self) -> str:
+        """The failed keyword as the model sees it."""
+        typed = [VALUE_PLACEHOLDER] if self.value is not None else []
+        return " ".join([self.intent_keyword, *map(str, self.intent_params), *typed])
+
+    def types_value(self, action: "HealAction") -> bool:
+        """Whether ``action`` is the typing that recovers this keyword, so it types the original value."""
+        return action.keyword == "enter_text" and self.value is not None and action.params[1:2] in ([], [""], [VALUE_PLACEHOLDER])
 
 
 @dataclass
@@ -179,6 +192,9 @@ more reliable than coordinates. Take exact text, content-desc or resource id fro
 hierarchy. When CURRENT SCREEN rows are listed, put the ref of the element of `press_element` or \
 `enter_text` in `target` instead, and leave it out of `params`.
 
+A failed keyword's typed value shows only as `<value>`. To recover it, call `enter_text` with the \
+field in `target` and `<value>` as the text: the framework types the value there. Other text is typed as written.
+
 If a CURRENT SCREEN row matches the target, act on it and set `completed` to true. If no row matches, reveal it first - \
 scroll, press a menu, or type into a search field - with `completed` false, then act on it by \
 text. For system buttons use `press_keycode` with the Android keycode (HOME=3, BACK=4, \
@@ -272,10 +288,11 @@ class AISelfHealHandler:
         return self._validate(raw)
 
     def _run_action(
-        self, action: HealAction, attempted: list[str], succeeded: list[tuple[str, list[str]]], heal_log: list[str],
+        self, action: HealAction, ctx: HealContext, attempted: list[str], succeeded: list[tuple[str, list[str]]],
+        heal_log: list[str],
     ) -> HealResult | None:
         try:
-            outcome = self._dispatch(action)
+            outcome = self._dispatch(action, ctx)
         except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
             return HealResult(False, action=action, message=f"Keyword failed: {exc}")
 
@@ -328,14 +345,25 @@ class AISelfHealHandler:
             return HealResult(True, action=action, message=action.reason or "Goal reached.")
 
         try:
-            action = self._bind_target(action, refs, catalog)
+            action = self._bound(action, ctx, refs, catalog)
         except screen_snapshot.TargetError as exc:
             line = self._build_line(action.keyword, [action.target, *action.params] if action.target else action.params)
             attempted.append(line)
             heal_log.append(f"{line} -> FAIL: {exc}")
             return None
 
-        return self._run_action(action, attempted, succeeded, heal_log)
+        return self._run_action(action, ctx, attempted, succeeded, heal_log)
+
+    def _bound(
+        self, action: HealAction, ctx: HealContext, refs: screen_snapshot.RefTable, catalog: List[HealKeywordSpec],
+    ) -> HealAction:
+        action = self._bind_target(action, refs, catalog)
+        if ctx.types_value(action):
+            return self._bind_value(action)
+        if action.keyword == "enter_text" and ctx.value is not None:
+            # Other text only works toward the field, so only typing the value can complete the heal.
+            action.completed = False
+        return action
 
     def heal(
         self,
@@ -396,10 +424,8 @@ class AISelfHealHandler:
         The goal is the original keyword the normal locators failed on; only the
         successful steps are selectable, so no FAILED context section is needed here.
         """
-        params = " ".join(str(p) for p in ctx.intent_params)
-        goal = f"{ctx.intent_keyword} {params}".rstrip()
         lines = [
-            f"INSTRUCTION (goal that was achieved by self-heal): {goal}",
+            f"INSTRUCTION (goal that was achieved by self-heal): {ctx.intent()}",
             "",
             "CANDIDATE STEPS (selectable — put these numbers in `keep`):",
         ]
@@ -444,7 +470,18 @@ class AISelfHealHandler:
         found = screen_snapshot.ladder(row, refs.latest)
         return action.bound(target, [found.act[0], *params], [found.replay, *params])
 
-    def _dispatch(self, action: HealAction) -> _DispatchOutcome:
+    @staticmethod
+    def _bind_value(action: HealAction) -> HealAction:
+        """The typing that recovers the keyword: the model picks only the field, and typing it completes the heal."""
+        if not action.params:
+            raise screen_snapshot.TargetError("enter_text needs the field in `target`", kind="no_target")
+        record = action.record_params or action.params
+        rest = action.params[2:]
+        bound = action.bound(action.target, [action.params[0], VALUE_PLACEHOLDER, *rest], [record[0], VALUE_PLACEHOLDER, *rest])
+        bound.completed = True
+        return bound
+
+    def _dispatch(self, action: HealAction, ctx: HealContext) -> _DispatchOutcome:
         """Execute one keyword via the injected executor.
 
         Returns ``_DispatchOutcome(ok, done)``: ``ok`` is whether the keyword executed
@@ -454,7 +491,8 @@ class AISelfHealHandler:
             return _DispatchOutcome(ok=False, done=False)
 
         line = self._build_line(action.keyword, action.params)
-        result = self.keyword_executor(line)
+        typed = [action.params[0], str(ctx.value), *action.params[2:]] if ctx.types_value(action) else action.params
+        result = self.keyword_executor(self._build_line(action.keyword, typed))
 
         if not result.ok:
             internal_logger.debug("AI self-heal: keyword '%s' failed: %s", line, result.message)
@@ -511,9 +549,8 @@ class AISelfHealHandler:
         self, ctx: HealContext, page_source: Optional[str],
         catalog: List[HealKeywordSpec], heal_log: List[str], snap: screen_snapshot.Snapshot,
     ) -> str:
-        params = " ".join(str(p) for p in ctx.intent_params)
         lines = [
-            f"FAILED KEYWORD: {ctx.intent_keyword} {params}".rstrip(),
+            f"FAILED KEYWORD: {ctx.intent()}",
             f"TARGET ELEMENT (not found by normal locators): {ctx.element}",
         ]
         if ctx.resolved_vars:

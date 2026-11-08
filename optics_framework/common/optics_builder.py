@@ -87,7 +87,7 @@ class OpticsBuilder:
             for key in item:
                 if isinstance(item[key], dict):
                     item[key]["project_path"] = project_path
-                    item[key]["execution_output_path"] = self.session_config.execution_output_path
+                    item[key]["execution_output_path"] = self.session_config.capture_dir
                     if templates is not None:
                         item[key]["templates"] = templates
         self.config.image_config = normalized
@@ -97,11 +97,10 @@ class OpticsBuilder:
         self, config: Union[str, List[Union[str, Dict]]]
     ) -> "OpticsBuilder":
         normalized = self.normalise_config(config)
-        # Inject execution_output_path into each config dict
         for item in normalized:
             for key in item:
                 if isinstance(item[key], dict):
-                    item[key]["execution_output_path"] = self.session_config.execution_output_path
+                    item[key]["execution_output_path"] = self.session_config.capture_dir
         self.config.text_config = normalized
         return self
 
