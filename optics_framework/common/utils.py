@@ -1172,6 +1172,11 @@ def _window_size_from_source(element_source: Any) -> Optional[Tuple[int, int]]:
 LETTERBOX_RATIO_TOLERANCE = 0.01
 
 
+def _driver_type(source: Any) -> Optional[str]:
+    """The driver a source works with: its required type, else the name of the driver it was given (a camera source takes any)."""
+    return getattr(source, "REQUIRED_DRIVER_TYPE", None) or getattr(getattr(source, "driver", None), "NAME", None)
+
+
 def _pixel_scale_for_source(
     element_source: Any,
     screenshot: Optional[np.ndarray],
@@ -1180,7 +1185,8 @@ def _pixel_scale_for_source(
     Compute the transform that maps the driver's window coordinate space onto the
     screenshot's pixel space, or ``None`` when it should not be applied.
 
-    * Gated to **Appium** sources. Their page-source/WebElement coordinates and the
+    * Gated to **Appium** sources, including a camera source given an Appium driver
+      (its deskewed frame stands in for the screenshot). Their page-source/WebElement coordinates and the
       driver's window size share one coordinate system (points on iOS, pixels on
       Android), so ``screenshot / window`` is a meaningful ratio. Web sources
       (Selenium/Playwright) report element coordinates (CSS pixels, scroll-relative)
@@ -1209,7 +1215,7 @@ def _pixel_scale_for_source(
     if screenshot is None:
         return None
     source = getattr(element_source, "active_instance", None) or element_source
-    if getattr(source, "REQUIRED_DRIVER_TYPE", None) != "appium":
+    if _driver_type(source) != "appium":
         return None
     window_size = _window_size_from_source(source)
     if window_size is None:

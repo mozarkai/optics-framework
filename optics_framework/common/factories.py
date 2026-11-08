@@ -65,7 +65,7 @@ class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
             es_name = next(iter(config_dict.keys()))
             implementation = cls._load_element_source_implementation(es_name)
             matched_driver = cls._find_matching_driver(implementation, driver_instances)
-            extra_kwargs = cls._build_driver_kwargs(implementation, matched_driver)
+            extra_kwargs = {"driver": matched_driver} if matched_driver is not None else {}
             instance = cls.create_instance_dynamic(config_dict, ElementSourceInterface, cls.DEFAULT_PACKAGE, extra_kwargs=extra_kwargs)
             instances.append(instance)
         return InstanceFallback(instances)
@@ -81,7 +81,9 @@ class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
 
     @classmethod
     def _find_matching_driver(cls, implementation, driver_instances):
-        """Find a driver instance that matches the required driver type."""
+        """Find a driver instance that matches the required driver type, or the first driver for a source that takes any."""
+        if getattr(implementation, "ACCEPTS_ANY_DRIVER", False):
+            return next((drv for drv in driver_instances if drv is not None), None)
         required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
         if not required_type:
             return None
@@ -91,14 +93,6 @@ class ElementSourceFactory(GenericFactory[ElementSourceInterface]):
             if drv_type == required_type:
                 return drv
         return None
-
-    @classmethod
-    def _build_driver_kwargs(cls, implementation, matched_driver):
-        """Build extra_kwargs dictionary for driver if required and matched."""
-        required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
-        if required_type and matched_driver:
-            return {'driver': matched_driver}
-        return {}
 
 
 class ImageFactory(GenericFactory[ImageInterface]):
