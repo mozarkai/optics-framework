@@ -447,6 +447,38 @@ class TestPromptContext:
         assert "TextDetectionStrategy" in llm.last_prompt
         assert "last-resort" in llm.last_system.lower()
 
+    def _prompt_with_rows(self, element, rows):
+        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
+        ctx = HealContext(intent_keyword="press_element", intent_params=[element], element=element)
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        return llm.last_prompt
+
+    def test_closest_rows_put_the_tappable_exact_match_first(self):
+        prompt = self._prompt_with_rows("enable_dictation", [
+            {"label": "Enable Dictation?", "cls": "StaticText", "act": [], "bounds": [0, 0, 100, 20]},
+            {"label": "Use your voice to dictate text", "cls": "StaticText", "act": [], "bounds": [0, 30, 100, 50]},
+            {"label": "Enable Dictation", "cls": "Button", "act": ["tap"], "bounds": [0, 60, 100, 80]},
+            {"label": "Cancel", "cls": "Button", "act": ["tap"], "bounds": [0, 90, 100, 110]},
+        ])
+        closest = prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()
+        assert closest == ['e3 Button "Enable Dictation" [tap]', 'e1 StaticText "Enable Dictation?"']
+
+    def test_closest_rows_match_a_resource_id_locator_by_its_id(self):
+        prompt = self._prompt_with_rows("//*[@resource-id='com.app:id/search_button']", [
+            {"label": "Search", "cls": "android.widget.TextView", "act": [], "bounds": [0, 0, 100, 20]},
+            {"label": "", "cls": "android.widget.ImageButton", "act": ["tap"], "rid": "com.app:id/search_button", "bounds": [0, 30, 100, 50]},
+        ])
+        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 ImageButton")
+
+    def test_rows_get_the_matching_hint_but_no_closest_rows_without_a_shared_word(self):
+        prompt = self._prompt_with_rows("Checkout", [{"label": "Cancel", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]}])
+        assert ash.ROW_MATCH_HINT in prompt
+        assert ash.CLOSEST_ROWS_HEADER not in prompt
+
+    def test_system_prompt_ties_completion_to_a_matching_row(self):
+        assert "If a CURRENT SCREEN row matches the target, act on it" in HEAL_SYSTEM_PROMPT
+        assert "If the target is visible" not in HEAL_SYSTEM_PROMPT
+
     def test_keyword_catalog_in_prompt(self):
         llm = FakeLLM([{"action": "give_up", "reason": "x"}])
         AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
