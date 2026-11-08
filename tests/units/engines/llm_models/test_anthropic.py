@@ -76,6 +76,18 @@ def test_default_platform_reads_named_key_variable(fake_sdk, monkeypatch):
     assert fake_sdk.built[-1] == ("anthropic", {"api_key": "k", "base_url": "https://gateway.example", "timeout": 60.0})
 
 
+def test_config_api_key_wins_over_the_environment(fake_sdk, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+    _llm(api_key="config-key")
+    assert fake_sdk.built[-1][1]["api_key"] == "config-key"
+
+
+def test_default_platform_falls_back_to_anthropic_api_key(fake_sdk, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+    _llm()
+    assert fake_sdk.built[-1][1]["api_key"] == "env-key"
+
+
 def test_bedrock_platform(fake_sdk):
     _llm(platform="bedrock", region="us-east-1")
     assert fake_sdk.built[-1] == ("bedrock", {"aws_region": "us-east-1", "base_url": None, "timeout": 60.0})

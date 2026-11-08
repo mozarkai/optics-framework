@@ -1,7 +1,9 @@
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.google_credentials import service_account_credentials
 from optics_framework.common.text_interface import TextInterface
 import cv2
 import numpy as np
+from google.api_core.client_options import ClientOptions
 from google.cloud import vision
 from google.cloud.vision_v1 import ImageAnnotatorClient
 
@@ -15,13 +17,16 @@ class GoogleVisionHelper(TextInterface):
     """
 
     def __init__(self, config=None):
-        """Use the service account file in ``capabilities.credentials_path``, else Application Default Credentials."""
-        credentials_path = ((config or {}).get("capabilities") or {}).get("credentials_path")
-        self._client = (
-            ImageAnnotatorClient(credentials=service_account_credentials(credentials_path))
-            if credentials_path
-            else None
-        )
+        """Use ``capabilities.api_key`` or the service account file in ``capabilities.credentials_path``, else Application Default Credentials."""
+        caps = (config or {}).get("capabilities") or {}
+        api_key, credentials_path = caps.get("api_key"), caps.get("credentials_path")
+        if api_key and credentials_path:
+            raise OpticsError(Code.E0501, message="google-vision: set capabilities.api_key or credentials_path, not both.")
+        self._client: ImageAnnotatorClient | None = None
+        if api_key:
+            self._client = ImageAnnotatorClient(client_options=ClientOptions(api_key=api_key))
+        elif credentials_path:
+            self._client = ImageAnnotatorClient(credentials=service_account_credentials(credentials_path))
 
     def _annotator(self) -> ImageAnnotatorClient:
         if self._client is None:

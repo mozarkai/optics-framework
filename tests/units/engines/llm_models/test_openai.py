@@ -66,7 +66,7 @@ def test_model_is_required(fake_client):
 
 def test_missing_key_without_url_fails_fast(fake_client, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY")
-    with pytest.raises(OpticsError, match="set OPENAI_API_KEY"):
+    with pytest.raises(OpticsError, match="capabilities.api_key or OPENAI_API_KEY"):
         _llm()
 
 
@@ -80,6 +80,11 @@ def test_api_key_env_names_the_variable(fake_client, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
     _llm(url="https://openrouter.ai/api/v1", api_key_env="OPENROUTER_API_KEY")
     assert fake_client.clients[-1]["api_key"] == "or-key"
+
+
+def test_config_api_key_wins_over_the_environment(fake_client):
+    _llm(api_key="sk-config")
+    assert fake_client.clients[-1]["api_key"] == "sk-config"
 
 
 def test_invalid_response_format_is_rejected(fake_client):

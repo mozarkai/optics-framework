@@ -1,9 +1,8 @@
 import base64
 import json
-import os
 from typing import Any
 
-from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error, request_timeout_s
+from optics_framework.common.llm_interface import LLMInterface, api_key, image_mime_type, missing_extra_error, request_timeout_s
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -125,8 +124,7 @@ def _build_client(platform: str, caps: dict[str, Any], base_url: str | None, tim
         if caps.get("project"):
             vertex_kwargs["project_id"] = caps["project"]
         return anthropic_sdk.AnthropicVertex(**vertex_kwargs)
-    api_key = os.getenv(caps.get("api_key_env", "ANTHROPIC_API_KEY"))
-    return anthropic_sdk.Anthropic(api_key=api_key, base_url=base_url, timeout=timeout)
+    return anthropic_sdk.Anthropic(api_key=api_key(caps, "ANTHROPIC_API_KEY"), base_url=base_url, timeout=timeout)
 
 
 def _image_block(data: bytes) -> dict[str, Any]:

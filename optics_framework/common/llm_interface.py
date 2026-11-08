@@ -1,4 +1,5 @@
 import json
+import os
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 
@@ -27,6 +28,11 @@ def request_timeout_s(caps: dict[str, Any]) -> float:
     if timeout <= 0:
         raise OpticsError(Code.E0601, message=f"capabilities.timeout_s must be a positive number, got {value!r}.")
     return timeout
+
+
+def api_key(caps: dict[str, Any], default_env: str) -> str | None:
+    """``capabilities.api_key``, else the variable named by ``capabilities.api_key_env`` (default ``default_env``)."""
+    return caps.get("api_key") or os.getenv(caps.get("api_key_env", default_env))
 
 
 def image_mime_type(data: bytes) -> str:
