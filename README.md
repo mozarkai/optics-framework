@@ -304,7 +304,7 @@ llm_models:
 ai_self_heal: true                              # opt into the LLM backstop; default false
 ```
 
-Each engine reads its key from `capabilities.api_key`, else from the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or the variable `api_key_env` names). Write `api_key: ${MY_KEY}` to keep the key out of a committed `config.yaml`; logs show `****` in its place. Enable more than one entry and Optics falls back to the next when a call fails. A misconfigured LLM degrades to "no self-heal" rather than a hard failure.
+Each engine reads its key from `capabilities.api_key`, else from the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). `openai` and `anthropic` also read the variable that `api_key_env` names. Write `api_key: ${MY_KEY}` to keep the key out of a committed `config.yaml`; logs show `****` in its place. Enable more than one entry and Optics falls back to the next when a call fails. A misconfigured LLM degrades to "no self-heal" rather than a hard failure.
 
 Full reference: [Configuration](https://optics-framework.org/docs/reference/config?ref=readme). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
 
