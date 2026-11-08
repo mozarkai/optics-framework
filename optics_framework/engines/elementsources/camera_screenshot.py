@@ -38,6 +38,21 @@ class CameraScreenshotHttpError(RuntimeError):
         )
 
 
+def corner_points(corners: list[str]) -> np.ndarray:
+    """The deskew corners as points; ``ValueError`` unless they are four finite 'x,y' points around a non-empty area."""
+    if len(corners) != 4:
+        raise ValueError(f"deskew_corners needs 4 points, got {len(corners)}")
+    try:
+        points = np.array([[float(value) for value in corner.split(",")] for corner in corners], dtype=np.float32)
+    except ValueError as exc:
+        raise ValueError(f"deskew_corners must be 'x,y' points, got {corners}") from exc
+    if points.shape != (4, 2) or not np.isfinite(points).all():
+        raise ValueError(f"deskew_corners must be finite 'x,y' points, got {corners}")
+    if cv2.contourArea(points) == 0:
+        raise ValueError(f"deskew_corners enclose no area: {corners}")
+    return points
+
+
 class CapabilitiesConfig(BaseModel):
     camera_index: Optional[int] = Field(None, description="Index of the camera to use")
     url: Optional[str] = Field(
@@ -51,8 +66,8 @@ class CapabilitiesConfig(BaseModel):
         None,
         description="Bearer token sent to an http(s):// url; masked in repr and dumps",
     )
-    out_width: int = Field(1080, description="Output width of the screenshot")
-    out_height: int = Field(1920, description="Output height of the screenshot")
+    out_width: int = Field(1080, gt=0, description="Output width of the screenshot")
+    out_height: int = Field(1920, gt=0, description="Output height of the screenshot")
     deskew_corners: Optional[list[str]] = Field(
         None,
         description="The screen's corners in the camera frame as 'x,y': top-left, top-right, bottom-right, bottom-left",
@@ -71,17 +86,9 @@ class CapabilitiesConfig(BaseModel):
 
     @field_validator("deskew_corners")
     @classmethod
-    def _four_points(cls, corners: Optional[list[str]]) -> Optional[list[str]]:
-        if corners is None:
-            return corners
-        if len(corners) != 4:
-            raise ValueError(f"deskew_corners needs 4 points, got {len(corners)}")
-        for corner in corners:
-            parts = corner.split(",")
-            if len(parts) != 2:
-                raise ValueError(f"deskew corner {corner!r} is not 'x,y'")
-            for part in parts:
-                float(part)
+    def _screen_corners(cls, corners: Optional[list[str]]) -> Optional[list[str]]:
+        if corners is not None:
+            corner_points(corners)
         return corners
 
     @field_validator("rotation", mode="before")
@@ -178,10 +185,9 @@ class CameraScreenshot(ElementSourceInterface):
     def _deskew_matrix(capabilities: CapabilitiesConfig) -> np.ndarray | None:
         if not capabilities.deskew_corners:
             return None
-        corners = [[float(value) for value in corner.split(",")] for corner in capabilities.deskew_corners]
         right, bottom = capabilities.out_width - 1, capabilities.out_height - 1
         return cv2.getPerspectiveTransform(
-            np.array(corners, dtype=np.float32),
+            corner_points(capabilities.deskew_corners),
             np.array([[0, 0], [right, 0], [right, bottom], [0, bottom]], dtype=np.float32),
         )
 
