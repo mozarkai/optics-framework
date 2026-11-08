@@ -306,8 +306,8 @@ class TvWebApp:
                                self._markers, str(state.get("text") or ""), _rect(state.get("centre")))
         return self._last
 
-    def focus(self, target: Any, secret: bool = False) -> None:
-        """Move focus onto ``target`` (or an element that holds it); ``secret`` keeps key labels out of logs."""
+    def focus(self, target: Any, hide_labels: bool = False) -> None:
+        """Move focus onto ``target`` (or an element that holds it); ``hide_labels`` keeps the labels it passes out of logs."""
         state = self.read(target)
         route = _Route()
         presses = 0
@@ -320,7 +320,7 @@ class TvWebApp:
             if key is None:
                 break
             count = route.presses(state, key)
-            internal_logger.debug(f"TV focus on '{_shown(state.text, secret)}' at {state.rect}, pressing {key} x{count}")
+            internal_logger.debug(f"TV focus on '{_shown(state.text, hide_labels)}' at {state.rect}, pressing {key} x{count}")
             for _ in range(count):
                 self._press(key)
             after = _settle(lambda: self.read(target), lambda now, was=state.rect: now.rect != was)
@@ -328,11 +328,11 @@ class TvWebApp:
             state, presses = after, presses + count
         raise OpticsError(
             Code.E0201,
-            message=f"D-pad focus did not reach the element; focus stays on '{_shown(state.text, secret) or state.rect}'",
+            message=f"D-pad focus did not reach the element; focus stays on '{_shown(state.text, hide_labels) or state.rect}'",
         )
 
-    def _select(self, target: Any, secret: bool = False) -> None:
-        self.focus(target, secret)
+    def _select(self, target: Any, hide_labels: bool = False) -> None:
+        self.focus(target, hide_labels)
         self._press("ENTER")
 
     def _find_key(self, names: list[str], pattern: re.Pattern[str] | None = None, classes: bool = False,
@@ -350,7 +350,7 @@ class TvWebApp:
             key, keyboard = self._find_key([char.lower()] + (list(SPACE_NAMES) if char == " " else []))
         return key, keyboard
 
-    def _key_for(self, char: str, secret: bool) -> Any:
+    def _key_for(self, char: str) -> Any:
         """The key for ``char``, waiting for the keyboard to open and switching its layers (``123``, ``abc``)."""
         key, _ = _settle(lambda: self._char_key(char), lambda found: found[0] is not None or found[1], KEYBOARD_WAIT_S)
         for _ in range(MAX_LAYERS):
@@ -359,10 +359,11 @@ class TvWebApp:
             layer, _ = self._find_key([], LAYER_KEY)
             if layer is None:
                 break
-            self._select(layer)
+            # Focus may still rest on the key of the character typed before.
+            self._select(layer, hide_labels=True)
             key, _ = self._char_key(char)
         if key is None:
-            raise OpticsError(Code.E0201, message=f"No on-screen key types '{_shown(char, secret)}'")
+            raise OpticsError(Code.E0201, message="No on-screen key types the next character")
         return key
 
     def _backspace(self) -> Any:
@@ -381,7 +382,7 @@ class TvWebApp:
         typed = 0
         try:
             for char in text:
-                self.focus(self._key_for(char, secret), secret)
+                self.focus(self._key_for(char), hide_labels=True)
                 typed += 1
                 self._press("ENTER")
             shown = _settle(lambda: self.get_text_element(target), lambda now: _holds(now, before, text, fold=True))
@@ -426,7 +427,7 @@ class TvWebApp:
         if _tag(target) in FIELD_TAGS and key in FIELD_KEYS:
             target.send_keys(FIELD_KEYS[key])
         elif key is SpecialKey.SPACE:
-            self._select(self._key_for(" ", secret=False))
+            self._select(self._key_for(" "))
         elif key is SpecialKey.BACKSPACE:
             self._select(self._backspace())
         elif key is SpecialKey.ENTER:
@@ -480,8 +481,8 @@ def _typing_mismatch(shown: str, before: str, text: str, secret: bool) -> str:
     return f"The field shows '{shown}', not '{text}'; press the field first when the screen has more than one"
 
 
-def _shown(text: str, secret: bool) -> str:
-    return "****" if secret and text else text
+def _shown(text: str, hidden: bool) -> str:
+    return "****" if hidden and text else text
 
 
 def _element_ref(value: Any) -> Any:

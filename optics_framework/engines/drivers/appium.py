@@ -1,9 +1,12 @@
 import functools
 import json
+import re
+import shlex
 import subprocess  # nosec
 import time
 import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any, Dict, List, Optional, Union
 from lxml import etree  # type: ignore
@@ -49,6 +52,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.session_liveness import is_webdriver_server_unreachable, raise_if_session_dead
 
 _MAX_ERROR_OUTPUT_LINES = 20
+_ANDROID_PACKAGE = re.compile(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*")
 
 _CDP_EXECUTE = "opticsExecuteCdp"
 _WEB_RECT_JS = "const r = arguments[0].getBoundingClientRect(); return [r.left, r.top, r.width, r.height];"
@@ -73,6 +77,40 @@ _PAGE_SHOWN_JS = "return document.visibilityState === 'visible' && innerWidth > 
 _KEYBOARD_TIMEOUT_S = 2.0
 _POLL_S = 0.1
 _PROBE_TIMEOUT_S = 2.0
+_WEB_VIEW_CLASS = {"android": "android.webkit.WebView", "ios": "XCUIElementTypeWebView"}
+
+
+def _holds(rect: dict[str, Any], x: float, y: float) -> bool:
+    return rect["x"] <= x < rect["x"] + rect["width"] and rect["y"] <= y < rect["y"] + rect["height"]
+
+
+def _web_view_under(native: dict[str, Any], web_views: list[dict[str, Any]]) -> dict[str, Any]:
+    """The web view that holds the probe's centre, so a page cannot place a tap outside its own view."""
+    centre_x, centre_y = native["x"] + native["width"] / 2, native["y"] + native["height"] / 2
+    web_view = next((view for view in web_views if _holds(view, centre_x, centre_y)), None)
+    if web_view is None:
+        raise OpticsError(Code.E0201, message="Cannot place the web element: no web view on the screen shows the page.")
+    return web_view
+
+
+@dataclass(frozen=True)
+class _PageTransform:
+    """Page CSS pixels to screen pixels, with the native web view that shows the page."""
+
+    origin_x: float
+    origin_y: float
+    factor_x: float
+    factor_y: float
+    web_view: dict[str, int]
+
+    def to_screen(self, rect: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **rect,
+            "x": round(self.origin_x + rect["x"] * self.factor_x),
+            "y": round(self.origin_y + rect["y"] * self.factor_y),
+            "width": round(rect["width"] * self.factor_x),
+            "height": round(rect["height"] * self.factor_y),
+        }
 
 
 def _starts_in_web(caps: dict[str, Any]) -> bool:
@@ -790,32 +828,36 @@ class Appium(DriverInterface):
             or self.capabilities.get(self.CAP_UDID)
         )
 
-    def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
+    def _android_app_package(self, override: Optional[str]) -> str:
         app_package = (
             self.capabilities.get(self.CAP_APP_PACKAGE_LEGACY)
             or self.capabilities.get(self.CAP_APP_PACKAGE)
-            or app_package_override
+            or override
         )
         if not app_package:
+            raise OpticsError(Code.E0104, message=f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}. ")
+        if not _ANDROID_PACKAGE.fullmatch(str(app_package)):
             raise OpticsError(
                 Code.E0104,
-                message=(
-                    f"Missing required capability: appPackage or {self.CAP_APP_PACKAGE}. "
-                ),
+                message=f"{app_package!r} is not an Android package name such as com.example.app.",
             )
+        return str(app_package)
 
+    def _get_android_app_version(self, app_package_override: Optional[str] = None) -> str:
+        app_package = self._android_app_package(app_package_override)
         device_serial = self._get_android_device_serial()
 
         adb_cmd = ["adb"]
         if device_serial:
             adb_cmd.extend(["-s", device_serial])
 
-        dumpsys_cmd = adb_cmd + ["shell", "pm", "dump", app_package]
+        # adb joins shell arguments into one command line for the device shell.
+        dumpsys_cmd = adb_cmd + ["shell", "pm", "dump", shlex.quote(app_package)]
 
         output = ""
         try:
             internal_logger.info(f"Executing adb command: {' '.join(dumpsys_cmd)}")
-            output = subprocess.check_output(  # nosec B603 - static trusted args; package name sourced from session caps
+            output = subprocess.check_output(  # nosec B603 - package name validated and quoted for the device shell
                 dumpsys_cmd,
                 stderr=subprocess.STDOUT,
                 text=True
@@ -1222,7 +1264,7 @@ class Appium(DriverInterface):
                 internal_logger.debug(f"Unknown special key in element, treating as text: {text}")
                 element.send_keys(utils.strip_sensitive_prefix(str(text)))
         else:
-            internal_logger.debug(f"Entering text '{text}' into element: {element}")
+            internal_logger.debug(f"Entering text into element: {element}")
             self._field_for(element).send_keys(utils.strip_sensitive_prefix(str(text)))
 
     @_on_tv
@@ -1318,8 +1360,8 @@ class Appium(DriverInterface):
                 text_to_send = utils.strip_sensitive_prefix(str(text))
                 driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
         else:
-            internal_logger.debug(f"Entering text: {text}")
             text_to_send = utils.strip_sensitive_prefix(str(text))
+            internal_logger.debug(f"Entering {len(text_to_send)} characters")
             driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": text_to_send})
 
     @supported_on(*MOBILE)
@@ -1360,7 +1402,8 @@ class Appium(DriverInterface):
 
     def _handle_string_keyboard_input(self, driver: WebDriver, text_value: str) -> None:
         """Type a string character-by-character, flushing unmapped chars via mobile:type."""
-        internal_logger.debug(f"Entering text using keyboard (per-char): {text_value}")
+        text_value = utils.strip_sensitive_prefix(text_value)
+        internal_logger.debug(f"Entering {len(text_value)} characters using keyboard (per-char)")
         buffer: List[str] = []
         for ch in text_value:
             keycode = self.get_char_as_keycode(ch)
@@ -1375,27 +1418,20 @@ class Appium(DriverInterface):
         """Send buffered chars via mobile:type and clear the buffer."""
         if not buffer:
             return
-        segment = "".join(buffer)
-        internal_logger.debug(f"Flushing unmapped segment via script: '{segment}'")
-        driver.execute_script(
-            self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(segment)}
-        )
+        driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": "".join(buffer)})
         buffer.clear()
 
     def _press_keycode_or_type_char(self, driver: WebDriver, ch: str, keycode: int) -> None:
         """Press keycode for char, or fall back to mobile:type on failure."""
         metastate = 1 if ch.isupper() else None
-        internal_logger.debug(f"Pressing keycode for char '{ch}': {keycode} (metastate={metastate})")
         try:
             if metastate is not None:
                 driver.press_keycode(int(keycode), metastate=metastate)
             else:
                 driver.press_keycode(int(keycode))
         except Exception:
-            internal_logger.debug(f"press_keycode failed for '{ch}', falling back to script typing")
-            driver.execute_script(
-                self.MOBILE_TYPE_COMMAND, {"text": utils.strip_sensitive_prefix(ch)}
-            )
+            internal_logger.debug("press_keycode failed for a character, falling back to script typing")
+            driver.execute_script(self.MOBILE_TYPE_COMMAND, {"text": ch})
 
     @supported_on(*MOBILE)
     def enter_text_using_keyboard(
@@ -1775,41 +1811,37 @@ class Appium(DriverInterface):
 
     def web_element_screen_rect(self, element: Any) -> dict[str, int]:
         """Device-screen rectangle of an element found inside :meth:`web_context`."""
-        left, top, width, height = self._require_driver().execute_script(_WEB_RECT_JS, element)
-        return self.web_rects_to_screen([{"x": left, "y": top, "width": width, "height": height}])[0]
+        driver = self._require_driver()
+        left, top, width, height = driver.execute_script(_WEB_RECT_JS, element)
+        transform = self._web_transform(driver)
+        rect = transform.to_screen({"x": left, "y": top, "width": width, "height": height})
+        # The page reports its own geometry, so it must not move a tap onto native controls.
+        if not _holds(transform.web_view, rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2):
+            raise OpticsError(
+                Code.E0201,
+                message="Cannot place the web element: its centre is outside the web view that shows the page.",
+            )
+        return rect
 
     def web_rects_to_screen(self, rects: list[dict[str, Any] | None]) -> list[dict[str, Any] | None]:
         """Unclamped screen rects of page boxes."""
-        origin_x, origin_y, factor_x, factor_y = self._web_transform(self._require_driver())
-        return [
-            None if rect is None else {
-                **rect,
-                "x": round(origin_x + rect["x"] * factor_x),
-                "y": round(origin_y + rect["y"] * factor_y),
-                "width": round(rect["width"] * factor_x),
-                "height": round(rect["height"] * factor_y),
-            }
-            for rect in rects
-        ]
+        transform = self._web_transform(self._require_driver())
+        return [None if rect is None else transform.to_screen(rect) for rect in rects]
 
-    def _web_transform(self, driver: WebDriver) -> tuple[float, float, float, float]:
+    def _web_transform(self, driver: WebDriver) -> _PageTransform:
         """Screen origin and screen units per CSS pixel of the page: browsers draw it under toolbars, so measure a probe."""
         label = f"optics-probe-{uuid.uuid4().hex}"
         context = driver.current_context
         left, top, width, height = driver.execute_script(_PROBE_JS, label)
+        platform = "ios" if self._is_ios() else "android"
         # Some Chrome builds report an image's aria-label as its text rather than its content description.
-        query = (AppiumBy.ACCESSIBILITY_ID, label) if self._is_ios() else (
+        query = (AppiumBy.ACCESSIBILITY_ID, label) if platform == "ios" else (
             AppiumBy.ANDROID_UIAUTOMATOR, f'new UiSelector().description("{label}");new UiSelector().text("{label}")'
         )
         try:
             driver.switch_to.context(self.NATIVE_CONTEXT)
             try:
-                rects = self._probe_rects(driver, query)
-                if not rects and not self._is_ios() and driver.current_package in self.ANDROID_BROWSER_PACKAGES.values():
-                    # Chrome drops the page from the accessibility tree when a tab is activated just after the
-                    # one in front closed, until the browser is shown again.
-                    driver.execute_script("mobile: backgroundApp", {"seconds": 0})
-                    rects = self._probe_rects(driver, query)
+                rects, web_views = self._native_probe(driver, query, platform)
             finally:
                 driver.switch_to.context(context)
         finally:
@@ -1820,8 +1852,23 @@ class Appium(DriverInterface):
                 message="Cannot place the web element: the page is not in the screen's accessibility tree.",
             )
         native = rects[0]
+        web_view = _web_view_under(native, web_views)
         factor_x, factor_y = native["width"] / width, native["height"] / height
-        return native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y
+        return _PageTransform(
+            native["x"] - left * factor_x, native["y"] - top * factor_y, factor_x, factor_y, web_view
+        )
+
+    def _native_probe(
+        self, driver: WebDriver, query: tuple[str, str], platform: str,
+    ) -> tuple[list[dict[str, int]], list[dict[str, int]]]:
+        """The probe's native rects and the web views on the screen."""
+        rects = self._probe_rects(driver, query)
+        if not rects and platform == "android" and driver.current_package in self.ANDROID_BROWSER_PACKAGES.values():
+            # Chrome drops the page from the accessibility tree when a tab is activated just after the
+            # one in front closed, until the browser is shown again.
+            driver.execute_script("mobile: backgroundApp", {"seconds": 0})
+            rects = self._probe_rects(driver, query)
+        return rects, [e.rect for e in driver.find_elements(AppiumBy.CLASS_NAME, _WEB_VIEW_CLASS[platform])]
 
     @staticmethod
     def _probe_rects(driver: WebDriver, query: tuple[str, str]) -> list[dict[str, int]]:

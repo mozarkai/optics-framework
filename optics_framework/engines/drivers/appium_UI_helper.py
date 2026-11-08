@@ -1,10 +1,10 @@
 import re
-from bisect import bisect_left
 from typing import Any, List, Dict, Tuple, Optional, Union, cast
 from fuzzywuzzy import fuzz
 from lxml import etree
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
+from optics_framework.common.xpath_index import XPathIndex
 ## Removed import of get_appium_driver (no longer needed)
 
 
@@ -44,83 +44,13 @@ def _obfuscated_id(rid: str) -> bool:
     return bool(_OBFUSCATED_ID_RE.fullmatch(rid.rsplit(":id/", 1)[-1]))
 
 
-class XPathUniquenessIndex:
-    """Document-order posting lists answering "how many nodes match this probe?".
+class XPathUniquenessIndex(XPathIndex):
+    """The shared XPath index over the attributes ``get_xpath`` probes."""
 
-    ``get_xpath`` decides between an attribute-based and a hierarchical XPath by
-    asking, for each candidate attribute, whether ``//tag[@attr=value]`` matches
-    exactly one node. Evaluating that with a real ``xpath()`` call rescans the whole
-    document once per probe, so labelling a whole hierarchy costs O(nodes x probes)
-    full-document scans -- seconds of CPU on a large iOS tree, which is enough to
-    trip an external health checker watching the same process. One indexing pass
-    answers every probe from a dict instead, keeping the walk linear in tree size.
-
-    Match sets are kept in document order because callers position a non-unique node
-    among its peers (``(xpath)[n]``), which must agree with what XPath itself would
-    have returned.
-    """
-
-    __slots__ = ("_by_tag", "_by_tag_attr", "_doc_pos", "_multi_cache", "xpath_cache")
+    __slots__ = ()
 
     def __init__(self, root: Any):
-        self._by_tag: Dict[str, List[Any]] = {}
-        self._by_tag_attr: Dict[Tuple[str, str, str], List[Any]] = {}
-        self._doc_pos: Dict[Any, int] = {}
-        self._multi_cache: Dict[Tuple[Any, ...], List[Any]] = {}
-        self.xpath_cache: Dict[Any, str] = {}
-        for position, node in enumerate(root.iter()):
-            tag = node.tag
-            if not isinstance(tag, str):
-                continue  # comments and processing instructions carry a callable tag
-            if "{" in tag:
-                # lxml reports a namespaced tag in Clark notation ("{uri}local"), which
-                # is not valid XPath: every probe built from one fails to parse. Leaving
-                # these nodes unindexed keeps their probes empty, so they fall through to
-                # the hierarchical builder -- where evaluating the probe always sent them.
-                continue
-            self._doc_pos[node] = position
-            self._by_tag.setdefault(tag, []).append(node)
-            attrib = node.attrib
-            for attr in XPATH_INDEXED_ATTRIBUTES:
-                val = attrib.get(attr)
-                if val:
-                    self._by_tag_attr.setdefault((tag, attr, val), []).append(node)
-
-    def matches(self, tag: str, conditions: Tuple[Tuple[str, str], ...]) -> List[Any]:
-        """Nodes matching ``//tag[@a=v and ...]``, in document order."""
-        if not conditions:
-            return self._by_tag.get(tag, [])
-        if len(conditions) == 1:
-            attr, val = conditions[0]
-            return self._by_tag_attr.get((tag, attr, val), [])
-        # Filtering the shortest posting list keeps a multi-attribute probe off a
-        # per-pair index, but costs that list's length. Sibling rows sharing a label
-        # issue byte-identical probes, so without this memo the same intersection is
-        # recomputed once per row -- the quadratic this index exists to remove. Trees
-        # with distinct values resolve on one attribute and never reach here.
-        cache_key = (tag, conditions)
-        cached = self._multi_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        postings = [self._by_tag_attr.get((tag, a, v), []) for a, v in conditions]
-        shortest = min(postings, key=len)
-        result = [n for n in shortest if all(n.attrib.get(a) == v for a, v in conditions)]
-        self._multi_cache[cache_key] = result
-        return result
-
-    def position_of(self, matches: List[Any], node: Any) -> int:
-        """0-based position of ``node`` within a document-ordered match list.
-
-        A list where every row repeats one label puts every row in the same match
-        list, so scanning it per node would reintroduce the quadratic cost this index
-        exists to remove. Both sequences are ordered by document position, so a binary
-        search answers it in log time.
-        """
-        pos = self._doc_pos.get(node)
-        if pos is None:
-            return 0
-        found = bisect_left(matches, pos, key=lambda n: self._doc_pos[n])
-        return found if found < len(matches) and matches[found] is node else 0
+        super().__init__(root, XPATH_INDEXED_ATTRIBUTES)
 
 
 class UIHelper:
@@ -142,7 +72,6 @@ class UIHelper:
         self.tree = etree.ElementTree(etree.fromstring(page_source.encode("utf-8")))
         self.root = self.tree.getroot()
         internal_logger.debug(f"Page source fetched at: {time_stamp}")
-        utils.save_page_source(page_source, time_stamp, self.driver.event_sdk.config_handler.config.execution_output_path)
         return page_source, time_stamp
 
     # fetching page source and handling UI tree
@@ -333,7 +262,7 @@ class UIHelper:
                         # Construct conditions using `contains()` for each filtered term
                         conditions = " or ".join(
                             [
-                                f'contains(@{attribute}, "{term}")'
+                                f"contains(@{attribute}, {utils.xpath_literal(term)})"
                                 for term in filtered_terms
                             ]
                         )
@@ -461,15 +390,15 @@ class UIHelper:
 
         # Add resource-id if available
         if attributes["resource-id"]:
-            xpath_parts.append(f"[@resource-id='{attributes['resource-id']}']")
+            xpath_parts.append(f"[@resource-id={utils.xpath_literal(attributes['resource-id'])}]")
 
         # Optionally add content-desc or text if available
         if attributes["content-desc"]:
             xpath_parts.append(
-                f"[contains(@content-desc, '{attributes['content-desc']}')]"
+                f"[contains(@content-desc, {utils.xpath_literal(attributes['content-desc'])})]"
             )
         elif attributes["text"]:
-            xpath_parts.append(f"[contains(@text, '{attributes['text']}')]")
+            xpath_parts.append(f"[contains(@text, {utils.xpath_literal(attributes['text'])})]")
 
         # Combine all parts into a simplified XPath
         simplified_xpath = "".join(xpath_parts)
@@ -614,25 +543,12 @@ class UIHelper:
             self.get_page_source()
             tree = self.tree
             # Construct the XPath based on the strategy and platform-specific attributes
-            if strategy in [
-                "text",
-                "resource-id",
-                "content-desc",
-                "name",
-                "value",
-                "label",
-            ]:
-                # Directly use the strategy as the attribute name
-                xpath_query = f"//*[@{strategy}='{locator}']"
-            elif strategy == "xpath":
-                # internal_logger.debug("Debug: Strategy is XPath, returning locator directly.")
+            if strategy == "xpath":
                 return locator
-            else:
+            if strategy not in ("text", "resource-id", "content-desc", "name", "value", "label"):
                 internal_logger.debug(f"Unsupported strategy: {strategy}")
                 return None
-
-            # Run the XPath query
-            elements = tree.xpath(xpath_query)
+            elements = tree.xpath(f"//*[@{strategy}=$value]", value=locator)
             if elements:
                 # If an element is found, manually construct the full XPath of the first matching element
                 element = elements[0]
@@ -648,7 +564,7 @@ class UIHelper:
                     # Choose the highest-priority attribute that exists in the element
                     for attr in android_priority + ios_priority:
                         if attr in element.attrib and element.attrib[attr]:
-                            attributes.append(f"@{attr}='{element.attrib[attr]}'")
+                            attributes.append(f"@{attr}={utils.xpath_literal(element.attrib[attr])}")
                             # break
 
                     # Construct the XPath part with the selected attribute
@@ -1173,7 +1089,7 @@ class UIHelper:
         val = node.attrib.get(attr_name)
         if not val:
             return None
-        lit = self._escape_for_xpath_literal(val)
+        lit = utils.xpath_literal(val)
         return f"//{tag_for_xpath}[@{attr_name}={lit}]", ((attr_name, val),)
 
     def _xpath_from_attr_pair(
@@ -1184,7 +1100,7 @@ class UIHelper:
         v1, v2 = node.attrib.get(a1), node.attrib.get(a2)
         if not v1 or not v2:
             return None
-        lit1, lit2 = self._escape_for_xpath_literal(v1), self._escape_for_xpath_literal(v2)
+        lit1, lit2 = utils.xpath_literal(v1), utils.xpath_literal(v2)
         return f"//{tag_for_xpath}[@{a1}={lit1} and @{a2}={lit2}]", ((a1, v1), (a2, v2))
 
     def _xpath_try_attributes_for_unique(
@@ -1262,12 +1178,8 @@ class UIHelper:
         if not tag:
             return ""
         parent = node.getparent()
-        segment = f"/{tag}"
-        if parent is not None:
-            siblings_same_tag = [c for c in parent if c.tag == tag]
-            if len(siblings_same_tag) > 1:
-                idx = siblings_same_tag.index(node) + 1
-                segment += f"[{idx}]"
+        position = index.sibling_position(node)
+        segment = f"/{tag}" if position is None else f"/{tag}[{position}]"
         if parent is not None and hasattr(parent, "tag"):
             return f"{self.get_xpath(parent, index)}{segment}"
         return segment
@@ -1300,26 +1212,7 @@ class UIHelper:
         return candidate
 
     def nth_view_locator(self, strategy: str, locator: str, occurrence: int) -> str:
-        return f"(//*[@{strategy}={self._escape_for_xpath_literal(locator)}])[{occurrence}]"
-
-    def _escape_for_xpath_literal(self, s: str) -> str:
-        """
-        Safely escape a string for inclusion in an XPath string literal.
-        Uses the concat() trick if both single and double quotes are present.
-        """
-        if '"' not in s:
-            return f'"{s}"'
-        if "'" not in s:
-            return f"'{s}'"
-        # If it contains both, break on double quotes and concat with '\"'
-        parts = s.split('"')
-        escaped_parts = []
-        for i, p in enumerate(parts):
-            if i == len(parts)-1:
-                escaped_parts.append(f'"{p}"')
-            else:
-                escaped_parts.extend([f'"{p}"', "'\"'"])
-        return 'concat(' + ', '.join(escaped_parts) + ')'
+        return f"(//*[@{strategy}={utils.xpath_literal(locator)}])[{occurrence}]"
 
     def _build_attribute_condition(self, attr: str, val: str) -> str:
         """
@@ -1329,7 +1222,7 @@ class UIHelper:
         - Contains match for content-like attributes (Android text/desc, iOS value)
         """
         val = val.strip()
-        lit = self._escape_for_xpath_literal(val)
+        lit = utils.xpath_literal(val)
 
         # Android id exact match when namespaced
         if attr == "resource-id" and "/" in val:

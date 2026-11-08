@@ -1,13 +1,11 @@
 from typing import Optional, Any, List
-import numpy as np
-import cv2
 
 from playwright.sync_api import Page
-from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.elementsource_interface import EncodedScreenshotSource
 from optics_framework.common.logging_config import internal_logger
 
 
-class PlaywrightScreenshot(ElementSourceInterface):
+class PlaywrightScreenshot(EncodedScreenshotSource):
     """
     Capture screenshots using Playwright.
     """
@@ -32,15 +30,6 @@ class PlaywrightScreenshot(ElementSourceInterface):
     # Screenshot
     # --------------------------------------------------
 
-    def capture(self) -> np.ndarray:
-        """
-        Capture a screenshot of the current viewport.
-
-        Returns:
-            np.ndarray: Screenshot as OpenCV-compatible NumPy array
-        """
-        return self.capture_screenshot_as_numpy()
-
     def capture_screenshot_bytes(self) -> bytes:
         """
         Return the viewport as native PNG bytes.
@@ -60,23 +49,6 @@ class PlaywrightScreenshot(ElementSourceInterface):
                 "Error capturing Playwright screenshot bytes: %s", e, exc_info=True
             )
             raise RuntimeError(f"Error capturing Playwright screenshot bytes: {e}") from e
-
-    def capture_screenshot_as_numpy(self) -> np.ndarray:
-        """
-        Captures screenshot via Playwright and converts to NumPy image.
-        Only captures the viewport, not the full page.
-
-        Reuses :meth:`capture_screenshot_bytes` and only adds the decode.
-
-        Returns:
-            numpy.ndarray: Screenshot image
-        """
-        screenshot_bytes = self.capture_screenshot_bytes()
-        np_image = np.frombuffer(screenshot_bytes, np.uint8)
-        np_image = cv2.imdecode(np_image, cv2.IMREAD_COLOR)  # type: ignore
-        if np_image is None:
-            raise RuntimeError("Failed to decode Playwright screenshot")
-        return np_image
 
     # --------------------------------------------------
     # Unsupported operations

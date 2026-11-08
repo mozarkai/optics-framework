@@ -1,13 +1,16 @@
 from itertools import combinations
 from typing import Optional, Dict, Any, List, Literal
+import json
 import os
 import socket
+import time
 from urllib.parse import urlparse
 import cv2
 import numpy as np
 import requests
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.image_decode import MAX_ENCODED_BYTES, check_encoded_length, decode_image
 from optics_framework.common.logging_config import internal_logger
 
 
@@ -18,8 +21,22 @@ ENV_TCP_FALLBACK_HOST = "127.0.0.1"
 HTTP_SCHEMES = frozenset({"http", "https"})
 HTTP_TIMEOUT_SECONDS = 15
 HTTP_OK = 200
-HTTP_ERROR_MESSAGE_LIMIT = 300
 ROTATIONS = {"clockwise": cv2.ROTATE_90_CLOCKWISE, "counterclockwise": cv2.ROTATE_90_COUNTERCLOCKWISE}
+HTTP_ERROR_FIELD_LIMIT = 300
+HTTP_ERROR_BODY_LIMIT = 4096
+CAPTURE_DEADLINE_SECONDS = 15
+READ_CHUNK_BYTES = 65536
+
+
+def _bounded(value: object) -> str | None:
+    return (str(value)[:HTTP_ERROR_FIELD_LIMIT] or None) if value is not None else None
+
+
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError(f"Camera screenshot took longer than {CAPTURE_DEADLINE_SECONDS}s")
+    return remaining
 
 
 class CameraScreenshotHttpError(RuntimeError):
@@ -144,7 +161,7 @@ class CameraScreenshot(ElementSourceInterface):
         self.rotation: Optional[str] = capabilities.rotation
         self._deskew = self._deskew_matrix(capabilities)
         self.header_size: int = capabilities.header_size
-        self.byte_order: str = capabilities.byte_order
+        self.byte_order: Literal["little", "big"] = capabilities.byte_order
 
         self.http_url: str | None = None
         self._http_token: str | None = None
@@ -153,16 +170,14 @@ class CameraScreenshot(ElementSourceInterface):
         self.ip_address = None
         self.port = None
 
-        endpoint = capabilities.url
-        if capabilities.camera_index is None and not endpoint:
-            endpoint = self._endpoint_from_env()
+        endpoint, token = self._endpoint_and_token(capabilities)
 
         # Initialize webcam, HTTP endpoint or TCP connection
         if self.camera_index is not None:
             self.cap = cv2.VideoCapture(self.camera_index)
         elif endpoint and urlparse(endpoint).scheme.lower() in HTTP_SCHEMES:
             self.http_url = endpoint
-            self._http_token = self._resolve_token(capabilities)
+            self._http_token = token
         elif endpoint:
             self.ip_address, self.port = self._parse_ip_port(endpoint)
             self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
@@ -197,10 +212,7 @@ class CameraScreenshot(ElementSourceInterface):
         )
 
     def capture(self) -> np.ndarray:
-        """The screen from the webcam, the HTTP endpoint or the TCP connection, deskewed and rotated as configured.
-
-        Returns an empty array when a TCP read fails.
-        """
+        """The screen from the webcam, the HTTP endpoint or the TCP connection, deskewed and rotated as configured."""
         frame = self._capture_frame()
         if frame is None or frame.size == 0:
             return frame
@@ -213,29 +225,12 @@ class CameraScreenshot(ElementSourceInterface):
     def _capture_frame(self) -> np.ndarray:
         if self.http_url:
             return self.take_http_screenshot()
-        if self.sock:
+        if self.ip_address is not None:
             try:
-                frame = self.take_screenshot()
-                if frame is None:  # take_screenshot might return None on error
-                    internal_logger.warning(
-                        "Failed to capture frame from TCP connection."
-                    )
-                return frame
-            except (ConnectionError, socket.timeout, socket.error, ValueError) as e:
-                internal_logger.error(
-                    f"TCP connection error during capture: {e}. Attempting to re-establish."
-                )
-                self.sock = self.create_tcp_connection(
-                    ip=self.ip_address, port=self.port
-                )
-                if self.sock:
-                    internal_logger.info(
-                        "TCP connection re-established. Retrying capture."
-                    )
-                    return self.take_screenshot()  # Retry capture
-                else:
-                    internal_logger.error("Failed to re-establish TCP connection.")
-                    raise RuntimeError("Failed to re-establish TCP connection.") from e
+                return self._take_tcp_frame()
+            except ConnectionError as e:
+                internal_logger.warning(f"TCP camera connection lost: {e}. Reconnecting once.")
+                return self._take_tcp_frame()
         if self.cap is None or not self.cap.isOpened():
             internal_logger.error("No valid webcam connection.")
             raise RuntimeError("No valid webcam connection.")
@@ -318,153 +313,103 @@ class CameraScreenshot(ElementSourceInterface):
         return None
 
     @staticmethod
-    def _resolve_token(capabilities: "CapabilitiesConfig") -> str | None:
-        """Config token first, then ``WEBCAM_SCREENSHOT_TOKEN``."""
-        if capabilities.token is not None:
-            return capabilities.token.get_secret_value()
-        return os.environ.get(ENV_SCREENSHOT_TOKEN) or None
+    def _endpoint_and_token(capabilities: CapabilitiesConfig) -> tuple[str | None, str | None]:
+        """The endpoint and its bearer token; the server's env token goes only to the server's env endpoint."""
+        token = capabilities.token.get_secret_value() if capabilities.token else None
+        if capabilities.camera_index is None and not capabilities.url:
+            return CameraScreenshot._endpoint_from_env(), token or os.environ.get(ENV_SCREENSHOT_TOKEN) or None
+        if capabilities.url and not token and os.environ.get(ENV_SCREENSHOT_TOKEN):
+            internal_logger.warning(
+                f"{ENV_SCREENSHOT_TOKEN} is sent only to {ENV_SCREENSHOT_URL}; for a url in"
+                f" capabilities, set capabilities.token (e.g. token: ${{{ENV_SCREENSHOT_TOKEN}}})"
+            )
+        return capabilities.url, token
 
     @staticmethod
-    def _http_error(response: requests.Response) -> CameraScreenshotHttpError:
-        code: str | None = None
-        message: str | None = None
+    def _http_error(status: int, body: bytes) -> CameraScreenshotHttpError:
         try:
-            body = response.json()
-            if isinstance(body, dict):
-                code = str(body.get("code")) if body.get("code") is not None else None
-                message = (
-                    str(body.get("message")) if body.get("message") is not None else None
-                )
+            fields = json.loads(body)
         except ValueError:
-            message = response.text[:HTTP_ERROR_MESSAGE_LIMIT] or None
-        if message:
-            message = message[:HTTP_ERROR_MESSAGE_LIMIT]
-        return CameraScreenshotHttpError(response.status_code, code, message)
+            fields = {"message": body.decode("utf-8", "replace")}
+        if not isinstance(fields, dict):
+            fields = {}
+        return CameraScreenshotHttpError(status, _bounded(fields.get("code")), _bounded(fields.get("message")))
+
+    @staticmethod
+    def _read_capped(response: requests.Response, limit: int, deadline: float) -> bytes:
+        body = bytearray()
+        for chunk in response.iter_content(READ_CHUNK_BYTES):
+            body += chunk
+            if len(body) >= limit:
+                break
+            _remaining(deadline)
+        return bytes(body[:limit])
 
     def take_http_screenshot(self) -> np.ndarray:
         """
-        Fetch a JPEG from the HTTP screenshot endpoint and decode it.
+        Fetch an image from the HTTP screenshot endpoint and decode it.
 
         Raises:
             CameraScreenshotHttpError: the server answered with a non-200 status.
             RuntimeError: the request failed.
-            ValueError: the body is not a decodable image.
+            TimeoutError: the transfer outlasted the capture deadline.
+            OpticsError: E0304, the body is too large or not a decodable image.
         """
         headers = {}
         if self._http_token:
             headers["Authorization"] = f"Bearer {self._http_token}"
+        deadline = time.monotonic() + CAPTURE_DEADLINE_SECONDS
         try:
             # Redirects are never followed: they would re-send the bearer token.
-            response = requests.get(
+            with requests.get(
                 str(self.http_url),
                 headers=headers,
                 timeout=HTTP_TIMEOUT_SECONDS,
                 allow_redirects=False,
-            )
+                stream=True,
+            ) as response:
+                if response.status_code != HTTP_OK:
+                    error = self._http_error(
+                        response.status_code, self._read_capped(response, HTTP_ERROR_BODY_LIMIT, deadline)
+                    )
+                    internal_logger.error(str(error))
+                    raise error
+                body = self._read_capped(response, MAX_ENCODED_BYTES + 1, deadline)
         except requests.RequestException as e:
             internal_logger.error(f"HTTP screenshot request failed: {type(e).__name__}")
             raise RuntimeError(
                 f"Camera screenshot request to {self.http_url} failed: {type(e).__name__}"
             ) from e
-        if response.status_code != HTTP_OK:
-            error = self._http_error(response)
-            internal_logger.error(str(error))
-            raise error
-        screenshot = cv2.imdecode(
-            np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR
-        )
-        if screenshot is None:
-            internal_logger.error("Failed to decode the HTTP screenshot body.")
-            raise ValueError(
-                "Failed to decode image data. Data might be corrupt or invalid."
-            )
-        return screenshot
+        return decode_image(body)
 
-    def take_screenshot(self):
-        """
-        Takes a screenshot using the provided socket and returns the image data as an OpenCV image.
-        """
+    def _take_tcp_frame(self) -> np.ndarray:
+        if self.sock is None:
+            self.sock = self.create_tcp_connection(ip=self.ip_address, port=self.port)
+            if self.sock is None:
+                raise ConnectionError(f"Cannot connect to the TCP camera at {self.ip_address}:{self.port}")
         try:
-            if not self.sock:
-                raise ConnectionError(
-                    "No valid socket connection. Unable to take screenshot."
-                )
+            return self.take_screenshot()
+        except Exception:
+            # A failed frame leaves unread bytes on the stream, so the next capture needs a new connection.
+            self.sock.close()
+            self.sock = None
+            raise
 
-            # Send the screenshot command
-            self.sock.sendall(b"screenshot\n")
-            internal_logger.debug("Taking screenshot...")
+    def _recv_exact(self, size: int, deadline: float) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            self.sock.settimeout(_remaining(deadline))
+            chunk = self.sock.recv(min(READ_CHUNK_BYTES, size - len(data)))
+            if not chunk:
+                raise ConnectionError("The TCP camera closed the connection mid-frame.")
+            data += chunk
+        return bytes(data)
 
-            # Read the image size header (configurable size and byte order)
-            size_data = b""
-            while len(size_data) < self.header_size:
-                chunk = self.sock.recv(self.header_size - len(size_data))
-                if not chunk:
-                    internal_logger.error(
-                        "Connection closed while reading image size header."
-                    )
-                    raise ConnectionError("Connection closed while reading header.")
-                size_data += chunk
-
-            image_length = int.from_bytes(
-                size_data, byteorder=self.byte_order, signed=False
-            )
-            internal_logger.debug(f"Expected image data length: {image_length} bytes")
-
-            # Initialize a bytearray for the image data
-            image_data = bytearray()
-            remaining_bytes = image_length
-
-            while remaining_bytes > 0:
-                chunk_size = min(
-                    4096, remaining_bytes
-                )  # Increased chunk size for potentially better performance
-                try:
-                    chunk = self.sock.recv(chunk_size)
-                except socket.timeout as exc:
-                    internal_logger.error(
-                        f"Socket receive timed out while reading image data. Remaining: {remaining_bytes} bytes."
-                    )
-                    raise TimeoutError(
-                        "Socket receive timed out during image data transfer."
-                    ) from exc
-                except socket.error as e:
-                    internal_logger.error(
-                        f"Socket error during image data transfer: {e}"
-                    )
-                    raise ConnectionError(
-                        f"Socket error during image data transfer: {e}"
-                    ) from e
-
-                if not chunk:
-                    internal_logger.error(
-                        "Socket connection closed prematurely while receiving image data."
-                    )
-                    raise ConnectionError("Socket connection closed prematurely.")
-                image_data.extend(chunk)
-                remaining_bytes -= len(chunk)
-            internal_logger.debug("Transferred image data...")
-
-            # Convert the received image data to a numpy array
-            nparr = np.frombuffer(image_data, np.uint8)
-
-            # Decode the image data to an OpenCV image
-            screenshot = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if screenshot is None:
-                internal_logger.error(
-                    "cv2.imdecode failed to decode image data. Data might be corrupt or invalid."
-                )
-                raise ValueError(
-                    "Failed to decode image data. Data might be corrupt or invalid."
-                )
-            internal_logger.debug("Image ready, setting screenshot")
-            return screenshot
-        except (ConnectionError, ValueError, TimeoutError, socket.error) as e:
-            internal_logger.error(f"An error occurred during take_screenshot: {e}")
-            # Do not re-raise if you want the capture method to handle reconnection.
-            # Return None to indicate failure.
-            return np.array([])
-        except Exception as e:
-            internal_logger.error(
-                f"An unexpected error occurred in take_screenshot: {e}"
-            )
-            raise RuntimeError(f"An unexpected error occurred in take_screenshot: {e}")
+    def take_screenshot(self) -> np.ndarray:
+        """Request one frame over the raw-TCP protocol (length header, then the image) and decode it."""
+        deadline = time.monotonic() + CAPTURE_DEADLINE_SECONDS
+        self.sock.settimeout(_remaining(deadline))
+        self.sock.sendall(b"screenshot\n")
+        image_length = int.from_bytes(self._recv_exact(self.header_size, deadline), byteorder=self.byte_order)
+        check_encoded_length(image_length)
+        return decode_image(self._recv_exact(image_length, deadline))

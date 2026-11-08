@@ -1,5 +1,5 @@
 from optics_framework.common.text_interface import TextInterface
-from optics_framework.common import utils
+from optics_framework.engines.vision_models.base_methods import save_match_annotation
 from optics_framework.common.logging_config import internal_logger
 import pytesseract
 import cv2
@@ -23,7 +23,7 @@ class PytesseractHelper(TextInterface):
         :raises RuntimeError: If Pytesseract fails to initialize.
         """
         # Extract parameters from config or use defaults
-        self.execution_output_dir = config.get("execution_output_path", "") if config else ""
+        self.execution_output_dir = config.get("execution_output_path") if config else None
 
         self.pytesseract_config = "--oem 3 --psm 6"
         # internal_logger.debug(f"Pytesseract initialized with config: {self.pytesseract_config}")
@@ -67,10 +67,7 @@ class PytesseractHelper(TextInterface):
         else:
             selected_center, selected_bbox = matches[0]
 
-        # Save the annotated frame
-        cv2.rectangle(frame, selected_bbox[0], selected_bbox[1], (0, 255, 0), 2)
-        cv2.circle(frame, selected_center, 5, (0, 0, 255), -1)
-        utils.save_screenshot(frame, name='annotated_frame', output_dir=self.execution_output_dir)
+        save_match_annotation(frame, [(selected_center, selected_bbox)], "annotated_frame", self.execution_output_dir)
 
         return True, selected_center, selected_bbox
 

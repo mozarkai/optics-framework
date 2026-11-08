@@ -1,5 +1,7 @@
+import re
 import time
-from collections import Counter
+from collections.abc import Callable
+from itertools import combinations
 from typing import Optional, Any, Tuple, List, Dict
 from lxml import etree  # type: ignore
 
@@ -7,6 +9,7 @@ from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common import utils
+from optics_framework.common.xpath_index import XPathIndex
 
 
 PLAYWRIGHT_NOT_INITIALISED_MSG = (
@@ -233,6 +236,25 @@ SUGGEST_LOCATORS_JS = r"""
 """
 
 
+_WEB_UNIQUE_ATTRIBUTES = ("id", "data-testid", "data-test", "data-qa", "data-cy", "data-automation", "name")
+_WEB_PAIR_ATTRIBUTES = (*_WEB_UNIQUE_ATTRIBUTES, "aria-label", "placeholder", "title", "alt", "role", "type")
+_WEB_MAYBE_UNIQUE_ATTRIBUTES = ("aria-label", "placeholder", "title", "alt", "role", "type", "class")
+_SIMPLE_XPATH_ATTRIBUTES = ("id", "data-testid", "name")
+_XML_SPACE = re.compile(r"[ \t\r\n]+")
+
+
+def _is_xpath_name(tag: Any) -> bool:
+    return isinstance(tag, str) and tag.replace("-", "_").replace(".", "_").isidentifier()
+
+
+def _class_tokens(node: etree.Element) -> List[str]:
+    return [token for token in _XML_SPACE.split(node.get("class") or "") if token]
+
+
+def _normalized_text(node: etree.Element) -> Tuple[str]:
+    return (node.xpath("normalize-space()"),)
+
+
 def _has_word(text: str) -> bool:
     # Punctuation alone ("|", "(") is layout, not something to read or assert on.
     return any(ch.isalnum() for ch in text)
@@ -319,97 +341,39 @@ class WebDomInspector:
             return None
         return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
-    def _escape_xpath_value(self, val: str) -> str:
-        """
-        Escape single quotes in XPath value.
-
-        :param val: Value to escape
-        :return: Escaped XPath value
-        """
-        if "'" not in val:
-            return f"'{val}'"
-        # Use concat for values with single quotes
-        parts = val.split("'")
-        return "concat('" + "', \"'\", '".join(parts) + "')"
-
-    def _build_xpath_from_attribute(self, tag: str, attr_name: str, attr_value: str) -> str:
-        """
-        Build XPath from a single attribute.
-
-        :param tag: Element tag name
-        :param attr_name: Attribute name
-        :param attr_value: Attribute value
-        :return: XPath string
-        """
-        escaped_value = self._escape_xpath_value(attr_value)
-        return f"//{tag}[@{attr_name}={escaped_value}]"
-
-    def _try_unique_attributes(self, tag: str, attrs: dict) -> Optional[str]:
-        """XPath from the first id, data-testid or name that no other node with this tag shares."""
-        counts = self._attribute_counts()
-        for attr_name in ["id", "data-testid", "name"]:
-            value = attrs.get(attr_name)
-            if value and counts[(tag, attr_name, value)] == 1:
-                return self._build_xpath_from_attribute(tag, attr_name, value)
-        return None
-
-    def _attribute_counts(self) -> Counter:
-        """How many nodes carry each ``(tag, attr, value)``; a shared attribute XPath would measure only the first."""
-        cache = getattr(self, "_attribute_count_cache", None)
-        if cache is None or cache[0] is not self.tree:
-            counts: Counter = Counter(
-                (node.tag, attr_name, node.attrib[attr_name])
-                for node in self.tree.iter()
-                for attr_name in ("id", "data-testid", "name")
-                if node.attrib.get(attr_name)
-            )
-            cache = self._attribute_count_cache = (self.tree, counts)
+    def _xpath_index(self, node: etree.Element) -> XPathIndex:
+        """The uniqueness index of ``node``'s document, built once per parsed tree."""
+        root = node.getroottree().getroot()
+        cache = getattr(self, "_xpath_index_cache", None)
+        if cache is None or cache[0] is not root:
+            cache = self._xpath_index_cache = (root, XPathIndex(root, _WEB_PAIR_ATTRIBUTES))
         return cache[1]
 
-    def _build_hierarchical_path(self, node: etree.Element) -> Optional[str]:
-        """
-        Build hierarchical XPath path with index.
-
-        :param node: Element node
-        :return: XPath path string or None
-        """
-        path = []
+    def _build_hierarchical_xpath(self, node: etree.Element) -> str:
+        """Absolute tag path, indexed among same-tag siblings; ancestors' paths are memoised."""
+        index = self._xpath_index(node)
+        chain = []
         current = node
-        while current is not None and hasattr(current, "tag"):
-            parent = current.getparent()
-            if parent is None:
-                path.insert(0, current.tag or "*")
-                break
-
-            siblings = [sib for sib in parent if sib.tag == current.tag]
-            if len(siblings) > 1:
-                idx = siblings.index(current) + 1
-                path.insert(0, f"{current.tag}[{idx}]")
-            else:
-                path.insert(0, current.tag or "*")
-
-            current = parent
-
-        return "/" + "/".join(path) if path else None
+        while current is not None and current not in index.xpath_cache:
+            chain.append(current)
+            current = current.getparent()
+        path = index.xpath_cache[current] if current is not None else ""
+        for item in reversed(chain):
+            position = index.sibling_position(item)
+            path += f"/{item.tag}" if position is None else f"/{item.tag}[{position}]"
+            index.xpath_cache[item] = path
+        return path
 
     def _build_simple_xpath(self, node: etree.Element) -> Optional[str]:
-        """
-        Build a simple XPath for locating an element in Playwright.
-        This is a fallback method for getting bounds.
-        """
+        """XPath the browser measures bounds with: a unique id, data-testid or name, else the node's path."""
         if node is None or not hasattr(node, "tag"):
             return None
-
-        tag = node.tag or "*"
-        attrs = node.attrib or {}
-
-        # Try unique attributes first
-        xpath = self._try_unique_attributes(tag, attrs)
-        if xpath:
-            return xpath
-
-        # Fallback to hierarchical path with index
-        return self._build_hierarchical_path(node)
+        index = self._xpath_index(node)
+        for attr in _SIMPLE_XPATH_ATTRIBUTES:
+            value = node.attrib.get(attr)
+            if value and len(index.matches(node.tag, ((attr, value),))) == 1:
+                return f"//{node.tag}[@{attr}={utils.xpath_literal(value)}]"
+        return self._build_hierarchical_xpath(node)
 
     def _try_text_content(self, node: etree.Element) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -900,265 +864,65 @@ class WebDomInspector:
 
         return False
 
-    def _determine_xpath_uniqueness(self, xpath: str, doc_tree: Any, node: etree.Element) -> Tuple[bool, Optional[int]]:
-        """
-        Evaluate XPath against document and determine uniqueness.
-
-        :param xpath: XPath string to evaluate
-        :param doc_tree: Document tree
-        :param node: Target node
-        :return: Tuple of (is_unique, index_if_not_unique)
-        """
-        try:
-            matches = doc_tree.xpath(xpath)
-        except (etree.XPathError, ValueError, TypeError):
-            return False, None
-
+    def _probe(self, node: etree.Element, xpath: str, lookup: Callable[[XPathIndex], List[Any]]) -> Optional[str]:
+        """``xpath`` when it matches one node, ``(xpath)[n]`` naming ``node`` among several, else None."""
+        if not _is_xpath_name(node.tag):
+            return None
+        index = self._xpath_index(node)
+        matches = lookup(index)
         if not matches:
-            return False, None
+            return None
+        if len(matches) == 1:
+            return xpath
+        return f"({xpath})[{index.position_of(matches, node) + 1}]"
 
-        if len(matches) > 1:
-            try:
-                idx = matches.index(node)
-            except ValueError:
-                idx = 0
-            return False, idx
-
-        return True, None
-
-    def _build_xpath_from_single_attribute(self, tag: str, attrs: dict, attr_name: str, val: Optional[str] = None) -> Optional[str]:
-        """
-        Build XPath from a single attribute.
-
-        :param tag: Element tag name
-        :param attrs: Element attributes
-        :param attr_name: Attribute name
-        :param val: Optional attribute value override
-        :return: XPath string or None
-        """
-        value = val if val is not None else attrs.get(attr_name)
+    def _attribute_xpath(self, node: etree.Element, attr: str) -> Optional[str]:
+        value = node.attrib.get(attr)
+        tag = node.tag
         if not value:
             return None
-
-        if attr_name == "class":
-            class_token = value.strip().split()[0]
-            if not class_token:
+        if attr == "class":
+            tokens = value.split()
+            if not tokens:
                 return None
-            token_literal = self._escape_for_xpath_literal(f" {class_token} ")
-            return f"//{tag}[contains(concat(' ', normalize-space(@class), ' '), {token_literal})]"
+            token = tokens[0]
+            literal = utils.xpath_literal(f" {token} ")
+            xpath = f"//{tag}[contains(concat(' ', normalize-space(@class), ' '), {literal})]"
+            return self._probe(node, xpath, lambda index: index.derived_matches(tag, "class", token, _class_tokens))
+        xpath = f"//{tag}[@{attr}={utils.xpath_literal(value)}]"
+        return self._probe(node, xpath, lambda index: index.matches(tag, ((attr, value),)))
 
-        return f"//{tag}[@{attr_name}={self._escape_for_xpath_literal(value)}]"
-
-    def _build_xpath_from_attribute_pair(self, tag: str, attrs: dict, a1: str, a2: str) -> Optional[str]:
-        """
-        Build XPath from a pair of attributes.
-
-        :param tag: Element tag name
-        :param attrs: Element attributes
-        :param a1: First attribute name
-        :param a2: Second attribute name
-        :return: XPath string or None
-        """
-        v1, v2 = attrs.get(a1), attrs.get(a2)
+    def _attribute_pair_xpath(self, node: etree.Element, a1: str, a2: str) -> Optional[str]:
+        v1, v2 = node.attrib.get(a1), node.attrib.get(a2)
         if not v1 or not v2:
             return None
-        return f"//{tag}[@{a1}={self._escape_for_xpath_literal(v1)} and @{a2}={self._escape_for_xpath_literal(v2)}]"
+        tag = node.tag
+        xpath = f"//{tag}[@{a1}={utils.xpath_literal(v1)} and @{a2}={utils.xpath_literal(v2)}]"
+        return self._probe(node, xpath, lambda index: index.matches(tag, ((a1, v1), (a2, v2))))
 
-    def _build_xpath_from_text(self, tag: str, node: etree.Element) -> Optional[str]:
-        """
-        Build XPath from text content (short text only).
-
-        :param tag: Element tag name
-        :param node: Element node
-        :return: XPath string or None
-        """
-        try:
-            text_content = " ".join(node.itertext()).strip()
-        except Exception:
+    def _text_xpath(self, node: etree.Element) -> Optional[str]:
+        text = " ".join(node.itertext()).strip()
+        # Long or multi-line text makes a noisy selector.
+        if not text or len(text) > 80 or "\n" in text:
             return None
-        if not text_content:
-            return None
-        # Avoid overly long or noisy text selectors
-        if len(text_content) > 80 or "\n" in text_content:
-            return None
-        return f"//{tag}[normalize-space(.)={self._escape_for_xpath_literal(text_content)}]"
-
-    def _resolve_xpath(self, xpath: str, doc_tree: Any, node: etree.Element) -> Optional[str]:
-        """
-        Return unique or semi-unique XPath.
-
-        :param xpath: XPath string to resolve
-        :param doc_tree: Document tree
-        :param node: Target node
-        :return: Resolved XPath string or None
-        """
-        is_unique, idx = self._determine_xpath_uniqueness(xpath, doc_tree, node)
-        if is_unique:
-            return xpath
-        if idx is not None:
-            return f"({xpath})[{idx + 1}]"
-        return None
-
-    def _try_unique_attributes_xpath(self, tag: str, attrs: dict, doc_tree: Any, node: etree.Element) -> Optional[str]:
-        """
-        Try to build XPath from unique attributes.
-
-        :param tag: Element tag name
-        :param attrs: Element attributes
-        :param doc_tree: Document tree
-        :param node: Target node
-        :return: Resolved XPath string or None
-        """
-        unique_attrs = [
-            "id", "data-testid", "data-test", "data-qa", "data-cy",
-            "data-automation", "name",
-        ]
-        for attr in unique_attrs:
-            xpath = self._build_xpath_from_single_attribute(tag, attrs, attr)
-            if xpath:
-                resolved = self._resolve_xpath(xpath, doc_tree, node)
-                if resolved:
-                    return resolved
-        return None
-
-    def _try_attribute_pairs_xpath(self, tag: str, attrs: dict, doc_tree: Any, node: etree.Element) -> Optional[str]:
-        """
-        Try to build XPath from attribute pairs.
-
-        :param tag: Element tag name
-        :param attrs: Element attributes
-        :param doc_tree: Document tree
-        :param node: Target node
-        :return: Resolved XPath string or None
-        """
-        unique_attrs = ["id", "data-testid", "data-test", "data-qa", "data-cy", "data-automation", "name"]
-        pair_candidates = unique_attrs + ["aria-label", "placeholder", "title", "alt", "role", "type"]
-        for i, a1 in enumerate(pair_candidates):
-            for a2 in pair_candidates[i + 1:]:
-                xpath = self._build_xpath_from_attribute_pair(tag, attrs, a1, a2)
-                if xpath:
-                    resolved = self._resolve_xpath(xpath, doc_tree, node)
-                    if resolved:
-                        return resolved
-        return None
-
-    def _try_text_xpath(self, tag: str, node: etree.Element, doc_tree: Any) -> Optional[str]:
-        """
-        Try to build XPath from text content.
-
-        :param tag: Element tag name
-        :param node: Element node
-        :param doc_tree: Document tree
-        :return: Resolved XPath string or None
-        """
-        text_xpath = self._build_xpath_from_text(tag, node)
-        if text_xpath:
-            return self._resolve_xpath(text_xpath, doc_tree, node)
-        return None
-
-    def _try_maybe_unique_attributes_xpath(self, tag: str, attrs: dict, doc_tree: Any, node: etree.Element) -> Optional[str]:
-        """
-        Try to build XPath from maybe-unique attributes.
-
-        :param tag: Element tag name
-        :param attrs: Element attributes
-        :param doc_tree: Document tree
-        :param node: Target node
-        :return: Resolved XPath string or None
-        """
-        maybe_unique_attrs = [
-            "aria-label", "placeholder", "title", "alt", "role", "type", "class",
-        ]
-        for attr in maybe_unique_attrs:
-            xpath = self._build_xpath_from_single_attribute(tag, attrs, attr)
-            if xpath:
-                resolved = self._resolve_xpath(xpath, doc_tree, node)
-                if resolved:
-                    return resolved
-        return None
+        tag = node.tag
+        xpath = f"//{tag}[normalize-space(.)={utils.xpath_literal(text)}]"
+        return self._probe(node, xpath, lambda index: index.derived_matches(tag, "text", text, _normalized_text))
 
     def get_xpath(self, node: etree.Element) -> str:
-        """
-        Generate an optimal XPath for a given HTML element.
-
-        Prioritizes:
-        1. Stable unique attributes (id, data-testid, name, etc.)
-        2. Attribute pairs for semi-uniqueness (fast + reliable)
-        3. Short text-based selectors when safe
-        4. Fallbacks like aria-label, title, placeholder, class token
-        5. Hierarchical path with tag names
-        """
+        """Locator for ``node``: stable attributes, attribute pairs, short text, softer attributes, then its path."""
         if node is None or not hasattr(node, "tag"):
             return ""
+        return next(filter(None, self._xpath_candidates(node)), None) or self._build_hierarchical_xpath(node)
 
-        tag = node.tag or "*"
-        attrs = node.attrib or {}
-        doc_tree = node.getroottree()
-
-        # Try unique attributes first
-        xpath = self._try_unique_attributes_xpath(tag, attrs, doc_tree, node)
-        if xpath:
-            return xpath
-
-        # Try attribute pairs for better uniqueness
-        xpath = self._try_attribute_pairs_xpath(tag, attrs, doc_tree, node)
-        if xpath:
-            return xpath
-
-        # Try short text-based XPath (useful for buttons/links)
-        xpath = self._try_text_xpath(tag, node, doc_tree)
-        if xpath:
-            return xpath
-
-        # Try maybe-unique attributes
-        xpath = self._try_maybe_unique_attributes_xpath(tag, attrs, doc_tree, node)
-        if xpath:
-            return xpath
-
-        # Fallback to hierarchical path
-        return self._build_hierarchical_xpath(node)
-
-    def _build_hierarchical_xpath(self, node: etree.Element) -> str:
-        """
-        Build hierarchical XPath based on element structure.
-        """
-        tag = node.tag
-        if not tag:
-            return ""
-
-        parent = node.getparent()
-        segment = f"/{tag}"
-
-        if parent is not None:
-            siblings_same_tag = [c for c in parent if c.tag == tag]
-            if len(siblings_same_tag) > 1:
-                idx = siblings_same_tag.index(node) + 1
-                segment += f"[{idx}]"
-
-        if parent is not None and hasattr(parent, "tag"):
-            parent_xpath = self._build_hierarchical_xpath(parent)
-            return f"{parent_xpath}{segment}"
-
-        return segment
-
-    def _escape_for_xpath_literal(self, s: str) -> str:
-        """
-        Safely escape a string for inclusion in an XPath string literal.
-        Uses the concat() trick if both single and double quotes are present.
-        """
-        if '"' not in s:
-            return f'"{s}"'
-        if "'" not in s:
-            return f"'{s}'"
-        # If it contains both, break on double quotes and concat with '\"'
-        parts = s.split('"')
-        escaped_parts = []
-        for i, p in enumerate(parts):
-            if i == len(parts) - 1:
-                escaped_parts.append(f'"{p}"')
-            else:
-                escaped_parts.extend([f'"{p}"', "'\"'"])
-        return 'concat(' + ', '.join(escaped_parts) + ')'
+    def _xpath_candidates(self, node: etree.Element):
+        for attr in _WEB_UNIQUE_ATTRIBUTES:
+            yield self._attribute_xpath(node, attr)
+        for a1, a2 in combinations(_WEB_PAIR_ATTRIBUTES, 2):
+            yield self._attribute_pair_xpath(node, a1, a2)
+        yield self._text_xpath(node)
+        for attr in _WEB_MAYBE_UNIQUE_ATTRIBUTES:
+            yield self._attribute_xpath(node, attr)
 
     def _build_extra_metadata(self, attrs: dict, used_key: Optional[str], tag: str) -> dict:
         """

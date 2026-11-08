@@ -1,3 +1,4 @@
+import math
 import time
 import os
 import platform
@@ -10,6 +11,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common import utils
+from optics_framework.common.error import Code, OpticsError
 
 
 class CapabilitiesConfig(BaseModel):
@@ -257,6 +259,13 @@ class BLEDriver(DriverInterface):
         """
         x_steps, x_remainder = divmod(abs(x_coor_mic), self.MOUSE_MAX_MOVEMENT)
         y_steps, y_remainder = divmod(abs(y_coor_mic), self.MOUSE_MAX_MOVEMENT)
+        reports = x_steps + y_steps + bool(x_remainder) + bool(y_remainder)
+        if reports > self._max_move_reports():
+            raise OpticsError(
+                Code.E0403,
+                message=f"A move of ({x_coor_mic}, {y_coor_mic}) mickeys leaves the "
+                f"{self.mickeys_width}x{self.mickeys_height} calibrated screen",
+            )
 
         x_direction = 1 if x_coor_mic > 0 else -1
         y_direction = 1 if y_coor_mic > 0 else -1
@@ -278,6 +287,11 @@ class BLEDriver(DriverInterface):
             self.send_mouse_command(
                 button_state, self.NO_MOVEMENT, y_remainder * y_direction * self.y_invert
             )
+
+    def _max_move_reports(self) -> int:
+        """Reports one move needs to cross the whole calibrated screen: no useful move needs more."""
+        return math.ceil(self.mickeys_width / self.MOUSE_MAX_MOVEMENT) + math.ceil(
+            self.mickeys_height / self.MOUSE_MAX_MOVEMENT) + 2
 
     def mouse_reset_position(self):
         """
@@ -478,14 +492,12 @@ class BLEDriver(DriverInterface):
             '_', '+', '{', '}', '|', ':', '"', '~', '<', '>', '?'
         }
 
-        # Convert each character of the command string to HID report and send it
+        skipped = 0
         for char in text:
             key_code = self.hid_key_codes.get(char)
 
             if key_code is None:
-                internal_logger.warning(
-                    f"No HID key code found for character: '{char}'"
-                )
+                skipped += 1
                 continue
 
             # Check if the character requires Shift key (uppercase letters or special characters)
@@ -500,6 +512,8 @@ class BLEDriver(DriverInterface):
 
             self.send_keyboard_command(self.KEYBOARD_RESET)
         self.send_keyboard_command(self.KEYBOARD_RESET)
+        if skipped:
+            internal_logger.warning(f"Skipped {skipped} of {len(text)} characters that have no HID key code")
 
     def launch_app(
         self,
@@ -569,7 +583,7 @@ class BLEDriver(DriverInterface):
         :param event_name: The event triggering the text entry.
         :type event_name: str | None
         """
-        internal_logger.debug(f"Entering text '{text}' via BLE.")
+        internal_logger.debug(f"Entering {len(text)} characters via BLE.")
         if event_name:
             self.event_sdk.capture_event(event_name)
         self.keyboard(utils.strip_sensitive_prefix(text))
@@ -583,7 +597,7 @@ class BLEDriver(DriverInterface):
         :param event_name: The event triggering the key press.
         :type event_name: str | None
         """
-        internal_logger.debug(f"Pressing keycode '{keycode}' via BLE.")
+        internal_logger.debug("Pressing a keycode via BLE.")
         if event_name:
             self.event_sdk.capture_event(event_name)
         self.keyboard(utils.strip_sensitive_prefix(keycode))
@@ -606,7 +620,7 @@ class BLEDriver(DriverInterface):
         :param event_name: The event triggering the text entry.
         :type event_name: str
         """
-        internal_logger.debug(f"Entering text '{text}' using keyboard via BLE.")
+        internal_logger.debug("Entering text using keyboard via BLE.")
         if event_name:
             self.event_sdk.capture_event(event_name)
 
