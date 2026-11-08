@@ -213,10 +213,11 @@ _RESOURCE_ID = re.compile(r"id/([^'\"\]]+)")
 
 
 def closest_rows(rows: tuple[screen_snapshot.Row, ...], element: str, limit: int = 3) -> list[screen_snapshot.Row]:
-    """Rows sharing the most words with the locator (its resource id when it has one); ties go to fewer extra words, then tappable rows."""
+    """Rows sharing the most words with the locator (its resource id when it has one, camelCase split too); ties go to fewer extra words, then tappable rows."""
     found = _RESOURCE_ID.search(element)
     rid = found.group(1) if found else ""
     wanted = _WORD.findall((rid or element).lower())
+    wanted += [word for word in screen_snapshot.snake_words(rid or element) if word not in wanted]
     scored = []
     for row in rows:
         own_id = row.rid.rsplit("/", 1)[-1]
