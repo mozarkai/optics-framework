@@ -177,6 +177,7 @@ class CSVDataReader(DataReader):
 
     def read_modules(self, source: str) -> Modules:
         df = pd.read_csv(source, dtype=str)
+        param_columns = [column for column in df.columns if str(column).startswith("param_")]
         modules = {}
         for module_name in df["module_name"].unique():
             module_df = df[df["module_name"] == module_name]
@@ -189,9 +190,9 @@ class CSVDataReader(DataReader):
                 step = (
                     str(row["module_step"]).strip(),
                     [
-                        self._format_param_value(row[f"param_{i + 1}"])
-                        for i in range(len(row) - 2)
-                        if pd.notna(row[f"param_{i + 1}"])
+                        self._format_param_value(row[column])
+                        for column in param_columns
+                        if pd.notna(row[column]) and str(row[column]).strip()
                     ],
                 )
                 steps.append(step)
