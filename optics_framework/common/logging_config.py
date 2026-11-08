@@ -13,6 +13,8 @@ from typing import Any, Optional, Tuple
 from pathlib import Path
 
 SENSITIVE_PREFIX = "@:"
+# Stops at quotes and tags so masked page source stays well-formed; a registered value is replaced whole first.
+_INLINE_SECRET = re.compile(re.escape(SENSITIVE_PREFIX) + r"[^\s'\"<>]+")
 
 
 class LoggingConfig(BaseModel):
@@ -121,9 +123,11 @@ SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", 
 # Shorter values, like otp_length=6, would mask digits all over the log.
 MIN_SECRET_LENGTH = 4
 _active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
-# Replaced, never mutated, so a reader on another thread always sees a whole set.
-_process_secrets: frozenset[str] = frozenset()
-_process_secrets_lock = threading.Lock()
+# Both replaced, never mutated, so a reader on another thread always sees a whole collection.
+_config_secrets: frozenset[str] = frozenset()
+_unscoped_secrets: tuple[str, ...] = ()
+_MAX_UNSCOPED_SECRETS = 256
+_secrets_lock = threading.Lock()
 _URL_PASSWORD = re.compile(r"(://[^/\s:@'\"]+:)[^/\s@'\"]+@")
 # The name excludes every delimiter a match can start at, so a failed match never rescans.
 _QUERY_PARAM = re.compile(r"([?&;]([^=&;?\s'\"<>]+)=)([^&\s'\"<>#]+)")
@@ -175,22 +179,31 @@ def register_secret(secrets: set[str], name: str, value) -> None:
 
 def register_config_secret(name: str, value: str) -> None:
     """Mask ``value`` in every log and report of this process when ``name`` reads as a secret."""
+    global _config_secrets
     if _is_secret(name, value):
-        _add_process_secret(value)
+        with _secrets_lock:
+            _config_secrets = _config_secrets | {value}
 
 
 def register_marked_secret(value: Any) -> None:
-    """Mask a ``@:``-marked value whole in every later log and report of this process."""
-    if isinstance(value, str) and value.startswith(SENSITIVE_PREFIX):
-        bare = value[len(SENSITIVE_PREFIX):]
-        if len(bare) >= MIN_SECRET_LENGTH:
-            _add_process_secret(bare)
+    """Mask a ``@:``-marked value whole in later logs: the session's, else the most recent few of this process."""
+    if not (isinstance(value, str) and value.startswith(SENSITIVE_PREFIX)):
+        return
+    bare = value[len(SENSITIVE_PREFIX):]
+    if len(bare) < MIN_SECRET_LENGTH:
+        return
+    session = _active_secrets.get()
+    if session is not None:
+        session.add(bare)
+    else:
+        _add_unscoped_secret(bare)
 
 
-def _add_process_secret(value: str) -> None:
-    global _process_secrets
-    with _process_secrets_lock:
-        _process_secrets = _process_secrets | {value}
+def _add_unscoped_secret(value: str) -> None:
+    global _unscoped_secrets
+    with _secrets_lock:
+        kept = tuple(secret for secret in _unscoped_secrets if secret != value)
+        _unscoped_secrets = (kept + (value,))[-_MAX_UNSCOPED_SECRETS:]
 
 
 def is_secret_value(text: str) -> bool:
@@ -200,10 +213,12 @@ def is_secret_value(text: str) -> bool:
 
 def mask_secrets(text: str) -> str:
     # Longest first, so overlapping secrets mask whole.
-    for secret in sorted({*(_active_secrets.get() or ()), *_process_secrets}, key=len, reverse=True):
+    for secret in sorted({*(_active_secrets.get() or ()), *_config_secrets, *_unscoped_secrets}, key=len, reverse=True):
         text = text.replace(secret, "****")
     text = _URL_PASSWORD.sub(r"\1****@", text)
-    return _QUERY_PARAM.sub(_mask_secret_param, text)
+    text = _QUERY_PARAM.sub(_mask_secret_param, text)
+    # A marked value logged before its keyword registers it, or in a process that never does.
+    return _INLINE_SECRET.sub(f"{SENSITIVE_PREFIX}****", text)
 
 
 def escape_control(text: str) -> str:

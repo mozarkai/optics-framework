@@ -47,6 +47,7 @@ from optics_framework.common.events import (
     EventStatus,
     CommandType,
     Event,
+    redact_event,
 )
 from optics_framework.common.runner.data_reader import DataReader
 from optics_framework.common.strategies import StrategyManager
@@ -110,6 +111,7 @@ _STOPS = (KeyboardInterrupt, SystemExit)
 
 def queue_event_sync(event: Event, event_manager) -> None:
     """Queue an event synchronously for pytest."""
+    event = redact_event(event)
     internal_logger.debug(f"Queueing event (sync): {event.model_dump()}")
     for _, subscriber in event_manager.subscribers.items():
         try:
