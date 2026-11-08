@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import cv2
 import numpy as np
 import requests
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.logging_config import internal_logger
 
@@ -18,6 +18,7 @@ HTTP_SCHEMES = frozenset({"http", "https"})
 HTTP_TIMEOUT_SECONDS = 15
 HTTP_OK = 200
 HTTP_ERROR_MESSAGE_LIMIT = 300
+ROTATIONS = {"clockwise": cv2.ROTATE_90_CLOCKWISE, "counterclockwise": cv2.ROTATE_90_COUNTERCLOCKWISE}
 
 
 class CameraScreenshotHttpError(RuntimeError):
@@ -53,10 +54,11 @@ class CapabilitiesConfig(BaseModel):
     out_width: int = Field(1080, description="Output width of the screenshot")
     out_height: int = Field(1920, description="Output height of the screenshot")
     deskew_corners: Optional[list[str]] = Field(
-        None, description="List of corner coordinates for deskewing the image"
+        None,
+        description="The screen's corners in the camera frame as 'x,y': top-left, top-right, bottom-right, bottom-left",
     )
-    rotation: Optional[str] = Field(
-        None, description="Rotation of the image (clockwise/counterclockwise)"
+    rotation: Optional[Literal["clockwise", "counterclockwise"]] = Field(
+        None, description="Quarter turn applied after deskewing"
     )
     header_size: Literal[4, 8] = Field(
         8, description="Size of the image length header in bytes (4 or 8)"
@@ -66,6 +68,26 @@ class CapabilitiesConfig(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("deskew_corners")
+    @classmethod
+    def _four_points(cls, corners: Optional[list[str]]) -> Optional[list[str]]:
+        if corners is None:
+            return corners
+        if len(corners) != 4:
+            raise ValueError(f"deskew_corners needs 4 points, got {len(corners)}")
+        for corner in corners:
+            parts = corner.split(",")
+            if len(parts) != 2:
+                raise ValueError(f"deskew corner {corner!r} is not 'x,y'")
+            for part in parts:
+                float(part)
+        return corners
+
+    @field_validator("rotation", mode="before")
+    @classmethod
+    def _lowercase_rotation(cls, rotation: Any) -> Any:
+        return rotation.lower() if isinstance(rotation, str) else rotation
 
     @property
     def has_camera_index_or_url(self) -> Any:
@@ -79,8 +101,10 @@ class CameraScreenshot(ElementSourceInterface):
 
     DEPENDENCY_TYPE = "elements_sources"
     NAME = "camera_screenshot"
+    # The frame shows the device screen, so matches map to the window of whichever driver acts on them.
+    ACCEPTS_ANY_DRIVER = True
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, config: Optional[Dict[str, Any]] = None, driver: Optional[Any] = None) -> None:
         """
         Initialize the camera capture with either webcam or TCP connection.
         Args:
@@ -101,11 +125,12 @@ class CameraScreenshot(ElementSourceInterface):
         capabilities: CapabilitiesConfig = self.capabilities_model
 
         # Initialize configuration variables
+        self.driver = driver
         self.camera_index: Optional[int] = capabilities.camera_index
-        self.deskew_corners: Optional[list[str]] = capabilities.deskew_corners
         self.out_width: int = capabilities.out_width
         self.out_height: int = capabilities.out_height
         self.rotation: Optional[str] = capabilities.rotation
+        self._deskew = self._deskew_matrix(capabilities)
         self.header_size: int = capabilities.header_size
         self.byte_order: str = capabilities.byte_order
 
@@ -149,13 +174,32 @@ class CameraScreenshot(ElementSourceInterface):
             internal_logger.error(f"Failed to parse URL {endpoint}: {e}")
             raise ValueError(f"Invalid URL format: {endpoint}")
 
-    def capture(self) -> np.ndarray:
-        """
-        Capture an image from the webcam, the HTTP endpoint or the TCP connection.
+    @staticmethod
+    def _deskew_matrix(capabilities: CapabilitiesConfig) -> np.ndarray | None:
+        if not capabilities.deskew_corners:
+            return None
+        corners = [[float(value) for value in corner.split(",")] for corner in capabilities.deskew_corners]
+        right, bottom = capabilities.out_width - 1, capabilities.out_height - 1
+        return cv2.getPerspectiveTransform(
+            np.array(corners, dtype=np.float32),
+            np.array([[0, 0], [right, 0], [right, bottom], [0, bottom]], dtype=np.float32),
+        )
 
-        Returns:
-            np.ndarray: The captured image, or an empty array when a TCP read fails.
+    def capture(self) -> np.ndarray:
+        """The screen from the webcam, the HTTP endpoint or the TCP connection, deskewed and rotated as configured.
+
+        Returns an empty array when a TCP read fails.
         """
+        frame = self._capture_frame()
+        if frame is None or frame.size == 0:
+            return frame
+        if self._deskew is not None:
+            frame = cv2.warpPerspective(frame, self._deskew, (self.out_width, self.out_height))
+        if self.rotation:
+            frame = cv2.rotate(frame, ROTATIONS[self.rotation])
+        return frame
+
+    def _capture_frame(self) -> np.ndarray:
         if self.http_url:
             return self.take_http_screenshot()
         if self.sock:
@@ -413,86 +457,3 @@ class CameraScreenshot(ElementSourceInterface):
                 f"An unexpected error occurred in take_screenshot: {e}"
             )
             raise RuntimeError(f"An unexpected error occurred in take_screenshot: {e}")
-
-    def deskew_image(self, image):
-        """
-        Deskews the given image using the provided corner coordinates and output dimensions.
-
-        Args:
-            image (numpy.ndarray): The input image as a NumPy array.
-
-        Returns:
-            numpy.ndarray: The deskewed image as a NumPy array.
-        """
-        if not self.deskew_corners:
-            return image
-        try:
-            src_points = np.array(
-                [list(map(float, point.split(","))) for point in self.deskew_corners],
-                dtype=np.float32,
-            )
-            dst_points = np.array(
-                [
-                    [0, 0],
-                    [self.out_width - 1, 0],
-                    [self.out_width - 1, self.out_height - 1],
-                    [0, self.out_height - 1],
-                ],
-                dtype=np.float32,
-            )
-            transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-            deskewed_image = cv2.warpPerspective(
-                image, transform_matrix, (self.out_width, self.out_height)
-            )
-            return deskewed_image
-        except Exception as e:
-            internal_logger.error(f"Error performing deskew: {e}")
-            return image
-
-    def rotate(self, img: np.ndarray, rotation: str) -> np.ndarray:
-        """
-        Rotates the given image based on the rotation parameter.
-
-        Args:
-            img (numpy.ndarray): The input image as a NumPy array.
-            rotation (str): The rotation direction ('clockwise' or 'counterclockwise').
-
-        Returns:
-            numpy.ndarray: The rotated image as a NumPy array.
-        """
-        if not rotation:
-            return img
-        try:
-            if rotation.lower() == "clockwise":
-                rotated_img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-                internal_logger.debug("Image rotated clockwise.")
-            elif rotation.lower() == "counterclockwise":
-                rotated_img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                internal_logger.debug("Image rotated counterclockwise")
-            else:
-                internal_logger.debug(
-                    "Invalid rotation argument, returning unrotated image."
-                )
-                return img
-            return rotated_img
-        except Exception as e:
-            internal_logger.error(
-                f"Error performing rotation: {e}, returning unrotated image."
-            )
-            return img
-
-    def take_ext_screenshot(self) -> Optional[np.ndarray]:
-        """
-        Captures a screenshot and applies deskewing and rotation if configured.
-
-        Returns:
-            Optional[np.ndarray]: The processed image as a NumPy array, or None on failure.
-        """
-        frame = self.capture()
-        if frame is None:
-            return None
-        if self.deskew_corners:
-            frame = self.deskew_image(frame)
-        if self.rotation:
-            frame = self.rotate(frame, self.rotation)
-        return frame

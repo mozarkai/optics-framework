@@ -10,6 +10,11 @@ import cv2
 import numpy as np
 import pytest
 
+from pydantic import ValidationError
+
+from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.factories import ElementSourceFactory
+from optics_framework.common.strategies import TextDetectionStrategy
 from optics_framework.engines.elementsources.camera_screenshot import (
     CameraScreenshot,
     CameraScreenshotHttpError,
@@ -183,6 +188,60 @@ class TestTcpUnchanged:
         frame = source.capture()
         assert frame.shape == (20, 30, 3)
         assert commands == [b"screenshot\n"]
+
+
+FULL_FRAME = ["0,0", "29,0", "29,19", "0,19"]
+
+
+class TestFrameProcessing:
+    def test_http_frame_is_deskewed_to_the_output_size(self, http_server):
+        source = _source(url=http_server.url, token=TOKEN, deskew_corners=FULL_FRAME, out_width=60, out_height=40)
+        assert source.capture().shape == (40, 60, 3)
+
+    def test_tcp_frame_is_deskewed_then_rotated(self, tcp_server):
+        port, _ = tcp_server
+        source = _source(
+            url=f"127.0.0.1:{port}", deskew_corners=FULL_FRAME, out_width=60, out_height=40, rotation="clockwise"
+        )
+        assert source.capture().shape == (60, 40, 3)
+
+    def test_rotation_without_deskew(self, http_server):
+        source = _source(url=http_server.url, token=TOKEN, rotation="Counterclockwise")
+        assert source.capture().shape == (30, 20, 3)
+
+    @pytest.mark.parametrize(
+        "capabilities",
+        [{"deskew_corners": FULL_FRAME[:3]}, {"deskew_corners": ["0,0", "1,0", "1,1", "zero"]}, {"rotation": "sideways"}],
+    )
+    def test_bad_frame_settings_are_refused(self, capabilities):
+        with pytest.raises(ValidationError):
+            CapabilitiesConfig(url="127.0.0.1:1", **capabilities)
+
+
+class _FakeAppium:
+    NAME = "appium"
+
+    def get_window_size(self):
+        return {"width": 15, "height": 10}
+
+
+class _FakeOcr:
+    def find_element(self, frame, text, index=None):
+        return True, (20, 10), ((18, 8), (22, 12))
+
+
+class TestCameraMatchesInDriverWindow:
+    def _locate(self, url, driver):
+        config = [{"camera_screenshot": {"enabled": True, "capabilities": {"url": url, "token": TOKEN}}}]
+        source = ElementSourceFactory.get_driver(config, InstanceFallback([driver])).instances[0]
+        return TextDetectionStrategy(source, _FakeOcr(), None).locate("Login").value
+
+    def test_ocr_point_is_scaled_to_the_appium_window(self, http_server):
+        assert self._locate(http_server.url, _FakeAppium()) == (10, 5)
+
+    def test_ocr_point_is_unchanged_for_other_drivers(self, http_server):
+        other = type("OtherDriver", (), {"NAME": "ble", "get_window_size": _FakeAppium.get_window_size})()
+        assert self._locate(http_server.url, other) == (20, 10)
 
 
 class TestEnvFallback:
