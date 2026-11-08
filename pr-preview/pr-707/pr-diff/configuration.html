@@ -1,0 +1,105 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/configuration.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to1__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to1__0"></td><td class="diff_header" id="from1_840">840</td><td nowrap="nowrap">    |---|---|</td><td class="diff_next"></td><td class="diff_header" id="to1_840">840</td><td nowrap="nowrap">    |---|---|</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_841">841</td><td nowrap="nowrap">    | `url` | `ip:port` (raw TCP, unchanged) or an `http://` / `https://` URL fetched with `GET`. |</td><td class="diff_next"></td><td class="diff_header" id="to1_841">841</td><td nowrap="nowrap">    | `url` | `ip:port` (raw TCP, unchanged) or an `http://` / `https://` URL fetched with `GET`. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_842">842</td><td nowrap="nowrap">    | `token` | Sent as `Authorization: Bearer &lt;token&gt;` to an HTTP url. Masked in logs; redirects are not followed. |</td><td class="diff_next"></td><td class="diff_header" id="to1_842">842</td><td nowrap="nowrap">    | `token` | Sent as `Authorization: Bearer &lt;token&gt;` to an HTTP url. Masked in logs; redirects are not followed. |</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_843">843</td><td nowrap="nowrap">    | `camera_index` | Local webcam index, used instead of `url`. |</td><td class="diff_next"></td><td class="diff_header" id="to1_843">843</td><td nowrap="nowrap">    | `camera_index` | Local webcam index, used instead of `url`. |</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to1__top">t</a></td><td class="diff_header" id="to1_844">844</td><td nowrap="nowrap"><span class="diff_add">    | `deskew_corners` | The screen's four corners in the camera frame as `"x,y"`: top-left, top-right, bottom-right, bottom-left. The frame is cut to the screen and stretched to `out_width` x `out_height`. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_845">845</td><td nowrap="nowrap"><span class="diff_add">    | `out_width`, `out_height` | Size of the deskewed frame (default `1080` x `1920`). Set them to the device's screenshot resolution. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_846">846</td><td nowrap="nowrap"><span class="diff_add">    | `rotation` | `clockwise` or `counterclockwise`: a quarter turn after deskewing. |</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_847">847</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_848">848</td><td nowrap="nowrap"><span class="diff_add">    Use it as a fallback for a screen the driver cannot capture (a protected screen gives a black screenshot): list it after the driver's screenshot source. With an Appium driver, OCR and image matches on the camera frame are mapped into the driver's window, as an Appium screenshot's matches are, so taps land on the device. For this, the deskewed frame must show only the screen, with the screenshot's aspect ratio. Other drivers get the frame's pixels unchanged.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_849">849</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_850">850</td><td nowrap="nowrap"><span class="diff_add">    ```yaml</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_851">851</td><td nowrap="nowrap"><span class="diff_add">    elements_sources:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_852">852</td><td nowrap="nowrap"><span class="diff_add">      - appium_find_element: {enabled: true}</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_853">853</td><td nowrap="nowrap"><span class="diff_add">      - appium_screenshot: {enabled: true}</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_854">854</td><td nowrap="nowrap"><span class="diff_add">      - camera_screenshot:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_855">855</td><td nowrap="nowrap"><span class="diff_add">          enabled: true</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_856">856</td><td nowrap="nowrap"><span class="diff_add">          capabilities:</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_857">857</td><td nowrap="nowrap"><span class="diff_add">            url: http://127.0.0.1:8080/screenshot</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_858">858</td><td nowrap="nowrap"><span class="diff_add">            deskew_corners: ["212,88", "868,95", "861,1262", "205,1255"]</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_859">859</td><td nowrap="nowrap"><span class="diff_add">            out_width: 1080</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_860">860</td><td nowrap="nowrap"><span class="diff_add">            out_height: 2400</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_861">861</td><td nowrap="nowrap"><span class="diff_add">    ```</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_844">844</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to1_862">862</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_845">845</td><td nowrap="nowrap">    !!! note "Environment fallback"</td><td class="diff_next"></td><td class="diff_header" id="to1_863">863</td><td nowrap="nowrap">    !!! note "Environment fallback"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_846">846</td><td nowrap="nowrap">        When neither `url` nor `camera_index` is configured, the source reads</td><td class="diff_next"></td><td class="diff_header" id="to1_864">864</td><td nowrap="nowrap">        When neither `url` nor `camera_index` is configured, the source reads</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from1_847">847</td><td nowrap="nowrap">        `WEBCAM_SCREENSHOT_URL` and `WEBCAM_SCREENSHOT_TOKEN` (HTTP). If no URL is set but</td><td class="diff_next"></td><td class="diff_header" id="to1_865">865</td><td nowrap="nowrap">        `WEBCAM_SCREENSHOT_URL` and `WEBCAM_SCREENSHOT_TOKEN` (HTTP). If no URL is set but</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
