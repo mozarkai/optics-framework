@@ -669,7 +669,7 @@ class TestEndOfRunArtifacts:
         runner = _runner_with_session(
             SimpleNamespace(
                 driver=InstanceFallback([SimpleNamespace(page=None)]),
-                config=SimpleNamespace(execution_output_path="/tmp/out"),
+                config=SimpleNamespace(execution_output_path="/tmp/out", capture_dir="/tmp/out"),
                 optics=MagicMock(),
             )
         )
@@ -691,7 +691,7 @@ class TestEndOfRunArtifacts:
         runner = _runner_with_session(
             SimpleNamespace(
                 driver=SimpleNamespace(page=object()),
-                config=SimpleNamespace(execution_output_path="/tmp/out"),
+                config=SimpleNamespace(execution_output_path="/tmp/out", capture_dir="/tmp/out"),
                 optics=MagicMock(),
                 error_definitions=None,
             )
@@ -721,7 +721,7 @@ class TestEndOfRunArtifacts:
         runner = _runner_with_session(
             SimpleNamespace(
                 driver=SimpleNamespace(page=object()),
-                config=SimpleNamespace(execution_output_path="/tmp/out"),
+                config=SimpleNamespace(execution_output_path="/tmp/out", capture_dir="/tmp/out"),
                 optics=MagicMock(),
             )
         )
@@ -736,7 +736,6 @@ class TestEndOfRunArtifacts:
         assert len(warnings_) == 1
         assert warnings_[0].getMessage() == "End-of-run artifact capture failed: boom"
         assert warnings_[0].exc_info is None
-
 
 
 class TestFailureReasonRecording:

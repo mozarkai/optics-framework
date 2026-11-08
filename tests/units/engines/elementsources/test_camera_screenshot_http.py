@@ -286,10 +286,12 @@ class TestEnvFallback:
         assert frame.shape == (20, 30, 3)
         assert http_server.received[0][1] == f"Bearer {TOKEN}"
 
-    def test_token_from_env_when_url_in_config(self, http_server, monkeypatch):
+    def test_env_token_is_never_sent_to_a_url_from_capabilities(self, http_server, monkeypatch):
         monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", TOKEN)
-        _source(url=http_server.url).capture()
-        assert http_server.received[0][1] == f"Bearer {TOKEN}"
+        with pytest.raises(CameraScreenshotHttpError) as exc:
+            _source(url=http_server.url).capture()
+        assert exc.value.status == 401
+        assert http_server.received == [("/screenshot", None)]
 
     def test_tcp_port_from_env(self, tcp_server, monkeypatch):
         port, commands = tcp_server

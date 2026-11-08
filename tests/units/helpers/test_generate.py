@@ -269,58 +269,56 @@ def test_yaml_reader_recognises_every_generator_keyword(tmp_path, keyword):
 # _resolve_params (shared by both generators)                                 #
 # --------------------------------------------------------------------------- #
 
+def _resolve(framework, params, elements, method_name):
+    if framework == "pytest":
+        return PytestGenerator()._resolve_params(params, elements, method_name)
+    return RobotGenerator()._resolve_params(params, {name: name for name in elements}, method_name)
+
+
 class TestResolveParams:
     @pytest.mark.parametrize(
         "framework, expected",
-        [("pytest", "ELEMENTS['login_button']"), ("robot", "${ELEMENTS.login_button}")],
+        [("pytest", "ELEMENTS['login_button']"), ("robot", "${ELEMENTS}[login_button]")],
     )
     def test_element_reference(self, framework, expected):
-        out = PytestGenerator()._resolve_params(
-            ["${login_button}"], {"login_button": "loginBtn"}, framework, "press_element"
-        )
+        out = _resolve(framework, ["${login_button}"], {"login_button": "loginBtn"}, "press_element")
         assert out == [expected]
 
     def test_missing_element_raises(self):
         with pytest.raises(ValueError, match="Element 'ghost' not found"):
-            PytestGenerator()._resolve_params(["${ghost}"], {}, "pytest", "press_element")
+            _resolve("pytest", ["${ghost}"], {}, "press_element")
 
     @pytest.mark.parametrize("framework", ["pytest", "robot"])
     @pytest.mark.parametrize("param", ["index=2", 'index="2"', "index='2'"])
     def test_keyword_argument_value_is_the_bare_string(self, framework, param):
         expected = ["index='2'"] if framework == "pytest" else ["index=2"]
-        assert PytestGenerator()._resolve_params([param], {}, framework, "press_element") == expected
+        assert _resolve(framework, [param], {}, "press_element") == expected
 
     @pytest.mark.parametrize("locator", ["css=#login", "text=Login", "id=submit"])
     def test_locator_strategy_prefix_is_not_a_kwarg(self, locator):
-        gen = PytestGenerator()
-        assert gen._resolve_params([locator], {}, "pytest", "press_element") == [repr(locator)]
-        assert gen._resolve_params([locator], {}, "robot", "press_element") == [locator]
+        assert _resolve("pytest", [locator], {}, "press_element") == [repr(locator)]
+        assert _resolve("robot", [locator], {}, "press_element") == [locator]
 
     def test_only_trailing_name_value_tokens_are_kwargs(self):
         params = ["text=Email", "hello", "event_name=typed"]
-        gen = PytestGenerator()
-        assert gen._resolve_params(params, {}, "pytest", "enter_text") == [
+        assert _resolve("pytest", params, {}, "enter_text") == [
             "'text=Email'", "'hello'", "event_name='typed'"
         ]
         # Robot would read text=Email as the named `text` argument; escape it.
-        assert gen._resolve_params(params, {}, "robot", "enter_text") == [
+        assert _resolve("robot", params, {}, "enter_text") == [
             "text\\=Email", "hello", "event_name=typed"
         ]
 
     def test_unknown_method_keeps_name_value_as_kwarg(self):
-        resolved = PytestGenerator()._resolve_params(["mode=fast"], {}, "pytest", "custom_widget_tap")
-        assert resolved == ["mode='fast'"]
+        assert _resolve("pytest", ["mode=fast"], {}, "custom_widget_tap") == ["mode='fast'"]
 
     def test_xpath_with_equals_is_a_literal_not_a_kwarg(self):
-        resolved = PytestGenerator()._resolve_params(
-            ["//input[@id='user']"], {}, "pytest", "press_element"
-        )
+        resolved = _resolve("pytest", ["//input[@id='user']"], {}, "press_element")
         assert resolved == ['"//input[@id=\'user\']"']
 
     def test_literal_is_quoted_for_pytest_only(self):
-        gen = PytestGenerator()
-        assert gen._resolve_params(["hello"], {}, "pytest", "enter_text") == ["'hello'"]
-        assert gen._resolve_params(["hello"], {}, "robot", "enter_text") == ["hello"]
+        assert _resolve("pytest", ["hello"], {}, "enter_text") == ["'hello'"]
+        assert _resolve("robot", ["hello"], {}, "enter_text") == ["hello"]
 
 
 # --------------------------------------------------------------------------- #
@@ -437,7 +435,7 @@ class TestRobotGenerator:
 
     def test_module_keyword_and_steps(self, code):
         assert "Launch App" in code
-        assert "Enter Text    ${ELEMENTS.username_field}    testuser" in code
+        assert "Enter Text    ${ELEMENTS}[username_field]    testuser" in code
         assert "Sleep    3000" in code
 
     def test_transform_config_structure(self):
@@ -447,13 +445,8 @@ class TestRobotGenerator:
         assert transformed["driver_sources"] == ["d"]
         assert transformed["elements_sources"] == ["e"]
         assert transformed["text_detection"] == ["t"]
-        assert transformed["project_path"] == "${EXECDIR}"
         # Empty optional sections are omitted, not rendered as [].
         assert "image_detection" not in transformed
-
-    def test_escape_json_for_robot(self):
-        escaped = RobotGenerator()._escape_json_for_robot('{"a":"b\\c"}')
-        assert escaped == '{\\"a\\":\\"b\\\\c\\"}'
 
 
 # --------------------------------------------------------------------------- #

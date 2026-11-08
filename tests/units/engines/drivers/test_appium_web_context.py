@@ -183,9 +183,14 @@ def test_the_probe_lookup_pauses_until_the_accessibility_tree_lists_it(monkeypat
     webdriver.execute_script.return_value = [0, 0, 400, 800]
     probe = MagicMock()
     probe.rect = {"x": 0, "y": 100, "width": 400, "height": 800}
-    webdriver.find_elements.side_effect = [[], [probe]]
+    probe_answers = iter([[], [probe]])
+    webdriver.find_elements.side_effect = (
+        lambda by, value: [probe] if value == "android.webkit.WebView" else next(probe_answers)
+    )
 
-    assert instance._web_transform(webdriver) == (0, 100, 1.0, 1.0)
+    transform = instance._web_transform(webdriver)
+
+    assert (transform.origin_x, transform.origin_y, transform.factor_x, transform.factor_y) == (0, 100, 1.0, 1.0)
     assert sleeps == [appium_driver._POLL_S]
 
 

@@ -20,6 +20,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import cv2
+import numpy as np
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -326,26 +328,11 @@ def test_resolve_named_to_positional_missing_required_raises():
 
 
 # ---------------------------------------------------------------------------
-# _should_reraise
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("exc", [SystemExit(), KeyboardInterrupt(), GeneratorExit()])
-def test_should_reraise_true_for_control_flow(exc):
-    assert expose_api._should_reraise(exc) is True
-
-
-@pytest.mark.parametrize("exc", [ValueError("x"), RuntimeError("y"), OpticsError(Code.E0201)])
-def test_should_reraise_false_for_regular(exc):
-    assert expose_api._should_reraise(exc) is False
-
-
-# ---------------------------------------------------------------------------
 # _execute_keyword_with_fallback
 # ---------------------------------------------------------------------------
 
 
-def _dummy_method(self):
+def _dummy_method(self, element: str = ""):
     pass
 
 
@@ -376,7 +363,7 @@ def test_fallback_positional_single_combo():
 
 def test_fallback_positional_tries_next_value_on_failure():
     engine = MagicMock()
-    engine.execute = AsyncMock(side_effect=[RuntimeError("nope"), "recovered"])
+    engine.execute = AsyncMock(side_effect=[OpticsError(Code.E0201, message="no a"), "recovered"])
     result = _run(
         expose_api._execute_keyword_with_fallback(
             engine, "sess", "press_element", [["a", "b"]], _dummy_method, MagicMock()
@@ -422,7 +409,7 @@ def test_fallback_named_params_iterate_fallback_list():
         pass
 
     engine = MagicMock()
-    engine.execute = AsyncMock(side_effect=[RuntimeError("x"), "second"])
+    engine.execute = AsyncMock(side_effect=[OpticsError(Code.X0201, message="no a"), "second"])
     result = _run(
         expose_api._execute_keyword_with_fallback(
             engine, "sess", "press_element", {"element": ["a", "b"]}, method, MagicMock()
@@ -886,9 +873,9 @@ def test_upload_template_invalid_base64_returns_400(client):
 
 def test_upload_template_success_writes_file_and_registers(client, tmp_path):
     session = MagicMock()
-    session._inline_templates_dir = str(tmp_path / "inline")
+    session._session_dir = str(tmp_path / "inline")
     session.inline_templates = {}
-    raw = b"\x89PNG\r\n\x1a\nfake"
+    raw = cv2.imencode(".png", np.zeros((2, 2, 3), np.uint8))[1].tobytes()
     payload = {"name": "my_btn", "image_base64": base64.b64encode(raw).decode("ascii")}
     with patch.object(expose_api.session_manager, "get_session", return_value=session):
         resp = client.post("/v1/sessions/s1/templates", json=payload)

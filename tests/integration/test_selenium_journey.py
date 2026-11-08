@@ -143,7 +143,9 @@ def test_a_failed_step_leaves_the_screen_elements(tmp_path, server_url):
 
 async def test_mcp_session_offers_unique_locators_for_the_suite(server_url, monkeypatch):
     fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.common import expose_api
     from optics_framework.helper.mcp_server import build_server
+    monkeypatch.setattr(expose_api, "server_reads_allowed", True)
     monkeypatch.setenv("OPTICS_MCP_TOOLSET", "full")
     async with fastmcp.Client(build_server()) as client:
         started = await client.call_tool(

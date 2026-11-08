@@ -13,6 +13,7 @@ import time
 import pytest
 from lxml import etree
 
+from optics_framework.common import utils
 from optics_framework.engines.drivers.appium_UI_helper import (
     UIHelper,
     XPathUniquenessIndex,
@@ -84,7 +85,7 @@ class _FullScanIndex:
     def matches(self, tag, conditions):
         if conditions:
             predicate = " and ".join(
-                f"@{a}={self._helper._escape_for_xpath_literal(v)}" for a, v in conditions
+                f"@{a}={utils.xpath_literal(v)}" for a, v in conditions
             )
             query = f"//{tag}[{predicate}]"
         else:
@@ -99,6 +100,12 @@ class _FullScanIndex:
             return matches.index(node)
         except ValueError:
             return 0
+
+    @staticmethod
+    def sibling_position(node):
+        parent = node.getparent()
+        siblings = [c for c in parent if c.tag == node.tag] if parent is not None else []
+        return siblings.index(node) + 1 if len(siblings) > 1 else None
 
 
 def _xpath_by_full_scan(helper: UIHelper, node) -> str:

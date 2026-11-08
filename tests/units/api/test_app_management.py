@@ -4,18 +4,19 @@ from types import SimpleNamespace
 import pytest
 
 from optics_framework.api.app_management import AppManagement
+from optics_framework.common.config_handler import Config
 
 
 @pytest.fixture
 def app_management(mock_driver):
-    builder = SimpleNamespace(get_driver=lambda: mock_driver)
+    builder = SimpleNamespace(get_driver=lambda: mock_driver, session_config=Config())
     return AppManagement(builder)
 
 
 class TestAppManagement:
     def test_init_tolerates_missing_driver(self):
         # A None driver is logged, not raised, at construction time.
-        AppManagement(SimpleNamespace(get_driver=lambda: None))
+        AppManagement(SimpleNamespace(get_driver=lambda: None, session_config=Config()))
 
     def test_initialise_setup_is_noop(self, app_management):
         assert app_management.initialise_setup() is None

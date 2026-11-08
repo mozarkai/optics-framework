@@ -19,8 +19,10 @@ pytestmark = pytest.mark.black_box
 
 
 @pytest.fixture(autouse=True)
-def _full_mcp_toolset(monkeypatch):
-    """The MCP test below calls keyword tools, which only the full toolset has."""
+def _local_full_mcp(monkeypatch):
+    """The in-process MCP client is local, like stdio, and calls keyword tools only the full toolset has."""
+    from optics_framework.common import expose_api
+    monkeypatch.setattr(expose_api, "server_reads_allowed", True)
     monkeypatch.setenv("OPTICS_MCP_TOOLSET", "full")
 
 
