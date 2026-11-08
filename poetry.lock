@@ -6547,4 +6547,4 @@ web = ["playwright", "selenium"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "f74043413ae66e2f5de464393d4d55080109a1693a20bc1051ea087cd511a87e"
+content-hash = "850ab1b5ad241dbad1ff78e9ad4349132826f95e4f8046bfb19ccb7d247349f5"
