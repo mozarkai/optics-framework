@@ -153,7 +153,7 @@ Three steps to enable AI mode:
 pip install 'optics-framework[gemini]'    # or [openai], [anthropic]; [llm] installs all three
 ```
 
-**2. Export your key** (read from the environment — don't hardcode it):
+**2. Export your key** (or set `capabilities.api_key` in `config.yaml`, for example `api_key: ${GEMINI_API_KEY}`):
 
 ```bash
 export GEMINI_API_KEY=your_key            # or OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
