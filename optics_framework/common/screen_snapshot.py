@@ -640,9 +640,8 @@ def read_screen(action_keyword: Any, png: bytes | None = None) -> list[dict] | N
         if isinstance(el, dict) and "bounds" in el:
             el[_WINDOW_BOUNDS] = el["bounds"]
     element_source = action_keyword.element_source
-    active_source = getattr(element_source, "active_instance", None) or element_source
     screenshot_np = None
-    if png and getattr(active_source, "REQUIRED_DRIVER_TYPE", None) == "appium":
+    if png and utils.is_appium_source(element_source):
         screenshot_np = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
     utils.scale_interactive_element_bounds(elements, element_source, screenshot_np)
     return elements

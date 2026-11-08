@@ -386,7 +386,7 @@ class Verifier:
         for a capture whose result would be discarded by a no-op scale.
         """
         source = self.element_source.active_instance
-        return getattr(source, "REQUIRED_DRIVER_TYPE", None) == "appium"
+        return utils.is_appium_source(source)
 
     @staticmethod
     def _to_compact_shape(elements: list) -> list:
