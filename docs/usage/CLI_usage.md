@@ -240,6 +240,7 @@ The server has no authentication. Keep it on `127.0.0.1`, or put it behind an au
 - `project_path`, `credentials_path`, Read Data file and `ENV:` sources, and `file:` or browser-internal URLs are refused. Send data and templates in the request.
 - Each session writes its outputs to its own temporary folder. The server deletes the folder when the session ends.
 - Browser pages cannot read the server's responses or send preflighted requests (such as JSON bodies), unless you list their origins in `OPTICS_CORS_ORIGINS` (comma-separated, `*` is refused). CORS does not stop a simple cross-origin request from reaching the server.
+- A request whose `Host` is not a loopback name gets `421` on a loopback-bound server. Set `OPTICS_ALLOWED_HOSTS` (comma-separated host names) to apply the check on any bind address, such as in a container published on `127.0.0.1`; loopback names stay allowed.
 
 For endpoint details, request/response formats, and examples, see [REST API Usage](REST_API_usage.md).
 

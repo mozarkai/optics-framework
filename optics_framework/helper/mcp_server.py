@@ -46,7 +46,7 @@ from optics_framework.common.agent_core import (
 )
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.factories import ElementSourceFactory
-from optics_framework.common.http_guard import warn_if_exposed
+from optics_framework.common.http_guard import allowed_hosts, warn_if_exposed
 from optics_framework.common.image_decode import decode_image
 from optics_framework.common.logging_config import (
     decouple_console_logs,
@@ -961,7 +961,10 @@ def run_mcp_server(
             mcp.run(transport="stdio")
         else:
             warn_if_exposed("optics mcp", host)
-            mcp.run(transport=transport, host=host, port=port, host_origin_protection="auto")
+            mcp.run(
+                transport=transport, host=host, port=port,
+                host_origin_protection="auto", allowed_hosts=allowed_hosts() or None,
+            )
     finally:
         signal.signal(signal.SIGTERM, previous_handler)
         _STATES.clear()

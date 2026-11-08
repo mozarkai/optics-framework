@@ -34,8 +34,10 @@ docker build -t optics-api-prod .
 
 ### Run
 ```sh
-docker run -d -p 8000:8000 --name optics-api-prod optics-api-prod
+docker run -d -p 127.0.0.1:8000:8000 -e OPTICS_ALLOWED_HOSTS=localhost --name optics-api-prod optics-api-prod
 ```
+
+`OPTICS_ALLOWED_HOSTS` lists the host names the server answers besides loopback names. Inside a container the server binds `0.0.0.0`, so without it a web page that rebinds its domain to `127.0.0.1` can reach the API.
 
 #### Vision Backend Selection
 The production Dockerfile supports multiple vision backends via the `VISION_BACKEND` build argument (default: `easyocr`). Supported values:
@@ -51,7 +53,7 @@ docker build --build-arg VISION_BACKEND=google-vision -t optics-api-prod .
 
 If using Google Vision, mount your service account JSON and set the env variable:
 ```sh
-docker run -d -p 8000:8000 \
+docker run -d -p 127.0.0.1:8000:8000 -e OPTICS_ALLOWED_HOSTS=localhost \
   -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
   -v /path/to/service-account.json:/app/service-account.json \
   --name optics-api-prod optics-api-prod
@@ -89,7 +91,7 @@ docker build \
 
 ### Run
 ```sh
-docker run -d -p 8000:8000 --name optics-api-dev optics-api-dev
+docker run -d -p 127.0.0.1:8000:8000 -e OPTICS_ALLOWED_HOSTS=localhost --name optics-api-dev optics-api-dev
 ```
 
 #### Vision Backend Selection
@@ -127,7 +129,7 @@ docker build -f Docker/mcp/prod/Dockerfile -t optics-mcp-prod .
 
 #### Run
 ```sh
-docker run -d -p 8090:8090 --name optics-mcp-prod optics-mcp-prod
+docker run -d -p 127.0.0.1:8090:8090 -e OPTICS_ALLOWED_HOSTS=localhost --name optics-mcp-prod optics-mcp-prod
 ```
 
 #### Vision Backend Selection
@@ -142,7 +144,7 @@ docker build -f Docker/mcp/prod/Dockerfile \
 
 If using Google Vision, mount your service account JSON and set the env variable:
 ```sh
-docker run -d -p 8090:8090 \
+docker run -d -p 127.0.0.1:8090:8090 -e OPTICS_ALLOWED_HOSTS=localhost \
   -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
   -v /path/to/service-account.json:/app/service-account.json \
   --name optics-mcp-prod optics-mcp-prod
@@ -159,7 +161,7 @@ docker build -f Docker/mcp/dev/Dockerfile \
 ```
 
 ```sh
-docker run -d -p 8091:8090 --name optics-mcp-dev optics-mcp-dev
+docker run -d -p 127.0.0.1:8091:8090 -e OPTICS_ALLOWED_HOSTS=localhost --name optics-mcp-dev optics-mcp-dev
 ```
 
 ### Docker Compose

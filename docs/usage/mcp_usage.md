@@ -101,7 +101,9 @@ An HTTP server has no authentication, so it applies the same limits as `optics s
 
 Containerized MCP runs **HTTP transport** bound to `0.0.0.0:8090` (stdio is for
 local clients that spawn the process). Images live under `Docker/mcp/` and
-install the `[mcp]` extra (`fastmcp`).
+install the `[mcp]` extra (`fastmcp`). Set `OPTICS_ALLOWED_HOSTS` to the host
+names clients use (the compose file sets `localhost`), so a request with any
+other `Host` header gets `421`.
 
 **Docker Compose** (from the repo root):
 

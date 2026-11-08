@@ -1,4 +1,4 @@
-"""HTTP guards for the servers that expose keywords: CORS allowlist, loopback Host check, exposure warning."""
+"""HTTP guards for the servers that expose keywords: CORS allowlist, Host check, exposure warning."""
 import ipaddress
 import os
 from typing import Any
@@ -11,6 +11,7 @@ from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 
 ENV_CORS_ORIGINS = "OPTICS_CORS_ORIGINS"
+ENV_ALLOWED_HOSTS = "OPTICS_ALLOWED_HOSTS"
 
 
 def _hostname(host: str) -> str:
@@ -35,35 +36,47 @@ def cors_origins() -> list[str]:
     return origins
 
 
-class LoopbackHostGuard:
-    """Refuse a request to a loopback-bound server whose Host header is not a loopback name.
+def allowed_hosts() -> list[str]:
+    """Host names answered besides loopback names, from ``OPTICS_ALLOWED_HOSTS``; any entry turns the Host check on."""
+    return [host.strip().lower() for host in os.environ.get(ENV_ALLOWED_HOSTS, "").split(",") if host.strip()]
 
-    Without it, a web page can rebind its own domain to 127.0.0.1 and drive the server.
+
+class HostGuard:
+    """Refuse a request whose Host header is not a loopback name or an allowed host.
+
+    Without it, a web page can rebind its own domain to 127.0.0.1 and drive the server. The check runs on a
+    loopback-bound server, and on any server once ``OPTICS_ALLOWED_HOSTS`` is set, such as one in a container
+    published on the host's loopback.
     """
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: Any, hosts: list[str]) -> None:
         self.app = app
+        self.hosts = frozenset(hosts)
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        server = scope.get("server")
-        if (
-            scope["type"] == "http"
-            and server and is_loopback(str(server[0]))
-            and not is_loopback(Headers(scope=scope).get("host", ""))
-        ):
+        if scope["type"] == "http" and self._refuses(scope):
             await PlainTextResponse("Misdirected Request", status_code=421)(scope, receive, send)
             return
         await self.app(scope, receive, send)
 
+    def _refuses(self, scope: Any) -> bool:
+        host = Headers(scope=scope).get("host", "")
+        if is_loopback(host):
+            return False
+        if self.hosts:
+            return _hostname(host.strip()).lower() not in self.hosts
+        server = scope.get("server")
+        return bool(server) and is_loopback(str(server[0]))
+
 
 def add_http_guards(app: Any) -> None:
-    """Add the CORS allowlist and the loopback Host check to a Starlette/FastAPI app."""
+    """Add the CORS allowlist and the Host check to a Starlette/FastAPI app."""
     origins = cors_origins()
     if origins:
         app.add_middleware(
             CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
         )
-    app.add_middleware(LoopbackHostGuard)
+    app.add_middleware(HostGuard, hosts=allowed_hosts())
 
 
 def warn_if_exposed(server: str, host: str) -> None:
