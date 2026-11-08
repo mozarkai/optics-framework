@@ -1418,7 +1418,7 @@ Factory for creating element source instances with automatic driver matching.
 #### Key Features
 
 - Automatically matches element sources with compatible drivers
-- Uses `REQUIRED_DRIVER_TYPE` attribute for matching
+- Uses `REQUIRED_DRIVER_TYPE` attribute for matching; a source with `ACCEPTS_ANY_DRIVER = True` (`camera_screenshot`) gets the first enabled driver
 - Injects matched driver into element source constructor
 
 #### Driver Matching Logic
@@ -1426,7 +1426,9 @@ Factory for creating element source instances with automatic driver matching.
 ```python
 @classmethod
 def _find_matching_driver(cls, implementation, driver_instances):
-    """Find a driver instance that matches the required driver type."""
+    """Find a driver instance that matches the required driver type, or the first driver for a source that takes any."""
+    if getattr(implementation, "ACCEPTS_ANY_DRIVER", False):
+        return next((drv for drv in driver_instances if drv is not None), None)
     required_type = getattr(implementation, "REQUIRED_DRIVER_TYPE", None)
     # Matches by NAME attribute
 ```
