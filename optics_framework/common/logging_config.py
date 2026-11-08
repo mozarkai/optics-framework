@@ -123,10 +123,12 @@ SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", 
 # Shorter values, like otp_length=6, would mask digits all over the log.
 MIN_SECRET_LENGTH = 4
 _active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
-# Both replaced, never mutated, so a reader on another thread always sees a whole collection.
+# Replaced, never mutated, so a reader on another thread always sees a whole collection.
 _config_secrets: frozenset[str] = frozenset()
 _unscoped_secrets: tuple[str, ...] = ()
 _MAX_UNSCOPED_SECRETS = 256
+# Both kinds, longest first, so overlapping secrets mask whole without a sort per record.
+_process_order: tuple[str, ...] = ()
 _secrets_lock = threading.Lock()
 _URL_PASSWORD = re.compile(r"(://[^/\s:@'\"]+:)[^/\s@'\"]+@")
 # The name excludes every delimiter a match can start at, so a failed match never rescans.
@@ -183,6 +185,7 @@ def register_config_secret(name: str, value: str) -> None:
     if _is_secret(name, value):
         with _secrets_lock:
             _config_secrets = _config_secrets | {value}
+            _reorder()
 
 
 def register_marked_secret(value: Any) -> None:
@@ -203,7 +206,13 @@ def _add_unscoped_secret(value: str) -> None:
     global _unscoped_secrets
     with _secrets_lock:
         kept = tuple(secret for secret in _unscoped_secrets if secret != value)
-        _unscoped_secrets = (kept + (value,))[-_MAX_UNSCOPED_SECRETS:]
+        _unscoped_secrets = (*kept, value)[-_MAX_UNSCOPED_SECRETS:]
+        _reorder()
+
+
+def _reorder() -> None:
+    global _process_order
+    _process_order = tuple(sorted({*_config_secrets, *_unscoped_secrets}, key=len, reverse=True))
 
 
 def is_secret_value(text: str) -> bool:
@@ -212,8 +221,9 @@ def is_secret_value(text: str) -> bool:
 
 
 def mask_secrets(text: str) -> str:
-    # Longest first, so overlapping secrets mask whole.
-    for secret in sorted({*(_active_secrets.get() or ()), *_config_secrets, *_unscoped_secrets}, key=len, reverse=True):
+    active = _active_secrets.get()
+    ordered = sorted({*active, *_process_order}, key=len, reverse=True) if active else _process_order
+    for secret in ordered:
         text = text.replace(secret, "****")
     text = _URL_PASSWORD.sub(r"\1****@", text)
     text = _QUERY_PARAM.sub(_mask_secret_param, text)
