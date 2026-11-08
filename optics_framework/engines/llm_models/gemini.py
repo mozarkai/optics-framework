@@ -43,7 +43,7 @@ class GeminiLLM(LLMInterface):
     credentials from the environment (``GOOGLE_GENAI_USE_VERTEXAI``,
     ``GOOGLE_API_KEY`` / ``GEMINI_API_KEY``, ``GOOGLE_CLOUD_PROJECT``,
     ``GOOGLE_CLOUD_LOCATION``, ``GOOGLE_APPLICATION_CREDENTIALS``). Capabilities override env
-    when present; secrets are never hardcoded.
+    when present.
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -64,11 +64,6 @@ class GeminiLLM(LLMInterface):
         api_key = caps.get("api_key") or caps.get("gemini_api_key")
         if api_key:
             client_kwargs["api_key"] = api_key
-            internal_logger.warning(
-                "GeminiLLM: an API key was read from the config 'capabilities'. Storing "
-                "secrets in a plaintext config is insecure — prefer the GOOGLE_API_KEY / "
-                "GEMINI_API_KEY environment variables, and never commit a config with a key."
-            )
 
         try:
             self.client = genai.Client(**client_kwargs)

@@ -3,7 +3,7 @@ import json
 import os
 from typing import Any
 
-from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error, request_timeout_s
+from optics_framework.common.llm_interface import LLMInterface, api_key as config_api_key, image_mime_type, missing_extra_error, request_timeout_s
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.error import OpticsError, Code
 
@@ -57,12 +57,12 @@ class OpenAILLM(LLMInterface):
 
         timeout = request_timeout_s(caps)
         base_url = config.get("url") or os.getenv("OPENAI_BASE_URL")
-        api_key_env = caps.get("api_key_env", _DEFAULT_API_KEY_ENV)
-        api_key = os.getenv(api_key_env)
+        api_key = config_api_key(caps, _DEFAULT_API_KEY_ENV)
         if not api_key and not base_url:
+            api_key_env = caps.get("api_key_env", _DEFAULT_API_KEY_ENV)
             raise OpticsError(
                 Code.E0601,
-                message=f"The 'openai' LLM engine found no API key: set {api_key_env}.",
+                message=f"The 'openai' LLM engine found no API key: set capabilities.api_key or {api_key_env}.",
             )
 
         try:

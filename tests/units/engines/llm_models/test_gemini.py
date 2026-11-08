@@ -61,3 +61,10 @@ def test_response_schema_is_sent_as_json_schema(fake_client):
     assert config.response_json_schema == schema
     assert config.response_schema is None
     assert config.response_mime_type == "application/json"
+
+
+def test_config_api_key_reaches_the_client(monkeypatch):
+    clients = []
+    monkeypatch.setattr(gemini.genai, "Client", lambda **kw: clients.append(kw))
+    gemini.GeminiLLM({"capabilities": {"api_key": "config-key"}})
+    assert clients[-1]["api_key"] == "config-key"
