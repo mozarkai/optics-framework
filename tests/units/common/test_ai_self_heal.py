@@ -468,6 +468,20 @@ class TestPromptContext:
             {"label": "Search", "cls": "android.widget.TextView", "act": [], "bounds": [0, 0, 100, 20]},
             {"label": "", "cls": "android.widget.ImageButton", "act": ["tap"], "rid": "com.app:id/search_button", "bounds": [0, 30, 100, 50]},
         ])
+        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 android.widget.ImageButton")
+
+    def test_closest_rows_match_a_camel_case_locator_by_its_words(self):
+        prompt = self._prompt_with_rows("loginButton", [
+            {"label": "Cancel", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]},
+            {"label": "Login", "cls": "Button", "act": ["tap"], "bounds": [0, 30, 100, 50]},
+        ])
+        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines() == ['e2 Button "Login" [tap]']
+
+    def test_closest_rows_put_the_exact_camel_case_resource_id_first(self):
+        prompt = self._prompt_with_rows("com.app:id/btnLogin", [
+            {"label": "Login", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]},
+            {"label": "", "cls": "ImageButton", "act": ["tap"], "rid": "com.app:id/btnLogin", "bounds": [0, 30, 100, 50]},
+        ])
         assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 ImageButton")
 
     def test_rows_get_the_matching_hint_but_no_closest_rows_without_a_shared_word(self):

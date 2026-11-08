@@ -539,7 +539,7 @@ def _recordable(item: str, snap: Snapshot) -> tuple[str, str]:
     return "", f'"{item}" is not the whole text of a row, so it was not recorded'
 
 
-def _snake_words(text: str) -> list[str]:
+def snake_words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text).lower())
 
 
@@ -547,8 +547,8 @@ def element_name(row: Row, taken: set[str]) -> str:
     """A unique snake_case element name such as ``sign_in_button``; never a secret input's own label."""
     own = "" if _holds_secret(row) and row.name == row.label else row.name
     words = [w for w in re.findall(r"[a-z0-9]+", own.lower()) if not w.isdigit()][:_NAME_MAX_WORDS]
-    words = words or _snake_words(row.rid.rsplit("/", 1)[-1]) or _snake_words(row.hint)
-    suffix = _snake_words(row.cls)
+    words = words or snake_words(row.rid.rsplit("/", 1)[-1]) or snake_words(row.hint)
+    suffix = snake_words(row.cls)
     if suffix and words[-len(suffix):] != suffix:
         words += suffix
     base = "_".join(words) or "element"
