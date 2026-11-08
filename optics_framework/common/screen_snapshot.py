@@ -8,11 +8,9 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-import cv2
-import numpy as np
-
 from optics_framework.common import utils
 from optics_framework.common.error import OpticsError
+from optics_framework.common.image_decode import decode_image
 from optics_framework.common.logging_config import internal_logger, is_secret_name
 from optics_framework.common.session_liveness import raise_if_session_dead
 
@@ -640,8 +638,16 @@ def read_screen(action_keyword: Any, png: bytes | None = None) -> list[dict] | N
         if isinstance(el, dict) and "bounds" in el:
             el[_WINDOW_BOUNDS] = el["bounds"]
     element_source = action_keyword.element_source
-    screenshot_np = None
-    if png and utils.is_appium_source(element_source):
-        screenshot_np = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
-    utils.scale_interactive_element_bounds(elements, element_source, screenshot_np)
+    utils.scale_interactive_element_bounds(elements, element_source, _scaling_frame(element_source, png))
     return elements
+
+
+def _scaling_frame(element_source: Any, png: bytes | None) -> Any:
+    """The decoded screenshot Appium bounds are scaled against, or None."""
+    if not png or not utils.is_appium_source(element_source):
+        return None
+    try:
+        return decode_image(png)
+    except OpticsError as exc:
+        internal_logger.debug("Bounds left unscaled: %s", exc)
+        return None

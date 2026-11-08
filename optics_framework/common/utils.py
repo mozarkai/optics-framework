@@ -10,12 +10,15 @@ import time
 import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
+from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, Any, Union, get_origin, get_args
 from urllib.parse import urlsplit
 import inspect
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import (
     SENSITIVE_PREFIX, internal_logger, execution_logger, register_secret, holding_logs_for_secret, mask_secrets,
+    register_marked_secret,
 )
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import ElementData
@@ -50,13 +53,46 @@ VISIBLE_FLAGS_JS = """
     return bottom > top && right > left;
 })
 """
-WHOLE_VAR_PATTERN = re.compile(r"^\$\{([^}]+)\}$")
+@dataclass(frozen=True)
+class VarRef:
+    """One ``${name}`` in a text; ``escaped`` means it was written ``$${name}``, a literal."""
+    start: int
+    end: int
+    name: str
+    escaped: bool
+
+
+def var_refs(text: str) -> Iterator[VarRef]:
+    """The ``${name}`` references in ``text`` in one pass; nothing after an unclosed ``${`` can match."""
+    pos = 0
+    while (start := text.find("${", pos)) != -1:
+        close = text.find("}", start + 2)
+        if close == -1:
+            return
+        if close == start + 2:
+            pos = start + 1
+            continue
+        yield VarRef(start, close + 1, text[start + 2:close], start > pos and text[start - 1] == "$")
+        pos = close + 1
+
+
+def substitute_vars(text: str, value: Callable[[VarRef], str]) -> str:
+    """Replace each ``${name}`` in ``text`` with ``value(ref)``."""
+    parts, pos = [], 0
+    for ref in var_refs(text):
+        parts += (text[pos:ref.start], value(ref))
+        pos = ref.end
+    parts.append(text[pos:])
+    return "".join(parts)
 
 
 def whole_var_name(param: Any) -> str | None:
     """The name in a param that is exactly one ``${name}``; ``${a} ${b}`` is not one."""
-    match = WHOLE_VAR_PATTERN.match(param.strip()) if isinstance(param, str) else None
-    return match.group(1).strip() if match else None
+    if not isinstance(param, str):
+        return None
+    text = param.strip()
+    ref = next(var_refs(text), None)
+    return ref.name.strip() if ref and ref.start == 0 and ref.end == len(text) else None
 
 
 def resolve_scalar_param(session: Any, param: str) -> str:
@@ -85,8 +121,6 @@ def resolve_scalar_param(session: Any, param: str) -> str:
     return str(value[0])
 
 
-# $${name} escapes to a literal ${name}.
-INLINE_VAR_PATTERN = re.compile(r"\$?\$\{([^}]+)\}")
 STORE_AS_PATTERN = re.compile(r"^\s*store_as\s*=\s*(.*)$", re.DOTALL)
 
 
@@ -104,17 +138,18 @@ def _inline_targets(method: Any, params: list) -> set[int]:
 def substitute_inline(method: Any, params: list, elements: ElementData) -> list:
     """A whole-param ${name} is left for the fallback expansion; an unknown name fails the step."""
     def substitute(param: str) -> str:
-        def value(match: re.Match) -> str:
-            if match.group(0).startswith("$$"):
-                return match.group(0)
-            values = elements.get_element(match.group(1).strip())
+        def value(ref: VarRef) -> str:
+            written = f"${{{ref.name}}}"
+            if ref.escaped:
+                return written
+            values = elements.get_element(ref.name.strip())
             if not values:
-                raise OpticsError(Code.E0403, message=f"Variable '{match.group(0)}' in '{param}' is not defined.")
+                raise OpticsError(Code.E0403, message=f"Variable '{written}' in '{param}' is not defined.")
             return str(values[0])
-        return INLINE_VAR_PATTERN.sub(value, param)
+        return substitute_vars(param, value)
 
     targets = _inline_targets(method, params)
-    return [substitute(p) if i in targets and not WHOLE_VAR_PATTERN.match(p.strip()) else p for i, p in enumerate(params)]
+    return [substitute(p) if i in targets and whole_var_name(p) is None else p for i, p in enumerate(params)]
 
 
 def unescape_vars(method: Any, params: list) -> list:
@@ -766,20 +801,21 @@ def save_page_source(tree, time_stamp, output_dir):
     # Wrap in <entry> tag
     entry_block = f'\n  <entry timestamp="{time_stamp}">\n{cleaned_tree}\n  </entry>\n'
 
+    closing = b"</logs>\n"
     if not os.path.exists(page_source_file_path):
-        with open(page_source_file_path, 'w', encoding='utf-8') as f:
-            f.write(f"<logs>\n{entry_block}</logs>\n")
+        with open(page_source_file_path, 'wb') as f:
+            f.write(b"<logs>\n" + entry_block.encode('utf-8') + closing)
         internal_logger.debug(f"Created new page source log file with first entry at: {time_stamp}")
     else:
-        with open(page_source_file_path, 'r+', encoding='utf-8') as f:
-            content = f.read()
-            if not content.strip().endswith("</logs>"):
+        # Overwrite only the closing tag, so each save costs the size of its own entry.
+        with open(page_source_file_path, 'r+b') as f:
+            size = f.seek(0, os.SEEK_END)
+            f.seek(max(size - len(closing), 0))
+            if f.read() != closing:
                 internal_logger.debug("Invalid log file: missing closing </logs> tag.")
                 return
-
-            f.seek(0)
-            updated_content = content.strip()[:-7] + entry_block + "</logs>\n"
-            f.write(updated_content)
+            f.seek(size - len(closing))
+            f.write(entry_block.encode('utf-8') + closing)
         internal_logger.debug(f"Page source appended at: {time_stamp}")
 
     internal_logger.debug(f"Page source saved to: {page_source_file_path}")
@@ -813,6 +849,7 @@ def save_page_source_html(html: str, time_stamp, output_dir):
     internal_logger.debug(f"HTML page source saved to: {page_source_file_path}")
 
 def strip_sensitive_prefix(value: str) -> str:
+    register_marked_secret(value)
     return without_prefix(value, SENSITIVE_PREFIX) if isinstance(value, str) else value
 
 

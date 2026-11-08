@@ -3,6 +3,7 @@ import queue
 import time
 import re
 import atexit
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
@@ -12,7 +13,6 @@ from typing import Any, Optional, Tuple
 from pathlib import Path
 
 SENSITIVE_PREFIX = "@:"
-_INLINE_SECRET = re.compile(re.escape(SENSITIVE_PREFIX) + r"([^\s,\)\]]+)")
 
 
 class LoggingConfig(BaseModel):
@@ -104,8 +104,7 @@ class LoggingManager:
         self.execution_logger.propagate = True
         self.internal_logger.addFilter(SecretMaskingFilter())
         self.execution_logger.addFilter(SecretMaskingFilter())
-        self.internal_console_handler = RichHandler(
-            rich_tracebacks=True, tracebacks_show_locals=True, show_time=True, show_level=True)
+        self.internal_console_handler = RichHandler(show_time=True, show_level=True)
         self.internal_console_handler.setFormatter(SensitiveDataFormatter(
             "%(message)s", datefmt="%H:%M:%S"))
         self.execution_console_handler = RichHandler(
@@ -123,9 +122,12 @@ SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", 
 MIN_SECRET_LENGTH = 4
 _active_secrets: ContextVar[set[str] | None] = ContextVar("_active_secrets", default=None)
 # Replaced, never mutated, so a reader on another thread always sees a whole set.
-_config_secrets: frozenset[str] = frozenset()
+_process_secrets: frozenset[str] = frozenset()
+_process_secrets_lock = threading.Lock()
 _URL_PASSWORD = re.compile(r"(://[^/\s:@'\"]+:)[^/\s@'\"]+@")
-_QUERY_PARAM = re.compile(r"([?&;]([^=&;\s'\"<>]+)=)([^&\s'\"<>#]+)")
+# The name excludes every delimiter a match can start at, so a failed match never rescans.
+_QUERY_PARAM = re.compile(r"([?&;]([^=&;?\s'\"<>]+)=)([^&\s'\"<>#]+)")
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029]")
 
 
 # Fixed-width lookarounds only, so a long name cannot make the match backtrack.
@@ -173,9 +175,22 @@ def register_secret(secrets: set[str], name: str, value) -> None:
 
 def register_config_secret(name: str, value: str) -> None:
     """Mask ``value`` in every log and report of this process when ``name`` reads as a secret."""
-    global _config_secrets
     if _is_secret(name, value):
-        _config_secrets = _config_secrets | {value}
+        _add_process_secret(value)
+
+
+def register_marked_secret(value: Any) -> None:
+    """Mask a ``@:``-marked value whole in every later log and report of this process."""
+    if isinstance(value, str) and value.startswith(SENSITIVE_PREFIX):
+        bare = value[len(SENSITIVE_PREFIX):]
+        if len(bare) >= MIN_SECRET_LENGTH:
+            _add_process_secret(bare)
+
+
+def _add_process_secret(value: str) -> None:
+    global _process_secrets
+    with _process_secrets_lock:
+        _process_secrets = _process_secrets | {value}
 
 
 def is_secret_value(text: str) -> bool:
@@ -185,17 +200,21 @@ def is_secret_value(text: str) -> bool:
 
 def mask_secrets(text: str) -> str:
     # Longest first, so overlapping secrets mask whole.
-    for secret in sorted({*(_active_secrets.get() or ()), *_config_secrets}, key=len, reverse=True):
+    for secret in sorted({*(_active_secrets.get() or ()), *_process_secrets}, key=len, reverse=True):
         text = text.replace(secret, "****")
     text = _URL_PASSWORD.sub(r"\1****@", text)
-    text = _QUERY_PARAM.sub(_mask_secret_param, text)
-    return _INLINE_SECRET.sub("****", text)
+    return _QUERY_PARAM.sub(_mask_secret_param, text)
+
+
+def escape_control(text: str) -> str:
+    """``text`` with line breaks and other control characters written as escapes, so it prints as one literal line."""
+    return _CONTROL_CHARS.sub(lambda char: char.group().encode("unicode_escape").decode("ascii"), text)
 
 
 def mask_secret_values(value: Any) -> Any:
     """``value`` with every string in it, including those nested in dicts and lists, passed through ``mask_secrets``."""
     if isinstance(value, str):
-        return mask_secrets(value)
+        return f"{SENSITIVE_PREFIX}****" if value.startswith(SENSITIVE_PREFIX) else mask_secrets(value)
     if isinstance(value, dict):
         return {key: mask_secret_values(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -226,8 +245,11 @@ def holding_logs_for_secret(name: str | None):
             logging.getLogger(record.name).handle(record)
 
 
+_TRACEBACK_FORMATTER = logging.Formatter()
+
+
 class SecretMaskingFilter(logging.Filter):
-    """On the logger, so plain file handlers get masked lines too."""
+    """On the logger, so every handler gets masked lines; it renders the traceback itself so no handler sees raw exc_info."""
 
     def filter(self, record):
         held = _held_records.get()
@@ -236,12 +258,27 @@ class SecretMaskingFilter(logging.Filter):
             return False
         record.msg = mask_secrets(record.getMessage())
         record.args = None
+        if record.exc_info:
+            record.exc_text = _TRACEBACK_FORMATTER.formatException(record.exc_info)
+            record.exc_info = None
+        if record.exc_text:
+            record.exc_text = mask_secrets(record.exc_text)
+        if record.stack_info:
+            record.stack_info = mask_secrets(record.stack_info)
         return True
 
 
 class SensitiveDataFormatter(logging.Formatter):
     def format(self, record):
         return mask_secrets(super().format(record))
+
+
+class TextLogFormatter(SensitiveDataFormatter):
+    """For line-oriented log files: a message cannot break its line and fake another record."""
+
+    def formatMessage(self, record):
+        record.message = escape_control(record.message)
+        return super().formatMessage(record)
 
 
 logging_manager = LoggingManager()
@@ -302,13 +339,13 @@ def create_file_handler(path, log_level, formatter=None, use_sensitive=False):
     handler = RotatingFileHandler(
         path, maxBytes=10 * 1024 * 1024, backupCount=10)
     if use_sensitive:
-        handler.setFormatter(SensitiveDataFormatter('%(asctime)s - %(levelname)s - %(message)s'))
+        handler.setFormatter(TextLogFormatter('%(asctime)s - %(levelname)s - %(message)s'))
     else:
         handler.setFormatter(formatter or LOG_FORMATTER)
     handler.setLevel(log_level)
     return handler
 
-LOG_FORMATTER = logging.Formatter(
+LOG_FORMATTER = TextLogFormatter(
     "%(levelname)s | %(asctime)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )

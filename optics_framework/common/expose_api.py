@@ -13,10 +13,8 @@ import asyncio
 import warnings
 import hashlib
 from contextlib import asynccontextmanager
-from itertools import product
 from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
@@ -27,8 +25,12 @@ from optics_framework.common.execution import (
     ExecutionParams,
 )
 from optics_framework.common.logging_config import internal_logger, reconfigure_logging, redact_secret_values
-from optics_framework.common.error import OpticsError, Code, raise_fallback_failure
+from optics_framework.common.http_guard import add_http_guards
+from optics_framework.common.image_decode import image_size
+from optics_framework.common import fallback
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig, env_names
+from optics_framework.common.caller_policy import refuse_local_capabilities
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, redact_url
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
@@ -113,13 +115,7 @@ PARAM_FILTER_CONFIG = "filter_config"
 DATA_URL_PREFIX = "data:"
 BASE64_SEPARATOR = ";base64,"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+add_http_guards(app)
 
 
 class AppiumUpdateRequest(BaseModel):
@@ -260,25 +256,34 @@ def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = N
     return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
 
 
-host_profiles_allowed = False
+server_reads_allowed = False
+
+
+def _refuse_env_references(name: str, url: str | None, capabilities: dict[str, Any]) -> None:
+    """A remote caller must not choose which server env var is read and where it is sent."""
+    headers = capabilities.get("headers")
+    values = [url, *(headers.values() if isinstance(headers, dict) else [])]
+    if any(env_names(str(value)) for value in values if value):
+        raise OpticsError(Code.E0501, f"{name}: $NAME references are only read from a project's config.yaml; send the value")
 
 
 def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str, Any]) -> None:
     """Refuse caller values that would make the server read its own environment or files."""
-    headers = capabilities.get("headers")
-    values = [url, *(headers.values() if isinstance(headers, dict) else [])]
-    if any(env_names(str(value)) for value in values if value):
-        # A remote caller must not choose which server env var is read and where it is sent.
-        raise OpticsError(Code.E0501, f"{name}: $NAME references are only read from a project's config.yaml; send the value")
+    _refuse_env_references(name, url, capabilities)
     storage_state = capabilities.get("storage_state")
     if storage_state is not None and not isinstance(storage_state, dict):
         # A path would let a remote caller load any server file into the browser.
         raise OpticsError(Code.E0501, f"{name}: storage_state must be sent as the state object, not a file path")
     if "user_data_dir" in capabilities:
         raise OpticsError(Code.E0501, f"{name}: user_data_dir is read only from a project's config.yaml")
-    if "profile" in capabilities and not host_profiles_allowed:
+    if "credentials_path" in capabilities:
+        raise OpticsError(Code.E0501, f"{name}: credentials_path is read only from a project's config.yaml")
+    if server_reads_allowed:
+        return
+    if "profile" in capabilities:
         # A host profile carries the server owner's sign-ins, so only a local stdio client may use one.
         raise OpticsError(Code.E0501, f"{name}: a browser profile works only through a local stdio MCP server")
+    refuse_local_capabilities(name, capabilities)
 
 
 def _loggable(sources: dict[str, list[dict[str, DependencyConfig]]]) -> dict:
@@ -337,9 +342,6 @@ class SessionConfig(BaseModel):
         - For 'appium' string entries, prefer top-level appium_url/appium_config when present.
         """
         if isinstance(item, str):
-            if item == SOURCE_APPIUM:
-                # prefer top-level appium settings when provided
-                return {SOURCE_APPIUM: DependencyConfig(enabled=True, url=top_level_url, capabilities=top_level_capabilities or {})}
             return _make_dependency_entry(item, None, top_level_url=top_level_url, top_level_capabilities=top_level_capabilities)
 
         if isinstance(item, dict):
@@ -504,6 +506,27 @@ def _resolve_self_heal_settings(config: SessionConfig) -> Tuple[bool, List[Dict[
     return True, llm_models
 
 
+def _warn_on_start(config: SessionConfig) -> None:
+    if getattr(session_manager, "sessions", None):
+        internal_logger.warning("Session creation attempted while another session is active.")
+    if config.appium_url is not None or config.appium_config is not None:
+        msg = (
+            "SessionConfig.appium_url and SessionConfig.appium_config are deprecated and will be removed in a future "
+            "release. Please provide Appium configuration via a driver_sources entry (e.g. {'appium': {'url': '...', 'capabilities': {...}}})."
+        )
+        internal_logger.warning(msg)
+        warnings.warn(msg, DeprecationWarning, stacklevel=3)
+
+
+def _session_apis(config: SessionConfig) -> Optional[ApiData]:
+    if config.api_data is None:
+        return None
+    try:
+        return _parse_api_data_to_model(config.api_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{MSG_INVALID_API_DATA} {e}") from e
+
+
 @app.post(
     "/v1/sessions/start",
     response_model=SessionResponse,
@@ -518,25 +541,7 @@ async def create_session(config: SessionConfig):
     Returns the session ID if successful.
     """
     try:
-        # Check if any session is currently active
-        active_sessions = (
-            session_manager.sessions if hasattr(session_manager, "sessions") else {}
-        )
-        if active_sessions and len(active_sessions) > 0:
-            internal_logger.warning(
-                "Session creation attempted while another session is active."
-            )
-
-        # Deprecation warning: appium_url and appium_config are legacy top-level fields
-        if config.appium_url is not None or config.appium_config is not None:
-            msg = (
-                "SessionConfig.appium_url and SessionConfig.appium_config are deprecated and will be removed in a future "
-                "release. Please provide Appium configuration via a driver_sources entry (e.g. {'appium': {'url': '...', 'capabilities': {...}}})."
-            )
-            internal_logger.warning(msg)
-            # Also emit a Python DeprecationWarning so callers and test suites can detect it
-            warnings.warn(msg, DeprecationWarning, stacklevel=2)
-
+        _warn_on_start(config)
         # Normalize incoming session config (supports deprecated string lists and new dict format)
         normalized = config.normalize_sources()
         driver_sources = normalized.get(KEY_DRIVER_SOURCES, [])
@@ -545,7 +550,10 @@ async def create_session(config: SessionConfig):
         image_detection = normalized.get(KEY_IMAGE_DETECTION, [])
         ai_self_heal, llm_models = _resolve_self_heal_settings(config)
 
+        if config.project_path and not server_reads_allowed:
+            raise OpticsError(Code.E0501, "project_path names a server folder; upload templates with POST /v1/sessions/{session_id}/templates instead")
         session_config = Config(
+            remote_caller=not server_reads_allowed,
             driver_sources=driver_sources,
             elements_sources=elements_sources,
             text_detection=text_detection,
@@ -560,15 +568,7 @@ async def create_session(config: SessionConfig):
         templates = (
             discover_templates(config.project_path) if config.project_path else None
         )
-        apis: Optional[ApiData] = None
-        if config.api_data is not None:
-            try:
-                apis = _parse_api_data_to_model(config.api_data)
-            except ValueError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"{MSG_INVALID_API_DATA} {e}",
-                ) from e
+        apis = _session_apis(config)
         session_id = await asyncio.to_thread(
             session_manager.create_session,
             session_config,
@@ -700,11 +700,6 @@ def _keyword_execution_params(session_id: str, keyword: str, param_list: List[st
     )
 
 
-def _should_reraise(e: BaseException) -> bool:
-    """True if exception should be re-raised as-is (e.g. SystemExit)."""
-    return isinstance(e, (SystemExit, KeyboardInterrupt, GeneratorExit))
-
-
 def _decode_template_base64(value: str) -> bytes:
     """Decode base64 image bytes; supports raw base64 or data URL (data:...;base64,...)."""
     s = value.strip()
@@ -712,7 +707,9 @@ def _decode_template_base64(value: str) -> bytes:
         idx = s.find(BASE64_SEPARATOR)
         if idx != -1:
             s = s[idx + len(BASE64_SEPARATOR):]
-    return base64.b64decode(s)
+    data = base64.b64decode(s)
+    image_size(data)
+    return data
 
 
 def _write_bytes_to_path(path: str, data: bytes) -> None:
@@ -799,30 +796,18 @@ def _combo_to_positional_named(
     return out
 
 
-async def _execute_no_params(
-    engine: ExecutionEngine, session_id: str, keyword: str
-) -> Any:
-    """Run keyword with no params."""
-    return await engine.execute(_keyword_execution_params(session_id, keyword, []))
-
-
 async def _try_combos_named(
     engine: ExecutionEngine,
     session_id: str,
     keyword: str,
     ctx: _NamedParamsContext,
 ) -> Any:
-    """Try each named-param combo; return the first success."""
-    errors: List[Tuple[tuple, Exception]] = []
-    for combo in product(*ctx.normalized_param_lists):
-        try:
-            args = _combo_to_positional_named(combo, ctx)
-            return await engine.execute(_keyword_execution_params(session_id, keyword, args))
-        except Exception as e:
-            if _should_reraise(e):
-                raise
-            errors.append((combo, e))
-    raise_fallback_failure(f"keyword '{keyword}'", errors)
+    """Try the named-param combos in order; return the first success."""
+    async def attempt(combo: tuple) -> Any:
+        args = _combo_to_positional_named(combo, ctx)
+        return await engine.execute(_keyword_execution_params(session_id, keyword, args))
+
+    return await fallback.run_async(ctx.normalized_param_lists, attempt, f"keyword '{keyword}'")
 
 
 async def _try_combos_positional(
@@ -831,18 +816,11 @@ async def _try_combos_positional(
     keyword: str,
     normalized_param_lists: List[List[str]],
 ) -> Any:
-    """Try each positional combo; return the first success."""
-    errors: List[Tuple[tuple, Exception]] = []
-    for combo in product(*normalized_param_lists):
-        try:
-            return await engine.execute(
-                _keyword_execution_params(session_id, keyword, list(combo))
-            )
-        except Exception as e:
-            if _should_reraise(e):
-                raise
-            errors.append((combo, e))
-    raise_fallback_failure(f"keyword '{keyword}'", errors)
+    """Try the positional combos in order; return the first success."""
+    async def attempt(combo: tuple) -> Any:
+        return await engine.execute(_keyword_execution_params(session_id, keyword, list(combo)))
+
+    return await fallback.run_async(normalized_param_lists, attempt, f"keyword '{keyword}'")
 
 
 def _reject_server_env_read(keyword_slug: str, params: Any) -> None:
@@ -867,37 +845,14 @@ async def _execute_keyword_with_fallback(
     method: Callable[..., Any],
     session: Session,
 ) -> Any:
-    """
-    Execute a keyword via ExecutionEngine with fallback parameter support.
-    Tries all combinations of fallback values until one succeeds.
-
-    Args:
-        engine: The ExecutionEngine instance
-        session_id: The session ID
-        keyword: The keyword name
-        params: Either positional params (List) or named params (Dict)
-        method: The keyword method (for signature inspection)
-        session: The session object (for context)
-
-    Returns:
-        Any: Result from the first successful execution
-
-    Raises:
-        Exception: The failing attempt's own error, or an OpticsError listing every
-            attempt under the last one's code when several values were tried
-    """
+    """Execute a keyword via ExecutionEngine, trying its params' fallback values as the CSV runner does."""
     if isinstance(params, dict):
         ctx = _build_named_param_context(method, params)
-        normalized_param_lists = ctx.normalized_param_lists
-    else:
-        ctx = None
-        normalized_param_lists = _build_positional_normalized(params)
-
-    if not normalized_param_lists:
-        return await _execute_no_params(engine, session_id, keyword)
-    if ctx is not None:
-        return await _try_combos_named(engine, session_id, keyword, ctx)
-    return await _try_combos_positional(engine, session_id, keyword, normalized_param_lists)
+        if ctx.normalized_param_lists:
+            return await _try_combos_named(engine, session_id, keyword, ctx)
+        params = []
+    fallback.check_arity(method, len(params), keyword)
+    return await _try_combos_positional(engine, session_id, keyword, _build_positional_normalized(params))
 
 
 async def _setup_request_template_overrides(
@@ -915,7 +870,7 @@ async def _setup_request_template_overrides(
             raise HTTPException(status_code=400, detail=str(e)) from e
         try:
             raw = _decode_template_base64(b64_value)
-        except (binascii.Error, ValueError) as e:
+        except (binascii.Error, ValueError, OpticsError) as e:
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
         path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
@@ -1035,7 +990,7 @@ async def upload_template(session_id: str, body: TemplateUploadRequest):
         raw = _decode_template_base64(body.image_base64)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
-    base_dir = session._inline_templates_dir
+    base_dir = session._session_dir
     os.makedirs(base_dir, exist_ok=True)
     try:
         safe_stem = _safe_template_filename(body.name)

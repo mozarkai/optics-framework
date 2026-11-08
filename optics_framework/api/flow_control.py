@@ -1,8 +1,6 @@
-import re
 from typing import Optional, Any, Union, Tuple, Callable, List
 from urllib.parse import urlparse, parse_qsl
 import os.path
-import ast
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
@@ -15,14 +13,16 @@ from optics_framework.common.config_handler import ConfigHandler
 from optics_framework.common.logging_config import internal_logger, execution_logger, register_secret
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
+from optics_framework.common.caller_policy import refuse_server_read
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common import utils
+from optics_framework.common import expression, utils
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
 NO_SESSION_ELEMENT_PRESENT = "Session elements is not an ElementData instance or is None."
-VAR_PATTERN = r"\$\{([^}]+)\}"
 ENV_SOURCE_PREFIX = "ENV:"
+HAR_HEADER = b'{"log": {"version": "1.2", "creator": {"name": "Optics Framework", "version": "1.0"}, "entries": [\n'
+HAR_TRAILER = b"\n]}}\n"
 
 
 def reads_environment(file_path: Any) -> bool:
@@ -53,6 +53,21 @@ def defines_variable(func: Callable[..., Any]) -> Callable[..., Any]:
     """The first param names a variable the keyword sets, so a dry run can count it as defined."""
     func._defines_variable = True  # pylint: disable=protected-access  # type: ignore[attr-defined]
     return func
+
+
+def _append_har_entry(path: str, entry: bytes) -> None:
+    """Add ``entry`` to the HAR at ``path`` by rewriting only its fixed trailer, so each call costs one entry."""
+    if os.path.exists(path):
+        with open(path, "r+b") as f:
+            end = f.seek(0, os.SEEK_END) - len(HAR_TRAILER)
+            if end >= len(HAR_HEADER):
+                f.seek(end)
+                if f.read(len(HAR_TRAILER)) == HAR_TRAILER:
+                    f.seek(end)
+                    f.write(b",\n" + entry + HAR_TRAILER)
+                    return
+    with open(path, "wb") as f:
+        f.write(HAR_HEADER + entry + HAR_TRAILER)
 
 
 class FlowControl:
@@ -407,37 +422,29 @@ class FlowControl:
         return None
 
     def _is_condition_true(self, cond: str) -> bool:
-        """
-        Evaluates if a condition is true.
-        Supports both expression-based and module-based conditions.
-        If cond matches a module name, executes the module and returns True if it succeeds and result is non-empty.
-        Otherwise, evaluates cond as an expression.
-        Supports "!" prefix to invert the condition result.
-        """
-        # Check for "!" prefix to invert the result
+        """A module name is true when the module runs and returns something; anything else is an expression. ``!`` inverts."""
         invert = cond.startswith("!")
         actual_cond = cond[1:].strip() if invert else cond
-
+        if self.modules and hasattr(self.modules, "modules") and actual_cond in self.modules.modules:
+            return self._module_succeeds(actual_cond) != invert
         try:
-            if self.modules and hasattr(self.modules, "modules") and actual_cond in self.modules.modules:
-                try:
-                    result = self.execute_module(actual_cond)
-                    result_bool = bool(result)
-                except Exception as e:
-                    # For module conditions, treat exceptions as False
-                    internal_logger.warning(f"[_is_condition_true] Module '{actual_cond}' raised error: {e}. Treating as false condition.")
-                    result_bool = False
-                return not result_bool if invert else result_bool
             resolved_cond = self._resolve_condition(actual_cond)
             internal_logger.debug(f"[_is_condition_true] Evaluating resolved condition: {resolved_cond}")
-            result = bool(self._safe_eval(resolved_cond))
-            return not result if invert else result
+            return bool(self._safe_eval(resolved_cond)) != invert
         except Exception as e:
-            # If condition fails and we're inverting, treat failure as success
+            if isinstance(e, OpticsError) and e.code is Code.E0406:
+                raise
             if invert:
                 internal_logger.debug(f"[_is_condition_true] Condition '{actual_cond}' failed, but inverting result to True.")
                 return True
             raise OpticsError(Code.E0403, message=f"Error evaluating condition '{cond}': {e}")
+
+    def _module_succeeds(self, module: str) -> bool:
+        try:
+            return bool(self.execute_module(module))
+        except Exception as e:
+            internal_logger.warning(f"[_is_condition_true] Module '{module}' raised error: {e}. Treating as false condition.")
+            return False
 
     def _resolve_condition(self, cond: str) -> str:
         """Resolves variables in a condition string."""
@@ -446,17 +453,15 @@ class FlowControl:
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             raise OpticsError(Code.E0501, message=NO_SESSION_ELEMENT_PRESENT)
-        pattern = re.compile(VAR_PATTERN)
 
-        def replacer(match):
-            var_name = match.group(1).strip()
+        def replacer(ref: utils.VarRef) -> str:
+            var_name = ref.name.strip()
             value = runner_elements.get_first(var_name)
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found for condition resolution.")
-            # Always wrap in double quotes for safe Python evaluation
-            return f'"{value}"'
+            return repr(str(value))
 
-        return pattern.sub(replacer, cond)
+        return utils.substitute_vars(cond, replacer)
 
     @defines_variable
     @substitutes_own_vars
@@ -513,7 +518,8 @@ class FlowControl:
             if not data or not isinstance(data, list) or not data[0]:
                 return pd.DataFrame(), None
             return pd.DataFrame(data[1:], columns=data[0]), None
-        elif reads_environment(file_path):
+        refuse_server_read(self.config_handler.config, "Read Data from a file or ENV: source")
+        if reads_environment(file_path):
             return self._load_env_data(file_path.removeprefix(ENV_SOURCE_PREFIX))
         elif isinstance(file_path, str):
             return self._load_file_data(file_path), None
@@ -657,30 +663,24 @@ class FlowControl:
         return select_cols, filter_expr
 
     def _resolve_query_vars(self, q):
-        pattern = re.compile(VAR_PATTERN)
         runner_elements = self._get_or_create_session_elements()
-        def replacer(match):
-            var_name = match.group(1).strip()
+        def replacer(ref: utils.VarRef) -> str:
+            var_name = ref.name.strip()
             value = runner_elements.get_first(var_name)
             internal_logger.debug(f"[READ_DATA] Resolving variable in query: {var_name} -> {value}")
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements for query resolution.")
-            start, end = match.span()
-            before = q[start-1] if start > 0 else ''
-            after = q[end] if end < len(q) else ''
-            if isinstance(value, str) and not (before == "'" and after == "'"):
-                return f"'{value}'"
-            return str(value)
-        return pattern.sub(replacer, q)
+            if not isinstance(value, str):
+                return str(value)
+            text = value.replace("\\", "\\\\").replace("'", "\\'")
+            quoted = q[ref.start - 1:ref.start] == "'" and q[ref.end:ref.end + 1] == "'"
+            return text if quoted else f"'{text}'"
+        return utils.substitute_vars(q, replacer)
 
     def _apply_filter(self, df, filter_expr, query):
         if filter_expr:
-            try:
-                df = df.query(filter_expr)
-                internal_logger.debug(f"[READ_DATA] Applied filter expression: {filter_expr}")
-            except Exception as e:
-                internal_logger.error(f"[READ_DATA] Invalid query expression: {filter_expr}. Error: {e}")
-                raise OpticsError(Code.E0403, message=f"Invalid query expression: {filter_expr}. Error: {e}", cause=e)
+            df = expression.filter_rows(df, filter_expr)
+            internal_logger.debug(f"[READ_DATA] Applied filter expression: {filter_expr}")
         if df is not None and df.empty and query:
             internal_logger.error(f"[READ_DATA] No data found matching the query/filter: '{query}'")
             raise OpticsError(Code.E0403, message=f"No data found matching the query/filter: '{query}'")
@@ -871,69 +871,22 @@ class FlowControl:
         if not isinstance(runner_elements, ElementData):
             raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
 
-        def replace_var(match):
-            var_name = match.group(1)
-            value = runner_elements.get_first(var_name)
+        def replace_var(ref: utils.VarRef) -> str:
+            value = runner_elements.get_first(ref.name)
             if value is None:
-                raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found in elements.")
+                raise OpticsError(Code.E0702, message=f"Variable '{ref.name}' not found in elements.")
             return str(value)
 
-        param2_resolved = re.sub(VAR_PATTERN, replace_var, param2)
-        return self._safe_eval(param2_resolved)
+        return self._safe_eval(utils.substitute_vars(param2, replace_var))
 
-    def _safe_eval(self, expression: str) -> Any:
-        """Safely evaluates an expression with restricted operations."""
-        try:
-            node = ast.parse(expression, mode="eval")
-            allowed_nodes = (
-                ast.Expression,
-                ast.BinOp,
-                ast.UnaryOp,
-                ast.BoolOp,
-                ast.Compare,
-                ast.IfExp,
-                ast.Constant,
-                ast.Name,
-                ast.Load,
-                ast.List,
-                ast.Tuple,
-            )
-            allowed_operators = (
-                ast.Add,
-                ast.Sub,
-                ast.Mult,
-                ast.Div,
-                ast.Mod,
-                ast.Pow,
-                ast.Lt,
-                ast.Gt,
-                ast.Eq,
-                ast.NotEq,
-                ast.LtE,
-                ast.GtE,
-                ast.And,
-                ast.Or,
-                ast.Not,
-            )
-            for n in ast.walk(node):
-                if not isinstance(n, allowed_nodes) and not isinstance(n, allowed_operators):
-                    internal_logger.warning(f"[EVALUATE] Unsafe expression detected: {expression}")
-                    raise OpticsError(Code.E0403, message=f"Unsafe expression detected: {expression}")
-            if self.session is None:
-                raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
-            runner_elements = getattr(self.session, "elements", None)
-            if not isinstance(runner_elements, ElementData):
-                raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
-            return eval(
-                expression,
-                {"__builtins__": None},
-                {k: v[0] for k, v in runner_elements.elements.items() if v},
-            )  # nosec B307 # pylint: disable=eval-used
-            # Note: eval() is used here for simplicity, i know it should be should be avoided in production code.
-            # In some time, i will replace it with a safer alternative.
-            # For now, we are using it with a restricted environment.
-        except Exception as e:
-            raise OpticsError(Code.E0403, message=f"Error evaluating expression '{expression}': {e}", cause=e)
+    def _safe_eval(self, text: str) -> Any:
+        """Evaluate ``text`` with session variables as names, through the restricted evaluator."""
+        if self.session is None:
+            raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
+        runner_elements = getattr(self.session, "elements", None)
+        if not isinstance(runner_elements, ElementData):
+            raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
+        return expression.evaluate(text, {k: v[0] for k, v in runner_elements.elements.items() if v})
 
     def _detect_date_format(self, date_str: str) -> str:
         """Detect the format of the input date string."""
@@ -1098,9 +1051,7 @@ class FlowControl:
     def _resolve_placeholders(self, data: Any) -> Any:
         """Recursively resolves ${...} placeholders in strings, dicts, or lists."""
         if isinstance(data, str):
-            return re.sub(
-                VAR_PATTERN, lambda m: self._resolve_param(m.group(0)), data
-            )
+            return utils.substitute_vars(data, lambda ref: self._resolve_param(f"${{{ref.name}}}"))
         if isinstance(data, dict):
             return {k: self._resolve_placeholders(v) for k, v in data.items()}
         if isinstance(data, list):
@@ -1150,19 +1101,18 @@ class FlowControl:
             raise OpticsError(Code.E0401, message=f"API request to {url} failed: {e}", cause=e)
 
     def _write_api_log(self, log_file_path, method, url, headers, body, response):
-        """Writes API request/response details to a log file."""
+        """Append one JSON object per call, so no URL or response text can forge another record."""
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "body": body,
+            "status_code": response.status_code,
+            "response_body": self._response_body(response),
+        }
         with open(log_file_path, "a", encoding="utf-8") as f:
-            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
-            f.write(f"Method: {method}\n")
-            f.write(f"URL: {url}\n")
-            f.write(f"Headers: {json.dumps(headers, indent=2)}\n")
-            f.write(f"Body: {json.dumps(body, indent=2) if body else 'None'}\n")
-            f.write(f"Response Status Code: {response.status_code}\n")
-            try:
-                f.write(f"Response Body: {json.dumps(response.json(), indent=2)}\n")
-            except json.JSONDecodeError:
-                f.write(f"Response Body: {response.text}\n")
-            f.write("-" * 50 + "\n")
+            f.write(json.dumps(record, default=str) + "\n")
 
     def _write_api_har(
         self,
@@ -1225,32 +1175,7 @@ class FlowControl:
             },
         }
 
-        if har_file_path is not None and os.path.exists(har_file_path):
-            with open(har_file_path, "r", encoding="utf-8") as f:
-                try:
-                    har_data = json.load(f)
-                    if "log" not in har_data or "entries" not in har_data["log"]:
-                        har_data = self._create_har_structure()
-                except json.JSONDecodeError:
-                    har_data = self._create_har_structure()
-        else:
-            har_data = self._create_har_structure()
-
-        har_data["log"]["entries"].append(har_entry)
-
-        if har_file_path is not None:
-            with open(har_file_path, "w", encoding="utf-8") as f:
-                json.dump(har_data, f, indent=2)
-
-    def _create_har_structure(self) -> dict:
-        """Creates a basic HAR file structure."""
-        return {
-            "log": {
-                "version": "1.2",
-                "creator": {"name": "Optics Framework", "version": "1.0"},
-                "entries": [],
-            }
-        }
+        _append_har_entry(har_file_path, json.dumps(har_entry).encode("utf-8"))
 
     def _process_response(self, response: requests.Response, api_def) -> None:
         """Extracts data from the response and saves it to session elements."""
@@ -1359,9 +1284,7 @@ class FlowControl:
                     raise AssertionError(f"JSONPath '{path}' found no match.")
 
                 matched_value = match[0].value
-                eval_condition = condition.replace("$", repr(matched_value))
-
-                if not eval(eval_condition):  # nosec B307 # pylint: disable=eval-used
+                if not expression.check_condition(condition, matched_value):
                     internal_logger.warning(f"[JSONPATH] JSONPath assertion failed: Path '{path}', Condition '{condition}', Matched value '{matched_value}'.")
                     raise AssertionError(
                         f"JSONPath assertion failed: Path '{path}', Condition '{condition}', Matched value '{matched_value}'."
@@ -1369,6 +1292,8 @@ class FlowControl:
                 internal_logger.debug(
                     f"JSONPath assertion passed: Path '{path}', Condition '{condition}'."
                 )
+            except OpticsError:
+                raise
             except Exception as e:
                 raise AssertionError(
                     f"Error evaluating JSONPath assertion {assertion}: {e}"
