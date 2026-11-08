@@ -475,9 +475,26 @@ class TestPromptContext:
         assert ash.ROW_MATCH_HINT in prompt
         assert ash.CLOSEST_ROWS_HEADER not in prompt
 
-    def test_system_prompt_ties_completion_to_a_matching_row(self):
-        assert "If a CURRENT SCREEN row matches the target, act on it" in HEAL_SYSTEM_PROMPT
-        assert "If the target is visible" not in HEAL_SYSTEM_PROMPT
+    def test_closest_rows_put_the_exact_resource_id_first_among_word_ties(self):
+        same = {"label": "Search button", "cls": "Button", "act": ["tap"]}
+        prompt = self._prompt_with_rows("com.app:id/search_button", [
+            *({**same, "bounds": [0, 30 * i, 100, 30 * i + 20]} for i in range(3)),
+            {"label": "", "cls": "ImageButton", "act": ["tap"], "rid": "com.app:id/search_button", "bounds": [0, 90, 100, 110]},
+        ])
+        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e4 ImageButton")
+
+    def test_system_prompt_ties_completion_to_a_matching_row_when_rows_are_listed(self):
+        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
+        rows = [{"label": "Login", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]}]
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, _no_ps, lambda: rows)
+        assert "If a CURRENT SCREEN row matches the target, act on it" in llm.last_system
+        assert "If the target is visible" not in llm.last_system
+
+    def test_system_prompt_keeps_the_visible_target_rule_without_rows(self):
+        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, lambda: 'Button "Login"')
+        assert "If the target is visible, act on it" in llm.last_system
+        assert "CURRENT SCREEN row matches" not in llm.last_system
 
     def test_keyword_catalog_in_prompt(self):
         llm = FakeLLM([{"action": "give_up", "reason": "x"}])
