@@ -229,7 +229,7 @@ _WORD = re.compile(r"[a-z0-9]+")
 _PART = re.compile(r"[a-z]+|[0-9]+")
 _RESOURCE_ID = re.compile(r"id/([^'\"\]]+)")
 _QUOTED = re.compile(r"[\"']([^\"']+)[\"']")
-_SEPARATORS = re.compile(r"[^a-z0-9]")
+_ROLE_WORDS = frozenset({"tab", "button", "btn", "icon"})
 
 
 def _resource_id(element: str) -> str:
@@ -262,10 +262,16 @@ def closest_rows(rows: tuple[screen_snapshot.Row, ...], ctx: HealContext, limit:
     return [entry[-1] for entry in sorted(scored, key=lambda entry: entry[:4])[:limit]]
 
 
+def _core_name(text: str) -> str:
+    """``text`` squashed without case, separators, role words or a plural ``s``: ``tab_alarm`` and "Alarms" are both ``alarm``."""
+    words = (word for word in screen_snapshot.snake_words(text) if word not in _ROLE_WORDS)
+    return "".join(word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word for word in words)
+
+
 def names_target(row: screen_snapshot.Row, element: str) -> bool:
-    """True when the row's label or id is what the locator names, ignoring case and separators: ``timerPreset1`` is ``timer_preset_1``."""
-    own = {_SEPARATORS.sub("", text.lower()) for text in (row.label, row.rid.rsplit("/", 1)[-1])} - {""}
-    return any(_SEPARATORS.sub("", phrase.lower()) in own for phrase in target_phrases(element))
+    """True when the row's label or id is what the locator names: ``timerPreset1`` is ``timer_preset_1``."""
+    own = {_core_name(text) for text in (row.label, row.rid.rsplit("/", 1)[-1])} - {""}
+    return any(_core_name(phrase) in own for phrase in target_phrases(element))
 
 
 def complete_target_press(action: HealAction, ctx: HealContext, refs: screen_snapshot.RefTable) -> HealAction:
