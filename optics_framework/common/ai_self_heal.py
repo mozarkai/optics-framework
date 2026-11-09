@@ -81,6 +81,7 @@ class HealContext:
     intent_params: List[str] = field(default_factory=list)
     value: str | None = None     # the text the failed keyword types; only ever typed, never shown to the model
     element: str = ""            # the resolved locator the normal ladder failed to find
+    element_name: str = ""
     resolved_vars: Dict[str, str] = field(default_factory=dict)
     recent_steps: List[Tuple[str, List[str]]] = field(default_factory=list)
     failed_strategies: List[str] = field(default_factory=list)
@@ -225,22 +226,39 @@ ROW_MATCH_HINT = (
 )
 CLOSEST_ROWS_HEADER = "Rows whose text or #id share the most words with the TARGET ELEMENT (best first):"
 _WORD = re.compile(r"[a-z0-9]+")
+_PART = re.compile(r"[a-z]+|[0-9]+")
 _RESOURCE_ID = re.compile(r"id/([^'\"\]]+)")
+_QUOTED = re.compile(r"[\"']([^\"']+)[\"']")
+_SEPARATORS = re.compile(r"[^a-z0-9]")
 
 
-def closest_rows(rows: tuple[screen_snapshot.Row, ...], element: str, limit: int = 3) -> list[screen_snapshot.Row]:
-    """Rows sharing the most words with the locator (its resource id when it has one, camelCase split too); ties go to fewer extra words, then tappable rows."""
+def _resource_id(element: str) -> str:
     found = _RESOURCE_ID.search(element)
-    rid = found.group(1) if found else ""
-    wanted = _WORD.findall((rid or element).lower())
-    wanted += [word for word in screen_snapshot.snake_words(rid or element) if word not in wanted]
+    return found.group(1) if found else ""
+
+
+def target_phrases(element: str) -> list[str]:
+    """What a locator names: its resource id, else its quoted values, else its whole text; never XPath syntax such as ``android.widget``."""
+    rid = _resource_id(element)
+    return [rid] if rid else _QUOTED.findall(element) or [element]
+
+
+def word_keys(text: str) -> set[str]:
+    """The words of ``text``: whole tokens, tokens split at case and letter-digit changes, and each adjacent pair joined, so "stop watch" meets "stopwatch"."""
+    parts = [part for word in screen_snapshot.snake_words(text) for part in _PART.findall(word)]
+    return {*_WORD.findall(text.lower()), *parts, *map("".join, zip(parts, parts[1:]))}
+
+
+def closest_rows(rows: tuple[screen_snapshot.Row, ...], ctx: HealContext, limit: int = 3) -> list[screen_snapshot.Row]:
+    """Rows sharing the most words with what the locator names and with the suite's element name; an exact resource id goes first, ties go to rows with an action, then to fewer extra words."""
+    rid = _resource_id(ctx.element)
+    wanted = set().union(*map(word_keys, [*target_phrases(ctx.element), ctx.element_name]))
     scored = []
     for row in rows:
         own_id = row.rid.rsplit("/", 1)[-1]
-        words = _WORD.findall(f"{screen_snapshot.clean_label(row.label)} {own_id}".lower())
-        hits = sum(word in words for word in wanted)
-        if hits:
-            scored.append((not rid or own_id != rid, -hits, len(set(words) - set(wanted)), "tap" not in row.act, row))
+        words = word_keys(screen_snapshot.clean_label(row.label)) | word_keys(own_id)
+        if hits := len(words & wanted):
+            scored.append((not rid or own_id != rid, -hits, not row.act, len(words - wanted), row))
     return [entry[-1] for entry in sorted(scored, key=lambda entry: entry[:4])[:limit]]
 
 
@@ -249,11 +267,11 @@ def system_prompt(snap: screen_snapshot.Snapshot) -> str:
     return HEAL_SYSTEM_PROMPT if snap.rows else _NO_ROWS_SYSTEM_PROMPT
 
 
-def row_aids(snap: screen_snapshot.Snapshot, element: str) -> list[str]:
+def row_aids(snap: screen_snapshot.Snapshot, ctx: HealContext) -> list[str]:
     """Prompt lines after the screen rows: the name-matching hint, then the closest rows; none without rows."""
     if not snap.rows:
         return []
-    closest = closest_rows(snap.rows, element)
+    closest = closest_rows(snap.rows, ctx)
     return [ROW_MATCH_HINT, *([CLOSEST_ROWS_HEADER, *map(screen_snapshot.render_row, closest)] if closest else [])]
 
 
@@ -553,6 +571,8 @@ class AISelfHealHandler:
             f"FAILED KEYWORD: {ctx.intent()}",
             f"TARGET ELEMENT (not found by normal locators): {ctx.element}",
         ]
+        if ctx.element_name:
+            lines.append(f"TARGET ELEMENT NAME (from the test suite): {ctx.element_name}")
         if ctx.resolved_vars:
             pairs = ", ".join(f"{k}={v}" for k, v in ctx.resolved_vars.items())
             lines.append(f"RESOLVED VARIABLES: {pairs}")
@@ -585,5 +605,5 @@ class AISelfHealHandler:
             lines.extend(f"  {idx}. {entry}" for idx, entry in enumerate(heal_log, 1))
         lines.append("")
         lines.append("The attached image is the CURRENT screen. Decide the SINGLE next action as JSON.")
-        lines += row_aids(snap, ctx.element)
+        lines += row_aids(snap, ctx)
         return "\n".join(lines)
