@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 import logging
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Dict, Optional, Any, NoReturn
 from pydantic import BaseModel
 from rich import get_console
@@ -32,7 +32,7 @@ class Category(str, Enum):
     GENERAL = "general"
 
 
-class Code(str, Enum):
+class Code(StrEnum):
     # Driver issue
     E0101 = "E0101"
     E0102 = "E0102"
