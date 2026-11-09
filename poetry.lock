@@ -93,15 +93,15 @@ trio = ["trio (>=0.32.0)"]
 
 [[package]]
 name = "appium-python-client"
-version = "6.1.2"
+version = "6.1.5"
 description = "Python client for Appium"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"appium\" or extra == \"mobile\""
 files = [
-    {file = "appium_python_client-6.1.2-py3-none-any.whl", hash = "sha256:664f3be090fe84ab305f769d39e117094afa704ad21a3e14bdca611cc86e186a"},
-    {file = "appium_python_client-6.1.2.tar.gz", hash = "sha256:ed146c4b9c8e50073b23be614e23f47e6fbd6e4400a9ea0f2a9462f5fc374f26"},
+    {file = "appium_python_client-6.1.5-py3-none-any.whl", hash = "sha256:aed94ae9093bcb2804bff4e9b0f14c00c48046326a9ed4d041c86486a3ebaff2"},
+    {file = "appium_python_client-6.1.5.tar.gz", hash = "sha256:6a0c64eea8c5da8fdcdbcc23b015a0c50b4cc13561640b9f961af055a8535f5c"},
 ]
 
 [package.dependencies]
