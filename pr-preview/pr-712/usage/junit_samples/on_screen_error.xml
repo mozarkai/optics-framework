@@ -31,8 +31,8 @@
         </kw>
       </kw>
     </testcase>
-    <testcase name="on-screen-error-detection" classname="checkout_suite" time="0" status="FAIL">
-      <failure message="ERR_DEMO | high | documentation examples | Demo text on the final page" type="OnScreenError">ERR_DEMO | high | documentation examples | Demo text on the final page</failure>
+    <testcase name="on-screen-error-detection" classname="checkout_suite" kind="test" time="0" status="FAIL">
+      <failure message="ERR_DEMO | high | documentation examples | Demo text on the final page" type="OnScreenError" code="ERR_DEMO">ERR_DEMO | high | documentation examples | Demo text on the final page</failure>
     </testcase>
   </testsuite>
 </testsuites>
