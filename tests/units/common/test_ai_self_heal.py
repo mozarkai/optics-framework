@@ -245,6 +245,20 @@ class TestHandlerActions:
         assert res.ok is True
         assert llm.calls == 1
 
+    @pytest.mark.parametrize("element, label", [
+        ("//*[@resource-id='app:id/tab_alarm']", "Alarms"),
+        ("//android.widget.Button[@text='Save button']", "Save"),
+    ])
+    def test_a_role_word_or_plural_does_not_stop_the_named_row_completing_the_heal(self, element, label):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": False, "reason": "tab first"},
+            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": True, "reason": "drift"},
+        ])
+        rows = [{"label": label, "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_x", "bounds": [0, 0, 100, 20]}]
+        ctx = HealContext(intent_keyword="press_element", element=element)
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        assert llm.calls == 1
+
     @pytest.mark.parametrize("element, row", [
         ("Settings", {"label": "Menu", "cls": "Button"}),
         ("//android.widget.Button[@text='Save']", {"label": "Cancel", "cls": "Button", "rid": "app:id/cancel_button"}),
