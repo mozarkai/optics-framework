@@ -248,6 +248,8 @@ class TestHandlerActions:
     @pytest.mark.parametrize("element, label", [
         ("//*[@resource-id='app:id/tab_alarm']", "Alarms"),
         ("//android.widget.Button[@text='Save button']", "Save"),
+        ("//*[@text='计时器']", "计时器"),
+        ("//*[@text=\"Don't save\"]", "Don't save"),
     ])
     def test_a_role_word_or_plural_does_not_stop_the_named_row_completing_the_heal(self, element, label):
         llm = FakeLLM([
@@ -263,6 +265,10 @@ class TestHandlerActions:
         ("Settings", {"label": "Menu", "cls": "Button"}),
         ("//android.widget.Button[@text='Save']", {"label": "Cancel", "cls": "Button", "rid": "app:id/cancel_button"}),
         ("//*[@resource-id='app:id/stopwatch_lap']", {"label": "Stopwatch", "cls": "FrameLayout", "rid": "app:id/tab_menu_stopwatch"}),
+        ("//*[@resource-id='app:id/menu']//*[@text='Add timer']", {"label": "Menu", "cls": "Button", "rid": "app:id/menu"}),
+        ("//*[@text='Start' and @content-desc='Workout']", {"label": "Start", "cls": "Button"}),
+        ("//*[@text='计时器1']", {"label": "设置1", "cls": "Button"}),
+        ("//*[@text=\"Don't save\"]", {"label": "Don", "cls": "Button"}),
     ])
     def test_a_navigation_press_on_a_row_sharing_only_some_words_keeps_the_heal_going(self, element, row):
         llm = FakeLLM([
