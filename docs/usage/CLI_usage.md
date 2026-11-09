@@ -97,7 +97,7 @@ optics execute ./my_project --include "login*" --exclude "Login Slow"
 - **Wildcards:** `*` matches any run of characters and `?` matches exactly one. Every other character, including `[`, `]` and `.`, is literal.
 - **Several names:** give several names after one flag (`--include A B`), repeat the flag (`--include A --include B`), or both. Put the project folder **before** the flags (or end the flag's list with `--`), otherwise the folder is read as another test case name.
 - **Combining:** `--include` narrows the set first, then `--exclude` removes test cases from it.
-- **Setup and teardown always run.** Suite setup/teardown and per-test setup/teardown test cases are kept for whichever tests are selected, and they cannot be selected or excluded by name.
+- **Setup and teardown are always kept.** Suite setup/teardown and per-test setup/teardown test cases are kept for whichever tests are selected, and they cannot be selected or excluded by name.
 - **Overrides config.yaml:** when either flag is given, the `include`/`exclude` lists in `config.yaml` are ignored for that run. Without flags, `config.yaml` applies as before.
 - **Typos fail fast:** a name that matches no test case stops the run with exit code `3` before any device or browser session starts, with a `Did you mean '…'?` suggestion and the list of available test cases. A selection that leaves nothing to run is rejected the same way.
 
@@ -116,13 +116,13 @@ The same flags work with [`optics dry_run`](#executing-dry-run), so you can chec
 | `130` | Stopped with Ctrl-C (SIGINT). |
 | `143` | Stopped with SIGTERM. |
 
-When the run cannot start, stderr shows a *Cannot start* panel titled with the error code, for example `Cannot start: E0501`. Other errors print `Code.<code>: <message>`. See [Error Handling](../architecture/error_handling.md) for the codes.
+When the run cannot start, stderr shows a *Cannot start* panel titled with the error code, for example `Cannot start: E0501`. Other errors print `<code>: <message>`. See [Error Handling](../architecture/error_handling.md) for the codes.
 
 ### Results
 
 A run writes its results to `execution_output/` in the project folder, or to `execution_output_path` when the config sets it:
 
-- `junit_output.xml`: the JUnit report, written once when the run ends, also when it is stopped with Ctrl-C or SIGTERM. A run has one `<testsuite>` with one `<testcase>` per test case, including suite setup and teardown. Each `<testcase>` has a `timestamp` (its start) and a `time` (its duration in seconds). Each module is a `<kw type="setup">` and each keyword a `<kw>` inside it, with `status`, `starttime`, `endtime` and `elapsed`; a failed one also has a `message`. The modules and keywords a failure or a stop kept from running have `status="NOT_RUN"`. Each per-test setup and teardown is a test case of its own, named after the test it wraps, such as `Setup (Login Test)`. The suite `name` and every `classname` are the project folder's name, so unpack a project into a folder named after the suite. The suite `id` is the session id.
+- `junit_output.xml`: the JUnit report, written once when the run ends, also when it is stopped with Ctrl-C or SIGTERM. A run has one `<testsuite>` with one `<testcase>` per test case, including suite setup and teardown. Each `<testcase>` has a `kind` (`suite_setup`, `setup`, `test`, `teardown` or `suite_teardown`), a `timestamp` (its start) and a `time` (its duration in seconds). A `<failure>` or `<error>` has a `code` with the error code, such as `E0201`, when the failure has one. Each module is a `<kw type="setup">` and each keyword a `<kw>` inside it, with `status`, `starttime`, `endtime` and `elapsed`; a failed one also has a `message` and a `code`. The modules and keywords a failure or a stop kept from running have `status="NOT_RUN"`. Each per-test setup and teardown is a test case of its own, named after the test it wraps, such as `Setup (Login Test)`. The suite `name` and every `classname` are the project folder's name, so unpack a project into a folder named after the suite. The suite `id` is the session id.
 - `junit_output_<session_id>.xml` instead, only when two sessions in one process share the output folder (the Python SDK or `optics serve`). `optics execute` and `optics dry_run` always write `junit_output.xml`.
 - `<time>-failure_<test case>.jpg` and `<time>-failure_<test case>.xml` (`.html` for a web page): the screen and page source when a test case fails.
 - `<time>-end_of_run.jpg` and `page_sources_log.xml` (`.html` for a web page): the final screen, read before the suite teardown. `detected_errors_<session_id>.json` when an [on-screen error](error_detection.md) matches it.
@@ -133,13 +133,14 @@ A run writes its results to `execution_output/` in the project folder, or to `ex
 | All test cases passed | `0` | Every `<testcase>` has `status="PASS"`. | [passed.xml](junit_samples/passed.xml) |
 | A test case failed | `1` | That `<testcase>` has `status="FAIL"` and a `<failure>` with the reason. Its modules and keywords after the failed one are `NOT_RUN`. | [failed.xml](junit_samples/failed.xml) |
 | An on-screen error matched the final screen | `1` | An `on-screen-error-detection` `<testcase>` with one `<failure>` per match. | [on_screen_error.xml](junit_samples/on_screen_error.xml) |
-| A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. The test still runs and has its own result. | [setup_failed.xml](junit_samples/setup_failed.xml) |
+| The suite setup failed | `1` | `Suite Setup` has a `<failure>`. Each other test case, except the suite teardown, has `status="NOT_RUN"` and a `<skipped>` whose `message` starts with `Suite setup failed:`. The suite teardown runs. | [suite_setup_failed.xml](junit_samples/suite_setup_failed.xml) |
+| A per-test setup failed | `1` | `Setup (<test>)` has a `<failure>`. Its test has `status="NOT_RUN"` and a `<skipped>` whose `message` starts with `Setup failed:`. Its teardown runs. | [setup_failed.xml](junit_samples/setup_failed.xml) |
 | Config or environment variable error | `1` | Not written: the run stops before a session starts. | |
 | Test selection error | `3` | Not written: the run stops before a session starts. | |
-| The Appium or Selenium server is not reachable, or no Android device is attached | `1` | Each test case has `status="ERROR"` and an `<error>` that names the problem. Its modules and keywords are `NOT_RUN`. | |
+| The Appium or Selenium server is not reachable, or no Android device is attached | `1` | Each test case has `status="ERROR"` and an `<error>` that names the problem, with its code, such as `E0102`. Its modules and keywords are `NOT_RUN`. | |
 | Other error while the session starts, such as a credentials file that is not valid | `1` | `<testsuites/>` with no test cases. | |
 | The driver session is lost during the run, such as when the Appium server stops | `1` | The test case that was running and each later one have `status="ERROR"` and an `<error>` with `E0106`. | |
-| Stopped with Ctrl-C | `130` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>`; its keyword that was running is `ERROR` and the rest are `NOT_RUN`. Later test cases and the suite teardown do not run: each is a `<testcase status="NOT_RUN">` with a `<skipped>`. | [interrupted.xml](junit_samples/interrupted.xml) |
+| Stopped with Ctrl-C | `130` | Test cases that finished keep their results. The one that was running has `status="ERROR"` and an `<error>` with `code="E0706"`; its keyword that was running is `ERROR` with the same code, and the rest are `NOT_RUN`. Later test cases and the suite teardown do not run: each is a `<testcase status="NOT_RUN">` with a `<skipped>`. | [interrupted.xml](junit_samples/interrupted.xml) |
 | Stopped with SIGTERM | `143` | The same as Ctrl-C. | [stopped.xml](junit_samples/stopped.xml) |
 | Killed with SIGKILL | `137` (shell) or `-9` (`subprocess`) | Not written: the process ends at once. | |
 

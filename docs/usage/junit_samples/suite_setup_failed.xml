@@ -1,0 +1,39 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="e5b0d587-646c-4a96-8cd7-07cd80af727f" tests="4" failures="1" errors="0" skipped="2" time="3.75" timestamp="2026-11-09T18:24:10.036+05:30">
+    <testcase name="Suite Setup" id="9377898b-02c8-4c45-99b2-3ac47f0ac0e7" classname="checkout_suite" kind="suite_setup" time="3.71" timestamp="2026-11-09T18:24:10.036+05:30" status="FAIL">
+      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261109 18:24:10.036" endtime="20261109 18:24:11.046" elapsed="1.01">
+        <kw name="Launch App" status="PASS" starttime="20261109 18:24:10.036" endtime="20261109 18:24:11.045" elapsed="1.01"/>
+      </kw>
+      <kw name="Check Missing Text" type="setup" status="FAIL" starttime="20261109 18:24:11.046" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:24:13.686" elapsed="2.64">
+        <kw name="Assert Presence" status="FAIL" starttime="20261109 18:24:11.046" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:24:13.055" elapsed="2.01">
+          <log>Asserting (assert_elements) elements: ['text=This text is not on the page'] with rule: any and timeout: 2s</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</log>
+        </kw>
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." type="Failure" code="E0201">Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</failure>
+    </testcase>
+    <testcase name="Setup (TC1 Notice Shown)" classname="checkout_suite" kind="setup" time="0" status="NOT_RUN">
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <skipped message="Suite setup failed: Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured."/>
+    </testcase>
+    <testcase name="TC1 Notice Shown" classname="checkout_suite" kind="test" time="0" status="NOT_RUN">
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <skipped message="Suite setup failed: Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured."/>
+    </testcase>
+    <testcase name="Suite Teardown" id="41c54b4d-5049-47f8-b9b5-9091e0c654d3" classname="checkout_suite" kind="suite_teardown" time="0.04" timestamp="2026-11-09T18:24:14.317+05:30" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS" starttime="20261109 18:24:14.318" endtime="20261109 18:24:14.353" elapsed="0.03">
+        <kw name="Close And Terminate App" status="PASS" starttime="20261109 18:24:14.319" endtime="20261109 18:24:14.352" elapsed="0.03">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>

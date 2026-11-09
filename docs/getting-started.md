@@ -279,6 +279,8 @@ test_case,test_step
 Verify User Login,User Login
 ```
 
+A test case is a setup or teardown only when its name ends with `Suite Setup`, `Suite Teardown`, `Setup` or `Teardown` (in any case), such as `Web Suite Setup` or `Test Setup`. A project has at most one of each. `Setup` and `Teardown` run around every test. When a setup fails, the tests it guards do not run and are reported as skipped; the teardowns still run.
+
 ### Why Separate Test Cases from Modules?
 
 Test cases define **what** to test, modules define **how** to do it. This separation lets you mix and match modules for different test scenarios.

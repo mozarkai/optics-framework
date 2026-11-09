@@ -38,7 +38,7 @@ Running youtube unknown,Repeat Test
 **Suite Setup/Teardown and Test Case Setup/Teardown**
 
 You can define setup and teardown steps in the test_cases.csv to ensure proper initialization and cleanup for both the entire test suite and individual test cases.
-Test case setup and teardown run around every selected test and show in the report as `Setup (<test name>)` and `Teardown (<test name>)`.
+Test case setup and teardown run around every selected test and show in the report as `Setup (<test name>)` and `Teardown (<test name>)`. A name must end with `Suite Setup`, `Suite Teardown`, `Setup` or `Teardown` to count, and a project has at most one of each. A failed suite setup skips every test; a failed test setup skips its test. Teardowns still run.
 
 ### modules.csv
 
