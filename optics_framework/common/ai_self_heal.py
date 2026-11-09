@@ -19,6 +19,7 @@ import re
 import shlex
 import time
 from dataclasses import dataclass, field, replace
+from itertools import pairwise
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from optics_framework.common import screen_snapshot
@@ -228,7 +229,8 @@ CLOSEST_ROWS_HEADER = "Rows whose text or #id share the most words with the TARG
 _WORD = re.compile(r"[a-z0-9]+")
 _PART = re.compile(r"[a-z]+|[0-9]+")
 _RESOURCE_ID = re.compile(r"id/([^'\"\]]+)")
-_QUOTED = re.compile(r"[\"']([^\"']+)[\"']")
+_QUOTED = re.compile(r"\"([^\"]*)\"|'([^']*)'")
+_NAME_WORD = re.compile(r"[^\W_]+")
 _ROLE_WORDS = frozenset({"tab", "button", "btn", "icon"})
 
 
@@ -237,16 +239,20 @@ def _resource_id(element: str) -> str:
     return found.group(1) if found else ""
 
 
+def _quoted(element: str) -> list[str]:
+    return [double or single for double, single in _QUOTED.findall(element) if double or single]
+
+
 def target_phrases(element: str) -> list[str]:
     """What a locator names: its resource id, else its quoted values, else its whole text; never XPath syntax such as ``android.widget``."""
     rid = _resource_id(element)
-    return [rid] if rid else _QUOTED.findall(element) or [element]
+    return [rid] if rid else _quoted(element) or [element]
 
 
 def word_keys(text: str) -> set[str]:
     """The words of ``text``: whole tokens, tokens split at case and letter-digit changes, and each adjacent pair joined, so "stop watch" meets "stopwatch"."""
     parts = [part for word in screen_snapshot.snake_words(text) for part in _PART.findall(word)]
-    return {*_WORD.findall(text.lower()), *parts, *map("".join, zip(parts, parts[1:]))}
+    return {*_WORD.findall(text.lower()), *parts, *map("".join, pairwise(parts))}
 
 
 def closest_rows(rows: tuple[screen_snapshot.Row, ...], ctx: HealContext, limit: int = 3) -> list[screen_snapshot.Row]:
@@ -264,14 +270,22 @@ def closest_rows(rows: tuple[screen_snapshot.Row, ...], ctx: HealContext, limit:
 
 def _core_name(text: str) -> str:
     """``text`` squashed without case, separators, role words or a plural ``s``: ``tab_alarm`` and "Alarms" are both ``alarm``."""
-    words = (word for word in screen_snapshot.snake_words(text) if word not in _ROLE_WORDS)
+    words = (word for word in _NAME_WORD.findall(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text).lower()) if word not in _ROLE_WORDS)
     return "".join(word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word for word in words)
 
 
+def _sole_name(element: str) -> str:
+    """The one value a locator names, or "" when it has several, such as a parent step or a second predicate."""
+    values = _quoted(element)
+    if len(values) > 1:
+        return ""
+    return _resource_id(element) or (values[0] if values else element)
+
+
 def names_target(row: screen_snapshot.Row, element: str) -> bool:
-    """True when the row's label or id is what the locator names: ``timerPreset1`` is ``timer_preset_1``."""
-    own = {_core_name(text) for text in (row.label, row.rid.rsplit("/", 1)[-1])} - {""}
-    return any(_core_name(phrase) in own for phrase in target_phrases(element))
+    """True when the row's label or id is the one value the locator names: ``timerPreset1`` is ``timer_preset_1``."""
+    target = _core_name(_sole_name(element))
+    return bool(target) and not target.isdigit() and target in {_core_name(text) for text in (row.label, row.rid.rsplit("/", 1)[-1])}
 
 
 def complete_target_press(action: HealAction, ctx: HealContext, refs: screen_snapshot.RefTable) -> HealAction:
