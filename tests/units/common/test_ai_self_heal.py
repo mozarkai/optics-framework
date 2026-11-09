@@ -241,7 +241,7 @@ class TestHandlerActions:
             {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": True, "reason": "drift"},
         ])
         ctx = HealContext(intent_keyword="press_element", element="//*[@content-desc='Stop watch']")
-        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        res = AISelfHealHandler(llm, FakeExecutor(), _catalog).heal(ctx, _shots, _no_ps, lambda: rows)
         assert res.ok is True
         assert llm.calls == 1
 
@@ -258,7 +258,7 @@ class TestHandlerActions:
         ])
         rows = [{"label": label, "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_x", "bounds": [0, 0, 100, 20]}]
         ctx = HealContext(intent_keyword="press_element", element=element)
-        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        AISelfHealHandler(llm, FakeExecutor(), _catalog).heal(ctx, _shots, _no_ps, lambda: rows)
         assert llm.calls == 1
 
     @pytest.mark.parametrize("element, row", [
@@ -277,7 +277,7 @@ class TestHandlerActions:
         ])
         ctx = HealContext(intent_keyword="press_element", element=element)
         rows = [{**row, "act": ["tap"], "bounds": [0, 0, 100, 20]}]
-        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        AISelfHealHandler(llm, FakeExecutor(), _catalog).heal(ctx, _shots, _no_ps, lambda: rows)
         assert llm.calls == 2
 
     def test_system_prompt_names_only_dispatchable_gestures(self):
