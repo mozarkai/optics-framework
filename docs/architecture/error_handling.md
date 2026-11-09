@@ -138,6 +138,8 @@ Driver-related errors:
 - **E0102**: Failed to start session
 - **E0103**: Failed to end session
 - **E0104**: Driver config incomplete
+- **E0105**: Keyword not supported on this device platform
+- **E0106**: Driver session is no longer active
 - **W0104**: Driver config incomplete (warning)
 
 **Example:**
@@ -251,6 +253,7 @@ Test case execution errors:
 - **E0703**: Parameter resolution failed
 - **E0704**: Test case timeout
 - **W0705**: Test case skipped
+- **E0706**: Run stopped before the test case finished (Ctrl-C or SIGTERM)
 
 **Example:**
 ```python

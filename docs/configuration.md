@@ -1113,6 +1113,8 @@ driver_sources:
 
 When you run `optics execute` or `optics dry_run`, the framework reads the target folder's own `config.yaml`. Any field you leave out falls back to the built-in defaults (for example, every source defaults to `enabled: false`). A project's `config.yaml` is the single source of truth for that run — there is no global config layer to merge.
 
+`element_sources` is read as `elements_sources`. If a file has both keys, Optics uses `elements_sources` and ignores `element_sources`. A tool that reads `config.yaml` to find out what a project needs, such as `driver_sources.appium.enabled` or `elements_sources.camera_screenshot.enabled`, should accept both spellings and expand `$NAME` references first, since `enabled` can be a reference such as `${USE_APPIUM}`.
+
 ### Environment variables and relative paths
 
 Any string value in `config.yaml` can refer to an environment variable or to a file in the project. Use this for values that must not go into the file, such as an Appium hub URL that contains a token, and to keep a project that you copy or unzip somewhere else runnable:
