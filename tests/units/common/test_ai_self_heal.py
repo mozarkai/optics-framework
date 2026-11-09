@@ -231,6 +231,35 @@ class TestHandlerActions:
         assert "1. press_element WrongText -> FAIL" in prompts[2]
         assert "2. scroll down -> PASS" in prompts[2]
 
+    def test_pressing_the_row_the_locator_names_completes_the_heal(self):
+        rows = [
+            {"label": "Timers", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_timer", "bounds": [0, 0, 100, 20]},
+            {"label": "Stopwatch", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_stopwatch", "bounds": [0, 30, 100, 50]},
+        ]
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e2", "completed": False, "reason": "tab first"},
+            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": True, "reason": "drift"},
+        ])
+        ctx = HealContext(intent_keyword="press_element", element="//*[@content-desc='Stop watch']")
+        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        assert res.ok is True
+        assert llm.calls == 1
+
+    @pytest.mark.parametrize("element, row", [
+        ("Settings", {"label": "Menu", "cls": "Button"}),
+        ("//android.widget.Button[@text='Save']", {"label": "Cancel", "cls": "Button", "rid": "app:id/cancel_button"}),
+        ("//*[@resource-id='app:id/stopwatch_lap']", {"label": "Stopwatch", "cls": "FrameLayout", "rid": "app:id/tab_menu_stopwatch"}),
+    ])
+    def test_a_navigation_press_on_a_row_sharing_only_some_words_keeps_the_heal_going(self, element, row):
+        llm = FakeLLM([
+            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": False, "reason": "navigate"},
+            {"action": "give_up", "reason": "stuck"},
+        ])
+        ctx = HealContext(intent_keyword="press_element", element=element)
+        rows = [{**row, "act": ["tap"], "bounds": [0, 0, 100, 20]}]
+        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
+        assert llm.calls == 2
+
     def test_system_prompt_names_only_dispatchable_gestures(self):
         """The prompt must not steer the model to a keyword the heal allowlist lacks."""
         assert "`swipe`" not in HEAL_SYSTEM_PROMPT

@@ -18,7 +18,7 @@ unit-testable with fakes.
 import re
 import shlex
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from optics_framework.common import screen_snapshot
@@ -262,6 +262,20 @@ def closest_rows(rows: tuple[screen_snapshot.Row, ...], ctx: HealContext, limit:
     return [entry[-1] for entry in sorted(scored, key=lambda entry: entry[:4])[:limit]]
 
 
+def names_target(row: screen_snapshot.Row, element: str) -> bool:
+    """True when the row's label or id is what the locator names, ignoring case and separators: ``timerPreset1`` is ``timer_preset_1``."""
+    own = {_SEPARATORS.sub("", text.lower()) for text in (row.label, row.rid.rsplit("/", 1)[-1])} - {""}
+    return any(_SEPARATORS.sub("", phrase.lower()) in own for phrase in target_phrases(element))
+
+
+def complete_target_press(action: HealAction, ctx: HealContext, refs: screen_snapshot.RefTable) -> HealAction:
+    """A press on the row the failed locator names is the goal, not navigation, whatever ``completed`` says."""
+    if action.completed or not (action.keyword == ctx.intent_keyword == "press_element" and action.target):
+        return action
+    row = refs.resolve(action.target)
+    return replace(action, completed=True) if row is not None and names_target(row, ctx.element) else action
+
+
 def system_prompt(snap: screen_snapshot.Snapshot) -> str:
     """The heal system prompt; without screen rows it keeps the visible-target rule, since there is no row to match."""
     return HEAL_SYSTEM_PROMPT if snap.rows else _NO_ROWS_SYSTEM_PROMPT
@@ -370,7 +384,7 @@ class AISelfHealHandler:
             heal_log.append(f"{line} -> FAIL: {exc}")
             return None
 
-        return self._run_action(action, ctx, attempted, succeeded, heal_log)
+        return self._run_action(complete_target_press(action, ctx, refs), ctx, attempted, succeeded, heal_log)
 
     def _bound(
         self, action: HealAction, ctx: HealContext, refs: screen_snapshot.RefTable, catalog: List[HealKeywordSpec],
@@ -601,7 +615,7 @@ class AISelfHealHandler:
                 lines.append(f"  {idx}. {kw} {kw_params}")
         if heal_log:
             lines.append("")
-            lines.append("SELF-HEAL STEPS SO FAR (PASS = executed, not goal reached):")
+            lines.append("SELF-HEAL STEPS SO FAR (PASS = the keyword ran):")
             lines.extend(f"  {idx}. {entry}" for idx, entry in enumerate(heal_log, 1))
         lines.append("")
         lines.append("The attached image is the CURRENT screen. Decide the SINGLE next action as JSON.")
