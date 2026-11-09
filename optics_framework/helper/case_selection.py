@@ -3,7 +3,7 @@
 A selection is an ``include`` and/or ``exclude`` list of name patterns. Names
 compare case-insensitively with surrounding whitespace trimmed and inner runs
 collapsed, and ``*`` / ``?`` are wildcards; every other character is literal.
-Test cases the caller marks as not selectable (setup/teardown) always run.
+Test cases the caller marks as not selectable (setup/teardown) are always kept.
 """
 import difflib
 import re

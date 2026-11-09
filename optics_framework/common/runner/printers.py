@@ -239,16 +239,15 @@ class TreeResultPrinter(IResultPrinter):
                         keyword.resolved_name, keyword.elapsed, keyword.status, 2))
 
         completed = sum(1 for tc in self.test_state.values()
-                        if tc.status in ["PASS", "FAIL"])
+                        if tc.status in ["PASS", "FAIL", "SKIPPED"])
         if self.task_id is not None:
             self.progress.update(self.task_id, completed=completed)
 
-        total, passed, failed = (
-            len(self.test_state),
-            sum(1 for tc in self.test_state.values() if tc.status == "PASS"),
-            sum(1 for tc in self.test_state.values() if tc.status == "FAIL"),
-        )
+        statuses = [tc.status for tc in self.test_state.values()]
+        total, passed, failed, skipped = len(statuses), statuses.count("PASS"), statuses.count("FAIL"), statuses.count("SKIPPED")
         summary_text = f"Total Test Cases: {total} | Passed: {passed} | Failed: {failed}"
+        if skipped:
+            summary_text += f" | Skipped: {skipped}"
         summary_panel = Panel(
             summary_text, style="green" if failed == 0 else "red")
         renderables = [self.progress, tree, summary_panel]

@@ -15,6 +15,15 @@ class State(str, Enum):
     SKIPPED = "SKIPPED"
     ERROR = "ERROR"
 
+
+class CaseKind(str, Enum):
+    SUITE_SETUP = "suite_setup"
+    SETUP = "setup"
+    TEST = "test"
+    TEARDOWN = "teardown"
+    SUITE_TEARDOWN = "suite_teardown"
+
+
 # Node Base Class
 class Node(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -68,7 +77,7 @@ class ModuleNode(Node):
 
 class TestCaseNode(Node):
     modules_head: Optional[ModuleNode] = None
-    suite_teardown: bool = False
+    kind: CaseKind = CaseKind.TEST
     next: Optional['TestCaseNode'] = None
 
     def add_module(self, module: 'ModuleNode'):
