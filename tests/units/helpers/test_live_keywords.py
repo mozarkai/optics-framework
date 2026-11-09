@@ -17,6 +17,7 @@ from prompt_toolkit.key_binding.key_processor import KeyPress
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.utils import get_cwidth
 
+from optics_framework.common import test_context
 from optics_framework.common.agent_core import Focus
 from optics_framework.common.models import ElementData
 from optics_framework.helper import live_tui
@@ -123,6 +124,27 @@ def test_equals_locator_from_element_is_positional():
 
     assert result.status is ActionStatus.PASS
     assert rec.calls == [(("text=Example Domain",), {})]
+
+
+def test_a_live_keyword_sees_the_suite_name_of_its_locator():
+    seen = []
+    ctrl = _controller({"press_element": lambda element: seen.append(test_context.element_names.get({}).get(element))})
+    ctrl._elements_loaded = True
+    ctrl.session = SimpleNamespace(elements=ElementData(elements={"login_button": ["//login"]}))
+
+    assert ctrl.run_keyword("press_element ${login_button}").status is ActionStatus.PASS
+    assert seen == ["login_button"]
+
+
+def test_an_agent_call_keeps_the_suite_name_when_other_params_follow():
+    seen = []
+    ctrl = _controller({"press_element": lambda element, timeout: seen.append(test_context.element_names.get({}).get(element))})
+    ctrl._elements_loaded = True
+    ctrl.session = SimpleNamespace(elements=ElementData(elements={"login_button": ["//login"]}))
+
+    ctrl._agent_call("press_element", {"element": "${login_button}", "timeout": "5"})
+
+    assert seen == ["login_button"]
 
 
 def test_quoted_argument_with_space_stays_one_param():

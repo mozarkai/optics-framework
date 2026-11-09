@@ -8,7 +8,7 @@ from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.base_factory import InstanceFallback
-from optics_framework.common import keyword_outcome, utils
+from optics_framework.common import keyword_outcome, test_context, utils
 from optics_framework.common.agent_core import bind, runner_params, visible_params
 from optics_framework.common.ai_self_heal import (
     VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
@@ -296,6 +296,7 @@ class ActionKeyword:
             intent_params=[str(a) for a in intent_args],
             value=value,
             element=str(element),
+            element_name=test_context.element_names.get({}).get(str(element), ""),
             recent_steps=list(self._recent_steps),
             failed_strategies=sorted(
                 {type(s).__name__ for s in self.strategy_manager.locator_strategies}

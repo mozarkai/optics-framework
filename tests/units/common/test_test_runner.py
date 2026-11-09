@@ -27,6 +27,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from optics_framework.common import test_context
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.events import EventStatus
@@ -405,6 +406,19 @@ class TestExecuteKeywordNameResolution:
         assert called == [True]
         assert kw_result.status == "PASS"
         assert kw_node.state == State.COMPLETED_PASSED
+
+    async def test_keyword_sees_the_suite_name_of_its_locator(self):
+        elements = ElementData()
+        elements.add_element("stopwatch_tab", "//tab")
+        seen = []
+        runner = _make_runner(elements=elements, keyword_map={
+            "press_element": lambda element: seen.append(test_context.element_names.get({}).get(element)),
+        })
+        kw_node = _kw_node(name="Press Element", params=["${stopwatch_tab}"], node_id="k1")
+        tc_result, _ = _wire_execute_context(runner, kw_node)
+
+        assert await runner._execute_keyword(kw_node, _mod_node(name="mod"), tc_result, {}) is True
+        assert seen == ["stopwatch_tab"]
 
     async def test_unknown_keyword_fails_without_dispatch(self):
         runner = _make_runner(keyword_map={"known": lambda: None})

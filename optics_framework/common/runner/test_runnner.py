@@ -534,6 +534,7 @@ class TestRunner(Runner):
                 param_candidates.append(values)
             else:
                 param_candidates.append([param])
+        test_context.name_locators(params, self.elements.get_element)
         return param_candidates
 
     async def _handle_element_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result, var_name, capture_handler):
@@ -1232,6 +1233,7 @@ class PytestRunner(Runner):
                 param_candidates.append(values)
             else:
                 param_candidates.append([param])
+        test_context.name_locators(params, self.elements.get_element)
         return param_candidates
 
     def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id, store_as=None):
