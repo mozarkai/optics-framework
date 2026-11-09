@@ -447,11 +447,55 @@ class TestPromptContext:
         assert "TextDetectionStrategy" in llm.last_prompt
         assert "last-resort" in llm.last_system.lower()
 
-    def _prompt_with_rows(self, element, rows):
+    def _prompt_with_rows(self, element, rows, element_name=""):
         llm = FakeLLM([{"action": "give_up", "reason": "x"}])
-        ctx = HealContext(intent_keyword="press_element", intent_params=[element], element=element)
+        ctx = HealContext(intent_keyword="press_element", intent_params=[element], element=element, element_name=element_name)
         AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, _no_ps, lambda: rows)
         return llm.last_prompt
+
+    def _closest(self, *args, **kwargs):
+        return self._prompt_with_rows(*args, **kwargs).split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()
+
+    def test_closest_rows_split_a_trailing_digit_and_rank_a_disabled_button_last(self):
+        tab = "com.google.android.deskclock:id/"
+        closest = self._closest(f"//*[@resource-id='{tab}timerPreset1']", [
+            {"label": "1m", "cls": "Button", "act": ["tap"], "rid": f"{tab}timer_preset_1", "bounds": [0, 0, 100, 20]},
+            {"label": "5m", "cls": "Button", "act": ["tap"], "rid": f"{tab}timer_preset_2", "bounds": [0, 30, 100, 50]},
+            {"label": "Start", "cls": "Button", "act": [], "rid": f"{tab}timer_start_button", "bounds": [0, 60, 100, 80]},
+        ])
+        assert closest[0].startswith('e1 Button "1m"')
+        assert closest[-1].startswith('e3 Button "Start"')
+
+    def test_closest_rows_put_a_row_with_an_action_before_an_equal_row_without_one(self):
+        closest = self._closest("Start", [
+            {"label": "Start", "cls": "Button", "act": [], "bounds": [0, 0, 100, 20]},
+            {"label": "Start", "cls": "Button", "act": ["tap"], "bounds": [0, 30, 100, 50]},
+        ])
+        assert closest[0] == 'e2 Button "Start" [tap]'
+
+    def test_closest_rows_ignore_xpath_syntax_words(self):
+        prompt = self._prompt_with_rows("//android.widget.Button[@text='Continue']", [
+            {"label": "Next", "cls": "Button", "act": ["tap"], "rid": "app:id/next_button", "bounds": [0, 0, 100, 20]},
+        ])
+        assert ash.CLOSEST_ROWS_HEADER not in prompt
+
+    def test_closest_rows_match_split_words_to_a_compound_word(self):
+        closest = self._closest("//*[@content-desc='Stop watch']", [
+            {"label": "Timers", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_timer", "bounds": [0, 0, 100, 20]},
+            {"label": "Stopwatch", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_stopwatch", "bounds": [0, 30, 100, 50]},
+        ])
+        assert closest == ['e2 FrameLayout "Stopwatch" [tap] #app:id/tab_menu_stopwatch']
+
+    def test_element_name_is_in_the_prompt_and_ranks_the_rows(self):
+        prompt = self._prompt_with_rows("//*[@content-desc='Chronometer']", [
+            {"label": "World Clock", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_clock", "bounds": [0, 0, 100, 20]},
+            {"label": "Stopwatch", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_stopwatch", "bounds": [0, 30, 100, 50]},
+        ], element_name="stopwatch_tab")
+        assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in prompt
+        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith('e2 FrameLayout "Stopwatch"')
+
+    def test_no_element_name_line_without_a_name(self):
+        assert "TARGET ELEMENT NAME" not in self._prompt_with_rows("Login", [])
 
     def test_closest_rows_put_the_tappable_exact_match_first(self):
         prompt = self._prompt_with_rows("enable_dictation", [
