@@ -25,6 +25,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry, run_plan
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams
 from optics_framework.common.models import (
+    CaseKind,
     TestCaseNode,
     ModuleNode,
     KeywordNode,
@@ -139,7 +140,7 @@ def _try_load_config_from_yaml(file_path: str, current_config: Config | None, fo
             yaml_data = yaml.safe_load(f) or {}
 
         if _is_config_file(yaml_data):
-            yaml_data = _normalize_element_sources_key(resolve_config_file(yaml_data, folder_path))
+            yaml_data = resolve_config_file(yaml_data, folder_path)
             return Config(**yaml_data)
 
         return current_config
@@ -155,13 +156,6 @@ def _is_config_file(yaml_data: dict) -> bool:
     return (isinstance(yaml_data, dict) and
             "driver_sources" in yaml_data and
             ("element_sources" in yaml_data or "elements_sources" in yaml_data))
-
-
-def _normalize_element_sources_key(yaml_data: dict) -> dict:
-    """Normalize element_sources key to elements_sources."""
-    if "element_sources" in yaml_data and "elements_sources" not in yaml_data:
-        yaml_data["elements_sources"] = yaml_data.pop("element_sources")
-    return yaml_data
 
 
 def _process_csv_file(file_path: str, file_collections: dict):
@@ -316,6 +310,23 @@ def filter_test_cases(
     )
 
 
+_WRAPPER_NAMES = (
+    (CaseKind.SUITE_SETUP, ("suite", "setup"), "suite setup"),
+    (CaseKind.SUITE_TEARDOWN, ("suite", "teardown"), "suite teardown"),
+    (CaseKind.SETUP, ("setup",), "test setup"),
+    (CaseKind.TEARDOWN, ("teardown",), "test teardown"),
+)
+
+
+def case_kind(name: str) -> CaseKind:
+    """A test case wraps the others only when its name ends with "Suite Setup", "Setup" and so on, in any case."""
+    words = tuple(name.casefold().split())
+    for kind, suffix, _ in _WRAPPER_NAMES:
+        if words[-len(suffix):] == suffix:
+            return kind
+    return CaseKind.TEST
+
+
 def categorize_test_cases(
     test_cases_data: Dict[str, Any],
 ) -> Tuple[
@@ -325,76 +336,69 @@ def categorize_test_cases(
     Optional[Tuple[str, Any]],
     Dict[str, Any],
 ]:
-    """
-    Categorize test cases into suite setup, suite teardown, setup, teardown, and regular test cases.
+    """Split test cases into suite setup, suite teardown, test setup, test teardown and regular test cases.
 
-    :param test_cases_data: Dictionary of test case names and their steps.
-    :return: Tuple containing suite setup, suite teardown, setup, teardown, and regular test cases.
+    :raises OpticsError: E0503 when two test cases are the same kind of setup or teardown.
     """
-    suite_setup = None
-    suite_teardown = None
-    setup = None
-    teardown = None
+    wrappers: Dict[CaseKind, Tuple[str, Any]] = {}
     regular_test_cases = {}
-
     for name, steps in test_cases_data.items():
-        lname = name.lower()
-        if "suite" in lname and "setup" in lname:
-            suite_setup = (name, steps)
-        elif "suite" in lname and "teardown" in lname:
-            suite_teardown = (name, steps)
-        elif "setup" in lname and "suite" not in lname and not setup:
-            setup = (name, steps)
-        elif "teardown" in lname and "suite" not in lname and not teardown:
-            teardown = (name, steps)
-        else:
+        kind = case_kind(name)
+        if kind is CaseKind.TEST:
             regular_test_cases[name] = steps
+        elif kind in wrappers:
+            raise _second_wrapper(kind, wrappers[kind][0], name)
+        else:
+            wrappers[kind] = (name, steps)
+    return (
+        wrappers.get(CaseKind.SUITE_SETUP),
+        wrappers.get(CaseKind.SUITE_TEARDOWN),
+        wrappers.get(CaseKind.SETUP),
+        wrappers.get(CaseKind.TEARDOWN),
+        regular_test_cases,
+    )
 
-    return suite_setup, suite_teardown, setup, teardown, regular_test_cases
+
+def _second_wrapper(kind: CaseKind, first: str, second: str) -> OpticsError:
+    suffix, label = next((" ".join(words).title(), label) for k, words, label in _WRAPPER_NAMES if k is kind)
+    return OpticsError(Code.E0503, message=(
+        f"The test cases have more than one {label}: '{first}' and '{second}'.\n"
+        f"A test case whose name ends with '{suffix}' is the {label}. Rename the others."
+    ))
 
 
-def get_execution_queue(test_cases_data: Dict) -> List[Tuple[str, Any]]:
+def get_execution_queue(test_cases_data: Dict) -> List[Tuple[str, Any, CaseKind]]:
+    """Order the test cases to run: suite setup, each test wrapped in its setup and teardown, suite teardown.
+
+    :return: ``(name, steps, kind)`` triples; a test setup or teardown appears once per test, named after it.
     """
-    Build and return the execution queue including suite-level and per-test setup/teardown.
-
-    :param test_cases_data: Dictionary of all test case names and their steps.
-    :return: Ordered ``(name, steps)`` pairs; per-test setup and teardown appear once per test, named after it.
-    """
-    queue: List[Tuple[str, Any]] = []
-
-    # Categorize test cases
     suite_setup, suite_teardown, setup, teardown, regular_test_cases = (
         categorize_test_cases(test_cases_data)
     )
-
-    # Add suite setup if present
+    queue: List[Tuple[str, Any, CaseKind]] = []
     if suite_setup:
-        queue.append(suite_setup)
-
+        queue.append((*suite_setup, CaseKind.SUITE_SETUP))
     for name, steps in regular_test_cases.items():
         if setup:
-            queue.append((f"{setup[0]} ({name})", setup[1]))
-        queue.append((name, steps))
+            queue.append((f"{setup[0]} ({name})", setup[1], CaseKind.SETUP))
+        queue.append((name, steps, CaseKind.TEST))
         if teardown:
-            queue.append((f"{teardown[0]} ({name})", teardown[1]))
-
+            queue.append((f"{teardown[0]} ({name})", teardown[1], CaseKind.TEARDOWN))
     if suite_teardown:
-        queue.append(suite_teardown)
-
+        queue.append((*suite_teardown, CaseKind.SUITE_TEARDOWN))
     return queue
 
 
-def create_test_case_nodes(queue: List[Tuple[str, Any]]) -> Optional[TestCaseNode]:
+def create_test_case_nodes(queue: List[Tuple[str, Any, CaseKind]]) -> Optional[TestCaseNode]:
     """
     Create a linked list of TestCaseNode objects from the execution queue.
 
-    :param queue: Ordered ``(name, steps)`` pairs.
+    :param queue: Ordered ``(name, steps, kind)`` triples.
     :return: Head of the TestCaseNode linked list, or None if empty.
     """
     test_suite = TestSuite()
-    for tc_name, _ in queue:
-        tc_node = TestCaseNode(name=tc_name)
-        test_suite.add_test_case(tc_node)
+    for tc_name, _, kind in queue:
+        test_suite.add_test_case(TestCaseNode(name=tc_name, kind=kind))
     return test_suite.test_cases_head
 
 
@@ -455,13 +459,9 @@ def build_linked_list(
         if head is None:
             raise OpticsError(Code.E0702, message="No test cases found to build execution linked list.")
 
-        # Populate modules and keywords for each test case
-        suite_teardown = categorize_test_cases(test_cases_data)[1]
         current = head
-        for _, modules in queue:
+        for _, modules, _ in queue:
             populate_module_nodes(current, modules, modules_data)
-            if current.next is None and suite_teardown:
-                current.suite_teardown = True
             current = current.next
         return head
     except Exception as e:
@@ -811,6 +811,11 @@ class BaseRunner:
         if not self.test_cases_data:
             self._exit_no_test_cases()
         try:
+            categorize_test_cases(self.test_cases_data)
+        except OpticsError as e:
+            internal_logger.error(e.message)
+            abort_with_panel(e.message.splitlines(), e.code.value)
+        try:
             self.filtered_test_cases: Dict[str, Any] = filter_test_cases(
                 self.test_cases_data, self.config.include, self.config.exclude
             )
@@ -914,11 +919,13 @@ class BaseRunner:
         finally:
             self.cleanup()
 
-    def report_start_failure(self, reason: str) -> None:
+    def report_start_failure(self, problem: StartProblem) -> None:
         """Report every queued test case as an error: the run could not start."""
         handler = get_junit_handler_registry().get_handler(self.session_id)
         if handler is not None:
-            handler.plan_run(self.session_id, run_plan(self.execution_queue), start_error=reason)
+            handler.plan_run(
+                self.session_id, run_plan(self.execution_queue), start_error=problem.reason, start_code=problem.code,
+            )
 
     def cleanup(self):
         """Clean up session resources."""
@@ -978,7 +985,7 @@ def run_project(
     runner_instance = ExecuteRunner(args)
     problem = _preflight(getattr(runner_instance, "config", None), folder_path)
     if problem is not None:
-        runner_instance.report_start_failure(problem.reason)
+        runner_instance.report_start_failure(problem)
         abort_with_panel(problem.lines, problem.code)
     results = _run_until_stopped(runner_instance.execute())
     return not _has_failed_results(results)

@@ -39,6 +39,7 @@ class Event(BaseModel):
     status: EventStatus = Field(..., description="Status of the entity")
     message: str = Field(
         default="", description="Additional details about the event")
+    code: Optional[str] = Field(default=None, description="Error code of a failure or error, e.g. E0201")
     parent_id: Optional[str] = Field(
         default=None, description="ID of the parent entity (e.g., module for keyword, test_case for module)")
     extra: Dict[str, str] = Field(

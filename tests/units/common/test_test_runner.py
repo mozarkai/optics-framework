@@ -483,7 +483,8 @@ class TestModuleStepResolution:
         fails = [e for e in runner.event_manager.events if e.status == EventStatus.FAIL]
         assert any(
             e.entity_type == "module"
-            and e.message == f"Unknown keyword or module: '{step}'"
+            and e.message == f"E0402: Unknown keyword or module: '{step}'"
+            and e.code == "E0402"
             for e in fails
         )
 
@@ -551,7 +552,7 @@ class TestDryRunUnresolvedParam:
 
         fails = [e for e in runner.event_manager.events if e.status == EventStatus.FAIL]
         assert any(
-            e.entity_type == "keyword" and e.message == "Element not found: NoSuchVar"
+            e.entity_type == "keyword" and e.message == "E0201: Element not found: NoSuchVar" and e.code == "E0201"
             for e in fails
         )
 
@@ -769,7 +770,7 @@ class TestFailureReasonRecording:
         tc_result, module_result = self._wire_module(runner, step)
         await runner._process_module(_mod_node(name=step), tc_result, {})
         assert module_result.status == "FAIL"
-        assert module_result.reason == f"Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
 
     async def test_unknown_module_records_reason_in_dry_run(self):
         runner = _make_runner()
@@ -777,7 +778,7 @@ class TestFailureReasonRecording:
         tc_result, module_result = self._wire_module(runner, step)
         await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
         assert module_result.status == "FAIL"
-        assert module_result.reason == f"Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
 
     async def test_dry_run_keyword_failure_records_reason_on_result(self):
         modules = ModuleData()
@@ -804,7 +805,7 @@ class TestUnknownModuleSuggestion:
         )
         await runner._process_module(_mod_node(name="Launch Ap"), tc_result, {})
         assert module_result.reason == (
-            "Unknown keyword or module: 'Launch Ap'."
+            "E0402: Unknown keyword or module: 'Launch Ap'."
             " Did you mean 'Launch App'? (run `optics list` to see all keywords)"
         )
 
@@ -813,7 +814,7 @@ class TestUnknownModuleSuggestion:
         step = "Bogus Keyword Of Doom hello"
         tc_result, module_result = TestFailureReasonRecording._wire_module(runner, step)
         await runner._process_module(_mod_node(name=step), tc_result, {})
-        assert module_result.reason == f"Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
 
 
 class TestFailureDetailsSection:

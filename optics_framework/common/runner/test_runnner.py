@@ -4,11 +4,13 @@ import os
 import time
 import uuid
 import asyncio
+import contextvars
 import difflib
 import tempfile
 import shutil
 import sys
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from itertools import product
 from typing import Callable, Dict, List, Optional, Union, Any
 import pytest
@@ -31,6 +33,7 @@ from optics_framework.common.runner.printers import (
     NullResultPrinter,
 )
 from optics_framework.common.models import (
+    CaseKind,
     TestCaseNode,
     ModuleNode,
     ModuleData,
@@ -101,14 +104,70 @@ async def queue_event(event: Event, event_manager) -> None:
     await event_manager.publish_event(event)
 
 
+# A stopped run leaves its test case open, so the report marks it E0706.
+_STOPS = (KeyboardInterrupt, SystemExit)
+
+
 def queue_event_sync(event: Event, event_manager) -> None:
     """Queue an event synchronously for pytest."""
     internal_logger.debug(f"Queueing event (sync): {event.model_dump()}")
     for _, subscriber in event_manager.subscribers.items():
         try:
-            asyncio.run(subscriber.on_event(event))
+            _run_to_completion(subscriber.on_event(event))
         except RuntimeError as e:
             internal_logger.warning(f"Failed to process event synchronously: {e}")
+
+
+def _run_to_completion(coro) -> None:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+        return
+    # pytest.main runs inside the batch's event loop, which cannot be re-entered.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(contextvars.copy_context().run, asyncio.run, coro).result()
+
+
+def _suggest_keyword(name: str, keyword_map: Dict) -> str:
+    """Return a 'Did you mean ...?' hint for an unknown keyword, else empty."""
+    func_name = "_".join(name.split()).lower()
+    matches = difflib.get_close_matches(func_name, list(keyword_map), n=1, cutoff=0.6)
+    if not matches:
+        return ""
+    pretty = matches[0].replace("_", " ").title()
+    return f" Did you mean '{pretty}'? (run `optics list` to see all keywords)"
+
+
+def _keyword_not_found(name: str, keyword_map: Dict) -> OpticsError:
+    return OpticsError(Code.E0402, message=f"Keyword not found: {name}.{_suggest_keyword(name, keyword_map)}")
+
+
+def _plan_report(session_id: str, test_cases: Optional[TestCaseNode]) -> None:
+    handler = get_junit_handler_registry().get_handler(session_id)
+    if handler is not None:
+        handler.plan_run(session_id, run_plan(test_cases))
+
+
+class SetupGuard:
+    """After a failed suite setup nothing but the suite teardown runs; after a failed test setup, not its test."""
+
+    def __init__(self) -> None:
+        self._blocked: Dict[CaseKind, str] = {}
+
+    def reason(self, kind: CaseKind) -> Optional[str]:
+        return self._blocked.get(kind)
+
+    def record(self, kind: CaseKind, passed: bool, failure: Optional[str]) -> None:
+        if kind is CaseKind.SETUP:
+            self._blocked.pop(CaseKind.TEST, None)
+        if passed:
+            return
+        if kind is CaseKind.SUITE_SETUP:
+            reason = f"Suite setup failed: {failure}"
+            self._blocked.update(dict.fromkeys((CaseKind.SETUP, CaseKind.TEST, CaseKind.TEARDOWN), reason))
+        elif kind is CaseKind.SETUP:
+            self._blocked[CaseKind.TEST] = f"Setup failed: {failure}"
 
 
 class TestRunner(Runner):
@@ -132,6 +191,7 @@ class TestRunner(Runner):
         self.event_manager = event_manager
         self._last_failure_reason: Optional[str] = None
         self._last_failure_status = EventStatus.FAIL
+        self._last_failure_code: Optional[str] = None
         if hasattr(self.modules, "modules"):
             execution_logger.debug(
                 "Initialized test_state: %s with %d modules",
@@ -146,26 +206,17 @@ class TestRunner(Runner):
         except (ValueError, OpticsError):
             return param
 
-    def _note_failure(self, reason: str, status: EventStatus = EventStatus.FAIL) -> None:
+    def _note_failure(self, reason: str, code: str, status: EventStatus = EventStatus.FAIL) -> None:
         """Record the latest failure reason and log it so failures aren't silent."""
         self._last_failure_reason = reason
+        self._last_failure_code = code
         self._last_failure_status = status
         execution_logger.error(reason)
 
-    def _suggest_keyword(self, name: str) -> str:
-        """Return a 'Did you mean ...?' hint for an unknown keyword, else empty."""
-        func_name = "_".join(name.split()).lower()
-        matches = difflib.get_close_matches(
-            func_name, list(self.keyword_map), n=1, cutoff=0.6)
-        if not matches:
-            return ""
-        pretty = matches[0].replace("_", " ").title()
-        return f" Did you mean '{pretty}'? (run `optics list` to see all keywords)"
-
     def _unknown_step_reason(self, name: str) -> str:
         """Reason for a step that resolves to neither a module nor a keyword."""
-        reason = f"Unknown keyword or module: '{name}'"
-        hint = self._suggest_keyword(name)
+        reason = f"{Code.E0402}: Unknown keyword or module: '{name}'"
+        hint = _suggest_keyword(name, self.keyword_map)
         return f"{reason}.{hint}" if hint else reason
 
     def _initialize_test_state(self) -> None:
@@ -327,6 +378,7 @@ class TestRunner(Runner):
         elapsed: Optional[float] = None,
         logs: Optional[List[logging.LogRecord]] = None,
         stored: dict[str, str] | None = None,
+        code: Optional[str] = None,
     ) -> None:
         log_messages = None
         if logs is not None:
@@ -342,8 +394,13 @@ class TestRunner(Runner):
             name=node.name,
             status=status,
             message=reason or "",
+            code=code,
             parent_id=parent_id,
-            extra={"session_id": self.session_id, **({"stored": json.dumps(stored)} if stored else {})},
+            extra={
+                "session_id": self.session_id,
+                **({"kind": node.kind.value} if isinstance(node, TestCaseNode) else {}),
+                **({"stored": json.dumps(stored)} if stored else {}),
+            },
             args=args,
             start_time=start_time,
             end_time=end_time,
@@ -437,14 +494,15 @@ class TestRunner(Runner):
 
     async def _handle_keyword_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result):
         keyword_node.state = State.COMPLETED_FAILED
-        reason = f"Keyword not found: {keyword_node.name}.{self._suggest_keyword(keyword_node.name)}"
-        self._note_failure(reason)
+        reason = str(_keyword_not_found(keyword_node.name, self.keyword_map))
+        self._note_failure(reason, Code.E0402)
         keyword_result.reason = reason
         await self._send_event(
             "keyword",
             keyword_node,
             EventStatus.FAIL,
             reason=reason,
+            code=Code.E0402,
             parent_id=module_node.id,
             start_time=start_time,
             end_time=time.time(),
@@ -471,14 +529,15 @@ class TestRunner(Runner):
 
     async def _handle_element_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result, var_name, capture_handler):
         keyword_node.state = State.COMPLETED_FAILED
-        reason = f"Element not found: {var_name}"
-        self._note_failure(reason)
+        reason = f"{Code.E0201}: Element not found: {var_name}"
+        self._note_failure(reason, Code.E0201)
         keyword_result.reason = reason
         await self._send_event(
             "keyword",
             keyword_node,
             EventStatus.FAIL,
             reason,
+            code=Code.E0201,
             parent_id=module_node.id,
             start_time=start_time,
             end_time=time.time(),
@@ -537,13 +596,15 @@ class TestRunner(Runner):
         keyword_node.state = State.COMPLETED_FAILED
         reason = f"Keyword '{keyword_node.name}' failed: {exc}"
         status = EventStatus.ERROR if is_dead_session_error(exc) else EventStatus.FAIL
-        self._note_failure(reason, status)
+        code = exc.code if isinstance(exc, OpticsError) else Code.X0401
+        self._note_failure(reason, code, status)
         keyword_result.reason = reason
         await self._send_event(
             "keyword",
             keyword_node,
             status,
             reason,
+            code=code,
             parent_id=module_node.id,
             start_time=start_time,
             end_time=time.time(),
@@ -560,13 +621,15 @@ class TestRunner(Runner):
         reason = f"Keyword '{keyword_node.name}' failed after fallback attempts"
         if last_error is not None:
             reason += f"; last error: {last_error}"
-        self._note_failure(reason)
+        code = last_error.code if isinstance(last_error, OpticsError) else Code.X0201
+        self._note_failure(reason, code)
         keyword_result.reason = reason
         await self._send_event(
             "keyword",
             keyword_node,
             EventStatus.FAIL,
             reason,
+            code=code,
             parent_id=module_node.id,
             start_time=start_time,
             end_time=time.time(),
@@ -734,13 +797,14 @@ class TestRunner(Runner):
         if not self._step_resolves(module_node.name):
             module_node.state = State.COMPLETED_FAILED
             reason = self._unknown_step_reason(module_node.name)
-            self._note_failure(reason)
+            self._note_failure(reason, Code.E0402)
             module_result.reason = reason
             await self._send_event(
                 "module",
                 module_node,
                 EventStatus.FAIL,
                 reason=reason,
+                code=Code.E0402,
                 parent_id=test_case_result.id,
                 start_time=start_time,
                 end_time=time.time(),
@@ -763,6 +827,7 @@ class TestRunner(Runner):
                     module_node,
                     self._last_failure_status,
                     reason=self._last_failure_reason,
+                    code=self._last_failure_code,
                     parent_id=test_case_result.id,
                     start_time=start_time,
                     end_time=time.time(),
@@ -797,6 +862,7 @@ class TestRunner(Runner):
     ) -> TestCaseResult:
         start_time = time.time()
         self._last_failure_reason = None
+        self._last_failure_code = None
         use_secrets(self.elements.secrets)
         testcase_id = str(uuid.uuid4())
         extra = self._extra(test_case)
@@ -815,6 +881,8 @@ class TestRunner(Runner):
                 "test_case",
                 TestCaseNode(name=test_case, id=testcase_id),
                 EventStatus.FAIL,
+                reason=f"Test case not found: {test_case}",
+                code=Code.E0702,
                 start_time=start_time,
                 end_time=time.time(),
                 elapsed=time.time() - start_time,
@@ -850,6 +918,7 @@ class TestRunner(Runner):
                         current,
                         EventStatus.FAIL,
                         reason=self._last_failure_reason,
+                        code=self._last_failure_code,
                         start_time=start_time,
                         end_time=time.time(),
                         elapsed=time.time() - start_time,
@@ -872,6 +941,7 @@ class TestRunner(Runner):
                         current,
                         self._last_failure_status,
                         reason=self._last_failure_reason,
+                        code=self._last_failure_code,
                         start_time=start_time,
                         end_time=time.time(),
                         elapsed=time.time() - start_time,
@@ -899,6 +969,28 @@ class TestRunner(Runner):
         )
         return test_case_result
 
+    def _dry_run_keyword(self, keyword_node: KeywordNode, keyword_result: Any) -> None:
+        """Resolve a keyword's params without running it; raise what a run would fail on before acting."""
+        params, store_as = utils.split_store_as(keyword_node.params)
+        method = self.keyword_map.get("_".join(keyword_node.name.split()).lower())
+        params = utils.substitute_inline(method, params, self.elements)
+        raw = utils.raw_param_indices(method)
+        resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
+        # Nothing runs here, so define the names a run would set.
+        if store_as is not None:
+            utils.require_store_name(store_as)
+            self.elements.store(store_as, f"<{store_as}>")
+        if getattr(method, "_defines_variable", False) and params:
+            defined = utils.whole_var_name(str(params[0])) or str(params[0]).strip()
+            self.elements.remove_element(defined)
+            self.elements.add_element(defined, f"<{defined}>")
+        if isinstance(keyword_result, KeywordResult):
+            keyword_result.resolved_name = mask_secrets(
+                f"{keyword_node.name} ({', '.join(resolved_params)})" if resolved_params else keyword_node.name
+            )
+        if method is None:
+            raise _keyword_not_found(keyword_node.name, self.keyword_map)
+
     async def _dry_run_module(
         self,
         module_node: ModuleNode,
@@ -920,13 +1012,14 @@ class TestRunner(Runner):
         if not self._step_resolves(module_node.name):
             module_node.state = State.COMPLETED_FAILED
             reason = self._unknown_step_reason(module_node.name)
-            self._note_failure(reason)
+            self._note_failure(reason, Code.E0402)
             module_result.reason = reason
             await self._send_event(
                 "module",
                 module_node,
                 EventStatus.FAIL,
                 reason=reason,
+                code=Code.E0402,
                 parent_id=testcase_id,
                 start_time=start_time,
                 end_time=time.time(),
@@ -951,33 +1044,11 @@ class TestRunner(Runner):
             self._update_status(keyword_result, "RUNNING", 0.0, test_case_result.name)
 
             try:
-                params, store_as = utils.split_store_as(keyword_current.params)
-                method = self.keyword_map.get("_".join(keyword_current.name.split()).lower())
-                params = utils.substitute_inline(method, params, self.elements)
-                raw = utils.raw_param_indices(method)
-                resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
-                # Nothing runs here, so define the names a run would set.
-                if store_as is not None:
-                    utils.require_store_name(store_as)
-                    self.elements.store(store_as, f"<{store_as}>")
-                if getattr(method, "_defines_variable", False) and params:
-                    defined = utils.whole_var_name(str(params[0])) or str(params[0]).strip()
-                    self.elements.remove_element(defined)
-                    self.elements.add_element(defined, f"<{defined}>")
-                if isinstance(keyword_result, KeywordResult):
-                    keyword_result.resolved_name = mask_secrets(
-                        f"{keyword_current.name} ({', '.join(resolved_params)})"
-                        if resolved_params
-                        else keyword_current.name
-                    )
-                func_name = "_".join(keyword_current.name.split()).lower()
-                if func_name not in self.keyword_map:
-                    raise ValueError(
-                        f"Keyword not found: {keyword_current.name}."
-                        f"{self._suggest_keyword(keyword_current.name)}")
+                self._dry_run_keyword(keyword_current, keyword_result)
             except (ValueError, OpticsError) as e:
-                reason = getattr(e, "message", None) or str(e)
-                self._note_failure(reason)
+                reason = str(e)
+                code = e.code if isinstance(e, OpticsError) else Code.E0403
+                self._note_failure(reason, code)
                 keyword_result.reason = reason
                 keyword_current.state = State.COMPLETED_FAILED
                 await self._send_event(
@@ -985,6 +1056,7 @@ class TestRunner(Runner):
                     keyword_current,
                     EventStatus.FAIL,
                     reason,
+                    code=code,
                     parent_id=module_node.id,
                     start_time=start_time,
                     end_time=time.time(),
@@ -1024,21 +1096,32 @@ class TestRunner(Runner):
         self._start_run()
         current = self.test_cases
         captured = False
+        guard = SetupGuard()
         while current:
             # The suite teardown may close the app, so the final screen is read before it.
-            if current.suite_teardown:
+            if current.kind is CaseKind.SUITE_TEARDOWN:
                 self._capture_end_of_run_artifacts()
                 captured = True
-            await self.execute_test_case(current.name)
+            skip = guard.reason(current.kind)
+            if skip is not None:
+                await self._skip_test_case(current, skip)
+            else:
+                result = await self.execute_test_case(current.name)
+                guard.record(current.kind, result.status == "PASS", self._last_failure_reason)
             current = current.next
         if not captured:
             self._capture_end_of_run_artifacts()
         self.result_printer.stop_live()
 
+    async def _skip_test_case(self, node: TestCaseNode, reason: str) -> None:
+        node.state = State.SKIPPED
+        await self._send_event("test_case", node, EventStatus.NOT_RUN, reason=reason)
+        result = self.result_printer.test_state.get(node.name)
+        if result is not None:
+            self._update_status(result, "SKIPPED", 0.0, node.name)
+
     def _start_run(self) -> None:
-        handler = get_junit_handler_registry().get_handler(self.session_id)
-        if handler is not None:
-            handler.plan_run(self.session_id, run_plan(self.test_cases))
+        _plan_report(self.session_id, self.test_cases)
         self.result_printer.start_run(len(self.result_printer.test_state))
         self.result_printer.start_live()
 
@@ -1073,6 +1156,10 @@ class PytestRunner(Runner):
         self.config_handler: ConfigHandler = self.session.config_handler
         self.config: Config = self.session.config
         self.event_manager = event_manager
+        self._guard = SetupGuard()
+        self._last_failure_reason: Optional[str] = None
+        self._last_failure_code: Optional[str] = None
+        self._stop: Optional[BaseException] = None
         PytestRunner.instance = self
 
     def resolve_param(self, param: str) -> str:
@@ -1101,33 +1188,17 @@ class PytestRunner(Runner):
         self._queue_event_running(keyword, keyword_id, module_id)
         method = self.keyword_map.get(func_name)
         if not method:
-            self._queue_event_fail(keyword, keyword_id, module_id, f"Keyword not found: {keyword}")
-            pytest.fail(f"Keyword not found: {keyword}")
+            self._handle_keyword_fail(keyword, keyword_id, module_id, str(_keyword_not_found(keyword, self.keyword_map)), Code.E0402)
 
         params, store_as = utils.split_store_as(params)
         param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id, utils.raw_param_indices(method))
-        if param_candidates is None:
-            return False
-
         return self._try_execute_with_fallback_pytest(
             method, param_candidates, keyword, keyword_id, module_id, store_as=store_as
         )
 
     def _execute_keyword_dry_run(self, keyword, func_name, keyword_id, module_id):
         if not self.keyword_map.get(func_name):
-            queue_event_sync(
-                Event(
-                    entity_type="keyword",
-                    entity_id=keyword_id,
-                    name=keyword,
-                    status=EventStatus.FAIL,
-                    message=f"Keyword not found: {keyword}",
-                    parent_id=module_id,
-                    extra={"session_id": self.session.session_id},
-                ),
-                self.event_manager
-            )
-            pytest.fail(f"Keyword not found: {keyword}")
+            self._handle_keyword_fail(keyword, keyword_id, module_id, str(_keyword_not_found(keyword, self.keyword_map)), Code.E0402)
         queue_event_sync(
             Event(
                 entity_type="keyword",
@@ -1155,7 +1226,9 @@ class PytestRunner(Runner):
             self.event_manager
         )
 
-    def _queue_event_fail(self, keyword, keyword_id, module_id, message):
+    def _queue_event_fail(self, keyword, keyword_id, module_id, message, code):
+        self._last_failure_reason = message
+        self._last_failure_code = code
         queue_event_sync(
             Event(
                 entity_type="keyword",
@@ -1163,6 +1236,7 @@ class PytestRunner(Runner):
                 name=keyword,
                 status=EventStatus.FAIL,
                 message=message,
+                code=code,
                 parent_id=module_id,
                 extra={"session_id": self.session.session_id},
             ),
@@ -1176,20 +1250,7 @@ class PytestRunner(Runner):
             if var_name is not None:
                 values = self.elements.get_element(var_name)
                 if not values:
-                    queue_event_sync(
-                        Event(
-                            entity_type="keyword",
-                            entity_id=keyword_id,
-                            name=keyword,
-                            status=EventStatus.FAIL,
-                            message=f"Element not found: {var_name}",
-                            parent_id=module_id,
-                            extra={"session_id": self.session.session_id},
-                        ),
-                        self.event_manager
-                    )
-                    pytest.fail(f"Element not found: {var_name}")
-                    return None
+                    self._handle_keyword_fail(keyword, keyword_id, module_id, f"{Code.E0201}: Element not found: {var_name}", Code.E0201)
                 param_candidates.append(values)
             else:
                 param_candidates.append([param])
@@ -1214,17 +1275,18 @@ class PytestRunner(Runner):
                     last_exc = oe
                     continue
                 else:
-                    self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {oe}")
+                    self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {oe}", oe.code)
                     return False
             except Exception as e:
-                self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {e}")
+                self._handle_keyword_fail(keyword, keyword_id, module_id, f"Keyword '{keyword}' failed: {e}", Code.X0401)
                 return False
 
         self._handle_keyword_fail(
             keyword,
             keyword_id,
             module_id,
-            f"Keyword '{keyword}' failed after {attempts} attempts; last error: {last_exc}"
+            f"Keyword '{keyword}' failed after {attempts} attempts; last error: {last_exc}",
+            last_exc.code if last_exc is not None else Code.X0201,
         )
         return False
 
@@ -1241,8 +1303,8 @@ class PytestRunner(Runner):
             self.event_manager
         )
 
-    def _handle_keyword_fail(self, keyword, keyword_id, module_id, msg):
-        self._queue_event_fail(keyword, keyword_id, module_id, msg)
+    def _handle_keyword_fail(self, keyword, keyword_id, module_id, msg, code):
+        self._queue_event_fail(keyword, keyword_id, module_id, msg, code)
         pytest.fail(msg)
 
     def _process_module(
@@ -1266,56 +1328,52 @@ class PytestRunner(Runner):
 
         module_steps = self.modules.modules.get(module_name)
         if module_steps is None:
+            reason = f"{Code.E0402}: Module '{module_name}' not found"
+            self._last_failure_reason = reason
+            self._last_failure_code = Code.E0402
             queue_event_sync(
                 Event(
                     entity_type="module",
                     entity_id=module_id,
                     name=module_name,
                     status=EventStatus.FAIL,
-                    message=f"Module '{module_name}' not found",
+                    message=reason,
+                    code=Code.E0402,
                     parent_id=testcase_id,
                     extra={"session_id": self.session.session_id},
                 ),
                 self.event_manager
             )
-            pytest.fail(f"Module '{module_name}' not found")
+            pytest.fail(reason)
 
-        for step in module_steps:
-            if isinstance(step, tuple) and len(step) == 2:
-                keyword, params = step
-            else:
-                continue
-            if not self._execute_keyword(
-                keyword,
-                params,
-                dry_run=dry_run,
-                module_id=module_id,
-                testcase_id=testcase_id,
-            ):
-                queue_event_sync(
-                    Event(
-                        entity_type="module",
-                        entity_id=module_id,
-                        name=module_name,
-                        status=EventStatus.FAIL,
-                        parent_id=testcase_id,
-                        extra={"session_id": self.session.session_id},
-                    ),
-                    self.event_manager
-                )
-                return False
+        steps = [step for step in module_steps if isinstance(step, tuple) and len(step) == 2]
+        passed = stopped = False
+        try:
+            passed = all(
+                self._execute_keyword(keyword, params, dry_run=dry_run, module_id=module_id, testcase_id=testcase_id)
+                for keyword, params in steps
+            )
+        except _STOPS:
+            stopped = True
+            raise
+        finally:
+            if not stopped:
+                self._queue_module_event(module_id, module_name, testcase_id, passed)
+        return passed
+
+    def _queue_module_event(self, module_id, module_name, testcase_id, passed):
         queue_event_sync(
             Event(
                 entity_type="module",
                 entity_id=module_id,
                 name=module_name,
-                status=EventStatus.PASS,
+                status=EventStatus.PASS if passed else EventStatus.FAIL,
+                code=None if passed else self._last_failure_code,
                 parent_id=testcase_id,
                 extra={"session_id": self.session.session_id},
             ),
             self.event_manager
         )
-        return True
 
     def execute_test_case_sync(
         self, test_case: str, dry_run: bool = False
@@ -1326,70 +1384,65 @@ class PytestRunner(Runner):
         result = TestCaseResult(
             id=testcase_id, name=test_case, elapsed="0.00s", status="NOT_RUN"
         )
+        node = next((case for case in self._iter_test_cases() if case.name == test_case), None)
+        kind = node.kind if node else CaseKind.TEST
+        skip = None if dry_run else self._guard.reason(kind)
+        if skip is not None:
+            self._queue_test_case_event(testcase_id, test_case, kind, EventStatus.NOT_RUN, skip)
+            pytest.skip(skip)
+        self._queue_test_case_event(testcase_id, test_case, kind, EventStatus.RUNNING)
+        self._last_failure_reason = None
+        self._last_failure_code = None
+        passed = stopped = False
+        try:
+            passed = self._run_modules(node, test_case, testcase_id, dry_run)
+        except _STOPS as stop:
+            stopped = True
+            self._stop = stop
+            if isinstance(stop, SystemExit):
+                # pytest records a SystemExit as a failed test and runs the next one.
+                pytest.exit("The run was stopped.", returncode=1)
+            raise
+        finally:
+            if not stopped:
+                self._end_test_case(result, testcase_id, test_case, kind, passed, dry_run, start_time)
+        return result
+
+    def _end_test_case(self, result, testcase_id, test_case, kind, passed, dry_run, start_time):
+        if not dry_run:
+            self._guard.record(kind, passed, self._last_failure_reason)
+        status = EventStatus.PASS if passed else EventStatus.FAIL
+        self._queue_test_case_event(
+            testcase_id, test_case, kind, status, self._last_failure_reason, self._last_failure_code
+        )
+        result.status = status.value
+        result.elapsed = f"{time.time() - start_time:.2f}s"
+
+    def _run_modules(self, node: Optional[TestCaseNode], test_case: str, testcase_id: str, dry_run: bool) -> bool:
+        if node is None:
+            self._last_failure_reason = f"Test case not found: {test_case}"
+            self._last_failure_code = Code.E0702
+            return False
+        module = node.modules_head
+        while module:
+            if not self._process_module(module_name=module.name, dry_run=dry_run, testcase_id=testcase_id):
+                return False
+            module = module.next
+        return True
+
+    def _queue_test_case_event(self, testcase_id, name, kind, status, message=None, code=None):
         queue_event_sync(
             Event(
                 entity_type="test_case",
                 entity_id=testcase_id,
-                name=test_case,
-                status=EventStatus.RUNNING,
-                extra={"session_id": self.session.session_id},
+                name=name,
+                status=status,
+                message=message or "",
+                code=code,
+                extra={"session_id": self.session.session_id, "kind": kind.value},
             ),
             self.event_manager
         )
-        current = self.test_cases
-        while current and current.name != test_case:
-            current = current.next
-        if not current:
-            queue_event_sync(
-                Event(
-                    entity_type="test_case",
-                    entity_id=testcase_id,
-                    name=test_case,
-                    status=EventStatus.FAIL,
-                    message=f"Test case '{test_case}' not found",
-                    extra={"session_id": self.session.session_id},
-                ),
-                self.event_manager
-            )
-            result.status = "FAIL"
-            result.elapsed = f"{time.time() - start_time:.2f}s"
-            return result
-
-        result.status = "RUNNING"
-        module_current = current.modules_head
-        while module_current:
-            if not self._process_module(
-                module_name=module_current.name,
-                dry_run=dry_run,
-                testcase_id=testcase_id,
-            ):
-                queue_event_sync(
-                    Event(
-                        entity_type="test_case",
-                        entity_id=testcase_id,
-                        name=test_case,
-                        status=EventStatus.FAIL,
-                        extra={"session_id": self.session.session_id},
-                    ),
-                    self.event_manager
-                )
-                result.status = "FAIL"
-                break
-            module_current = module_current.next
-        else:
-            queue_event_sync(
-                Event(
-                    entity_type="test_case",
-                    entity_id=testcase_id,
-                    name=test_case,
-                    status=EventStatus.PASS,
-                    extra={"session_id": self.session.session_id},
-                ),
-                self.event_manager
-            )
-            result.status = "PASS"
-        result.elapsed = f"{time.time() - start_time:.2f}s"
-        return result
 
     async def execute_test_case(self, test_case: str) -> TestCaseResult:
         return self.execute_test_case_sync(test_case, dry_run=False)
@@ -1425,6 +1478,9 @@ class PytestRunner(Runner):
         Returns:
             bool: True if all tests passed, False otherwise.
         """
+        self._guard = SetupGuard()
+        self._stop = None
+        _plan_report(self.session.session_id, self.test_cases)
         temp_dir = tempfile.mkdtemp()
         test_file_path = f"{temp_dir}/test_generated_{int(time.time() * 1000)}.py"
         conftest_path = f"{temp_dir}/conftest.py"
@@ -1467,6 +1523,8 @@ def runner():
             ]
         )
         shutil.rmtree(temp_dir)
+        if self._stop is not None:
+            raise self._stop
 
         if result == 0:
             internal_logger.info("Pytest execution completed successfully")

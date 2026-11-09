@@ -81,6 +81,7 @@ class Code(StrEnum):
     E0703 = "E0703"
     E0704 = "E0704"
     W0705 = "W0705"
+    E0706 = "E0706"
 
     # General Issues
     E0801 = "E0801"
@@ -328,6 +329,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Test case skipped",
         category=Category.TEST,
         default_status=200,
+    ),
+    "E0706": ErrorSpec(
+        code=Code.E0706,
+        default_message="Run stopped before the test case finished",
+        category=Category.TEST,
+        default_status=500,
     ),
     # General Issues
     "E0801": ErrorSpec(

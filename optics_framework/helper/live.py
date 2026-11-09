@@ -221,8 +221,6 @@ def _config_from_yaml(path: str, folder_path: str) -> Optional[Config]:
     if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS):
         return None
     data = resolve_config_file(data, folder_path)
-    if "element_sources" in data and "elements_sources" not in data:
-        data["elements_sources"] = data.pop("element_sources")
     try:
         return Config(**data)
     except Exception as exc:  # config-like file but invalid -> surface, don't mask

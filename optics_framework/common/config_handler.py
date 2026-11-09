@@ -28,7 +28,12 @@ def env_names(value: str) -> list[str]:
 
 
 def resolve_config_file(data: dict, base_dir: str) -> dict:
-    """Expand environment references and resolve ``./`` paths against ``base_dir`` in a parsed config file."""
+    """Expand environment references and resolve ``./`` paths against ``base_dir`` in a parsed config file.
+
+    ``element_sources`` is read as ``elements_sources``; when both are set, ``elements_sources`` wins."""
+    if "element_sources" in data:
+        data = dict(data)
+        data.setdefault("elements_sources", data.pop("element_sources"))
     resolved = {
         key: [_resolve_driver(entry, base_dir) for entry in value]
         if key == "driver_sources" and isinstance(value, list)
