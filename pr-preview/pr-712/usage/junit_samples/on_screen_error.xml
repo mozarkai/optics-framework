@@ -1,0 +1,38 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="3918a7e9-9d91-4ca7-88f7-f3d728b87e12" tests="5" failures="1" errors="0" skipped="0" time="0.89" timestamp="2026-11-09T18:23:04.296+05:30">
+    <testcase name="Suite Setup" id="1ad8f44e-d3f8-425d-a72d-1f6657f2d90f" classname="checkout_suite" kind="suite_setup" time="0.74" timestamp="2026-11-09T18:23:04.296+05:30" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261109 18:23:04.296" endtime="20261109 18:23:05.040" elapsed="0.74">
+        <kw name="Launch App" status="PASS" starttime="20261109 18:23:04.296" endtime="20261109 18:23:05.039" elapsed="0.74"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Notice Shown)" id="7b71862a-84be-4785-b584-eb8253d27027" classname="checkout_suite" kind="setup" time="0.08" timestamp="2026-11-09T18:23:05.041+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:23:05.041" endtime="20261109 18:23:05.122" elapsed="0.08">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:23:05.041" endtime="20261109 18:23:05.122" elapsed="0.08">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC1 Notice Shown" id="6419e2fc-bff3-4fde-a9cd-bb21412168b3" classname="checkout_suite" kind="test" time="0.04" timestamp="2026-11-09T18:23:05.122+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:23:05.122" endtime="20261109 18:23:05.160" elapsed="0.04">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:23:05.122" endtime="20261109 18:23:05.160" elapsed="0.04">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="Suite Teardown" id="e7529eef-0ef5-4897-83c9-e17ed61bc4c0" classname="checkout_suite" kind="suite_teardown" time="0.03" timestamp="2026-11-09T18:23:05.727+05:30" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS" starttime="20261109 18:23:05.727" endtime="20261109 18:23:05.757" elapsed="0.03">
+        <kw name="Close And Terminate App" status="PASS" starttime="20261109 18:23:05.728" endtime="20261109 18:23:05.757" elapsed="0.03">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="on-screen-error-detection" classname="checkout_suite" time="0" status="FAIL">
+      <failure message="ERR_DEMO | high | documentation examples | Demo text on the final page" type="OnScreenError">ERR_DEMO | high | documentation examples | Demo text on the final page</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

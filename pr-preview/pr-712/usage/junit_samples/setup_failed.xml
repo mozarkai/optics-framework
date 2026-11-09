@@ -1,0 +1,53 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="f7f3b305-9230-4bc8-99c3-101f9d4eda09" tests="6" failures="2" errors="0" skipped="2" time="7.40" timestamp="2026-11-09T18:22:54.592+05:30">
+    <testcase name="Suite Setup" id="a043b9e2-72ef-47f9-97a4-0226c8da1206" classname="checkout_suite" kind="suite_setup" time="1.37" timestamp="2026-11-09T18:22:54.592+05:30" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261109 18:22:54.592" endtime="20261109 18:22:55.961" elapsed="1.37">
+        <kw name="Launch App" status="PASS" starttime="20261109 18:22:54.592" endtime="20261109 18:22:55.960" elapsed="1.37"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Notice Shown)" id="10f860b3-6f6e-403d-94ea-c9ed9bac5fae" classname="checkout_suite" kind="setup" time="2.72" timestamp="2026-11-09T18:22:55.962+05:30" status="FAIL">
+      <kw name="Check Missing Text" type="setup" status="FAIL" starttime="20261109 18:22:55.962" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:22:58.624" elapsed="2.66">
+        <kw name="Assert Presence" status="FAIL" starttime="20261109 18:22:55.962" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:22:57.982" elapsed="2.02">
+          <log>Asserting (assert_elements) elements: ['text=This text is not on the page'] with rule: any and timeout: 2s</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</log>
+        </kw>
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." type="Failure" code="E0201">Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</failure>
+    </testcase>
+    <testcase name="TC1 Notice Shown" classname="checkout_suite" kind="test" time="0" status="NOT_RUN">
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <skipped message="Setup failed: Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured."/>
+    </testcase>
+    <testcase name="Setup (TC2 Notice Again)" id="c4f41132-b9c1-4db6-95bf-47d3bead660e" classname="checkout_suite" kind="setup" time="3.27" timestamp="2026-11-09T18:22:58.684+05:30" status="FAIL">
+      <kw name="Check Missing Text" type="setup" status="FAIL" starttime="20261109 18:22:58.684" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:23:01.338" elapsed="2.65">
+        <kw name="Assert Presence" status="FAIL" starttime="20261109 18:22:58.685" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:23:00.696" elapsed="2.01">
+          <log>Asserting (assert_elements) elements: ['text=This text is not on the page'] with rule: any and timeout: 2s</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</log>
+        </kw>
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." type="Failure" code="E0201">Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</failure>
+    </testcase>
+    <testcase name="TC2 Notice Again" classname="checkout_suite" kind="test" time="0" status="NOT_RUN">
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <skipped message="Setup failed: Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured."/>
+    </testcase>
+    <testcase name="Suite Teardown" id="4f218417-1ff0-4c4a-b50a-5e609c051584" classname="checkout_suite" kind="suite_teardown" time="0.04" timestamp="2026-11-09T18:23:02.537+05:30" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS" starttime="20261109 18:23:02.538" endtime="20261109 18:23:02.579" elapsed="0.04">
+        <kw name="Close And Terminate App" status="PASS" starttime="20261109 18:23:02.540" endtime="20261109 18:23:02.579" elapsed="0.04">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>
