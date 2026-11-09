@@ -15,7 +15,7 @@ from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.caller_policy import refuse_server_read
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common import expression, utils
+from optics_framework.common import expression, test_context, utils
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -133,6 +133,7 @@ class FlowControl:
         """Resolve params, log, and call the keyword method; raise on error."""
         elements = self._get_or_create_session_elements()
         params, store_as = utils.split_store_as(params)
+        test_context.name_locators(params, elements.get_element)
         params = utils.substitute_inline(method, params, elements)
         raw_indices = utils.raw_param_indices(method)
         resolved_params = utils.unescape_vars(method, [

@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import yaml
 
-from optics_framework.common import fallback, keyword_outcome, utils
+from optics_framework.common import fallback, keyword_outcome, test_context, utils
 from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.agent_core import (
@@ -671,8 +671,9 @@ class LiveController:
 
     def _agent_call(self, keyword: str, params: dict[str, Value]) -> tuple[Any, str | None]:
         """Run one agent call as ``name=value`` params, each list a fallback; returns its value and strategy."""
+        expanded = iter(self._build_candidates([v for v in params.values() if not isinstance(v, list)]))
         candidates = [
-            [f"{name}={v}" for v in (value if isinstance(value, list) else self._build_candidates([value])[0])]
+            [f"{name}={v}" for v in (value if isinstance(value, list) else next(expanded))]
             for name, value in params.items()
         ]
         result = self._attempt_combos(self.keyword_map[keyword], candidates, keyword, keyword, [], time.time())
@@ -740,6 +741,7 @@ class LiveController:
                 candidates.append(list(values))
             else:
                 candidates.append([param])
+        test_context.name_locators(params, lambda name: self.session.elements.get_element(name) if self.session.elements else None)
         return candidates
 
     def _resolve_candidate(self, method: Callable[..., Any], combo: Tuple[str, ...]) -> Tuple[List[str], Dict[str, str]]:

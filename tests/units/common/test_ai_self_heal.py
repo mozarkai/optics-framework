@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from optics_framework.common import ai_self_heal as ash
+from optics_framework.common import test_context
 from optics_framework.common.ai_self_heal import (
     AISelfHealHandler,
     HealContext,
@@ -669,6 +670,18 @@ class TestActionKeywordWiring:
         # the inner press_element records one, and _log_heal_outcome records another).
         steps = list(ak._recent_steps)
         assert any(s == ("press_element", ["Login"]) for s in steps)
+
+    def test_heal_prompt_carries_the_suite_element_name(self):
+        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
+        llm.instances = [object()]
+        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
+        ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
+        token = test_context.element_names.set({"//*[@content-desc='Chronometer']": "stopwatch_tab"})
+        try:
+            ak._ai_self_heal("//*[@content-desc='Chronometer']", "press_element", (), np.zeros((10, 10, 3), dtype=np.uint8))
+        finally:
+            test_context.element_names.reset(token)
+        assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in llm.last_prompt
 
 
 # --------------------------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from optics_framework.api.flow_control import FlowControl
+from optics_framework.common import test_context
 from optics_framework.common.error import OpticsError
 from optics_framework.common.models import (
     ApiCollection,
@@ -359,3 +360,16 @@ class TestDateEvaluate:
     def test_invalid_inputs_raise(self, flow_control, input_date, expression):
         with pytest.raises(OpticsError):
             flow_control.date_evaluate("${d}", input_date, expression)
+
+
+class TestNestedKeywordElementNames:
+    def test_a_keyword_in_a_module_sees_the_suite_name_of_its_locator(self, tmp_path):
+        seen = []
+        session = _Session(tmp_path)
+        session.elements.add_element("login_button", "//login")
+        session.modules.modules["login"] = [("Press Element", ["${login_button}"])]
+        control = FlowControl(session, {"press_element": lambda element: seen.append(test_context.element_names.get({}).get(element))})
+
+        control.execute_module("login")
+
+        assert seen == ["login_button"]
