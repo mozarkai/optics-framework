@@ -1,32 +1,32 @@
 <?xml version="1.0" ?>
 <testsuites>
-  <testsuite name="checkout_suite" id="a56edc35-2bfc-4063-a28e-c0369eef32bd" tests="4" failures="0" errors="0" skipped="0" time="2.33" timestamp="2026-11-06T00:52:07.269+05:30">
-    <testcase name="Suite Setup" id="fa800731-3712-431c-b047-f9b68917df84" classname="checkout_suite" time="2.09" timestamp="2026-11-06T00:52:07.269+05:30" status="PASS">
-      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261106 00:52:07.269" endtime="20261106 00:52:09.356" elapsed="2.09">
-        <kw name="Launch App" status="PASS" starttime="20261106 00:52:07.269" endtime="20261106 00:52:09.356" elapsed="2.09"/>
+  <testsuite name="checkout_suite" id="d09e5f49-0fd8-4632-83d8-08e516f5d931" tests="4" failures="0" errors="0" skipped="0" time="1.15" timestamp="2026-11-09T18:22:45.541+05:30">
+    <testcase name="Suite Setup" id="dac8114c-f399-446e-9455-e8e3969945af" classname="checkout_suite" kind="suite_setup" time="1.01" timestamp="2026-11-09T18:22:45.541+05:30" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261109 18:22:45.542" endtime="20261109 18:22:46.549" elapsed="1.01">
+        <kw name="Launch App" status="PASS" starttime="20261109 18:22:45.542" endtime="20261109 18:22:46.549" elapsed="1.01"/>
       </kw>
     </testcase>
-    <testcase name="Setup (TC1 Notice Shown)" id="39e83411-9843-4285-8593-ee4ec7312617" classname="checkout_suite" time="0.15" timestamp="2026-11-06T00:52:09.356+05:30" status="PASS">
-      <kw name="Check Notice" type="setup" status="PASS" starttime="20261106 00:52:09.357" endtime="20261106 00:52:09.503" elapsed="0.15">
-        <kw name="Assert Presence" status="PASS" starttime="20261106 00:52:09.357" endtime="20261106 00:52:09.503" elapsed="0.15">
+    <testcase name="Setup (TC1 Notice Shown)" id="e0aceac9-7f42-4f74-b65f-a2d019d781cf" classname="checkout_suite" kind="setup" time="0.07" timestamp="2026-11-09T18:22:46.549+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:22:46.549" endtime="20261109 18:22:46.616" elapsed="0.07">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:22:46.550" endtime="20261109 18:22:46.616" elapsed="0.07">
           <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
           <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
           <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
         </kw>
       </kw>
     </testcase>
-    <testcase name="TC1 Notice Shown" id="b8360bba-e0c0-457e-8453-be2c2683f6bf" classname="checkout_suite" time="0.05" timestamp="2026-11-06T00:52:09.504+05:30" status="PASS">
-      <kw name="Check Notice" type="setup" status="PASS" starttime="20261106 00:52:09.504" endtime="20261106 00:52:09.554" elapsed="0.05">
-        <kw name="Assert Presence" status="PASS" starttime="20261106 00:52:09.504" endtime="20261106 00:52:09.553" elapsed="0.05">
+    <testcase name="TC1 Notice Shown" id="448c9914-08b7-4732-a30b-caa7b6d58a37" classname="checkout_suite" kind="test" time="0.04" timestamp="2026-11-09T18:22:46.617+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:22:46.617" endtime="20261109 18:22:46.656" elapsed="0.04">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:22:46.617" endtime="20261109 18:22:46.656" elapsed="0.04">
           <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
           <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
           <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
         </kw>
       </kw>
     </testcase>
-    <testcase name="Suite Teardown" id="a111e779-293a-40c1-aca0-0f40da753387" classname="checkout_suite" time="0.04" timestamp="2026-11-06T00:52:10.109+05:30" status="PASS">
-      <kw name="Close Browser" type="setup" status="PASS" starttime="20261106 00:52:10.110" endtime="20261106 00:52:10.145" elapsed="0.04">
-        <kw name="Close And Terminate App" status="PASS" starttime="20261106 00:52:10.110" endtime="20261106 00:52:10.145" elapsed="0.04">
+    <testcase name="Suite Teardown" id="614769b3-6883-41d2-98c8-f755babc7905" classname="checkout_suite" kind="suite_teardown" time="0.03" timestamp="2026-11-09T18:22:47.224+05:30" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS" starttime="20261109 18:22:47.225" endtime="20261109 18:22:47.258" elapsed="0.03">
+        <kw name="Close And Terminate App" status="PASS" starttime="20261109 18:22:47.225" endtime="20261109 18:22:47.258" elapsed="0.03">
           <log>No events to send.</log>
         </kw>
       </kw>
