@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "optics-framework"
-version = "1.11.2"
+version = "1.11.3"
 description = "Self-healing test automation for Android, iOS, web and smart TV apps, with CSV/YAML test suites and an MCP server for AI agents."
 authors = ["Lalitanand Dandge <lalit@mozark.ai>"]
 license = "Apache-2.0"
