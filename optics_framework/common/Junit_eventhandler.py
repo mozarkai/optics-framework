@@ -408,7 +408,7 @@ class JUnitEventHandler(EventSubscriber):
         for kw in testcase.iter("kw"):
             if kw.get("status") == EventStatus.RUNNING.value:
                 kw.set("status", EventStatus.ERROR.value)
-                kw.set("code", Code.E0706)
+                kw.set("code", Code.E0706.value)
         unfinished = Event(
             entity_type="test_case", entity_id=testcase.get("id", ""), name=testcase.get("name", ""),
             status=EventStatus.ERROR, message="The run ended before this test case reported a result.", code=Code.E0706,

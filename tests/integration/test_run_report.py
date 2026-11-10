@@ -73,12 +73,12 @@ def test_failed_suite_setup_skips_every_test_but_runs_the_suite_teardown(tmp_pat
     failure = setup.find("failure")
     assert failure is not None
     assert failure.get("code") == "E0402"
-    assert failure.get("message", "").startswith("E0402: Keyword not found: Not A Keyword.")
+    assert failure.get("message", "").startswith("Code.E0402: Keyword not found: Not A Keyword.")
     assert setup.find("kw/kw").get("code") == "E0402"
     for name, kind in [("Test Setup (TC One)", "setup"), ("TC One", "test"), ("Test Teardown (TC One)", "teardown")]:
         case = cases[name]
         assert (case.get("status"), case.get("kind")) == ("NOT_RUN", kind)
-        assert case.find("skipped").get("message", "").startswith("Suite setup failed: E0402: Keyword not found")
+        assert case.find("skipped").get("message", "").startswith("Suite setup failed: Code.E0402: Keyword not found")
         assert [kw.get("status") for kw in case.iter("kw")] == ["NOT_RUN", "NOT_RUN"]
     assert (cases["Suite Teardown"].get("status"), cases["Suite Teardown"].get("kind")) == ("PASS", "suite_teardown")
     assert (suite.get("tests"), suite.get("failures"), suite.get("skipped")) == ("5", "1", "3")
@@ -96,7 +96,7 @@ def test_failed_test_setup_skips_only_its_test_and_still_runs_its_teardown(tmp_p
     for test in ("TC One", "TC Two"):
         assert cases[f"Test Setup ({test})"].get("status") == "FAIL"
         assert cases[test].get("status") == "NOT_RUN"
-        assert cases[test].find("skipped").get("message", "").startswith("Setup failed: E0402:")
+        assert cases[test].find("skipped").get("message", "").startswith("Setup failed: Code.E0402:")
         assert cases[f"Test Teardown ({test})"].get("status") == "PASS"
 
 
