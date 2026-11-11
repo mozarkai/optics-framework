@@ -523,6 +523,22 @@ class Playwright(DriverInterface):
             timeout_s=self._call_budget_s(timeout_s * (int(repeat) + 1)),
         )
 
+    def select_option(self, element: Any, option: str, event_name: Optional[str] = None) -> bool:
+        return self.run(
+            self._select_option_async(element, option, event_name),
+            timeout_s=self._call_budget_s(self.element_timeout_s()),
+        )
+
+    async def _select_option_async(self, element: Any, option: str, event_name: Optional[str]) -> bool:
+        """An HTML select draws its options outside the page, so they cannot be pressed."""
+        locator = self._as_locator(element)
+        if await locator.evaluate("el => el.tagName") != "SELECT":
+            return False
+        await locator.select_option(label=option, timeout=self.element_timeout_s() * 1000)
+        if event_name and self.event_sdk:
+            self.event_sdk.capture_event(event_name)
+        return True
+
     async def _press_element_async(self, element, repeat, timeout_s, event_name):
         locator = self._as_locator(element)
         timeout_ms = timeout_s * 1000

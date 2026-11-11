@@ -1,7 +1,25 @@
+import ast
+import functools
+import inspect
+import textwrap
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Optional, Any
 
 from optics_framework.common.error import Code, OpticsError
+
+
+@functools.cache
+def _only_refuses(method: Callable[..., Any]) -> bool:
+    """Whether the whole body of ``method`` raises NotImplementedError or calls ``_unsupported``."""
+    try:
+        body = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(method)))).body[0].body  # type: ignore[attr-defined]
+    except (OSError, TypeError, SyntaxError):
+        return False
+    if isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    return len(body) == 1 and ast.unparse(body[0]).startswith(("raise NotImplementedError", "self._unsupported("))
+
 
 class DriverInterface(ABC):
     """
@@ -294,6 +312,14 @@ class DriverInterface(ABC):
     # Optional: drivers override these only where the platform has the concept.
     def go_back(self, event_name: Optional[str] = None) -> None:
         self._unsupported("go_back")
+
+    def select_option(self, element: Any, option: str, event_name: Optional[str] = None) -> bool:
+        """Choose ``option`` in a native list control; False when ``element`` is not one, so it is opened like a dropdown."""
+        return False
+
+    def supports(self, capability: str) -> bool:
+        """Whether this driver's ``capability`` method can run in the session, so agents are offered only what works."""
+        return not _only_refuses(getattr(type(self), capability))
 
     def _unsupported(self, capability: str) -> None:
         raise OpticsError(

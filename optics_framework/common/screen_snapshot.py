@@ -23,9 +23,12 @@ _PACKAGE_CHARS = string.ascii_letters + string.digits + "_."
 _QUOTED_RE = re.compile(r'"([^"]*)"|\'([^\']*)\'')
 _POSITIONAL_RE = re.compile(r"\[\s*\d+\s*\]|position\(|last\(|:nth-")
 _VALUE_ATTR_RE = re.compile(r"@(?:text|label|value)\b|text\(\)|normalize-space\(")
+DIFF_ROWS = 40
+REMOVED_ROWS = 10
 _WINDOW_BOUNDS = "window_bounds"
 _XPATH = "xpath="
 _CONTEXT_ROWS = 2
+_STATE_CHARS = len('= "') + 80
 _CAPTION_MAX_WORDS = 3
 _NAME_MAX_WORDS = 4
 
@@ -48,10 +51,16 @@ class Row:
     name: str | None = None
     offscreen: bool = False
     tag: str = ""
+    state: str = ""
 
     def __post_init__(self) -> None:
         if self.name is None:
             object.__setattr__(self, "name", self.label)
+
+    @property
+    def shown_state(self) -> str:
+        """``state`` with a long value cut; the whole value stays in ``state`` so that a change past the cut shows."""
+        return f'{self.state[:_STATE_CHARS]}…"' if len(self.state) > _STATE_CHARS + 1 else self.state
 
 
 @dataclass(frozen=True)
@@ -178,6 +187,16 @@ def _holds_value(act: tuple[str, ...], cls: str, label: str) -> bool:
     return "input" in act or ("toggle" in act and (cls == "ToggleButton" or fold(label) in ("on", "off")))
 
 
+def _state(el: dict, secret: bool) -> str:
+    """What a control holds, as a row shows it: a tick, a value, or only ``(filled)`` for a secret."""
+    if isinstance(el.get("checked"), bool):
+        return "(checked)" if el["checked"] else "(unchecked)"
+    value = str(el.get("value") or "")
+    if el.get("filled") or (secret and value):
+        return "(filled)"
+    return f'= "{clean_label(value, limit=None)}"' if value else ""
+
+
 def normalize(el: dict, before: dict | None = None) -> dict | None:
     """One element from any element-list shape as Row fields, or None to drop it; ``before`` is the row above it."""
     if not isinstance(el, dict):
@@ -205,7 +224,7 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     return {
         "label": label, "cls": cls, "act": act, "rid": rid, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
-        "offscreen": el.get("offscreen") is True, "tag": raw_cls,
+        "offscreen": el.get("offscreen") is True, "tag": raw_cls, "state": _state(el, secret),
     }
 
 
@@ -234,7 +253,7 @@ def _names_by_text(loc: str, label: str) -> bool:
 
 
 def digest(rows: Iterable[Row]) -> str:
-    lines = sorted(f"{r.cls}|{r.label}|{','.join(r.act)}|{r.offscreen}" for r in rows)
+    lines = sorted(f"{r.cls}|{r.label}|{','.join(r.act)}|{r.offscreen}|{r.state}" for r in rows)
     return hashlib.sha1("\n".join(lines).encode("utf-8"), usedforsecurity=False).hexdigest()[:6]
 
 
@@ -285,8 +304,7 @@ def _ref_ranges(refs: Iterable[str]) -> str:
 
 
 def _describe(row: Row) -> str:
-    cls = row.tag or row.cls
-    return f'"{clean_label(row.label)}" {cls}' if row.label else f"{cls}, no text"
+    return f'"{clean_label(row.label)}" {row.cls}' if row.label else f"{row.cls}, no text"
 
 
 class RefTable:
@@ -363,7 +381,8 @@ def diff(prev: Snapshot | None, cur: Snapshot) -> Diff:
     added = tuple(r for r in cur.all_rows if r.ref not in before)
     removed = tuple(r for r in prev.all_rows if r.ref not in after)
     relabelled = tuple(
-        (r, before[r.ref].label) for r in cur.all_rows if r.ref in before and before[r.ref].label != r.label
+        (r, before[r.ref].label) for r in cur.all_rows
+        if r.ref in before and (before[r.ref].label, before[r.ref].state) != (r.label, r.state)
     )
     changed = bool(added or removed or relabelled) or prev.digest != cur.digest
     if prev.all_rows:
@@ -556,9 +575,9 @@ def element_name(row: Row, taken: set[str]) -> str:
     return name
 
 
-def clean_label(label: str, limit: int = 80) -> str:
+def clean_label(label: str, limit: int | None = 80) -> str:
     text = " ".join(label.split()).replace('"', "'")
-    return text[:limit] + "…" if len(text) > limit else text
+    return text[:limit] + "…" if limit is not None and len(text) > limit else text
 
 
 def _label_part(label: str) -> str:
@@ -587,9 +606,10 @@ def effect(d: Diff, secret: str) -> str:
 
 def render_row(row: Row) -> str:
     act = f"[{','.join(row.act)}]" if row.act else ""
-    rid = f"#{row.rid}" if row.rid else ""
+    rid = f"#{row.rid.rsplit('/', 1)[-1]}" if row.rid else ""
     offscreen = "(off-screen)" if row.offscreen else ""
-    return " ".join(p for p in (row.ref, row.tag or row.cls, _label_part(row.label), act, rid, offscreen) if p)
+    parts = (row.ref, row.cls, _label_part(row.label), act, row.shown_state, rid, offscreen)
+    return " ".join(p for p in parts if p)
 
 
 def _row_lines(snap: Snapshot) -> list[str]:
@@ -612,15 +632,27 @@ def prompt_rows(snap: Snapshot) -> list[str]:
     return lines
 
 
+def listed_added(d: Diff) -> tuple[Row, ...]:
+    """The added rows a reply lists: at most ``DIFF_ROWS``, controls before text, in screen order."""
+    order = sorted(range(len(d.added)), key=lambda i: (not d.added[i].act, d.added[i].offscreen))
+    return tuple(d.added[i] for i in sorted(order[:DIFF_ROWS]))
+
+
 def render_diff(d: Diff, cur: Snapshot) -> str:
     if d.new_screen:
         return "\n".join([f"screen {cur.digest} · new screen", *_row_lines(cur)])
     if not d.changed:
         return f"screen {cur.digest} · unchanged"
     lines = [f"screen {cur.digest} · changed (+{len(d.added)} -{len(d.removed)} ~{len(d.relabelled)})"]
-    lines += [f"+ {render_row(r)}" for r in d.added]
-    lines += [f"- {r.ref} {_label_part(r.label)}" for r in d.removed]
-    lines += [f"~ {render_row(r)} (was {_label_part(old)})" for r, old in d.relabelled]
+    added = listed_added(d)
+    # A changed row is what the action did to a control, so it comes first.
+    lines += [f"~ {render_row(r)}" + (f" (was {_label_part(old)})" if old != r.label else "") for r, old in d.relabelled]
+    lines += [f"+ {render_row(r)}" for r in added]
+    if len(d.added) > len(added):
+        lines.append(f'… {len(d.added) - len(added)} more added rows; observe(query="…") to find one')
+    lines += [f"- {r.ref} {_label_part(r.label)}" for r in d.removed[:REMOVED_ROWS]]
+    if len(d.removed) > REMOVED_ROWS:
+        lines.append(f"- … {len(d.removed) - REMOVED_ROWS} more removed rows")
     return "\n".join(lines)
 
 

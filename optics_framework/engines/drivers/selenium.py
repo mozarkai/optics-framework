@@ -3,6 +3,7 @@ from selenium.common.exceptions import InvalidSessionIdException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
 from typing import Any, Dict, Optional, Union
 from optics_framework.common.utils import TEXT_OR_VALUE_JS, SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
@@ -199,6 +200,15 @@ class SeleniumDriver(DriverInterface):
         except Exception as e:
             internal_logger.error(f"Failed to launch other app at {app_name}: {e}")
             raise RuntimeError(f"Selenium failed to launch other app: {e}")
+
+    def select_option(self, element, option: str, event_name: str | None = None) -> bool:
+        if element.tag_name.lower() != "select":
+            return False
+        timestamp = self.event_sdk.get_current_time_for_events()
+        Select(element).select_by_visible_text(option)
+        if event_name:
+            self.event_sdk.capture_event_with_time_input(event_name, timestamp)
+        return True
 
     def press_element(self, element, repeat: int = 1, event_name: str | None = None) -> None:
         """

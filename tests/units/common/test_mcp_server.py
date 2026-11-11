@@ -270,7 +270,7 @@ def test_keywords_resource_returns_catalog():
 
     contents = _run(go())
     catalog = json.loads(contents[0].text)
-    slugs = {entry["keyword_slug"] for entry in catalog}
+    slugs = {entry["keyword"] for entry in catalog}
     assert "press_element" in slugs
     assert "capture_screenshot" not in slugs
 

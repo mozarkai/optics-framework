@@ -217,6 +217,7 @@ def _on_tv(method: Callable[..., Any]) -> Callable[..., Any]:
         tv = self._tv_app()
         return method(self, *args, **kwargs) if tv is None else getattr(tv, method.__name__)(*args, **kwargs)
 
+    wrapper._runs_on_tv = True  # type: ignore[attr-defined]
     return wrapper
 
 
@@ -355,6 +356,13 @@ class Appium(DriverInterface):
         """Whether the app is a web page in the session's own context (a TV), so its DOM is the element tree."""
         profile = get_profile(self._active_platform())
         return bool(profile and profile.web_ui)
+
+    def supports(self, capability: str) -> bool:
+        method = getattr(type(self), capability)
+        platform, allowed = self._active_platform(), getattr(method, "_supported_platforms", None)
+        if allowed and platform and platform not in allowed:
+            return self.is_web_ui() and getattr(method, "_runs_on_tv", False)
+        return super().supports(capability)
 
     def can_native_screenshot(self) -> bool:
         profile = get_profile(self._active_platform())
@@ -1298,6 +1306,13 @@ class Appium(DriverInterface):
     def _is_ios(self) -> bool:
         return self._active_platform() == self.PLATFORM_IOS
 
+    def _press_target(self, element: Any) -> Any:
+        """The switch inside an iOS switch row: a tap on the row lands on its label and changes nothing."""
+        if not self._is_ios() or element.tag_name != "XCUIElementTypeSwitch":
+            return element
+        inner = element.find_elements(AppiumBy.CLASS_NAME, "XCUIElementTypeSwitch")
+        return inner[-1] if inner else element
+
     def _enter_text_ios(self, driver: WebDriver, text: str | SpecialKey) -> None:
         """XCUITest has no 'mobile: type' or keycodes; type into the element that has keyboard focus.
 
@@ -1560,7 +1575,7 @@ class Appium(DriverInterface):
         for _ in range(repeat):
             try:
                 timestamp = self.event_sdk.get_current_time_for_events()
-                element.click()
+                self._press_target(element).click()
             except Exception as e:
                 raise OpticsError(Code.E0401, message=f"Error occurred while clicking on element: {e}", cause=e) from e
         if event_name and timestamp is not None:
