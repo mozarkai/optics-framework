@@ -7,7 +7,7 @@ session, acts on the screen with **tools**, and reads device state through
 **resources**. It drives a live target the way `optics live` does, but under
 agent control.
 
-The default toolset has ten tools. Each screen comes back as short rows, and
+The default toolset has eleven tools. Each screen comes back as short rows, and
 every row has a ref such as `e7`:
 
 ```
@@ -86,7 +86,7 @@ optics mcp --transport http --host 127.0.0.1 --port 8090
 | `--transport` | `stdio` | `stdio` (local clients) or `http` |
 | `--host` | `127.0.0.1` | bind host (http only) |
 | `--port` | `8090` | bind port (http only) |
-| `--toolset` | `core` | `core` (ten tools) or `full` (also one tool per keyword); see §6 |
+| `--toolset` | `core` | `core` (eleven tools) or `full` (also one tool per keyword); see §6 |
 
 An HTTP server has no authentication, so it applies the same limits as `optics serve` (see the [CLI usage](CLI_usage.md) for the list). A session belongs to the client connection that started it. Another client cannot use that session or see its id.
 
@@ -218,9 +218,19 @@ screen 4436bc · changed (+2 -0 ~0)
   strategy that found it, and the verdict.
 - One line follows for each expectation.
 - The screen line is `unchanged`, `changed` with the added (`+`), removed
-  (`-`) and relabelled (`~`) rows, or `new screen` with every row. Pass
-  `screen="full"` for every row, or `screen="none"` for no screen line and
-  only `digest`, `changed` and `new_screen` in `structuredContent.screen`.
+  (`-`) and changed (`~`) rows, or `new screen` with every row. Call
+  `observe` for every row.
+- A row shows what a control holds: `= "Paris"` for the text in a web field or
+  the selected option, `(checked)` or `(unchecked)` for a checkbox, radio
+  button or switch, and `(filled)` for a password field. A password is never
+  shown. On a device, a field's label is the text it holds. A typed value shows
+  as a changed row, so there is no need to read the field back.
+- A device row shows the short class name and id (`Button`, `#search_button`).
+- A change lists the changed (`~`) rows first, then at most 40 added rows,
+  controls before text, and at most 10 removed rows; a line counts the rest.
+  `observe(query=…)` finds a row that is not listed.
+- When an action on a checkbox, switch or field leaves the screen unchanged, a
+  note says that the control did not change, so the action may have missed it.
 - After an action the server reads the screen until it stops changing. A
   screen with no rows counts as a page that is still loading, so a sign-in hop
   or a redirect is read again for up to 6 seconds. A read-only keyword or
@@ -253,8 +263,8 @@ Each acting tool also returns `structuredContent`:
 ```
 
 `error` (`{code, kind, message}`) is set when the call failed, `screen.rows`
-holds every row on a new screen (with no `added`/`removed` lists), after an
-error and with `screen="full"`, and
+holds every row on a new screen (with no `added`/`removed` lists) and after an
+error, and
 `result` holds the keyword's return value (for example from `get_text` through
 `run_keyword`).
 
@@ -423,8 +433,8 @@ action. Un-healed calls return the bare result, unchanged.
 ### Core toolset (default)
 
 Every tool except `start_session` takes an optional `session_id`. The acting
-tools (`tap`, `type_text`, `scroll`, `press_key`, `launch_app`, `run_keyword`)
-also take `expect_present`, `expect_absent` and `screen`.
+tools (`tap`, `type_text`, `scroll`, `press_key`, `launch_app`, `batch`,
+`run_keyword`) also take `expect_present` and `expect_absent`.
 
 | Tool | Params | Does |
 |------|--------|------|
@@ -433,16 +443,22 @@ also take `expect_present`, `expect_absent` and `screen`.
 | `observe` | `query`, `screenshot`, `max_rows` (1–300, default 80) | lists the screen as rows; issues refs |
 | `tap` | `target`, `repeat` (1–20) | taps an element |
 | `type_text` | `target`, `text`, `clear_first` | types into a field |
+| `batch` | `steps` (1–12), each `{tool, target, text}` with `tool` one of `tap`, `type_text`, `press_key` | runs the steps in order in one call, for example to fill a form. It stops at the first step that fails, and the reply lists each step and the screen change from before the first step. The expectations judge the last step. For `press_key`, `target` is the key |
 | `scroll` | `direction` (up/down/left/right), `until`, `timeout_s` (1–60) | scrolls; `direction` is the way the content moves, so `down` shows what is below. Left and right swipe on a device and scroll the page on a web driver; a step records them as `Scroll`. `until` works with up and down only |
 | `press_key` | `key` | `back` goes one screen back on every driver; otherwise a key name (`Enter`, `Escape`, `esc`, `ArrowDown`; case and a `KEYCODE_` prefix do not matter on the web) or an Android KeyEvent number (such as `66`). A ref is refused with a hint to use `tap` |
 | `launch_app` | `app` | opens a URL, a package or a bundle id; empty opens the configured app |
-| `check` | `present`, `absent`, `timeout_s` (0–30) | waits for the texts or refs, then gives a verdict (`passed`); a locator in `present` is checked with `assert_presence`. `timeout_s` is the limit for the whole check |
+| `check` | `present`, `absent`, `timeout_s` (0–60) | waits for the texts or refs, then gives a verdict (`passed`); a locator in `present` is checked with `assert_presence`. `timeout_s` is the limit for the whole check |
 | `run_keyword` | `keyword`, `params` | runs any other keyword; an element param can be the ref of a row that has a locator |
 
 `check` is a verdict: it is an error only when the server cannot read the
 screen. `run_keyword` reaches every keyword in `optics://keywords`. That
 catalog leaves out the session and capture internals and the deprecated
-keywords. Coordinate keywords (`press_by_coordinates`, `press_by_percentage`,
+keywords. With a session open, it also leaves out the keywords that the
+session's driver and platform do not support (for example the swipe keywords
+on a TV); `start_session` names them and `run_keyword` refuses them as
+`unsupported`. When a call has one param name that the keyword does not have,
+and the keyword still needs exactly one param, `run_keyword` takes it as that
+param (`script` for `script_or_json`). Coordinate keywords (`press_by_coordinates`, `press_by_percentage`,
 `swipe`) need `OPTICS_MCP_ALLOW_COORDINATE_TAPS=1`,
 because a pixel guessed from a screenshot often hits the wrong element. Keyword
 timeout params are capped at 60 seconds. `run_keyword` is marked destructive
@@ -471,6 +487,11 @@ line of fact and one `Next:` line:
 | `session_required` | more than one session is open and `session_id` was left out; the ids are listed |
 | `loop` | `<action> ran 3 times in a row without progress; not run again.` The fourth try did not run. |
 
+For an `invalid_params`, `unsupported` or `other` failure, the `Next:` line ends
+with a link to the keyword reference or the error codes page. The server
+instructions end with a link to `https://optics-framework.org/llms.txt`, the
+index of every docs page as Markdown.
+
 ### Full toolset (`--toolset full`)
 
 The full toolset keeps the earlier surface for clients that call keywords by
@@ -486,7 +507,7 @@ names. An element param of a keyword tool also accepts a ref from the latest
 
 | URI | Content |
 |-----|---------|
-| `optics://keywords` | the keywords `run_keyword` accepts (name, slug, description, params) |
+| `optics://keywords` | the keywords `run_keyword` accepts, as `keyword`, `params` and `about`; with one session open, only the keywords its driver and platform support |
 | `optics://project-format` | how optics stores a suite (CSV layout and `${var}`) |
 | `optics://browser-profiles` | the Chrome and Edge profiles on this machine (`channel`, `directory`, `name`, `email`), for `capabilities.profile` |
 | `optics://session/{session_id}/steps` | the session's actions and `modules_csv`/`elements_csv` rows to replay them |
