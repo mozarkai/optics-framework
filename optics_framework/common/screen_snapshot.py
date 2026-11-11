@@ -262,11 +262,12 @@ def _identity(
 ) -> tuple:
     """A row's key: its strong loc plus the rows before it (ids repeat), else its place and neighbours; never a value."""
     loc, label, holds_value = fields["loc"], fields["label"], fields["holds_value"]
+    if own_id and not fields["web"]:
+        # A native id that no other row on the screen has names the control, whatever the text around it does.
+        # A field is told apart by its hint, since its label is the text it holds: two forms can reuse one id.
+        return ("id", "", fields["cls"], fields["rid"], (), fold(fields["hint"] if holds_value else label))
     if _strong_loc(loc) and not (holds_value and _VALUE_ATTR_RE.search(_unquoted(loc))):
         return ("loc", loc, fields["cls"], fields["rid"], () if _names_by_text(loc, label) else context, "")
-    if own_id:
-        # An id that no other row on the screen has names the control, whatever the text around it does.
-        return ("id", fields["cls"], fields["rid"], "" if holds_value else fold(label))
     if not label:
         context = (*context, "", *following)
     return ("pos", window_bounds, fields["cls"], fields["rid"], context, "" if holds_value else fold(label))

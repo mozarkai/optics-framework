@@ -7,7 +7,8 @@ pytestmark = pytest.mark.white_box
 
 def _native(label: str, cls: str, act: list[str], rid: str = "", y: int = 0) -> dict:
     extra = {"class": cls, "resource-id": rid} if rid else {"class": cls}
-    return {"text": label, "bounds": [0, y, 100, y + 20], "act": act, "extra": extra}
+    entry = {"text": label, "bounds": [0, y, 100, y + 20], "act": act, "extra": extra}
+    return entry | {"loc": f'//{cls}[@id="{rid}"]'} if rid and ":" not in rid else entry
 
 
 def _calculator(display: str) -> list[dict]:
