@@ -132,6 +132,26 @@ Information about an available keyword.
 }
 ```
 
+## Desktop apps
+
+Start a session with the desktop, `automationName: Xa11y` and the app. The server launches the app. Run Appium with `appium-xa11y-driver` on the machine that shows the app.
+
+```bash
+SESSION=$(curl -sf -X POST "http://localhost:8000/v1/sessions/start" \
+  -H "Content-Type: application/json" \
+  -d '{"driver_sources": [{"appium": {"enabled": true, "url": "http://127.0.0.1:4723", "capabilities": {"platformName": "Mac", "automationName": "Xa11y", "app": "com.apple.TextEdit"}}}],
+       "elements_sources": ["appium_find_element", "appium_page_source", "appium_screenshot"]}' \
+  | python -c 'import json, sys; print(json.load(sys.stdin)["session_id"])')
+
+curl -sf -X POST "http://localhost:8000/v1/sessions/$SESSION/action" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "keyword", "keyword": "Enter Text", "params": ["//text_area", "Hello from Optics"]}'
+
+curl -sf "http://localhost:8000/v1/sessions/$SESSION/elements"
+
+curl -sf -X DELETE "http://localhost:8000/v1/sessions/$SESSION/stop"
+```
+
 ## Endpoints
 
 ### Health Check

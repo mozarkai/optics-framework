@@ -82,6 +82,8 @@ or `key` are masked too.
   a text field's value.
 - With Playwright, `Press Keycode` takes a key name: `Press Keycode,ControlOrMeta+A`
   selects all and `Press Keycode,Backspace` deletes.
+- On a desktop app, `Press Keycode` takes a chord: `Press Keycode,cmd+n` (macOS),
+  `Press Keycode,ctrl+s` (Windows, Linux), `Press Keycode,Escape`.
 
 ## config.yaml  — driver + element sources
 `elements_sources` for a driver are `{driver}_find_element`,
@@ -112,6 +114,25 @@ A website, run in a local browser:
       - playwright_screenshot: { enabled: true }
 
 and the first module step opens the site: `Open Site,Launch App,https://...`.
+
+A desktop app (macOS, Windows, Linux) through Appium and appium-xa11y-driver,
+which runs on the machine that shows the app. Install it there with
+`appium driver install --source=npm appium-xa11y-driver`. `app` is an `.app` path or bundle
+id on macOS and an executable elsewhere; `appName` attaches to a running app
+instead. Locators are XPath over the role tags (`//button[@name="Save"]`),
+`@id` or visible text.
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://127.0.0.1:4723"
+          capabilities:
+            platformName: Mac          # or Windows / Linux
+            automationName: Xa11y
+            app: com.apple.TextEdit
+    elements_sources:
+      - appium_find_element: { enabled: true }
+      - appium_page_source: { enabled: true }
+      - appium_screenshot: { enabled: true }
 
 A website on a remote browser grid: add its endpoint as `url`, with the
 provider's options in the query, plus any auth `headers`. Leave `protocol` at

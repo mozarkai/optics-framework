@@ -353,6 +353,21 @@ Playwright driver's `config.yaml` capabilities (`browser`, `channel`, `headless`
 `viewport`, `profile`, `element_timeout_ms`, …; see
 [Configuration](../configuration.md#driver-sources)).
 
+### Desktop apps
+
+Use the Appium driver with the desktop, `automationName: Xa11y` and the app. Run Appium with `appium-xa11y-driver` on the machine that shows the app.
+
+```json
+{
+  "driver": "appium",
+  "url": "http://127.0.0.1:4723",
+  "app": "com.apple.TextEdit",
+  "capabilities": { "platformName": "Mac", "automationName": "Xa11y" }
+}
+```
+
+`app` is a bundle id or `.app` path on macOS and an executable on Linux and Windows. `press_key` takes a chord: `cmd+a` on macOS, `ctrl+a` on Linux and Windows. `launch_app` opens another app in the same session.
+
 ### Start signed in
 
 When a web flow signs in, the agent reads `optics://browser-profiles`. It lists
