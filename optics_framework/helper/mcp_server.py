@@ -567,8 +567,8 @@ def _step_notes(step: Step, keyword: str) -> list[str]:
     lines += [f'check {c.expect} "{c.text}": not checked, a typed value is not in the rows' for c in verdict.untested]
     if cur is None:
         lines.append(f"{UNREADABLE} Expectations were not checked.")
-    if step.ok and keyword in NON_VERIFYING_KEYWORDS:
-        lines.append(f"note: {keyword} reports ok even when nothing moved; read the screen line")
+    if step.ok and keyword in NON_VERIFYING_KEYWORDS and step.unchanged:
+        lines.append(f"note: {keyword} reports ok even when nothing moved, and the screen did not change")
     lines += _row_notes(step, row) if row is not None else []
     if verdict.vision:
         lines.append(f'note: "{step.action.target}" was found by {step.strategy}, not by an exact locator')
