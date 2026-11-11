@@ -27,13 +27,86 @@ jobs:
         env:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
           POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
-        run: poetry install --with test --extras appium --extras selenium --extras playwright --extras google-vision --extras llm --extras mcp
+        run: |
+          poetry install --with test --extras appium --extras selenium --extras playwright --extras google-vision --extras llm --extras mcp
+          poetry run pip install --only-binary=:all: robotframework==7.5.1
       - name: Install Chromium
         env:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
         run: poetry run playwright install --with-deps chromium
       - name: Run tests
         run: poetry run pytest -c pytest.toml --no-cov -q
+
+  # The desktop suite needs a real Host: the xa11y driver's Linux container, or a
+  # Windows runner prepared by the driver's own setup script. macOS runners need
+  # Accessibility and Screen Recording grants, so macOS runs on a prepared Mac.
+  desktop:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: Linux
+          - os: windows-latest
+            platform: Windows
+    permissions:
+      contents: read
+    env:
+      OPTICS_E2E_XA11Y_URL: http://127.0.0.1:4723
+      OPTICS_E2E_XA11Y_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: chinmayajha/appium-xa11y-driver
+          ref: af5889dd397920e5b59c9167ec592e6943d05466 # v0.1.2
+          path: xa11y-driver
+      - name: Start the Linux Host
+        if: runner.os == 'Linux'
+        run: |
+          docker build -q -f xa11y-driver/docker/linux/Dockerfile -t appium-xa11y-linux xa11y-driver
+          docker run -d --name appium -p 127.0.0.1:4723:4723 appium-xa11y-linux
+      - name: Prepare the Windows Host
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: xa11y-driver/hosts/windows/setup.ps1 -Driver xa11y-driver -NoService
+      - name: Start the Windows Host
+        if: runner.os == 'Windows'
+        shell: bash
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File "$LOCALAPPDATA/appium-xa11y/host.ps1" > appium.log 2>&1 &
+      - name: Wait for Appium
+        shell: bash
+        run: |
+          for _ in $(seq 90); do curl -sf "$OPTICS_E2E_XA11Y_URL/status" > /dev/null && exit 0; sleep 2; done
+          echo "Appium did not start" >&2
+          exit 1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: |
+          pip install --no-cache-dir --only-binary=:all: poetry==2.4.1
+      - name: Install dependencies
+        env:
+          POETRY_INSTALLER_ONLY_BINARY: ':all:'
+          POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
+        run: |
+          poetry install --with test --extras appium --extras llm --extras mcp
+          poetry run pip install --only-binary=:all: robotframework==7.5.1
+      - name: Run the desktop suite
+        run: poetry run pytest -c pytest.toml --no-cov -q tests/integration/desktop
+      - name: Collect the Appium log
+        if: failure()
+        shell: bash
+        run: if [ "$RUNNER_OS" = Linux ]; then docker logs appium > appium.log 2>&1; fi
+      - if: failure()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: appium-log-${{ matrix.platform }}
+          path: appium.log
+          if-no-files-found: ignore
 
   # Windows-only, and deliberately not run on pull requests: the pytest matrix
   # above already runs real suites in headless Chromium on every OS. This job
