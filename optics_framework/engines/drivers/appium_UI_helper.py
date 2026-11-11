@@ -883,7 +883,8 @@ class UIHelper:
         entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
         # Android says checked="true"; an iOS switch holds 1 or 0 in its value.
         ticked = node.attrib.get("checked") or {"1": "true", "0": "false"}.get(node.attrib.get("value") or "")
-        if "toggle" in actions and ticked in ("true", "false"):
+        # A menu item says only when it is ticked: most are not tickable, and each would read as unchecked.
+        if "toggle" in actions and (ticked == "true" or (ticked == "false" and "menu" not in extra["class"].lower())):
             entry["checked"] = ticked == "true"
         return entry
 
