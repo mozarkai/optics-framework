@@ -257,11 +257,16 @@ def digest(rows: Iterable[Row]) -> str:
     return hashlib.sha1("\n".join(lines).encode("utf-8"), usedforsecurity=False).hexdigest()[:6]
 
 
-def _identity(fields: dict, window_bounds: tuple | None, context: tuple, following: tuple[str, ...]) -> tuple:
+def _identity(
+    fields: dict, window_bounds: tuple | None, context: tuple, following: tuple[str, ...], own_id: bool = False,
+) -> tuple:
     """A row's key: its strong loc plus the rows before it (ids repeat), else its place and neighbours; never a value."""
     loc, label, holds_value = fields["loc"], fields["label"], fields["holds_value"]
     if _strong_loc(loc) and not (holds_value and _VALUE_ATTR_RE.search(_unquoted(loc))):
         return ("loc", loc, fields["cls"], fields["rid"], () if _names_by_text(loc, label) else context, "")
+    if own_id:
+        # An id that no other row on the screen has names the control, whatever the text around it does.
+        return ("id", fields["cls"], fields["rid"], "" if holds_value else fold(label))
     if not label:
         context = (*context, "", *following)
     return ("pos", window_bounds, fields["cls"], fields["rid"], context, "" if holds_value else fold(label))
@@ -331,8 +336,10 @@ class RefTable:
                 read.append((el, fields))
         seen: Counter = Counter()
         every: list[Row] = []
+        ids = Counter(fields["rid"] for _, fields in read if fields["rid"])
         for (el, fields), (context, following) in zip(read, _contexts([_context_label(f) for _, f in read])):
-            key = _identity(fields, _bounds(el.get(_WINDOW_BOUNDS, el.get("bounds"))), context, following)
+            bounds = _bounds(el.get(_WINDOW_BOUNDS, el.get("bounds")))
+            key = _identity(fields, bounds, context, following, ids[fields["rid"]] == 1)
             row = Row(ref=self._ref(key, seen[key]), **fields)
             seen[key] += 1
             self._issued[row.ref] = row

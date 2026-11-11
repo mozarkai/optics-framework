@@ -157,6 +157,7 @@ _RESULT_KEY = expose_api.KEY_RESULT
 _LOOP_LIMIT = 3
 _MAX_TEXT_CHARS = 8000
 _RESULT_CHARS = 400
+_FACT_CHARS = 700
 _JPEG_EDGE = 1024
 _JPEG_QUALITY = 70
 _DESTRUCTIVE_KEYWORDS = frozenset({"force_terminate_app", "close_and_terminate_app", "execute_script"})
@@ -336,10 +337,19 @@ def _reply(lines: list[str], structured: dict[str, Any], is_error: bool = False,
     return ToolResult(content=content, structured_content=structured, is_error=is_error)
 
 
+def _fact(fail: Fail) -> str:
+    """The failure text without a driver stack trace and cut short: it is sent again on every later turn."""
+    text, traced, _ = str(fail).partition("Stacktrace:")
+    if traced:
+        text = text.rstrip().removesuffix("\\n")
+    return text if len(text) <= _FACT_CHARS else f"{text[:_FACT_CHARS]}…"
+
+
 def _fail_lines(fail: Fail) -> list[str]:
     page = _DOCS_PAGES.get(fail.kind)
     docs = f" Docs: {DOCS_URL}/{page}" if page else ""
-    return [f"[{fail.code}] {fail}" if fail.code else str(fail), f"Next: {ADVICE[fail.kind]}{docs}"]
+    fact = _fact(fail)
+    return [f"[{fail.code}] {fact}" if fail.code else fact, f"Next: {ADVICE[fail.kind]}{docs}"]
 
 
 def _error_out(fail: Fail) -> dict[str, Any]:
