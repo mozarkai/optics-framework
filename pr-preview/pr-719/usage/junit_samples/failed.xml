@@ -1,0 +1,59 @@
+<?xml version="1.0" ?>
+<testsuites>
+  <testsuite name="checkout_suite" id="3c053b88-48df-4b28-ab4b-fc44890db471" tests="6" failures="1" errors="0" skipped="0" time="4.22" timestamp="2026-11-09T18:22:48.815+05:30">
+    <testcase name="Suite Setup" id="a4ff9a93-0a9f-45b5-910d-6341946532b9" classname="checkout_suite" kind="suite_setup" time="1.28" timestamp="2026-11-09T18:22:48.815+05:30" status="PASS">
+      <kw name="Open Example Page" type="setup" status="PASS" starttime="20261109 18:22:48.815" endtime="20261109 18:22:50.093" elapsed="1.28">
+        <kw name="Launch App" status="PASS" starttime="20261109 18:22:48.815" endtime="20261109 18:22:50.092" elapsed="1.28"/>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC1 Notice Shown)" id="017f66ac-0693-4320-8fbe-a023b0127231" classname="checkout_suite" kind="setup" time="0.08" timestamp="2026-11-09T18:22:50.094+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:22:50.095" endtime="20261109 18:22:50.173" elapsed="0.08">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:22:50.095" endtime="20261109 18:22:50.173" elapsed="0.08">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC1 Notice Shown" id="382ccfbe-3434-4cf5-aa0e-3cad55b1bc91" classname="checkout_suite" kind="test" time="0.04" timestamp="2026-11-09T18:22:50.174+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:22:50.174" endtime="20261109 18:22:50.212" elapsed="0.04">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:22:50.174" endtime="20261109 18:22:50.211" elapsed="0.04">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="Setup (TC2 Missing Text)" id="d5a26adf-8fc7-48e6-ae5f-a881ec3d0c61" classname="checkout_suite" kind="setup" time="0.10" timestamp="2026-11-09T18:22:50.212+05:30" status="PASS">
+      <kw name="Check Notice" type="setup" status="PASS" starttime="20261109 18:22:50.212" endtime="20261109 18:22:50.307" elapsed="0.09">
+        <kw name="Assert Presence" status="PASS" starttime="20261109 18:22:50.212" endtime="20261109 18:22:50.307" elapsed="0.09">
+          <log>Asserting (assert_elements) elements: ['text=for use in documentation examples'] with rule: any and timeout: 5s</log>
+          <log>Trying TextElementStrategy on '['text=for use in documentation examples']' ... SUCCESS</log>
+          <log>Trying ScreenshotStrategy on 'screenshot' ... SUCCESS</log>
+        </kw>
+      </kw>
+    </testcase>
+    <testcase name="TC2 Missing Text" id="c4837f0f-b1b8-4a9d-acee-484d563ebdc7" classname="checkout_suite" kind="test" time="2.70" timestamp="2026-11-09T18:22:50.308+05:30" status="FAIL">
+      <kw name="Check Missing Text" type="setup" status="FAIL" starttime="20261109 18:22:50.308" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:22:52.957" elapsed="2.65">
+        <kw name="Assert Presence" status="FAIL" starttime="20261109 18:22:50.309" message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." code="E0201" endtime="20261109 18:22:52.320" elapsed="2.01">
+          <log>Asserting (assert_elements) elements: ['text=This text is not on the page'] with rule: any and timeout: 2s</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Trying TextElementStrategy on '['text=This text is not on the page']' ... FAIL (error: Elements not found.)</log>
+          <log>Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</log>
+        </kw>
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <kw name="Check Notice" type="setup" status="NOT_RUN">
+        <kw name="Assert Presence" status="NOT_RUN"/>
+      </kw>
+      <failure message="Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured." type="Failure" code="E0201">Keyword 'Assert Presence' failed after fallback attempts; last error: E0201: ['text=This text is not on the page'] not found based on rule 'any'. OCR was not tried: no text_detection engine is configured.</failure>
+    </testcase>
+    <testcase name="Suite Teardown" id="b12a2c29-1e21-48bb-a0e6-0aff9e3b507d" classname="checkout_suite" kind="suite_teardown" time="0.02" timestamp="2026-11-09T18:22:53.053+05:30" status="PASS">
+      <kw name="Close Browser" type="setup" status="PASS" starttime="20261109 18:22:53.053" endtime="20261109 18:22:53.077" elapsed="0.02">
+        <kw name="Close And Terminate App" status="PASS" starttime="20261109 18:22:53.054" endtime="20261109 18:22:53.076" elapsed="0.02">
+          <log>No events to send.</log>
+        </kw>
+      </kw>
+    </testcase>
+  </testsuite>
+</testsuites>
