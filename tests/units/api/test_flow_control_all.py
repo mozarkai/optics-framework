@@ -15,7 +15,8 @@ import pytest
 
 from optics_framework.api.flow_control import FlowControl
 from optics_framework.common import test_context
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.expression import MAX_CHARS
 from optics_framework.common.models import (
     ApiCollection,
     ApiData,
@@ -243,6 +244,54 @@ class TestExpressionCondition:
         _register(flow_control, run)
         flow_control.session.elements.add_element("x", "no")
         assert flow_control.condition('${x} == "yes"', "modA") is None
+        assert run.calls == []
+
+    @pytest.mark.parametrize("cond", [
+        "${count} == 3", "${count} < 10", "${ratio} > 0.5", "${count} in [1, 2, 3]", '${code} == "007"', "${code} != 7",
+        '${count} == "3"', '${count} in ["2", "3"]',
+    ])
+    def test_a_stored_number_compares_as_a_number(self, flow_control, cond):
+        run = _module_runner({"modA": ["ran:modA"]})
+        _register(flow_control, run)
+        flow_control.evaluate("${count}", "1 + 2")
+        flow_control.session.elements.add_element("ratio", "0.75")
+        flow_control.session.elements.add_element("code", "007")
+        assert flow_control.condition(cond, "modA") == ["ran:modA"]
+
+    @pytest.mark.parametrize("cond, ran", [("${big} == 9007199254740993", True), ("${big} == 9007199254740992", False),
+                                           ("${big} < 9007199254740993", False)])
+    def test_a_stored_whole_number_keeps_every_digit(self, flow_control, cond, ran):
+        run = _module_runner({"modA": ["ran:modA"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("big", "9007199254740993")
+        assert flow_control.condition(cond, "modA") == (["ran:modA"] if ran else None)
+
+    @pytest.mark.parametrize("cond", ["${ten} > ${nine}", "${five} == ${five_point}", "${code} != ${seven}"])
+    def test_two_stored_numbers_compare_as_numbers(self, flow_control, cond):
+        run = _module_runner({"modA": ["ran:modA"]})
+        _register(flow_control, run)
+        for name, value in {"ten": "10", "nine": "9", "five": "5", "five_point": "5.0", "code": "007", "seven": "7"}.items():
+            flow_control.session.elements.add_element(name, value)
+        assert flow_control.condition(cond, "modA") == ["ran:modA"]
+
+    def test_a_variable_inside_quotes_is_refused(self, flow_control):
+        run = _module_runner({"modA": ["ran:modA"], "modElse": ["ran:modElse"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "foo")
+        with pytest.raises(OpticsError) as excinfo:
+            flow_control.condition("'${x}' == 'foo'", "modA", "modElse")
+        assert excinfo.value.code == Code.E0403
+        assert run.calls == []
+
+    @pytest.mark.parametrize("terms, reason", [(MAX_CHARS // 2 + 1, "longer than"), (40_000, "nested too deeply")])
+    def test_a_huge_condition_is_refused_by_the_evaluator(self, flow_control, terms, reason):
+        run = _module_runner({"modA": ["ran:modA"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "1")
+        with pytest.raises(OpticsError) as excinfo:
+            flow_control.condition("${x} == " + "1+" * terms + "1", "modA")
+        assert excinfo.value.code == Code.E0406
+        assert reason in excinfo.value.message
         assert run.calls == []
 
     def test_invert_prefix_flips_expression(self, flow_control):

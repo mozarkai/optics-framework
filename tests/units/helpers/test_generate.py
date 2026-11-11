@@ -16,6 +16,9 @@ explicit drift guard.
 """
 from __future__ import annotations
 
+import ast
+import inspect
+import json
 import logging
 from pathlib import Path
 
@@ -162,6 +165,17 @@ class TestCSVDataReader:
         assert elements == {
             "username_field": "//input[@id='user']",
             "login_button": "loginBtn",
+        }
+
+    def test_elements_with_only_named_locator_columns_give_every_locator_in_order(self, tmp_path):
+        _write(tmp_path, "test_cases.csv", CSV_TEST_CASES)
+        _write(tmp_path, "modules.csv", CSV_MODULES)
+        _write(tmp_path, "elements.csv", "Element_Name,Element_ID_xpath,Element_ID_text\n"
+                                         "username_field,//input[@id='user'],User\nlogin_button,,Login\n")
+        _, _, elements_file, _ = find_files(str(tmp_path))
+        assert CSVDataReader().read_elements(elements_file) == {
+            "username_field": ["//input[@id='user']", "User"],
+            "login_button": "Login",
         }
 
     def test_read_modules_unescapes_backslash_sequences(self, tmp_path):
@@ -335,6 +349,8 @@ SAMPLE_MODULES = {
 }
 SAMPLE_ELEMENTS = {"username_field": "//input[@id='user']"}
 SAMPLE_CONFIG = {"driver_sources": [{"appium": {"enabled": True}}], "elements_sources": []}
+FALLBACK_ELEMENTS = {"editor": ["//text_area", '//web_area[@name="a=b ${x}"]'], "button": "//button"}
+FALLBACK_MODULES = {"M": [("Enter Text", ["${editor}", "hi"])]}
 
 
 class TestPytestGenerator:
@@ -354,8 +370,6 @@ class TestPytestGenerator:
         assert """'username_field': "//input[@id='user']",""" in code
 
     def test_generated_code_is_valid_python(self, code):
-        import ast
-
         ast.parse(code)
 
     def test_config_uses_the_keys_optics_setup_reads(self, code):
@@ -374,9 +388,6 @@ class TestPytestGenerator:
         assert "    login_module(optics)" in code
 
     def test_generated_calls_bind_to_the_sdk_signatures(self):
-        import ast
-        import inspect
-
         from optics_framework.optics import Optics
 
         elements = {"btn": "//button[@id='x']"}
@@ -409,6 +420,13 @@ class TestPytestGenerator:
             ("enter_text", ["text=Email", "ava@birch.shop"], {}),
         ]
 
+    def test_an_element_with_several_locators_keeps_them_all_in_order(self):
+        code = PytestGenerator().generate({"T": ["M"]}, FALLBACK_MODULES, FALLBACK_ELEMENTS, {})
+        [elements] = [node.value for node in ast.parse(code).body
+                      if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "ELEMENTS"]
+        assert ast.literal_eval(elements) == FALLBACK_ELEMENTS
+        assert "optics.enter_text(ELEMENTS['editor'], 'hi')" in code
+
     def test_unknown_keyword_falls_back_to_snake_case(self):
         code = PytestGenerator().generate(
             {"T": ["M"]}, {"M": [("Custom Widget Tap", [])]}, {}, {}
@@ -437,6 +455,19 @@ class TestRobotGenerator:
         assert "Launch App" in code
         assert "Enter Text    ${ELEMENTS}[username_field]    testuser" in code
         assert "Sleep    3000" in code
+
+    def test_an_element_with_several_locators_reads_back_as_the_same_list(self, tmp_path):
+        robot = pytest.importorskip("robot", reason="the Robot generator test needs robotframework")
+        code = RobotGenerator().generate({"T": ["M"]}, FALLBACK_MODULES, FALLBACK_ELEMENTS, {})
+        variables = code[code.index("*** Variables ***"):code.index("*** Test Cases ***")]
+        read = tmp_path / "elements.json"
+        (tmp_path / "probe.robot").write_text(variables + (
+            "*** Test Cases ***\nProbe\n"
+            f"    Evaluate    pathlib.Path('{read.as_posix()}').write_text(json.dumps($ELEMENTS))    modules=pathlib,json\n"
+        ), encoding="utf-8")
+        assert robot.run(str(tmp_path / "probe.robot"), output="NONE", report="NONE", log="NONE",
+                         stdout=None, outputdir=str(tmp_path)) == 0
+        assert json.loads(read.read_text(encoding="utf-8")) == FALLBACK_ELEMENTS
 
     def test_transform_config_structure(self):
         transformed = RobotGenerator()._transform_config_structure(
@@ -571,6 +602,16 @@ class TestGenerateTestFile:
         generate_test_file(str(tmp_path), framework="pytest")
         code = _generated_output(tmp_path, "pytest")
         assert "def test_login_test(optics):" in code
+
+    def test_an_elements_file_with_a_bom_and_a_name_without_a_locator_generates(self, tmp_path):
+        _write(tmp_path, "test_cases.csv", CSV_TEST_CASES)
+        _write(tmp_path, "modules.csv", CSV_MODULES)
+        _write(tmp_path, "elements.csv", "﻿Element_Name,Element_ID\nusername_field,//input[@id='user']\nlogin_button,\n")
+        _write(tmp_path, "config.yaml", CONFIG_YAML)
+        generate_test_file(str(tmp_path), framework="pytest")
+        [elements] = [node.value for node in ast.parse(_generated_output(tmp_path, "pytest")).body
+                      if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "ELEMENTS"]
+        assert ast.literal_eval(elements) == {"username_field": "//input[@id='user']", "login_button": ""}
 
     def test_pipeline_from_scaffolded_subfolder_layout(self, nested_csv_project):
         """`optics generate` works on a project laid out the way `optics init` scaffolds it."""

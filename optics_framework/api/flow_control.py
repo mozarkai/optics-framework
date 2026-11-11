@@ -1,4 +1,8 @@
 from typing import Optional, Any, Union, Tuple, Callable, List
+import ast
+import itertools
+import operator
+import re
 from urllib.parse import urlparse, parse_qsl
 import os.path
 from datetime import datetime, timedelta, timezone
@@ -23,6 +27,49 @@ NO_SESSION_ELEMENT_PRESENT = "Session elements is not an ElementData instance or
 ENV_SOURCE_PREFIX = "ENV:"
 HAR_HEADER = b'{"log": {"version": "1.2", "creator": {"name": "Optics Framework", "version": "1.0"}, "entries": [\n'
 HAR_TRAILER = b"\n]}}\n"
+
+
+# A leading zero marks an id or a code ("007"), not a number.
+_NUMBER = re.compile(r"[+-]?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")
+
+
+def _as_number(text: str) -> int | float | None:
+    """A whole number stays an int: a float rounds one past 2**53."""
+    match = _NUMBER.fullmatch(text)
+    if match is None:
+        return None
+    return float(text) if match.group(2) or match.group(3) else int(text)
+
+
+def _names_in(source: str) -> set[str]:
+    """The names a condition reads; a condition that is too long, too deep or does not parse is left for the evaluator to refuse."""
+    if len(source) > expression.MAX_CHARS:
+        return set(re.findall(r"\w+", source))
+    try:
+        return {node.id for node in ast.walk(ast.parse(source.strip(), mode="eval")) if isinstance(node, ast.Name)}
+    except (SyntaxError, RecursionError, MemoryError):
+        return set(re.findall(r"\w+", source))
+
+
+def _by_number_with_numbers(compare: Callable[[Any, Any], bool]) -> Callable[[str, Any], bool]:
+    def method(self: str, other: Any) -> bool:
+        if isinstance(other, _Stored):
+            other = _as_number(other) if _as_number(self) is not None and _as_number(other) is not None else str(other)
+        number = _as_number(self) if isinstance(other, (int, float)) and not isinstance(other, bool) else None
+        return compare(str(self) if number is None else number, other)
+    return method
+
+
+class _Stored(str):
+    """A session value in a condition: text, which compares with a number, or with another value that reads as one, as the number it reads as."""
+
+    __hash__ = str.__hash__
+    __eq__ = _by_number_with_numbers(operator.eq)
+    __ne__ = _by_number_with_numbers(operator.ne)
+    __lt__ = _by_number_with_numbers(operator.lt)
+    __le__ = _by_number_with_numbers(operator.le)
+    __gt__ = _by_number_with_numbers(operator.gt)
+    __ge__ = _by_number_with_numbers(operator.ge)
 
 
 def reads_environment(file_path: Any) -> bool:
@@ -429,9 +476,9 @@ class FlowControl:
         if self.modules and hasattr(self.modules, "modules") and actual_cond in self.modules.modules:
             return self._module_succeeds(actual_cond) != invert
         try:
-            resolved_cond = self._resolve_condition(actual_cond)
-            internal_logger.debug(f"[_is_condition_true] Evaluating resolved condition: {resolved_cond}")
-            return bool(self._safe_eval(resolved_cond)) != invert
+            resolved_cond, values = self._resolve_condition(actual_cond)
+            internal_logger.debug(f"[_is_condition_true] Evaluating {resolved_cond} with {values}")
+            return bool(self._safe_eval(resolved_cond, values)) != invert
         except Exception as e:
             if isinstance(e, OpticsError) and e.code is Code.E0406:
                 raise
@@ -447,22 +494,30 @@ class FlowControl:
             internal_logger.warning(f"[_is_condition_true] Module '{module}' raised error: {e}. Treating as false condition.")
             return False
 
-    def _resolve_condition(self, cond: str) -> str:
-        """Resolves variables in a condition string."""
+    def _resolve_condition(self, cond: str) -> tuple[str, dict[str, Any]]:
+        """The condition with each ``${var}`` as a name, and those names' values, which compare with numbers as numbers."""
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             raise OpticsError(Code.E0501, message=NO_SESSION_ELEMENT_PRESENT)
+        taken = set(re.findall(r"\w+", cond))
+        aliases = (alias for alias in (f"_var_{n}" for n in itertools.count()) if alias not in taken)
+        values: dict[str, Any] = {}
 
         def replacer(ref: utils.VarRef) -> str:
             var_name = ref.name.strip()
             value = runner_elements.get_first(var_name)
             if value is None:
                 raise OpticsError(Code.E0702, message=f"Variable '{var_name}' not found for condition resolution.")
-            return repr(str(value))
+            alias = next(aliases)
+            values[alias] = _Stored(value)
+            return alias
 
-        return utils.substitute_vars(cond, replacer)
+        resolved = utils.substitute_vars(cond, replacer)
+        if values.keys() - _names_in(resolved):
+            raise OpticsError(Code.E0403, message=f"Condition '{cond}' has a ${{variable}} inside quotes. Write it without the quotes.")
+        return resolved, values
 
     @defines_variable
     @substitutes_own_vars
@@ -880,14 +935,14 @@ class FlowControl:
 
         return self._safe_eval(utils.substitute_vars(param2, replace_var))
 
-    def _safe_eval(self, text: str) -> Any:
-        """Evaluate ``text`` with session variables as names, through the restricted evaluator."""
+    def _safe_eval(self, text: str, values: dict[str, Any] | None = None) -> Any:
+        """Evaluate ``text`` with session variables and ``values`` as names, through the restricted evaluator."""
         if self.session is None:
             raise OpticsError(Code.E0501, message=NO_SESSION_PRESENT)
         runner_elements = getattr(self.session, "elements", None)
         if not isinstance(runner_elements, ElementData):
             raise OpticsError(Code.E0702, message=NO_SESSION_ELEMENT_PRESENT)
-        return expression.evaluate(text, {k: v[0] for k, v in runner_elements.elements.items() if v})
+        return expression.evaluate(text, {**{k: v[0] for k, v in runner_elements.elements.items() if v}, **(values or {})})
 
     def _detect_date_format(self, date_str: str) -> str:
         """Detect the format of the input date string."""
