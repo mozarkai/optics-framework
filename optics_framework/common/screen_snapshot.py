@@ -43,6 +43,7 @@ class Row:
     cls: str
     act: tuple[str, ...]
     rid: str = ""
+    rid_attr: str = "resource-id"
     loc: str = ""
     bounds: tuple[int, int, int, int] | None = None
     secret: bool = False
@@ -198,6 +199,13 @@ def _state(el: dict, secret: bool) -> str:
     return f'= "{clean_label(value, keep_lines=True)}"' if value else ""
 
 
+def _native_id(rid: str, el: dict, extra: dict, web: bool) -> tuple[str, str]:
+    """The id and its page-source attribute; a desktop tree names its stable id ``id``."""
+    if not rid and not web and extra.get("id"):
+        return str(extra["id"]), "id"
+    return rid, str(el.get("rid_attr") or "resource-id")
+
+
 def normalize(el: dict, before: dict | None = None) -> dict | None:
     """One element from any element-list shape as Row fields, or None to drop it; ``before`` is the row above it."""
     if not isinstance(el, dict):
@@ -208,6 +216,7 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     cls = short.removeprefix("XCUIElementType") or short
     loc = str(el.get("loc") or ("" if "act" in el else el.get("xpath")) or "")
     web = _is_web(loc, cls)
+    rid, rid_attr = _native_id(rid, el, extra, web)
     own_id = rid.rsplit("/", 1)[-1]
     if not web and label in {rid, own_id, raw_cls, cls} - {""}:
         label = ""
@@ -223,7 +232,7 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     # A native label that differs from its hint is the typed value, so the hint (even empty) names the row.
     name = hint if label and not web and holds_value and fold(label) != fold(hint) else label
     return {
-        "label": label, "cls": cls, "act": act, "rid": rid, "loc": loc, "bounds": _bounds(el.get("bounds")),
+        "label": label, "cls": cls, "act": act, "rid": rid, "rid_attr": rid_attr, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
         "offscreen": el.get("offscreen") is True, "tag": raw_cls, "state": _state(el, secret),
     }
@@ -444,22 +453,36 @@ def _verified(ok: bool, kept: tuple[Check, ...], d: Diff, vision: bool) -> Verif
 
 
 def _locator_rungs(row: Row, snap: Snapshot) -> list[str]:
-    # A loc that finds an input by its typed value will not match on a replay.
-    value_loc = (
-        "input" in row.act and row.name != row.label
-        and bool(_VALUE_ATTR_RE.search(_unquoted(row.loc))) and _names_by_text(row.loc, row.label)
-    )
-    rungs = [row.loc] if row.loc and not value_loc else []
-    # A native loc that is not unique by name means the rid is on other nodes too.
-    rid_shared = bool(row.loc) and not row.web and not _names_one_element(row.loc)
-    if row.rid and not rid_shared and sum(r.rid == row.rid for r in snap.all_rows) == 1:
-        if row.web:
-            rung = f"css=#{row.rid}" if _CSS_ID_RE.match(row.rid) else f'css=[id="{row.rid}"]'
-        else:
-            rung = f'//*[@resource-id="{row.rid}"]'
+    rungs = [row.loc] if row.loc and not _finds_by_typed_value(row) else []
+    if _rid_is_unique(row, snap):
+        rung = _rid_rung(row)
         if rung not in rungs and rung.removeprefix("css=") not in rungs:
             rungs.append(rung)
     return rungs
+
+
+def _finds_by_typed_value(row: Row) -> bool:
+    """A loc that finds an input by its typed value will not match on a replay."""
+    return (
+        "input" in row.act and row.name != row.label
+        and bool(_VALUE_ATTR_RE.search(_unquoted(row.loc))) and _names_by_text(row.loc, row.label)
+    )
+
+
+def _rid_is_unique(row: Row, snap: Snapshot) -> bool:
+    """A native loc that is not unique by name means the rid is on other nodes too."""
+    rid_shared = bool(row.loc) and not row.web and not _names_one_element(row.loc)
+    return bool(row.rid) and not rid_shared and sum(r.rid == row.rid for r in snap.all_rows) == 1
+
+
+def _rid_rung(row: Row) -> str:
+    """The locator of the row's id, with the id quoted for the CSS or XPath engine."""
+    if not row.web:
+        return f"//*[@{row.rid_attr}={utils.xpath_literal(row.rid)}]"
+    if _CSS_ID_RE.match(row.rid):
+        return f"css=#{row.rid}"
+    quoted = row.rid.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\a ")
+    return f'css=[id="{quoted}"]'
 
 
 def _holds_secret(row: Row) -> bool:

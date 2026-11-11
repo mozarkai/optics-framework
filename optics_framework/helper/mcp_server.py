@@ -813,6 +813,20 @@ def _session_config(
     )
 
 
+def _session_caps(driver: str, app: str, capabilities: dict[str, Any]) -> dict[str, Any]:
+    """A platform that attaches when the session starts takes the app in the capabilities, unless they name one already."""
+    if driver != "appium":
+        return capabilities
+    from optics_framework.engines.drivers.appium_platforms import get_profile, promote_appium_options
+
+    capabilities = promote_appium_options(capabilities)
+    if not app or any(capabilities.get(key) for key in ("app", "appium:app", "appName", "appium:appName")):
+        return capabilities
+
+    profile = get_profile(capabilities.get("platformName") or capabilities.get("appium:platformName"))
+    return {"app": app} | capabilities if profile is not None and profile.app_at_start else capabilities
+
+
 async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any:
     """Create the session, then open ``app`` when one is given."""
     try:
@@ -896,10 +910,11 @@ def _add_resources(mcp: "FastMCP") -> None:
 
     @mcp.resource("optics://session/{session_id}/elements", mime_type="application/json")
     async def interactive_elements(session_id: str) -> Any:
-        """Compact screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}:
+        """Compact screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, rid_attr?, loc?, offscreen?}:
         actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
         read-only text (act: []). A web element carries loc, a locator matching only it, and
-        offscreen: true when it is on the page but scrolled out of view. Appium, Appium web
+        offscreen: true when it is on the page but scrolled out of view. rid_attr names the
+        attribute that holds rid when it is not resource-id (id on a desktop). Appium, Appium web
         and Playwright page sources answer the compact projection; a source without it
         returns its full element list. Use the
         get_interactive_elements tool with compact=false for the full untrimmed list."""
@@ -946,7 +961,7 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         strict_element_match: Annotated[bool, Field(description="No fuzzy text matches.")] = False,
     ) -> Any:
         config = _session_config(
-            driver, url, capabilities, elements_sources, text_detection=list(text_detection),
+            driver, url, _session_caps(driver, app, capabilities), elements_sources, text_detection=list(text_detection),
             image_detection=list(image_detection), project_path=project_path or None, ai_self_heal=ai_self_heal,
             llm_provider=llm_provider or None, llm_model=llm_model or None, strict_element_match=strict_element_match,
         )
@@ -1003,7 +1018,7 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         return await _act(action, "diff", session_id)
 
     async def press_key(
-        key: Annotated[str, Field(description="back, a key name such as Enter or Escape, or an Android KeyEvent number.")],
+        key: Annotated[str, Field(description="back, a key name such as Enter or Escape, a desktop chord such as cmd+s, or an Android KeyEvent number.")],
         expect_present: _PRESENT = [], expect_absent: _ABSENT = [],  # noqa: B006
         session_id: _SID = "",
     ) -> Any:

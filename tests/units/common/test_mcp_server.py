@@ -389,3 +389,13 @@ def test_stdio_server_exits_with_unread_stderr():
     finally:
         child.kill()
         child.communicate()
+
+
+@pytest.mark.parametrize("named", [{"app": "A"}, {"appium:app": "A"}, {"appName": "A"}, {"appium:options": {"app": "A"}}])
+def test_the_app_argument_yields_to_an_app_in_the_capabilities(named):
+    caps = mcp_server._session_caps("appium", "B", {"platformName": "Mac", **named})
+    assert "B" not in caps.values()
+
+
+def test_the_app_argument_names_the_app_of_a_desktop_session():
+    assert mcp_server._session_caps("appium", "B", {"platformName": "Mac"})["app"] == "B"

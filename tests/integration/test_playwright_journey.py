@@ -511,3 +511,20 @@ def test_quoted_text_matches_only_the_whole_text(tmp_path):
         'Press Element,text="Save"',
     ])
     assert run_project(project, use_printer=False) is False
+
+
+async def test_an_id_rung_finds_an_id_that_holds_quotes():
+    from types import SimpleNamespace
+    from optics_framework.common.screen_snapshot import _rid_rung
+
+    rid = 'say "hi" it\'s\\here'
+    async with playwright_api.async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.set_content(f"<button id='{rid.replace(chr(39), '&#39;')}'>Go</button><button id='x'>No</button>")
+        css = _rid_rung(SimpleNamespace(web=True, rid=rid, rid_attr="id"))
+        xpath = _rid_rung(SimpleNamespace(web=False, rid=rid, rid_attr="id"))
+        texts = [await page.locator(rung).all_inner_texts() for rung in (css, f"xpath={xpath}")]
+        await browser.close()
+
+    assert texts == [["Go"], ["Go"]], (css, xpath)
