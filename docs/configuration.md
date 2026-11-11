@@ -711,6 +711,39 @@ Driver sources define the automation frameworks used to control devices or brows
     - [Appium webOS driver](https://github.com/headspinio/appium-lg-webos-driver)
     - [Appium Tizen driver](https://github.com/headspinio/appium-tizen-tv-driver)
 
+=== "Desktop (Appium)"
+
+    **Purpose:** Native desktop apps on macOS, Linux and Windows. The `appium-xa11y-driver` reads the accessibility tree of the operating system. Windows support is experimental.
+
+    **Prerequisites:**
+    - **Appium 3** on the machine that shows the app
+    - The driver: `appium driver install --source=npm appium-xa11y-driver`
+    - macOS: give Accessibility and Screen & System Audio Recording to the app that runs Appium (System Settings > Privacy & Security)
+    - Linux: an X11 display, a D-Bus session and the AT-SPI bus
+
+    ```yaml
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://127.0.0.1:4723"
+          capabilities:
+            platformName: Mac          # or Linux / Windows
+            automationName: Xa11y
+            app: com.apple.TextEdit    # .app path or bundle id on macOS, an executable elsewhere
+
+    elements_sources:
+      - appium_find_element:
+          enabled: true
+      - appium_page_source:
+          enabled: true
+      - appium_screenshot:
+          enabled: true
+    ```
+
+    Use `appName` in place of `app` to attach to an app that runs. Locators are XPath over the role tags (`//button[@name="Save"]`), `@id` or visible text. `Press Keycode` takes a chord: `cmd+n` on macOS, `ctrl+s` on Linux and Windows. `Go Back` and `Get App Version` raise `E0105` on a desktop.
+
+    **Reference:** [appium-xa11y-driver](https://www.npmjs.com/package/appium-xa11y-driver)
+
 ---
 
 ## Element Sources

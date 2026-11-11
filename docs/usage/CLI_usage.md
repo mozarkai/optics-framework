@@ -178,18 +178,57 @@ Use `--template <name>` to copy a sample layout and assets from `optics_framewor
 
 Exact values depend on the directories under `optics_framework/samples/`. Use only names that exist as subdirectories there.
 
+## Desktop apps
+
+Optics runs desktop apps on macOS, Linux and Windows through Appium and `appium-xa11y-driver`. Run Appium on the machine that shows the app (see [Configuration](../configuration.md#driver-sources)).
+
+1. Make a project from the desktop sample:
+
+    ```bash
+    optics init notes --template desktop_editor
+    ```
+
+2. Set the desktop, the app and the Appium URL in `notes/config.yaml`:
+
+    ```yaml
+    driver_sources:
+      - appium:
+          enabled: true
+          url: "http://127.0.0.1:4723"
+          capabilities:
+            platformName: Mac
+            automationName: Xa11y
+            app: com.apple.TextEdit
+    elements_sources:
+      - appium_find_element:
+          enabled: true
+      - appium_page_source:
+          enabled: true
+      - appium_screenshot:
+          enabled: true
+    ```
+
+3. Check the setup, then run the suite:
+
+    ```bash
+    optics doctor notes
+    optics execute notes
+    ```
+
+`optics quickstart` asks the same questions when you choose `desktop`.
+
 ## Generating Code
 
 Generate test automation code from a project's test data (test cases, modules, config):
 
 ```bash
-optics generate <project_path> [--output <output_file>] [--framework pytest|robot]
+optics generate <project_path> [--output <file_name>] [--framework pytest|robot]
 ```
 
 **Options:**
 
 - `<project_path>`: Path to the project folder (containing test case and module data).
-- `--output <path>`: Output file path. Defaults to `test_generated.py` (pytest) or `test_generated.robot` (robot).
+- `--output <file_name>`: File name of the generated test. Defaults to `test_generated.py` (pytest) or `test_generated.robot` (robot). The file goes in `<project_path>/generated/Tests/`, with a `requirements.txt` in `<project_path>/generated/`.
 - `--framework`: `pytest` (default) or `robot`.
 
 ## Listing Available Keywords
