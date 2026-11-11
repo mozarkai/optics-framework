@@ -101,6 +101,10 @@ class TestCSVDataReader:
         )
         assert self.reader.read_elements(path) == {"login": ["//button", "loginBtn"]}
 
+    def test_read_elements_of_a_file_saved_with_a_bom(self, tmp_path):
+        path = _write(tmp_path, "e.csv", "﻿Element_Name,Element_ID\nlogin,//button\nresult,\n")
+        assert self.reader.read_elements(path) == {"login": ["//button"]}
+
     def test_read_elements_none_path_returns_empty(self):
         assert self.reader.read_elements(None) == {}
 

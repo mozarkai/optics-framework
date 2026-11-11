@@ -21,6 +21,32 @@ _TOKEN = re.compile(r'''(?:[^\s"']|"[^"]*"|'[^']*')+''')
 _WRAPPED = re.compile(r'''^(?P<q>["'])(?P<body>.*)(?P=q)$''', re.S)
 
 
+def is_element_id_column(header: str) -> bool:
+    """Whether a CSV header names a locator column of an elements file: Element_ID, Element_ID_xpath, ..."""
+    return re.sub(r"\s+", "", header).lower().startswith("element_id")
+
+
+def is_elements_header(headers: Set[str]) -> bool:
+    """Whether CSV headers are those of an elements file: Element_Name and at least one Element_ID* column."""
+    return "element_name" in {h.strip().lower() for h in headers} and any(map(is_element_id_column, headers))
+
+
+def _element_ids(row: dict) -> list[str]:
+    """The non-empty locators of an elements row, in column order."""
+    values = (str(value).strip() for key, value in row.items() if key is not None and is_element_id_column(key) and value)
+    return [unescape_csv_value(value) for value in values if value]
+
+
+def named_locators(rows: list[dict]) -> dict[str, list[str]]:
+    """Each element name of an elements file with its locators in column order; a name with none keeps an empty list."""
+    elements: dict[str, list[str]] = {}
+    for row in rows:
+        name = row.get("element_name", "").strip()
+        if name:
+            elements.setdefault(name, []).extend(_element_ids(row))
+    return elements
+
+
 def _unbalanced_quote(step: str) -> bool:
     """Whether the token pattern would skip a non-whitespace character, which only an
     unpaired quote makes it do."""
@@ -332,7 +358,7 @@ class CSVDataReader(DataReader):
         :return: A list of dictionaries representing the CSV rows.
         :rtype: list
         """
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
             return list(reader)
@@ -416,24 +442,7 @@ class CSVDataReader(DataReader):
         """
         if not file_path:
             return {}
-        rows = self.read_file(file_path)
-        elements = {}
-        for row in rows:
-            element_name = row.get("element_name", "").strip()
-            # Support multiple element IDs for fallback: look for all keys starting with "Element_ID"
-            element_ids = [
-                unescape_csv_value(str(row[key]).strip())
-                for key in row
-                if key is not None
-                and re.sub(r"\s+", "", key).lower().startswith("element_id")
-                and row[key]
-                and str(row[key]).strip()
-            ]
-            if element_name and element_ids:
-                if element_name not in elements:
-                    elements[element_name] = []
-                elements[element_name].extend(element_ids)
-        return elements
+        return {name: ids for name, ids in named_locators(self.read_file(file_path)).items() if ids}
 
     def read_error_definitions(self, file_path: str) -> dict:
         """Read error_code, match_string, description, severity columns from a CSV file.

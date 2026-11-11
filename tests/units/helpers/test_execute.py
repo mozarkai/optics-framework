@@ -21,6 +21,7 @@ from optics_framework.helper.execute import (
     BaseRunner,
     execute_main,
     dryrun_main,
+    find_files,
 )
 
 pytestmark = pytest.mark.white_box
@@ -374,3 +375,21 @@ class TestPreflightWiring:
                 patch.object(execute_module, "DryRunRunner", _runner_cls({})):
             dryrun_main("proj")
         preflight.assert_not_called()
+
+
+def test_an_elements_file_with_only_named_locator_columns_is_found(tmp_path):
+    """The getting-started form: fallback columns such as Element_ID_xpath and no bare Element_ID."""
+    (tmp_path / "test_cases.csv").write_text("test_case,test_step\nLogin,Open\n", encoding="utf-8")
+    (tmp_path / "modules.csv").write_text("module_name,module_step\nOpen,Launch App\n", encoding="utf-8")
+    path = tmp_path / "elements.csv"
+    path.write_text("Element_Name,Element_ID_xpath,Element_ID_text\nlogin,//button,Login\n", encoding="utf-8")
+    assert find_files(str(tmp_path))[2] == [str(path)]
+
+
+def test_files_that_start_with_a_byte_order_mark_are_found(tmp_path):
+    """Excel's "CSV UTF-8" puts a byte order mark before the first header."""
+    files = {"test_cases.csv": "test_case,test_step\nLogin,Open\n", "modules.csv": "module_name,module_step\nOpen,Launch App\n",
+             "elements.csv": "Element_Name,Element_ID\nlogin,//button\n"}
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8-sig")
+    assert find_files(str(tmp_path))[:3] == tuple([str(tmp_path / name)] for name in files)

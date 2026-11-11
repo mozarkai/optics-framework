@@ -18,6 +18,7 @@ from optics_framework.common.logging_config import internal_logger, initialize_h
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
+    is_elements_header,
     merge_dicts,
 )
 from optics_framework.common.session_manager import SessionManager
@@ -191,7 +192,7 @@ def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
             content_types.add("test_cases")
         if {"module_name", "module_step"}.issubset(headers):
             content_types.add("modules")
-        if {"element_name", "element_id"}.issubset(headers):
+        if is_elements_header(headers):
             content_types.add("elements")
         if {"error_code", "match_string"}.issubset(headers):
             content_types.add("error_definitions")
@@ -258,7 +259,7 @@ def read_csv_headers(file_path: str) -> Optional[Set[str]]:
     :return: Set of header names or None if reading fails.
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             header = f.readline().strip().split(",")
             return {h.strip().lower() for h in header}
     except (OSError, IOError) as e:
