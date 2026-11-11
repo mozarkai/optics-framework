@@ -6,6 +6,7 @@ import pathlib
 import sys
 
 from optics_framework.helper.onboarding import blank_line, print_next_steps
+from optics_framework.helper.project_config import write_project_config
 
 
 # Files/directories that must never be copied out of a sample template.
@@ -194,8 +195,7 @@ def _scaffold_project(project_path: str) -> None:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-    with open(os.path.join(project_path, "config.yaml"), "w", encoding="utf-8") as f:
-        f.write(_STARTER_CONFIG)
+    write_project_config(project_path, _STARTER_CONFIG)
     print("Created starter project (test_cases/, modules/, test_data/, config.yaml).")
 
 
@@ -209,6 +209,9 @@ def _copy_template(project_path: str, template: str) -> bool:
 
     for item in os.listdir(template_path):
         if _is_junk(item):
+            continue
+        if item == "config.yaml":
+            write_project_config(project_path, (template_path / item).read_text(encoding="utf-8"))
             continue
         src_item = os.path.join(template_path, item)
         dest_item = os.path.join(project_path, item)

@@ -231,6 +231,7 @@ class Config(BaseModel):
     json_path: Optional[str] = None
     log_level: str = "INFO"
     log_path: Optional[str] = None
+    name: Optional[str] = None
     project_path: Optional[str] = None
     execution_output_path: Optional[str] = None
     include: Optional[List[str]] = None

@@ -134,7 +134,9 @@ class PlannedCase(NamedTuple):
 
 
 def _suite_name(config: Config) -> str | None:
-    """The project folder's name, which names the test suite and each test case's class."""
+    """The project's name, else its folder's name; names the test suite and each test case's class."""
+    if config.name:
+        return config.name
     if not config.project_path:
         return None
     return Path(config.project_path).resolve().name or None
