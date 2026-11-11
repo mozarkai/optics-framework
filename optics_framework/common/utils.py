@@ -651,7 +651,7 @@ def annotate_element(frame, centre_coor, bbox):
 # virtually every Android node carries enabled="true" (including pure layout
 # wrappers), so treating it as "interesting" would defeat condensation. It
 # remains a *shown* flag below when a node is kept for another reason.
-_PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable")
+_PS_INTERACTIVE_FLAGS = ("clickable", "long-clickable", "scrollable", "checkable", "editable")
 _PS_SHOWN_FLAGS = ("clickable", "scrollable", "long-clickable", "checked", "selected",
                    "focused", "enabled")
 

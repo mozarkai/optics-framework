@@ -1,5 +1,7 @@
 import pytest
 
+from optics_framework.api.verifier import Verifier
+from optics_framework.common.screen_snapshot import RefTable, ladder
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 
 pytestmark = pytest.mark.white_box
@@ -103,3 +105,109 @@ class TestAndroidCompactActions:
         ]
         assert scroll
         assert scroll[0]["act"] == ["scroll"]
+
+
+MAC_TEXTEDIT = (
+    '<application type="AXApplication" name="TextEdit" id="" enabled="true" visible="true">'
+    '<window type="AXWindow" name="Untitled" id="_NS:34" enabled="true" visible="true" clickable="true" '
+    'x="141" y="64" width="586" height="488">'
+    '<text_area type="AXTextArea" name="" value="" label="" id="First Text View" enabled="true" '
+    'visible="true" focused="true" clickable="true" editable="true" scrollable="true" '
+    'x="141" y="164" width="586" height="382"/>'
+    "</window>"
+    "</application>"
+)
+
+MAC_CALCULATOR = (
+    '<application type="AXApplication" name="Calculator" id="" enabled="true" visible="true">'
+    '<window type="AXWindow" name="Calculator" id="main" enabled="true" visible="true" clickable="true" '
+    'x="300" y="400" width="230" height="400">'
+    '<group type="AXScrollArea" name="Edit field" id="StandardInputView" enabled="true" visible="true" '
+    'scrollable="true" x="307" y="535" width="210" height="42">'
+    '<static_text type="AXStaticText" name="12" value="12" id="" enabled="true" visible="true" '
+    'x="485" y="538" width="32" height="36"/>'
+    "</group>"
+    "</window>"
+    "</application>"
+)
+
+WINDOWS_NOTEPAD = (
+    '<application type="Application" name="notepad" id="" enabled="true" visible="true">'
+    '<window type="Window" name="*Untitled - Notepad" id="" enabled="true" visible="true" '
+    'x="78" y="78" width="768" height="519">'
+    '<web_area type="Document" name="Text Editor" value="read me" label="" id="15" enabled="true" visible="true" '
+    'focused="true" clickable="false" editable="true" scrollable="true" x="86" y="129" width="752" height="437"/>'
+    "</window>"
+    "</application>"
+)
+
+
+class TestDesktopCompactActions:
+    def test_text_area_takes_input_and_keeps_its_stable_id(self):
+        entries = _compact(MAC_TEXTEDIT)
+        areas = [entry for entry in entries if entry["extra"].get("id") == "First Text View"]
+        assert areas
+        assert "input" in areas[0]["act"]
+
+    def test_text_inside_a_window_keeps_its_own_row(self):
+        assert _by_label(_compact(MAC_CALCULATOR))["12"]["act"] == []
+
+    def test_a_named_field_shows_what_it_holds_and_keeps_its_name_as_the_hint(self):
+        [field] = [entry for entry in _compact(WINDOWS_NOTEPAD) if "input" in entry["act"]]
+        assert (field["text"], field["extra"]["hint"]) == ("read me", "Text Editor")
+
+    def test_a_named_field_shows_what_it_holds_in_the_full_list_too(self):
+        [field] = [e for e in _helper(WINDOWS_NOTEPAD).get_interactive_elements(None) if e["extra"]["tag"] == "web_area"]
+        assert (field["text"], field["extra"]["name"]) == ("read me", "Text Editor")
+
+    @pytest.mark.parametrize("shape", [list, Verifier._to_compact_shape], ids=["screen", "keyword"])
+    def test_a_desktop_id_is_found_by_its_own_attribute(self, shape):
+        snap = RefTable().snapshot(shape(_compact(MAC_TEXTEDIT)))
+        [area] = [row for row in snap.all_rows if row.rid == "First Text View"]
+        assert ladder(area, snap).act == ['//text_area[@id="First Text View"]', '//*[@id="First Text View"]']
+
+
+IOS_NOTE = (
+    '<XCUIElementTypeApplication name="Notes" label="Notes" x="0" y="0" width="390" height="844">'
+    '<XCUIElementTypeStaticText name="Title" label="Title" x="16" y="100" width="200" height="20" '
+    'enabled="true" visible="true"/>'
+    '<XCUIElementTypeTextView value="Body" x="16" y="130" width="358" height="300" enabled="true" visible="true"/>'
+    "</XCUIElementTypeApplication>"
+)
+
+ANDROID_FOCUSABLE_LABEL = (
+    '<hierarchy rotation="0">'
+    '<android.widget.TextView class="android.widget.TextView" text="Row label" focusable="true" '
+    'clickable="true" enabled="true" bounds="[10,20][400,80]"/>'
+    "</hierarchy>"
+)
+
+
+@pytest.mark.parametrize("page_source, label, is_input", [
+    (IOS_NOTE, "Body", True),
+    (MAC_TEXTEDIT.replace('value=""', 'value="Draft"', 1), "Draft", True),
+    (MAC_TEXTEDIT.replace('value=""', 'value="Locked"', 1).replace('editable="true"', 'editable="false"'), "Locked", False),
+    (ANDROID_SCREEN, "Read only", False),
+    (ANDROID_FOCUSABLE_LABEL, "Row label", False),
+])
+def test_the_inputs_filter_and_the_compact_list_agree(page_source, label, is_input):
+    inputs = {entry["text"] for entry in _helper(page_source).get_interactive_elements(["inputs"])}
+    compact = {entry["text"]: entry for entry in _compact(page_source)}
+
+    assert (label in inputs) is is_input
+    assert ("input" in compact[label]["act"]) is is_input
+
+
+MAC_DIALOG = (
+    '<application name="TextEdit">'
+    '<window name="Save" x="0" y="0" width="400" height="300" enabled="true" visible="true">'
+    '<static_text name="Save changes?" value="Save changes?" x="20" y="20" width="200" height="20" enabled="true" visible="true"/>'
+    '<image name="Icon" x="20" y="60" width="64" height="64" enabled="true" visible="true"/>'
+    '<button name="Save" x="300" y="250" width="80" height="30" enabled="true" visible="true"/>'
+    "</window></application>"
+)
+
+
+@pytest.mark.parametrize("kind, tag", [("buttons", "button"), ("text", "static_text"), ("images", "image")])
+def test_each_filter_keeps_its_desktop_role(kind, tag):
+    assert tag in {entry["extra"]["tag"] for entry in _helper(MAC_DIALOG).get_interactive_elements([kind])}
