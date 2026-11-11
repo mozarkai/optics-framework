@@ -18,6 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
+from optics_framework.common.config_handler import Config, load_project_yaml, resolve_config_file
+
 from optics_framework.helper import initialize as init_mod
 from optics_framework.helper.initialize import (
     _pick_template,
@@ -63,6 +65,17 @@ class TestCreateProject:
 
         copy.assert_called_once_with(str(project), "contact")
         next_steps.assert_called_once_with(str(project), configured=True)
+
+    @pytest.mark.parametrize("template", [None, "contact", "mobile_web"])
+    def test_config_keeps_the_project_name_after_the_folder_is_renamed(self, tmp_path, monkeypatch, template):
+        monkeypatch.delenv("UNSET", raising=False)
+        with patch(f"{init_mod.__name__}.print_next_steps"):
+            create_project(_args("checkout$UNSET", path=str(tmp_path), template=template))
+        moved = (tmp_path / "checkout$UNSET").rename(tmp_path / "test-script")
+
+        config = Config(**resolve_config_file(load_project_yaml(str(moved / "config.yaml")), str(moved)))
+        assert config.name == "checkout$UNSET"
+        assert config.driver_sources
 
     def test_show_next_steps_false_suppresses_block(self, tmp_path):
         project = tmp_path / "quiet"

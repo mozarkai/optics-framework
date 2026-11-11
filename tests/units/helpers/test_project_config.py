@@ -201,14 +201,14 @@ class TestWriteProjectConfig:
         path = project_config.write_project_config(folder, "hello: true\n")
         assert path == os.path.join(folder, "config.yaml")
         with open(path, encoding="utf-8") as fh:
-            assert fh.read() == "hello: true\n"
+            assert fh.read() == "name: demo\n\nhello: true\n"
 
     def test_overwrites_unconditionally(self, tmp_path):
         folder = str(tmp_path / "demo")
         project_config.write_project_config(folder, "old\n")
         project_config.write_project_config(folder, "new\n")
         with open(os.path.join(folder, "config.yaml"), encoding="utf-8") as fh:
-            assert fh.read() == "new\n"
+            assert fh.read() == "name: demo\n\nnew\n"
 
 
 # --------------------------------------------------------------------------- #

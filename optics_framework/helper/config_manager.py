@@ -1,6 +1,7 @@
 import os
 
 import yaml
+from pydantic import TypeAdapter
 from rich.prompt import Confirm
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -215,7 +216,7 @@ class ProjectConfigTUI(App):
                 current_value), id="edit-input")
             confirm_button = Button(
                 "Confirm", variant="success", id="confirm-edit")
-            self.mount(
+            await self.mount(
                 Container(input_widget, confirm_button, classes="editing"))
             input_widget.focus()
 
@@ -243,7 +244,7 @@ class ProjectConfigTUI(App):
                 setattr(self.config, key,
                         [{source: DependencyConfig(enabled=True)} for source in parsed])
             else:
-                parsed = type(current_value)(new_value)
+                parsed = TypeAdapter(Config.model_fields[key].annotation).validate_python(new_value)
                 setattr(self.config, key, parsed)
             self.refresh_list()
         except Exception as e:

@@ -270,3 +270,16 @@ class TestSuiteName:
         suite = ET.parse(tmp_path / "junit_output.xml").getroot().find("testsuite")
         assert (suite.get("name"), suite.get("id")) == ("checkout_suite", "named")
         assert [tc.get("classname") for tc in suite.iter("testcase")] == ["checkout_suite"]
+
+    async def test_project_name_in_config_names_the_suite_wherever_the_folder_is(self, tmp_path):
+        registry = JUnitHandlerRegistry()
+        config = _config(tmp_path)
+        config.project_path = str(tmp_path / "test-script")
+        config.name = "checkout_suite"
+        registry.setup_junit_for_session("named", config)
+        await _run_testcase(registry.get_handler("named"), "named", "tc-1", "Login")
+        registry.cleanup_session("named")
+
+        suite = ET.parse(tmp_path / "junit_output.xml").getroot().find("testsuite")
+        assert suite.get("name") == "checkout_suite"
+        assert [tc.get("classname") for tc in suite.iter("testcase")] == ["checkout_suite"]

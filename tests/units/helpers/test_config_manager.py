@@ -20,7 +20,9 @@ from unittest.mock import patch
 
 import pytest
 
+from optics_framework.common.config_handler import load_project_yaml
 from optics_framework.helper import config_manager
+from optics_framework.helper.initialize import create_project
 
 MODULE = "optics_framework.helper.config_manager"
 PROJECT_CONFIG = "optics_framework.helper.project_config"
@@ -163,3 +165,31 @@ class TestConfigAliasDeprecation:
         _, kwargs = configure.call_args
         assert kwargs.get("edit") is False
         assert kwargs.get("folder") == os.getcwd()
+
+
+@pytest.mark.white_box
+class TestConfigureKeepsTheProjectName:
+    def test_reconfiguring_a_renamed_project_keeps_its_name(self, tmp_path):
+        with patch("optics_framework.helper.initialize.print_next_steps"):
+            create_project(SimpleNamespace(
+                name="checkout_suite", path=str(tmp_path), force=False, template=None, git_init=False))
+        moved = (tmp_path / "checkout_suite").rename(tmp_path / "test-script")
+
+        with patch(f"{MODULE}.Confirm.ask", return_value=True), \
+                patch(f"{PROJECT_CONFIG}.prompt_project_config", return_value={"platform": "web-playwright"}), \
+                patch(f"{ONBOARDING}.print_next_steps"):
+            config_manager.configure(folder=str(moved), edit=False)
+
+        assert load_project_yaml(str(moved / "config.yaml"))["name"] == "checkout_suite"
+
+
+@pytest.mark.white_box
+class TestEditorSetsAnUnsetField:
+    async def test_editor_sets_a_name_the_config_does_not_have(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("log_level: INFO\n", encoding="utf-8")
+        app = config_manager.ProjectConfigTUI(str(tmp_path))
+        async with app.run_test() as pilot:
+            app.query_one("#config-list").index = app.options.index("name")
+            await pilot.press("space", *"checkout_suite", "enter", "s")
+
+        assert load_project_yaml(str(tmp_path / "config.yaml"))["name"] == "checkout_suite"

@@ -16,10 +16,13 @@ Answers schema (normalised):
   common:         ocr (bool), log_level (str, default "INFO")
 """
 import os
+from pathlib import Path
 
+import yaml
 from rich.prompt import Confirm, Prompt
 
 from optics_framework.common import safe_fs
+from optics_framework.common.config_handler import load_project_yaml
 from optics_framework.helper.onboarding import blank_line
 
 # Every platform maps to exactly ONE action driver; that driver owns the
@@ -255,11 +258,34 @@ def render_project_config(answers: dict) -> str:
 
 
 def write_project_config(folder: str, text: str) -> str:
-    """Write ``text`` to ``<folder>/config.yaml`` (creating ``folder`` if
-    needed) and return the written path.
+    """Write ``text`` with the project's ``name`` to ``<folder>/config.yaml``
+    (creating ``folder`` if needed) and return the written path.
 
-    Overwrites unconditionally — the caller owns any confirm-before-overwrite
-    UX (see ``quickstart.py``, which asks before clobbering a template)."""
+    The name is the one the replaced config.yaml held, else the folder's name,
+    so the report keeps it wherever the project is unpacked. Overwrites
+    unconditionally — the caller owns any confirm-before-overwrite UX (see
+    ``quickstart.py``, which asks before clobbering a template)."""
     path = os.path.join(folder, "config.yaml")
-    safe_fs.write_text(path, text)
+    safe_fs.write_text(path, _with_name(text, _project_name(path)))
     return path
+
+
+def _project_name(config_path: str) -> str:
+    """The ``name`` config.yaml holds as written, else its folder's name with ``$`` kept literal."""
+    try:
+        saved = load_project_yaml(config_path)
+    except (OSError, yaml.YAMLError):
+        saved = None
+    name = saved.get("name") if isinstance(saved, dict) else None
+    if isinstance(name, str) and name:
+        return name
+    return Path(config_path).parent.resolve().name.replace("$", "$$")
+
+
+def _with_name(text: str, name: str) -> str:
+    """Put a ``name:`` line after the config's leading comment block."""
+    lines = text.splitlines(keepends=True)
+    after_header = next(
+        (i for i, line in enumerate(lines) if line.strip() and not line.startswith("#")), len(lines))
+    lines.insert(after_header, yaml.safe_dump({"name": name}) + "\n")
+    return "".join(lines)
