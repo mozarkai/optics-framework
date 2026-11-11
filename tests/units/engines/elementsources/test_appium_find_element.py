@@ -4,6 +4,7 @@ import pytest
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, WebDriverException
 
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.engines.drivers.appium import largest_part
 from optics_framework.engines.elementsources.appium_find_element import AppiumFindElement
 
 
@@ -13,13 +14,31 @@ def source():
     return src
 
 
+class TestLargestPart:
+    ACTIVE = {"x": 0, "y": 0, "width": 600, "height": 400}
+    OTHER = {"x": 700, "y": 0, "width": 500, "height": 400}
+
+    def test_an_element_in_another_window_is_clipped_to_that_window(self):
+        part = largest_part({"x": 720, "y": 300, "width": 200, "height": 300}, [self.ACTIVE, self.OTHER])
+
+        assert part == {"x": 720, "y": 300, "width": 200, "height": 100}
+
+    def test_an_element_across_two_windows_takes_the_larger_part(self):
+        part = largest_part({"x": 500, "y": 10, "width": 400, "height": 50}, [self.ACTIVE, self.OTHER])
+
+        assert part == {"x": 700, "y": 10, "width": 200, "height": 50}
+
+    def test_an_element_between_the_windows_has_no_part(self):
+        assert largest_part({"x": 620, "y": 10, "width": 60, "height": 50}, [self.ACTIVE, self.OTHER]) is None
+
+
 class TestIsWithinScreenBounds:
-    """_is_within_screen_bounds must intersect the element's bbox against the window size."""
+    """_is_within_screen_bounds must intersect the element's bbox against the app area."""
 
     def test_element_within_window_bounds(self, source):
         located = MagicMock()
         source.get_bbox_for_element = MagicMock(return_value=((10, 10), (50, 50)))
-        source.driver.driver.get_window_size.return_value = {"width": 1080, "height": 2400}
+        source.driver.app_areas.return_value = [{"x": 0, "y": 0, "width": 1080, "height": 2400}]
 
         assert source._is_within_screen_bounds(located) is True
 
@@ -29,16 +48,30 @@ class TestIsWithinScreenBounds:
         must not count as within bounds."""
         located = MagicMock()
         source.get_bbox_for_element = MagicMock(return_value=((16, 1760), (374, 1813)))
-        source.driver.driver.get_window_size.return_value = {"width": 390, "height": 844}
+        source.driver.app_areas.return_value = [{"x": 0, "y": 0, "width": 390, "height": 844}]
 
         assert source._is_within_screen_bounds(located) is False
 
     def test_element_entirely_right_of_window_bounds(self, source):
         located = MagicMock()
         source.get_bbox_for_element = MagicMock(return_value=((2000, 10), (2100, 50)))
-        source.driver.driver.get_window_size.return_value = {"width": 1080, "height": 2400}
+        source.driver.app_areas.return_value = [{"x": 0, "y": 0, "width": 1080, "height": 2400}]
 
         assert source._is_within_screen_bounds(located) is False
+
+    def test_element_on_the_screen_but_outside_a_desktop_window(self, source):
+        located = MagicMock()
+        source.driver.app_areas.return_value = [{"x": 400, "y": 200, "width": 600, "height": 400}]
+        source.get_bbox_for_element = MagicMock(return_value=((420, 640), (900, 700)))
+
+        assert source._is_within_screen_bounds(located) is False
+
+    def test_element_in_an_inactive_window_of_the_app(self, source):
+        located = MagicMock()
+        source.driver.app_areas.return_value = [{"x": 0, "y": 0, "width": 600, "height": 400}, {"x": 700, "y": 0, "width": 500, "height": 400}]
+        source.get_bbox_for_element = MagicMock(return_value=((720, 40), (900, 90)))
+
+        assert source._is_within_screen_bounds(located) is True
 
     def test_undeterminable_bbox_is_not_within_bounds(self, source):
         located = MagicMock()
@@ -46,10 +79,10 @@ class TestIsWithinScreenBounds:
 
         assert source._is_within_screen_bounds(located) is False
 
-    def test_get_window_size_error_is_not_within_bounds(self, source):
+    def test_app_area_error_is_not_within_bounds(self, source):
         located = MagicMock()
         source.get_bbox_for_element = MagicMock(return_value=((10, 10), (50, 50)))
-        source.driver.driver.get_window_size.side_effect = WebDriverException("dead session")
+        source.driver.app_areas.side_effect = WebDriverException("dead session")
 
         assert source._is_within_screen_bounds(located) is False
 

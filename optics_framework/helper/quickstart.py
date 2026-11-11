@@ -25,7 +25,10 @@ _DEFAULT_NAME = "my-optics-project"
 
 # Playwright needs only a browser, so a web user reaches a passing test with no
 # hardware at all.
-_DOMAIN_SAMPLE = {"mobile": "contact", "web": "playwright"}
+_DOMAIN_SAMPLE = {"mobile": "contact", "web": "playwright", "desktop": "desktop_editor"}
+
+# The engine a domain installs, when the domain is not itself a `setup` bundle.
+_INSTALL_TOKEN = {"desktop": "appium"}
 
 _TEMPLATE_DOMAINS = {
     "calendar": "mobile",
@@ -34,6 +37,7 @@ _TEMPLATE_DOMAINS = {
     "youtube": "mobile",
     "gmail_web": "web",
     "playwright": "web",
+    "desktop_editor": "desktop",
 }
 
 
@@ -127,7 +131,7 @@ def _suggest_free_name(base_path: str, name: str) -> str:
 def _ask_domain() -> str:
     onboarding.blank_line()
     return Prompt.ask(
-        "What do you want to automate?", choices=["mobile", "web"],
+        "What do you want to automate?", choices=["mobile", "web", "desktop"],
         default="mobile")
 
 
@@ -136,19 +140,20 @@ def _offer_engine_install(domain: str) -> None:
 
     The domain doubles as a ``setup`` bundle token ("mobile"/"web"), so engine
     resolution keeps a single source of truth in setup.py's bundles — this
-    module never re-lists engines.
+    module never re-lists engines. A desktop needs only the Appium engine.
 
     A failed install never aborts the wizard. ``install_extras`` already
     explains an environment that refuses the install and names the command that
     would work there, so this only adds that the wizard is carrying on."""
-    requests, invalid = resolve_engines([domain])
+    token = _INSTALL_TOKEN.get(domain, domain)
+    requests, invalid = resolve_engines([token])
     if invalid or not requests:  # defensive: the domain is a fixed bundle token
         return
     names = ", ".join(sorted({req.engine.name for req in requests}))
     onboarding.blank_line()
     if not Confirm.ask(f"Install {names} now?", default=True):
         _console.print(f"No problem — install later with:  "
-                       f"optics setup --install {domain}")
+                       f"optics setup --install {token}")
         return
     success, message = install_extras(requests)
     _console.print(message)
@@ -202,11 +207,11 @@ def _build_config(project_path: str, template: str | None, domain: str) -> None:
     config_path = os.path.join(project_path, "config.yaml")
     if template is not None and os.path.isfile(config_path):
         onboarding.blank_line()
-        # A mobile sample pins one particular emulator, so its config almost
-        # always needs replacing; the browser sample runs exactly as shipped.
+        # A device or desktop sample pins one machine's app and server, so its
+        # config almost always needs replacing; the browser sample runs as shipped.
         if not Confirm.ask(
             f"'{template}' ships its own working config.yaml. Overwrite it "
-            "with your own answers?", default=domain == "mobile"):
+            "with your own answers?", default=domain != "web"):
             _console.print(f"Keeping the template's config at {config_path}.")
             return
     answers = project_config.prompt_project_config(domain=domain)

@@ -1,0 +1,34 @@
+# --------------------------------------------------
+# Logging
+# --------------------------------------------------
+console: true
+file_log: true
+json_log: false
+log_level: INFO
+
+# --------------------------------------------------
+# Drivers
+# --------------------------------------------------
+# A desktop app through Appium and appium-xa11y-driver:
+#   appium driver install --source=npm appium-xa11y-driver
+# On Linux set platformName: Linux and app: gedit (or your editor);
+# on Windows set platformName: Windows and app: notepad.exe.
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://127.0.0.1:4723"
+      capabilities:
+        platformName: Mac
+        automationName: Xa11y
+        app: com.apple.TextEdit
+
+# --------------------------------------------------
+# Element sources
+# --------------------------------------------------
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true

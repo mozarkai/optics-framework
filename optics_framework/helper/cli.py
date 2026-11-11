@@ -125,7 +125,7 @@ class GenerateCommand(Command):
         parser.add_argument("project_path", help="Project name (required)")
         parser.add_argument(
             "--output",
-            help="Path to the output file where the code will be generated",
+            help="File name of the generated test, written to <project_path>/generated/Tests/",
             nargs="?",
         )
         parser.add_argument(

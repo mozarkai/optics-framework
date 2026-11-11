@@ -261,18 +261,7 @@ class Optics:
         text_detection: Optional[List[Dict[str, Dict[str, Any]]]],
         execution_output_path_param: Optional[str],
     ) -> Dict[str, Any]:
-        """
-        Extract and validate configuration data from parameters.
-        """
-        project_path = None
-        execution_output_path = execution_output_path_param
-        event_attributes_json = None
-        save_captures = None
-        _driver_config = driver_sources
-        _element_source_config = elements_sources
-        _image_config = image_detection
-        _text_config = text_detection
-
+        """Every key of ``config`` (a config.yaml as a dict, JSON or YAML), or the deprecated source parameters."""
         if config is not None:
             if isinstance(config, str):
                 parsed_config = self._parse_config_string(config)
@@ -283,38 +272,22 @@ class Optics:
                     Code.E0503,
                     message="Config must be a string (JSON/YAML) or dictionary",
                 )
-
             self._validate_required_keys(parsed_config)
-
-            _driver_config = parsed_config["driver_sources"]
-            _element_source_config = parsed_config["elements_sources"]
-            _image_config = parsed_config.get("image_detection")
-            _text_config = parsed_config.get("text_detection")
-            project_path = parsed_config.get("project_path")
-            execution_output_path = parsed_config.get(
-                "execution_output_path", execution_output_path_param
-            )
-            event_attributes_json = parsed_config.get("event_attributes_json")
-            save_captures = parsed_config.get("save_captures")
-        elif _driver_config is not None and _element_source_config is not None:
+            return {"execution_output_path": execution_output_path_param, **parsed_config}
+        if driver_sources is not None and elements_sources is not None:
             internal_logger.warning(
                 "Using deprecated parameter format. Consider migrating to the new config parameter."
             )
-        else:
-            raise ValueError(
-                "Either 'config' parameter or legacy parameters ('driver_sources' and 'elements_sources') must be provided"
-            )
-
-        return {
-            "driver_sources": _driver_config or [],
-            "elements_sources": _element_source_config or [],
-            "image_detection": _image_config or [],
-            "text_detection": _text_config or [],
-            "project_path": project_path,
-            "execution_output_path": execution_output_path,
-            "event_attributes_json": event_attributes_json,
-            "save_captures": save_captures,
-        }
+            return {
+                "driver_sources": driver_sources,
+                "elements_sources": elements_sources,
+                "image_detection": image_detection,
+                "text_detection": text_detection,
+                "execution_output_path": execution_output_path_param,
+            }
+        raise ValueError(
+            "Either 'config' parameter or legacy parameters ('driver_sources' and 'elements_sources') must be provided"
+        )
 
     def discover_templates(self, project_path: str) -> TemplateData:
         """
@@ -387,20 +360,7 @@ class Optics:
             with open(config_file_path, "r", encoding="utf-8") as file:
                 config_content = file.read()
 
-            # Parse the configuration directly
-            config = self._parse_config_string(config_content)
-
-            # Validate structure
-            self._validate_required_keys(config)
-
-            # Call existing setup method with extracted parameters
-            self.setup(
-                driver_sources=config["driver_sources"],
-                elements_sources=config["elements_sources"],
-                image_detection=config.get("image_detection"),
-                text_detection=config.get("text_detection"),
-                execution_output_path_param=config.get("execution_output_path"),
-            )
+            self.setup(config=self._parse_config_string(config_content))
 
         except FileNotFoundError as exc:
             raise FileNotFoundError(

@@ -1,0 +1,6 @@
+module_name,module_step,param_1,param_2
+Open Editor,Launch App
+Type A Note,Enter Text,${Editor},Hello from Optics
+Check The Note,Assert Text,${Editor},Hello from Optics
+Clear The Note,Clear Element Text,${Editor}
+Close Editor,Close And Terminate App

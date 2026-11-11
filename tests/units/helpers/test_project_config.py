@@ -25,6 +25,7 @@ MODULE = "optics_framework.helper.project_config"
 _DRIVER_BY_PLATFORM = {
     "android": "appium",
     "ios": "appium",
+    "desktop": "appium",
     "web-selenium": "selenium",
     "web-playwright": "playwright",
 }
@@ -66,6 +67,8 @@ def _answers_for(platform: str, *, ocr: bool = False) -> dict:
             bundle_id=f"com.example.{platform}",
             appium_url="http://127.0.0.1:4723",
         )
+    elif platform == "desktop":
+        answers.update(platform_name="Linux", app="mousepad", appium_url="http://127.0.0.1:4723")
     elif platform == "web-selenium":
         answers["selenium_url"] = "http://127.0.0.1:4444/wd/hub"
     else:  # web-playwright
@@ -141,6 +144,10 @@ class TestRenderProjectConfig:
             "ocr": False,
             "log_level": "INFO",
         }
+
+    def test_desktop_answers_land_in_xa11y_capabilities(self):
+        appium = _appium_entry(yaml.safe_load(project_config.render_project_config(_answers_for("desktop"))))
+        assert appium["capabilities"] == {"platformName": "Linux", "automationName": "Xa11y", "app": "mousepad"}
 
     def test_selenium_url_used(self):
         config = yaml.safe_load(
@@ -255,6 +262,21 @@ class TestPromptProjectConfig:
             "appium_url": "http://127.0.0.1:4723",
             "ocr": True,
             "log_level": "DEBUG",
+        }
+
+    def test_desktop_question_flow_asks_no_platform_question(self):
+        ask_values = ["Windows", "notepad.exe", "http://10.0.0.5:4723", "INFO"]
+        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values) as ask, \
+                patch(f"{MODULE}.Confirm.ask", return_value=False):
+            answers = project_config.prompt_project_config(domain="desktop")
+        assert ask.call_args_list[0].kwargs["choices"] == ["Mac", "Linux", "Windows"]
+        assert answers == {
+            "platform": "desktop",
+            "platform_name": "Windows",
+            "app": "notepad.exe",
+            "appium_url": "http://10.0.0.5:4723",
+            "ocr": False,
+            "log_level": "INFO",
         }
 
     def test_web_playwright_question_flow(self):

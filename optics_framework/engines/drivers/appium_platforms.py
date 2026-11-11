@@ -24,13 +24,22 @@ IOS = "ios"
 TIZEN = "tizentv"   # Samsung Tizen TV  (platformName: TizenTV)
 WEBOS = "lgtv"      # LG webOS TV       (platformName: LGTV)
 
+MAC = "mac"
+WINDOWS = "windows"
+LINUX = "linux"
+
 #: Phone/tablet platforms — the historical Appium surface. Used by ``@supported_on``
 #: to fence off touch actions that a TV D-pad cannot perform.
 MOBILE = (ANDROID, IOS)
+#: Desktop platforms, served by the Xa11y Appium driver.
+DESKTOP = (MAC, WINDOWS, LINUX)
+#: Platforms with a pointer and a native element tree.
+POINTER = MOBILE + DESKTOP
 
 # --- keycode delivery strategies --------------------------------------------
 KEYCODE_ANDROID_INT = "android_int"   # driver.press_keycode(int(code))
 KEYCODE_RC_NAMED = "rc_named"         # driver.execute_script("<vendor>: pressKey", {...})
+KEYCODE_CHORD = "chord"               # driver.execute_script("xa11y: chord", {"keys": "cmd+s"})
 
 # Defaults shared by the mobile (Android/iOS) session; TV profiles keep their own
 # minimal set because these mobile-oriented caps are rejected by the TV drivers.
@@ -79,6 +88,8 @@ class PlatformProfile:
     rc_extra_payload: dict[str, Any] = field(default_factory=dict)
     web_ui: bool = False  # the session's own context is the app's DOM, with no native tree
     native_screenshot: bool = True
+    select_all_chord: str | None = None  # desktop: clear_text selects all with this chord, then deletes
+    app_at_start: bool = False  # the driver attaches when the session starts, so the app (or appName) must be in the capabilities then
 
     def resolve_rc_key(self, keycode: str) -> str:
         key = str(keycode).strip().upper()
@@ -110,8 +121,48 @@ def get_profile(platform_name: Any) -> PlatformProfile | None:
     return PROFILES.get(normalize_platform(platform_name))
 
 
+def promote_appium_options(caps: dict[str, Any]) -> dict[str, Any]:
+    """The capabilities as the Appium server reads them: each key in appium:options moves up with the appium: prefix."""
+    options = caps.get("appium:options")
+    if not isinstance(options, dict):
+        return caps
+    rest = {k: v for k, v in caps.items() if k != "appium:options"}
+    return rest | {k if k.startswith("appium:") else f"appium:{k}": v for k, v in options.items()}
+
+
 def supported_platforms() -> str:
     return ", ".join(p.label for p in PROFILES.values())
+
+
+SESSION_ID_CAPS = ("existingSessionId", "sessionId", "appium:existingSessionId", "appium:sessionId")
+
+
+def session_to_attach(caps: dict[str, Any]) -> str | None:
+    """The session id the capabilities name: the driver attaches to it before it checks for an app."""
+    return next((str(caps[k]) for k in SESSION_ID_CAPS if caps.get(k) and isinstance(caps[k], (str, int, float))), None)
+
+
+def session_app(caps: dict[str, Any]) -> str | None:
+    """The app the capabilities give the session: its id, or on a desktop the name of the running app it attaches to."""
+    profile = get_profile(caps.get("platformName") or caps.get("appium:platformName"))
+    if profile is None:
+        return None
+    keys = (*profile.app_id_caps, *(("appName", "appium:appName") if profile.app_at_start else ()))
+    return next((str(caps[k]) for k in keys if caps.get(k)), None)
+
+
+def require_app_at_start(caps: dict[str, Any]) -> None:
+    """Raise E0104 when the platform attaches at session start and the capabilities name no app to launch or attach to."""
+    profile = get_profile(caps.get("platformName") or caps.get("appium:platformName"))
+    if profile is None or not profile.app_at_start:
+        return
+    if not session_app(caps):
+        raise OpticsError(
+            Code.E0104,
+            message=f"A {profile.label} session needs its app when it starts: set 'app' to launch it, or 'appName' to "
+            "attach to a running one. With neither, the driver attaches to the frontmost app, which can be the window "
+            "that runs the agent.",
+        )
 
 
 # --- the capability decorator -----------------------------------------------
@@ -209,3 +260,16 @@ register_profile(PlatformProfile(
     rc_extra_payload={"duration": 200},
     web_ui=True,
 ))
+
+# Desktop apps through appium-xa11y-driver: keys are chords, text goes to the focused control.
+for _name, _label, _select_all in ((MAC, "Mac", "cmd+a"), (WINDOWS, "Windows", "ctrl+a"), (LINUX, "Linux", "ctrl+a")):
+    register_profile(PlatformProfile(
+        name=_name,
+        label=_label,
+        options_factory=AppiumOptions,
+        app_id_caps=("app", "appium:app"),
+        keycode_strategy=KEYCODE_CHORD,
+        default_options={"automationName": "Xa11y", "newCommandTimeout": 3600},
+        select_all_chord=_select_all,
+        app_at_start=True,
+    ))

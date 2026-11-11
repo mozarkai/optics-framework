@@ -53,6 +53,25 @@ def test_extract_config_data_forwards_save_captures():
     assert config_data["save_captures"] is False
 
 
+FIELDS_BEYOND_THE_SOURCES = {"ai_self_heal": True, "strict_element_match": True, "halt_duration": 0.5}
+
+
+def test_setup_keeps_every_config_key():
+    optics = Optics()
+    optics.setup(config={**load_config(CONTACT_CONFIG_PATH), **FIELDS_BEYOND_THE_SOURCES})
+    assert {key: getattr(optics.config, key) for key in FIELDS_BEYOND_THE_SOURCES} == FIELDS_BEYOND_THE_SOURCES
+    optics.quit()
+
+
+def test_setup_from_file_keeps_every_config_key(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({**load_config(CONTACT_CONFIG_PATH), **FIELDS_BEYOND_THE_SOURCES}), encoding="utf-8")
+    optics = Optics()
+    optics.setup_from_file(str(path))
+    assert {key: getattr(optics.config, key) for key in FIELDS_BEYOND_THE_SOURCES} == FIELDS_BEYOND_THE_SOURCES
+    optics.quit()
+
+
 def test_setup_and_element_round_trip():
     elements = load_elements(ELEMENTS_CSV_PATH)
     optics = Optics()

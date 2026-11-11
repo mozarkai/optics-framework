@@ -7,15 +7,17 @@ the explanatory comments of the ``_STARTER_CONFIG`` template in
 serialised from a model with ``yaml.dump``.
 
 Answers schema (normalised):
-  platform:       "android" | "ios" | "web-playwright" | "web-selenium"
+  platform:       "android" | "ios" | "desktop" | "web-playwright" | "web-selenium"
   android:        device_name, platform_name, app_package, app_activity,
                   appium_url
   ios:            device_name, platform_name, bundle_id, appium_url
+  desktop:        platform_name (Mac | Linux | Windows), app, appium_url
   web-selenium:   selenium_url
   web-playwright: browser, headless (bool)
   common:         ocr (bool), log_level (str, default "INFO")
 """
 import os
+import sys
 from pathlib import Path
 
 import yaml
@@ -30,6 +32,7 @@ from optics_framework.helper.onboarding import blank_line
 _DRIVER_BY_PLATFORM = {
     "android": "appium",
     "ios": "appium",
+    "desktop": "appium",
     "web-selenium": "selenium",
     "web-playwright": "playwright",
 }
@@ -46,7 +49,18 @@ _SOURCE_GROUP_TITLES = {
     "playwright": "Playwright locators / page source / screenshots:",
 }
 
-_AUTOMATION_NAME = {"android": "UiAutomator2", "ios": "XCUITest"}
+_PLATFORMS_BY_DOMAIN = {
+    "mobile": (["android", "ios"], "android"),
+    "web": (["web-playwright", "web-selenium"], "web-playwright"),
+    "desktop": (["desktop"], "desktop"),
+}
+
+_APPIUM_URL = "http://127.0.0.1:4723"
+_DESKTOP_APPS = {"Mac": "com.apple.TextEdit", "Linux": "gedit", "Windows": "notepad.exe"}
+
+
+def _this_desktop() -> str:
+    return {"darwin": "Mac", "win32": "Windows"}.get(sys.platform, "Linux")
 
 
 def _quote(value: object) -> str:
@@ -79,19 +93,16 @@ def prompt_project_config(domain: str | None = None) -> dict:
 
     Question order (stable — callers' tests rely on it): platform, then only
     that platform's fields, then the shared OCR / log-level questions."""
-    if domain == "mobile":
-        choices, default = ["android", "ios"], "android"
-    elif domain == "web":
-        choices, default = ["web-playwright", "web-selenium"], "web-playwright"
-    else:
-        choices, default = list(_DRIVER_BY_PLATFORM), "android"
-    platform = _ask(
+    choices, default = _PLATFORMS_BY_DOMAIN.get(domain or "", (list(_DRIVER_BY_PLATFORM), "android"))
+    platform = choices[0] if len(choices) == 1 else _ask(
         "What are you automating?",
         choices=choices,
         default=default,
     )
     answers: dict = {"platform": platform}
-    if platform == "android":
+    if platform == "desktop":
+        answers.update(_desktop_answers())
+    elif platform == "android":
         answers["device_name"] = _ask(
             "Device or emulator name (see `adb devices`)",
             default="emulator-5554")
@@ -102,8 +113,7 @@ def prompt_project_config(domain: str | None = None) -> dict:
         answers["app_activity"] = _ask(
             "App main activity (e.g. com.example.app.MainActivity)",
             default="com.example.app.MainActivity")
-        answers["appium_url"] = _ask(
-            "Appium server URL", default="http://127.0.0.1:4723")
+        answers["appium_url"] = _ask_appium_url()
     elif platform == "ios":
         # iOS launches apps by bundle identifier — appPackage/appActivity are
         # Android-only capabilities and would be ignored (or rejected) by
@@ -114,8 +124,7 @@ def prompt_project_config(domain: str | None = None) -> dict:
             "Platform name", default="iOS")
         answers["bundle_id"] = _ask(
             "Bundle identifier (e.g. com.example.app)", default="com.example.app")
-        answers["appium_url"] = _ask(
-            "Appium server URL", default="http://127.0.0.1:4723")
+        answers["appium_url"] = _ask_appium_url()
     elif platform == "web-selenium":
         answers["selenium_url"] = _ask(
             "Selenium/WebDriver server URL", default="http://127.0.0.1:4444/wd/hub")
@@ -132,6 +141,16 @@ def prompt_project_config(domain: str | None = None) -> dict:
         "Log level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO")
     return answers
+
+
+def _desktop_answers() -> dict:
+    platform_name = _ask("Which desktop?", choices=list(_DESKTOP_APPS), default=_this_desktop())
+    return {
+        "platform_name": platform_name,
+        "app": _ask("App to launch: a bundle id or .app path on macOS, an executable elsewhere",
+                    default=_DESKTOP_APPS[platform_name]),
+        "appium_url": _ask_appium_url(),
+    }
 
 
 def _header(platform: str) -> list[str]:
@@ -153,37 +172,63 @@ def _header(platform: str) -> list[str]:
 
 def _appium_block(answers: dict, enabled: bool) -> list[str]:
     platform = answers.get("platform", "android")
-    if platform not in _DRIVER_BY_PLATFORM:
-        platform = "android"
-    lines = [
-        "  # Native Android/iOS via Appium. Needs a running Appium server and a",
-        "  # connected device/emulator.  Install:  optics setup --install appium",
+    return [
+        *(_DESKTOP_COMMENT if platform == "desktop" else _MOBILE_COMMENT),
         "  - appium:",
         f"      enabled: {_enabled(enabled)}",
-        f"      url: {_quote(answers.get('appium_url') or 'http://127.0.0.1:4723')}",
+        f"      url: {_quote(answers.get('appium_url') or _APPIUM_URL)}",
         "      capabilities:",
+        *_CAPABILITIES.get(platform, _android_capabilities)(answers),
     ]
-    if platform == "ios":
-        # XCUITest launches apps by bundleId; appPackage/appActivity are
-        # Android-only and must not appear in an iOS config.
-        lines += [
-            f"        bundleId: {_quote(answers.get('bundle_id') or 'com.example.app')}",
-            "        automationName: "
-            + _AUTOMATION_NAME.get(platform, "UiAutomator2"),
-            f"        deviceName: {_quote(answers.get('device_name') or 'iPhone 15')}",
-            f"        platformName: {_quote(answers.get('platform_name') or 'iOS')}",
-        ]
-    else:
-        lines += [
-            f"        appPackage: {_quote(answers.get('app_package') or 'com.example.app')}",
-            "        appActivity: "
-            + _quote(answers.get("app_activity") or "com.example.app.MainActivity"),
-            "        automationName: "
-            + _AUTOMATION_NAME.get(platform, "UiAutomator2"),
-            f"        deviceName: {_quote(answers.get('device_name') or 'emulator-5554')}",
-            f"        platformName: {_quote(answers.get('platform_name') or 'Android')}",
-        ]
-    return lines
+
+
+def _android_capabilities(answers: dict) -> list[str]:
+    return [
+        f"        appPackage: {_quote(answers.get('app_package') or 'com.example.app')}",
+        "        appActivity: "
+        + _quote(answers.get("app_activity") or "com.example.app.MainActivity"),
+        "        automationName: UiAutomator2",
+        f"        deviceName: {_quote(answers.get('device_name') or 'emulator-5554')}",
+        f"        platformName: {_quote(answers.get('platform_name') or 'Android')}",
+    ]
+
+
+def _ios_capabilities(answers: dict) -> list[str]:
+    """XCUITest launches apps by bundleId; appPackage/appActivity are Android-only and must not appear here."""
+    return [
+        f"        bundleId: {_quote(answers.get('bundle_id') or 'com.example.app')}",
+        "        automationName: XCUITest",
+        f"        deviceName: {_quote(answers.get('device_name') or 'iPhone 15')}",
+        f"        platformName: {_quote(answers.get('platform_name') or 'iOS')}",
+    ]
+
+
+def _ask_appium_url() -> str:
+    return _ask("Appium server URL", default=_APPIUM_URL)
+
+
+_MOBILE_COMMENT = [
+    "  # Native Android/iOS via Appium. Needs a running Appium server and a",
+    "  # connected device/emulator.  Install:  optics setup --install appium",
+]
+
+_DESKTOP_COMMENT = [
+    "  # Desktop apps via Appium and appium-xa11y-driver. Needs a running Appium server.",
+    "  # Install:  optics setup --install appium",
+    "  #           appium driver install --source=npm appium-xa11y-driver",
+]
+
+
+def _desktop_capabilities(answers: dict) -> list[str]:
+    platform_name = answers.get("platform_name") or _this_desktop()
+    return [
+        f"        platformName: {_quote(platform_name)}",
+        "        automationName: Xa11y",
+        f"        app: {_quote(answers.get('app') or _DESKTOP_APPS.get(platform_name, 'gedit'))}",
+    ]
+
+
+_CAPABILITIES = {"ios": _ios_capabilities, "desktop": _desktop_capabilities}
 
 
 def _driver_sources_section(answers: dict, driver: str) -> list[str]:
