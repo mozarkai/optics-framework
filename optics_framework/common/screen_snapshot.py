@@ -24,6 +24,7 @@ _QUOTED_RE = re.compile(r'"([^"]*)"|\'([^\']*)\'')
 _POSITIONAL_RE = re.compile(r"\[\s*\d+\s*\]|position\(|last\(|:nth-")
 _VALUE_ATTR_RE = re.compile(r"@(?:text|label|value)\b|text\(\)|normalize-space\(")
 DIFF_ROWS = 40
+_TITLED_CONTAINERS = frozenset({"window", "dialog", "application", "frame"})
 REMOVED_ROWS = 10
 _WINDOW_BOUNDS = "window_bounds"
 _XPATH = "xpath="
@@ -278,7 +279,8 @@ def _context_label(fields: dict) -> str:
     label, loc = fields["label"], fields["loc"]
     if not label or fields["holds_value"] or (_strong_loc(loc) and not _names_by_text(loc, label)):
         return ""
-    return fold(label)
+    # A window title changes with the document: an editor marks it when the text is not saved.
+    return "" if fields["cls"].lower() in _TITLED_CONTAINERS else fold(label)
 
 
 def _contexts(labels: list[str]) -> list[tuple[tuple, tuple[str, ...]]]:

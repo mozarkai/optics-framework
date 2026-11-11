@@ -48,3 +48,20 @@ def test_rows_that_share_an_id_get_their_own_refs():
     ]).rows
 
     assert rows[0].ref != rows[1].ref
+
+
+def test_rows_keep_their_refs_when_the_window_title_changes():
+    refs = RefTable()
+
+    def editor(title: str) -> list[dict]:
+        return [
+            _native(title, "window", ["tap"], y=0),
+            _native("File menu", "menu_item", ["tap"], y=20),
+            _native("Edit menu", "menu_item", ["tap"], y=20),
+        ]
+
+    before = [row.ref for row in refs.snapshot(editor("Untitled 1 - Mousepad")).rows]
+
+    after = [row.ref for row in refs.snapshot(editor("*Untitled 1 - Mousepad")).rows]
+
+    assert after[1:] == before[1:]
