@@ -1,6 +1,6 @@
 import pytest
 
-from optics_framework.common.screen_snapshot import RefTable
+from optics_framework.common.screen_snapshot import RefTable, render_row
 
 pytestmark = pytest.mark.white_box
 
@@ -65,3 +65,19 @@ def test_rows_keep_their_refs_when_the_window_title_changes():
     after = [row.ref for row in refs.snapshot(editor("*Untitled 1 - Mousepad")).rows]
 
     assert after[1:] == before[1:]
+
+
+def test_a_field_without_an_id_keeps_its_ref_when_it_gets_text():
+    refs = RefTable()
+    menu = _native("File menu", "menu_item", ["tap"], y=0)
+    empty = refs.snapshot([menu, _native("", "text_area", ["input", "scroll"], y=20)])
+
+    typed = refs.snapshot([menu, _native("Hello optics", "text_area", ["input", "scroll"], y=20)])
+
+    assert typed.rows[1].ref == empty.rows[1].ref
+
+
+def test_a_field_row_shows_the_line_breaks_of_its_text():
+    row = RefTable().snapshot([_native("Hello optics\nSecond line 42", "text_area", ["input"], y=0)]).rows[0]
+
+    assert '"Hello optics\\nSecond line 42"' in render_row(row)

@@ -195,7 +195,7 @@ def _state(el: dict, secret: bool) -> str:
     value = str(el.get("value") or "")
     if el.get("filled") or (secret and value):
         return "(filled)"
-    return f'= "{clean_label(value, limit=None)}"' if value else ""
+    return f'= "{clean_label(value, keep_lines=True)}"' if value else ""
 
 
 def normalize(el: dict, before: dict | None = None) -> dict | None:
@@ -269,7 +269,8 @@ def _identity(
         return ("id", "", fields["cls"], fields["rid"], (), fold(fields["hint"] if holds_value else label))
     if _strong_loc(loc) and not (holds_value and _VALUE_ATTR_RE.search(_unquoted(loc))):
         return ("loc", loc, fields["cls"], fields["rid"], () if _names_by_text(loc, label) else context, "")
-    if not label:
+    if not label or holds_value:
+        # A field has the same key empty and filled, so its ref stays when it gets text.
         context = (*context, "", *following)
     return ("pos", window_bounds, fields["cls"], fields["rid"], context, "" if holds_value else fold(label))
 
@@ -585,13 +586,15 @@ def element_name(row: Row, taken: set[str]) -> str:
     return name
 
 
-def clean_label(label: str, limit: int | None = 80) -> str:
-    text = " ".join(label.split()).replace('"', "'")
-    return text[:limit] + "…" if limit is not None and len(text) > limit else text
+def clean_label(label: str, limit: int = 80, keep_lines: bool = False) -> str:
+    """``label`` on one line; ``keep_lines`` shows each line break of a field's text as \\n."""
+    lines = [" ".join(line.split()) for line in label.splitlines()] if keep_lines else [" ".join(label.split())]
+    text = "\\n".join(line for line in lines if line).replace('"', "'")
+    return text[:limit] + "…" if len(text) > limit else text
 
 
-def _label_part(label: str) -> str:
-    return f'"{clean_label(label)}"' if label.strip() else "(no text)"
+def _label_part(label: str, keep_lines: bool = False) -> str:
+    return f'"{clean_label(label, keep_lines=keep_lines)}"' if label.strip() else "(no text)"
 
 
 def hide(text: str, secret: str) -> str:
@@ -618,7 +621,7 @@ def render_row(row: Row) -> str:
     act = f"[{','.join(row.act)}]" if row.act else ""
     rid = f"#{row.rid.rsplit('/', 1)[-1]}" if row.rid else ""
     offscreen = "(off-screen)" if row.offscreen else ""
-    parts = (row.ref, row.cls, _label_part(row.label), act, row.shown_state, rid, offscreen)
+    parts = (row.ref, row.cls, _label_part(row.label, row.holds_value), act, row.state, rid, offscreen)
     return " ".join(p for p in parts if p)
 
 
