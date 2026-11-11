@@ -573,7 +573,8 @@ def _step_notes(step: Step, keyword: str) -> list[str]:
     if verdict.vision:
         lines.append(f'note: "{step.action.target}" was found by {step.strategy}, not by an exact locator')
     if step.result is not None and step.ok and step.action.verb == "keyword":
-        text = " ".join(str(step.result).split())
+        # A line break stays visible as \n: an agent that typed two lines must see two lines.
+        text = "\\n".join(" ".join(line.split()) for line in str(step.result).splitlines() if line.strip())
         lines.append(f"result: {text[:_RESULT_CHARS]}{'…' if len(text) > _RESULT_CHARS else ''}")
     return lines
 
