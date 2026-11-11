@@ -880,15 +880,24 @@ class UIHelper:
             hint = next((v for a in FIELD_NAME_ATTRS if (v := (node.attrib.get(a) or "").strip())), "")
             if hint:
                 extra["hint"] = hint
-        return {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
+        # Android says checked="true"; an iOS switch holds 1 or 0 in its value.
+        ticked = node.attrib.get("checked") or {"1": "true", "0": "false"}.get(node.attrib.get("value") or "")
+        if "toggle" in actions and ticked in ("true", "false"):
+            entry["checked"] = ticked == "true"
+        return entry
 
     def _has_actionable_descendant(self, node: etree.Element) -> bool:
         return any(c is not node and self._is_actionable(c) for c in node.iter())
 
+    def _inside_switch(self, node: etree.Element) -> bool:
+        """Whether a node is a part of a switch row; an iOS switch row holds its label and the switch itself."""
+        return any("Switch" in self._class_of(parent) and self._is_actionable(parent) for parent in node.iterancestors())
+
     def _compact_entry_for(self, node: etree.Element) -> Optional[Dict]:
         # One compact entry for a node, or None to drop it.
         bounds = self._extract_bounds(node)
-        if not bounds or node.attrib.get("visible") == "false":
+        if not bounds or node.attrib.get("visible") == "false" or self._inside_switch(node):
             return None
         actions = self._element_actions(node) if node.attrib.get("enabled") != "false" else []
         if actions == ["scroll"]:

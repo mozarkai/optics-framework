@@ -2,15 +2,18 @@
 import asyncio
 import csv
 import difflib
+import functools
 import inspect
 import io
 import math
+import re
 import time
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from optics_framework.common import utils
+from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.utils import substitute_vars, var_refs, whole_var_name
 from optics_framework.common.error import OpticsError
 from optics_framework.common.logging_config import (
@@ -247,6 +250,20 @@ def keyword_catalog(keywords: Keywords, coordinates: bool = False) -> dict[str, 
     }
 
 
+@functools.cache
+def _driver_methods(fn: Callable[..., Any]) -> frozenset[str]:
+    return frozenset(
+        name for name in re.findall(r"\bdriver\.(\w+)\(", inspect.getsource(fn))
+        if callable(getattr(DriverInterface, name, None))
+    )
+
+
+def runs_on(fn: Callable[..., Any], supports: Callable[[str], bool]) -> bool:
+    """Whether a keyword can run on a driver: it calls no driver method, or the driver supports one it calls."""
+    names = _driver_methods(fn)
+    return not names or any(supports(name) for name in names)
+
+
 def keyword_params(fn: Callable[..., Any]) -> list[inspect.Parameter]:
     variadic = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     return [p for p in inspect.signature(fn).parameters.values() if p.name != "self" and p.kind not in variadic]
@@ -260,12 +277,28 @@ def element_slot(spec: Sequence[inspect.Parameter]) -> str | None:
     return next((p.name for p in spec if p.name in ELEMENT_SLOTS), None)
 
 
+def _free_params(spec: Sequence[inspect.Parameter], element: Value | None) -> list[inspect.Parameter]:
+    slot = element_slot(spec) if element is not None else None
+    return [p for p in spec if p.name != slot]
+
+
+def _renamed(params: Mapping[str, Any], free: Sequence[inspect.Parameter]) -> Mapping[str, Any]:
+    """``params`` with one misnamed param taken as the one required param still missing."""
+    unknown = [key for key in params if key not in {p.name for p in free}]
+    needed = [p.name for p in free if p.default is inspect.Parameter.empty and p.name not in params]
+    if len(unknown) != 1 or len(needed) != 1:
+        return params
+    # Models guess "script" for script_or_json; one wrong name can only mean the one required param left.
+    return {needed[0] if key == unknown[0] else key: value for key, value in params.items()}
+
+
 def _given_by_name(
     fn: Callable[..., Any], params: Mapping[str, Any], free: list[inspect.Parameter],
 ) -> dict[str, Value]:
-    unknown = [key for key in params if key not in {p.name for p in free}]
-    if unknown:
-        raise ValueError(f'{fn.__name__} has no param "{unknown[0]}"')
+    params = _renamed(params, free)
+    unknown = next((key for key in params if key not in {p.name for p in free}), None)
+    if unknown is not None:
+        raise ValueError(f'{fn.__name__} has no param "{unknown}"')
     return {k: v if isinstance(v, list) else str(v) for k, v in params.items()}
 
 
@@ -286,7 +319,7 @@ def bind(
     """``params`` bound as the CSV runner binds them to the visible params of ``fn``, or to all with ``hidden``."""
     spec = keyword_params(fn) if hidden else visible_params(fn)
     slot = element_slot(spec) if element is not None else None
-    free = [p for p in spec if p.name != slot]
+    free = _free_params(spec, element)
     if isinstance(params, Mapping):
         given = _given_by_name(fn, params, free)
     else:
@@ -423,10 +456,13 @@ def _keyword_call(
         closest = difflib.get_close_matches(action.keyword, sorted(keywords), n=3, cutoff=0.5)
         hint = f'unknown keyword "{action.keyword}"' + (f"; closest: {', '.join(closest)}" if closest else "")
         raise _invalid(hint if action.keyword else "keyword needs a keyword name")
-    params, targets = _expand(action.params, refs) if isinstance(action.params, Mapping) else (action.params, {})
     element: Value | None = list(found[1].act) if found else action.target.strip() or None
     names = {action.target.strip(), *((found[0].ref, found[0].label) if found else ())} - {""}
     spec = visible_params(fn)
+    params, targets = action.params, {}
+    if isinstance(params, Mapping):
+        # The name is put right first, so a guessed name still gets its ref expanded and its timeout capped.
+        params, targets = _expand(_renamed(params, _free_params(spec, element)), refs)
     try:
         bound = bind(fn, params, element, drop_first=names)
     except ValueError as exc:

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Long change</title></head>
+<body>
+  <button id="show" onclick="reveal()">Show items</button>
+  <ul id="items"></ul>
+  <script>
+    function reveal() {
+      const list = document.getElementById('items');
+      for (let n = 1; n <= 60; n++) {
+        const item = document.createElement('li');
+        item.textContent = 'Item ' + n;
+        list.appendChild(item);
+      }
+      const done = document.createElement('button');
+      done.textContent = 'Done';
+      list.after(done);
+    }
+  </script>
+</body>
+</html>

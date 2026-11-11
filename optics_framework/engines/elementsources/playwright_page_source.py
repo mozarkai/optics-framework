@@ -60,6 +60,19 @@ BOUNDS_JS = r"""
         [bottom, right] = [Math.min(bottom, view[2]), Math.min(right, view[3])];
         return bottom > top && right > left;
     };
+    // What a form control holds now; a password only says that it is filled.
+    const holds = (el) => {
+        const type = (el.type || '').toLowerCase();
+        const aria = el.getAttribute('aria-checked');
+        if (type === 'checkbox' || type === 'radio') return {checked: !!el.checked};
+        if (aria === 'true' || aria === 'false') return {checked: aria === 'true'};
+        if (el.tagName === 'SELECT') {
+            const option = el.selectedOptions[0];
+            return option ? {value: option.text.trim().slice(0, 80)} : {};
+        }
+        if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' || !el.value) return {};
+        return type === 'password' ? {filled: true} : {value: String(el.value).slice(0, 2000)};
+    };
     return xpaths.map((xp) => {
         if (!xp) return null;
         try {
@@ -75,6 +88,7 @@ BOUNDS_JS = r"""
                 x: rect.x, y: rect.y, width: rect.width, height: rect.height,
                 offscreen: !shows(el, rect),
                 pointer: style.cursor === 'pointer',
+                ...holds(el),
             };
         } catch (e) {
             return null;
@@ -540,7 +554,7 @@ class WebDomInspector:
                 return val
         return self._label_for(node)
 
-    def _label_for(self, node: etree.Element) -> str:
+    def _labels_by_target(self) -> dict[str, str]:
         cache = getattr(self, "_label_cache", None)
         if cache is None or cache[0] is not self.tree:
             labels: dict[str, str] = {}
@@ -549,7 +563,17 @@ class WebDomInspector:
                 if target and target not in labels:
                     labels[target] = " ".join("".join(label.itertext()).split())
             cache = self._label_cache = (self.tree, labels)
-        return cache[1].get(node.attrib.get("id") or "", "")
+        return cache[1]
+
+    def _label_for(self, node: etree.Element) -> str:
+        named = self._labels_by_target().get(node.attrib.get("id") or "", "")
+        if named or (node.tag or "").lower() not in ("input", "select", "textarea"):
+            return named
+        wrapper = next(node.iterancestors("label"), None)
+        if wrapper is not None:
+            return " ".join("".join(wrapper.itertext()).split())
+        # A bare checkbox or radio button is named by the text right after it.
+        return " ".join((node.tail or "").split()) if self._is_web_toggle(node) else ""
 
     def _web_folded_label(self, node: etree.Element) -> str:
         # An attribute label wins when the node has no direct text of its own; otherwise
@@ -708,9 +732,8 @@ class WebDomInspector:
                 # A click handler added by script leaves no attribute; the hand cursor a person sees is the sign.
                 if rect.get("pointer") and "tap" not in actions and not self._is_web_disabled(node):
                     actions = ["tap", *actions]
-                entries.append(
-                    self._compact_web_entry(node, label, actions, bounds, locator, bool(rect.get("offscreen")))
-                )
+                entry = self._compact_web_entry(node, label, actions, bounds, locator, bool(rect.get("offscreen")))
+                entries.append(entry | {key: rect[key] for key in ("value", "checked", "filled") if key in rect})
         return entries
 
     def _check_filter_type(self, node: etree.Element, filter_type: str) -> bool:

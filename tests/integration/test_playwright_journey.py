@@ -273,6 +273,129 @@ async def test_mcp_press_key_takes_key_names_and_points_refs_to_tap():
     assert "Escape" in unknown.content[0].text
 
 
+async def test_mcp_session_lists_only_the_keywords_its_browser_runs():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        before = json.loads((await client.read_resource("optics://keywords"))[0].text)
+        session_id = await _core_session(client, "settings.html")
+        try:
+            during = json.loads((await client.read_resource("optics://keywords"))[0].text)
+            refused = await client.call_tool(
+                "run_keyword", {"keyword": "force_terminate_app", "params": {"app_name": "x"}}, raise_on_error=False,
+            )
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    names = {entry["keyword"] for entry in during}
+    assert {entry["keyword"] for entry in before} - names == {"force_terminate_app"}
+    assert "press_element" in names
+    assert refused.structured_content["error"]["kind"] == "unsupported"
+    assert "https://optics-framework.org/docs/reference/keywords/index.md" in refused.content[0].text
+
+
+async def test_mcp_run_keyword_takes_one_misnamed_param_as_the_one_it_needs():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "settings.html")
+        try:
+            ran = await client.call_tool(
+                "run_keyword", {"keyword": "execute_script", "params": {"script": "return 1 + 1"}},
+            )
+            two_wrong = await client.call_tool(
+                "run_keyword", {"keyword": "assert_text", "params": {"target": "e1", "value": "x"}},
+                raise_on_error=False,
+            )
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    assert ran.structured_content["result"] == 2
+    assert two_wrong.structured_content["error"]["kind"] == "invalid_params"
+
+
+async def test_mcp_rows_show_what_a_field_holds_but_never_a_password():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "state.html")
+        try:
+            typed = await client.call_tool("type_text", {"target": "css=#city", "text": "Paris"})
+            secret = await client.call_tool("type_text", {"target": "css=#pin", "text": "hunter2"})
+            ticked = await client.call_tool("tap", {"target": "css=#terms"})
+            seen = await client.call_tool("observe", {})
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    assert '= "Paris"' in typed.content[0].text
+    assert "hunter2" not in secret.content[0].text + seen.content[0].text
+    assert "(filled)" in secret.content[0].text
+    assert 'input "Accept terms" [tap,toggle] (checked)' in ticked.content[0].text
+    assert '= "Small"' in seen.content[0].text
+
+
+async def test_mcp_selects_an_option_of_a_native_list():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "state.html")
+        try:
+            chosen = await client.call_tool(
+                "run_keyword", {"keyword": "select_dropdown_option", "params": {"element": "css=#size", "option": "Large"}},
+            )
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    assert '= "Large"' in chosen.content[0].text
+
+
+async def test_mcp_a_large_change_lists_the_controls_first_and_counts_the_rest():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "long.html")
+        try:
+            shown = await client.call_tool("tap", {"target": "Show items"})
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    lines = shown.content[0].text.splitlines()
+    added = [line for line in lines if line.startswith("+ ")]
+    assert len(added) == 40
+    assert any('button "Done"' in line for line in added)
+    assert "… 21 more added rows" in lines[-1]
+    assert len(shown.structured_content["screen"]["added"]) == 40
+
+
+async def test_mcp_batch_runs_steps_in_order_and_stops_at_the_first_failure():
+    fastmcp = pytest.importorskip("fastmcp")
+    from optics_framework.helper.mcp_server import build_server
+    async with fastmcp.Client(build_server("core")) as client:
+        session_id = await _core_session(client, "state.html")
+        try:
+            filled = await client.call_tool("batch", {"steps": [
+                {"tool": "type_text", "target": "css=#city", "text": "Paris"},
+                {"tool": "tap", "target": "css=#terms"},
+                {"tool": "press_key", "target": "Tab"},
+            ]})
+            stopped = await client.call_tool("batch", {"steps": [
+                {"tool": "tap", "target": "css=#missing"},
+                {"tool": "type_text", "target": "css=#city", "text": "Rome"},
+            ]}, raise_on_error=False)
+            seen = await client.call_tool("observe", {})
+        finally:
+            await client.call_tool("terminate_session", {"session_id": session_id})
+
+    text = filled.content[0].text
+    assert filled.structured_content["ok"] is True
+    assert [step["ok"] for step in filled.structured_content["steps"]] == [True, True, True]
+    assert '= "Paris"' in text
+    assert "(checked)" in text
+    assert stopped.is_error
+    assert len(stopped.structured_content["steps"]) == 1
+    assert "Rome" not in seen.content[0].text
+
+
 def test_stopping_serve_closes_its_browsers():
     from fastapi.testclient import TestClient
     from optics_framework.common import expose_api

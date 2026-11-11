@@ -126,7 +126,7 @@ class AppiumFindElement(ElementSourceInterface):
             return None
         elif element_type == 'XPath':
             try:
-                found_element = driver.find_element(AppiumBy.XPATH, element)
+                found_element = driver.find_element(AppiumBy.XPATH, utils.without_prefix(element, utils.XPATH_PREFIX))
                 if not found_element:
                     return None
                 return found_element

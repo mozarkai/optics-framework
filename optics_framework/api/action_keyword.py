@@ -690,6 +690,19 @@ class ActionKeyword:
         self.press_element(element, aoi_x=aoi_x, aoi_y=aoi_y, aoi_width=aoi_width,
                           aoi_height=aoi_height, event_name=event_name, index=index)
 
+    def _select_native_option(self, element: str, option: str, event_name: Optional[str]) -> bool:
+        """Choose ``option`` in a native list such as an HTML select, whose options are not elements to press."""
+        def choose(located: Any) -> bool:
+            return not isinstance(located, tuple) and self.driver.select_option(located, option, event_name) is True
+
+        # A probe, not the action: no self-heal, and a failed lookup or selection leaves the dropdown to be opened.
+        # Only the first result is asked, since a later strategy is OCR or an image match and gives no element.
+        try:
+            result = next(iter(self.strategy_manager.locate(element, index=0)), None)
+        except OpticsError:
+            return False
+        return result is not None and self._act_on(result, choose, element, "select_dropdown_option", False)[0] is True
+
     def select_dropdown_option(self, element: str, option: str, timeout: str = "30",
                                 event_name: Optional[str] = None) -> None:
         """
@@ -713,6 +726,8 @@ class ActionKeyword:
         :param event_name: The event triggering the selection.
         """
         internal_logger.info(f"Selecting '{option}' from dropdown '{element}'")
+        if self._select_native_option(element, option, event_name):
+            return
         before = self._safe_get_interactive_elements()
         self.press_element(element, event_name=event_name)
 

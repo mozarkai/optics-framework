@@ -156,7 +156,7 @@ class AppiumPageSource(ElementSourceInterface):
         elif element_type == 'Text':
             return self._locate_by_text(driver, element, element_type, index)
         elif element_type == 'XPath':
-            return self._locate_by_xpath(driver, element, element_type)
+            return self._locate_by_xpath(driver, utils.without_prefix(element, utils.XPATH_PREFIX), element_type)
         raise RuntimeError("Unknown element type.")
 
     def get_element_bboxes(
@@ -249,7 +249,8 @@ class AppiumPageSource(ElementSourceInterface):
         if element_type == "Text":
             return bool(self.ui_text_search([utils.without_prefix(element, "text=")], strict=strict))
         if element_type == "XPath" and getattr(self.driver, "ui_helper", None) is not None:
-            return bool(self.driver.ui_helper.find_xpath(element, strict=strict)[0])
+            xpath = utils.without_prefix(element, utils.XPATH_PREFIX)
+            return bool(self.driver.ui_helper.find_xpath(xpath, strict=strict)[0])
         return False
 
     def _validate_rule(self, rule):

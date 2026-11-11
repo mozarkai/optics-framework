@@ -534,7 +534,7 @@ class TestPromptContext:
             {"label": "Timers", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_timer", "bounds": [0, 0, 100, 20]},
             {"label": "Stopwatch", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_stopwatch", "bounds": [0, 30, 100, 50]},
         ])
-        assert closest == ['e2 FrameLayout "Stopwatch" [tap] #app:id/tab_menu_stopwatch']
+        assert closest == ['e2 FrameLayout "Stopwatch" [tap] #tab_menu_stopwatch']
 
     def test_element_name_is_in_the_prompt_and_ranks_the_rows(self):
         prompt = self._prompt_with_rows("//*[@content-desc='Chronometer']", [
@@ -562,7 +562,7 @@ class TestPromptContext:
             {"label": "Search", "cls": "android.widget.TextView", "act": [], "bounds": [0, 0, 100, 20]},
             {"label": "", "cls": "android.widget.ImageButton", "act": ["tap"], "rid": "com.app:id/search_button", "bounds": [0, 30, 100, 50]},
         ])
-        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 android.widget.ImageButton")
+        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 ImageButton")
 
     def test_closest_rows_match_a_camel_case_locator_by_its_words(self):
         prompt = self._prompt_with_rows("loginButton", [
