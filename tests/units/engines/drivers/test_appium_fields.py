@@ -123,6 +123,17 @@ def test_enter_text_on_a_caption_types_into_its_field():
     caption.send_keys.assert_not_called()
 
 
+def test_enter_text_on_an_editable_desktop_control_types_into_it():
+    instance = _appium(ANDROID)
+    combo = MagicMock()
+    combo.get_attribute.side_effect = {"className": "combo_box", "editable": "true"}.get
+    type(instance.driver).page_source = property(lambda _: pytest.fail("page source read"))
+
+    instance.enter_text_element(combo, "12")
+
+    combo.send_keys.assert_called_once_with("12")
+
+
 def test_enter_text_on_a_field_reads_no_page_source():
     instance = _appium(ANDROID)
     field = MagicMock()

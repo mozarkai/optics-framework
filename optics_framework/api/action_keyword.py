@@ -2,6 +2,7 @@ import collections
 import shlex
 import time
 import json
+from functools import partial
 from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -141,6 +142,10 @@ def _find_dropdown_container(new_elements: List[dict]) -> Optional[dict]:
     if not candidates:
         return None
     return max(candidates, key=lambda e: _bounds_area(e.get("bounds")))
+
+
+def _unsupported(error: Exception) -> bool:
+    return isinstance(error, OpticsError) and error.code == Code.E0105
 
 
 def _raise_option_not_found(dropdown_element: str, option: str, interactive: List[dict]) -> None:
@@ -521,6 +526,7 @@ class ActionKeyword:
         last_exception: Optional[Exception] = None
         result_count = 0
         locate_error: Optional[OpticsError] = None
+        unsupported = True
 
         # Lazy, so a later strategy locates only after this act fails.
         results_iter = iter(results)
@@ -539,6 +545,7 @@ class ActionKeyword:
             ret, error = self._act_on(result, act, element, func_name, allow_covered)
             if error is not None:
                 last_exception = error
+                unsupported = unsupported and _unsupported(error)
                 continue
             keyword_outcome.acted(result.strategy)
             # Success: record as a breadcrumb for any later AI self-heal (capture-then-return;
@@ -553,15 +560,27 @@ class ActionKeyword:
                 message=f"No valid strategies found for '{element}' in '{func_name}'",
                 cause=locate_error,
             ) from locate_error
-        if last_exception:
-            if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
-                return None
-            raise OpticsError(
-                Code.X0201,
-                message=f"All strategies failed for '{element}' in '{func_name}': {last_exception}",
-                cause=last_exception,
-            )
-        raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+        return self._after_failed_acts(
+            last_exception, unsupported, element, func_name,
+            partial(self._ai_self_heal, element, func_name, intent_args, screenshot_np, value),
+        )
+
+    @staticmethod
+    def _after_failed_acts(
+        error: Optional[Exception], unsupported: bool, element: Any, func_name: str, heal: Callable[[], bool]
+    ) -> None:
+        """None when self-heal does the step; else the error that every located result's act ended in."""
+        if error is None:
+            raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+        if unsupported:
+            raise error  # each driver refused the action itself, so no other element or heal can do it
+        if heal():
+            return None
+        raise OpticsError(
+            Code.X0201,
+            message=f"All strategies failed for '{element}' in '{func_name}': {error}",
+            cause=error,
+        )
 
     # Click actions
     def press_element(
