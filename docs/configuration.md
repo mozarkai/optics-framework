@@ -165,7 +165,7 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
 | Category | Key Settings | Common Values |
 |----------|-------------|---------------|
 | **Logging** | `console`, `file_log`, `json_log`, `log_level` | `log_level: INFO` or `DEBUG` |
-| **Paths** | `project_path`, `execution_output_path` | `./my_project`, `./outputs` |
+| **Paths** | `name`, `project_path`, `execution_output_path` | `./my_project`, `./outputs` |
 | **Execution** | `halt_duration` | `0.1` |
 | **Drivers** | `appium`, `selenium`, `playwright`, `ble` | See Driver Sources tab |
 | **Element Sources** | `appium_find_element`, `playwright_screenshot`, etc. | See Element Sources tab |
@@ -263,6 +263,16 @@ All configurations are defined in YAML format. The main configuration file (`con
     ```
 
 === "Paths & Execution"
+
+    ### `name`
+
+    **Type:** `Optional[str]` | **Default:** `null` (the project folder's name)
+
+    The project's name. It names the JUnit test suite and each test case's `classname`. `optics init` writes it and `optics configure` keeps it, so the report keeps the same name when the project is unpacked into a different folder.
+
+    ```yaml
+    name: checkout_suite
+    ```
 
     ### `project_path`
 
