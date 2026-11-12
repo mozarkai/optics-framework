@@ -31,6 +31,9 @@ TAP_CLASS_FRAGMENTS = (
 )
 TOGGLE_CLASS_FRAGMENTS = ("Switch", "CheckBox", "RadioButton", "ToggleButton")
 DESKTOP_CONTAINER_TAGS = frozenset({"window", "dialog"})
+# A window or page title names the document, not a part of the screen.
+AREA_STOP_TAGS = frozenset({"window", "application", "web_area"})
+AREA_MAX_CHARS = 40
 INPUT_CLASS_FRAGMENTS = (
     "EditText", "TextField", "SecureTextField", "AutoCompleteTextView", "SearchField", "XCUIElementTypeTextView",
     "text_field", "text_area",
@@ -901,6 +904,9 @@ class UIHelper:
             hint = next((v for a in FIELD_NAME_ATTRS if (v := (node.attrib.get(a) or "").strip())), "")
             if hint:
                 extra["hint"] = hint
+        area = self._area_of(node)
+        if area:
+            extra["area"] = area
         entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
         # Android says checked="true"; an iOS switch holds 1 or 0 in its value.
         ticked = node.attrib.get("checked") or {"1": "true", "0": "false"}.get(node.attrib.get("value") or "")
@@ -908,6 +914,17 @@ class UIHelper:
         if "toggle" in actions and (ticked == "true" or (ticked == "false" and "menu" not in extra["class"].lower())):
             entry["checked"] = ticked == "true"
         return entry
+
+    def _area_of(self, node: etree.Element) -> str:
+        """The name of the nearest named group around ``node``, which tells rows with the same label apart."""
+        for parent in node.iterancestors():
+            if parent.tag in AREA_STOP_TAGS:
+                return ""
+            # A web group names itself in its description (aria-label); a control's description says how to use it.
+            name = "" if self._is_actionable(parent) else self._own_label(parent)
+            if name:
+                return name[:AREA_MAX_CHARS]
+        return ""
 
     def _has_actionable_descendant(self, node: etree.Element) -> bool:
         return any(c is not node and self._is_actionable(c) for c in node.iter())
