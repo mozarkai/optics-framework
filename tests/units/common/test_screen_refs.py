@@ -1,6 +1,6 @@
 import pytest
 
-from optics_framework.common.screen_snapshot import RefTable, diff, render_diff, render_row, verify
+from optics_framework.common.screen_snapshot import RefTable, TargetError, diff, render_diff, render_row, verify
 
 pytestmark = pytest.mark.white_box
 
@@ -184,3 +184,29 @@ def test_a_query_finds_rows_by_their_role_or_their_ref():
     assert [r.cls for r in refs.snapshot(screen, query="menu").rows] == ["menu_item"]
     assert [r.cls for r in refs.snapshot(screen, query="text field").rows] == ["text_field"]
     assert [r.ref for r in refs.snapshot(screen, query=delete).rows] == [delete]
+
+
+def _in(area: str, entry: dict) -> dict:
+    entry["extra"]["area"] = area
+    return entry
+
+
+def test_rows_with_the_same_label_show_where_each_one_is():
+    refs = RefTable()
+    snap = refs.snapshot([
+        _in("Good afternoon", _native("Pause", "button", ["tap"], y=0)),
+        _in("Player controls", _native("Pause", "button", ["tap"], y=20)),
+        _in("Good afternoon", _native("Play", "button", ["tap"], y=40)),
+        _in("Liked Songs", _native("Play Liked Songs", "button", ["tap"], y=60)),
+        _in("Liked Songs", _native("Play Liked Songs", "button", ["tap"], y=80)),
+    ])
+
+    assert [render_row(r) for r in snap.rows] == [
+        'e1 button "Pause" [tap] in "Good afternoon"',
+        'e2 button "Pause" [tap] in "Player controls"',
+        'e3 button "Play" [tap]',
+        'e4 button "Play Liked Songs" [tap]',
+        'e5 button "Play Liked Songs" [tap]',
+    ]
+    with pytest.raises(TargetError, match='e2 "Pause" in "Player controls"'):
+        refs.resolve("Pause")

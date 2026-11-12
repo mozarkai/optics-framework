@@ -245,3 +245,25 @@ MAC_NOTE_LIST = (
 def test_a_desktop_row_without_a_name_shows_its_texts_before_its_description():
     texts = {entry["text"] for entry in _compact(MAC_NOTE_LIST)}
     assert "Groceries 10:12 AM" in texts
+
+
+MAC_PLAYER = (
+    '<application name="Spotify">'
+    '<window name="Spotify" x="0" y="0" width="800" height="800" enabled="true" visible="true">'
+    '<web_area name="Kesariya" x="0" y="0" width="800" height="800" enabled="true" visible="true">'
+    '<group name="" label="Player controls" x="0" y="700" width="800" height="100" enabled="true" visible="true">'
+    '<button name="" label="Pause" x="380" y="720" width="40" height="40" enabled="true" visible="true" clickable="true"/>'
+    "</group>"
+    '<group name="" label="Good afternoon" x="0" y="300" width="800" height="300" enabled="true" visible="true">'
+    '<group name="" label="Perform press to play" x="0" y="300" width="400" height="60" enabled="true" visible="true" '
+    'clickable="true">'
+    '<button name="" label="Pause" x="300" y="310" width="40" height="40" enabled="true" visible="true" clickable="true"/>'
+    "</group></group>"
+    '<button name="" label="Pause" x="100" y="100" width="40" height="40" enabled="true" visible="true" clickable="true"/>'
+    "</web_area></window></application>"
+)
+
+
+def test_a_desktop_row_names_the_nearest_named_group_around_it():
+    areas = sorted(entry["extra"].get("area", "") for entry in _compact(MAC_PLAYER) if entry["text"] == "Pause")
+    assert areas == ["", "Good afternoon", "Player controls"]

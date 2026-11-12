@@ -54,6 +54,7 @@ class Row:
     offscreen: bool = False
     tag: str = ""
     state: str = ""
+    area: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         if self.name is None:
@@ -235,6 +236,7 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
         "label": label, "cls": cls, "act": act, "rid": rid, "rid_attr": rid_attr, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
         "offscreen": el.get("offscreen") is True, "tag": raw_cls, "state": _state(el, secret),
+        "area": str(extra.get("area") or ""),
     }
 
 
@@ -337,6 +339,11 @@ def _is_menu(row: Row) -> bool:
     return "menu" in row.cls.casefold()
 
 
+def _look(fields: dict) -> tuple[str, str]:
+    """What tells a row apart to the eye; rows with the same look in different areas show their area."""
+    return fields["cls"], fold(fields["label"])
+
+
 def _describe(row: Row) -> str:
     return f'"{clean_label(row.label)}" {row.cls}' if row.label else f"{row.cls}, no text"
 
@@ -366,7 +373,12 @@ class RefTable:
         seen: Counter = Counter()
         every: list[Row] = []
         ids = Counter(fields["rid"] for _, fields in read if fields["rid"])
+        areas: dict[tuple[str, str], set[str]] = {}
+        for _, fields in read:
+            areas.setdefault(_look(fields), set()).add(fields["area"])
         for (el, fields), (context, following) in zip(read, _contexts([_context_label(f) for _, f in read])):
+            if len(areas[_look(fields)]) < 2 or fold(fields["area"]) in fold(fields["label"]):
+                fields["area"] = ""
             bounds = _bounds(el.get(_WINDOW_BOUNDS, el.get("bounds")))
             key = _identity(fields, bounds, context, following, ids[fields["rid"]] == 1)
             row = Row(ref=self._ref(key, seen[key]), **fields)
@@ -407,7 +419,7 @@ class RefTable:
             menu = [r for r in matches if _is_menu(r)]
             matches = menu if len(menu) == 1 else matches
         if len(matches) > 1:
-            listed = ", ".join(f'{r.ref} "{clean_label(r.label)}"' for r in matches[:8])
+            listed = ", ".join(f'{r.ref} "{clean_label(r.label)}"{_area_part(r)}' for r in matches[:8])
             raise TargetError(f'"{target}" matches {len(matches)} rows: {listed}. Pass one ref.', kind="ambiguous")
         return matches[0] if matches else None
 
@@ -672,12 +684,16 @@ def effect(d: Diff, secret: str) -> str:
     return "changed " + ", ".join([*items[:3], *([f"{rest} more"] if rest else [])])
 
 
+def _area_part(row: Row) -> str:
+    return f' in "{clean_label(row.area)}"' if row.area else ""
+
+
 def render_row(row: Row) -> str:
     act = f"[{','.join(row.act)}]" if row.act else ""
     rid = f"#{row.rid.rsplit('/', 1)[-1]}" if row.rid else ""
     offscreen = "(off-screen)" if row.offscreen else ""
     parts = (row.ref, row.cls, _label_part(row.label, row.holds_value), act, row.state, rid, offscreen)
-    return " ".join(p for p in parts if p)
+    return " ".join(p for p in parts if p) + _area_part(row)
 
 
 def _row_lines(snap: Snapshot) -> list[str]:
