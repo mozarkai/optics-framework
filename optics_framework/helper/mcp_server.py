@@ -834,6 +834,10 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
     except HTTPException as exc:
         code, message = error_parts(exc)
         return _failure_reply(Fail(error_kind(code), message, code=code))
+    except ModuleNotFoundError as exc:
+        package = (exc.name or "").split(".")[0]
+        return _failure_reply(Fail("unsupported", f"The {driver} driver needs the Python package '{package}'. "
+                                   f"Install it with: optics setup --install {package}"))
     sid = response.session_id
     await _sweep()
     try:
@@ -852,8 +856,10 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
         out["unsupported_keywords"] = unsupported
         head.append(f"run_keyword cannot run here: {', '.join(unsupported)}")
     if not app:
-        return _reply(head, out)
-    launched = await _act(Action("open", target=app, text=app), "full", sid)
+        first = await _guarded(sid, {}, partial(_observe_screen, query="", screenshot=False, max_rows=80))
+        out["screen"] = first.structured_content
+        return _reply([*head, first.content[0].text], out, is_error=first.is_error)
+    launched =await _act(Action("open", target=app, text=app), "full", sid)
     launch_out = launched.structured_content
     out |= {key: launch_out[key] for key in ("screen", "error") if key in launch_out}
     return _reply([*head, launched.content[0].text], out, is_error=launched.is_error)

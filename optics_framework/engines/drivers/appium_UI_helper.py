@@ -44,6 +44,11 @@ SCROLL_CLASS_FRAGMENTS = (
 COMPACT_LABEL_MAX_CHARS = 120
 
 
+def _is_desktop_node(node) -> bool:
+    """The Xa11y driver's Page source has an ``application`` root; iOS and Android have their own root tags."""
+    return node.getroottree().getroot().tag == "application"
+
+
 def _obfuscated_id(rid: str) -> bool:
     return bool(_OBFUSCATED_ID_RE.fullmatch(rid.rsplit(":id/", 1)[-1]))
 
@@ -834,10 +839,12 @@ class UIHelper:
 
     @staticmethod
     def _own_label(node: etree.Element) -> str:
-        # label before name: on iOS `label` is the human text and `name` an accessibility id.
+        # label before name on iOS, where `label` is the human text and `name` an accessibility id; on a desktop
+        # `label` is the description ("Double tap to open chat"), so `name` comes first.
         # A desktop field shows its value; its name ("Text Editor") is the caption the row keeps as its hint.
-        keys = ("value", "text", "content-desc", "label", "name") if node.attrib.get("editable") == "true" else (
-            "text", "content-desc", "label", "name", "value")
+        names = ("name", "label") if _is_desktop_node(node) else ("label", "name")
+        keys = ("value", "text", "content-desc", *names) if node.attrib.get("editable") == "true" else (
+            "text", "content-desc", *names, "value")
         for key in keys:
             val = (node.attrib.get(key) or "").strip()
             if val:

@@ -211,3 +211,21 @@ MAC_DIALOG = (
 @pytest.mark.parametrize("kind, tag", [("buttons", "button"), ("text", "static_text"), ("images", "image")])
 def test_each_filter_keeps_its_desktop_role(kind, tag):
     assert tag in {entry["extra"]["tag"] for entry in _helper(MAC_DIALOG).get_interactive_elements([kind])}
+
+
+MAC_CHAT_LIST = (
+    '<application name="‎WhatsApp">'
+    '<window name="WhatsApp" x="0" y="0" width="800" height="800" enabled="true" visible="true">'
+    '<static_text name="" label="Chats, 2" id="SidebarButton_Chats" x="10" y="40" width="80" height="20" '
+    'enabled="true" visible="true" clickable="true"/>'
+    '<button name="Records" value="Your message, hello" label="Double tap to open chat, Double tap and hold for more options" '
+    'x="100" y="100" width="300" height="60" enabled="true" visible="true" clickable="true"/>'
+    '<button name="Daddy" value="Spice or indigo" label="Double tap to open chat, Double tap and hold for more options" '
+    'x="100" y="160" width="300" height="60" enabled="true" visible="true" clickable="true"/>'
+    "</window></application>"
+)
+
+
+def test_a_desktop_row_shows_its_name_before_its_description():
+    texts = {entry["text"] for entry in _compact(MAC_CHAT_LIST)}
+    assert {"Records", "Daddy", "Chats, 2"} <= texts

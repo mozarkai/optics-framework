@@ -1,6 +1,6 @@
 import pytest
 
-from optics_framework.common.screen_snapshot import RefTable, render_row
+from optics_framework.common.screen_snapshot import RefTable, render_row, verify
 
 pytestmark = pytest.mark.white_box
 
@@ -81,3 +81,36 @@ def test_a_field_row_shows_the_line_breaks_of_its_text():
     row = RefTable().snapshot([_native("Hello optics\nSecond line 42", "text_area", ["input"], y=0)]).rows[0]
 
     assert '"Hello optics\\nSecond line 42"' in render_row(row)
+
+
+_VOICE = "Double tap and hold to record, release to send or slide left to cancel"
+
+
+def test_a_control_named_in_full_is_absent_once_it_goes_although_another_label_says_the_word():
+    refs = RefTable()
+    typing = refs.snapshot([_native("Hello", "text_area", ["tap", "input"], y=0), _native("Send", "button", ["tap"], y=20)])
+    sent = refs.snapshot([_native("Compose message", "text_area", ["tap", "input"], y=0), _native(_VOICE, "button", ["tap"], y=20)])
+
+    [check] = verify(True, typing, sent, absent=["Send"]).checks
+
+    assert check.met
+
+
+def test_a_word_inside_a_longer_label_is_still_present():
+    refs = RefTable()
+    shown = refs.snapshot([_native("Records, 3 unread messages", "button", ["tap"], y=0)])
+
+    [check] = verify(True, None, shown, present=["Records"]).checks
+
+    assert check.met
+
+
+def test_typed_text_is_present_once_sent_inside_a_longer_message():
+    refs = RefTable()
+    typed = refs.snapshot([_native("optics says hi", "text_area", ["tap", "input"], y=0)])
+    sent = refs.snapshot([_native("Compose message", "text_area", ["tap", "input"], y=0),
+                          _native("optics says hi, 10:01 AM", "static_text", [], y=20)])
+
+    [check] = verify(True, typed, sent, present=["optics says hi"]).checks
+
+    assert check.met

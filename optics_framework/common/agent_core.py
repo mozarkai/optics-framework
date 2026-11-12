@@ -890,7 +890,8 @@ class AgentSession:
             raise _invalid(f'absent "{bad}" is a locator; use visible text or a ref')
         texts = [p.removeprefix("text=") for p in present if not _is_locator(p)]
         deadline = time.monotonic() + timeout_s
-        snap, checks = await self._poll(lambda s: verify(True, None, s, texts, absent).checks, deadline)
+        last = self.refs.latest
+        snap, checks = await self._poll(lambda s: verify(True, last, s, texts, absent).checks, deadline)
         if snap is None:
             raise Fail("other", UNREADABLE)
         checks += await self._look(list(filter(_is_locator, present)), deadline)
