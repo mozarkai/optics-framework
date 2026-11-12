@@ -207,7 +207,7 @@ def test_the_resources_describe_the_desktop_session(host, desktop):
         return catalog, project_format, shot, source, elements, screen
 
     catalog, project_format, shot, source, elements, screen = _journey(host, desktop, steps)
-    assert "press_keycode" in {k["keyword_slug"] for k in catalog}
+    assert "press_keycode" in {k["keyword"] for k in catalog}
     assert "automationName: Xa11y" in project_format
     assert (shot.blob if isinstance(shot.blob, bytes) else base64.b64decode(shot.blob)).startswith(b"\x89PNG")
     assert "resource words" in json.dumps(source)
