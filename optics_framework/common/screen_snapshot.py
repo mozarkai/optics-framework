@@ -412,10 +412,18 @@ def diff(prev: Snapshot | None, cur: Snapshot) -> Diff:
     return Diff(changed, new_screen, added, removed, relabelled)
 
 
-def _on_screen(snap: Snapshot, text: str) -> bool:
+def _names_a_row(text: str, *snaps: Snapshot | None) -> bool:
+    wanted = fold(text)
+    return any(fold(r.label) == wanted for s in snaps if s is not None for r in s.all_rows)
+
+
+def _on_screen(snap: Snapshot, text: str, whole: bool = False) -> bool:
+    """A ref, a whole label when ``whole``, else a word or phrase inside any label."""
     if REF_RE.match(text):
         return snap.row(text) is not None
     wanted = fold(text)
+    if whole:
+        return any(fold(r.label) == wanted for r in snap.all_rows)
     return any(re.search(rf"(?<!\w){re.escape(wanted)}(?!\w)", fold(r.label)) for r in snap.all_rows if r.label)
 
 
@@ -427,17 +435,22 @@ def verify(
     vision = not exact and strategy in ("OCR", "Image")
     if after is None:
         return Verdict("unknown" if ok else "fail", (), (), None, vision)
-    checks = [
-        Check(text, expect, _on_screen(after, text.strip()) == (expect == "present"),
-              before is not None and _on_screen(before, text.strip()) == (expect == "present"))
-        for expect, texts in (("present", present), ("absent", absent)) for text in texts or [] if text.strip()
-    ]
+    checks = [_check(text.strip(), expect, before, after)
+              for expect, texts in (("present", present), ("absent", absent)) for text in texts or [] if text.strip()]
     untested = tuple(
         c for c in checks if fold(typed) and not c.met and c.expect == "present" and fold(c.text) == fold(typed)
     )
     kept = tuple(c for c in checks if c not in untested)
     d = diff(before, after)
     return Verdict(_verified(ok, kept, d, vision), kept, untested, d, vision)
+
+
+def _check(text: str, expect: str, before: Snapshot | None, after: Snapshot) -> Check:
+    # A text that is a whole label names that control, so "Send" is gone with the Send button although "release to send" stays.
+    want = expect == "present"
+    whole = not want and _names_a_row(text, before, after)
+    return Check(text, expect, _on_screen(after, text, whole) == want,
+                 before is not None and _on_screen(before, text, whole) == want)
 
 
 def _verified(ok: bool, kept: tuple[Check, ...], d: Diff, vision: bool) -> Verified:
