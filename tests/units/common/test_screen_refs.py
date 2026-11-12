@@ -1,6 +1,6 @@
 import pytest
 
-from optics_framework.common.screen_snapshot import RefTable, render_row, verify
+from optics_framework.common.screen_snapshot import RefTable, diff, render_diff, render_row, verify
 
 pytestmark = pytest.mark.white_box
 
@@ -114,3 +114,73 @@ def test_typed_text_is_present_once_sent_inside_a_longer_message():
     [check] = verify(True, typed, sent, present=["optics says hi"]).checks
 
     assert check.met
+
+
+def test_a_label_names_the_open_menu_item_before_list_cells_with_the_same_text():
+    refs = RefTable()
+    refs.snapshot([_native("Playlist", "table_cell", ["tap"], y=0), _native("Playlist", "table_cell", ["tap"], y=20),
+                   _native("Playlist", "menu_item", ["tap"], y=40)])
+
+    assert refs.resolve("Playlist").cls == "menu_item"
+
+
+def test_rows_keep_their_refs_when_a_web_app_page_title_changes():
+    refs = RefTable()
+
+    def player(track: str) -> list[dict]:
+        return [_native(track, "window", ["tap"], y=0), _native(track, "web_area", ["scroll"], y=0),
+                _native("Home", "button", ["tap"], y=20), _native("Search", "button", ["tap"], y=40)]
+
+    before = [row.ref for row in refs.snapshot(player("Kesariya")).rows]
+
+    after = [row.ref for row in refs.snapshot(player("Otra Noche")).rows]
+
+    assert after[2:] == before[2:]
+
+
+def test_a_menu_that_opens_is_listed_before_the_other_rows_that_appear():
+    refs = RefTable()
+    cells = [_native(f"Playlist {n}", "table_cell", ["tap"], y=20 * n) for n in range(60)]
+    before = refs.snapshot(cells[:1])
+    after = refs.snapshot([*cells, _native("Delete", "menu_item", ["tap"], y=2000)])
+
+    assert 'menu_item "Delete"' in render_diff(diff(before, after), after)
+
+
+def test_a_field_named_by_its_placeholder_keeps_its_ref_when_it_gets_text():
+    refs = RefTable()
+
+    def chat(typed: str) -> list[dict]:
+        return [_native("Sam Lee", "static_text", [], y=0),
+                {"text": typed or "Type a message", "bounds": [0, 20, 100, 40], "act": ["input"],
+                 "extra": {"class": "text_area", "hint": "Type a message"}, "loc": '//text_area[@name="Type a message"]'}]
+
+    empty = refs.snapshot(chat(""))
+
+    typed = refs.snapshot(chat("hello"))
+
+    assert typed.rows[-1].ref == empty.rows[-1].ref
+
+
+def test_a_search_field_keeps_its_ref_when_its_results_change_below_it():
+    refs = RefTable()
+    heading = _native("All References", "static_text", [], y=0)
+    empty = refs.snapshot([heading, _native("", "text_field", ["tap", "input"], y=20),
+                           _native("Welcome to your library", "static_text", [], y=40)])
+
+    typed = refs.snapshot([heading, _native("prospect", "text_field", ["tap", "input"], y=20),
+                           _native("Delete filters", "button", ["tap"], y=40)])
+
+    assert typed.rows[1].ref == empty.rows[1].ref
+
+
+
+def test_a_query_finds_rows_by_their_role_or_their_ref():
+    refs = RefTable()
+    screen = [_native("Library", "static_text", [], y=0), _native("Delete", "menu_item", ["tap"], y=20),
+              _native("", "text_field", ["tap", "input"], y=40)]
+    delete = refs.snapshot(screen).rows[1].ref
+
+    assert [r.cls for r in refs.snapshot(screen, query="menu").rows] == ["menu_item"]
+    assert [r.cls for r in refs.snapshot(screen, query="text field").rows] == ["text_field"]
+    assert [r.ref for r in refs.snapshot(screen, query=delete).rows] == [delete]

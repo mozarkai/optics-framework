@@ -24,7 +24,7 @@ _QUOTED_RE = re.compile(r'"([^"]*)"|\'([^\']*)\'')
 _POSITIONAL_RE = re.compile(r"\[\s*\d+\s*\]|position\(|last\(|:nth-")
 _VALUE_ATTR_RE = re.compile(r"@(?:text|label|value)\b|text\(\)|normalize-space\(")
 DIFF_ROWS = 40
-_TITLED_CONTAINERS = frozenset({"window", "dialog", "application", "frame"})
+_TITLED_CONTAINERS = frozenset({"window", "dialog", "application", "frame", "web_area"})
 REMOVED_ROWS = 10
 _WINDOW_BOUNDS = "window_bounds"
 _XPATH = "xpath="
@@ -277,9 +277,12 @@ def _identity(
         # A field is told apart by its hint, since its label is the text it holds: two forms can reuse one id.
         return ("id", "", fields["cls"], fields["rid"], (), fold(fields["hint"] if holds_value else label))
     if _strong_loc(loc) and not (holds_value and _VALUE_ATTR_RE.search(_unquoted(loc))):
-        return ("loc", loc, fields["cls"], fields["rid"], () if _names_by_text(loc, label) else context, "")
-    if not label or holds_value:
-        # A field has the same key empty and filled, so its ref stays when it gets text.
+        named = _names_by_text(loc, label) or (holds_value and _names_by_text(loc, fields["hint"]))
+        return ("loc", loc, fields["cls"], fields["rid"], () if named else context, "")
+    if holds_value:
+        # A field has the same key empty and filled, and what it filters below it does not move it.
+        context = (*context, "")
+    elif not label:
         context = (*context, "", *following)
     return ("pos", window_bounds, fields["cls"], fields["rid"], context, "" if holds_value else fold(label))
 
@@ -289,7 +292,7 @@ def _context_label(fields: dict) -> str:
     label, loc = fields["label"], fields["loc"]
     if not label or fields["holds_value"] or (_strong_loc(loc) and not _names_by_text(loc, label)):
         return ""
-    # A window title changes with the document: an editor marks it when the text is not saved.
+    # A window or page title changes with the document: an editor marks it unsaved, a player names the track.
     return "" if fields["cls"].lower() in _TITLED_CONTAINERS else fold(label)
 
 
@@ -319,6 +322,19 @@ def _ref_ranges(refs: Iterable[str]) -> str:
         else:
             runs.append([n, n])
     return ", ".join(f"e{a}" if a == b else f"e{a}–e{b}" for a, b in runs)
+
+
+def _matches(row: Row, query: str) -> bool:
+    """A row whose ref is the query, or whose label, id or role holds it ("menu", "text field")."""
+    if REF_RE.match(query):
+        return row.ref == query
+    needle = fold(query)
+    role = row.cls.replace("_", " ").casefold()
+    return any(needle in text for text in (fold(row.label), row.rid.rsplit("/", 1)[-1].casefold(), role))
+
+
+def _is_menu(row: Row) -> bool:
+    return "menu" in row.cls.casefold()
 
 
 def _describe(row: Row) -> str:
@@ -357,8 +373,7 @@ class RefTable:
             seen[key] += 1
             self._issued[row.ref] = row
             every.append(row)
-        needle = fold(query)
-        pool = [r for r in every if needle in fold(r.label) or needle in r.rid.rsplit("/", 1)[-1].casefold()] if query else every
+        pool = [r for r in every if _matches(r, query)] if query else every
         actionable_first = sorted(range(len(pool)), key=lambda i: not pool[i].act)
         rows = tuple(pool[i] for i in sorted(actionable_first[:max_rows]))
         self.latest = Snapshot(rows=rows, digest=digest(every), all_rows=tuple(every), hidden=len(pool) - len(rows))
@@ -387,6 +402,10 @@ class RefTable:
         matches = [r for r in current if fold(r.name) == fold(target)]
         if len(matches) > 1:
             matches = [r for r in matches if r.act] or matches
+        if len(matches) > 1:
+            # An open menu is in front of the screen, so its item is the one meant (Spotify's Create > Playlist).
+            menu = [r for r in matches if _is_menu(r)]
+            matches = menu if len(menu) == 1 else matches
         if len(matches) > 1:
             listed = ", ".join(f'{r.ref} "{clean_label(r.label)}"' for r in matches[:8])
             raise TargetError(f'"{target}" matches {len(matches)} rows: {listed}. Pass one ref.', kind="ambiguous")
@@ -683,7 +702,7 @@ def prompt_rows(snap: Snapshot) -> list[str]:
 
 def listed_added(d: Diff) -> tuple[Row, ...]:
     """The added rows a reply lists: at most ``DIFF_ROWS``, controls before text, in screen order."""
-    order = sorted(range(len(d.added)), key=lambda i: (not d.added[i].act, d.added[i].offscreen))
+    order = sorted(range(len(d.added)), key=lambda i: (not d.added[i].act, not _is_menu(d.added[i]), d.added[i].offscreen))
     return tuple(d.added[i] for i in sorted(order[:DIFF_ROWS]))
 
 
