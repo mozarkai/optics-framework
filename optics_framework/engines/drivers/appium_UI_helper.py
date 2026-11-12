@@ -838,11 +838,14 @@ class UIHelper:
         return bool(self._extract_bounds(node)) and bool(self._element_actions(node))
 
     @staticmethod
-    def _own_label(node: etree.Element) -> str:
+    def _own_label(node: etree.Element, described: bool = True) -> str:
         # label before name on iOS, where `label` is the human text and `name` an accessibility id; on a desktop
         # `label` is the description ("Double tap to open chat"), so `name` comes first.
         # A desktop field shows its value; its name ("Text Editor") is the caption the row keeps as its hint.
-        names = ("name", "label") if _is_desktop_node(node) else ("label", "name")
+        if _is_desktop_node(node):
+            names: tuple[str, ...] = ("name", "label") if described else ("name",)
+        else:
+            names = ("label", "name")
         keys = ("value", "text", "content-desc", *names) if node.attrib.get("editable") == "true" else (
             "text", "content-desc", *names, "value")
         for key in keys:
@@ -854,7 +857,8 @@ class UIHelper:
     def _folded_label(self, node: etree.Element) -> str:
         # Own label, else descendant text; stops at nested actionable subtrees so a row
         # keeps its own label and does not swallow a control it contains.
-        own = self._own_label(node)
+        # A desktop description ("Perform press to open note") names a row only when it has no text of its own.
+        own = self._own_label(node, described=False)
         if own:
             return own[:COMPACT_LABEL_MAX_CHARS]
         parts: List[str] = []
@@ -862,14 +866,14 @@ class UIHelper:
         def walk(current: etree.Element, is_root: bool) -> None:
             if not is_root and self._is_actionable(current):
                 return
-            text = self._own_label(current)
+            text = self._own_label(current, described=False)
             if text:
                 parts.append(text)
             for child in current:
                 walk(child, False)
 
         walk(node, True)
-        return " ".join(dict.fromkeys(parts))[:COMPACT_LABEL_MAX_CHARS]
+        return (" ".join(dict.fromkeys(parts)) or self._own_label(node))[:COMPACT_LABEL_MAX_CHARS]
 
     def _folds_text(self, node: etree.Element) -> bool:
         # A button's child texts are its name, so they fold into its label. A scroll container holds many items, and a

@@ -115,12 +115,17 @@ _DOCS_PAGES = {
     "unsupported": "docs/reference/keywords/index.md",
     "other": "docs/reference/errors.md",
 }
+_DRIVER_HINT = (
+    'The driver is appium, playwright or selenium. A desktop app uses driver="appium" with '
+    'capabilities {"platformName": "Mac"} (or "Windows", "Linux") and the app name in app.'
+)
 SERVER_INSTRUCTIONS = (
     "Drive a live device or browser with ref-targeted, verified actions.\n"
     "1. `start_session(driver, app=...)` returns a session and the first screen. Web: "
     "`driver=\"playwright\"`, `app=\"<url>\"`; a remote browser's endpoint goes in `url`. "
     "Device: `driver=\"appium\"` with `url` and `capabilities`. For the mobile site, add "
-    "`\"device\": \"Pixel 7\"` to `capabilities`.\n"
+    "`\"device\": \"Pixel 7\"` to `capabilities`. Desktop app: `driver=\"appium\"`, `url`, "
+    "`capabilities={\"platformName\": \"Mac\"}` (or Windows, Linux) and `app=\"Notes\"`; a running app is reused.\n"
     "2. To sign in on the web, first read `optics://browser-profiles`, ask the user which "
     "profile to use and pass it as `capabilities.profile`. If they pick none, ask them for the "
     "credentials. Never pick a profile or enter a credential they did not give you.\n"
@@ -719,9 +724,11 @@ def _jpeg(png: bytes) -> tuple[bytes, float]:
     return buffer.tobytes(), scale
 
 
-async def _observe_screen(sid: str, slot: _Slot, query: str, screenshot: bool, max_rows: int) -> Any:
+async def _observe_screen(
+    sid: str, slot: _Slot, query: str, screenshot: bool, max_rows: int, wait_loading: bool = False,
+) -> Any:
     png = await slot.shot() if screenshot else None
-    snap = await slot.session.observe(query, max_rows, png)
+    snap = await slot.session.observe(query, max_rows, png, wait_loading)
     jpeg, scale = _jpeg(png) if png else (b"", None)
     images = [Image(data=jpeg, format="jpeg").to_image_content()] if png else []
     structured = {"digest": snap.digest, "rows": [_row_out(r, scale=scale) for r in snap.rows], "hidden": snap.hidden}
@@ -833,6 +840,8 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
         response = await expose_api.create_session(config)
     except HTTPException as exc:
         code, message = error_parts(exc)
+        if code == "E0601":
+            message = f"{message}. {_DRIVER_HINT}"
         return _failure_reply(Fail(error_kind(code), message, code=code))
     except ModuleNotFoundError as exc:
         package = (exc.name or "").split(".")[0]
@@ -856,7 +865,7 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
         out["unsupported_keywords"] = unsupported
         head.append(f"run_keyword cannot run here: {', '.join(unsupported)}")
     if not app:
-        first = await _guarded(sid, {}, partial(_observe_screen, query="", screenshot=False, max_rows=80))
+        first = await _guarded(sid, {}, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
         out["screen"] = first.structured_content
         return _reply([*head, first.content[0].text], out, is_error=first.is_error)
     launched =await _act(Action("open", target=app, text=app), "full", sid)
@@ -982,7 +991,7 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         return _reply([f"session {sid} terminated"], {"session_id": sid, "status": "terminated"})
 
     async def observe(
-        query: Annotated[str, Field(description="Only rows whose label or id holds this.")] = "",
+        query: Annotated[str, Field(description="Only rows whose label, id or role holds this, or one ref.")] = "",
         screenshot: Annotated[bool, Field(description="Add a JPEG of the screen.")] = False,
         max_rows: Annotated[int, Field(ge=1, le=300, description="Most rows.")] = 80,
         session_id: _SID = "",

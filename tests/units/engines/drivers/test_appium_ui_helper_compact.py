@@ -229,3 +229,19 @@ MAC_CHAT_LIST = (
 def test_a_desktop_row_shows_its_name_before_its_description():
     texts = {entry["text"] for entry in _compact(MAC_CHAT_LIST)}
     assert {"Records", "Daddy", "Chats, 2"} <= texts
+
+
+MAC_NOTE_LIST = (
+    '<application name="Notes">'
+    '<window name="Notes" x="0" y="0" width="800" height="800" enabled="true" visible="true">'
+    '<table_cell name="" label="Perform press or select Return to open note." id="ICMNoteListCell" '
+    'x="100" y="100" width="300" height="60" enabled="true" visible="true" clickable="true">'
+    '<static_text name="Groceries" value="Groceries" x="110" y="105" width="200" height="20" enabled="true" visible="true"/>'
+    '<static_text name="10:12 AM" value="10:12 AM" x="110" y="130" width="60" height="20" enabled="true" visible="true"/>'
+    "</table_cell></window></application>"
+)
+
+
+def test_a_desktop_row_without_a_name_shows_its_texts_before_its_description():
+    texts = {entry["text"] for entry in _compact(MAC_NOTE_LIST)}
+    assert "Groceries 10:12 AM" in texts

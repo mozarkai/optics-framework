@@ -99,6 +99,8 @@ _POLL_S = 0.5
 _SETTLE_PAUSE_S = 0.6
 _SETTLE_READS = 2
 _LOADING_WAIT_S = 6.0
+# A desktop web app shows its window and web area before the page inside them loads.
+_SHELL_CLASSES = frozenset({"window", "dialog", "web_area"})
 EXPECT_WAIT_S = 5.0
 
 Value = str | list[str]
@@ -207,8 +209,11 @@ def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) ->
         return exc
     code, message = error_parts(exc)
     kind = error_kind(code)
+    where = " | ".join(tried) or keyword
     facts = {
-        "not_found": f"not found: tried {' | '.join(tried) or keyword}.",
+        # X0201: the element was found and every act on it failed, so the driver's reason is the fact.
+        "not_found": f"found {where}, but the action failed: {message.split(': ', 1)[-1]}" if code == "X0201"
+        else f"not found: tried {where}.",
         "unsupported": f"{keyword} is not supported on this platform.",
         "session_lost": "the driver session ended.",
         "silent_failure": f"{keyword or 'the keyword'} reported an error: {message}.",
@@ -711,6 +716,10 @@ def secret_hint(field: Field) -> str:
     return next((word for word in (*words, *names) if is_secret_name(word)), "")
 
 
+def _loading(snap: Snapshot) -> bool:
+    return all(r.cls in _SHELL_CLASSES for r in snap.all_rows)
+
+
 class AgentSession:
     """One agent's screen, steps and recording; ``read`` and ``run`` reach the driver and every raise is a Fail."""
 
@@ -763,7 +772,7 @@ class AgentSession:
     async def _past_loading(self, snap: Snapshot | None) -> Snapshot | None:
         """Read an empty screen, a page still loading after a redirect or sign-in hop, until it has rows."""
         deadline = time.monotonic() + _LOADING_WAIT_S
-        while snap is not None and not snap.all_rows and time.monotonic() < deadline:
+        while snap is not None and _loading(snap) and time.monotonic() < deadline:
             await asyncio.sleep(_SETTLE_PAUSE_S)
             snap = await self._read()
         return snap
@@ -781,8 +790,12 @@ class AgentSession:
             return None, None, error
         return result, strategy, None
 
-    async def observe(self, query: str = "", max_rows: int = 80, png: bytes | None = None) -> Snapshot:
+    async def observe(
+        self, query: str = "", max_rows: int = 80, png: bytes | None = None, wait_loading: bool = False,
+    ) -> Snapshot:
         snap = await self._read(max_rows, query, png)
+        if wait_loading:
+            snap = await self._past_loading(snap)
         if snap is None:
             raise Fail("other", UNREADABLE)
         self._fresh = len(self.steps)
