@@ -235,6 +235,10 @@ screen 4436bc · changed (+2 -0 ~0)
   screen with no rows counts as a page that is still loading, so a sign-in hop
   or a redirect is read again for up to 6 seconds. A read-only keyword or
   `execute_script` that leaves the screen as it was is read once.
+- A ref stays with its control when the text around it changes: a control with
+  its own id, a field that gets text and the rows under a window title keep
+  their refs. A line break in a field's text or in a keyword result shows as
+  `\n`.
 - A ref never moves to a different element. A ref that is gone from the
   screen is an error that lists the current rows.
 - `(off-screen)` marks a web row that is on the page but scrolled out of view.
