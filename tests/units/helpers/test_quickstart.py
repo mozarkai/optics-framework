@@ -284,6 +284,11 @@ class TestEngineInstall:
         # copy-pasteable.
         assert "optics setup --install mobile" in h.out.getvalue()
 
+    def test_desktop_installs_the_appium_engine(self, tmp_path):
+        with Harness(["desktop", "1", "demo", str(tmp_path)], [False]) as h:
+            h.run()
+        assert "optics setup --install appium" in h.out.getvalue()
+
     def test_failed_install_surfaces_the_reason_and_keeps_going(self, tmp_path):
         """install_extras owns the remedy (it knows the environment); the
         wizard only has to show it and still deliver the project."""

@@ -128,6 +128,32 @@ optics = Optics()
 optics.setup(config=yaml_config)
 ```
 
+## Desktop apps
+
+Give the Appium driver the desktop, `automationName: Xa11y` and the app. Run Appium with `appium-xa11y-driver` on the machine that shows the app.
+
+```python
+from optics_framework import Optics
+
+optics = Optics()
+optics.setup(config={
+    "driver_sources": [{"appium": {"enabled": True, "url": "http://127.0.0.1:4723", "capabilities": {
+        "platformName": "Mac", "automationName": "Xa11y", "app": "com.apple.TextEdit"}}}],
+    "elements_sources": [{"appium_find_element": {"enabled": True}},
+                         {"appium_page_source": {"enabled": True}},
+                         {"appium_screenshot": {"enabled": True}}],
+})
+optics.launch_app()
+optics.enter_text("//text_area", "Hello from Optics")
+optics.assert_text("//text_area", "Hello from Optics")
+optics.press_keycode("cmd+a")
+optics.enter_text_using_keyboard("<backspace>")
+optics.close_and_terminate_app()
+optics.quit()
+```
+
+`press_keycode` takes a chord: `cmd+a` on macOS, `ctrl+a` on Linux and Windows.
+
 ## App Management
 
 ### Launching Apps

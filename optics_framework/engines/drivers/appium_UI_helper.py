@@ -30,7 +30,14 @@ TAP_CLASS_FRAGMENTS = (
     "XCUIElementTypeKey",
 )
 TOGGLE_CLASS_FRAGMENTS = ("Switch", "CheckBox", "RadioButton", "ToggleButton")
-INPUT_CLASS_FRAGMENTS = ("EditText", "TextField", "SecureTextField", "AutoCompleteTextView", "SearchField")
+DESKTOP_CONTAINER_TAGS = frozenset({"window", "dialog"})
+# A window or page title names the document, not a part of the screen.
+AREA_STOP_TAGS = frozenset({"window", "application", "web_area"})
+AREA_MAX_CHARS = 40
+INPUT_CLASS_FRAGMENTS = (
+    "EditText", "TextField", "SecureTextField", "AutoCompleteTextView", "SearchField", "XCUIElementTypeTextView",
+    "text_field", "text_area",
+)
 # A field's text (Android) and value (iOS) hold what was typed, not its name.
 FIELD_NAME_ATTRS = ("hint", "content-desc", "label", "name", "placeholderValue")
 SCROLL_CLASS_FRAGMENTS = (
@@ -38,6 +45,11 @@ SCROLL_CLASS_FRAGMENTS = (
     "XCUIElementTypePickerWheel",
 )
 COMPACT_LABEL_MAX_CHARS = 120
+
+
+def _is_desktop_node(node) -> bool:
+    """The Xa11y driver's Page source has an ``application`` root; iOS and Android have their own root tags."""
+    return node.getroottree().getroot().tag == "application"
 
 
 def _obfuscated_id(rid: str) -> bool:
@@ -816,7 +828,7 @@ class UIHelper:
             actions.append("long")
         if attrs.get("checkable") == "true" or any(f in cls for f in TOGGLE_CLASS_FRAGMENTS):
             actions.append("toggle")
-        if attrs.get("editable") == "true" or any(f in cls for f in INPUT_CLASS_FRAGMENTS):
+        if self._is_input(node):
             actions.append("input")
         if attrs.get("scrollable") == "true" or any(f in cls for f in SCROLL_CLASS_FRAGMENTS):
             actions.append("scroll")
@@ -829,9 +841,17 @@ class UIHelper:
         return bool(self._extract_bounds(node)) and bool(self._element_actions(node))
 
     @staticmethod
-    def _own_label(node: etree.Element) -> str:
-        # label before name: on iOS `label` is the human text and `name` an accessibility id.
-        for key in ("text", "content-desc", "label", "name", "value"):
+    def _own_label(node: etree.Element, described: bool = True) -> str:
+        # label before name on iOS, where `label` is the human text and `name` an accessibility id; on a desktop
+        # `label` is the description ("Double tap to open chat"), so `name` comes first.
+        # A desktop field shows its value; its name ("Text Editor") is the caption the row keeps as its hint.
+        if _is_desktop_node(node):
+            names: tuple[str, ...] = ("name", "label") if described else ("name",)
+        else:
+            names = ("label", "name")
+        keys = ("value", "text", "content-desc", *names) if node.attrib.get("editable") == "true" else (
+            "text", "content-desc", *names, "value")
+        for key in keys:
             val = (node.attrib.get(key) or "").strip()
             if val:
                 return val
@@ -840,7 +860,8 @@ class UIHelper:
     def _folded_label(self, node: etree.Element) -> str:
         # Own label, else descendant text; stops at nested actionable subtrees so a row
         # keeps its own label and does not swallow a control it contains.
-        own = self._own_label(node)
+        # A desktop description ("Perform press to open note") names a row only when it has no text of its own.
+        own = self._own_label(node, described=False)
         if own:
             return own[:COMPACT_LABEL_MAX_CHARS]
         parts: List[str] = []
@@ -848,18 +869,19 @@ class UIHelper:
         def walk(current: etree.Element, is_root: bool) -> None:
             if not is_root and self._is_actionable(current):
                 return
-            text = self._own_label(current)
+            text = self._own_label(current, described=False)
             if text:
                 parts.append(text)
             for child in current:
                 walk(child, False)
 
         walk(node, True)
-        return " ".join(dict.fromkeys(parts))[:COMPACT_LABEL_MAX_CHARS]
+        return (" ".join(dict.fromkeys(parts)) or self._own_label(node))[:COMPACT_LABEL_MAX_CHARS]
 
     def _folds_text(self, node: etree.Element) -> bool:
-        # A clickable/toggle/input container folds its text; a pure scroll container does not.
-        return self._is_actionable(node) and self._element_actions(node) != ["scroll"]
+        # A button's child texts are its name, so they fold into its label. A scroll container holds many items, and a
+        # desktop window is clickable but holds the whole app, so folding there would hide every text on the screen.
+        return node.tag not in DESKTOP_CONTAINER_TAGS and self._is_actionable(node) and self._element_actions(node) != ["scroll"]
 
     def _has_folding_ancestor(self, node: etree.Element) -> bool:
         parent = node.getparent()
@@ -874,12 +896,17 @@ class UIHelper:
         rid = node.attrib.get("resource-id")
         if rid and not _obfuscated_id(rid):
             extra["resource-id"] = rid
+        elif node.attrib.get("id"):
+            extra["id"] = node.attrib["id"]
         if node.attrib.get("password") == "true":
             extra["password"] = True
         if "input" in actions:
             hint = next((v for a in FIELD_NAME_ATTRS if (v := (node.attrib.get(a) or "").strip())), "")
             if hint:
                 extra["hint"] = hint
+        area = self._area_of(node)
+        if area:
+            extra["area"] = area
         entry = {"text": label, "bounds": bounds, "act": actions, "extra": extra}
         # Android says checked="true"; an iOS switch holds 1 or 0 in its value.
         ticked = node.attrib.get("checked") or {"1": "true", "0": "false"}.get(node.attrib.get("value") or "")
@@ -887,6 +914,17 @@ class UIHelper:
         if "toggle" in actions and (ticked == "true" or (ticked == "false" and "menu" not in extra["class"].lower())):
             entry["checked"] = ticked == "true"
         return entry
+
+    def _area_of(self, node: etree.Element) -> str:
+        """The name of the nearest named group around ``node``, which tells rows with the same label apart."""
+        for parent in node.iterancestors():
+            if parent.tag in AREA_STOP_TAGS:
+                return ""
+            # A web group names itself in its description (aria-label); a control's description says how to use it.
+            name = "" if self._is_actionable(parent) else self._own_label(parent)
+            if name:
+                return name[:AREA_MAX_CHARS]
+        return ""
 
     def _has_actionable_descendant(self, node: etree.Element) -> bool:
         return any(c is not node and self._is_actionable(c) for c in node.iter())
@@ -1025,6 +1063,7 @@ class UIHelper:
         Cross-platform text picking order:
           - Android: text, content-desc, resource-id tail
           - iOS: name, label, value
+          - an editable desktop field: value first, as it holds what was typed
         We'll unify and return the first non-empty.
         """
         # Normalize occasional empty strings like "" or " "
@@ -1046,6 +1085,8 @@ class UIHelper:
                 if attrs.get("resource-id") and not _obfuscated_id(attrs["resource-id"]) else None,  # Android
             ),
         ]
+        if attrs.get("editable") == "true":
+            text_candidates.sort(key=lambda candidate: candidate[0] != "value")
         for key, val in text_candidates:
             if val:
                 return val, key
@@ -1278,30 +1319,24 @@ class UIHelper:
 
         return False
 
-    def _is_button(self, node: etree.Element) -> bool:
-        """Check if element is a button."""
+    @staticmethod
+    def _has_tag(node: etree.Element, fragment: str, role: str) -> bool:
+        """A phone class holds ``fragment`` (android.widget.Button, XCUIElementTypeButton); a desktop tag is the ``role``."""
         tag = node.tag or ""
-        # Android: android.widget.Button
-        # iOS: XCUIElementTypeButton
-        return "Button" in tag
+        return fragment in tag or tag == role
+
+    def _is_button(self, node: etree.Element) -> bool:
+        return self._has_tag(node, "Button", "button")
 
     def _is_input(self, node: etree.Element) -> bool:
-        """Check if element is an input/text field."""
-        tag = node.tag or ""
-        # Android: EditText, TextView (when editable/focusable)
-        # iOS: XCUIElementTypeTextField, XCUIElementTypeSecureTextField, XCUIElementTypeTextView
-        if any(t in tag for t in ["TextField", "EditText", "SecureTextField"]):
-            return True
-        if "TextView" in tag and node.attrib.get("focusable") == "true":
-            return True
-        return False
+        """A field the user types into, shared by the compact list and the filters: an editable flag decides, else an input class."""
+        editable = node.attrib.get("editable")
+        if editable is not None:
+            return editable == "true"
+        return any(f in self._class_of(node) for f in INPUT_CLASS_FRAGMENTS)
 
     def _is_image(self, node: etree.Element) -> bool:
-        """Check if element is an image."""
-        tag = node.tag or ""
-        # Android: ImageView
-        # iOS: XCUIElementTypeImage
-        return "Image" in tag
+        return self._has_tag(node, "Image", "image")
 
     def _is_text(self, node: etree.Element) -> bool:
         """Check if element is a text element (non-input)."""
@@ -1311,7 +1346,7 @@ class UIHelper:
         # Exclude inputs
         if self._is_input(node):
             return False
-        return "StaticText" in tag or ("TextView" in tag and "EditText" not in tag)
+        return "StaticText" in tag or tag == "static_text" or ("TextView" in tag and "EditText" not in tag)
 
     def _is_probably_interactive(self, node: etree.Element) -> bool:
         """

@@ -14,6 +14,11 @@ import json
 
 from optics_framework.common import safe_fs
 from optics_framework.common.config_handler import load_project_yaml
+from optics_framework.common.runner.data_reader import (
+    CSVDataReader as RunnerCSVReader,
+    is_elements_header,
+    named_locators,
+)
 from optics_framework.common.utils import unescape_csv_value
 
 _KWARG = re.compile(r"^([A-Za-z_]\w*)=(.*)$", re.DOTALL)
@@ -139,7 +144,7 @@ logger = logging.getLogger(__name__)
 # Type aliases for clarity
 TestCases = Dict[str, List[str]]
 Modules = Dict[str, List[Tuple[str, List[str]]]]
-Elements = Dict[str, str]
+Elements = Dict[str, Union[str, List[str]]]
 Config = Dict
 
 
@@ -204,16 +209,11 @@ class CSVDataReader(DataReader):
         return unescape_csv_value(str(value).strip())
 
     def read_elements(self, source: str) -> Elements:
-        df = pd.read_csv(source)
-        def _ensure_str_and_unescape(val):  # ensures type checker sees str passed to unescape_csv_value
-            return unescape_csv_value(str(val).strip())
-
-        return dict(
-            zip(
-                df["Element_Name"].str.strip(),
-                df["Element_ID"].fillna("").str.strip().map(_ensure_str_and_unescape),
-            )
-        )
+        """Each element's locators in column order, as a list when there are several: a keyword tries each in turn."""
+        return {
+            name: ids if len(ids) > 1 else next(iter(ids), "")
+            for name, ids in named_locators(RunnerCSVReader().read_file(source)).items()
+        }
 
     def read_config(self, source: str) -> Config:
         return load_project_yaml(source) or {}
@@ -545,9 +545,20 @@ class RobotGenerator(TestFrameworkGenerator):
         return transformed
 
     def _generate_variables(self, elements: Elements, keys: dict[str, str], config: Config) -> str:
-        lines = ["*** Variables ***", "&{ELEMENTS}="]
+        lists = {name: f"LOCATORS_{n}" for n, name in enumerate(
+            (name for name, value in elements.items() if isinstance(value, list)), 1)}
+        lines = ["*** Variables ***"]
+        lines.extend(f"@{{{var}}}=    " + "    ".join(map(_robot_cell, map(str, elements[name])))
+                     for name, var in lists.items())
+        lines.append("&{ELEMENTS}=")
         for name, value in elements.items():
-            lines.append(f"...    {keys[name]}={_robot_cell(str(value)) if value else ''}")
+            if name in lists:
+                cell = f"${{{lists[name]}}}"
+            elif value:
+                cell = _robot_cell(str(value))
+            else:
+                cell = ""
+            lines.append(f"...    {keys[name]}={cell}")
         lines.append("")
         config_json = json.dumps(_plain(self._transform_config_structure(config)), separators=(',', ':'))
         lines.extend([f"${{OPTICS_CONFIG_JSON}}=    {_robot_cell(config_json)}", ""])
@@ -658,7 +669,7 @@ def _detect_csv_type(file_path: str) -> Optional[Tuple[str, str]]:
             return "csv", "test_cases"
         if "module_name" in headers and "module_step" in headers:
             return "csv", "modules"
-        if "element_name" in headers and "element_id" in headers:
+        if is_elements_header(set(headers)):
             return "csv", "elements"
     except Exception as e:
         logger.exception(f"Error reading CSV {file_path}: {e}")

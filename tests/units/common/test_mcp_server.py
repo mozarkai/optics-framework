@@ -389,3 +389,28 @@ def test_stdio_server_exits_with_unread_stderr():
     finally:
         child.kill()
         child.communicate()
+
+
+@pytest.mark.parametrize("named", [{"app": "A"}, {"appium:app": "A"}, {"appName": "A"}, {"appium:options": {"app": "A"}}])
+def test_the_app_argument_yields_to_an_app_in_the_capabilities(named):
+    caps = mcp_server._session_caps("appium", "B", {"platformName": "Mac", **named})
+    assert "B" not in caps.values()
+
+
+def test_the_app_argument_names_the_app_of_a_desktop_session():
+    assert mcp_server._session_caps("appium", "B", {"platformName": "Mac"})["app"] == "B"
+
+
+def test_an_unknown_driver_says_how_to_start_a_desktop_app():
+    server = mcp_server.build_server("full")
+    error = HTTPException(status_code=500, detail={
+        "code": "E0601", "message": "Module 'xa11y' not found in package 'optics_framework.engines.drivers'"})
+
+    async def go():
+        async with Client(server) as client:
+            return await client.call_tool("start_session", {"driver": "xa11y", "app": "Notes"}, raise_on_error=False)
+
+    with patch.object(expose_api, "create_session", new=AsyncMock(side_effect=error)):
+        reply = _run(go())
+
+    assert 'platformName' in reply.content[0].text

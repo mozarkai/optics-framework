@@ -113,6 +113,29 @@ Test With Parameters
     Quit
 ```
 
+## Desktop apps
+
+Give the Appium driver the desktop, `automationName: Xa11y` and the app. Run Appium with `appium-xa11y-driver` on the machine that shows the app.
+
+```robotframework
+*** Settings ***
+Library    optics_framework.optics.Optics
+
+*** Variables ***
+${CONFIG}    {"driver_sources": [{"appium": {"enabled": true, "url": "http://127.0.0.1:4723", "capabilities": {"platformName": "Mac", "automationName": "Xa11y", "app": "com.apple.TextEdit"}}}], "elements_sources": [{"appium_find_element": {"enabled": true}}, {"appium_page_source": {"enabled": true}}, {"appium_screenshot": {"enabled": true}}]}
+
+*** Test Cases ***
+Type A Note
+    Setup    config=${CONFIG}
+    Launch App
+    Enter Text    //text_area    Hello from Optics
+    Assert Text    //text_area    Hello from Optics
+    Press Keycode    cmd+a
+    Enter Text Using Keyboard    <backspace>
+    Close And Terminate App
+    Quit
+```
+
 ## App Management
 
 ### Launching Apps

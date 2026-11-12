@@ -125,7 +125,7 @@ class GenerateCommand(Command):
         parser.add_argument("project_path", help="Project name (required)")
         parser.add_argument(
             "--output",
-            help="Path to the output file where the code will be generated",
+            help="File name of the generated test, written to <project_path>/generated/Tests/",
             nargs="?",
         )
         parser.add_argument(
@@ -218,7 +218,12 @@ class MCPCommand(Command):
         )
         # Lazy import so the optional 'mcp' extra (fastmcp) is only required
         # when this command actually runs.
-        from optics_framework.helper.mcp_server import run_mcp_server
+        try:
+            from optics_framework.helper.mcp_server import run_mcp_server
+        except ModuleNotFoundError as exc:
+            if (exc.name or "").split(".")[0] != "fastmcp":
+                raise
+            abort_with_panel(["`optics mcp` needs the mcp extra.", "", "Install it with: optics setup --install mcp"])
         run_mcp_server(
             transport=mcp_args.transport,
             host=mcp_args.host,

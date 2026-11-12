@@ -389,31 +389,37 @@ class Verifier:
 
     @staticmethod
     def _to_compact_shape(elements: list) -> list:
-        # Project compact dicts to {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}.
+        # Project compact dicts to {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, rid_attr?, loc?, offscreen?}.
         # A payload without an "act" key (a source that does not implement compact)
         # passes through.
         if not elements or not isinstance(elements[0], dict) or "act" not in elements[0]:
             return elements
-        compact = []
-        for i, el in enumerate(elements):
-            extra = el.get("extra") or {}
-            bounds = el.get("bounds") or {}
-            entry = {
-                "i": i,
-                "label": el.get("text") or "",
-                "cls": extra.get("class") or "",
-                "bounds": [bounds.get("x1"), bounds.get("y1"), bounds.get("x2"), bounds.get("y2")],
-                "act": el.get("act") or [],
-            }
-            rid = extra.get("resource-id")
-            if rid:
-                entry["rid"] = rid
-            if el.get("loc"):
-                entry["loc"] = el["loc"]
-            if el.get("offscreen"):
-                entry["offscreen"] = True
-            compact.append(entry)
-        return compact
+        return [Verifier._compact_entry(i, el) for i, el in enumerate(elements)]
+
+    @staticmethod
+    def _compact_entry(i: int, el: dict) -> dict:
+        extra = el.get("extra") or {}
+        bounds = el.get("bounds") or {}
+        entry = {
+            "i": i,
+            "label": el.get("text") or "",
+            "cls": extra.get("class") or "",
+            "bounds": [bounds.get("x1"), bounds.get("y1"), bounds.get("x2"), bounds.get("y2")],
+            "act": el.get("act") or [],
+            **Verifier._compact_id(extra),
+        }
+        if el.get("loc"):
+            entry["loc"] = el["loc"]
+        if el.get("offscreen"):
+            entry["offscreen"] = True
+        return entry
+
+    @staticmethod
+    def _compact_id(extra: dict) -> dict:
+        """The element's id as ``rid``; ``rid_attr`` names the attribute when it is not ``resource-id``."""
+        if extra.get("resource-id"):
+            return {"rid": extra["resource-id"]}
+        return {"rid": extra["id"], "rid_attr": "id"} if extra.get("id") else {}
 
     def _collect_interactive_elements(
         self, filter_config: Optional[List[str]], screenshot_np: Optional[Any], compact: bool = False
@@ -449,7 +455,7 @@ class Verifier:
         :param filter_config: Optional list of filter types (e.g., ["buttons", "inputs"]).
         :param compact: When True, return only actionable elements (labels folded in,
             with an ``act`` list) plus standalone visible text (``act: []``), as
-            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}`` (``loc``: a web
+            ``{i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, rid_attr?, loc?, offscreen?}`` (``loc``: a web
             locator matching only that element; ``offscreen``: in the page but scrolled out of
             view). Implemented by the Appium, Appium web and Playwright page sources; sources
             without it return their full list.

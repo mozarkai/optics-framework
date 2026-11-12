@@ -1,0 +1,6 @@
+test_case,test_step
+Desktop Suite Setup,Open Editor
+TC1 Type And Check A Note,Type A Note
+TC1 Type And Check A Note,Check The Note
+TC1 Type And Check A Note,Clear The Note
+Desktop Suite Teardown,Close Editor

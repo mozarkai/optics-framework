@@ -115,18 +115,24 @@ _DOCS_PAGES = {
     "unsupported": "docs/reference/keywords/index.md",
     "other": "docs/reference/errors.md",
 }
+_DRIVER_HINT = (
+    'The driver is appium, playwright or selenium. A desktop app uses driver="appium" with '
+    'capabilities {"platformName": "Mac"} (or "Windows", "Linux") and the app name in app.'
+)
 SERVER_INSTRUCTIONS = (
     "Drive a live device or browser with ref-targeted, verified actions.\n"
     "1. `start_session(driver, app=...)` returns a session and the first screen. Web: "
     "`driver=\"playwright\"`, `app=\"<url>\"`; a remote browser's endpoint goes in `url`. "
     "Device: `driver=\"appium\"` with `url` and `capabilities`. For the mobile site, add "
-    "`\"device\": \"Pixel 7\"` to `capabilities`.\n"
+    "`\"device\": \"Pixel 7\"` to `capabilities`. Desktop app: `driver=\"appium\"`, `url`, "
+    "`capabilities={\"platformName\": \"Mac\"}` (or Windows, Linux) and `app=\"Notes\"`; a running app is reused.\n"
     "2. To sign in on the web, first read `optics://browser-profiles`, ask the user which "
     "profile to use and pass it as `capabilities.profile`. If they pick none, ask them for the "
     "credentials. Never pick a profile or enter a credential they did not give you.\n"
     "3. A row looks like `e7 button \"Sign in\" [tap] #id`. Quoted text is on the screen; "
     "`#id` is not. `= \"x\"`, `(checked)` and `(filled)` show what a field holds. A row without "
-    "`[...]` is read-only text; `(off-screen)` is scrolled out of view. `tap` and `type_text` take "
+    "`[...]` is read-only text; `(off-screen)` is scrolled out of view; `in \"x\"` names the group "
+    "of a row whose label repeats. `tap` and `type_text` take "
     "a ref; `press_key` takes a key, never a ref.\n"
     "4. Every action returns what changed on the screen, so do not read a field back or inspect "
     "the page with a script. Use `batch` for several steps on one screen, such as a form. Call "
@@ -719,9 +725,11 @@ def _jpeg(png: bytes) -> tuple[bytes, float]:
     return buffer.tobytes(), scale
 
 
-async def _observe_screen(sid: str, slot: _Slot, query: str, screenshot: bool, max_rows: int) -> Any:
+async def _observe_screen(
+    sid: str, slot: _Slot, query: str, screenshot: bool, max_rows: int, wait_loading: bool = False,
+) -> Any:
     png = await slot.shot() if screenshot else None
-    snap = await slot.session.observe(query, max_rows, png)
+    snap = await slot.session.observe(query, max_rows, png, wait_loading)
     jpeg, scale = _jpeg(png) if png else (b"", None)
     images = [Image(data=jpeg, format="jpeg").to_image_content()] if png else []
     structured = {"digest": snap.digest, "rows": [_row_out(r, scale=scale) for r in snap.rows], "hidden": snap.hidden}
@@ -813,13 +821,33 @@ def _session_config(
     )
 
 
+def _session_caps(driver: str, app: str, capabilities: dict[str, Any]) -> dict[str, Any]:
+    """A platform that attaches when the session starts takes the app in the capabilities, unless they name one already."""
+    if driver != "appium":
+        return capabilities
+    from optics_framework.engines.drivers.appium_platforms import get_profile, promote_appium_options
+
+    capabilities = promote_appium_options(capabilities)
+    if not app or any(capabilities.get(key) for key in ("app", "appium:app", "appName", "appium:appName")):
+        return capabilities
+
+    profile = get_profile(capabilities.get("platformName") or capabilities.get("appium:platformName"))
+    return {"app": app} | capabilities if profile is not None and profile.app_at_start else capabilities
+
+
 async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any:
     """Create the session, then open ``app`` when one is given."""
     try:
         response = await expose_api.create_session(config)
     except HTTPException as exc:
         code, message = error_parts(exc)
+        if code == "E0601":
+            message = f"{message}. {_DRIVER_HINT}"
         return _failure_reply(Fail(error_kind(code), message, code=code))
+    except ModuleNotFoundError as exc:
+        package = (exc.name or "").split(".")[0]
+        return _failure_reply(Fail("unsupported", f"The {driver} driver needs the Python package '{package}'. "
+                                   f"Install it with: optics setup --install {package}"))
     sid = response.session_id
     await _sweep()
     try:
@@ -838,8 +866,10 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
         out["unsupported_keywords"] = unsupported
         head.append(f"run_keyword cannot run here: {', '.join(unsupported)}")
     if not app:
-        return _reply(head, out)
-    launched = await _act(Action("open", target=app, text=app), "full", sid)
+        first = await _guarded(sid, {}, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
+        out["screen"] = first.structured_content
+        return _reply([*head, first.content[0].text], out, is_error=first.is_error)
+    launched =await _act(Action("open", target=app, text=app), "full", sid)
     launch_out = launched.structured_content
     out |= {key: launch_out[key] for key in ("screen", "error") if key in launch_out}
     return _reply([*head, launched.content[0].text], out, is_error=launched.is_error)
@@ -896,10 +926,11 @@ def _add_resources(mcp: "FastMCP") -> None:
 
     @mcp.resource("optics://session/{session_id}/elements", mime_type="application/json")
     async def interactive_elements(session_id: str) -> Any:
-        """Compact screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, loc?, offscreen?}:
+        """Compact screen elements as {i, label, cls, bounds:[x1,y1,x2,y2], act, rid?, rid_attr?, loc?, offscreen?}:
         actionable elements (act = tap/long/toggle/input/scroll, labels folded in) plus
         read-only text (act: []). A web element carries loc, a locator matching only it, and
-        offscreen: true when it is on the page but scrolled out of view. Appium, Appium web
+        offscreen: true when it is on the page but scrolled out of view. rid_attr names the
+        attribute that holds rid when it is not resource-id (id on a desktop). Appium, Appium web
         and Playwright page sources answer the compact projection; a source without it
         returns its full element list. Use the
         get_interactive_elements tool with compact=false for the full untrimmed list."""
@@ -946,7 +977,7 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         strict_element_match: Annotated[bool, Field(description="No fuzzy text matches.")] = False,
     ) -> Any:
         config = _session_config(
-            driver, url, capabilities, elements_sources, text_detection=list(text_detection),
+            driver, url, _session_caps(driver, app, capabilities), elements_sources, text_detection=list(text_detection),
             image_detection=list(image_detection), project_path=project_path or None, ai_self_heal=ai_self_heal,
             llm_provider=llm_provider or None, llm_model=llm_model or None, strict_element_match=strict_element_match,
         )
@@ -961,7 +992,7 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         return _reply([f"session {sid} terminated"], {"session_id": sid, "status": "terminated"})
 
     async def observe(
-        query: Annotated[str, Field(description="Only rows whose label or id holds this.")] = "",
+        query: Annotated[str, Field(description="Only rows whose label, id or role holds this, or one ref.")] = "",
         screenshot: Annotated[bool, Field(description="Add a JPEG of the screen.")] = False,
         max_rows: Annotated[int, Field(ge=1, le=300, description="Most rows.")] = 80,
         session_id: _SID = "",
@@ -1003,7 +1034,7 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         return await _act(action, "diff", session_id)
 
     async def press_key(
-        key: Annotated[str, Field(description="back, a key name such as Enter or Escape, or an Android KeyEvent number.")],
+        key: Annotated[str, Field(description="back, a key name such as Enter or Escape, a desktop chord such as cmd+s, or an Android KeyEvent number.")],
         expect_present: _PRESENT = [], expect_absent: _ABSENT = [],  # noqa: B006
         session_id: _SID = "",
     ) -> Any:

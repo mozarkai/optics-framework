@@ -24,7 +24,7 @@ _QUOTED_RE = re.compile(r'"([^"]*)"|\'([^\']*)\'')
 _POSITIONAL_RE = re.compile(r"\[\s*\d+\s*\]|position\(|last\(|:nth-")
 _VALUE_ATTR_RE = re.compile(r"@(?:text|label|value)\b|text\(\)|normalize-space\(")
 DIFF_ROWS = 40
-_TITLED_CONTAINERS = frozenset({"window", "dialog", "application", "frame"})
+_TITLED_CONTAINERS = frozenset({"window", "dialog", "application", "frame", "web_area"})
 REMOVED_ROWS = 10
 _WINDOW_BOUNDS = "window_bounds"
 _XPATH = "xpath="
@@ -43,6 +43,7 @@ class Row:
     cls: str
     act: tuple[str, ...]
     rid: str = ""
+    rid_attr: str = "resource-id"
     loc: str = ""
     bounds: tuple[int, int, int, int] | None = None
     secret: bool = False
@@ -53,6 +54,7 @@ class Row:
     offscreen: bool = False
     tag: str = ""
     state: str = ""
+    area: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         if self.name is None:
@@ -198,6 +200,13 @@ def _state(el: dict, secret: bool) -> str:
     return f'= "{clean_label(value, keep_lines=True)}"' if value else ""
 
 
+def _native_id(rid: str, el: dict, extra: dict, web: bool) -> tuple[str, str]:
+    """The id and its page-source attribute; a desktop tree names its stable id ``id``."""
+    if not rid and not web and extra.get("id"):
+        return str(extra["id"]), "id"
+    return rid, str(el.get("rid_attr") or "resource-id")
+
+
 def normalize(el: dict, before: dict | None = None) -> dict | None:
     """One element from any element-list shape as Row fields, or None to drop it; ``before`` is the row above it."""
     if not isinstance(el, dict):
@@ -208,6 +217,7 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     cls = short.removeprefix("XCUIElementType") or short
     loc = str(el.get("loc") or ("" if "act" in el else el.get("xpath")) or "")
     web = _is_web(loc, cls)
+    rid, rid_attr = _native_id(rid, el, extra, web)
     own_id = rid.rsplit("/", 1)[-1]
     if not web and label in {rid, own_id, raw_cls, cls} - {""}:
         label = ""
@@ -223,9 +233,10 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
     # A native label that differs from its hint is the typed value, so the hint (even empty) names the row.
     name = hint if label and not web and holds_value and fold(label) != fold(hint) else label
     return {
-        "label": label, "cls": cls, "act": act, "rid": rid, "loc": loc, "bounds": _bounds(el.get("bounds")),
+        "label": label, "cls": cls, "act": act, "rid": rid, "rid_attr": rid_attr, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
         "offscreen": el.get("offscreen") is True, "tag": raw_cls, "state": _state(el, secret),
+        "area": str(extra.get("area") or ""),
     }
 
 
@@ -268,9 +279,12 @@ def _identity(
         # A field is told apart by its hint, since its label is the text it holds: two forms can reuse one id.
         return ("id", "", fields["cls"], fields["rid"], (), fold(fields["hint"] if holds_value else label))
     if _strong_loc(loc) and not (holds_value and _VALUE_ATTR_RE.search(_unquoted(loc))):
-        return ("loc", loc, fields["cls"], fields["rid"], () if _names_by_text(loc, label) else context, "")
-    if not label or holds_value:
-        # A field has the same key empty and filled, so its ref stays when it gets text.
+        named = _names_by_text(loc, label) or (holds_value and _names_by_text(loc, fields["hint"]))
+        return ("loc", loc, fields["cls"], fields["rid"], () if named else context, "")
+    if holds_value:
+        # A field has the same key empty and filled, and what it filters below it does not move it.
+        context = (*context, "")
+    elif not label:
         context = (*context, "", *following)
     return ("pos", window_bounds, fields["cls"], fields["rid"], context, "" if holds_value else fold(label))
 
@@ -280,7 +294,7 @@ def _context_label(fields: dict) -> str:
     label, loc = fields["label"], fields["loc"]
     if not label or fields["holds_value"] or (_strong_loc(loc) and not _names_by_text(loc, label)):
         return ""
-    # A window title changes with the document: an editor marks it when the text is not saved.
+    # A window or page title changes with the document: an editor marks it unsaved, a player names the track.
     return "" if fields["cls"].lower() in _TITLED_CONTAINERS else fold(label)
 
 
@@ -312,6 +326,24 @@ def _ref_ranges(refs: Iterable[str]) -> str:
     return ", ".join(f"e{a}" if a == b else f"e{a}–e{b}" for a, b in runs)
 
 
+def _matches(row: Row, query: str) -> bool:
+    """A row whose ref is the query, or whose label, id or role holds it ("menu", "text field")."""
+    if REF_RE.match(query):
+        return row.ref == query
+    needle = fold(query)
+    role = row.cls.replace("_", " ").casefold()
+    return any(needle in text for text in (fold(row.label), row.rid.rsplit("/", 1)[-1].casefold(), role))
+
+
+def _is_menu(row: Row) -> bool:
+    return "menu" in row.cls.casefold()
+
+
+def _look(fields: dict) -> tuple[str, str]:
+    """What tells a row apart to the eye; rows with the same look in different areas show their area."""
+    return fields["cls"], fold(fields["label"])
+
+
 def _describe(row: Row) -> str:
     return f'"{clean_label(row.label)}" {row.cls}' if row.label else f"{row.cls}, no text"
 
@@ -341,15 +373,19 @@ class RefTable:
         seen: Counter = Counter()
         every: list[Row] = []
         ids = Counter(fields["rid"] for _, fields in read if fields["rid"])
+        areas: dict[tuple[str, str], set[str]] = {}
+        for _, fields in read:
+            areas.setdefault(_look(fields), set()).add(fields["area"])
         for (el, fields), (context, following) in zip(read, _contexts([_context_label(f) for _, f in read])):
+            if len(areas[_look(fields)]) < 2 or fold(fields["area"]) in fold(fields["label"]):
+                fields["area"] = ""
             bounds = _bounds(el.get(_WINDOW_BOUNDS, el.get("bounds")))
             key = _identity(fields, bounds, context, following, ids[fields["rid"]] == 1)
             row = Row(ref=self._ref(key, seen[key]), **fields)
             seen[key] += 1
             self._issued[row.ref] = row
             every.append(row)
-        needle = fold(query)
-        pool = [r for r in every if needle in fold(r.label) or needle in r.rid.rsplit("/", 1)[-1].casefold()] if query else every
+        pool = [r for r in every if _matches(r, query)] if query else every
         actionable_first = sorted(range(len(pool)), key=lambda i: not pool[i].act)
         rows = tuple(pool[i] for i in sorted(actionable_first[:max_rows]))
         self.latest = Snapshot(rows=rows, digest=digest(every), all_rows=tuple(every), hidden=len(pool) - len(rows))
@@ -379,7 +415,11 @@ class RefTable:
         if len(matches) > 1:
             matches = [r for r in matches if r.act] or matches
         if len(matches) > 1:
-            listed = ", ".join(f'{r.ref} "{clean_label(r.label)}"' for r in matches[:8])
+            # An open menu is in front of the screen, so its item is the one meant (Spotify's Create > Playlist).
+            menu = [r for r in matches if _is_menu(r)]
+            matches = menu if len(menu) == 1 else matches
+        if len(matches) > 1:
+            listed = ", ".join(f'{r.ref} "{clean_label(r.label)}"{_area_part(r)}' for r in matches[:8])
             raise TargetError(f'"{target}" matches {len(matches)} rows: {listed}. Pass one ref.', kind="ambiguous")
         return matches[0] if matches else None
 
@@ -403,10 +443,18 @@ def diff(prev: Snapshot | None, cur: Snapshot) -> Diff:
     return Diff(changed, new_screen, added, removed, relabelled)
 
 
-def _on_screen(snap: Snapshot, text: str) -> bool:
+def _names_a_row(text: str, *snaps: Snapshot | None) -> bool:
+    wanted = fold(text)
+    return any(fold(r.label) == wanted for s in snaps if s is not None for r in s.all_rows)
+
+
+def _on_screen(snap: Snapshot, text: str, whole: bool = False) -> bool:
+    """A ref, a whole label when ``whole``, else a word or phrase inside any label."""
     if REF_RE.match(text):
         return snap.row(text) is not None
     wanted = fold(text)
+    if whole:
+        return any(fold(r.label) == wanted for r in snap.all_rows)
     return any(re.search(rf"(?<!\w){re.escape(wanted)}(?!\w)", fold(r.label)) for r in snap.all_rows if r.label)
 
 
@@ -418,17 +466,22 @@ def verify(
     vision = not exact and strategy in ("OCR", "Image")
     if after is None:
         return Verdict("unknown" if ok else "fail", (), (), None, vision)
-    checks = [
-        Check(text, expect, _on_screen(after, text.strip()) == (expect == "present"),
-              before is not None and _on_screen(before, text.strip()) == (expect == "present"))
-        for expect, texts in (("present", present), ("absent", absent)) for text in texts or [] if text.strip()
-    ]
+    checks = [_check(text.strip(), expect, before, after)
+              for expect, texts in (("present", present), ("absent", absent)) for text in texts or [] if text.strip()]
     untested = tuple(
         c for c in checks if fold(typed) and not c.met and c.expect == "present" and fold(c.text) == fold(typed)
     )
     kept = tuple(c for c in checks if c not in untested)
     d = diff(before, after)
     return Verdict(_verified(ok, kept, d, vision), kept, untested, d, vision)
+
+
+def _check(text: str, expect: str, before: Snapshot | None, after: Snapshot) -> Check:
+    # A text that is a whole label names that control, so "Send" is gone with the Send button although "release to send" stays.
+    want = expect == "present"
+    whole = not want and _names_a_row(text, before, after)
+    return Check(text, expect, _on_screen(after, text, whole) == want,
+                 before is not None and _on_screen(before, text, whole) == want)
 
 
 def _verified(ok: bool, kept: tuple[Check, ...], d: Diff, vision: bool) -> Verified:
@@ -444,22 +497,36 @@ def _verified(ok: bool, kept: tuple[Check, ...], d: Diff, vision: bool) -> Verif
 
 
 def _locator_rungs(row: Row, snap: Snapshot) -> list[str]:
-    # A loc that finds an input by its typed value will not match on a replay.
-    value_loc = (
-        "input" in row.act and row.name != row.label
-        and bool(_VALUE_ATTR_RE.search(_unquoted(row.loc))) and _names_by_text(row.loc, row.label)
-    )
-    rungs = [row.loc] if row.loc and not value_loc else []
-    # A native loc that is not unique by name means the rid is on other nodes too.
-    rid_shared = bool(row.loc) and not row.web and not _names_one_element(row.loc)
-    if row.rid and not rid_shared and sum(r.rid == row.rid for r in snap.all_rows) == 1:
-        if row.web:
-            rung = f"css=#{row.rid}" if _CSS_ID_RE.match(row.rid) else f'css=[id="{row.rid}"]'
-        else:
-            rung = f'//*[@resource-id="{row.rid}"]'
+    rungs = [row.loc] if row.loc and not _finds_by_typed_value(row) else []
+    if _rid_is_unique(row, snap):
+        rung = _rid_rung(row)
         if rung not in rungs and rung.removeprefix("css=") not in rungs:
             rungs.append(rung)
     return rungs
+
+
+def _finds_by_typed_value(row: Row) -> bool:
+    """A loc that finds an input by its typed value will not match on a replay."""
+    return (
+        "input" in row.act and row.name != row.label
+        and bool(_VALUE_ATTR_RE.search(_unquoted(row.loc))) and _names_by_text(row.loc, row.label)
+    )
+
+
+def _rid_is_unique(row: Row, snap: Snapshot) -> bool:
+    """A native loc that is not unique by name means the rid is on other nodes too."""
+    rid_shared = bool(row.loc) and not row.web and not _names_one_element(row.loc)
+    return bool(row.rid) and not rid_shared and sum(r.rid == row.rid for r in snap.all_rows) == 1
+
+
+def _rid_rung(row: Row) -> str:
+    """The locator of the row's id, with the id quoted for the CSS or XPath engine."""
+    if not row.web:
+        return f"//*[@{row.rid_attr}={utils.xpath_literal(row.rid)}]"
+    if _CSS_ID_RE.match(row.rid):
+        return f"css=#{row.rid}"
+    quoted = row.rid.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\a ")
+    return f'css=[id="{quoted}"]'
 
 
 def _holds_secret(row: Row) -> bool:
@@ -617,12 +684,16 @@ def effect(d: Diff, secret: str) -> str:
     return "changed " + ", ".join([*items[:3], *([f"{rest} more"] if rest else [])])
 
 
+def _area_part(row: Row) -> str:
+    return f' in "{clean_label(row.area)}"' if row.area else ""
+
+
 def render_row(row: Row) -> str:
     act = f"[{','.join(row.act)}]" if row.act else ""
     rid = f"#{row.rid.rsplit('/', 1)[-1]}" if row.rid else ""
     offscreen = "(off-screen)" if row.offscreen else ""
     parts = (row.ref, row.cls, _label_part(row.label, row.holds_value), act, row.state, rid, offscreen)
-    return " ".join(p for p in parts if p)
+    return " ".join(p for p in parts if p) + _area_part(row)
 
 
 def _row_lines(snap: Snapshot) -> list[str]:
@@ -647,7 +718,7 @@ def prompt_rows(snap: Snapshot) -> list[str]:
 
 def listed_added(d: Diff) -> tuple[Row, ...]:
     """The added rows a reply lists: at most ``DIFF_ROWS``, controls before text, in screen order."""
-    order = sorted(range(len(d.added)), key=lambda i: (not d.added[i].act, d.added[i].offscreen))
+    order = sorted(range(len(d.added)), key=lambda i: (not d.added[i].act, not _is_menu(d.added[i]), d.added[i].offscreen))
     return tuple(d.added[i] for i in sorted(order[:DIFF_ROWS]))
 
 
