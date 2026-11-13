@@ -158,6 +158,13 @@ Element location errors:
 - **W0203**: Element format mismatch
 - **E0204**: Timeout locating element
 - **E0205**: Invalid element type
+- **E0206**: Unknown popup on screen: a dialog no [popup rule](../usage/popup_rules.md) covers is in the way. The run continues
+- **E0207**: Popup keeps coming back: a rule hit its `max_per_step` or `max_per_run` limit
+- **E0208**: Popup stopped the step: the popup stayed after the action, or a `fail_step`, `stop_run` or `sensitive` rule ended the step or the run
+- **E0209**: Popup dismissed: a rule handled it and the step looks for its element again. It is raised and caught inside the locate loop, so a run never reports it
+
+E0206 to E0209 are not "element not found": the fallback ladder does not try the next value after them, since the
+same popup would be in the way of every value.
 
 **Example:**
 ```python
