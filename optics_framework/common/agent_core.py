@@ -15,7 +15,7 @@ from typing import Any
 from optics_framework.common import utils
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.utils import substitute_vars, var_refs, whole_var_name
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import OpticsError, is_element_not_found
 from optics_framework.common.logging_config import (
     is_secret_name,
     register_config_secret,
@@ -186,7 +186,7 @@ class Step:
 
 def error_kind(code: str | None) -> str:
     code = code or ""
-    return _CODE_KINDS.get(code) or ("not_found" if code.startswith("E02") else "other")
+    return _CODE_KINDS.get(code) or ("not_found" if code and is_element_not_found(code) else "other")
 
 
 def error_parts(exc: BaseException) -> tuple[str | None, str]:
