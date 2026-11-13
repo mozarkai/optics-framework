@@ -32,6 +32,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.events import EventStatus
 from optics_framework.common.logging_config import LogCaptureBuffer
+from optics_framework.common.popup_guard import PopupRun
 from optics_framework.common.models import (
     ElementData,
     KeywordNode,
@@ -83,6 +84,7 @@ def _make_runner(elements=None, keyword_map=None, modules=None):
     runner.result_printer = NullResultPrinter()
     runner.event_manager = _FakeEventManager()
     runner.config = SimpleNamespace(halt_duration=0.0)
+    runner.popup_run = PopupRun()
     return runner
 
 
@@ -931,3 +933,51 @@ class TestSignatureAwareParamSplit:
             self._validate_like, ("text=OK", "event_name=tap"))
         assert pos == ["text=OK"]
         assert kw == {"event_name": "tap"}
+
+
+class TestPopupEvents:
+    """A keyword's popup inspections leave ``popup`` events, whether the keyword passes or fails."""
+
+    @staticmethod
+    def _keyword_recording(runner, *, then=None):
+        def keyword(*_):
+            test_context.popup_run.get().events.append({"type": "popup", "verdict": "handled", "rule": "Rate Us"})
+            if then is not None:
+                raise OpticsError(then, message="a popup stopped the step")
+        return keyword
+
+    async def _run(self, runner, params=None):
+        kw_node = _kw_node(name="Press Element", params=params or [], node_id="k1")
+        tc_result, kw_result = _wire_execute_context(runner, kw_node)
+        token = test_context.popup_run.set(runner.popup_run)
+        try:
+            ok = await runner._execute_keyword(kw_node, _mod_node(name="mod"), tc_result, {})
+        finally:
+            test_context.popup_run.reset(token)
+        return ok, kw_result
+
+    async def test_a_passing_keyword_publishes_its_popup_event_after_its_own(self):
+        runner = _make_runner()
+        runner.keyword_map["press_element"] = self._keyword_recording(runner)
+        ok, _ = await self._run(runner)
+        kinds = [(e.entity_type, e.status) for e in runner.event_manager.events]
+        assert ok is True and kinds[-1] == ("popup", EventStatus.PASS)
+        assert runner.event_manager.events[-1].args["rule"] == "Rate Us"
+        assert runner.event_manager.events[-1].args["module"] == "mod"
+        assert runner.popup_run.events == []
+
+    @pytest.mark.parametrize("code", [Code.E0206, Code.E0207, Code.E0208])
+    async def test_a_popup_that_stops_the_step_fails_it_at_once_and_still_publishes_the_event(self, code):
+        elements = ElementData()
+        elements.add_element("card", "//first")
+        elements.add_element("card", "//second")
+        tried = []
+        runner = _make_runner(elements=elements)
+        recording = self._keyword_recording(runner, then=code)
+        runner.keyword_map["press_element"] = lambda element: (tried.append(element), recording())[1]
+        ok, kw_result = await self._run(runner, params=["${card}"])
+        assert ok is not True and kw_result.status == "FAIL"
+        assert tried == ["//first"], "the second locator would meet the same popup"
+        failed = [e for e in runner.event_manager.events if e.entity_type == "keyword" and e.status == EventStatus.FAIL]
+        assert failed and failed[-1].code == code
+        assert runner.event_manager.events[-1].entity_type == "popup"
