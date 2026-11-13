@@ -1,7 +1,7 @@
 from uuid import uuid4
 from enum import Enum
-from typing import Optional, Dict, List, Callable, Any
-from pydantic import BaseModel, Field
+from typing import Optional, Dict, List, Callable, Any, Literal
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.error import OpticsError, Code
 
@@ -336,3 +336,75 @@ class ErrorDefinitions(BaseModel):
 
     def get_all(self) -> Dict[str, Dict[str, str]]:
         return self.errors
+
+
+class PopupDetect(BaseModel):
+    """What a popup looks like. Every key given must match the screen."""
+    text_contains: List[str] = Field(default_factory=list)
+    resource_id: Optional[str] = None
+    xpath: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _needs_a_key(self) -> "PopupDetect":
+        if not (self.text_contains or self.resource_id or self.xpath):
+            raise ValueError("detect needs text_contains, resource_id or xpath")
+        return self
+
+
+class PopupAction(BaseModel):
+    """What to do about a popup. ``fallback`` is tried when ``target`` is not found."""
+    type: Literal["tap", "back", "alert", "none"] = "none"
+    target: Optional[str] = None
+    fallback: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _tap_and_alert_need_a_target(self) -> "PopupAction":
+        if self.type in ("tap", "alert") and not self.target:
+            raise ValueError(f"action '{self.type}' needs a target")
+        return self
+
+
+class PopupRule(BaseModel):
+    """A popup, what to do about it and what happens next; the lowest ``priority`` that matches wins."""
+    name: str
+    priority: int
+    check: Literal["on_failure", "before_every_step"] = "on_failure"
+    detect: PopupDetect
+    action: PopupAction = Field(default_factory=PopupAction)
+    then: Literal["retry_step", "fail_step", "stop_run"] = "retry_step"
+    sensitive: bool = False
+    max_per_step: int = Field(default=2, ge=1)
+    max_per_run: int = Field(default=5, ge=1)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "PopupRule":
+        if self.sensitive:
+            # A sensitive rule only records evidence and ends the run, whatever else it says.
+            self.action, self.then = PopupAction(), "stop_run"
+        elif self.then == "retry_step" and self.action.type == "none":
+            raise ValueError("retry_step needs an action that dismisses the popup")
+        return self
+
+
+def parse_popup_rules(raw: Any, source: str = "popup rules") -> List[PopupRule]:
+    """Rules from a list of dicts or ``PopupRule``; a bad list raises E0501 rather than quietly handling no popups."""
+    if not isinstance(raw, list):
+        raise OpticsError(Code.E0501, message=f"{source}: expected a list of rules")
+    rules: List[PopupRule] = []
+    for position, item in enumerate(raw, 1):
+        try:
+            rules.append(item if isinstance(item, PopupRule) else PopupRule.model_validate(item))
+        except ValidationError as e:
+            problem = "; ".join(f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors())
+            raise OpticsError(Code.E0501, message=f"{source}: rule {position} is invalid ({problem})") from e
+    names = [rule.name for rule in rules]
+    if len(set(names)) != len(names):
+        raise OpticsError(Code.E0501, message=f"{source}: rule names must be unique")
+    return rules
+
+
+def merge_popup_rules(existing: List[PopupRule], new: List[PopupRule]) -> List[PopupRule]:
+    """``existing`` with each rule of ``new`` added, or replacing the one of the same name."""
+    replaced = {rule.name: rule for rule in new}
+    kept = [replaced.pop(rule.name, rule) for rule in existing]
+    return kept + list(replaced.values())

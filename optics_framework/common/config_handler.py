@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import initialize_handlers, is_secret_entry, register_config_secret
+from optics_framework.common.models import PopupRule
 
 _ENV_REFERENCE = re.compile(r"\$(?:\$|\{([A-Za-z_]\w*)(?::-([^}]*))?\}|([A-Za-z_]\w*))")
 _RELATIVE_PREFIXES = ("./", "../")
@@ -241,6 +242,8 @@ class Config(BaseModel):
     ai_self_heal: bool = False
     strict_element_match: bool = False
     nl_agent: NLAgentConfig = Field(default_factory=NLAgentConfig)
+    popup_rules: List[PopupRule] = Field(default_factory=list)
+    permissions: Dict[str, Literal["allow", "deny"]] = Field(default_factory=dict)
 
     def __init__(self, **data):
         super().__init__(**data)

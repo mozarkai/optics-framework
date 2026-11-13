@@ -19,6 +19,7 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     merge_dicts,
+    read_popup_rules,
 )
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.error import OpticsError, Code
@@ -35,6 +36,7 @@ from optics_framework.common.models import (
     ModuleData,
     TemplateData,
     ErrorDefinitions,
+    merge_popup_rules,
 )
 from optics_framework.helper.abort import abort_with_panel
 from optics_framework.helper.case_selection import select_test_cases
@@ -110,6 +112,18 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
         file_collections["api"],
         file_collections["error_definitions"],
         config_obj,
+    )
+
+
+POPUP_RULES_FILE = "popup_rules.json"
+
+
+def find_popup_rules(folder_path: str) -> list[str]:
+    """Paths of the ``popup_rules.json`` files under ``folder_path`` (by name: JSON has no header to sniff), sorted."""
+    return sorted(
+        os.path.join(root, POPUP_RULES_FILE)
+        for root, _dirs, files in os.walk(folder_path)
+        if POPUP_RULES_FILE in files
     )
 
 
@@ -707,6 +721,7 @@ class BaseRunner:
         if self.selection_override:
             self.config.include = args.include
             self.config.exclude = args.exclude
+        self._load_popup_rules()
 
         # Load templates after config is set
         self._load_templates()
@@ -793,6 +808,14 @@ class BaseRunner:
             raw = self.csv_reader.read_error_definitions(file_path)
             for code, meta in raw.items():
                 self.error_definitions_data.add_error(code, **meta)
+
+    def _load_popup_rules(self):
+        """Merge each ``popup_rules.json`` in the project into the session config, over any rule of the same name there."""
+        for path in find_popup_rules(self.folder_path):
+            try:
+                self.config.popup_rules = merge_popup_rules(self.config.popup_rules, read_popup_rules(path))
+            except OpticsError as e:
+                abort_with_panel([e.message, "", f"Fix it in {path}, then re-run."], e.code.value)
 
     def _load_templates(self):
         """Load template data by discovering image files in the project directory."""
