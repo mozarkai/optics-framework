@@ -1,0 +1,94 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/architecture/error_handling.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/error_handling.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/error_handling.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_157">157</td><td nowrap="nowrap">- **E0202**: Unsupported operation for element source</td><td class="diff_next"></td><td class="diff_header" id="to0_157">157</td><td nowrap="nowrap">- **E0202**: Unsupported operation for element source</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_158">158</td><td nowrap="nowrap">- **W0203**: Element format mismatch</td><td class="diff_next"></td><td class="diff_header" id="to0_158">158</td><td nowrap="nowrap">- **W0203**: Element format mismatch</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_159">159</td><td nowrap="nowrap">- **E0204**: Timeout locating element</td><td class="diff_next"></td><td class="diff_header" id="to0_159">159</td><td nowrap="nowrap">- **E0204**: Timeout locating element</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_160">160</td><td nowrap="nowrap">- **E0205**: Invalid element type</td><td class="diff_next"></td><td class="diff_header" id="to0_160">160</td><td nowrap="nowrap">- **E0205**: Invalid element type</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_161">161</td><td nowrap="nowrap"><span class="diff_add">- **E0206**: Unknown popup on screen: a dialog no [popup rule](../usage/popup_rules.md) covers is in the way. The run continues</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_162">162</td><td nowrap="nowrap"><span class="diff_add">- **E0207**: Popup keeps coming back: a rule hit its `max_per_step` or `max_per_run` limit</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_163">163</td><td nowrap="nowrap"><span class="diff_add">- **E0208**: Popup stopped the step: the popup stayed after the action, or a `fail_step`, `stop_run` or `sensitive` rule ended the step or the run</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_164">164</td><td nowrap="nowrap"><span class="diff_add">- **E0209**: Popup dismissed: a rule handled it and the step looks for its element again. It is raised and caught inside the locate loop, so a run never reports it</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_165">165</td><td nowrap="nowrap"><span class="diff_add"> </span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_166">166</td><td nowrap="nowrap"><span class="diff_add">E0206 to E0209 are not "element not found": the fallback ladder does not try the next value after them, since the</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_167">167</td><td nowrap="nowrap"><span class="diff_add">same popup would be in the way of every value.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_161">161</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_168">168</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_162">162</td><td nowrap="nowrap">**Example:**</td><td class="diff_next"></td><td class="diff_header" id="to0_169">169</td><td nowrap="nowrap">**Example:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_163">163</td><td nowrap="nowrap">```python</td><td class="diff_next"></td><td class="diff_header" id="to0_170">170</td><td nowrap="nowrap">```python</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_164">164</td><td nowrap="nowrap">if not element:</td><td class="diff_next"></td><td class="diff_header" id="to0_171">171</td><td nowrap="nowrap">if not element:</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
