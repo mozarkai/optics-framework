@@ -14,6 +14,7 @@ from optics_framework.common.ai_self_heal import (
     VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
 )
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.popup_guard import PopupGuard, PopupIO, PopupRun, Verdict
 from optics_framework.common.screen_snapshot import read_screen
 from .verifier import Verifier
 
@@ -242,6 +243,8 @@ class ActionKeyword:
         )
         session_config = builder.session_config
         self.capture_output_dir = session_config.capture_dir
+        self._own_popup_run = PopupRun()
+        self._popup = PopupGuard(lambda: session_config.popup_rules, self._popup_io(), self._popup_run)
         # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
         # llm_models entry is enabled. Fetching the LLM is guarded: a misconfiguration
         # (e.g. the engine's optional extra missing) must disable the feature, not
@@ -466,26 +469,37 @@ class ActionKeyword:
         element, minus locate-tuning params); they feed the self-heal breadcrumbs.
         ``value`` is the text the keyword types: self-heal may choose where it goes, but never sees it.
         A covered point is skipped like a failed action; a keyword that only reads it sets ``allow_covered``.
+
+        With popup rules set, a rule that checks before each step runs first, and a lookup that fails is checked
+        for a popup before self-heal: one that a rule dismisses makes the step look again.
         """
-        screenshot_np = self._capture_screenshot_safe()
+        if self._popup.active:
+            self._popup.begin_step(func_name, element)
+            self._raise_popup_stop(self._popup.before_step())
         aoi_x = _parse_aoi_param(aoi[0], 0)
         aoi_y = _parse_aoi_param(aoi[1], 0)
         aoi_width = _parse_aoi_param(aoi[2], 100)
         aoi_height = _parse_aoi_param(aoi[3], 100)
         is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
-        if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
-            _maybe_save_aoi_screenshot(
-                screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
-                self.capture_output_dir, func_name,
+        while True:
+            screenshot_np = self._capture_screenshot_safe()
+            if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
+                _maybe_save_aoi_screenshot(
+                    screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
+                    self.capture_output_dir, func_name,
+                )
+            self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
+            results = _locate_element(
+                self.strategy_manager, element,
+                aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
             )
-        self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
-        results = _locate_element(
-            self.strategy_manager, element,
-            aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
-        )
-        return self._act_until_success(
-            results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
-        )
+            try:
+                return self._act_until_success(
+                    results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
+                )
+            except OpticsError as e:
+                if e.code != Code.E0209:
+                    raise
 
     def _act_on(
         self, result: Any, act: Callable[[Any], Any], element: Any, func_name: str, allow_covered: bool
@@ -546,6 +560,7 @@ class ActionKeyword:
             self._record_successful_step(func_name, element, intent_args, value)
             return ret
         if result_count == 0:
+            self._popup_before_self_heal(screenshot_np)
             if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
                 return None
             raise OpticsError(
@@ -554,6 +569,7 @@ class ActionKeyword:
                 cause=locate_error,
             ) from locate_error
         if last_exception:
+            self._popup_before_self_heal(screenshot_np)
             if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
                 return None
             raise OpticsError(
@@ -562,6 +578,53 @@ class ActionKeyword:
                 cause=last_exception,
             )
         raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+
+    def _popup_run(self) -> PopupRun:
+        return test_context.popup_run.get() or self._own_popup_run
+
+    def _popup_io(self) -> PopupIO:
+        return PopupIO(
+            read_source=lambda: (self.strategy_manager.capture_pagesource() or ("",))[0],
+            tap=self._popup_tap,
+            tap_at=self.driver.press_coordinates,
+            back=self.driver.go_back,
+            alert=self.driver.answer_alert,
+            read_alert=self.driver.read_alert,
+            screenshot=self._capture_screenshot_safe,
+            save_image=lambda image, name: utils.save_capture_image(image, name, self.capture_output_dir),
+            save_text=lambda text, name: utils.save_capture_text(text, name, self.capture_output_dir),
+        )
+
+    def _popup_tap(self, target: str) -> bool:
+        """Tap ``target`` through the locate ladder and the driver. Not through press_element, which would ask the guard again."""
+        def act(located: Any) -> None:
+            if isinstance(located, tuple):
+                self.driver.press_coordinates(*located)
+            else:
+                self.driver.press_element(located, 1)
+
+        try:
+            for result in self.strategy_manager.locate(target):
+                if self._act_on(result, act, target, "popup", False)[1] is None:
+                    return True
+        except OpticsError as e:
+            internal_logger.debug(f"Popup target '{target}' not found: {e}")
+        return False
+
+    def _popup_before_self_heal(self, screenshot_np: Any) -> None:
+        """A popup may be why nothing was found: retry the step once a rule has dismissed it, or fail the step here
+        rather than let self-heal guess at a screen nobody planned for."""
+        if not self._popup.active:
+            return
+        outcome = self._popup.on_failure(screenshot_np)
+        if outcome.verdict is Verdict.HANDLED:
+            raise OpticsError(Code.E0209)
+        self._raise_popup_stop(outcome)
+
+    @staticmethod
+    def _raise_popup_stop(outcome: Any) -> None:
+        if outcome.verdict in (Verdict.STOP, Verdict.UNKNOWN_POPUP):
+            raise outcome.error()
 
     # Click actions
     def press_element(

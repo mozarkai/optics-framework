@@ -1,4 +1,5 @@
 import csv
+import json
 import yaml
 import re
 import inspect
@@ -6,11 +7,14 @@ from abc import ABC, abstractmethod
 from functools import lru_cache
 from typing import Callable, Optional, Dict, Set, Union, List, Tuple, cast
 from optics_framework.common.config_handler import load_project_yaml
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import (
     ApiData,
     ApiDefinition,
     ExpectedResultDefinition,
+    PopupRule,
+    parse_popup_rules,
 )
 from optics_framework.common.utils import unescape_csv_value
 
@@ -714,3 +718,13 @@ def merge_dicts(dict1: Dict, dict2: Dict, data_type: str) -> Dict:
                 f"Duplicate {data_type} key '{key}' found. Keeping value from second source.")
         merged[key] = value
     return merged
+
+
+def read_popup_rules(file_path: str) -> List[PopupRule]:
+    """Rules from a ``popup_rules.json`` file; a file that cannot be read stops the run with E0501."""
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        raise OpticsError(Code.E0501, message=f"{file_path}: cannot read popup rules ({e})") from e
+    return parse_popup_rules(raw, file_path)

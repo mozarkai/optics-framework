@@ -45,6 +45,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     supported_platforms,
     supported_on,
     ANDROID,
+    IOS,
     MOBILE,
     KEYCODE_RC_NAMED,
 )
@@ -70,6 +71,52 @@ _PROBE_JS = (
 )
 _PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
 _GET_CONTEXTS = "mobile: getContexts"
+# What each permission name in the session config stands for on Android; a full "android.permission.X" is taken as it is.
+# The strings are listed at https://developer.android.com/reference/android/Manifest.permission
+_ANDROID_PERMISSIONS = {
+    "camera": ("android.permission.CAMERA",),
+    "location": ("android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"),
+    "notifications": ("android.permission.POST_NOTIFICATIONS",),
+    "microphone": ("android.permission.RECORD_AUDIO",),
+    "background_location": ("android.permission.ACCESS_BACKGROUND_LOCATION",),
+    "contacts": ("android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"),
+    "calendar": ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"),
+    "phone": ("android.permission.READ_PHONE_STATE", "android.permission.CALL_PHONE"),
+    "call_log": ("android.permission.READ_CALL_LOG", "android.permission.WRITE_CALL_LOG"),
+    "sms": ("android.permission.SEND_SMS", "android.permission.READ_SMS", "android.permission.RECEIVE_SMS"),
+    "storage": ("android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"),
+    "photos": ("android.permission.READ_MEDIA_IMAGES",),
+    "videos": ("android.permission.READ_MEDIA_VIDEO",),
+    "audio": ("android.permission.READ_MEDIA_AUDIO",),
+    "bluetooth": ("android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN",
+                  "android.permission.BLUETOOTH_ADVERTISE"),
+    "nearby_wifi": ("android.permission.NEARBY_WIFI_DEVICES",),
+    "body_sensors": ("android.permission.BODY_SENSORS",),
+    "activity_recognition": ("android.permission.ACTIVITY_RECOGNITION",),
+}
+# The buttons WDA presses on an iOS system alert, by label. It cannot tell which permission a prompt asks for, and
+# "Keep Location Services Off" answers the follow-up alert an app can raise after a denial.
+_IOS_ALERT_BUTTONS = {
+    "allow": ("Allow While Using App", "Allow", "OK", "Allow Full Access"),
+    "deny": ("Don’t Allow", "Don't Allow", "Keep Location Services Off"),
+}
+
+
+def _ios_alert_selector(decision: str) -> str:
+    labels = " OR ".join(f'label == "{label}"' for label in _IOS_ALERT_BUTTONS[decision])
+    return f"**/XCUIElementTypeButton[`{labels}`]"
+
+
+def _android_permissions(name: str) -> tuple[str, ...]:
+    if name.startswith("android.permission."):
+        return (name,)
+    try:
+        return _ANDROID_PERMISSIONS[name.lower()]
+    except KeyError:
+        raise OpticsError(
+            Code.E0501,
+            message=f"Unknown permission '{name}'. Use one of {', '.join(_ANDROID_PERMISSIONS)} or a full android.permission.* name.",
+        ) from None
 _SAFARI_VIEW_SERVICE = "com.apple.SafariViewService"
 _ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"})
 # A zero-size page reports visible too: Firefox runs its translations engine in one.
@@ -510,7 +557,73 @@ class Appium(DriverInterface):
         for key, value in final_caps.items():
             options.set_capability(key, value)
 
-        return self._create_new_driver_session(options, event_name=event_name)
+        session_id = self._create_new_driver_session(options, event_name=event_name)
+        self.apply_permissions()
+        return session_id
+
+    def apply_permissions(self) -> None:
+        """Grant (``allow``) or revoke (``deny``) each permission in the session config for the app under test, so its
+        prompt never appears. On iOS it makes WDA answer every system alert the same way instead.
+
+        Android goes through ``mobile: changePermissions`` (pm grant / pm revoke). A permission the app does not declare
+        cannot be changed; that is logged and the rest are still set.
+        """
+        config = getattr(getattr(self.event_sdk, "config_handler", None), "config", None)
+        permissions = getattr(config, "permissions", None)
+        if not isinstance(permissions, dict) or not permissions:
+            return
+        if self._active_platform() != ANDROID:
+            self._apply_ios_permissions(permissions)
+            return
+        caps = self._session_capabilities()
+        package = caps.get("appPackage") or caps.get("appium:appPackage")
+        if not package:
+            internal_logger.warning("'permissions' is set but the capabilities have no appPackage, so none were applied.")
+            return
+        driver = self._require_driver()
+        for name, decision in permissions.items():
+            action = "grant" if decision == "allow" else "revoke"
+            for permission in _android_permissions(name):
+                try:
+                    driver.execute_script(
+                        "mobile: changePermissions", {"action": action, "appPackage": package, "permissions": [permission]}
+                    )
+                except Exception as e:  # noqa: BLE001 - one permission the app lacks must not stop the others
+                    internal_logger.warning(f"Could not {action} {permission} for {package}: {e}")
+
+    def _apply_ios_permissions(self, permissions: dict[str, str]) -> None:
+        """iOS grants nothing ahead of a prompt on a real device, so WDA answers each system alert by its button label.
+        That setting is global: every permission must be ``allow`` or every one ``deny``, and a button it names is
+        pressed on any alert. A prompt it does not name stays up for a popup rule or ``E0206``."""
+        decisions = set(permissions.values())
+        if len(decisions) > 1:
+            raise OpticsError(
+                Code.E0501,
+                message="On iOS every permission must be 'allow' or every one 'deny': a prompt is answered by its "
+                        "button label, not by the permission it asks for. Use an alert popup rule to answer them differently.",
+            )
+        decision = decisions.pop()
+        try:
+            self._require_driver().update_settings({"autoClickAlertSelector": _ios_alert_selector(decision)})
+            internal_logger.info(f"iOS system alerts are answered '{decision}' by button label.")
+        except Exception as e:  # noqa: BLE001 - the session works without it; prompts then need an alert rule
+            internal_logger.warning(f"Could not set the iOS alert buttons for 'permissions': {e}")
+
+    @supported_on(IOS)
+    def read_alert(self) -> Optional[tuple[str, list[str]]]:
+        """The text and button labels of the system alert on screen, or None. The page source leaves such alerts out."""
+        driver = self._require_driver()
+        try:
+            buttons = driver.execute_script("mobile: alert", {"action": "getButtons"})
+            return driver.switch_to.alert.text, [str(b) for b in buttons or []]
+        except Exception as e:  # noqa: BLE001 - "no alert open" is an error to the driver, and the common case
+            internal_logger.debug(f"No system alert on screen: {e}")
+            return None
+
+    @supported_on(IOS)
+    def answer_alert(self, button: str) -> None:
+        """Press ``button`` (by its label) on the system alert on screen, such as a permission prompt."""
+        self._require_driver().execute_script("mobile: alert", {"action": "accept", "buttonLabel": button})
 
     def get_session_id(self) -> Optional[str]:
         """Return the current Appium session id, if a session is active."""

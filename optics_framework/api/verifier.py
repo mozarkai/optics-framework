@@ -1,7 +1,7 @@
 import time
 from typing import Optional, Any, List, Union
 
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, is_element_not_found
 from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -155,7 +155,7 @@ class Verifier:
             self.strategy_manager.assert_presence([element], utils.determine_element_type(element), timeout=timeout)
             result = next(iter(self.strategy_manager.locate(element)), None)
         except OpticsError as e:
-            if not (e.code.value.startswith("E02") or e.code == Code.X0201):
+            if not is_element_not_found(e.code):
                 raise
             return None
         if result is None:

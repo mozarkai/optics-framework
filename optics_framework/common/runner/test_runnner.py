@@ -50,6 +50,7 @@ from optics_framework.common.events import (
     redact_event,
 )
 from optics_framework.common.runner.data_reader import DataReader
+from optics_framework.common.popup_guard import PopupRun, Verdict
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import fallback, utils
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry, run_plan
@@ -152,13 +153,18 @@ def _plan_report(session_id: str, test_cases: Optional[TestCaseNode]) -> None:
 
 
 class SetupGuard:
-    """After a failed suite setup nothing but the suite teardown runs; after a failed test setup, not its test."""
+    """After a failed suite setup nothing but the suite teardown runs; after a failed test setup, not its test.
+
+    A run a popup stopped is the same: only the suite teardown, which may close the app, still runs."""
 
     def __init__(self) -> None:
         self._blocked: Dict[CaseKind, str] = {}
 
     def reason(self, kind: CaseKind) -> Optional[str]:
         return self._blocked.get(kind)
+
+    def stop(self, reason: str) -> None:
+        self._blocked.update(dict.fromkeys((CaseKind.SUITE_SETUP, CaseKind.SETUP, CaseKind.TEST, CaseKind.TEARDOWN), reason))
 
     def record(self, kind: CaseKind, passed: bool, failure: Optional[str]) -> None:
         if kind is CaseKind.SETUP:
@@ -177,6 +183,22 @@ def failure_reason(keyword: str, exc: BaseException) -> str:
     if isinstance(exc, fallback.FallbackExhausted):
         return f"Keyword '{keyword}' failed after fallback attempts; last error: {exc.last}{exc.limit_note}"
     return f"Keyword '{keyword}' failed: {exc}"
+
+
+def popup_event(popup: dict, session_id: str, keyword: str, keyword_id: str, module_id: str, **context: Any) -> Event:
+    """The ``popup`` event for one inspection the guard recorded; its fields travel in ``args``, since ``extra`` holds strings only."""
+    verdict = popup["verdict"]
+    return Event(
+        entity_type="popup",
+        entity_id=keyword_id,
+        name=keyword,
+        status=EventStatus.PASS if verdict in (Verdict.HANDLED, Verdict.NONE) else EventStatus.FAIL,
+        message=popup.get("popup_text") or "",
+        code=popup.get("code"),
+        parent_id=module_id,
+        extra={"session_id": session_id},
+        args={**popup, "session_id": session_id, "test_case": test_context.current_test_case.get(), **context},
+    )
 
 
 class TestRunner(Runner):
@@ -201,6 +223,7 @@ class TestRunner(Runner):
         self._last_failure_reason: Optional[str] = None
         self._last_failure_status = EventStatus.FAIL
         self._last_failure_code: Optional[str] = None
+        self.popup_run = PopupRun()
         if hasattr(self.modules, "modules"):
             execution_logger.debug(
                 "Initialized test_state: %s with %d modules",
@@ -312,6 +335,7 @@ class TestRunner(Runner):
 
     def _init_test_case(self, test_case: str) -> TestCaseResult:
         test_context.current_test_case.set(test_case)
+        test_context.popup_run.set(self.popup_run)
         return self.result_printer.test_state.get(
             test_case,
             TestCaseResult(
@@ -494,12 +518,27 @@ class TestRunner(Runner):
             should_retry = await self._process_commands(keyword_node, module_node)
         finally:
             execution_logger.removeHandler(capture_handler)
+            await self._publish_popup_events(keyword_node, module_node)
 
         if should_retry:
             return await self._execute_keyword(
                 keyword_node, module_node, test_case_result, extra
             )
         return False
+
+    async def _publish_popup_events(self, keyword_node: KeywordNode, module_node: ModuleNode) -> None:
+        popups = self.popup_run.drain()
+        if not popups:
+            return
+        step, keyword = 1, module_node.keywords_head
+        while keyword and keyword.id != keyword_node.id:
+            step, keyword = step + 1, keyword.next
+        for popup in popups:
+            await queue_event(
+                popup_event(popup, self.session_id, keyword_node.name, keyword_node.id, module_node.id,
+                            module=module_node.name, step_index=step),
+                self.event_manager,
+            )
 
     async def _handle_keyword_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result):
         keyword_node.state = State.COMPLETED_FAILED
@@ -1085,11 +1124,15 @@ class TestRunner(Runner):
                 else:
                     result = await self.execute_test_case(current.name)
                     guard.record(current.kind, result.status == "PASS", self._last_failure_reason)
+                    if self.popup_run.stop:
+                        guard.stop(f"Run stopped by a popup: {self.popup_run.stop}")
                 current = current.next
             if not captured:
                 self._capture_end_of_run_artifacts()
         finally:
             self._write_failed_steps_elements()
+            for line in self.popup_run.summary_lines():
+                execution_logger.info(line)
         self.result_printer.stop_live()
 
     async def _skip_test_case(self, node: TestCaseNode, reason: str) -> None:
@@ -1139,6 +1182,7 @@ class PytestRunner(Runner):
         self._last_failure_reason: Optional[str] = None
         self._last_failure_code: Optional[str] = None
         self._stop: Optional[BaseException] = None
+        self.popup_run = PopupRun()
         PytestRunner.instance = self
 
     def resolve_param(self, param: str) -> str:
@@ -1171,9 +1215,13 @@ class PytestRunner(Runner):
 
         params, store_as = utils.split_store_as(params)
         param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id, utils.raw_param_indices(method))
-        return self._try_execute_with_fallback_pytest(
-            method, param_candidates, keyword, keyword_id, module_id, store_as=store_as
-        )
+        try:
+            return self._try_execute_with_fallback_pytest(
+                method, param_candidates, keyword, keyword_id, module_id, store_as=store_as
+            )
+        finally:
+            for popup in self.popup_run.drain():
+                queue_event_sync(popup_event(popup, self.session.session_id, keyword, keyword_id, module_id), self.event_manager)
 
     def _execute_keyword_dry_run(self, keyword, func_name, keyword_id, module_id):
         if not self.keyword_map.get(func_name):
@@ -1377,6 +1425,8 @@ class PytestRunner(Runner):
         self._queue_test_case_event(
             testcase_id, test_case, kind, status, self._last_failure_reason, self._last_failure_code
         )
+        if self.popup_run.stop:
+            self._guard.stop(f"Run stopped by a popup: {self.popup_run.stop}")
         result.status = status.value
         result.elapsed = f"{time.time() - start_time:.2f}s"
 
@@ -1442,6 +1492,8 @@ class PytestRunner(Runner):
         """
         self._guard = SetupGuard()
         self._stop = None
+        self.popup_run = PopupRun()
+        test_context.popup_run.set(self.popup_run)
         _plan_report(self.session.session_id, self.test_cases)
         temp_dir = tempfile.mkdtemp()
         test_file_path = f"{temp_dir}/test_generated_{int(time.time() * 1000)}.py"
@@ -1485,6 +1537,8 @@ def runner():
             ]
         )
         shutil.rmtree(temp_dir)
+        for line in self.popup_run.summary_lines():
+            execution_logger.info(line)
         if self._stop is not None:
             raise self._stop
 

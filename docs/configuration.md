@@ -173,6 +173,7 @@ Configuration is **project-specific**: the one file that matters is `config.yaml
 | **Image Detection** | `templatematch`, `remote_oir` | See Image Detection tab |
 | **LLM Models** | `gemini`, `openai`, `anthropic` | See LLM Models tab |
 | **AI Self-Healing** | `ai_self_heal` | `false` (opt-in) |
+| **Popups** | `popup_rules`, `permissions` | `[]`, `{}` (opt-in) |
 | **Natural-language agent** | `nl_agent` | `vision: auto`, `max_steps: 15` |
 
 ## Configuration Structure
@@ -365,6 +366,42 @@ All configurations are defined in YAML format. The main configuration file (`con
     ```
 
     See [LLM Models](#llm-models) below for backend configuration.
+
+=== "Popups and Permissions"
+
+    ### `popup_rules`
+
+    **Type:** `list` | **Default:** `[]`
+
+    Rules for popups that get in a step's way: what a popup looks like, what to press and what happens next. Off
+    until a rule is defined. The same list can come from `test_data/popup_rules.json` or
+    `Optics.add_popup_rules`; see [Popup Rules](usage/popup_rules.md) for the fields.
+
+    ```yaml
+    popup_rules:
+      - name: Rate Us
+        priority: 10
+        detect:
+          text_contains: ["Rate Us"]
+        action:
+          type: tap
+          target: Maybe Later
+    ```
+
+    ### `permissions`
+
+    **Type:** `object` | **Default:** `{}`
+
+    Permissions to grant (`allow`) or revoke (`deny`) for the app under test right after the session starts, so
+    their prompts never appear. It sits at the top of the config, not in the Appium `capabilities`. On iOS the
+    prompt is answered when it appears, by button label, and every value must be the same: see
+    [Popup Rules](usage/popup_rules.md#permissions-on-ios).
+
+    ```yaml
+    permissions:
+      camera: allow
+      notifications: deny
+    ```
 
 === "Natural-Language Agent"
 

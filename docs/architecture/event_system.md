@@ -298,6 +298,51 @@ def send_all_events(self):
     return False
 ```
 
+## Popup Events
+
+Popup handling (see [Popup Rules](../usage/popup_rules.md)) publishes a `popup` event for every inspection. It is an
+`Event` of the runner's event manager, like the `test_case`, `module` and `keyword` events, and not an EventSDK
+event, so it reaches the JUnit handler's JSON events and any subscriber.
+
+The event's `entity_id` and `name` are its keyword's, `parent_id` is the module and `message` is the text of the
+popup. `status` is `PASS` for a `handled` or `none` verdict and `FAIL` otherwise, and `code` is the error code
+(`E0206`, `E0207` or `E0208`) when one applies. The rest travels in `args`, because an event's `extra` holds strings
+only:
+
+```json
+{
+  "type": "popup",
+  "session_id": "a41c9e02",
+  "test_case": "Check balance",
+  "module": "Open dashboard",
+  "step_index": 3,
+  "keyword": "press_element",
+  "element": "Balance card",
+  "platform": "android",
+  "app_id": "com.example.bank",
+  "check": "on_failure",
+  "rule": "Rate Us",
+  "priority": 10,
+  "matched": ["text_contains"],
+  "popup_kind": "in_app",
+  "popup_text": "Rate Us Enjoying the app? Maybe Later Rate Now",
+  "action": "tap Maybe Later",
+  "verdict": "handled",
+  "popup_gone": true,
+  "dismissed_in_ms": 730,
+  "step_count": 1,
+  "run_count": 1,
+  "screenshots": ["popup_1_before.png", "popup_1_after.png"],
+  "page_source": null,
+  "code": null,
+  "timestamp": "2026-11-12T10:42:08.150+00:00"
+}
+```
+
+`verdict` is one of `handled`, `limit`, `stopped`, `unknown` and `none` (nothing was on screen), and `popup_kind` is
+`in_app` or `system_alert`. An `unknown` event keeps the first 200 characters of the visible text and the saved page
+source, so a rule can be written from it. A report can group popups by `popup_text`, `rule`, `verdict` and `app_id`.
+
 ## Time Management
 
 EventSDK uses a specific timezone (IST - UTC+5:30) for timestamps:

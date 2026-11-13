@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Iterator, Sequence
 from itertools import islice, product
 from typing import Any
 
-from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.error import Code, OpticsError, is_element_not_found
 from optics_framework.common.logging_config import internal_logger
 
 MAX_ATTEMPTS = 20
@@ -16,8 +16,8 @@ Combo = tuple[Any, ...]
 
 
 def advances(exc: BaseException) -> bool:
-    """True when another value may succeed: the element was not found (E02xx / X0201)."""
-    return isinstance(exc, OpticsError) and (exc.code.value.startswith("E02") or exc.code == Code.X0201)
+    """True when another value may succeed: the element was not found (E02xx / X0201), and no popup stopped the step."""
+    return isinstance(exc, OpticsError) and is_element_not_found(exc.code)
 
 
 def check_arity(method: Callable[..., Any], count: int, keyword: str) -> None:

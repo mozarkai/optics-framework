@@ -615,6 +615,32 @@ def save_screenshot(img, name, output_dir, time_stamp=None):
         internal_logger.debug(f"Error writing screenshot to file : {e}")
 
 
+def save_capture_image(img, name: str, output_dir: Optional[str]) -> Optional[str]:
+    """Write ``img`` as ``<name>.png`` in ``output_dir`` and return that file name; None when captures are off or the write fails."""
+    if img is None or output_dir is None:
+        return None
+    filename = f"{name}.png"
+    try:
+        return filename if cv2.imwrite(os.path.join(output_dir, filename), img) else None
+    except Exception as e:  # noqa: BLE001 - evidence is best effort
+        internal_logger.debug(f"Could not write {filename}: {e}")
+        return None
+
+
+def save_capture_text(text: str, name: str, output_dir: Optional[str]) -> Optional[str]:
+    """Write ``text`` as ``<name>.xml`` in ``output_dir`` and return that file name; None when captures are off or the write fails."""
+    if output_dir is None:
+        return None
+    filename = f"{name}.xml"
+    try:
+        with open(os.path.join(output_dir, filename), "w", encoding="utf-8") as f:
+            f.write(text)
+    except OSError as e:
+        internal_logger.debug(f"Could not write {filename}: {e}")
+        return None
+    return filename
+
+
 def annotate(screenshot, bboxes):
     # Iterate over each bounding box and annotate it on the image
     for bbox in bboxes:
