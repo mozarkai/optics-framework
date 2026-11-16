@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: chinmayajha/appium-xa11y-driver
-          ref: af5889dd397920e5b59c9167ec592e6943d05466 # v0.1.2
+          ref: 4d64e93c4edc4309a98c975b3e072e0192f8caa6 # v0.1.3
           path: xa11y-driver
       - name: Start the Linux Host
         if: runner.os == 'Linux'
