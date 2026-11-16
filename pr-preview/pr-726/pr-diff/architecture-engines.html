@@ -1,0 +1,140 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/architecture/engines.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/engines.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/architecture/engines.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_109">109</td><td nowrap="nowrap">```</td><td class="diff_next"></td><td class="diff_header" id="to0_109">109</td><td nowrap="nowrap">```</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_110">110</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_110">110</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__1"></td><td class="diff_header" id="from0_111">111</td><td nowrap="nowrap">### BLE Driver</td><td class="diff_next"></td><td class="diff_header" id="to0_111">111</td><td nowrap="nowrap">### BLE Driver</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_112">112</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_112">112</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__2"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="from0_113">113</td><td nowrap="nowrap"><span class="diff_sub">**Location:** `optics_framework/engines/drivers/ble.py`</span></td><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="to0_113">113</td><td nowrap="nowrap"><span class="diff_add">**Location:** `optics_framework/engines/drivers/ble.py`, on the [airhand](https://github.com/chinmayajha/airhand) client</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_114">114</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_114">114</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="from0_115">115</td><td nowrap="nowrap"><span class="diff_sub">The BLE (Bluetooth Low Energy) driver provides non-intrusive automation for production devices.</span></td><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="to0_115">115</td><td nowrap="nowrap"><span class="diff_add">The driver drives a device that has nothing installed: a phone, a tablet, a computer or a TV. An airhand dongle pairs with the device over Bluetooth as a keyboard, mouse and media remote. The airhand client sends it one command per line over USB serial.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_116">116</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_116">116</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="from0_117">117</td><td nowrap="nowrap"><span class="diff_sub">#### Key Features</span></td><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="to0_117">117</td><td nowrap="nowrap"><span class="diff_add">- Positions go to the dongle as fractions of `frame`, so devices need no calibration.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_118">118</td><td nowrap="nowrap"><span class="diff_add">- The dongle times taps, swipes and typing. The driver does not sleep between reports.</span></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__3"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_119">119</td><td nowrap="nowrap"><span class="diff_add">- A lost reply is asked for again with `result &lt;id&gt;`. An action is never sent two times.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_120">120</td><td nowrap="nowrap"><span class="diff_add">- `platform` selects the shortcuts: select-all, Back, the system search for `Launch App`, and a drag or the wheel for `Scroll`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_121">121</td><td nowrap="nowrap"><span class="diff_add">- airhand errors map to Optics codes: a lost dongle or a device that stays disconnected for 10 s is `E0106` (the run stops; element fallback does not try again), other firmware is `E0501`, and input the dongle cannot send is `E0403`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_118">118</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_122">122</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_119">119</td><td nowrap="nowrap"><span class="diff_sub">- Non-intrusive mouse and keyboard control</span></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_123">123</td><td nowrap="nowrap"><span class="diff_add">Element methods are not supported. Elements come from `camera_screenshot` and the OCR and image strategies. See [Configuration](../configuration.md) for the capabilities.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_120">120</td><td nowrap="nowrap"><span class="diff_sub">- Serial communication via BLE</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_121">121</td><td nowrap="nowrap"><span class="diff_sub">- Coordinate mapping (pixels to mickeys)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_122">122</td><td nowrap="nowrap"><span class="diff_sub">- Production-safe automation</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_123">123</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_124">124</td><td nowrap="nowrap"><span class="diff_sub">#### Use Cases</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_125">125</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_126">126</td><td nowrap="nowrap"><span class="diff_sub">- Production app monitoring</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_127">127</td><td nowrap="nowrap"><span class="diff_sub">- Devices without USB debugging</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_128">128</td><td nowrap="nowrap"><span class="diff_sub">- DRM-protected applications</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_129">129</td><td nowrap="nowrap"><span class="diff_sub">- Smart TV automation</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_130">130</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_131">131</td><td nowrap="nowrap"><span class="diff_sub">#### Configuration</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_132">132</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_133">133</td><td nowrap="nowrap"><span class="diff_sub">```yaml</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_134">134</td><td nowrap="nowrap"><span class="diff_sub">driver_sources:</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_135">135</td><td nowrap="nowrap"><span class="diff_sub">  - ble:</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_136">136</td><td nowrap="nowrap"><span class="diff_sub">      enabled: true</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_137">137</td><td nowrap="nowrap"><span class="diff_sub">      capabilities:</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_138">138</td><td nowrap="nowrap"><span class="diff_sub">        device_id: "BLE_DEVICE_ID"</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_139">139</td><td nowrap="nowrap"><span class="diff_sub">        port: "/dev/ttyUSB0"</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_140">140</td><td nowrap="nowrap"><span class="diff_sub">        pixel_width: 1920</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_141">141</td><td nowrap="nowrap"><span class="diff_sub">        pixel_height: 1080</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_142">142</td><td nowrap="nowrap"><span class="diff_sub">        mickeys_width: 32767</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_143">143</td><td nowrap="nowrap"><span class="diff_sub">        mickeys_height: 32767</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_144">144</td><td nowrap="nowrap"><span class="diff_sub">        x_invert: 1</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_145">145</td><td nowrap="nowrap"><span class="diff_sub">        y_invert: 1</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_146">146</td><td nowrap="nowrap"><span class="diff_sub">```</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_147">147</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_148">148</td><td nowrap="nowrap"><span class="diff_sub">#### Key Methods</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_149">149</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_150">150</td><td nowrap="nowrap"><span class="diff_sub">- `press_coordinates()` - Mouse click at coordinates</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_151">151</td><td nowrap="nowrap"><span class="diff_sub">- `press_percentage_coordinates()` - Percentage-based clicks</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_152">152</td><td nowrap="nowrap"><span class="diff_sub">- `swipe()` - Mouse drag gestures</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_153">153</td><td nowrap="nowrap"><span class="diff_sub">- `enter_text_using_keyboard()` - Keyboard input</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_154">154</td><td nowrap="nowrap"><span class="diff_sub">- `press_keycode()` - Special key codes</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_155">155</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_156">156</td><td nowrap="nowrap"><span class="diff_sub">#### Coordinate Mapping</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_157">157</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_158">158</td><td nowrap="nowrap"><span class="diff_sub">The BLE driver maps screen coordinates to mouse movements (mickeys):</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_159">159</td><td nowrap="nowrap"><span class="diff_sub">- Pixel coordinates → Mickey coordinates</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_160">160</td><td nowrap="nowrap"><span class="diff_sub">- Supports coordinate inversion</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_161">161</td><td nowrap="nowrap"><span class="diff_sub">- Configurable mapping ratios</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_162">162</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_124">124</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_163">163</td><td nowrap="nowrap">## Element Sources</td><td class="diff_next"></td><td class="diff_header" id="to0_125">125</td><td nowrap="nowrap">## Element Sources</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_164">164</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_126">126</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_165">165</td><td nowrap="nowrap">Element sources are responsible for detecting and locating UI elements. They implement `ElementSourceInterface` and are located in `optics_framework/engines/elementsources/`.</td><td class="diff_next"></td><td class="diff_header" id="to0_127">127</td><td nowrap="nowrap">Element sources are responsible for detecting and locating UI elements. They implement `ElementSourceInterface` and are located in `optics_framework/engines/elementsources/`.</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
