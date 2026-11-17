@@ -255,7 +255,7 @@ optics configure myproject --edit   # full-field Textual editor
 
 **Command:** `optics doctor [folder] [--check]`
 
-**Purpose:** Diagnose the environment (Python, engines, adb/Appium, browsers) and, when a folder is given, validate that project's `config.yaml`
+**Purpose:** Diagnose the environment (Python, engines, adb/Appium, the desktop driver, browsers) and, when a folder is given, validate that project's `config.yaml`
 
 **Usage:**
 ```bash

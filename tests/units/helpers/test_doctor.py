@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import subprocess
 from importlib.metadata import PackageNotFoundError
@@ -125,6 +126,15 @@ class TestCheckEngines:
         appium = next(r for r in rows if r.name == "Appium")
         assert appium.status == "ok"
         assert "appium-python-client 5.0.0" in appium.detail
+
+
+@pytest.fixture(autouse=True)
+def appium_home(tmp_path, monkeypatch):
+    """An empty APPIUM_HOME, so no test reads the runner's own Appium drivers."""
+    home = tmp_path / "appium-home"
+    home.mkdir()
+    monkeypatch.setenv("APPIUM_HOME", str(home))
+    return home
 
 
 @pytest.fixture
@@ -274,6 +284,83 @@ class TestCheckWeb:
             rows = doctor.check_web()
         selenium_row = next(r for r in rows if r.name == "selenium webdriver")
         assert selenium_row.status == "ok"
+
+
+XA11Y_INSTALL = "appium driver install --source=npm appium-xa11y-driver"
+
+
+def _install_xa11y(home, package_dir=None, listed=True, present=True):
+    """Lay out appium-xa11y-driver 0.1.3 under ``home`` the way `appium driver install` does."""
+    package = package_dir or home / "node_modules" / "appium-xa11y-driver"
+    if present:
+        package.mkdir(parents=True)
+        (package / "package.json").write_text(json.dumps({"name": "appium-xa11y-driver", "version": "0.1.3"}))
+    if listed:
+        manifest = home / "node_modules" / ".cache" / "appium"
+        manifest.mkdir(parents=True)
+        (manifest / "extensions.yaml").write_text(
+            f"drivers:\n  xa11y:\n    pkgName: appium-xa11y-driver\n    version: 0.1.0\n    installPath: '{package}'\n"
+            "    automationName: Xa11y\nplugins: {}\nschemaRev: 4\n")
+
+
+def _xa11y_row(system="Linux"):
+    return next(r for r in doctor.check_desktop(system=system) if r.name == "xa11y driver")
+
+
+class TestCheckDesktop:
+    def test_installed_driver_is_ok_with_its_package_version(self, appium_home, no_socket):
+        _install_xa11y(appium_home)
+        row = _xa11y_row()
+        assert row.status == "ok"
+        assert "appium-xa11y-driver 0.1.3" in row.detail
+
+    def test_driver_linked_from_a_checkout_is_ok(self, appium_home, tmp_path, no_socket):
+        _install_xa11y(appium_home, package_dir=tmp_path / "checkout")
+        assert _xa11y_row().status == "ok"
+
+    def test_driver_in_node_modules_without_a_manifest_is_ok(self, appium_home, no_socket):
+        _install_xa11y(appium_home, listed=False)
+        assert _xa11y_row().status == "ok"
+
+    def test_missing_driver_warns_with_the_install_command(self, no_socket, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
+        row = _xa11y_row()
+        assert row.status == "warn"
+        assert row.hint == XA11Y_INSTALL
+
+    def test_manifest_entry_whose_package_is_gone_warns(self, appium_home, no_socket):
+        _install_xa11y(appium_home, present=False)
+        assert _xa11y_row().status == "warn"
+
+    def test_unreadable_manifest_warns(self, appium_home, no_socket):
+        manifest = appium_home / "node_modules" / ".cache" / "appium"
+        manifest.mkdir(parents=True)
+        (manifest / "extensions.yaml").write_text("drivers: [unclosed\n")
+        assert _xa11y_row().status == "warn"
+
+    def test_no_appium_cli_adds_the_appium_install(self, no_socket, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
+        assert _xa11y_row().hint == f"npm install -g appium, then {XA11Y_INSTALL}"
+
+    def test_default_home_is_dot_appium(self, tmp_path, no_socket, monkeypatch):
+        monkeypatch.delenv("APPIUM_HOME")
+        set_home(monkeypatch, tmp_path)
+        _install_xa11y(tmp_path / ".appium")
+        assert _xa11y_row().status == "ok"
+
+    def test_probes_the_appium_server(self, no_socket):
+        server = next(r for r in doctor.check_desktop("10.0.0.5", 5555, system="Linux") if r.name == "appium server")
+        assert server.status == "warn"
+        assert "10.0.0.5:5555" in server.detail
+
+    def test_macos_names_the_privacy_permissions(self, no_socket):
+        row = next(r for r in doctor.check_desktop(system="Darwin") if r.name == "macOS permissions")
+        assert "Accessibility" in row.hint
+        assert "Screen Recording" in row.hint
+
+    @pytest.mark.parametrize("system", ["Linux", "Windows"])
+    def test_other_systems_have_no_macos_row(self, no_socket, system):
+        assert "macOS permissions" not in [r.name for r in doctor.check_desktop(system=system)]
 
 
 class TestValidateProject:
@@ -500,6 +587,7 @@ class TestRunDoctor:
             captured["target"] = (host, port)
             return [Check("appium server", "warn", f"{host}:{port}")]
         monkeypatch.setattr(doctor, "check_mobile", fake_check_mobile)
+        monkeypatch.setattr(doctor, "check_desktop", lambda *_: [])
         return captured
 
     def test_zero_when_environment_has_only_warnings(self, quiet_env):
@@ -564,7 +652,8 @@ class TestMissingProjectRow:
         with patch(f"{MODULE}.check_core", _stub_env_rows), \
                 patch(f"{MODULE}.check_engines", return_value=[]), \
                 patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]):
+                patch(f"{MODULE}.check_mobile", return_value=[]), \
+                patch(f"{MODULE}.check_desktop", return_value=[]):
             code, out = _render(doctor.run_doctor)
         assert 'project' in out
         assert "No config.yaml found here" in out
@@ -575,7 +664,8 @@ class TestMissingProjectRow:
         with patch(f"{MODULE}.check_core", _stub_env_rows), \
                 patch(f"{MODULE}.check_engines", return_value=[]), \
                 patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]):
+                patch(f"{MODULE}.check_mobile", return_value=[]), \
+                patch(f"{MODULE}.check_desktop", return_value=[]):
             code, _ = _render(doctor.run_doctor, check=True)
         assert code == 0
 
@@ -586,7 +676,8 @@ class TestMissingProjectRow:
         with patch(f"{MODULE}.check_core", _stub_env_rows), \
                 patch(f"{MODULE}.check_engines", return_value=[]), \
                 patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]):
+                patch(f"{MODULE}.check_mobile", return_value=[]), \
+                patch(f"{MODULE}.check_desktop", return_value=[]):
             _, out = _render(doctor.run_doctor)
         assert "No config.yaml found here" not in out
 
@@ -596,7 +687,8 @@ class TestMissingProjectRow:
         with patch(f"{MODULE}.check_core", _stub_env_rows), \
                 patch(f"{MODULE}.check_engines", return_value=[]), \
                 patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]):
+                patch(f"{MODULE}.check_mobile", return_value=[]), \
+                patch(f"{MODULE}.check_desktop", return_value=[]):
             code, out = _render(doctor.run_doctor, folder, check=True)
         assert "No config.yaml found here" not in out
         assert "config:" in out
@@ -614,14 +706,15 @@ class TestGatedClosingMessage:
                        "(or: optics setup --install playwright)")
 
     def _run_with_rows(self, tmp_path, *, env_rows, web_rows=None,
-                       answers=None):
+                       answers=None, desktop_rows=()):
         folder = _write_config(tmp_path, answers=answers)
         web = web_rows if web_rows is not None else []
         with patch(f"{MODULE}.check_core",
                    return_value=[Check("python", "ok", "3.12")]), \
                 patch(f"{MODULE}.check_engines", return_value=[]), \
                 patch(f"{MODULE}.check_web", return_value=web), \
-                patch(f"{MODULE}.check_mobile", return_value=env_rows):
+                patch(f"{MODULE}.check_mobile", return_value=env_rows), \
+                patch(f"{MODULE}.check_desktop", return_value=list(desktop_rows)):
             return _render(doctor.run_doctor, folder)
 
     def test_appium_server_and_device_warns_are_called_out(self, tmp_path):
@@ -698,11 +791,25 @@ class TestGatedClosingMessage:
         raw = DESKTOP_CONFIG.format(app="app: mousepad").replace("platformName: Linux", platform)
         folder = _write_config(tmp_path, raw=raw)
         with patch(f"{MODULE}.check_core", return_value=[]), patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), patch(f"{MODULE}.check_mobile", return_value=rows):
+                patch(f"{MODULE}.check_web", return_value=[]), patch(f"{MODULE}.check_mobile", return_value=rows), \
+                patch(f"{MODULE}.check_desktop", return_value=[]):
             _, out = _render(doctor.run_doctor, folder)
         assert f"  • {self.APPIUM_HINT}" in out
         assert self.DEVICE_HINT not in out.split("Before your first real run:")[1]
         assert self.ADB_HINT not in out.split("Before your first real run:")[1]
+
+    def test_missing_xa11y_driver_blocks_a_desktop_project(self, tmp_path, no_socket, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
+        folder = _write_config(tmp_path, raw=DESKTOP_CONFIG.format(app="app: mousepad"))
+        with patch(f"{MODULE}.check_core", return_value=[]), patch(f"{MODULE}.check_engines", return_value=[]), \
+                patch(f"{MODULE}.check_web", return_value=[]), patch(f"{MODULE}.check_mobile", return_value=[]):
+            _, out = _render(doctor.run_doctor, folder)
+        assert f"  • {XA11Y_INSTALL}" in out.split("Before your first real run:")[1]
+
+    def test_missing_xa11y_driver_does_not_block_an_android_project(self, tmp_path, no_socket, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
+        _, out = self._run_with_rows(tmp_path, env_rows=[], desktop_rows=doctor.check_desktop(system="Linux"))
+        assert XA11Y_INSTALL not in out.split("Before your first real run:")[1]
 
     def test_counts_line_survives_gating(self, tmp_path):
         rows = [

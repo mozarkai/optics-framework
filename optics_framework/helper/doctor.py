@@ -15,6 +15,7 @@ not mutate the project it is inspecting.
 """
 import json
 import os
+import platform
 import shutil
 import socket
 import subprocess  # nosec B404
@@ -55,6 +56,10 @@ _PLAYWRIGHT_BROWSER = "playwright browser"
 _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
 _CONFIG_FILE = "config: file"
+_XA11Y_DRIVER = "xa11y driver"
+_XA11Y_PACKAGE = "appium-xa11y-driver"
+_XA11Y_INSTALL = f"appium driver install --source=npm {_XA11Y_PACKAGE}"
+_MACOS_PERMISSIONS = "macOS permissions"
 
 
 class _Glyphs(NamedTuple):
@@ -136,6 +141,53 @@ def check_mobile(host: str = "127.0.0.1", port: int = 4723) -> list[Check]:
 
 def check_web(playwright_remote: bool = False) -> list[Check]:
     return [_playwright_row(playwright_remote), _selenium_row()]
+
+
+def check_desktop(host: str = "127.0.0.1", port: int = 4723, system: str | None = None) -> list[Check]:
+    """Appium reachability, the xa11y driver in APPIUM_HOME, and on macOS the privacy permissions it needs."""
+    rows = [_appium_row(host, port), _xa11y_row(_appium_home())]
+    if (system or platform.system()) == "Darwin":
+        rows.append(Check(
+            _MACOS_PERMISSIONS, "ok", "not checked by doctor",
+            "System Settings > Privacy & Security: give Accessibility, and Screen Recording for screenshots, "
+            "to the app that starts Appium (for example your terminal), then restart Appium."))
+    return rows
+
+
+def _appium_home() -> Path:
+    return Path(os.environ.get("APPIUM_HOME") or os.path.expanduser(os.path.join("~", ".appium")))
+
+
+def _xa11y_row(home: Path) -> Check:
+    found = next(filter(None, map(_xa11y_version, _xa11y_paths(home))), None)
+    if found:
+        return Check(_XA11Y_DRIVER, "ok", f"{_XA11Y_PACKAGE} {found} in {home}")
+    hint = _XA11Y_INSTALL if shutil.which("appium") else f"npm install -g appium, then {_XA11Y_INSTALL}"
+    return Check(_XA11Y_DRIVER, "warn", f"not installed in {home}", hint)
+
+
+def _xa11y_paths(home: Path) -> list[Path]:
+    """Where Appium loads the driver from: its manifest entry, else the package Appium adds to the manifest at start."""
+    modules = home / "node_modules"
+    try:
+        manifest = yaml.safe_load((modules / ".cache" / "appium" / "extensions.yaml").read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        manifest = None
+    drivers = manifest.get("drivers") if isinstance(manifest, dict) else None
+    listed = [Path(entry["installPath"]) for entry in (drivers.values() if isinstance(drivers, dict) else ())
+              if isinstance(entry, dict) and entry.get("pkgName") == _XA11Y_PACKAGE and entry.get("installPath")]
+    return listed or [modules / _XA11Y_PACKAGE]
+
+
+def _xa11y_version(package: Path) -> str | None:
+    try:
+        data = json.loads((package / "package.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("name") != _XA11Y_PACKAGE:
+        return None
+    return str(data.get("version") or "(no version)")
+
 
 def _adb_devices_row(adb: str) -> Check:
     try:
@@ -454,7 +506,7 @@ def _enabled_driver_names(folder: str) -> set[str]:
     return set(_enabled_entries(data.get("driver_sources")))
 
 
-def _mandatory_hints(rows: list[Check], drivers: set[str], android: bool = True) -> list[str]:
+def _mandatory_hints(rows: list[Check], drivers: set[str], target: str = "android") -> list[str]:
     """Hints of warnings on an ENABLED driver's must-have pieces.
 
     A warning for something the user never enabled (say, Playwright's browser
@@ -463,8 +515,9 @@ def _mandatory_hints(rows: list[Check], drivers: set[str], android: bool = True)
     out in the closing message. Order follows the rows, deduplicated. An
     enabled driver's missing Python client blocks just as hard — the server can
     be up and the device attached, and the run still fails on instantiation.
-    An attached adb device is a must-have only when the project drives Android."""
-    required = _required_rows(drivers, android)
+    An attached adb device is a must-have only when the project drives Android,
+    and the xa11y driver only when it drives a desktop."""
+    required = _required_rows(drivers, target)
     hints: list[str] = []
     for row in rows:
         if row.name in required and row.status == "warn" and row.hint and row.hint not in hints:
@@ -472,13 +525,19 @@ def _mandatory_hints(rows: list[Check], drivers: set[str], android: bool = True)
     return hints
 
 
-def _required_rows(drivers: set[str], android: bool) -> set[str]:
+def _required_rows(drivers: set[str], target: str) -> set[str]:
     engine_rows = _engine_row_names_by_driver()
     required = {engine_rows[driver] for driver in drivers if driver in engine_rows}
     required.update(name for driver, names in _DRIVER_ROW_NAMES.items() if driver in drivers for name in names)
     if "appium" in drivers:
-        required.update((_APPIUM_SERVER, _ADB, _ADB_DEVICES) if android else (_APPIUM_SERVER,))
+        required.update((_APPIUM_SERVER, *_target_rows().get(target, ())))
     return required
+
+
+def _target_rows() -> dict[str, tuple[str, ...]]:
+    platforms = _appium_platforms()
+    desktops = platforms.DESKTOP if platforms else ()
+    return {"android": (_ADB, _ADB_DEVICES), **{name: (_XA11Y_DRIVER,) for name in desktops}}
 
 
 def _appium_entry(folder: str) -> dict | None:
@@ -489,10 +548,10 @@ def _appium_entry(folder: str) -> dict | None:
     return cfg if isinstance(cfg, dict) else None
 
 
-def _drives_android(folder: str) -> bool:
-    """Whether the project's appium platform is Android; a project with no platformName gets the Android checks."""
+def _appium_platform(folder: str) -> str:
+    """The project's appium platformName, lower case; a project with no platformName gets the Android checks."""
     caps = _promoted((_appium_entry(folder) or {}).get("capabilities") or {})
-    return str(_cap(caps, "platformName") or "android").strip().lower() == "android"
+    return str(_cap(caps, "platformName") or "android").strip().lower()
 
 
 def _appium_target(folder: str) -> tuple[str, int] | None:
@@ -625,6 +684,7 @@ def diagnose(folder: str | None = None) -> Diagnosis:
         ("Core", check_core()),
         ("Engines", check_engines()),
         ("Mobile", check_mobile(host, port)),
+        ("Desktop", check_desktop(host, port)),
         ("Web", check_web(_playwright_is_remote(folder))),
     ]
     if folder:
@@ -636,8 +696,8 @@ def diagnose(folder: str | None = None) -> Diagnosis:
     rows = [row for _, section_rows in sections for row in section_rows]
     drivers = _enabled_driver_names(folder) if folder else set()
     # Hints read the raw row names, so a secret that matches a name cannot hide a blocking warning.
-    android = _drives_android(folder) if folder else True
-    blocking = [_literal(hint) for hint in _mandatory_hints(rows, drivers, android)]
+    target = _appium_platform(folder) if folder else "android"
+    blocking = [_literal(hint) for hint in _mandatory_hints(rows, drivers, target)]
     sections = [(title, [_literal_check(row) for row in section_rows]) for title, section_rows in sections]
     return Diagnosis(sections, blocking, any(row.status == "fail" for row in rows))
 
