@@ -2,7 +2,7 @@
 
 # Optics Framework
 
-**Self-healing test automation for mobile, web, TV — and AI agents.**
+**Self-healing test automation for mobile, web, TV, desktop — and AI agents.**
 
 One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Framework, a REST API, an interactive terminal, or an MCP server your AI agent talks to.
 
@@ -68,7 +68,7 @@ optics setup --install appium easyocr
 > The installer always includes the `mcp` server extra. With pip, add it yourself (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
 
 > [!IMPORTANT]
-> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://optics-framework.org/docs/get-started/install?ref=readme).
+> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). Desktop testing needs Appium and `appium-xa11y-driver` on the computer that shows the app; one [setup script](https://optics-framework.org/docs/platforms/desktop?ref=readme#set-up-the-host) installs both. `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://optics-framework.org/docs/get-started/install?ref=readme).
 
 > [!WARNING]
 > Conda is not supported for `easyocr` + `optics-framework` together (conflicting NumPy 1.x/2.x requirements). Use a standard `venv`.
@@ -119,7 +119,7 @@ Cheap strategies run first, so vision only costs you time when the tree can't he
 Beyond the ladder:
 
 - **Tests are data** — elements, modules and test cases as plain CSV or YAML. No IDE, no programming.
-- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS.
+- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS, and macOS, Linux and Windows desktop apps (Appium with `appium-xa11y-driver`).
 - **Non-intrusive** — the `ble` driver drives production devices as a Bluetooth HID mouse/keyboard where debugging and screenshots are blocked. Coordinate-only, so pair it with `camera_screenshot` and the vision strategies.
 - **Agent-ready** — `optics mcp` exposes every keyword as a typed MCP tool and device state as MCP resources.
 
@@ -218,11 +218,13 @@ optics.quit()
 <details>
 <summary><b>MCP client config</b></summary>
 
-```json
-{ "mcpServers": { "optics": { "command": "optics", "args": ["mcp"] } } }
+```bash
+claude mcp add -s user optics -- ~/.optics/bin/optics mcp
 ```
 
-Then: `start_session` → observe (`screenshot`, `optics://session/{id}/source`) → act (`press_element`, `enter_text`, …) → `terminate_session`. For networked use: `optics mcp --transport http --port 8090`. Sessions are **not** shared with `optics serve` — each is its own process.
+Other clients take `{ "mcpServers": { "optics": { "command": "/absolute/path/to/optics", "args": ["mcp"] } } }`. Use the absolute path: the installer puts `~/.optics/bin` on `PATH` only in new shells. A client loads its MCP servers when a session starts, so start a new agent session and check that the optics tools are listed.
+
+Then: `start_session` → act on the screen rows with `tap`, `type_text`, `press_key`, `scroll` or `batch` → `check` → `terminate_session`. `observe` lists the rows again or adds a screenshot. For networked use: `optics mcp --transport http --port 8090`. Sessions are **not** shared with `optics serve` — each is its own process.
 
 </details>
 
@@ -274,7 +276,7 @@ log_level: INFO
 
 | Layer | Available engines |
 |-------|-------------------|
-| **Drivers** | `appium` (Android, iOS, Android TV, Tizen, webOS) · `selenium` · `playwright` · `ble` |
+| **Drivers** | `appium` (Android, iOS, Android TV, Tizen, webOS, desktop) · `selenium` · `playwright` · `ble` |
 | **Element sources** | `appium_find_element` · `appium_page_source` · `appium_web` · `appium_screenshot` · `selenium_*` · `playwright_*` · `camera_screenshot` |
 | **Text detection** | `easyocr` · `pytesseract` · `google_vision` · `remote_ocr` |
 | **Image detection** | `templatematch` · `remote_oir` |

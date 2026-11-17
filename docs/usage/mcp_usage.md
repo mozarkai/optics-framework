@@ -154,11 +154,19 @@ config (e.g. Claude Desktop `claude_desktop_config.json`, or Claude Code
 }
 ```
 
-In the Claude Code CLI, `claude mcp add optics -- optics mcp` writes the same entry.
+In the Claude Code CLI, add it for your user, with the absolute path of `optics`:
+
+```bash
+claude mcp add -s user optics -- ~/.optics/bin/optics mcp
+```
+
+Without `-s user`, the entry works only in the current folder. The installer puts `~/.optics/bin` on `PATH` only in new shells, so a bare `optics` can fail to start.
 
 If `optics` isn't on the client's `PATH`, use the absolute path (e.g.
 `/path/to/.venv/bin/optics`) or `"command": "python", "args": ["-m",
 "optics_framework.helper.cli", "mcp"]`.
+
+A client loads its MCP servers when a session starts. A session that was open when you added the server does not show the optics tools: start a new agent session, then check that `start_session` and the other tools are listed (`/mcp` or `claude mcp list` in Claude Code).
 
 **HTTP** — start the server yourself (`optics mcp --transport http`) and point
 the client at the URL:
@@ -180,7 +188,8 @@ the client at the URL:
    so a `driver` alone is enough. A device is named in `capabilities` (for
    example `deviceName` or `udid`); the MCP needs no `adb` of its own.
    For a website that needs a sign-in, see [Start signed in](#start-signed-in).
-2. **Act** with `tap`, `type_text`, `scroll`, `press_key` and `launch_app`.
+2. **Act** with `tap`, `type_text`, `scroll`, `press_key` and `launch_app`, or
+   `batch` for several `tap`, `type_text` and `press_key` steps on one screen.
    Give a ref from the latest screen as the `target`. An exact visible label or a
    locator (`css=`, `xpath=`, `text=`, an id, an image file) also works, but a ref
    is safer: the server acts on it only through locators, never through fuzzy
@@ -355,7 +364,7 @@ Playwright driver's `config.yaml` capabilities (`browser`, `channel`, `headless`
 
 ### Desktop apps
 
-Use the Appium driver with the desktop, `automationName: Xa11y` and the app. Run Appium with `appium-xa11y-driver` on the machine that shows the app.
+Use the Appium driver with the desktop, `automationName: Xa11y` and the app. Run Appium with `appium-xa11y-driver` on the machine that shows the app. The driver's [setup script](https://optics-framework.org/docs/platforms/desktop#set-up-the-host) installs both and runs Appium as a service.
 
 ```json
 {
@@ -366,7 +375,11 @@ Use the Appium driver with the desktop, `automationName: Xa11y` and the app. Run
 }
 ```
 
-`app` is a bundle id or `.app` path on macOS and an executable on Linux and Windows. `press_key` takes a chord: `cmd+a` on macOS, `ctrl+a` on Linux and Windows. `launch_app` opens another app in the same session.
+`app` is an app name such as `TextEdit`, a bundle id or an `.app` path on macOS, and an executable on Linux and Windows. On macOS, a session attaches to an app that already runs. `press_key` takes a chord: `cmd+a` on macOS, `ctrl+a` on Linux and Windows. `launch_app` opens another app in the same session.
+
+Do every step on the app with these tools. Do not click, type or read the app with AppleScript, `osascript`, `xdotool` or PowerShell: those do not wait for the app, do not return what changed, and leave no steps for a suite.
+
+For Appium on another computer, keep it on `127.0.0.1` there and use an SSH tunnel on a local port other than 4723, such as 4733 (`ssh -N -o ExitOnForwardFailure=yes -L 4733:127.0.0.1:4723 user@host`). A local Appium often holds 4723, and the tunnel then reaches it in place of the remote one. See [Use a Host on a different computer](https://optics-framework.org/docs/platforms/desktop#use-a-host-on-a-different-computer).
 
 ### Start signed in
 
