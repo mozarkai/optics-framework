@@ -364,8 +364,23 @@ class TestCheckDesktop:
 
     def test_macos_names_the_privacy_permissions(self, no_socket):
         row = next(r for r in doctor.check_desktop(system="Darwin") if r.name == "macOS permissions")
+        assert row.status == "info"
         assert "Accessibility" in row.hint
         assert "Screen Recording" in row.hint
+        assert "Node.js that runs Appium" in row.hint
+        assert row.hint.endswith("launchctl kickstart -k gui/$(id -u)/appium-xa11y")
+
+    def test_macos_row_is_an_info_mark_outside_the_counts(self, no_socket, monkeypatch):
+        monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._EMOJI_GLYPHS)
+        _, out = _render(doctor.print_report, [("Desktop", [Check("xa11y driver", "ok", "found"),
+                                                            *doctor.check_desktop(system="Darwin")[2:]])], [])
+        assert "ℹ️ macOS permissions" in out
+        assert "1 ok, 0 warning(s), 0 failure(s)" in out
+
+    def test_plain_terminals_print_info_as_text(self, no_socket, monkeypatch):
+        monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._PLAIN_GLYPHS)
+        _, out = _render(doctor.print_report, [("Desktop", doctor.check_desktop(system="Darwin")[2:])], [])
+        assert "INFO macOS permissions" in out
 
     @pytest.mark.parametrize("system", ["Linux", "Windows"])
     def test_other_systems_have_no_macos_row(self, no_socket, system):

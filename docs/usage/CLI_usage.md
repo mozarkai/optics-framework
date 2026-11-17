@@ -351,7 +351,7 @@ optics doctor [folder] [--check]
 - `[folder]`: Project folder to diagnose (default: current directory). With one, the Appium probe targets that project's configured server URL and its `config.yaml` is validated.
 - `--check`: Non-interactive mode — exit non-zero when a project-config check fails (useful in CI).
 
-The Desktop section checks the Appium server, the `appium-xa11y-driver` in `APPIUM_HOME` (default `~/.appium`) and, on macOS, names the Accessibility and Screen Recording permissions that the app that starts Appium needs. When the driver is missing, it shows `appium driver install --source=npm appium-xa11y-driver`.
+The Desktop section checks the Appium server, the `appium-xa11y-driver` in `APPIUM_HOME` (default `~/.appium`) and, on macOS, shows an ℹ️ row that names the Accessibility and Screen Recording permissions. Give them to the Node.js that runs Appium (the `appium-xa11y` LaunchAgent), or to your terminal if you start Appium in it. Doctor does not check these permissions. When the driver is missing, it shows `appium driver install --source=npm appium-xa11y-driver`.
 
 ## Checking Version
 
