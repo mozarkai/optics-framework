@@ -116,10 +116,10 @@ A website, run in a local browser:
 and the first module step opens the site: `Open Site,Launch App,https://...`.
 
 A desktop app (macOS, Windows, Linux) through Appium and appium-xa11y-driver,
-which runs on the machine that shows the app. Install it there with
-`appium driver install --source=npm appium-xa11y-driver`. `app` is an `.app` path or bundle
-id on macOS and an executable elsewhere; `appName` attaches to a running app
-instead. Locators are XPath over the role tags (`//button[@name="Save"]`),
+which runs on the machine that shows the app. Install both there with the setup
+script from https://optics-framework.org/docs/platforms/desktop#set-up-the-host.
+`app` is an app name (`TextEdit`), an `.app` path or a bundle id on macOS and an
+executable elsewhere; `appName` attaches to a running app instead. Locators are XPath over the role tags (`//button[@name="Save"]`),
 `@id` or visible text.
     driver_sources:
       - appium:

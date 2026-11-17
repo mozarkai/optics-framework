@@ -180,7 +180,7 @@ Exact values depend on the directories under `optics_framework/samples/`. Use on
 
 ## Desktop apps
 
-Optics runs desktop apps on macOS, Linux and Windows through Appium and `appium-xa11y-driver`. Run Appium on the machine that shows the app (see [Configuration](../configuration.md#driver-sources)).
+Optics runs desktop apps on macOS, Linux and Windows through Appium and `appium-xa11y-driver`. Run Appium on the machine that shows the app (see [Configuration](../configuration.md#driver-sources)). The driver's [setup script](https://optics-framework.org/docs/platforms/desktop#set-up-the-host) installs Appium and the driver there and runs Appium as a service.
 
 1. Make a project from the desktop sample:
 

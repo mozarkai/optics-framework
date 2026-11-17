@@ -717,8 +717,8 @@ Driver sources define the automation frameworks used to control devices or brows
 
     **Prerequisites:**
     - **Appium 3** on the machine that shows the app
-    - The driver: `appium driver install --source=npm appium-xa11y-driver`
-    - macOS: give Accessibility and Screen & System Audio Recording to the app that runs Appium (System Settings > Privacy & Security)
+    - The driver: `appium driver install --source=npm appium-xa11y-driver`. The driver's [setup script](https://optics-framework.org/docs/platforms/desktop#set-up-the-host) installs Node.js, Appium 3 and the driver, and runs Appium as a service.
+    - macOS: give Accessibility and Screen & System Audio Recording to the process that runs Appium (System Settings > Privacy & Security): the Node.js path that the setup script prints, or your terminal when you start Appium yourself
     - Linux: an X11 display, a D-Bus session and the AT-SPI bus
 
     ```yaml
@@ -729,7 +729,7 @@ Driver sources define the automation frameworks used to control devices or brows
           capabilities:
             platformName: Mac          # or Linux / Windows
             automationName: Xa11y
-            app: com.apple.TextEdit    # .app path or bundle id on macOS, an executable elsewhere
+            app: com.apple.TextEdit    # app name, .app path or bundle id on macOS, an executable elsewhere
 
     elements_sources:
       - appium_find_element:
