@@ -145,7 +145,8 @@ def check_web(playwright_remote: bool = False) -> list[Check]:
 
 def check_desktop(host: str = "127.0.0.1", port: int = 4723, system: str | None = None) -> list[Check]:
     """Appium reachability, the xa11y driver in APPIUM_HOME, and on macOS the privacy permissions it needs."""
-    rows = [_appium_row(host, port), _xa11y_row(_appium_home())]
+    server = _appium_row(host, port)
+    rows = [server, _xa11y_row(_appium_home(), server.status == "ok")]
     if (system or platform.system()) == "Darwin":
         rows.append(Check(
             _MACOS_PERMISSIONS, "ok", "not checked by doctor",
@@ -158,11 +159,14 @@ def _appium_home() -> Path:
     return Path(os.environ.get("APPIUM_HOME") or os.path.expanduser(os.path.join("~", ".appium")))
 
 
-def _xa11y_row(home: Path) -> Check:
+def _xa11y_row(home: Path, server_up: bool) -> Check:
     found = next(filter(None, map(_xa11y_version, _xa11y_paths(home))), None)
     if found:
         return Check(_XA11Y_DRIVER, "ok", f"{_XA11Y_PACKAGE} {found} in {home}")
     hint = _XA11Y_INSTALL if shutil.which("appium") else f"npm install -g appium, then {_XA11Y_INSTALL}"
+    if server_up:
+        return Check(_XA11Y_DRIVER, "warn", f"not found in {home}; the running server may use another APPIUM_HOME",
+                     f"{hint}, or set APPIUM_HOME to the folder the server uses and run optics doctor again")
     return Check(_XA11Y_DRIVER, "warn", f"not installed in {home}", hint)
 
 
