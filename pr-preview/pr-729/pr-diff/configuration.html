@@ -1,0 +1,100 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/configuration.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/configuration.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_716">716</td><td nowrap="nowrap">    **Purpose:** Native desktop apps on macOS, Linux and Windows. The `appium-xa11y-driver` reads the accessibility tree of the operating system. Windows support is experimental.</td><td class="diff_next"></td><td class="diff_header" id="to0_716">716</td><td nowrap="nowrap">    **Purpose:** Native desktop apps on macOS, Linux and Windows. The `appium-xa11y-driver` reads the accessibility tree of the operating system. Windows support is experimental.</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_717">717</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_717">717</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_718">718</td><td nowrap="nowrap">    **Prerequisites:**</td><td class="diff_next"></td><td class="diff_header" id="to0_718">718</td><td nowrap="nowrap">    **Prerequisites:**</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_719">719</td><td nowrap="nowrap">    - **Appium 3** on the machine that shows the app</td><td class="diff_next"></td><td class="diff_header" id="to0_719">719</td><td nowrap="nowrap">    - **Appium 3** on the machine that shows the app</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="from0_720">720</td><td nowrap="nowrap"><span class="diff_sub">    - The driver: `appium driver install --source=npm appium-xa11y-driver`</span></td><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="to0_720">720</td><td nowrap="nowrap"><span class="diff_add">    - The driver: `appium driver install --source=npm appium-xa11y-driver`. The driver's [setup script](https://optics-framework.org/docs/platforms/desktop#set-up-the-host) installs Node.js, Appium 3 and the driver, and runs Appium as a service.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_721">721</td><td nowrap="nowrap"><span class="diff_sub">    - macOS: give Accessibility and Screen &amp; System Audio Recording to the app that runs Appium (System Settings &gt; Privacy &amp; Security)</span></td><td class="diff_next"></td><td class="diff_header" id="to0_721">721</td><td nowrap="nowrap"><span class="diff_add">    - macOS: give Accessibility and Screen &amp; System Audio Recording to the process that runs Appium (System Settings &gt; Privacy &amp; Security): the Node.js path that the setup script prints, or your terminal when you start Appium yourself</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_722">722</td><td nowrap="nowrap">    - Linux: an X11 display, a D-Bus session and the AT-SPI bus</td><td class="diff_next"></td><td class="diff_header" id="to0_722">722</td><td nowrap="nowrap">    - Linux: an X11 display, a D-Bus session and the AT-SPI bus</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_723">723</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_723">723</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_724">724</td><td nowrap="nowrap">    ```yaml</td><td class="diff_next"></td><td class="diff_header" id="to0_724">724</td><td nowrap="nowrap">    ```yaml</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_725">725</td><td nowrap="nowrap">    driver_sources:</td><td class="diff_next"></td><td class="diff_header" id="to0_725">725</td><td nowrap="nowrap">    driver_sources:</td></tr>
+        </tbody>        
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__1"></td><td class="diff_header" id="from0_728">728</td><td nowrap="nowrap">          url: "http://127.0.0.1:4723"</td><td class="diff_next"></td><td class="diff_header" id="to0_728">728</td><td nowrap="nowrap">          url: "http://127.0.0.1:4723"</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_729">729</td><td nowrap="nowrap">          capabilities:</td><td class="diff_next"></td><td class="diff_header" id="to0_729">729</td><td nowrap="nowrap">          capabilities:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_730">730</td><td nowrap="nowrap">            platformName: Mac          # or Linux / Windows</td><td class="diff_next"></td><td class="diff_header" id="to0_730">730</td><td nowrap="nowrap">            platformName: Mac          # or Linux / Windows</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_731">731</td><td nowrap="nowrap">            automationName: Xa11y</td><td class="diff_next"></td><td class="diff_header" id="to0_731">731</td><td nowrap="nowrap">            automationName: Xa11y</td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_732">732</td><td nowrap="nowrap">            app: com.apple.TextEdit    # .app path or bundle id on macOS, an executable elsewhere</td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_732">732</td><td nowrap="nowrap">            app: com.apple.TextEdit    #<span class="diff_add"> app name,</span> .app path or bundle id on macOS, an executable elsewhere</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_733">733</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_733">733</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_734">734</td><td nowrap="nowrap">    elements_sources:</td><td class="diff_next"></td><td class="diff_header" id="to0_734">734</td><td nowrap="nowrap">    elements_sources:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_735">735</td><td nowrap="nowrap">      - appium_find_element:</td><td class="diff_next"></td><td class="diff_header" id="to0_735">735</td><td nowrap="nowrap">      - appium_find_element:</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_736">736</td><td nowrap="nowrap">          enabled: true</td><td class="diff_next"></td><td class="diff_header" id="to0_736">736</td><td nowrap="nowrap">          enabled: true</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
