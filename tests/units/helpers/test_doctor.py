@@ -328,6 +328,15 @@ class TestCheckDesktop:
         assert row.status == "warn"
         assert row.hint == XA11Y_INSTALL
 
+    def test_reachable_server_without_the_driver_here_names_the_home_checked(self, appium_home, monkeypatch):
+        monkeypatch.setattr(doctor.socket, "create_connection", lambda *_a, **_k: MagicMock())
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
+        row = _xa11y_row()
+        assert row.status == "warn"
+        assert f"not found in {appium_home}; the running server may use another APPIUM_HOME" == row.detail
+        assert row.hint.startswith(XA11Y_INSTALL)
+        assert "APPIUM_HOME" in row.hint
+
     def test_manifest_entry_whose_package_is_gone_warns(self, appium_home, no_socket):
         _install_xa11y(appium_home, present=False)
         assert _xa11y_row().status == "warn"
