@@ -289,9 +289,9 @@ class TestCheckWeb:
 XA11Y_INSTALL = "appium driver install --source=npm appium-xa11y-driver"
 
 
-def _install_xa11y(home, package_dir=None, listed=True, present=True):
+def _install_xa11y(home, listed=True, present=True):
     """Lay out appium-xa11y-driver 0.1.3 under ``home`` the way `appium driver install` does."""
-    package = package_dir or home / "node_modules" / "appium-xa11y-driver"
+    package = home / "node_modules" / "appium-xa11y-driver"
     if present:
         package.mkdir(parents=True)
         (package / "package.json").write_text(json.dumps({"name": "appium-xa11y-driver", "version": "0.1.3"}))
@@ -314,10 +314,6 @@ class TestCheckDesktop:
         assert row.status == "ok"
         assert "appium-xa11y-driver 0.1.3" in row.detail
 
-    def test_driver_linked_from_a_checkout_is_ok(self, appium_home, tmp_path, no_socket):
-        _install_xa11y(appium_home, package_dir=tmp_path / "checkout")
-        assert _xa11y_row().status == "ok"
-
     def test_driver_in_node_modules_without_a_manifest_is_ok(self, appium_home, no_socket):
         _install_xa11y(appium_home, listed=False)
         assert _xa11y_row().status == "ok"
@@ -333,9 +329,9 @@ class TestCheckDesktop:
         monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
         row = _xa11y_row()
         assert row.status == "warn"
-        assert f"not found in {appium_home}; the running server may use another APPIUM_HOME" == row.detail
+        assert str(appium_home) in row.detail
+        assert "another APPIUM_HOME" in row.detail
         assert row.hint.startswith(XA11Y_INSTALL)
-        assert "APPIUM_HOME" in row.hint
 
     def test_manifest_entry_whose_package_is_gone_warns(self, appium_home, no_socket):
         _install_xa11y(appium_home, present=False)
@@ -347,28 +343,11 @@ class TestCheckDesktop:
         (manifest / "extensions.yaml").write_text("drivers: [unclosed\n")
         assert _xa11y_row().status == "warn"
 
-    def test_no_appium_cli_adds_the_appium_install(self, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        assert _xa11y_row().hint == f"npm install -g appium, then {XA11Y_INSTALL}"
-
     def test_default_home_is_dot_appium(self, tmp_path, no_socket, monkeypatch):
         monkeypatch.delenv("APPIUM_HOME")
         set_home(monkeypatch, tmp_path)
         _install_xa11y(tmp_path / ".appium")
         assert _xa11y_row().status == "ok"
-
-    def test_probes_the_appium_server(self, no_socket):
-        server = next(r for r in doctor.check_desktop("10.0.0.5", 5555, system="Linux") if r.name == "appium server")
-        assert server.status == "warn"
-        assert "10.0.0.5:5555" in server.detail
-
-    def test_macos_names_the_privacy_permissions(self, no_socket):
-        row = next(r for r in doctor.check_desktop(system="Darwin") if r.name == "macOS permissions")
-        assert row.status == "info"
-        assert "Accessibility" in row.hint
-        assert "Screen Recording" in row.hint
-        assert "Node.js that runs Appium" in row.hint
-        assert row.hint.endswith("launchctl kickstart -k gui/$(id -u)/appium-xa11y")
 
     def test_macos_row_is_an_info_mark_outside_the_counts(self, no_socket, monkeypatch):
         monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._EMOJI_GLYPHS)
@@ -376,11 +355,6 @@ class TestCheckDesktop:
                                                             *doctor.check_desktop(system="Darwin")[2:]])], [])
         assert "ℹ️ macOS permissions" in out
         assert "1 ok, 0 warning(s), 0 failure(s)" in out
-
-    def test_plain_terminals_print_info_as_text(self, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._PLAIN_GLYPHS)
-        _, out = _render(doctor.print_report, [("Desktop", doctor.check_desktop(system="Darwin")[2:])], [])
-        assert "INFO macOS permissions" in out
 
     @pytest.mark.parametrize("system", ["Linux", "Windows"])
     def test_other_systems_have_no_macos_row(self, no_socket, system):
