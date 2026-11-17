@@ -46,7 +46,7 @@ _console = safe_console()
 _SOCKET_TIMEOUT_S = 3.0
 _ADB_TIMEOUT_S = 10.0
 
-_STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
+_STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red", "info": "blue"}
 _MAX_NAME_COLUMN = 32
 
 _ADB = "adb"
@@ -67,15 +67,15 @@ class _Glyphs(NamedTuple):
     width: int
     title: str
     arrow: str
-_EMOJI_GLYPHS = _Glyphs({"ok": "✅", "warn": "⚠️", "fail": "❌"}, 3, "🩺 optics doctor", "→")
-_PLAIN_GLYPHS = _Glyphs({"ok": "OK", "warn": "WARN", "fail": "FAIL"}, 5, "optics doctor", "->")
+_EMOJI_GLYPHS = _Glyphs({"ok": "✅", "warn": "⚠️", "fail": "❌", "info": "ℹ️"}, 3, "🩺 optics doctor", "→")
+_PLAIN_GLYPHS = _Glyphs({"ok": "OK", "warn": "WARN", "fail": "FAIL", "info": "INFO"}, 5, "optics doctor", "->")
 def _glyphs() -> _Glyphs:
     emoji = "".join(_EMOJI_GLYPHS.status.values()) + _EMOJI_GLYPHS.title + _EMOJI_GLYPHS.arrow
     return _EMOJI_GLYPHS if can_encode(_console, emoji) else _PLAIN_GLYPHS
 class Check(NamedTuple):
     """One row of the doctor report."""
     name: str
-    status: str  # "ok" | "warn" | "fail"
+    status: str  # "ok" | "warn" | "fail" | "info" (not counted)
     detail: str
     hint: str = ""
 
@@ -149,9 +149,10 @@ def check_desktop(host: str = "127.0.0.1", port: int = 4723, system: str | None 
     rows = [server, _xa11y_row(_appium_home(), server.status == "ok")]
     if (system or platform.system()) == "Darwin":
         rows.append(Check(
-            _MACOS_PERMISSIONS, "ok", "not checked by doctor",
+            _MACOS_PERMISSIONS, "info", "not checked by doctor",
             "System Settings > Privacy & Security: give Accessibility, and Screen Recording for screenshots, "
-            "to the app that starts Appium (for example your terminal), then restart Appium."))
+            "to the Node.js that runs Appium (setup.sh shows its path), or to your terminal if you start Appium "
+            "in it. Then restart Appium: launchctl kickstart -k gui/$(id -u)/appium-xa11y"))
     return rows
 
 
