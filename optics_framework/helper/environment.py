@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from importlib.util import find_spec
 from pathlib import Path
+from subprocess import list2cmdline  # nosec B404
 
 _PEP668_FALLBACK = (
     "This interpreter is managed by your operating system or Python installer, "
@@ -199,6 +200,11 @@ def detect() -> Environment:
     return Environment(
         kind=EnvKind.SYSTEM_MANAGED if error else EnvKind.SYSTEM,
         creator=creator, pep668_error=error, **shared)
+
+
+def shell_join(args: list[str]) -> str:
+    """One command line that the shell of this OS splits back into ``args``."""
+    return list2cmdline(args) if os.name == "nt" else shlex.join(args)
 
 
 def project_add_command(env: Environment) -> str:

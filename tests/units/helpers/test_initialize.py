@@ -13,6 +13,9 @@ Covers:
 """
 from __future__ import annotations
 
+import json
+import subprocess  # nosec B404
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,6 +24,7 @@ import pytest
 from optics_framework.common.config_handler import Config, load_project_yaml, resolve_config_file
 
 from optics_framework.helper import initialize as init_mod
+from optics_framework.helper.environment import shell_join
 from optics_framework.helper.initialize import (
     _pick_template,
     _template_choices,
@@ -98,6 +102,27 @@ class TestBlankProjectGuidance:
         out = capsys.readouterr().out
         assert "test_cases/test_cases.csv" in out
         assert "`optics list`" in out
+
+    def test_blank_project_names_every_sample_it_could_start_from(self, tmp_path, capsys):
+        with patch(f"{init_mod.__name__}.print_next_steps"):
+            create_project(_args("blank", path=str(tmp_path)))
+        out = capsys.readouterr().out
+        assert f"optics init blank --path {tmp_path} --force --template <sample>" in out
+        assert ["desktop_editor", "Desktop", "Editor"] in [line.split() for line in out.splitlines()]
+
+    def test_the_sample_command_keeps_a_name_the_shell_would_split(self, tmp_path, capsys):
+        with patch(f"{init_mod.__name__}.print_next_steps"):
+            create_project(_args("my app$HOME", path=str(tmp_path)))
+        line = next(line for line in capsys.readouterr().out.splitlines() if "--template <sample>" in line)
+        printed = line.split(": optics ", 1)[1].removesuffix(" --template <sample>")
+        echo = shell_join([sys.executable, "-c", "import json, sys; print(json.dumps(sys.argv[1:]))"])
+        result = subprocess.run(f"{echo} {printed}", shell=True, capture_output=True, text=True, check=True)  # nosec B602
+        assert json.loads(result.stdout) == ["init", "my app$HOME", "--path", str(tmp_path), "--force"]
+
+    def test_blank_config_shows_how_to_drive_a_desktop_app(self, tmp_path):
+        with patch(f"{init_mod.__name__}.print_next_steps"):
+            create_project(_args("blank", path=str(tmp_path)))
+        assert "automationName: Xa11y" in (tmp_path / "blank" / "config.yaml").read_text()
 
     def test_template_project_prints_no_extra_hint(self, tmp_path, capsys):
         with patch(f"{init_mod.__name__}._copy_template", return_value=True), \
