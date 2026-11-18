@@ -59,7 +59,6 @@ DESKTOPS = {
 
 # TextEdit restores the unsaved documents of its last run; with persistence off it shows only what the suite types.
 _NO_RESTORE = ["-ApplePersistenceIgnoreState", "YES"]
-_QUOTED_AUTOMATION = re.compile(r"""(["'])automationName\1:\s*(["'])Xa11y\2""")
 _YAML_AUTOMATION = re.compile(r"^([ \t]*)automationName: Xa11y[ \t]*$", re.MULTILINE)
 
 
@@ -69,13 +68,11 @@ def fresh_start(platform: str = PLATFORM) -> dict:
 
 
 def started_fresh(text: str) -> str:
-    """A documented config or call, with the capabilities of ``fresh_start`` after its automationName."""
+    """A config.yaml text, with the capabilities of ``fresh_start`` after its automationName."""
     if PLATFORM != "Mac":
         return text
-    text, quoted = _QUOTED_AUTOMATION.subn(
-        lambda m: f"{m[0]}, {m[1]}appArguments{m[1]}: [{', '.join(m[2] + a + m[2] for a in _NO_RESTORE)}]", text)
     text, block = _YAML_AUTOMATION.subn(lambda m: f"{m[0]}\n{m[1]}appArguments: {json.dumps(_NO_RESTORE)}", text)
-    assert quoted + block, f"No automationName to start the app fresh after in:\n{text}"
+    assert block, f"No automationName to start the app fresh after in:\n{text}"
     return text
 
 

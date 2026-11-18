@@ -16,11 +16,6 @@ PINS = {
     "EASYOCR_VERSION": "easyocr",
     "GOOGLE_CLOUD_VISION_VERSION": "google-cloud-vision",
     "PYTESSERACT_VERSION": "pytesseract",
-    "MKDOCS_MATERIAL_VERSION": "mkdocs-material",
-    "MKDOCSTRINGS_VERSION": "mkdocstrings",
-    "MKDOCSTRINGS_PYTHON_VERSION": "mkdocstrings-python",
-    "MKDOCS_MINIFY_PLUGIN_VERSION": "mkdocs-minify-plugin",
-    "PYMDOWN_EXTENSIONS_VERSION": "pymdown-extensions",
     "UVICORN_VERSION": "uvicorn",
     "PRE_COMMIT_VERSION": "pre-commit",
 }

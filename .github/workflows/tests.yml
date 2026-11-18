@@ -26,7 +26,6 @@ jobs:
       - name: Install dependencies
         env:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
-          POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
         run: |
           poetry install --with test --extras appium --extras selenium --extras playwright --extras google-vision --extras llm --extras mcp --extras ble
           poetry run pip install --only-binary=:all: robotframework==7.5.1
@@ -91,7 +90,6 @@ jobs:
       - name: Install dependencies
         env:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
-          POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
         run: |
           poetry install --with test --extras appium --extras llm --extras mcp
           poetry run pip install --only-binary=:all: robotframework==7.5.1
@@ -129,8 +127,7 @@ jobs:
       - name: Install Poetry
         run: |
           pip install --no-cache-dir --only-binary=:all: poetry==2.4.1
-      # Only the runtime group: this job runs the CLI the way a user installs
-      # it, and the docs group's csscompressor ships no wheel for ':all:'.
+      # Only the runtime group: this job runs the CLI the way a user installs it.
       - name: Install dependencies
         env:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'

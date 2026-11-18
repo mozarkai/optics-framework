@@ -4,26 +4,26 @@ repos:
     hooks:
       - id: ruff
         args: ["--fix"]
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/)'
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3
     hooks:
       - id: bandit
         args: ["-r", "optics_framework"]
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|tests/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/|tests/)'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/)'
       - id: end-of-file-fixer
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/)'
       - id: check-yaml
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|mkdocs\.yml)'
+        exclude: '(__pycache__/|\.pyc$|^dist/)'
       - id: check-json
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/)'
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.4.1
@@ -35,4 +35,4 @@ repos:
     rev: v8.16.3
     hooks:
       - id: gitleaks
-        exclude: '(__pycache__/|\.pyc$|^dist/|^docs/build/|tests/)'
+        exclude: '(__pycache__/|\.pyc$|^dist/|tests/)'
