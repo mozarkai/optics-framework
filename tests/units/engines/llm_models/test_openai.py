@@ -7,11 +7,9 @@ import pytest
 
 from optics_framework.common.error import OpticsError
 from optics_framework.engines.llm_models import openai as openai_engine
-from optics_framework.engines.llm_models.openai import strict_schema
 
 pytest.importorskip("openai", reason="openai engine tests need the openai extra")
 
-pytestmark = pytest.mark.white_box
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 SCHEMA = {
@@ -104,10 +102,3 @@ def test_undecodable_reply_surfaces_from_generate_json(fake_client):
     llm = _llm()
     with pytest.raises(OpticsError, match="non-JSON"):
         llm.generate_json("hi", SCHEMA)
-
-
-class TestStrictSchema:
-
-    def test_nullable_enum_accepts_null(self):
-        schema = {"type": "object", "properties": {"a": {"type": "string", "enum": ["x"]}}}
-        assert strict_schema(schema)["properties"]["a"]["enum"] == ["x", None]

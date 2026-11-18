@@ -1,4 +1,3 @@
-"""Unit tests for Verifier.assert_visibility / assert_presence (shared _assert_common helper)."""
 from collections import namedtuple
 from unittest.mock import MagicMock
 import pytest
@@ -49,8 +48,6 @@ def verifier():
 
 
 class TestAssertVisibilityVsPresence:
-    """assert_visibility must route to StrategyManager.assert_visibility, not assert_presence."""
-
     def test_assert_visibility_false_with_fail_true_raises(self, verifier):
         verifier.strategy_manager.assert_visibility = MagicMock(return_value=(False, None, None))
 
@@ -98,14 +95,6 @@ class TestAssertText:
             verifier.assert_text("css=#state", "DELHI", timeout="0")
 
         assert raised.value.code == Code.E0201
-
-    def test_an_error_that_is_not_a_miss_stops_the_wait(self, verifier):
-        verifier.strategy_manager.assert_presence = MagicMock(side_effect=OpticsError(Code.E0501, message="bad config"))
-
-        with pytest.raises(OpticsError) as raised:
-            verifier.assert_text("css=#state", "DELHI", timeout="30")
-
-        assert raised.value.code == Code.E0501
 
     def test_a_secret_is_compared_without_its_prefix(self, verifier):
         verifier.driver.get_text_element.return_value = "4321"

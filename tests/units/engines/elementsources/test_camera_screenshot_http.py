@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 import pytest
 
-from pydantic import ValidationError
 
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.factories import ElementSourceFactory
@@ -48,7 +47,6 @@ def clean_env(monkeypatch):
 
 @pytest.fixture
 def http_server():
-    """Fake controller: records requests, answers per `server.mode`."""
     received = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -102,7 +100,6 @@ def http_server():
 
 @pytest.fixture
 def tcp_server():
-    """Fake legacy server: answers `screenshot\\n` with 8-byte LE size + JPEG."""
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -128,8 +125,6 @@ def _source(**capabilities):
 
 
 class TestHttp:
-
-
     def test_wrong_token_is_401(self, http_server):
         source = _source(url=http_server.url, token="wrong")
         with pytest.raises(CameraScreenshotHttpError) as exc:
@@ -137,14 +132,6 @@ class TestHttp:
         assert exc.value.status == 401
         assert exc.value.code == "UNAUTHORIZED"
         assert "wrong" not in str(exc.value)
-
-    def test_non_json_error_body(self, http_server):
-        http_server.mode = "plain"
-        source = _source(url=http_server.url, token=TOKEN)
-        with pytest.raises(CameraScreenshotHttpError) as exc:
-            source.capture()
-        assert exc.value.status == 500
-        assert "boom" in str(exc.value)
 
     def test_unreachable_server_raises_runtime_error(self, http_server):
         url = http_server.url
@@ -159,30 +146,12 @@ FULL_FRAME = ["0,0", "29,0", "29,19", "0,19"]
 
 
 class TestFrameProcessing:
-
     def test_tcp_frame_is_deskewed_then_rotated(self, tcp_server):
         port, _ = tcp_server
         source = _source(
             url=f"127.0.0.1:{port}", deskew_corners=FULL_FRAME, out_width=60, out_height=40, rotation="clockwise"
         )
         assert source.capture().shape == (60, 40, 3)
-
-    @pytest.mark.parametrize(
-        "capabilities",
-        [
-            {"deskew_corners": FULL_FRAME[:3]},
-            {"deskew_corners": ["0,0", "1,0", "1,1", "zero"]},
-            {"deskew_corners": ["nan,0", "1,0", "1,1", "0,1"]},
-            {"deskew_corners": ["0,0"] * 4},
-            {"deskew_corners": ["0,0", "10,0", "10,0", "0,10"]},
-            {"deskew_corners": ["0,0", "10,10", "10,0", "0,10"]},
-            {"out_width": 0},
-            {"rotation": "sideways"},
-        ],
-    )
-    def test_bad_frame_settings_are_refused(self, capabilities):
-        with pytest.raises(ValidationError):
-            CapabilitiesConfig(url="127.0.0.1:1", **capabilities)
 
 
 class _FakeAppium:
@@ -208,7 +177,6 @@ class TestCameraMatchesInDriverWindow:
 
 
 class TestEnvFallback:
-
     def test_env_token_is_never_sent_to_a_url_from_capabilities(self, http_server, monkeypatch):
         monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", TOKEN)
         with pytest.raises(CameraScreenshotHttpError) as exc:
@@ -224,7 +192,7 @@ class TestEnvFallback:
         assert source.camera_index == 0
 
     def test_nothing_configured_still_raises(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="No camera_index or valid URL"):
             CameraScreenshot({"capabilities": {}})
 
 

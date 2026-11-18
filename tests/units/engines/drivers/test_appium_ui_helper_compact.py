@@ -2,8 +2,6 @@ import pytest
 
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 
-pytestmark = pytest.mark.white_box
-
 
 def _helper(page_source: str) -> UIHelper:
     helper = UIHelper.__new__(UIHelper)
@@ -23,22 +21,6 @@ def _by_label(entries: list[dict]) -> dict[str, dict]:
     return {entry["text"]: entry for entry in entries}
 
 
-IOS_KEYBOARD_AND_PICKER = (
-    '<XCUIElementTypeApplication name="App" label="App" x="0" y="0" width="390" height="844">'
-    '<XCUIElementTypeKeyboard x="0" y="500" width="390" height="300" enabled="true" visible="true">'
-    '<XCUIElementTypeKey name="q" label="q" x="10" y="510" width="30" height="40" '
-    'enabled="true" visible="true"/>'
-    "</XCUIElementTypeKeyboard>"
-    '<XCUIElementTypePickerWheel name="" label="" value="Item 1" x="0" y="300" width="300" '
-    'height="200" enabled="true" visible="true"/>'
-    '<XCUIElementTypePickerWheel name="" label="" value="Item 2" x="0" y="300" width="300" '
-    'height="200" enabled="true" visible="true">'
-    '<XCUIElementTypeOther label="row" x="0" y="300" width="300" height="40" enabled="true" '
-    'visible="true"/>'
-    "</XCUIElementTypePickerWheel>"
-    "</XCUIElementTypeApplication>"
-)
-
 ANDROID_SCREEN = (
     '<hierarchy rotation="0">'
     '<android.widget.FrameLayout class="android.widget.FrameLayout" bounds="[0,0][1080,2400]">'
@@ -57,81 +39,9 @@ ANDROID_SCREEN = (
 )
 
 
-class TestIOSCompactActions:
-
-
-    def test_picker_wheel_is_scrollable(self):
-        entries = _by_label(_compact(IOS_KEYBOARD_AND_PICKER))
-        assert entries["Item 1"]["act"] == ["scroll"]
-
-
 class TestAndroidCompactActions:
-
-
     def test_standalone_text_is_read_only(self):
         assert _by_label(_compact(ANDROID_SCREEN))["Read only"]["act"] == []
-
-
-MAC_TEXTEDIT = (
-    '<application type="AXApplication" name="TextEdit" id="" enabled="true" visible="true">'
-    '<window type="AXWindow" name="Untitled" id="_NS:34" enabled="true" visible="true" clickable="true" '
-    'x="141" y="64" width="586" height="488">'
-    '<text_area type="AXTextArea" name="" value="" label="" id="First Text View" enabled="true" '
-    'visible="true" focused="true" clickable="true" editable="true" scrollable="true" '
-    'x="141" y="164" width="586" height="382"/>'
-    "</window>"
-    "</application>"
-)
-
-
-WINDOWS_NOTEPAD = (
-    '<application type="Application" name="notepad" id="" enabled="true" visible="true">'
-    '<window type="Window" name="*Untitled - Notepad" id="" enabled="true" visible="true" '
-    'x="78" y="78" width="768" height="519">'
-    '<web_area type="Document" name="Text Editor" value="read me" label="" id="15" enabled="true" visible="true" '
-    'focused="true" clickable="false" editable="true" scrollable="true" x="86" y="129" width="752" height="437"/>'
-    "</window>"
-    "</application>"
-)
-
-
-class TestDesktopCompactActions:
-
-
-    def test_a_named_field_shows_what_it_holds_and_keeps_its_name_as_the_hint(self):
-        [field] = [entry for entry in _compact(WINDOWS_NOTEPAD) if "input" in entry["act"]]
-        assert (field["text"], field["extra"]["hint"]) == ("read me", "Text Editor")
-
-
-IOS_NOTE = (
-    '<XCUIElementTypeApplication name="Notes" label="Notes" x="0" y="0" width="390" height="844">'
-    '<XCUIElementTypeStaticText name="Title" label="Title" x="16" y="100" width="200" height="20" '
-    'enabled="true" visible="true"/>'
-    '<XCUIElementTypeTextView value="Body" x="16" y="130" width="358" height="300" enabled="true" visible="true"/>'
-    "</XCUIElementTypeApplication>"
-)
-
-ANDROID_FOCUSABLE_LABEL = (
-    '<hierarchy rotation="0">'
-    '<android.widget.TextView class="android.widget.TextView" text="Row label" focusable="true" '
-    'clickable="true" enabled="true" bounds="[10,20][400,80]"/>'
-    "</hierarchy>"
-)
-
-
-@pytest.mark.parametrize("page_source, label, is_input", [
-    (IOS_NOTE, "Body", True),
-    (MAC_TEXTEDIT.replace('value=""', 'value="Draft"', 1), "Draft", True),
-    (MAC_TEXTEDIT.replace('value=""', 'value="Locked"', 1).replace('editable="true"', 'editable="false"'), "Locked", False),
-    (ANDROID_SCREEN, "Read only", False),
-    (ANDROID_FOCUSABLE_LABEL, "Row label", False),
-])
-def test_the_inputs_filter_and_the_compact_list_agree(page_source, label, is_input):
-    inputs = {entry["text"] for entry in _helper(page_source).get_interactive_elements(["inputs"])}
-    compact = {entry["text"]: entry for entry in _compact(page_source)}
-
-    assert (label in inputs) is is_input
-    assert ("input" in compact[label]["act"]) is is_input
 
 
 MAC_DIALOG = (

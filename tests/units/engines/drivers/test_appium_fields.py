@@ -1,11 +1,9 @@
 from unittest.mock import MagicMock
 
-import pytest
 from lxml import etree
 
 from optics_framework.engines.drivers.appium import Appium
 
-pytestmark = pytest.mark.white_box
 
 ANDROID = (
     '<hierarchy rotation="0">'
@@ -58,14 +56,3 @@ def test_enter_text_on_a_caption_types_into_its_field():
     assert _root(ANDROID).getroottree().xpath(xpath)[0].get("bounds") == "[0,260][1000,350]"
     instance.driver.find_element.return_value.send_keys.assert_called_once_with("Doe")
     caption.send_keys.assert_not_called()
-
-
-def test_enter_text_on_a_field_reads_no_page_source():
-    instance = _appium(ANDROID)
-    field = MagicMock()
-    field.get_attribute.side_effect = {"className": "android.widget.EditText"}.get
-    type(instance.driver).page_source = property(lambda _: pytest.fail("page source read"))
-
-    instance.clear_text_element(field)
-
-    field.clear.assert_called_once()

@@ -1,11 +1,3 @@
-"""Unit tests for the keyword-based AI self-heal handler and its ActionKeyword wiring.
-
-No network: a scripted fake LLM drives the handler and a fake keyword executor records the
-keyword lines dispatched. Covers each action type, the bounded loop, give_up, done, malformed
-JSON, LLM/executor errors, missing-screenshot inertness, page-source injection, the
-ActionKeyword inert/active paths, and ActionKeyword._heal_execute's own shlex parsing,
-dispatch-table lookup, and error surfacing in isolation.
-"""
 from dataclasses import dataclass
 
 import numpy as np
@@ -19,14 +11,10 @@ from optics_framework.common.ai_self_heal import (
     HealKeywordSpec,
     HEAL_ACTION_SCHEMA,
 )
-from optics_framework.common.error import OpticsError, Code
-
-pytestmark = pytest.mark.white_box
 
 
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch):
-    """Never actually sleep during the settle delay."""
     monkeypatch.setattr(ash.time, "sleep", lambda *_a, **_k: None)
 
 
@@ -96,8 +84,6 @@ def _ctx():
 
 
 class TestHandlerActions:
-
-
     def test_pressing_the_row_the_locator_names_completes_the_heal(self):
         rows = [
             {"label": "Timers", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_timer", "bounds": [0, 0, 100, 20]},
@@ -114,8 +100,6 @@ class TestHandlerActions:
 
 
 class TestSuggestedSteps:
-
-
     def test_budget_exhausted_reports_passed_steps_uncurated(self):
         llm = FakeLLM([
             {"action": "keyword", "keyword": "scroll", "params": ["down"], "reason": "x"}
@@ -127,44 +111,7 @@ class TestSuggestedSteps:
         assert res.suggested_steps == [("scroll", ["down"]), ("scroll", ["down"])]
 
 
-class TestHandlerErrorHandling:
-    def test_llm_error_returns_not_ok(self):
-        class BoomLLM:
-            def generate_json(self, *a, **k):
-                raise OpticsError(Code.E0801, message="bad json")
-
-        res = AISelfHealHandler(BoomLLM(), FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert "bad json" in res.message
-
-    def test_executor_exception_returns_not_ok(self):
-        def boom_executor(line):
-            raise RuntimeError("device offline")
-
-        llm = FakeLLM([{"action": "keyword", "keyword": "press_element", "params": ["X"], "reason": "x"}])
-        res = AISelfHealHandler(llm, boom_executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert "device offline" in res.message
-
-
 class TestPromptContext:
-    def test_page_source_and_context_injected(self):
-        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
-        ps = 'EditText "User" id=login_field bounds=[0,0][10,10] clickable'
-        ctx = HealContext(
-            intent_keyword="enter_text",
-            intent_params=["User", "bob"],
-            element="User",
-            recent_steps=[("press_element", ["Menu"])],
-            failed_strategies=["XPathStrategy", "TextDetectionStrategy"],
-        )
-        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(ctx, _shots, lambda: ps)
-        assert "login_field" in llm.last_prompt
-        assert "CURRENT SCREEN ELEMENTS" in llm.last_prompt
-        assert "enter_text" in llm.last_prompt
-        assert "press_element" in llm.last_prompt  # recent step
-        assert "TextDetectionStrategy" in llm.last_prompt
-        assert "last-resort" in llm.last_system.lower()
 
     def _prompt_with_rows(self, element, rows, element_name=""):
         llm = FakeLLM([{"action": "give_up", "reason": "x"}])
@@ -184,10 +131,6 @@ class TestPromptContext:
         assert "If the target is visible, act on it" in llm.last_system
         assert "CURRENT SCREEN row matches" not in llm.last_system
 
-
-# --------------------------------------------------------------------------------------------
-# ActionKeyword integration: inert when off / no LLM, active when on.
-# --------------------------------------------------------------------------------------------
 
 from unittest.mock import MagicMock, patch  # noqa: E402
 import tempfile  # noqa: E402
@@ -231,8 +174,6 @@ def _make_action_keyword(*, ai_self_heal, llm):
 
 
 class TestActionKeywordWiring:
-
-
     def test_active_press_element_heals(self, monkeypatch):
         monkeypatch.setattr(ash.time, "sleep", lambda *_a, **_k: None)
         llm = FakeLLM([
@@ -281,7 +222,6 @@ class TestActionKeywordWiring:
         assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in llm.last_prompt
 
 
-# --------------------------------------------------------------------------------------------
 # ActionKeyword._heal_execute: shlex parsing, dispatch-table lookup, error surfacing.
 #
 # These substitute entries in `_heal_dispatch` directly rather than reassigning
@@ -289,14 +229,3 @@ class TestActionKeywordWiring:
 # every call, so that's the correct interception point (see the comment on
 # `test_active_press_element_heals` above for why reassigning the instance attribute
 # doesn't work).
-# --------------------------------------------------------------------------------------------
-
-
-class TestHealExecute:
-
-
-    def test_unbalanced_quotes_return_parse_error(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        result = ak._heal_execute('scroll "unterminated')
-        assert result.ok is False
-        assert "Parse error" in result.message

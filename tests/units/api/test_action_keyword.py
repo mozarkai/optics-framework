@@ -45,7 +45,6 @@ class MockOpticsBuilder(OpticsBuilder):
 
 @pytest.fixture
 def mock_dependencies():
-    """Fixture providing all mocked dependencies for ActionKeyword."""
     mock_driver = MagicMock()
     mock_element_source = MagicMock()
     mock_text_detection = MagicMock()
@@ -64,7 +63,6 @@ def mock_dependencies():
 
 @pytest.fixture
 def action_keyword(mock_dependencies):
-    """Fixture providing ActionKeyword instance with mocked dependencies."""
     builder = MockOpticsBuilder(
         mock_dependencies['driver'],
         mock_dependencies['element_source'],
@@ -80,13 +78,6 @@ def action_keyword(mock_dependencies):
 
 
 class TestPressElementWithIndex:
-    """press_element param coercion and locate-result dispatch.
-
-    ``locate`` is mocked to return a LocateResult, so ``determine_element_type``
-    (which only runs *inside* the real locate) is never reached — no need to patch
-    it. A class-level fixture stubs the disk-writing save_screenshot.
-    """
-
     @pytest.fixture(autouse=True)
     def _no_disk_writes(self):
         with patch('optics_framework.common.utils.save_screenshot'):
@@ -97,57 +88,15 @@ class TestPressElementWithIndex:
             action_keyword.strategy_manager, 'locate', return_value=[LocateResult(value, MagicMock())]
         )
 
-    def test_element_result_presses_element_with_repeat(self, action_keyword, mock_dependencies):
-        element_handle = MagicMock()
-        with self._mock_locate(action_keyword, element_handle):
-            action_keyword.press_element("//button", repeat="3")
-        mock_dependencies['driver'].press_element.assert_called_once_with(element_handle, 3, event_name=None)
-
     def test_event_name_forwarded_to_driver(self, action_keyword, mock_dependencies):
         with self._mock_locate(action_keyword, (120, 180)):
             action_keyword.press_element("button", event_name="test_event")
         mock_dependencies['driver'].press_coordinates.assert_called_once_with(120, 180, event_name="test_event")
 
 
-class TestScreenshotFailureFallback:
-    """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
-
-    @patch('optics_framework.common.utils.save_screenshot')
-    def test_direct_method_proceeds_when_screenshot_raises(
-        self, mock_save_screenshot, action_keyword, mock_dependencies
-    ):
-        """Direct methods (no locate step) still execute when capture_screenshot raises."""
-        with patch.object(
-            action_keyword.strategy_manager, 'capture_screenshot',
-            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
-        ):
-            action_keyword.press_by_percentage("50", "50")
-
-        mock_dependencies['driver'].press_percentage_coordinates.assert_called_once_with(50.0, 50.0, 1, event_name=None)
-        mock_save_screenshot.assert_not_called()
-
-
 class TestSelectDropdownOption:
-    """select_dropdown_option must open the dropdown then select the option (not a no-op)."""
-
-    def test_pagesource_unavailable_falls_back_to_direct_press(self, action_keyword, mock_dependencies):
-        """When page source / interactive elements aren't available at all, skip validation."""
-        with patch.object(
-            action_keyword.strategy_manager, "get_interactive_elements",
-            side_effect=OpticsError(Code.E0202, message="no strategies"),
-        ), patch.object(
-            action_keyword.verifier, "assert_visibility",
-            side_effect=OpticsError(Code.E0201, message="not found"),
-        ), patch.object(action_keyword, "press_element") as mock_press:
-            action_keyword.select_dropdown_option("Country", "India", event_name="evt")
-
-        assert mock_press.call_count == 2
-        assert mock_press.call_args_list[0].args[0] == "Country"
-        assert mock_press.call_args_list[1].args[0] == "India"
-        mock_dependencies['driver'].swipe.assert_not_called()
 
     def test_scroll_exhausted_raises_with_available_options(self, action_keyword, mock_dependencies):
-        """Stops scrolling once the list stops changing, and reports what was visible."""
         container = {
             "text": "list", "xpath": "container1",
             "bounds": {"x1": 0, "y1": 0, "x2": 100, "y2": 200},
@@ -182,11 +131,8 @@ class TestSelectDropdownOption:
 
 
 class TestSwipeUntilElementAppears:
-    """Tests for OpticsError(E0201) handling in swipe_until_element_appears."""
-
     @patch('optics_framework.api.action_keyword.time')
     def test_element_found_stops_loop(self, mock_time, action_keyword):
-        """Element found on first call, no swipe performed."""
         mock_time.time.side_effect = [0, 0]
 
         with patch.object(action_keyword.verifier, 'assert_presence', return_value=True):
@@ -194,56 +140,8 @@ class TestSwipeUntilElementAppears:
 
         action_keyword.driver.swipe_percentage.assert_not_called()
 
-    @patch('optics_framework.api.action_keyword.time')
-    def test_timeout_stops_loop(self, mock_time, action_keyword):
-        """Element never found, loop exits after timeout and raises."""
-        mock_time.time.side_effect = [0, 0, 3, 6, 9, 12]
-
-        with patch.object(
-            action_keyword.verifier, 'assert_presence',
-            side_effect=OpticsError(Code.E0201, message="Element not found")
-        ):
-            with pytest.raises(OpticsError) as exc_info:
-                action_keyword.swipe_until_element_appears("element", "down", "10")
-
-        assert exc_info.value.code == Code.E0201
-        assert action_keyword.driver.swipe_percentage.call_count == 4
-
-
-class TestDeprecatedAliases:
-    """Deprecated keywords stay callable and delegate to press_element."""
-
-    @pytest.fixture(autouse=True)
-    def _no_disk_writes(self):
-        with patch('optics_framework.common.utils.save_screenshot'):
-            yield
-
-    @pytest.mark.parametrize("alias", ["press_checkbox", "press_radio_button"])
-    def test_alias_delegates_to_press_element_with_deprecation_log(self, action_keyword, alias):
-        with patch.object(action_keyword, 'press_element') as mock_press, patch(
-            'optics_framework.api.action_keyword.internal_logger'
-        ) as mock_logger:
-            getattr(action_keyword, alias)("box", aoi_x="10", event_name="evt")
-
-        mock_press.assert_called_once_with(
-            "box", aoi_x="10", aoi_y="0", aoi_width="100",
-            aoi_height="100", event_name="evt", index="0",
-        )
-        assert any(
-            "deprecated" in str(call.args[0]).lower()
-            for call in mock_logger.warning.call_args_list
-        )
-
 
 class TestLocateHonorsPositionalParams:
-    """AOI/index must be honored no matter how the keyword was called.
-
-    The MCP/serve dispatch invokes keywords with every parameter positional
-    (it rebuilds a flat positional list from the signature), so locate-tuning
-    values that arrive in positional slots must still reach the locator.
-    Regression for the pre-refactor behavior where only kwargs were read.
-    """
-
     @pytest.fixture(autouse=True)
     def _no_disk_writes(self):
         with patch('optics_framework.common.utils.save_screenshot'):

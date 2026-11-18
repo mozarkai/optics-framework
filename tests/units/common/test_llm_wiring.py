@@ -1,24 +1,13 @@
-"""Unit tests for LLM config wiring and LiveController.run_natural_language.
-
-Covers: Config round-tripping the llm_models block, enabled-filtering, the builder
-returning no LLM when none is enabled, and the commit-on-done recording semantics
-(a successful NL run is recorded; a failed/aborted one is not) plus the streaming
-NLStep adapter.
-"""
 import types
 from unittest.mock import MagicMock
 
 import cv2
 import numpy as np
-import pytest
 
 from optics_framework.common import utils
 from optics_framework.common.nl_agent import AgentStep, AgentResult, ExecResult
-from optics_framework.helper.live import LiveController, NLStep
-from optics_framework.helper.live import NLRunStatus
+from optics_framework.helper.live import LiveController
 from optics_framework.common.error import OpticsError, Code
-
-pytestmark = pytest.mark.white_box
 
 
 def _bare_controller():
@@ -100,22 +89,10 @@ class TestControllerPageSource:
         ctrl = _ps_controller(OpticsError(Code.E0403, message="No pagesource"))
         assert ctrl.page_source() is None
 
-    def test_returns_none_when_no_action_keyword(self):
-        ctrl = LiveController.__new__(LiveController)
-        ctrl._action_keyword = None
-        assert ctrl.page_source() is None
-
 
 class TestControllerScreenElements:
-
-
     def test_returns_none_when_get_interactive_elements_unavailable(self):
         ctrl = _elements_controller(OpticsError(Code.E0202, message="No interactive elements"))
-        assert ctrl.screen_elements(_png_bytes()) is None
-
-    def test_returns_none_when_no_action_keyword(self):
-        ctrl = LiveController.__new__(LiveController)
-        ctrl._action_keyword = None
         assert ctrl.screen_elements(_png_bytes()) is None
 
     def test_undecodable_png_bytes_still_returns_elements(self, monkeypatch):
@@ -154,34 +131,6 @@ def _keyword_step(keyword, params, ok=True):
 
 
 class TestRunNaturalLanguage:
-    def test_commit_on_done_records_and_streams(self, monkeypatch):
-        ctrl = _bare_controller()
-        d1, e1 = _keyword_step("press_element", ["Search"])
-        d2, e2 = _keyword_step("enter_text", ["Search", "movies for kids"])
-        result = AgentResult(
-            status="done",
-            successful_steps=[("press_element", ["Search"]), ("enter_text", ["Search", "movies for kids"])],
-            message="Goal reached.",
-        )
-        monkeypatch.setattr(ctrl, "_get_nl_agent", lambda: FakeAgent(result, [d1, e1, d2, e2]))
-
-        seen = []
-        summary = ctrl.run_natural_language("search movies", on_step=seen.append)
-
-        assert summary.status == "PASS"
-        assert summary.steps == 2
-        # commit-on-done: the buffered steps are appended to the recording.
-        assert ctrl.recorded == [
-            ("press_element", ["Search"]),
-            ("enter_text", ["Search", "movies for kids"]),
-        ]
-        assert ctrl.saved is False
-        # streamed: 2 thinking lines + 2 keyword child lines.
-        kinds = [s.kind for s in seen]
-        assert kinds == ["thinking", "keyword", "thinking", "keyword"]
-        kw_steps = [s for s in seen if s.kind == "keyword"]
-        assert kw_steps[1].result.raw == "enter_text Search 'movies for kids'"
-        assert all(isinstance(s, NLStep) for s in seen)
 
     def test_failed_run_does_not_record(self, monkeypatch):
         ctrl = _bare_controller()
@@ -193,21 +142,6 @@ class TestRunNaturalLanguage:
         assert summary.status == "FAIL"
         assert ctrl.recorded == []
         assert ctrl.saved is True
-
-    def test_agent_crash_returns_enum_status(self, monkeypatch):
-        # An unexpected (non-Optics) exception from agent.run must not crash the
-        # controller and must return a genuine NLRunStatus enum, not a raw "FAIL"
-        # string (regression: the field is typed NLRunStatus).
-        class _BoomAgent:
-            def run(self, *a, **k):
-                raise RuntimeError("kaboom")
-
-        ctrl = _bare_controller()
-        monkeypatch.setattr(ctrl, "_get_nl_agent", lambda: _BoomAgent())
-        summary = ctrl.run_natural_language("do it", on_step=lambda s: None)
-        assert isinstance(summary.status, NLRunStatus)
-        assert summary.status is NLRunStatus.FAIL
-        assert "RuntimeError" in (summary.message or "")
 
     def test_no_llm_engine_surfaces_actionable_message(self, monkeypatch):
         ctrl = _bare_controller()

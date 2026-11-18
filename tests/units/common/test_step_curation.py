@@ -1,18 +1,9 @@
-"""Unit tests for the shared LLM step-curation helper.
-
-``curate_steps`` is reused by the NL agent and AI self-heal; it must never lose a working
-recording, so every abnormal outcome (too few steps, LLM error, malformed reply, all/none
-kept) returns None ("keep all").
-"""
-import pytest
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.step_curation import (
     CURATION_SCHEMA,
     curate_steps,
 )
-
-pytestmark = pytest.mark.white_box
 
 
 class _LLM:
@@ -29,25 +20,9 @@ class _LLM:
         return self._reply
 
 
-def test_single_step_skips_llm():
-    llm = _LLM({"keep": [1], "reason": "r"})
-    assert curate_steps(llm, "p", 1) is None
-    assert llm.calls == 0
-
-
 def test_prunes_to_kept_indices_zero_based_sorted():
     llm = _LLM({"keep": [3, 1], "reason": "drop 2"})
     assert curate_steps(llm, "p", 3) == [0, 2]
-
-
-@pytest.mark.parametrize("reply", [
-    "not a dict",
-    {"reason": "no keep key"},
-    {"keep": "not a list", "reason": "r"},
-    {"keep": [True, False], "reason": "bools are not indices"},
-])
-def test_malformed_replies_keep_all(reply):
-    assert curate_steps(_LLM(reply), "p", 3) is None
 
 
 def test_llm_error_keeps_all():

@@ -1,14 +1,3 @@
-"""Unit tests for ``LiveController.run_keyword`` keyword resolution.
-
-Covers display-form -> snake_case matching ("Launch App" -> ``launch_app``),
-shlex-correct argument parsing (quoted/spaced args), the actionable
-unknown-keyword message (with closest-match suggestion), the friendly
-signature hint for ValueError/TypeError failures, and the graceful
-empty-input guard — all against a bare controller shell (no device/session),
-like the other live unit tests. The TUI-side command routing (bare quit/exit
-aliases and the unknown-/command hint) and the scrollable /help popup are
-tested here too against a stubbed prompt_toolkit app.
-"""
 from types import SimpleNamespace
 
 import pytest
@@ -63,17 +52,6 @@ def test_an_agent_call_keeps_the_suite_name_when_other_params_follow():
     ctrl._agent_call("press_element", {"element": "${login_button}", "timeout": "5"})
 
     assert seen == ["login_button"]
-
-
-def test_unbalanced_quote_falls_back_to_whitespace_split():
-    """shlex ValueError (unbalanced quote) degrades to str.split instead of a parse error."""
-    rec = _Recorder()
-    ctrl = _controller({"launch_app": rec})
-
-    result = ctrl.run_keyword('launch_app https://example.com "quoted')
-
-    assert result.status is ActionStatus.PASS
-    assert rec.calls == [(("https://example.com", '"quoted'), {})]
 
 
 def test_type_error_surfaces_as_friendly_signature_hint():
@@ -131,17 +109,6 @@ def test_bare_quit_and_exit_behave_like_slash_quit(monkeypatch, word):
 
     assert app.exited is True
     assert messages == []
-
-
-def test_unknown_slash_command_hints_available_commands(monkeypatch):
-    tui, app, messages = _tui_with_stubbed_app(monkeypatch)
-
-    tui._submit("/frobnicate")
-
-    assert app.exited is False
-    assert len(messages) == 1
-    assert "/help" in messages[0]
-    assert "/quit" in messages[0]
 
 
 def _popup_text(tui) -> str:

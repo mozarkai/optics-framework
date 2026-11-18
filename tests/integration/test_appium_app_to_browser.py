@@ -1,9 +1,3 @@
-"""Follows an SMS link from Messages into Chrome and back; wipes app data, so only on a disposable emulator.
-
-    appium --allow-insecure=uiautomator2:chromedriver_autodownload
-    OPTICS_E2E_EMULATOR=emulator-5554 pytest tests/integration/test_appium_app_to_browser.py
-"""
-
 import functools
 import http.server
 import json
@@ -91,7 +85,6 @@ def site(emulator):
 
 @pytest.fixture
 def order_link(emulator, site):
-    """Fresh Messages and Chrome, and an SMS that is only a one-line link, so a centre tap opens it."""
     for package in (MESSAGES, CHROME):
         _adb(emulator, "shell", "pm", "clear", package)
     # Chrome asks for notifications at a varying delay after a wipe, sometimes over the page.

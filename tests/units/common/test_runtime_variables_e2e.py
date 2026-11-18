@@ -1,5 +1,3 @@
-"""Runtime variables, run end to end: a suite on disk goes through `optics execute`'s own
-runner, flow control and logging; only the device is a fake."""
 import asyncio
 
 import pytest

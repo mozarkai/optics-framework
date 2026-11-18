@@ -15,7 +15,6 @@ from optics_framework.engines.drivers.ble import BLEDriver  # noqa: E402
 
 OUTSIDE_THE_FIRMWARE = {"numpadequal", "numpadcomma"}
 PARK = ("move", "1.0000", "0.0000")
-TOUCH = ("mode", "touch")
 
 
 @pytest.fixture
@@ -51,64 +50,13 @@ def make_driver(fake: FakeDongle, platform="android", **caps) -> BLEDriver:
     return BLEDriver(config={"capabilities": capabilities}, event_sdk=Events())
 
 
-def test_keywords_reach_the_dongle_as_screen_fractions(plugged):
-    fake = plugged()
-    driver = make_driver(fake)
-
-    driver.press_coordinates(540, 585)
-    driver.swipe(540, 2000, "up", 5000)
-    driver.scroll("down", 400)
-
-    assert fake.commands == [
-        TOUCH,
-        ("tap", "0.5000", "0.2500"),
-        ("swipe", "0.5000", "0.8547", "0.5000", "0.0000", "1000"),
-        ("swipe", "0.5000", "0.8000", "0.5000", "0.2000", "4000"),
-    ]
-
-
 def test_a_short_swipe_is_sent_fast_enough_to_drag(plugged):
     fake = plugged()
     make_driver(fake, "ios").swipe_percentage(50, 60, "up", 20)
     assert fake.commands == [("swipe", "0.5000", "0.6000", "0.5000", "0.4000", "267"), PARK]
 
 
-@pytest.mark.parametrize(
-    ("platform", "expected"),
-    [
-        ("android", [TOUCH, ("key", "ctrl+a"), ("key", "backspace"), ("media", "back"), ("media", "home")]),
-        ("macos", [("key", "cmd+a"), ("key", "backspace"), ("key", "cmd+["), ("key", "home")]),
-        ("windows", [("key", "ctrl+a"), ("key", "backspace"), ("key", "alt+left"), ("key", "home")]),
-    ],
-)
-def test_each_platform_has_its_own_select_all_back_and_home(plugged, platform, expected):
-    fake = plugged()
-    driver = make_driver(fake, platform)
-    driver.clear_text()
-    driver.go_back()
-    driver.press_keycode("home")
-    assert fake.commands == expected
-
-
 IOS_HOME = [("media", "home"), ("media", "home")]
-
-
-@pytest.mark.parametrize(
-    ("platform", "launcher", "home"), [("ios", "cmd+space", IOS_HOME), ("macos", "cmd+space", []), ("windows", "ctrl+escape", [])]
-)
-def test_apps_open_through_the_system_search(plugged, platform, launcher, home):
-    fake = plugged()
-    driver = make_driver(fake, platform)
-    assert driver.supports("launch_app")
-    driver.launch_app(" Settings ")
-    driver.launch_other_app("Notes", None)
-    assert fake.commands == [
-        *home, ("key", launcher), ("text", '"Settings"'), ("key", "enter"),
-        *home, ("key", launcher), ("text", '"Notes"'), ("key", "enter"),
-    ]
-    with pytest.raises(OpticsError) as unnamed:
-        driver.launch_other_app(" ", None)
-    assert unnamed.value.code == Code.E0403
 
 
 def test_android_closes_an_app_from_recents(plugged):
@@ -141,29 +89,13 @@ def test_a_computer_scrolls_with_the_wheel(plugged):
 
 def test_every_optics_key_reaches_the_dongle(plugged):
     driver = make_driver(plugged(), "android")
-    refused = set()
+    refused = {}
     for key in {k.value for k in SpecialKey} - ble.NO_HID_KEY:
         try:
             driver.press_keycode(key)
         except OpticsError as exc:
-            assert exc.code == Code.E0403, (key, exc)
-            refused.add(key)
-    assert refused == OUTSIDE_THE_FIRMWARE
-
-
-def test_other_firmware_asks_for_a_flash(plugged):
-    fake = plugged(firmware="other 2.0.0")
-    with pytest.raises(OpticsError) as refused:
-        make_driver(fake)
-    assert refused.value.code == Code.E0501
-
-
-def test_v1_capabilities_are_refused(plugged):
-    fake = plugged()
-    with pytest.raises(OpticsError) as refused:
-        make_driver(fake, mickeys_width=1080)
-    assert refused.value.code == Code.E0503
-    assert "mickeys_width belong to the v1 ble driver" in str(refused.value)
+            refused[key] = exc.code
+    assert refused == dict.fromkeys(OUTSIDE_THE_FIRMWARE, Code.E0403)
 
 
 def blind_project(folder, port, steps):

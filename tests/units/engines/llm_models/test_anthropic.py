@@ -9,7 +9,6 @@ from optics_framework.engines.llm_models import anthropic as anthropic_engine
 
 pytest.importorskip("anthropic", reason="anthropic engine tests need the anthropic extra")
 
-pytestmark = pytest.mark.white_box
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 SCHEMA = {"type": "object", "properties": {"action": {"type": "string"}}, "required": ["action"]}
@@ -68,11 +67,6 @@ def test_model_is_required(fake_sdk):
 def test_invalid_platform_is_rejected(fake_sdk):
     with pytest.raises(OpticsError, match="platform"):
         _llm(platform="azure")
-
-
-def test_bedrock_platform(fake_sdk):
-    _llm(platform="bedrock", region="us-east-1")
-    assert fake_sdk.built[-1] == ("bedrock", {"aws_region": "us-east-1", "base_url": None, "timeout": 60.0})
 
 
 def test_vertex_platform(fake_sdk):

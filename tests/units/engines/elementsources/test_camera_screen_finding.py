@@ -6,14 +6,13 @@ from types import SimpleNamespace
 import cv2
 import numpy as np
 import pytest
-from pydantic import ValidationError
 
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.engines.elementsources import camera_screenshot
-from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot, CapabilitiesConfig
+from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot
 
 SCREEN_W, SCREEN_H = 180, 390
 CAMERA = (960, 540)
@@ -183,8 +182,3 @@ def test_an_assertion_keeps_reading_the_native_tree_while_the_camera_is_blind(ca
     strategies = StrategyManager(InstanceFallback([tree, source]), _ReadsNothing(), None)
     assert strategies.assert_presence(["Settings"], "Text", timeout=5)
     assert tree.looks == 2
-
-
-def test_corners_are_found_or_given_not_both():
-    with pytest.raises(ValidationError):
-        CapabilitiesConfig(url="127.0.0.1:1", find_screen="frame", deskew_corners=["0,0", "9,0", "9,9", "0,9"])

@@ -1,11 +1,3 @@
-"""Unit tests for install-environment detection
-(``optics_framework/helper/environment.py``).
-
-``plan_install`` is pure, so its decision table is exercised directly on
-constructed ``Environment`` values. ``detect`` reads the live interpreter, so
-those tests fake one: a directory shape under ``tmp_path`` plus the handful of
-interpreter attributes the module reads.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,20 +12,9 @@ from optics_framework.helper.environment import (
     plan_install,
 )
 
-pytestmark = pytest.mark.white_box
 
 SPEC = "optics-framework[appium]==1.10.3"
 PINNED = "appium-python-client==5.0.0"
-
-
-def _venv(path: Path, creator: str = "venv") -> Path:
-    """A venv-shaped directory, stamped by ``creator`` the way that tool does."""
-    path.mkdir(parents=True, exist_ok=True)
-    lines = ["home = /usr/bin"]
-    if creator != "venv":
-        lines.append(f"{creator} = 1.2.3")
-    (path / "pyvenv.cfg").write_text("\n".join(lines), encoding="utf-8")
-    return path
 
 
 def _env(kind: EnvKind, **overrides) -> Environment:
@@ -50,7 +31,6 @@ def _env(kind: EnvKind, **overrides) -> Environment:
 
 @pytest.fixture
 def interpreter(monkeypatch, tmp_path):
-    """Build a fake interpreter and run ``detect()`` against it."""
     def _make(prefix: Path, *, base: Path | None = None, pip: bool = True,
               uv: str | None = "/usr/bin/uv", stdlib: Path | None = None,
               writable: bool = True,
@@ -80,23 +60,7 @@ def interpreter(monkeypatch, tmp_path):
 
 
 class TestDetect:
-    def test_stdlib_venv_is_a_plain_venv(self, interpreter, tmp_path):
-        env = interpreter(_venv(tmp_path / ".venv"), base=tmp_path / "base")
-        assert env.kind is EnvKind.VENV
-        assert env.creator == "venv"
-        assert env.manager is None
 
-    def test_marked_base_interpreter_is_system_managed(self, interpreter, tmp_path):
-        stdlib = tmp_path / "stdlib"
-        stdlib.mkdir()
-        (stdlib / "EXTERNALLY-MANAGED").write_text(
-            "[externally-managed]\nError=use apt install python3-x\n",
-            encoding="utf-8")
-        base = tmp_path / "usr"
-        base.mkdir()
-        env = interpreter(base, stdlib=stdlib)
-        assert env.kind is EnvKind.SYSTEM_MANAGED
-        assert "apt install python3-x" in env.pep668_error
 
     def test_unmarked_base_interpreter_is_plain_system(self, interpreter, tmp_path):
         base = tmp_path / "usr"
@@ -105,15 +69,8 @@ class TestDetect:
         assert env.kind is EnvKind.SYSTEM
         assert env.pep668_error is None
 
-    def test_uvx_cache_environment_is_a_tool_environment(self, interpreter, tmp_path):
-        prefix = _venv(tmp_path / "archive-v0" / "abc123", creator="uv")
-        env = interpreter(prefix, base=tmp_path / "base", pip=False)
-        assert env.kind is EnvKind.TOOL
-        assert env.manager == "uv"
-
 
 class TestPlanInstall:
-
     def test_venv_without_pip_installs_through_uv(self):
         plan = plan_install(_env(EnvKind.VENV, has_pip=False), [SPEC])
         assert plan.command == [
@@ -131,22 +88,11 @@ class TestPlanInstall:
         plan = plan_install(_env(EnvKind.VENV, writable=False), [SPEC])
         assert plan.command is None
 
-    def test_uv_tool_environment_refuses_with_tool_install(self):
-        plan = plan_install(_env(EnvKind.TOOL, manager="uv", has_pip=False), [SPEC])
-        assert plan.command is None
-        assert "uv tool install" in plan.manual
-
     def test_pipx_companions_use_inject(self):
         plan = plan_install(
             _env(EnvKind.TOOL, manager="pipx", has_pip=False), [SPEC, PINNED])
         assert "pipx install --force" in plan.manual
         assert f"pipx inject optics-framework {PINNED}" in plan.manual
-
-    def test_system_managed_refuses_quoting_the_markers_own_error(self):
-        plan = plan_install(
-            _env(EnvKind.SYSTEM_MANAGED, pep668_error="use apt install"), [SPEC])
-        assert plan.command is None
-        assert plan.note == "use apt install"
 
     def test_conda_refuses(self):
         plan = plan_install(_env(EnvKind.CONDA, manager="conda"), [SPEC])

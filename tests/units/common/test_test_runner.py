@@ -1,25 +1,3 @@
-"""Unit tests for the CSV/YAML execution core.
-
-Source under test: ``optics_framework/common/runner/test_runnner.py`` — specifically
-``TestRunner`` and its param-axis fallback ladder (documented in ``CLAUDE.md`` as
-"fallback level 1"):
-
-- ``TestRunner.resolve_param`` (returns the *first* value of a ``${var}`` list) vs
-  ``TestRunner._build_param_candidates`` (returns the whole *list*) — the documented
-  dry-run-vs-execute divergence, pinned by ``TestResolveParam`` and
-  ``TestBuildParamCandidates`` on the same data shape.
-- ``TestRunner._try_execute_with_fallback`` — the Cartesian expansion of ``${var}``
-  value lists, the ``MAX_ATTEMPTS = 20`` cap, and the rule that the ladder only
-  advances on ``OpticsError`` codes in the element-not-found family / ``X0201``.
-- ``TestRunner._execute_keyword`` name resolution
-  (``func_name = "_".join(name.split()).lower()``) and the keyword-not-found path.
-
-These exercise the *synchronous* fallback logic through the runner's own ``async``
-methods; a full ``ExecutionEngine`` is deliberately not constructed. The runner is
-built via ``__new__`` and wired with the minimal collaborators (real ``ElementData``,
-a real ``NullResultPrinter``, and a tiny fake event manager) so the assertions stay
-behaviour-focused rather than call-order-focused.
-"""
 import time
 from types import SimpleNamespace
 
@@ -47,10 +25,6 @@ from optics_framework.common.runner.printers import (
 from optics_framework.common.runner.printers import TestCaseResult as _TestCaseResult
 from optics_framework.common.runner.test_runnner import TestRunner as _TestRunner
 
-
-# --------------------------------------------------------------------------- #
-# Fakes / builders                                                            #
-# --------------------------------------------------------------------------- #
 
 class _FakeEventManager:
     """Records published events and never issues a retry/add command."""
@@ -135,27 +109,19 @@ class _Recorder:
         return None
 
 
-# --------------------------------------------------------------------------- #
 # resolve_param — the "first value" resolver (dry-run form)                    #
-# --------------------------------------------------------------------------- #
 
 
-# --------------------------------------------------------------------------- #
 # _build_param_candidates — the "whole list" resolver (execute form)          #
-# --------------------------------------------------------------------------- #
 
 
-# --------------------------------------------------------------------------- #
 # _try_execute_with_fallback — Cartesian expansion + success                   #
-# --------------------------------------------------------------------------- #
 
 
-# --------------------------------------------------------------------------- #
 # _try_execute_with_fallback — MAX_ATTEMPTS cap                                #
-# --------------------------------------------------------------------------- #
+
 
 class TestMaxAttempts:
-
     async def test_exhausting_fewer_than_cap_returns_none(self):
         runner = _make_runner()
         method = _Recorder(fail_until=("never",), raise_code=Code.X0201)
@@ -164,14 +130,10 @@ class TestMaxAttempts:
         assert len(method.calls) == 3
 
 
-# --------------------------------------------------------------------------- #
 # _try_execute_with_fallback — advance rule (X0201 advances, others fatal)     #
-# --------------------------------------------------------------------------- #
 
 
-# --------------------------------------------------------------------------- #
 # _execute_keyword — name resolution + keyword-not-found (E0402-shaped) path   #
-# --------------------------------------------------------------------------- #
 
 def _wire_execute_context(runner, keyword_node, module_name="mod"):
     """Populate ``test_state`` so ``_find_result`` can locate the keyword result."""
@@ -188,8 +150,6 @@ def _wire_execute_context(runner, keyword_node, module_name="mod"):
 
 
 class TestExecuteKeywordNameResolution:
-
-
     async def test_unknown_keyword_fails_without_dispatch(self):
         runner = _make_runner(keyword_map={"known": lambda: None})
         kw_node = _kw_node(name="Totally Unknown Keyword", node_id="k1")
@@ -217,10 +177,9 @@ class TestExecuteKeywordNameResolution:
         assert kw_node.state == State.COMPLETED_FAILED
 
 
-# --------------------------------------------------------------------------- #
 # Module-step resolution — a test-case step must name a known module or a      #
 # registered keyword, in dry-run AND batch mode                                #
-# --------------------------------------------------------------------------- #
+
 
 class TestModuleStepResolution:
     @staticmethod
@@ -255,13 +214,9 @@ class TestModuleStepResolution:
         assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
 
 
-# --------------------------------------------------------------------------- #
 # Dry-run param resolution — an unresolved ``${var}`` is a per-keyword FAIL,   #
-# not an aborted run                                                           #
-# --------------------------------------------------------------------------- #
 
 
-# --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
 
 
@@ -317,7 +272,5 @@ class TestFailureDetailsSection:
         assert "Failure details" in titles
 
 
-# --------------------------------------------------------------------------- #
 # Signature-aware param split — a 'text='/'css=' locator is the positional      #
 # element, never a keyword argument (regression: playwright sample TypeError)   #
-# --------------------------------------------------------------------------- #

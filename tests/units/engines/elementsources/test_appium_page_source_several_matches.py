@@ -1,10 +1,7 @@
 from unittest.mock import MagicMock
 
-import pytest
 
 from optics_framework.engines.elementsources.appium_page_source import AppiumPageSource
-
-pytestmark = pytest.mark.white_box
 
 
 def _source(**located) -> AppiumPageSource:

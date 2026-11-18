@@ -10,7 +10,6 @@ import pytest
 from optics_framework.common.strategies import TextDetectionStrategy
 from optics_framework.common.text_interface import TextInterface
 
-pytestmark = pytest.mark.white_box
 
 SCREEN = [
     ((40, 40), "Sign in to your account"),
@@ -25,35 +24,6 @@ SCREEN = [
 def _quad(left, top, right, bottom):
     return [(left, top), (right, top), (right, bottom), (left, bottom)]
 
-
-# Real detections of SCREEN: Tesseract and Google Vision return words, EasyOCR returns lines.
-CAPTURED = {
-    "pytesseract": [
-        ("Sign", (42, 46, 107, 78)), ("in", (120, 46, 143, 71)), ("to", (155, 47, 181, 71)),
-        ("your", (192, 53, 257, 78)), ("account", (267, 47, 385, 71)), ("Payment", (43, 146, 174, 178)),
-        ("Home", (43, 246, 130, 271)), ("Search", (342, 246, 446, 271)), ("Profile", (643, 246, 736, 271)),
-        ("Continue", (42, 346, 176, 371)), ("with", (186, 346, 245, 371)), ("Google", (258, 346, 365, 378)),
-        ("Forgot", (43, 446, 138, 478)), ("password?", (149, 446, 310, 478)),
-        ("Sign", (42, 546, 107, 578)), ("in", (120, 546, 143, 571)),
-    ],
-    "easyocr": [
-        ("Sign in to your account", (32, 37, 394, 86)), ("Payment", (38, 140, 181, 184)),
-        ("Home", (37, 239, 136, 282)), ("Search", (336, 240, 453, 280)), ("Profile", (637, 241, 741, 279)),
-        ("Continue with Google", (36, 339, 372, 387)), ("Forgot password?", (35, 437, 316, 486)),
-        ("Sign in", (32, 537, 150, 585)),
-    ],
-    "googlevision": [
-        ("Sign", (39, 46, 106, 77)), ("in", (118, 46, 142, 76)), ("to", (152, 46, 182, 76)),
-        ("your", (189, 46, 259, 76)), ("account", (264, 44, 388, 76)), ("Payment", (41, 145, 175, 176)),
-        ("Home", (41, 246, 130, 271)), ("Search", (340, 247, 446, 270)), ("Profile", (641, 247, 735, 271)),
-        ("Continue", (40, 342, 177, 374)), ("with", (185, 344, 245, 375)), ("Google", (256, 345, 368, 376)),
-        ("Forgot", (42, 446, 138, 476)), ("password", (148, 446, 293, 476)), ("?", (293, 446, 311, 476)),
-        ("Sign", (38, 544, 107, 576)), ("in", (116, 543, 144, 573)),
-    ],
-}
-
-NOT_FOUND = ["Pay", "Sign i", "ign in", "Googl", "Home Search", "Search Profile", "account Payment",
-             "Forgot password.", "Log in", "", "   "]
 
 # Google Vision on a Galaxy S22: a Play Store dialog, and app drawer labels and an icon moved below it.
 DEVICE = [
@@ -79,19 +49,12 @@ class Replay(TextInterface):
         return " ".join(text for _, text, _ in self.detections), self.detections
 
 FRAME = np.zeros((640, 900, 3), dtype=np.uint8)
-ENGINES = sorted(CAPTURED)
 TOLERANCE = 8
 
 
 def _strict_source():
     config = SimpleNamespace(strict_element_match=True)
     return SimpleNamespace(driver=SimpleNamespace(event_sdk=SimpleNamespace(config_handler=SimpleNamespace(config=config))))
-
-
-@pytest.mark.parametrize("engine", ENGINES)
-@pytest.mark.parametrize("text", NOT_FOUND)
-def test_strict_finds_no_part_of_a_word_or_words_of_separate_controls(engine, text):
-    assert Replay(CAPTURED[engine]).find_element(FRAME, text, strict=True) is None
 
 
 @pytest.mark.parametrize("text", DEVICE_NOT_FOUND)

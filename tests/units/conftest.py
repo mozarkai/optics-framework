@@ -1,8 +1,4 @@
-"""Shared fixtures for the unit suite.
-
-Kept deliberately small: only the collaborators that more than one test file needs
-live here. Test-file-specific fakes stay in their own module.
-"""
+"""Shared fixtures for the unit suite."""
 import json
 import tempfile
 from types import SimpleNamespace
@@ -17,7 +13,6 @@ from optics_framework.common.runner.test_runnner import Runner
 
 @pytest.fixture
 def mock_driver():
-    """A DriverInterface-spec'd mock for verifying keyword→driver delegation."""
     mock = MagicMock(spec=DriverInterface)
     mock.get_app_version.return_value = ""
     mock.get_text_element.return_value = ""
@@ -26,7 +21,6 @@ def mock_driver():
 
 @pytest.fixture
 def mock_runner():
-    """A Runner-spec'd mock carrying real ElementData and a temp output path."""
     runner = MagicMock(spec=Runner)
     runner.elements = ElementData()
     runner.config_handler = MagicMock()
@@ -60,8 +54,4 @@ class _FakeResponse:
 
 @pytest.fixture
 def fake_response():
-    """Factory building a fake ``requests`` response.
-
-    Usage: ``monkeypatch.setattr('requests.request', lambda *a, **k: fake_response(json_data=...))``.
-    """
     return _FakeResponse

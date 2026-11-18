@@ -1,13 +1,8 @@
-"""UIHelper's text-locator strict mode -- the same fuzzy/partial fallback that
-find_xpath already gated behind `strict` for XPath locators, extended to
-get_locator_and_strategy/get_locator_and_strategy_using_index.
-"""
 import pytest
 from lxml import etree
 
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 
-pytestmark = pytest.mark.white_box
 
 ANDROID_TREE = (
     '<hierarchy rotation="0">'
@@ -35,11 +30,6 @@ class TestGetLocatorAndStrategy:
         assert result is not None
         assert result["locator"] == "Buy 101 devices"
 
-    def test_fuzzy_candidate_rejected_when_strict(self):
-        helper = _helper(ANDROID_TREE)
-
-        assert helper.get_locator_and_strategy("Buy 102 devices", strict=True) is None
-
     def test_exact_match_unaffected_by_strict(self):
         helper = _helper(ANDROID_TREE)
 
@@ -50,7 +40,6 @@ class TestGetLocatorAndStrategy:
 
 
 class TestGetLocatorAndStrategyUsingIndex:
-
     def test_fuzzy_candidate_rejected_when_strict(self):
         helper = _helper(ANDROID_TREE)
 

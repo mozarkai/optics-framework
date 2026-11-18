@@ -3,11 +3,8 @@ import asyncio
 import threading
 from unittest.mock import AsyncMock
 
-import pytest
 
 from optics_framework.common.execution import KeywordExecutor
-
-pytestmark = pytest.mark.white_box
 
 
 class _Session:
@@ -52,8 +49,9 @@ def test_keyword_execution_uses_a_thread_and_serializes_per_session():
         second = asyncio.create_task(
             KeywordExecutor("block", ["second"], AsyncMock()).execute(session, runner)
         )
-        await asyncio.sleep(0.05)
+        done, _ = await asyncio.wait({second}, timeout=0.05)
 
+        assert not done
         assert keyword.invocations == ["first"]
         keyword.release_first.set()
         assert await asyncio.gather(first, second) == ["first", "second"]

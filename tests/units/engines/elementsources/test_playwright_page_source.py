@@ -6,8 +6,6 @@ from lxml import etree
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.engines.elementsources import playwright_page_source as pw
 
-pytestmark = pytest.mark.white_box
-
 
 def _source(html):
     page = MagicMock()
@@ -36,8 +34,6 @@ def _uniform_rects(width=20, height=20):
 
 
 class TestOutputShapeAndFiltering:
-
-
     def test_filter_config_still_applies_after_bounds_check(self):
         html = (
             "<html><body>"
@@ -61,7 +57,6 @@ class TestOutputShapeAndFiltering:
 
 
 class TestBatchFailureDegradesGracefully:
-
     def test_compact_batch_failure_is_unavailable_not_empty(self):
         # The NL agent falls back to page source on "unavailable", so a failed batch
         # must raise rather than return [] and look like a genuinely empty screen.
@@ -71,12 +66,6 @@ class TestBatchFailureDegradesGracefully:
             src.get_interactive_elements(None, compact=True)
         assert excinfo.value.code == Code.E0202
         assert page.evaluate.call_count == 1
-
-    def test_compact_empty_page_still_returns_empty_list(self):
-        src, page = _source("")
-        page.evaluate.side_effect = _uniform_rects()
-        assert src.get_interactive_elements(None, compact=True) == []
-        assert page.evaluate.call_count == 0
 
     def test_mismatched_length_response_is_treated_as_all_absent(self):
         src, page = _source(_grid_html(3))

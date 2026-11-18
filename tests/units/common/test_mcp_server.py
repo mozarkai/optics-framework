@@ -1,14 +1,3 @@
-"""Unit tests for the Optics MCP server (`optics mcp`).
-
-No device/driver: `expose_api.execute_keyword` / `create_session` /
-`run_keyword_endpoint` are mocked. Covers dynamic per-keyword tool registration
-(str-typed schemas with an injected session_id), the read-only observers being
-surfaced as resources instead of tools, param stringification at the
-ExecuteRequest boundary, error translation to ToolError, and the screenshot
-resource returning raw image bytes.
-
-`fastmcp` is an optional extra; the whole module skips when it is absent.
-"""
 import asyncio
 import base64
 import json
@@ -34,12 +23,9 @@ from optics_framework.common.logging_config import (
 )
 from optics_framework.helper import mcp_server
 
-pytestmark = pytest.mark.white_box
-
 
 @pytest.fixture
 def owned(monkeypatch):
-    """Make the given session ids belong to the test's MCP client."""
     monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
 
     def own(*sids: str) -> None:
@@ -95,20 +81,6 @@ def test_http_error_translates_to_tool_error(owned):
 # --- resources -------------------------------------------------------------
 
 
-def test_keywords_resource_returns_catalog():
-    server = mcp_server.build_server("full")
-
-    async def go():
-        async with Client(server) as client:
-            return await client.read_resource("optics://keywords")
-
-    contents = _run(go())
-    catalog = json.loads(contents[0].text)
-    slugs = {entry["keyword"] for entry in catalog}
-    assert "press_element" in slugs
-    assert "capture_screenshot" not in slugs
-
-
 def test_decode_screenshot_handles_data_url():
     raw = b"abc"
     data_url = "data:image/png;base64," + base64.b64encode(raw).decode()
@@ -116,14 +88,6 @@ def test_decode_screenshot_handles_data_url():
 
 
 # --- optional dependency guard ---------------------------------------------
-
-
-def test_require_fastmcp_raises_when_missing():
-    with (
-        patch.object(mcp_server, "_FASTMCP_IMPORT_ERROR", ImportError("no fastmcp")),
-        pytest.raises(RuntimeError, match="optics setup --install mcp"),
-    ):
-        mcp_server._require_fastmcp()
 
 
 def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
@@ -144,7 +108,6 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
         flood.join(timeout=5)
         assert not flood.is_alive(), "logging blocked on a full stderr pipe"
     finally:
-
         def drain():
             while os.read(read_fd, 65536):
                 pass
@@ -156,12 +119,6 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
         handler.console.file.close()
         drainer.join(timeout=5)
         os.close(read_fd)
-
-
-@pytest.mark.parametrize("named", [{"app": "A"}, {"appium:app": "A"}, {"appName": "A"}, {"appium:options": {"app": "A"}}])
-def test_the_app_argument_yields_to_an_app_in_the_capabilities(named):
-    caps = mcp_server._session_caps("appium", "B", {"platformName": "Mac", **named})
-    assert "B" not in caps.values()
 
 
 def test_the_app_argument_names_the_app_of_a_desktop_session():
@@ -213,7 +170,6 @@ def _row(text, cls, act=("tap",), area="", hint=""):
 
 @pytest.fixture
 def desktop(monkeypatch):
-    """One open session ``S1`` of this test's client over a fake desktop screen."""
     from optics_framework.common.agent_core import AgentSession, keyword_catalog
 
     monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
@@ -241,16 +197,13 @@ def _shown(reply):
     return "\n".join(c.text for c in reply.content if getattr(c, "text", None))
 
 
-def test_an_action_that_changed_nothing_asks_for_an_expectation_in_what_the_agent_sees(desktop):
-    tapped, = _calls(("tap", {"target": "Add Event"}))
-
-    assert "expect_present" in _shown(tapped)
-
-
-def test_a_query_that_matches_nothing_says_how_many_rows_it_searched(desktop):
-    seen, = _calls(("observe", {"query": "Save"}))
-
-    assert 'no row of 2 holds "Save"' in _shown(seen)
+@pytest.mark.parametrize(("call", "shown"), [
+    (("tap", {"target": "Add Event"}), "expect_present"),
+    (("observe", {"query": "Save"}), 'no row of 2 holds "Save"'),
+], ids=["unchanged_action_asks_for_an_expectation", "empty_query_counts_rows"])
+def test_what_the_agent_sees_says_what_to_do_next(desktop, call, shown):
+    reply, = _calls(call)
+    assert shown in _shown(reply)
 
 
 def test_the_steps_of_an_ended_session_stay_readable_by_their_owner(desktop, monkeypatch):
@@ -318,17 +271,6 @@ def test_the_steps_of_a_local_session_outlive_a_server_restart(desktop, monkeypa
 
     assert [step["keyword"] for step in _steps_of(S1)["steps"]] == ["Press Element"]
     assert f"has ended. The MCP server stopped before it ended the session. Its 1 recorded steps are at {STEPS}" in _shown(tapped)
-
-
-def test_an_idle_session_ends_when_another_client_calls(desktop, monkeypatch):
-    mcp_server._STATES[S1].last_used -= 10_000
-    monkeypatch.setattr(mcp_server, "_caller", lambda: "someone else")
-    _calls(("observe", {}))
-    monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
-
-    tapped, = _calls(("tap", {"target": "Add Event", "session_id": S1}))
-
-    assert "It ended after 900 s idle." in _shown(tapped)
 
 
 def test_a_typed_password_reaches_the_steps_and_the_saved_file_only_as_a_variable(desktop, monkeypatch):

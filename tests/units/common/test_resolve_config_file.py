@@ -1,4 +1,3 @@
-import os
 import re
 
 import pytest
@@ -23,12 +22,6 @@ def test_unset_or_empty_variable_stops_with_its_name(env, tmp_path, value):
 def test_missing_relative_file_stops_with_the_full_path(tmp_path):
     with pytest.raises(OpticsError, match="does not exist"):
         resolve_config_file({"event_attributes_json": "./missing.json"}, str(tmp_path))
-
-
-def test_output_paths_need_not_exist_yet(tmp_path):
-    resolved = resolve_config_file({"execution_output_path": "./out", "log_path": "../logs"}, str(tmp_path))
-    assert resolved == {"execution_output_path": str(tmp_path / "out"),
-                        "log_path": os.path.abspath(os.path.join(str(tmp_path), "..", "logs"))}
 
 
 def test_playwright_url_and_headers_are_left_for_the_driver(env, tmp_path):

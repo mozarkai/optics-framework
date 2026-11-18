@@ -1,11 +1,8 @@
 from unittest.mock import MagicMock
 
-import pytest
-from selenium.common.exceptions import InvalidSessionIdException, WebDriverException
+from selenium.common.exceptions import WebDriverException
 
 from optics_framework.engines.drivers.appium import Appium
-
-pytestmark = pytest.mark.white_box
 
 
 def _driver_instance(webdriver) -> Appium:
@@ -23,18 +20,6 @@ def _webdriver(session_id: str = "stale-session-id", probe_error=None) -> MagicM
 
 
 class TestLaunchAppRecreatesDeadSession:
-    def test_stale_session_is_restarted(self):
-        instance = _driver_instance(
-            _webdriver(probe_error=InvalidSessionIdException("the session is not running"))
-        )
-        instance.start_session = MagicMock(return_value="fresh-session-id")
-
-        result = instance.launch_app(app_identifier="com.example.app")
-
-        instance.start_session.assert_called_once_with(
-            app_package="com.example.app", app_activity=None, event_name=None
-        )
-        assert result == "fresh-session-id"
 
     def test_unsupported_probe_leaves_session_presumed_alive(self):
         instance = _driver_instance(

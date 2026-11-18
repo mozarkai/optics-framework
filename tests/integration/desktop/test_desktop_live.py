@@ -1,8 +1,3 @@
-"""optics live on a desktop app: typed keywords, a natural-language instruction and the saved suite.
-
-A scripted model stands in for the LLM; the screen reads, refs, keywords, driver and save path are the real ones.
-"""
-
 import json
 from pathlib import Path
 

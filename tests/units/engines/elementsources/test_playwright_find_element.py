@@ -8,8 +8,6 @@ from optics_framework.engines.elementsources.playwright_find_element import (  #
     PlaywrightFindElement,
 )
 
-pytestmark = pytest.mark.white_box
-
 
 def test_rule_all_needs_every_element_on_the_same_poll():
     source = PlaywrightFindElement(driver=MagicMock())

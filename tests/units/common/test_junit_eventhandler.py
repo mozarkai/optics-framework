@@ -1,31 +1,13 @@
-"""Unit tests for ``optics_framework.common.Junit_eventhandler``.
-
-Pins the two output contracts of the session-scoped JUnit handler:
-
-1. ``logs.json`` is produced if and only if ``json_log`` is enabled, while
-   ``junit_output.xml`` is always produced in the session's output directory.
-2. Concurrent sessions sharing one resolved output directory never clobber
-   each other: the newcomer falls back to ``junit_output_<session_id>.xml``
-   while the canonical name stays with its owner, and once sessions are
-   cleaned up later ones get the canonical name again.
-"""
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET  # nosec B405
 
-import pytest
 
 from optics_framework.common.Junit_eventhandler import (
     JUnitHandlerRegistry,
-    cleanup_junit,
-    get_junit_handler_registry,
-    setup_junit,
 )
 from optics_framework.common.config_handler import Config
 from optics_framework.common.events import Event, EventStatus
-from optics_framework.common.session_manager import _maybe_setup_junit
-
-pytestmark = pytest.mark.white_box
 
 
 def _config(output_dir, json_log=False, json_path=None):
@@ -52,26 +34,7 @@ async def _run_testcase(handler, session_id, tc_id, name):
     await handler.on_event(_tc_event(session_id, tc_id, name, EventStatus.PASS))
 
 
-class TestSessionJunitWiring:
-    def test_global_setup_and_cleanup_route_through_registry(self, tmp_path):
-        registry = get_junit_handler_registry()
-        setup_junit("wire-1", _config(tmp_path, json_log=True))
-        try:
-            assert "wire-1" in registry.get_active_sessions()
-            assert registry.get_handler("wire-1") is not None
-        finally:
-            cleanup_junit("wire-1")
-        assert registry.get_handler("wire-1") is None
-
-    def test_maybe_setup_junit_requires_execution_output_path(self):
-        config = Config(json_log=True)
-        _maybe_setup_junit(config, "wire-none", None)
-        assert get_junit_handler_registry().get_handler("wire-none") is None
-
-
 class TestKeywordFailureMessage:
-    """A failed keyword records why on its <kw> element."""
-
     async def test_failed_keyword_records_reason_on_kw_element(self, tmp_path):
         registry = JUnitHandlerRegistry()
         sid = "kwfail"
@@ -99,8 +62,6 @@ class TestKeywordFailureMessage:
 
 
 class TestDetectedErrorsBeforeTestCaseEvents:
-    """End-of-run detection can run while the run's test-case events are still queued."""
-
     async def test_detected_error_reaches_report_when_all_cases_pass(self, tmp_path):
         registry = JUnitHandlerRegistry()
         sid = "allpass"

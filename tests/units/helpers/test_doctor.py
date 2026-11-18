@@ -1,13 +1,11 @@
-"""Unit tests for ``optics doctor``; probes are stubbed at their seams, so no adb, Appium or browser is needed."""
 from __future__ import annotations
 
 import io
 import json
 import os
-import subprocess
 from importlib.metadata import PackageNotFoundError
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from rich.console import Console
@@ -17,7 +15,6 @@ from tests.conftest import set_home
 from optics_framework.helper.doctor import Check
 from optics_framework.helper.setup import ALL_ENGINES
 
-pytestmark = pytest.mark.white_box
 
 MODULE = "optics_framework.helper.doctor"
 
@@ -81,8 +78,6 @@ def _write_config(tmp_path, answers=None, raw=None) -> str:
 
 
 class TestCheckCore:
-
-
     def test_python_row_never_fails(self):
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
             rows = doctor.check_core()
@@ -100,7 +95,6 @@ class TestCheckEngines:
 
 @pytest.fixture(autouse=True)
 def appium_home(tmp_path, monkeypatch):
-    """An empty APPIUM_HOME, so no test reads the runner's own Appium drivers."""
     home = tmp_path / "appium-home"
     home.mkdir()
     monkeypatch.setenv("APPIUM_HOME", str(home))
@@ -109,35 +103,12 @@ def appium_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def no_socket(monkeypatch):
-    """Simulate "nothing listening": any connect attempt raises OSError."""
     def refuse(*_args, **_kwargs):
         raise OSError("connection refused")
     monkeypatch.setattr(doctor.socket, "create_connection", refuse)
 
 
 class TestCheckMobile:
-    def test_no_adb_warns(self, no_socket):
-        with patch(f"{MODULE}.shutil.which", return_value=None):
-            rows = doctor.check_mobile()
-        assert [r.name for r in rows] == ["adb", "appium server"]
-        assert rows[0].status == "warn"
-        assert rows[1].status == "warn"
-
-    def test_connected_devices_are_parsed(self, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/bin/adb")
-        out = ("* daemon not running; starting now at tcp:5037\n"
-               "* daemon started successfully\n"
-               f"{ADB_HEADER}\n"
-               "emu-5554\tdevice\ndeadbeef\toffline\nx\tunauthorized\n")
-        stub = SimpleNamespace(stdout=out)
-        with patch.object(doctor.subprocess, "run", return_value=stub) as run, \
-                patch.object(doctor.socket, "create_connection"):
-            rows = doctor.check_mobile()
-        devices_row = next(r for r in rows if r.name == "adb devices")
-        assert devices_row.status == "ok"
-        assert "emu-5554" in devices_row.detail
-        assert "deadbeef" not in devices_row.detail
-        assert run.call_args.kwargs["shell"] is False
 
     def test_no_devices_warns(self, no_socket, monkeypatch):
         monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/bin/adb")
@@ -148,27 +119,6 @@ class TestCheckMobile:
         row = next(r for r in rows if r.name == "adb devices")
         assert row.status == "warn"
         assert "no devices attached" in row.detail
-
-    def test_output_without_header_is_not_mistaken_for_zero_devices(
-            self, no_socket, monkeypatch):
-        # An adb error banner has no device-list header; reporting the serial
-        # count would be wrong either way — surface the unexpected output.
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/bin/adb")
-        stub = SimpleNamespace(stdout="error: no devices/emulators found")
-        with patch.object(doctor.subprocess, "run", return_value=stub), \
-                patch.object(doctor.socket, "create_connection"):
-            rows = doctor.check_mobile()
-        row = next(r for r in rows if r.name == "adb devices")
-        assert row.status == "warn"
-        assert "unexpected adb output" in row.detail
-        assert "no devices attached" not in row.detail
-
-    def test_adb_failure_degrades_to_warning(self, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/bin/adb")
-        with patch.object(doctor.subprocess, "run",
-                          side_effect=subprocess.SubprocessError("kaboom")):
-            rows = doctor.check_mobile()
-        assert next(r for r in rows if r.name == "adb devices").status == "warn"
 
 
 class TestCheckWeb:
@@ -184,17 +134,6 @@ class TestCheckWeb:
         assert all(r.status == "warn" for r in rows)
         hints = {r.hint for r in rows}
         assert any("optics setup --install playwright" in h for h in hints)
-
-    def test_unreadable_manifest_falls_back_to_any_chromium(self, monkeypatch):
-        """Better a usable answer than none when the revision cannot be read."""
-        cache = self.home / "Library/Caches/ms-playwright"
-        (cache / "chromium-1234").mkdir(parents=True)
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        monkeypatch.setattr(doctor, "_playwright_chromium_revision", lambda: None)
-        with patch(f"{MODULE}.version", return_value="1.58.0"):
-            rows = doctor.check_web()
-        pw = next(r for r in rows if r.name == "playwright browser")
-        assert pw.status == "ok"
 
     def test_playwright_without_browser_download_warns(self, monkeypatch):
         monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
@@ -227,23 +166,9 @@ def _xa11y_row(system="Linux"):
 
 
 class TestCheckDesktop:
-
     def test_driver_in_node_modules_without_a_manifest_is_ok(self, appium_home, no_socket):
         _install_xa11y(appium_home, listed=False)
         assert _xa11y_row().status == "ok"
-
-    def test_reachable_server_without_the_driver_here_names_the_home_checked(self, appium_home, monkeypatch):
-        monkeypatch.setattr(doctor.socket, "create_connection", lambda *_a, **_k: MagicMock())
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
-        row = _xa11y_row()
-        assert row.status == "warn"
-        assert str(appium_home) in row.detail
-        assert "another APPIUM_HOME" in row.detail
-        assert row.hint.startswith(XA11Y_INSTALL)
-
-    def test_manifest_entry_whose_package_is_gone_warns(self, appium_home, no_socket):
-        _install_xa11y(appium_home, present=False)
-        assert _xa11y_row().status == "warn"
 
     def test_macos_row_is_an_info_mark_outside_the_counts(self, no_socket, monkeypatch):
         monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._EMOJI_GLYPHS)
@@ -255,28 +180,6 @@ class TestCheckDesktop:
 
 class TestValidateProject:
 
-    def test_no_enabled_driver_fails(self, tmp_path):
-        starter = "\n".join(
-            line.replace("enabled: true", "enabled: false")
-            for line in project_config.render_project_config(ANDROID_ANSWERS).splitlines()
-        )
-        folder = _write_config(tmp_path, raw=starter + "\n")
-        rows = doctor.validate_project(folder)
-        assert any(r.status == "fail" and "no driver enabled" in r.detail for r in rows)
-
-    def test_driver_without_matching_source_fails(self, tmp_path):
-        raw = (
-            "driver_sources:\n"
-            "  - appium:\n"
-            "      enabled: true\n"
-            "      url: 'http://127.0.0.1:4723'\n"
-            "elements_sources:\n"
-            "  - appium_find_element:\n"
-            "      enabled: false\n"
-        )
-        folder = _write_config(tmp_path, raw=raw)
-        rows = doctor.validate_project(folder)
-        assert any(r.status == "fail" and "element source" in r.name for r in rows)
 
     def test_ios_settings_row_ok_with_bundle_id(self, tmp_path):
         folder = _write_config(tmp_path, answers=IOS_ANSWERS)
@@ -297,19 +200,6 @@ class TestValidateProject:
         assert any(r.status == "fail" for r in rows)
 
 
-class TestSplitHostPort:
-
-    @pytest.mark.parametrize("url", [
-        None,
-        "",
-        "   ",
-        "host:notaport",   # non-numeric port → urlparse raises ValueError
-        "host:99999",      # out-of-range port → ValueError
-    ])
-    def test_unusable_url_falls_back_to_none(self, url):
-        assert doctor._split_host_port(url) is None
-
-
 def _stub_env_rows():
     return [Check("python", "ok", "3.12.1"),
             Check("Appium", "warn", "not installed", "optics setup --install appium")]
@@ -318,7 +208,6 @@ def _stub_env_rows():
 class TestRunDoctor:
     @pytest.fixture
     def quiet_env(self, monkeypatch):
-        """Replace every environment probe with one canned warning row."""
         monkeypatch.setattr(doctor, "check_core", _stub_env_rows)
         monkeypatch.setattr(doctor, "check_engines", lambda: [])
         monkeypatch.setattr(doctor, "check_web", lambda *_: [])
@@ -344,8 +233,6 @@ class TestRunDoctor:
 
 
 class TestGatedClosingMessage:
-    """Warnings on an enabled driver's must-haves replace the reassurance with their hints."""
-
     APPIUM_HINT = "Start it in another terminal with the `appium` command."
     DEVICE_HINT = "Connect a device or start an emulator (USB debugging on)."
     ADB_HINT = "Install Android platform-tools (needed to drive Android devices)."

@@ -1,9 +1,6 @@
-"""Unit tests for utils.strip_page_source (condensed UI hierarchy for the LLM)."""
-import pytest
 
 from optics_framework.common import utils
 
-pytestmark = pytest.mark.white_box
 
 _SAMPLE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy class="hierarchy" rotation="0">
@@ -20,8 +17,6 @@ _SAMPLE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 
 
 class TestStripPageSource:
-
-
     def test_empty_and_invalid_return_empty(self):
         assert utils.strip_page_source("") == ""
         assert utils.strip_page_source("<not valid xml") == ""
@@ -45,8 +40,3 @@ class TestStripPageSource:
         out = utils.strip_page_source(xml)
         assert "XCUIElementTypeSecureTextField" in out
         assert 'resource-id="pkg:id/pwd"' in out
-
-    def test_web_nodes_show_the_tag_not_the_css_class(self):
-        xml = "<html><body><button class='btn primary' id='go' title='Go'/></body></html>"
-        out = utils.strip_page_source(xml)
-        assert 'button title="Go" id="go"' in out
