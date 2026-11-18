@@ -1,62 +1,30 @@
-import pkgutil
-import inspect
-import importlib
-import optics_framework.api
+import sys
+from typing import Optional
+
+from optics_framework.common.expose_api import KeywordInfo, KeywordParameter, discover_keywords
+from optics_framework.common.runner.keyword_register import keyword_not_found
 
 
-def list_api_methods(package):
-    """
-    Dynamically fetch all class methods from the given package.
-
-    : param package: The package from which to extract class methods.
-    : type package: module
-    : return: A dictionary where keys are class names and values are lists of method names.
-    : rtype: dict[str, list[str]]
-    """
-    api_methods = {}
-
-    for _, module_name, _ in pkgutil.iter_modules(package.__path__):
-        module = importlib.import_module(f"{package.__name__}.{module_name}")
-
-        for name, cls in inspect.getmembers(module, inspect.isclass):
-            if cls.__module__ == module.__name__ and not name.startswith(
-                "_"
-            ):  # Ensure class belongs to this module and is public
-                methods = [
-                    func
-                    for func in dir(cls)
-                    if callable(getattr(cls, func)) and not func.startswith("_")
-                ]
-                api_methods[name] = methods
-
-    return api_methods
+def _column(index: int, param: KeywordParameter) -> str:
+    if param.variadic:
+        return f"  param_{index}...  {param.name}..."
+    default = "" if param.required else f" = {param.default}"
+    return f"  param_{index}  {param.name}{default}"
 
 
-def format_methods(api_methods):
-    """
-    Format extracted methods into a human-readable string.
-
-    :param api_methods: Dictionary mapping class names to their methods.
-    :type api_methods: dict[str, list[str]]
-    :return: A formatted string listing all classes and their methods.
-    :rtype: str
-    """
-    return "\n".join(
-        [
-            f"{class_name}:\n  - " + "\n  - ".join(methods)
-            for class_name, methods in api_methods.items()
-        ]
-    )
+def describe(info: KeywordInfo) -> str:
+    """One keyword as a suite writes it: its name, its params in CSV column order, then its docstring."""
+    columns = [_column(i, p) for i, p in enumerate(info.parameters, 1)]
+    return "\n".join([info.keyword, *columns, "", info.description])
 
 
-
-def main():
-    """
-    CLI entry point for listing API methods.
-    """
-    api_methods = list_api_methods(optics_framework.api)
-    print(format_methods(api_methods))
-
-
-if __name__ == "__main__":
-    main()
+def main(name: Optional[str] = None) -> None:
+    """Print every keyword a suite can call, or the parameters of the one named."""
+    keywords = {k.keyword_slug: k for k in discover_keywords()}
+    if name is None:
+        print("\n".join(sorted(k.keyword for k in keywords.values() if not k.deprecated)))
+        return
+    info = keywords.get("_".join(name.split()).lower())
+    if info is None:
+        sys.exit(keyword_not_found(name, keywords).message)
+    print(describe(info))

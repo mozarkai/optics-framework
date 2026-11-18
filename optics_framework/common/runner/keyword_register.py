@@ -1,5 +1,21 @@
-from typing import Callable, Dict, Optional
+import difflib
+from typing import Callable, Dict, Iterable, Optional
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
+
+
+def suggest_keyword(name: str, slugs: Iterable[str]) -> str:
+    """Return a 'Did you mean ...?' hint for an unknown keyword, else empty."""
+    func_name = "_".join(name.split()).lower()
+    matches = difflib.get_close_matches(func_name, list(slugs), n=1, cutoff=0.6)
+    if not matches:
+        return ""
+    pretty = matches[0].replace("_", " ").title()
+    return f" Did you mean '{pretty}'? (run `optics list` to see all keywords)"
+
+
+def keyword_not_found(name: str, slugs: Iterable[str]) -> OpticsError:
+    return OpticsError(Code.E0402, message=f"Keyword not found: {name}.{suggest_keyword(name, slugs)}")
 
 
 class KeywordRegistry:

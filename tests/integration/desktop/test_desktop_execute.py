@@ -108,8 +108,9 @@ def test_list_names_the_keywords_a_desktop_suite_uses():
     listed = run_optics("list")
 
     assert listed.returncode == 0, listed.stderr
-    for keyword in ("press_keycode", "enter_text", "launch_other_app", "get_interactive_elements", "run_loop"):
-        assert keyword in listed.stdout, keyword
+    names = set(listed.stdout.splitlines())
+    for keyword in ("Press Keycode", "Enter Text", "Launch Other App", "Get Interactive Elements", "Run Loop"):
+        assert keyword in names, keyword
 
 
 def test_generated_pytest_code_runs_the_suite(tmp_path, host, desktop):

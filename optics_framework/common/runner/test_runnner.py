@@ -5,7 +5,6 @@ import time
 import uuid
 import asyncio
 import contextvars
-import difflib
 import tempfile
 import shutil
 import sys
@@ -15,6 +14,7 @@ from typing import Callable, Dict, List, Optional, Union, Any
 import pytest
 from optics_framework.common.session_manager import Session
 from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.runner.keyword_register import keyword_not_found, suggest_keyword
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
     mask_secret_values,
@@ -131,20 +131,6 @@ def _run_to_completion(coro) -> None:
         pool.submit(contextvars.copy_context().run, asyncio.run, coro).result()
 
 
-def _suggest_keyword(name: str, keyword_map: Dict) -> str:
-    """Return a 'Did you mean ...?' hint for an unknown keyword, else empty."""
-    func_name = "_".join(name.split()).lower()
-    matches = difflib.get_close_matches(func_name, list(keyword_map), n=1, cutoff=0.6)
-    if not matches:
-        return ""
-    pretty = matches[0].replace("_", " ").title()
-    return f" Did you mean '{pretty}'? (run `optics list` to see all keywords)"
-
-
-def _keyword_not_found(name: str, keyword_map: Dict) -> OpticsError:
-    return OpticsError(Code.E0402, message=f"Keyword not found: {name}.{_suggest_keyword(name, keyword_map)}")
-
-
 def _plan_report(session_id: str, test_cases: Optional[TestCaseNode]) -> None:
     handler = get_junit_handler_registry().get_handler(session_id)
     if handler is not None:
@@ -225,7 +211,7 @@ class TestRunner(Runner):
     def _unknown_step_reason(self, name: str) -> str:
         """Reason for a step that resolves to neither a module nor a keyword."""
         reason = f"{Code.E0402}: Unknown keyword or module: '{name}'"
-        hint = _suggest_keyword(name, self.keyword_map)
+        hint = suggest_keyword(name, self.keyword_map)
         return f"{reason}.{hint}" if hint else reason
 
     def _initialize_test_state(self) -> None:
@@ -503,7 +489,7 @@ class TestRunner(Runner):
 
     async def _handle_keyword_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result):
         keyword_node.state = State.COMPLETED_FAILED
-        reason = str(_keyword_not_found(keyword_node.name, self.keyword_map))
+        reason = str(keyword_not_found(keyword_node.name, self.keyword_map))
         self._note_failure(reason, Code.E0402)
         keyword_result.reason = reason
         await self._send_event(
@@ -965,7 +951,7 @@ class TestRunner(Runner):
                 f"{keyword_node.name} ({', '.join(resolved_params)})" if resolved_params else keyword_node.name
             )
         if method is None:
-            raise _keyword_not_found(keyword_node.name, self.keyword_map)
+            raise keyword_not_found(keyword_node.name, self.keyword_map)
 
     async def _dry_run_module(
         self,
@@ -1167,7 +1153,7 @@ class PytestRunner(Runner):
         self._queue_event_running(keyword, keyword_id, module_id)
         method = self.keyword_map.get(func_name)
         if not method:
-            self._handle_keyword_fail(keyword, keyword_id, module_id, str(_keyword_not_found(keyword, self.keyword_map)), Code.E0402)
+            self._handle_keyword_fail(keyword, keyword_id, module_id, str(keyword_not_found(keyword, self.keyword_map)), Code.E0402)
 
         params, store_as = utils.split_store_as(params)
         param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id, utils.raw_param_indices(method))
@@ -1177,7 +1163,7 @@ class PytestRunner(Runner):
 
     def _execute_keyword_dry_run(self, keyword, func_name, keyword_id, module_id):
         if not self.keyword_map.get(func_name):
-            self._handle_keyword_fail(keyword, keyword_id, module_id, str(_keyword_not_found(keyword, self.keyword_map)), Code.E0402)
+            self._handle_keyword_fail(keyword, keyword_id, module_id, str(keyword_not_found(keyword, self.keyword_map)), Code.E0402)
         queue_event_sync(
             Event(
                 entity_type="keyword",
