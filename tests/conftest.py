@@ -33,6 +33,12 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.white_box)
 
 
+@pytest.fixture(autouse=True)
+def _optics_home(tmp_path_factory, monkeypatch):
+    """Keep what a test saves for the user, such as MCP session steps, out of the real ~/.optics."""
+    monkeypatch.setenv("OPTICS_HOME", str(tmp_path_factory.mktemp("optics_home")))
+
+
 def set_home(monkeypatch, path) -> None:
     """Point the user's home directory at ``path`` on every platform.
 

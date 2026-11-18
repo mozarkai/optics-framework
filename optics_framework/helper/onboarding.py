@@ -21,12 +21,8 @@ _console = Console()
 _CMD_STYLE = "cyan bold"
 
 
-def _marker_dir() -> str:
-    """Directory holding the first-run marker.
-
-    Honours ``OPTICS_HOME`` so constrained environments (read-only HOME,
-    containers, CI) can point the marker at a writable location without
-    touching ``~/.optics``. Falls back to ``~/.optics`` when unset."""
+def optics_home() -> str:
+    """The per-user optics folder: ``OPTICS_HOME`` (for a read-only HOME, containers or CI), else ``~/.optics``."""
     override = os.environ.get("OPTICS_HOME")
     if override:
         return os.path.expanduser(override)
@@ -36,7 +32,7 @@ def _marker_dir() -> str:
 def _marker_path() -> str:
     """Path of the first-run marker; resolved lazily so HOME is read at call
     time (tests monkeypatch it)."""
-    return os.path.join(_marker_dir(), ".onboarded")
+    return os.path.join(optics_home(), ".onboarded")
 
 
 def is_first_run() -> bool:

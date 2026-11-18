@@ -133,7 +133,7 @@ def test_the_mcp_page_starts_a_desktop_session(host, desktop):
     async def journey():
         async with fastmcp.Client(mcp_server.build_server()) as client:
             started = await client.call_tool("start_session", json.loads(_on(desktop, host, arguments)))
-            sid = started.structured_content["session_id"]
+            sid = started.content[0].text.split()[1]
             try:
                 screen = await client.call_tool("observe", {"session_id": sid})
                 return screen.content[0].text

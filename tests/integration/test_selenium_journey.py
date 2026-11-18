@@ -152,7 +152,7 @@ async def test_mcp_session_offers_unique_locators_for_the_suite(server_url, monk
             "start_session",
             {"driver": "selenium", "url": server_url, "capabilities": {**CAPABILITIES, "browserURL": STORE_URL}},
         )
-        session_id = started.data["session_id"]
+        session_id = started.content[0].text.split()[1]
         try:
             resource = await client.read_resource(f"optics://session/{session_id}/elements")
             compact = json.loads(resource[0].text)
