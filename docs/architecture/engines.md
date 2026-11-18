@@ -110,55 +110,17 @@ driver_sources:
 
 ### BLE Driver
 
-**Location:** `optics_framework/engines/drivers/ble.py`
+**Location:** `optics_framework/engines/drivers/ble.py`, on the [airhand](https://github.com/chinmayajha/airhand) client
 
-The BLE (Bluetooth Low Energy) driver provides non-intrusive automation for production devices.
+The driver drives a device that has nothing installed: a phone, a tablet, a computer or a TV. An airhand dongle pairs with the device over Bluetooth as a keyboard, mouse and media remote. The airhand client sends it one command per line over USB serial.
 
-#### Key Features
+- Positions go to the dongle as fractions of `frame`, so devices need no calibration.
+- The dongle times taps, swipes and typing. The driver does not sleep between reports.
+- A lost reply is asked for again with `result <id>`. An action is never sent two times.
+- `platform` selects the shortcuts: select-all, Back, the system search for `Launch App`, and a drag or the wheel for `Scroll`.
+- airhand errors map to Optics codes: a lost dongle or a device that stays disconnected for 10 s is `E0106` (the run stops; element fallback does not try again), other firmware is `E0501`, and input the dongle cannot send is `E0403`.
 
-- Non-intrusive mouse and keyboard control
-- Serial communication via BLE
-- Coordinate mapping (pixels to mickeys)
-- Production-safe automation
-
-#### Use Cases
-
-- Production app monitoring
-- Devices without USB debugging
-- DRM-protected applications
-- Smart TV automation
-
-#### Configuration
-
-```yaml
-driver_sources:
-  - ble:
-      enabled: true
-      capabilities:
-        device_id: "BLE_DEVICE_ID"
-        port: "/dev/ttyUSB0"
-        pixel_width: 1920
-        pixel_height: 1080
-        mickeys_width: 32767
-        mickeys_height: 32767
-        x_invert: 1
-        y_invert: 1
-```
-
-#### Key Methods
-
-- `press_coordinates()` - Mouse click at coordinates
-- `press_percentage_coordinates()` - Percentage-based clicks
-- `swipe()` - Mouse drag gestures
-- `enter_text_using_keyboard()` - Keyboard input
-- `press_keycode()` - Special key codes
-
-#### Coordinate Mapping
-
-The BLE driver maps screen coordinates to mouse movements (mickeys):
-- Pixel coordinates → Mickey coordinates
-- Supports coordinate inversion
-- Configurable mapping ratios
+Element methods are not supported. Elements come from `camera_screenshot` and the OCR and image strategies. See [Configuration](../configuration.md) for the capabilities.
 
 ## Element Sources
 
@@ -305,12 +267,14 @@ Vision models provide image and text detection capabilities. They are located in
 
 **Location:** `optics_framework/engines/vision_models/image_models/templatematch.py`
 
-OpenCV-based template matching using SIFT and FLANN.
+OpenCV-based template matching with a scale sweep, plus a SIFT and FLANN fallback.
 
 #### Key Features
 
-- SIFT feature detection
-- FLANN-based matching
+- Coarse-to-fine `cv2.matchTemplate` with full-resolution coordinates
+- Scale sweep (`capabilities.scale_range`, default `[0.8, 1.25]`) for other screen sizes
+- Local contrast equalisation for the sweep
+- SIFT feature detection with FLANN matching as the last fallback
 - Confidence thresholding
 - Multiple match support (index-based)
 - Template loading from project directory
@@ -335,11 +299,10 @@ image_detection:
 
 1. Load template image from project directory
 2. Convert input and template to grayscale
-3. Detect SIFT keypoints and descriptors
-4. Match descriptors using FLANN
-5. Filter matches by distance ratio
-6. Calculate homography for geometric verification
-7. Return center coordinates of matched template
+3. Correlate the template at its own size on a reduced copy of the frame, then measure each candidate at full resolution
+4. If nothing clears the confidence level, equalise local contrast and repeat step 3 for each scale in `scale_range`; the best-scoring scale wins
+5. If nothing clears it again, detect SIFT keypoints, match them with FLANN, filter by distance ratio and verify with a homography
+6. Return the center coordinates and the bounding box in frame pixels
 
 #### RemoteOIR
 

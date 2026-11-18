@@ -79,7 +79,7 @@ The core install has **no drivers, OCR, or LLM backends** — they are optional 
 | `appium` | appium-python-client | Native Android/iOS |
 | `selenium` | selenium | Web via a Selenium/WebDriver server |
 | `playwright` | playwright (+ Chromium) | Web via Playwright |
-| `ble` | pyserial | BLE mouse/keyboard action drivers |
+| `ble` | airhand | Any Bluetooth keyboard and mouse target, through an airhand dongle |
 | `easyocr` | easyocr | On-screen text detection (OCR) |
 | `pytesseract` | pytesseract, pillow | OCR via a system Tesseract |
 | `google-vision` | google-cloud-vision, google-auth | OCR via Google Cloud Vision |

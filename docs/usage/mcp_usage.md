@@ -541,9 +541,13 @@ The keywords you can use depend on which `elements_sources` (and detection
 sources) you enable in `start_session` — same rules as a normal optics project.
 When you omit `elements_sources`, `start_session` enables the driver's element
 sources automatically (appium → `appium_find_element`/`appium_page_source`/
-`appium_web`/`appium_screenshot`); pass the argument only to narrow or extend that. An
+`appium_web`/`appium_screenshot`; ble → `camera_screenshot` at the `frame` size when
+the server has `WEBCAM_SCREENSHOT_URL` set, else none). When `start_session` picks the server's camera this way,
+the session also gets the installed local OCR engine (`easyocr`, else `pytesseract`) and `templatematch`. Pass
+`text_detection` or `image_detection` to choose the engines, or an empty list for none. A camera that you name in
+`elements_sources` gets only the engines that you pass, and no frame size: set its `out_width` and `out_height` to the ble `frame`, or taps land off target. Pass `elements_sources` only to narrow or extend the defaults. An
 explicit **empty** list is passed through and disables element sources entirely
-(the session then fails to start) — omit the argument for the defaults:
+(the session starts without the screen: position and key keywords run, and keywords that must see the screen stop with `E0501`) — omit the argument for the defaults:
 
 | Capability | Needs |
 |------------|-------|
@@ -558,6 +562,13 @@ If you enable only `appium_find_element` + `appium_screenshot` and then call
 `get_interactive_elements`, optics raises
 `E0202: No interactive elements retrieved using available strategies` — that's
 expected; enable `appium_page_source` (or a vision source) for that path.
+
+When no element source lists elements, as with a camera, the screen rows come from OCR: each row is a
+text the `text_detection` engine reads, as `e7 Text "Settings" [tap]`. OCR cannot tell a button from a
+label, so every row offers `tap`, and you type with `run_keyword enter_text_using_keyboard` after you tap
+the field. A row keeps its ref while its letters and digits stay the same, so a moving camera frame does
+not give new refs, and a read that differs only by case or punctuation keeps the row's text. OCR can
+still split or misread a line between frames; that line then gets a new ref. When two rows hold the same text, a tap on the second one presses that text with `index=1`, and the steps record it so; other actions refuse such a row. The index follows the order in which `easyocr` and `pytesseract` read the screen. A tap on a row is found by OCR, so `verified` stays `unknown`; read the `check` lines.
 
 ## 9. Troubleshooting
 

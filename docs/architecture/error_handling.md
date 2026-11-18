@@ -177,6 +177,7 @@ Screenshot-related errors:
 - **W0302**: Fallback to next camera supported driver
 - **E0303**: Screenshot empty/black
 - **E0304**: Image too large to decode or not a valid image
+- **E0305**: The camera does not see the device screen (moved, out of view or off)
 
 **Example:**
 ```python

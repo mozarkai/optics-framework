@@ -22,8 +22,8 @@ optics quickstart
 It walks through eight stages, in order:
 
 1. Prints the welcome banner and the golden path.
-2. Asks what you want to automate: `mobile` or `web`.
-3. Offers to pip-install the matching engines (Appium for mobile, Selenium + Playwright for web).
+2. Asks what you want to automate: `mobile`, `web` or `bluetooth` (any device through a [airhand](https://github.com/chinmayajha/airhand) dongle).
+3. Offers to pip-install the matching engines (Appium for mobile, Selenium + Playwright for web, airhand for bluetooth).
 4. Offers starting points: an empty project (recommended) or a packaged sample (`contact`, `youtube`, …). Picking a sample aimed at the other domain asks for confirmation first.
 5. Names the project folder and picks where it lives.
 6. Runs a short config Q&A scoped to your platform choice, then writes a commented, platform-correct `config.yaml`.
@@ -34,12 +34,12 @@ Every question ships with a default, so pressing Enter throughout yields a runna
 
 | Stage | What it asks | Default (just press Enter) |
 |---|---|---|
-| Target | `mobile` or `web`? | `mobile` |
+| Target | `mobile`, `web` or `bluetooth`? | `mobile` |
 | Engines | Install them now? | yes |
 | Starting point | Empty project or a sample? | empty project (recommended) |
 | Project name | Folder name for the new project | `my-optics-project` |
 | Location | Where to create it | current directory |
-| Platform | Android / iOS, or Playwright / Selenium | Android (mobile), Playwright (web) |
+| Platform | Android / iOS, Playwright / Selenium, or the device that the dongle drives | Android (mobile), Playwright (web), iOS (bluetooth) |
 | Details | Device name, app id, server URL, browser, headless | Working examples: `emulator-5554`, `com.example.app`, `http://127.0.0.1:4723`, Chromium, headed |
 | Vision | Find elements by on-screen text (EasyOCR)? | no |
 | Log level | `DEBUG` to `ERROR` | `INFO` |

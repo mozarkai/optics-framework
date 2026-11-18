@@ -38,23 +38,15 @@ driver_sources:
 ```
 
 ### ble
-- What it does: Enables Bluetooth Low Energy (BLE) device automation.
-```bash
+- What it does: Drives a phone through a USB HID dongle that pairs with it over Bluetooth as a keyboard and pointer.
+```yaml
 driver_sources:
   - ble:
-      enabled: false  #Set to true when needed
-      url: null
+      enabled: false  # Set to true when needed
       capabilities:
-        {
-          "device_id": "Samsung A50",
-          "port": "/dev/ttyACM0",
-          "x_invert": 1,
-          "y_invert": 1,
-          "pixel_width": 1080,
-          "pixel_height": 2336,
-          "mickeys_height": 2336,
-          "mickeys_width": 1080
-        }
+        serial: "3F9A21C0"            # the dongle's USB serial number, or use port
+        platform: android             # android | ios
+        frame: {width: 1080, height: 2340}
 ```
 ## Element Sources
 Element sources define methods for locating and capturing UI elements.
@@ -185,13 +177,14 @@ text_detection:
 Image detection methods for visual element recognition.
 
 ### templatematch
-- What it does: Finds images within screenshots using template matching (OpenCV).
+- What it does: Finds images within screenshots using template matching (OpenCV). A template cut on one device also matches on screens 20% smaller or 25% larger; set `scale_range` to change that range.
 ```bash
 image_detection:
   - templatematch:
       enabled: true
       url: null
-      capabilities: {}
+      capabilities:
+        scale_range: [0.8, 1.25]
 ```
 
 ### remote_oir

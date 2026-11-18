@@ -601,7 +601,13 @@ Driver sources define the automation frameworks used to control devices or brows
 
 === "BLE"
 
-    **Purpose:** Bluetooth Low Energy (BLE) device automation for non-intrusive mouse/keyboard control.
+    **Purpose:** Drive a phone, tablet, computer or TV that has nothing installed on it. A [airhand](https://github.com/chinmayajha/airhand) dongle in your computer pairs with the device over Bluetooth as a keyboard, mouse and media remote. The driver acts on positions and keys. To find elements, add `camera_screenshot` with the OCR and image strategies.
+
+    **Set up:**
+
+    1. Install the driver: `optics setup --install ble`.
+    2. Install the airhand firmware on an nRF52840 dongle: press its RESET button, then install the firmware zip over USB with `nrfutil`. Pair the device with **airhand**. The [airhand 0.1.2 README](https://github.com/chinmayajha/airhand/tree/v0.1.2#quick-start) gives the steps. On an iPhone or iPad, turn on AssistiveTouch.
+    3. Check the dongle and the link: `optics doctor <project>`.
 
     **Configuration:**
 
@@ -609,27 +615,89 @@ Driver sources define the automation frameworks used to control devices or brows
     driver_sources:
       - ble:
           enabled: true
-          url: null
           capabilities:
-            device_id: "Samsung A50"
-            port: "/dev/ttyACM0"
-            x_invert: 1
-            y_invert: 1
-            pixel_width: 1080
-            pixel_height: 2336
-            mickeys_height: 2336
-            mickeys_width: 1080
+            platform: ios
+            frame: {width: 1170, height: 2532}
+    elements_sources:
+      - camera_screenshot:
+          enabled: true
+          capabilities:
+            url: "http://localhost:9000/phones/7"
+            out_width: 1170
+            out_height: 2532
     ```
-
-    **Common Capabilities:**
 
     | Capability | Description |
     |------------|-------------|
-    | `device_id` | Device identifier |
-    | `port` | Serial port for BLE communication |
-    | `x_invert`, `y_invert` | Coordinate inversion flags |
-    | `pixel_width`, `pixel_height` | Screen pixel dimensions |
-    | `mickeys_width`, `mickeys_height` | Mouse coordinate dimensions |
+    | `platform` | `ios`, `android`, `macos`, `windows` or `linux`. It selects the shortcuts in the table below. |
+    | `frame` | The size of the coordinate space that keywords use, in pixels. Make it the same as the camera image (`out_width` × `out_height`). Without a camera, use the screen size of the device. |
+    | `serial` | The dongle's USB serial number. Set it when more than one dongle is plugged in. The driver finds the dongle again by this number after you plug it in again. |
+    | `port` | A fixed serial port (`/dev/cu.usbmodem1101`, `COM5`), instead of `serial`. Only a project's config.yaml can set it. |
+    | `app_search` | Android only: the position of the search box in the app drawer, `{x, y}` in `frame` pixels. Set it when the drawer filters its list only after a tap on the box. |
+    | `launch` | How `Launch App` opens an app on this device: a list of the methods below, tried in order. Leave it out to use the default of the platform. |
+
+    With one dongle plugged in, leave out `serial` and `port`: the driver uses that dongle.
+
+    With a webcam aimed at the device, set `camera_index` and `find_screen: brightness` on `camera_screenshot`: the driver's brightness keys show the camera where the screen is, so you do not measure `deskew_corners` (see [`camera_screenshot`](#camera_screenshot)). The dongle taps at exact positions, so the taps are as accurate as the screen corners.
+
+    | `platform` | `Go Back` | `Launch App` | `Scroll` | `Clear Text` |
+    |------------|-----------|--------------|----------|--------------|
+    | `ios` | — | `launcher_key` (Spotlight), then `home_icon` | wheel (up, down), drag (left, right) | Cmd+A, Backspace |
+    | `android` | Back key | `drawer_search`, then `home_icon` | slow drag | Ctrl+A, Backspace |
+    | `macos` | Cmd+[ | `launcher_key` (Spotlight) | wheel | Cmd+A, Backspace |
+    | `windows` | Alt+Left | `launcher_key` (Start menu) | wheel | Ctrl+A, Backspace |
+    | `linux` | Alt+Left | — | wheel | Ctrl+A, Backspace |
+
+    `Launch App` and `Launch Other App` take the name of the app as the device shows it, for example `Settings`. How a device opens an app is a part of its config.yaml, not of the test suite, so one suite runs on phones whose launchers are different. Each method is a sequence of keys and taps:
+
+    | Method | Steps | Default for |
+    |--------|-------|-------------|
+    | `launcher_key` | The launcher shortcut (Cmd+Space, Ctrl+Esc), the name, Enter. On iOS, the driver first presses Home twice, because Home from an app that Spotlight opened goes back to Spotlight. | `ios`, `macos`, `windows` |
+    | `drawer_search` | Home, Meta (the app drawer), the name, Enter. This opens the top result on launchers that filter as you type. | `android` |
+    | `drawer_tap` | Home, Meta, a tap on `app_search`, the name, Up and Enter. Use it when the drawer filters its list only after a tap on its search box. | `android` with `app_search` |
+    | `search_key` | The Search media key, the name, Enter. | — |
+    | `home_icon` | Home, then a tap on the icon above the app's name on the home screen. It needs a camera, and it finds only apps on the first home screen. Some launchers have no app drawer, or give Meta to the assistant. | Last on `ios` and `android` |
+
+    With a camera and an OCR engine, the driver checks each method. After the driver types the name, the screen must show it twice: once in the search box and once as a result. After Enter, both must be gone from where they were. The match ignores case and spaces, joins words that OCR reads apart on one line, and accepts a result label that the launcher cut off with an ellipsis. If a method fails the check, the driver presses Home and tries the next method. When all methods fail, `Launch App` stops with `E0405`. When a method other than the first one opens the app, the log gives the `launch` value that tries it first. Without a camera, the driver uses only the first method that needs no camera, and does not check the result. When the camera reads no text after Enter, the driver does not check the result either, and the log says so.
+
+    ```yaml
+    capabilities:
+      platform: android
+      frame: {width: 1080, height: 2400}
+      launch: [search_key, drawer_search, home_icon]
+    ```
+
+    On iOS and Android, `Force Terminate App` opens the app, then closes it from the App Switcher (Recents on Android, opened with Meta+Tab), so that the next `Launch App` starts it from its first screen. The App Switcher can keep a card on a slow frame, so when a test needs the first screen, assert it after `Launch App`. Without a camera, the driver does not check which app opened, so it closes the newest card. `Press Keycode` takes a key name (`enter`, `escape`, `tab`, `f1` to `f24`, the arrows), a combination (`cmd+space`, `ctrl+shift+t`) or a media key (`home`, `back`, `volumeup`, `volumedown`, `mute`, `playpause`, `next`, `previous`, `stop`, `brightnessup`, `brightnessdown`). `search` opens the system search. On a computer, `home` is the Home key.
+
+    The dongle times taps, swipes and typing itself and answers every command. If the device is not connected to the dongle, a keyword waits up to 10 s for it and then stops the run (`E0106`). A swipe or a drag scroll on a touch screen moves at least 0.75 screen heights per second, because iOS takes a slower drag for a tap. On iOS, `Scroll` up or down turns the wheel over the middle of the screen: this moves the content about half a screen, the same distance each time. A drag moves it by a different distance each time, because iOS amplifies a pointer drag. On a computer, `Scroll down` turns the wheel down, which shows lower content only when natural scrolling is off: turn it off for the mouse (macOS turns it on by default). On Android, a `Scroll` drag lasts 4 s, so the content moves about as far as the finger: a faster drag flings the content on, by up to a screen. Element keywords of the driver (`press_element`, `get_text_element`, …) come from the camera instead.
+
+    With a camera, `Press Element` reads one frame and does not wait. After a step that changes the screen, put `Assert Presence` before it: `Assert Presence` waits for the element. On the iOS home screen, tap an app's icon, not its name: use an image of the icon, give `Press Element` on the name an `offset_y` up to the icon, or use `Launch App`.
+
+    On Android, the dongle acts as a touch screen, so taps and swipes are touches with no pointer on the screen. This needs airhand firmware 0.1.2 or later. On iOS and iPadOS, the driver moves the pointer to the top-right corner after each tap and swipe, so that the pointer does not cover the next element in the camera image. This needs airhand firmware 0.1.1 or later.
+
+    **Tips for iOS:** set the hardware keyboard layout to U.S. (Settings > General > Keyboard > Hardware Keyboard), and turn off Auto-Capitalization and Smart Punctuation, so that typed text arrives as sent. Do not press `home` just before `Launch App`: Home a few seconds after an app opened from Spotlight shows Spotlight again, and Cmd+Space then closes it.
+
+    #### Without a camera
+
+    With `elements_sources: []`, a project drives the device by positions and keys only: `Press By Percentage`, `Press By Coordinates`, `Swipe`, `Scroll`, `Enter Text Using Keyboard`, `Press Keycode`, `Clear Text` and `Launch App`. A keyword that must see the screen, such as `Press Element` or `Assert Presence`, stops with `E0501`. No screenshots are saved.
+
+    #### MCP and `optics serve`
+
+    Start a session with `driver="ble"` and the `platform` and `frame` capabilities. When the server has `WEBCAM_SCREENSHOT_URL` set, the session reads the screen through that camera at the frame size; otherwise it runs without a camera. A remote session names the dongle by `serial`, never by `port`, and reads only the camera the server sets: a `url` on `camera_screenshot` is refused, because the server would fetch any address the caller names.
+
+    #### Migrating from the v1 ble driver
+
+    The driver needs airhand firmware. A dongle with other firmware stops the session (`E0501`): install the airhand bootloader and firmware as in step 2 of **Set up**.
+
+    | v1 capability | Now |
+    |---------------|-----|
+    | `port` as the USB product name | `serial`, the USB serial number, or nothing with one dongle |
+    | `pixel_width`, `pixel_height` | `frame: {width, height}` |
+    | `mickeys_width`, `mickeys_height`, `x_invert`, `y_invert` | Remove them. Positions go to the dongle as fractions of the frame, so no calibration is necessary. |
+    | `device_id` | Remove it. |
+    | — | Add `platform`. |
+
+    The driver refuses a configuration that still has a v1 key.
 
 === "Smart TV (Appium)"
 
@@ -894,8 +962,10 @@ Element sources define methods for locating and capturing UI elements.
     | `url` | `ip:port` (raw TCP, unchanged) or an `http://` / `https://` URL fetched with `GET`. |
     | `token` | Sent as `Authorization: Bearer <token>` to an HTTP url. Masked in logs; redirects are not followed. |
     | `camera_index` | Local webcam index, used instead of `url`. |
+    | `camera_width`, `camera_height` | The size that the webcam captures at. If you do not set them, the source uses the largest size that the camera gives. |
     | `deskew_corners` | The screen's four corners in the camera frame as `"x,y"`: top-left, top-right, bottom-right, bottom-left. The frame is cut to the screen and stretched to `out_width` x `out_height`. |
-    | `out_width`, `out_height` | Size of the deskewed frame (default `1080` x `1920`). Set them to the device's screenshot resolution. |
+    | `find_screen` | Find the screen's corners automatically, instead of `deskew_corners`: `brightness` or `frame` (see below). |
+    | `out_width`, `out_height` | Size of the frame (default `1080` x `1920`). Set them to the device's screenshot resolution. Without `deskew_corners` or `find_screen`, a frame of another size is scaled to the size that you set. |
     | `rotation` | `clockwise` or `counterclockwise`: a quarter turn after deskewing. |
 
     Use it as a fallback for a screen the driver cannot capture (a protected screen gives a black screenshot): list it after the driver's screenshot source. With an Appium driver, OCR and image matches on the camera frame are mapped into the driver's window, as an Appium screenshot's matches are, so taps land on the device. For this, the deskewed frame must show only the screen, with the screenshot's aspect ratio. Other drivers get the frame's pixels unchanged.
@@ -912,6 +982,34 @@ Element sources define methods for locating and capturing UI elements.
             out_width: 1080
             out_height: 2400
     ```
+
+    #### A webcam aimed at a phone
+
+    ```yaml
+    elements_sources:
+      - camera_screenshot:
+          enabled: true
+          capabilities:
+            camera_index: 0
+            find_screen: brightness
+            out_width: 1170
+            out_height: 2532
+    ```
+
+    With `camera_index`, each capture is a new frame: the source discards the frames that the camera kept in its buffer, so a frame after a tap shows the screen after the tap. When the camera opens, the source waits 1 s for the exposure to become stable. Then it locks focus, white balance and exposure if the camera backend lets it. The log gives the capture size, the frame rate and the locked controls.
+
+    With `find_screen`, the source finds the screen at the first capture:
+
+    | `find_screen` | How the source finds the screen |
+    |---------------|---------------------------------|
+    | `brightness` | The driver presses `brightnessdown` 8 times, then `brightnessup` 8 times. Only the screen changes between the two frames, so the source finds the screen on any page that is not black. The screen goes back to its brightness. If it started below the middle level, it ends at the middle level. The `ble` driver has these keys. If the driver cannot press them, or the screen does not change, the source uses `frame`. |
+    | `frame` | The screen is the bright area in one frame, inside a dark bezel. This needs a bright page from edge to edge, for example Settings in light mode. No driver is necessary. |
+
+    The source fits a straight line to each edge of the screen and puts the corners where the lines meet, so rounded corners and a notch do not move them. The screen in the camera must have the shape of `out_width` x `out_height` (4 % tolerance; the source corrects for the camera's angle). The source saves `camera_screen_found_<time>.jpg` in the output folder, with the screen marked, and logs the corners as a `deskew_corners` value. To skip the search, put that value in config.yaml instead of `find_screen`.
+
+    Show a bright screen when the run starts. If an edge of the screen is black (dark mode, a black status bar), the source cannot find that edge and stops with `E0305`.
+
+    At each capture, the source compares the area around the screen with the same area at the first capture. Screen content cannot change that area. If the phone or the camera moved, the source finds the screen again (`find_screen`) or stops with `E0305` (`deskew_corners`). If the area around the screen has no texture, for example a plain black holder, the source cannot see a movement, and the log says so. With `find_screen` or `deskew_corners`, if the screen shows no lit pixel for 3 s, the source stops with `E0305` and "the screen is off". With `E0305`, the source saves the camera frame as `camera_blind_<time>.jpg`, and `Press Element` and the other element keywords stop at once: no fallback element and no wait can help. `Assert Presence` stops at once too, unless another element source (for example a page source) can find the element: then it continues to look there until its timeout.
 
     !!! note "Environment fallback"
         When neither `url` nor `camera_index` is configured, the source reads
@@ -1006,17 +1104,36 @@ Image detection engines provide template matching capabilities for locating UI e
           enabled: true
           url: null
           capabilities:
+            scale_range: [0.8, 1.25]
             sift_nfeatures: 2000
     ```
 
     !!! note "Local Processing"
         Template matching runs locally using OpenCV and does not require external services.
 
-    Matching is two-stage: a `cv2.matchTemplate` fast path handles exact
-    same-scale matches, and a SIFT + FLANN + RANSAC fallback covers scaled or
-    rotated instances. `capabilities.sift_nfeatures` (default `2000`) caps the
-    SIFT features extracted per frame in that fallback, bounding per-call
-    memory; raise it only if scaled matches fail on feature-poor screens.
+    A template that you cut on one device also matches on devices with a different screen size:
+
+    1. The matcher looks for the template at its own size. This pass runs on a reduced copy of
+       the screen and then measures each match at full resolution, so the returned coordinates
+       stay exact.
+    2. If that pass finds nothing, the matcher tries the sizes in `scale_range` (default
+       `[0.8, 1.25]`, in 5% steps) on images with equalised local contrast. The size with the
+       best score wins. Equalised contrast keeps the extra sizes from matching icons that only
+       look similar.
+    3. If both passes find nothing, a SIFT + FLANN + RANSAC search runs. It also finds rotated
+       instances. `sift_nfeatures` (default `2000`) sets the maximum number of features that
+       SIFT reads from each frame.
+
+    `index` counts the matches at one size, from the top down and from left to right.
+
+    !!! tip "Templates for many devices"
+        - Cut each template tight around the element. Background and badges make icons that
+          look alike more similar.
+        - Widen `scale_range` when screens differ by more than 20%, for example
+          `[0.5, 1.25]` for templates cut from device screenshots that you match on a
+          smaller camera frame.
+        - With a camera, keep reflections off the screen. Highlights that are pure white
+          cannot be matched.
 
 === "Remote OIR"
 
