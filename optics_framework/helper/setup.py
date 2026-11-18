@@ -63,7 +63,7 @@ ACTION_DRIVERS = EngineCategory(
     name="Action Driver",
     engines={
         "Appium": EngineBackend(name="Appium", extra="appium", packages=["appium-python-client"]),
-        "BLE": EngineBackend(name="BLE", extra="ble", packages=["pyserial"]),
+        "BLE": EngineBackend(name="BLE", extra="ble", packages=["airhand"], aliases=["bluetooth"]),
         "Selenium": EngineBackend(name="Selenium", extra="selenium", packages=["selenium"]),
         "Playwright": EngineBackend(name="Playwright", extra="playwright", packages=["playwright"]),
     }

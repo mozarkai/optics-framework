@@ -624,7 +624,7 @@ class FileWriter:
             "Appium-Python-Client",
             "pytest" if framework == "pytest" else "robotframework",
             "easyocr",
-            "pyserial",
+            "airhand",
             "pytest-tagging",
         ]
         requirements_file = safe_fs.write_text(

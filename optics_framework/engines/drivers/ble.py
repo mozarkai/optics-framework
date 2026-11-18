@@ -1,800 +1,580 @@
 import math
-import time
-import os
-import platform
 import re
-from typing import Any, Dict, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-import serial.tools.list_ports
-from serial import Serial
-from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.eventSDK import EventSDK
+import time
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, Dict, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, ValidationError, model_validator
+
 from optics_framework.common import utils
+from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.eventSDK import EventSDK
+from optics_framework.common.logging_config import internal_logger
+
+try:
+    import airhand
+except ImportError:
+    airhand = None
+
+MIGRATION_NOTE = "'Migrating from the v1 ble driver' in the configuration docs"
+LEGACY_KEYS = frozenset({"device_id", "x_invert", "y_invert", "pixel_width", "pixel_height", "mickeys_width", "mickeys_height"})
+SWIPE_MS = 1000
+# In frame heights per second; iOS reads a slower drag as a tap at its start, or ignores it.
+MIN_DRAG_SPEED = 0.75
+WHEEL_LINES = 5
+# iOS reads a burst of detents as one flick and reverses its sign: 1-2 move nothing, 8 move 0.46 of an iPhone screen.
+IOS_WHEEL_LINES = 8
+# iOS sends the wheel to the view under the pointer.
+WHEEL_AT = (0.5, 0.5)
+DIRECTIONS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+DESKTOP_WHEEL = {"up": (WHEEL_LINES, 0), "down": (-WHEEL_LINES, 0), "left": (0, -WHEEL_LINES), "right": (0, WHEEL_LINES)}
+IOS_WHEEL = {"up": (-IOS_WHEEL_LINES, 0), "down": (IOS_WHEEL_LINES, 0)}
+# Android ignores the wheel from the dongle; a 0.6-screen drag this slow moves the content 1.08 times, an 800 ms one 1.5 times and up to a screen.
+ANDROID_SCROLL_MS = 4000
+MEDIA = {"volumeup": "volup", "volumedown": "voldown"}
+NO_HID_KEY = frozenset({"power", "camera"})
+SEARCH_OPEN_S = 0.6
+# iOS ignores an Enter that arrives before Spotlight has listed its results.
+SEARCH_RESULTS_S = 1.5
+# Keys sent while the app opens are lost.
+APP_OPEN_S = 1.5
+HOME_TWICE_S = 0.15
+# A switcher opened while the app still animates home lays its cards out from that app, not from the home screen.
+HOME_SETTLE_S = 1.0
+# iOS ignores Cmd+Space for a moment after Home closes Spotlight.
+SEARCH_CLOSED_S = 2.5
+# Android draws the focus move before an Enter can act on it.
+FOCUS_MOVE_S = 0.4
+SWITCHER_OPEN_S = 1.2
+FLICK_MS = 250
+# The cursor stays where it pressed and hides that spot from the camera; the status bar holds nothing a test reads.
+PARK = (1.0, 0.0)
+LaunchMethod = Literal["search_key", "launcher_key", "drawer_search", "drawer_tap", "home_icon"]
+DRAWER_METHODS = frozenset({"drawer_search", "drawer_tap"})
+# A search that found the app shows its name twice: the typed query and the result.
+SEARCH_SHOWS_NAME = 2
+# The icon's middle is about two label heights above its label.
+ICON_ABOVE_LABEL = 2.0
 
 
-class CapabilitiesConfig(BaseModel):
-    device_id: str
-    port: str
-    x_invert: int = Field(default=1, ge=-1, le=1, description="Must be either 1 or -1")
-    y_invert: int = Field(default=1, ge=-1, le=1, description="Must be either 1 or -1")
-    pixel_height: int = Field(
-        default=0, ge=0, description="Height of the device in pixels"
-    )
-    pixel_width: int = Field(
-        default=0, ge=0, description="Width of the device in pixels"
-    )
-    mickeys_height: int = Field(
-        default=0, ge=0, description="Height of the device in mickeys"
-    )
-    mickeys_width: int = Field(
-        default=0, ge=0, description="Width of the device in mickeys"
-    )
+@dataclass(frozen=True)
+class Platform:
+    back: Optional[tuple[str, str]]
+    launcher: Optional[str]
+    touch: bool
+    media_home: bool
+    select_all: str = "ctrl+a"
+    # Where the App Switcher shows the last app used, when it is opened from the home screen.
+    last_app_card: Optional[float] = None
+    # Where a flick that closes that card starts and ends; Android lets a short flick snap back about one time in ten.
+    card_flick: tuple[float, float] = (0.5, 0.05)
+    # Android reads the dongle's pointer as a relative mouse, so it gets touches.
+    finger: bool = False
+    # Opens the list of apps with its search box, and the app switcher, when the system search cannot open an app.
+    app_list: Optional[str] = None
+    switcher: Optional[str] = None
+    # Home from an app that the system search opened goes back to the search, so leaving it takes a second Home.
+    search_returns: bool = False
+    # The wheel detents and pan that scroll each direction; a direction without one drags.
+    wheel: Mapping[str, tuple[int, int]] = field(default_factory=dict)
+    # How long a Scroll drag lasts, when the screen flings content on by the release speed.
+    scroll_ms: Optional[int] = None
 
-    # app_element: str = Field(default="app", description="Element to launch the app")
-    model_config = ConfigDict(populate_by_name=True)
+
+PLATFORMS: dict[str, Platform] = {
+    "android": Platform(
+        ("media", "back"),
+        None,
+        touch=True,
+        media_home=True,
+        last_app_card=0.5,
+        card_flick=(0.75, 0.02),
+        finger=True,
+        app_list="meta",
+        switcher="meta+tab",
+        scroll_ms=ANDROID_SCROLL_MS,
+    ),
+    "ios": Platform(
+        None, "cmd+space", touch=True, media_home=True, select_all="cmd+a", last_app_card=0.5, search_returns=True, wheel=IOS_WHEEL
+    ),
+    "macos": Platform(("key", "cmd+["), "cmd+space", touch=False, media_home=False, select_all="cmd+a", wheel=DESKTOP_WHEEL),
+    "windows": Platform(("key", "alt+left"), "ctrl+escape", touch=False, media_home=False, wheel=DESKTOP_WHEEL),
+    "linux": Platform(("key", "alt+left"), None, touch=False, media_home=False, wheel=DESKTOP_WHEEL),
+}
+
+
+class Frame(BaseModel):
+    width: PositiveInt
+    height: PositiveInt
+
+
+class Point(BaseModel):
+    x: NonNegativeInt
+    y: NonNegativeInt
+
+
+class Capabilities(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    serial: Optional[str] = None
+    port: Optional[str] = None
+    platform: Literal["android", "ios", "macos", "windows", "linux"]
+    frame: Frame
+    # Some Android launchers start an app search only from a tap on their search box.
+    app_search: Optional[Point] = None
+    launch: Optional[list[LaunchMethod]] = Field(None, min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_legacy_keys(cls, data: Any) -> Any:
+        legacy = sorted(LEGACY_KEYS & set(data)) if isinstance(data, dict) else []
+        if legacy:
+            raise ValueError(f"{', '.join(legacy)} belong to the v1 ble driver; see {MIGRATION_NOTE}")
+        return data
+
+    @model_validator(mode="after")
+    def _one_link(self) -> "Capabilities":
+        if self.serial is not None and self.port is not None:
+            raise ValueError("set serial (the dongle's USB serial number) or port, not both")
+        return self
+
+    @model_validator(mode="after")
+    def _app_search_in_frame(self) -> "Capabilities":
+        box = self.app_search
+        if box is not None and (box.x >= self.frame.width or box.y >= self.frame.height):
+            raise ValueError(f"app_search ({box.x}, {box.y}) is outside the frame {self.frame.width}x{self.frame.height}")
+        return self
+
+    @model_validator(mode="after")
+    def _launch_fits_platform(self) -> "Capabilities":
+        platform = PLATFORMS[self.platform]
+        missing = {
+            "launcher_key": platform.launcher is None,
+            "drawer_search": platform.app_list is None,
+            "drawer_tap": platform.app_list is None or self.app_search is None,
+            "home_icon": not platform.media_home,
+        }
+        refused = [method for method in self.launch or [] if missing.get(method)]
+        if refused:
+            raise ValueError(f"launch methods {', '.join(refused)} need a key or an app_search that platform {self.platform} does not have")
+        return self
+
+    @property
+    def launch_methods(self) -> list[str]:
+        if self.launch:
+            return list(self.launch)
+        platform = PLATFORMS[self.platform]
+        if platform.app_list:
+            methods = ["drawer_tap" if self.app_search else "drawer_search"]
+        else:
+            methods = ["launcher_key"] if platform.launcher else []
+        # Some launchers have no app drawer, or give its key to the assistant; their apps sit on the home screen.
+        return methods + ["home_icon"] if methods and platform.media_home else methods
 
 
 class BLEDriver(DriverInterface):
-    """
-    BLE-based implementation of the :class:`DriverInterface`.
-
-    This driver facilitates launching applications via BLE communication.
-    """
+    """Drives a device as a Bluetooth keyboard and pointer through an airhand dongle; positions are in ``frame`` pixels."""
 
     DEPENDENCY_TYPE = "driver_sources"
     NAME = "ble"
 
-    # Mouse button states
-    MOUSE_BUTTON_RELEASED = 0
-    MOUSE_BUTTON_PRESSED = 1
-
-    # Mouse movement constants
-    NO_MOVEMENT = 0
-    MOUSE_MAX_MOVEMENT = 127
-
-    # Keyboard command strings (legacy format)
-    MOUSE_RESET = "0 0 0"
-    MOUSE_PRESS = "1 0 0"
-    KEYBOARD_RESET = "0 0 0 0 0 0 0 0"
-    KEYBOARD_CLOSE_APP = "4 0 61 0 0 0 0 0"
-    KEYBOARD_SELECT_ALL = "1 0 4 0 0 0 0 0"
-    KEYBOARD_BACKSPACE = "0 0 42 0 0 0 0 0"
-
-    # Special key mapping from SpecialKey enum to HID key names
-    SPECIAL_KEY_MAPPING = {
-        # Basic keys
-        utils.SpecialKey.ENTER: 'Enter',
-        utils.SpecialKey.TAB: 'Tab',
-        utils.SpecialKey.BACKSPACE: 'Backspace',
-        utils.SpecialKey.SPACE: ' ',
-        utils.SpecialKey.ESCAPE: 'Escape',
-
-        # Arrow keys
-        utils.SpecialKey.LEFT: 'Left',
-        utils.SpecialKey.RIGHT: 'Right',
-        utils.SpecialKey.UP: 'Up',
-        utils.SpecialKey.DOWN: 'Down',
-
-        # Navigation keys
-        utils.SpecialKey.INSERT: 'Insert',
-        utils.SpecialKey.DELETE: 'Delete',
-        utils.SpecialKey.HOME: 'Home',
-        utils.SpecialKey.END: 'End',
-        utils.SpecialKey.PAGE_UP: 'PageUp',
-        utils.SpecialKey.PAGE_DOWN: 'PageDown',
-
-        # Function keys
-        utils.SpecialKey.F1: 'F1',
-        utils.SpecialKey.F2: 'F2',
-        utils.SpecialKey.F3: 'F3',
-        utils.SpecialKey.F4: 'F4',
-        utils.SpecialKey.F5: 'F5',
-        utils.SpecialKey.F6: 'F6',
-        utils.SpecialKey.F7: 'F7',
-        utils.SpecialKey.F8: 'F8',
-        utils.SpecialKey.F9: 'F9',
-        utils.SpecialKey.F10: 'F10',
-        utils.SpecialKey.F11: 'F11',
-        utils.SpecialKey.F12: 'F12',
-
-        # System keys
-        utils.SpecialKey.PRINT_SCREEN: 'PrintScreen',
-        utils.SpecialKey.SCROLL_LOCK: 'ScrollLock',
-        utils.SpecialKey.PAUSE: 'Pause',
-
-        # Numpad keys
-        utils.SpecialKey.NUM_LOCK: 'NumLock',
-        utils.SpecialKey.NUM_PAD_0: 'NumPad0',
-        utils.SpecialKey.NUM_PAD_1: 'NumPad1',
-        utils.SpecialKey.NUM_PAD_2: 'NumPad2',
-        utils.SpecialKey.NUM_PAD_3: 'NumPad3',
-        utils.SpecialKey.NUM_PAD_4: 'NumPad4',
-        utils.SpecialKey.NUM_PAD_5: 'NumPad5',
-        utils.SpecialKey.NUM_PAD_6: 'NumPad6',
-        utils.SpecialKey.NUM_PAD_7: 'NumPad7',
-        utils.SpecialKey.NUM_PAD_8: 'NumPad8',
-        utils.SpecialKey.NUM_PAD_9: 'NumPad9',
-        utils.SpecialKey.NUM_PAD_PLUS: 'NumPadPlus',
-        utils.SpecialKey.NUM_PAD_MINUS: 'NumPadMinus',
-        utils.SpecialKey.NUM_PAD_MULTIPLY: 'NumPadMultiply',
-        utils.SpecialKey.NUM_PAD_DIVIDE: 'NumPadDivide',
-        utils.SpecialKey.NUM_PAD_ENTER: 'NumPadEnter',
-        utils.SpecialKey.NUM_PAD_DECIMAL: 'NumPadDecimal',
-        utils.SpecialKey.NUM_PAD_COMMA: 'NumPadComma',
-        utils.SpecialKey.NUM_PAD_PERIOD: 'NumPadPeriod',
-        utils.SpecialKey.NUM_PAD_EQUAL: 'NumPadEqual'
-
-        # Note: Mobile-specific keys (BACK, MENU, VOLUME_UP, VOLUME_DOWN, POWER, CAMERA, SEARCH)
-        # are not supported by BLE keyboards and are excluded from this mapping
-    }
-
-
-    @staticmethod
-    def get_port_by_name(name: str) -> Optional[str]:
-        """
-        Find a serial port by its product description (e.g., 'MZ-BLE-VMK-002-v1.2.1').
-
-        :param name: Product name string from lsusb / pyserial (e.g., "MZ-BLE-VMK-001-v1.2.1")
-        :return: Device path (e.g., "/dev/cu.usbmodem1101") or None if not found
-        """
-        for port in serial.tools.list_ports.comports():
-            if port.description == name:
-                return port.device
-        return None
-
     def __init__(self, config: Optional[Dict[str, Any]] = None, event_sdk: Optional[EventSDK] = None):
         if event_sdk is None:
-            internal_logger.error("No EventSDK instance provided to BLE driver.")
-            raise ValueError("BLE driver requires an EventSDK instance.")
+            raise OpticsError(Code.E0101, message="The ble driver needs an EventSDK")
+        if airhand is None:
+            raise OpticsError(Code.E0601, message="The ble driver needs the airhand package: pip install 'optics-framework[ble]', or run optics setup")
         self.event_sdk = event_sdk
-        if config is None:
-            internal_logger.error(
-                f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}"
-            )
-            raise ValueError("Bluetooth driver not enabled in config")
-
         try:
-            self.capabilities_model = CapabilitiesConfig(
-                **config.get("capabilities", {})
-            )
-        except ValidationError as ve:
-            internal_logger.error(f"Invalid Bluetooth capabilities: {ve}")
-            raise
-        cap: CapabilitiesConfig = self.capabilities_model
-
-        self.device_id = cap.device_id
-        port_candidate = cap.port
-        resolved_port = None
-        # Cross-platform port detection
-        is_windows = platform.system().lower() == "windows"
-        is_unix = os.name == "posix"
-        com_pattern = re.compile(r"^com\d+$", re.IGNORECASE)
-        if port_candidate:
-            if (is_unix and port_candidate.startswith("/dev/")) or (is_windows and com_pattern.match(port_candidate)):
-                self.port = port_candidate
-            else:
-                resolved_port = self.get_port_by_name(port_candidate)
-                if not resolved_port:
-                    internal_logger.error(f"Could not resolve serial port for product description: {port_candidate}")
-                    raise ValueError(f"Could not resolve serial port for product description: {port_candidate}")
-                self.port = resolved_port
-        else:
-            self.port = port_candidate
-
-        self.device_ratio = cap.pixel_height / cap.pixel_width
-        self.x_invert = cap.x_invert
-        self.y_invert = cap.y_invert
-        self.x_scale_factor_pxmc = cap.pixel_width / cap.mickeys_width
-        self.y_scale_factor_pxmc = cap.pixel_height / cap.mickeys_height
-        self.pixel_height = cap.pixel_height
-        self.pixel_width = cap.pixel_width
-        self.mickeys_height = cap.mickeys_height
-        self.mickeys_width = cap.mickeys_width
+            self.capabilities = Capabilities(**(config or {}).get("capabilities", {}))
+        except ValidationError as exc:
+            raise OpticsError(Code.E0503, message=f"Invalid ble capabilities: {exc}") from exc
+        self.platform = PLATFORMS[self.capabilities.platform]
+        self._read_screen: Optional[Callable[[], list[dict]]] = None
         try:
-            self.ser = Serial(self.port, baudrate=115200, timeout=1)
-            self.mouse_reset_position()
-        except Exception as e:
-            internal_logger.error(f"Failed to initialize serial port: {e}")
-            raise
+            with _mapped():
+                self._dongle = airhand.Dongle(self.capabilities.serial, port=self.capabilities.port, touch=self.platform.finger)
+        except ValueError as exc:
+            raise OpticsError(Code.E0503, message=f"{exc} in capabilities.serial") from exc
+        internal_logger.info(f"ble dongle ready: {self._dongle.identity}")
 
-    def _send_mouse_reset(self):
-        """Send a mouse command with no button press and no movement."""
-        self.send_mouse_command(self.MOUSE_BUTTON_RELEASED, self.NO_MOVEMENT, self.NO_MOVEMENT)
+    @staticmethod
+    def is_dead_session_error(exc: BaseException) -> bool:
+        lost = airhand is not None and isinstance(exc, (airhand.DongleLost, airhand.HostUnavailable))
+        return lost or (isinstance(exc, OpticsError) and exc.code == Code.E0106)
 
-    def _send_mouse_press(self):
-        """Send a mouse command with button pressed and no movement."""
-        self.send_mouse_command(self.MOUSE_BUTTON_PRESSED, self.NO_MOVEMENT, self.NO_MOVEMENT)
-
-    def _send_mouse_release(self):
-        """Send a mouse command with button released and no movement."""
-        self.send_mouse_command(self.MOUSE_BUTTON_RELEASED, self.NO_MOVEMENT, self.NO_MOVEMENT)
-
-    def send_mouse_command(self, button_state: int, x_delta_mic: int, y_delta_mic: int):
-        """
-        Send a mouse command via serial to move the mouse and update the current coordinates.
-
-        Args:
-            button_state (int): The state of the mouse button (0 for release, 1 for press).
-            x_delta_mic (int): The change in the X coordinate in mickeys.
-            y_delta_mic (int): The change in the Y coordinate in mickeys.
-        """
-        mouse_command = f"{button_state} {x_delta_mic} {y_delta_mic}"
-        self.ser.write((mouse_command + "\n").encode("utf-8"))
-        time.sleep(0.1)
+    def supports(self, capability: str) -> bool:
+        if capability == "go_back":
+            return self.platform.back is not None
+        opens_apps = bool(self.capabilities.launch_methods)
+        if capability in ("launch_app", "launch_other_app"):
+            return opens_apps
+        if capability == "force_terminate_app":
+            return opens_apps and self.platform.last_app_card is not None
+        return super().supports(capability)
 
     def get_driver_session_id(self) -> Optional[str]:
-        """Not applicable for BLE driver; raise NotImplementedError."""
-        raise NotImplementedError("Driver session id is not available for BLE driver")
+        return self._dongle.identity
 
-    def execute_script(self, script: str, *args, event_name: Optional[str] = None) -> Any:
-        """
-        Execute JavaScript/script in the current context.
+    def press_coordinates(self, coor_x: int, coor_y: int, event_name: Optional[str] = None) -> None:
+        self._capture(event_name)
+        with _mapped():
+            self._dongle.tap(*self._to_fractions(coor_x, coor_y))
+            self._park()
 
-        BLE driver does not support script execution as it is a hardware driver.
+    def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int, event_name: Optional[str] = None) -> None:
+        self._capture(event_name)
+        with _mapped():
+            for _ in range(repeat):
+                self._dongle.tap(percentage_x / 100, percentage_y / 100)
+            self._park()
 
-        :param script: The JavaScript code or script command to execute.
-        :type script: str
-        :param *args: Optional arguments to pass to the script.
-        :param event_name: The event triggering the script execution, if any.
-        :type event_name: Optional[str]
-        :return: The result of the script execution.
-        :rtype: Any
-        :raises NotImplementedError: BLE driver does not support script execution.
-        """
-        raise NotImplementedError("BLE driver does not support script execution.")
+    def swipe(self, x_coor: int, y_coor: int, direction: str, swipe_length: int, event_name: Optional[str] = None) -> None:
+        dx, dy = _direction(direction)
+        frame = self.capabilities.frame
+        end_x = min(max(x_coor + dx * swipe_length, 0), frame.width)
+        end_y = min(max(y_coor + dy * swipe_length, 0), frame.height)
+        self._capture(event_name)
+        self._drag(self._to_fractions(x_coor, y_coor), self._to_fractions(end_x, end_y), SWIPE_MS)
 
-    def translate_coordinates_relative(
-        self, button_state: int, x_coor_mic: int, y_coor_mic: int
-    ):
-        """
-        Translate large cartesian coordinates to multiple relative moves, handling
-        movements greater than the maximum movement range.
+    def swipe_percentage(self, x_percentage: int, y_percentage: int, direction: str, swipe_length_percentage: int, event_name: Optional[str] = None) -> None:
+        dx, _ = _direction(direction)
+        frame = self.capabilities.frame
+        length = (frame.width if dx else frame.height) * swipe_length_percentage / 100
+        self.swipe(frame.width * x_percentage / 100, frame.height * y_percentage / 100, direction, length, event_name)
 
-        Args:
-            button_state (int): The state of the mouse button (0 for release, 1 for press).
-            x_coor_mic (int): The X coordinate in mickeys to move to.
-            y_coor_mic (int): The Y coordinate in mickeys to move to.
-        """
-        x_steps, x_remainder = divmod(abs(x_coor_mic), self.MOUSE_MAX_MOVEMENT)
-        y_steps, y_remainder = divmod(abs(y_coor_mic), self.MOUSE_MAX_MOVEMENT)
-        reports = x_steps + y_steps + bool(x_remainder) + bool(y_remainder)
-        if reports > self._max_move_reports():
-            raise OpticsError(
-                Code.E0403,
-                message=f"A move of ({x_coor_mic}, {y_coor_mic}) mickeys leaves the "
-                f"{self.mickeys_width}x{self.mickeys_height} calibrated screen",
-            )
+    def scroll(self, direction: str, duration: int = 1000, event_name: Optional[str] = None) -> None:
+        fractions = utils.SCROLL_FRACTIONS.get(direction)
+        if fractions is None:
+            raise OpticsError(Code.E0403, message=f"Unknown scroll direction '{direction}'")
+        self._capture(event_name)
+        if self.platform.scroll_ms is not None:
+            with _mapped():
+                self._dongle.swipe(fractions[:2], fractions[2:], self.platform.scroll_ms)
+            return
+        wheel = self.platform.wheel.get(direction)
+        if wheel is None:
+            self._drag(fractions[:2], fractions[2:], int(duration))
+            return
+        with _mapped():
+            if self.platform.touch:
+                self._dongle.move(*WHEEL_AT)
+            self._dongle.wheel(*wheel)
+            self._park()
 
-        x_direction = 1 if x_coor_mic > 0 else -1
-        y_direction = 1 if y_coor_mic > 0 else -1
+    def enter_text(self, text: str | utils.SpecialKey, event_name: Optional[str] = None) -> None:
+        if isinstance(text, utils.SpecialKey):
+            self.press_keycode(text.value, event_name)
+            return
+        self._capture(event_name)
+        with _mapped():
+            self._dongle.type_text(utils.strip_sensitive_prefix(text))
 
-        for _ in range(x_steps):
-            self.send_mouse_command(
-                button_state, self.MOUSE_MAX_MOVEMENT * x_direction * self.x_invert, self.NO_MOVEMENT
-            )
-        for _ in range(y_steps):
-            self.send_mouse_command(
-                button_state, self.NO_MOVEMENT, self.MOUSE_MAX_MOVEMENT * y_direction * self.y_invert
-            )
-
-        if x_remainder != 0:
-            self.send_mouse_command(
-                button_state, x_remainder * x_direction * self.x_invert, self.NO_MOVEMENT
-            )
-        if y_remainder != 0:
-            self.send_mouse_command(
-                button_state, self.NO_MOVEMENT, y_remainder * y_direction * self.y_invert
-            )
-
-    def _max_move_reports(self) -> int:
-        """Reports one move needs to cross the whole calibrated screen: no useful move needs more."""
-        return math.ceil(self.mickeys_width / self.MOUSE_MAX_MOVEMENT) + math.ceil(
-            self.mickeys_height / self.MOUSE_MAX_MOVEMENT) + 2
-
-    def mouse_reset_position(self):
-        """
-        Reset the mouse position to the origin (0, 0) by sending multiple movement commands.
-        Mouse moves to bottom corner left of the screen.
-        """
-        for _ in range(40):
-            self.send_mouse_command(
-                self.MOUSE_BUTTON_RELEASED,
-                -self.MOUSE_MAX_MOVEMENT * self.x_invert,
-                -self.MOUSE_MAX_MOVEMENT * self.y_invert,
-            )
-            time.sleep(0.1)
-        self._send_mouse_reset()
-
-    def mouse_tap(self):
-        """
-        Simulate a mouse tap (click) by sending a press and release command.
-        """
-        self._send_mouse_reset()
-        self._send_mouse_press()
-        self._send_mouse_release()
-
-    def mouse_double_tap(self):
-        """
-        Simulate a mouse double-tap (double-click) by performing two consecutive taps.
-        """
-        self.mouse_tap()
-        self.mouse_tap()
-
-    def convert_pixel_to_mickeys(self, x_coor_px: int, y_coor_px: int):
-        """
-        Convert pixel coordinates to Mickeys (smallest detectable unit of movement).
-
-        Args:
-            x_coor_px (int): The X coordinate in pixels.
-            y_coor_px (int): The Y coordinate in pixels.
-
-        Returns:
-            Tuple[int, int]: The converted X and Y coordinates in Mickeys.
-        """
-        x_coor_mic = int(x_coor_px / self.x_scale_factor_pxmc)
-        y_coor_mic = int(y_coor_px / self.y_scale_factor_pxmc)
-        print(f"Converted Pixel to Mickeys: {x_coor_mic}, {y_coor_mic}")
-        return x_coor_mic, y_coor_mic
-
-    def translate_coordinates_relative_pixel(
-        self, button_state: int, x_coor_px: int, y_coor_px: int
-    ):
-        """
-        Translate pixel coordinates to relative coordinates and send the mouse command.
-
-        Args:
-            button_state (int): The state of the mouse button (0 for release, 1 for press).
-            x_coor_px (int): The X coordinate in pixels.
-            y_coor_px (int): The Y coordinate in pixels.
-        """
-        x_coor_mic, y_coor_mic = self.convert_pixel_to_mickeys(x_coor_px, y_coor_px)
-        self.translate_coordinates_relative(button_state, x_coor_mic, y_coor_mic)
-
-    def move_tap(
-        self, x_coor_px: int, y_coor_px: int, time_press: float = 0.1, event_name=None
-    ):
-        """
-        Move the mouse to the specified coordinates and perform a tap (click).
-
-        Args:
-            x_coor_px (int): The X coordinatein pixels to move to.
-            y_coor_px (int): The Y coordinatein pixels to move to.
-        """
-        x_coor_px, y_coor_px, time_press = (
-            int(x_coor_px),
-            int(y_coor_px),
-            int(time_press),
-        )
-        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor_px, y_coor_px)
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        self.mouse_tap()
-        time.sleep(time_press)
-        self.mouse_reset_position()
-
-    def swipe_ble(self, direction: str, distance: int = 40, acceleration: int = 1):
-        """
-        Perform a swipe action in the specified direction with optional acceleration,
-        and return to the original position without pressing the mouse during the return.
-
-        Args:
-            direction (str): The direction of the swipe (up, down, left, right).
-            acceleration (int, optional): The acceleration factor for the swipe.
-        """
-
-        def drag(distance: int, press: int, x: int = 0, y: int = 0):
-            current_distance = 0
-            step = 1
-            while current_distance < distance:
-                # Ensure it doesn't overshoot
-                move_distance = min(step, distance - current_distance)
-                self.translate_coordinates_relative_pixel(
-                    press, x * move_distance * 15, y * move_distance * 15
-                )
-                current_distance += move_distance
-                step += acceleration
-                time.sleep(0.1)
-
-        # Perform the swipe with the press state active
-        match direction.lower():
-            case "up":
-                drag(distance, press=self.MOUSE_BUTTON_PRESSED, y=1)
-                drag(distance, press=self.MOUSE_BUTTON_RELEASED, y=-1)  # Return without pressing
-            case "down":
-                drag(distance, press=self.MOUSE_BUTTON_PRESSED, y=-1)
-                drag(distance, press=self.MOUSE_BUTTON_RELEASED, y=1)  # Return without pressing
-            case "left":
-                drag(distance, press=self.MOUSE_BUTTON_PRESSED, x=-1)
-                drag(distance, press=self.MOUSE_BUTTON_RELEASED, x=1)  # Return without pressing
-            case "right":
-                drag(distance, press=self.MOUSE_BUTTON_PRESSED, x=1)
-                drag(distance, press=self.MOUSE_BUTTON_RELEASED, x=-1)  # Return without pressing
-            case _:
-                print("Invalid direction")
-
-    def press_coordinates(
-        self, coor_x: int, coor_y: int, event_name: Optional[str] = None
-    ) -> None:
-        """
-        Press an element by absolute coordinates using BLE.
-
-        :param x_coor: X coordinate of the press.
-        :type x_coor: int
-        :param y_coor: Y coordinate of the press.
-        :type y_coor: int
-        :param event_name: The event triggering the press.
-        :type event_name: str | None
-        """
-        internal_logger.debug(f"Pressing coordinates ({coor_x}, {coor_y}) via BLE.")
-        self.move_tap(coor_x, coor_y, event_name=event_name)
-
-    hid_key_codes = {
-        'a': 4, 'b': 5, 'c': 6, 'd': 7, 'e': 8, 'f': 9, 'g': 10,
-        'h': 11, 'i': 12, 'j': 13, 'k': 14, 'l': 15, 'm': 16, 'n': 17,
-        'o': 18, 'p': 19, 'q': 20, 'r': 21, 's': 22, 't': 23, 'u': 24,
-        'v': 25, 'w': 26, 'x': 27, 'y': 28, 'z': 29,
-        'A': 4, 'B': 5, 'C': 6, 'D': 7, 'E': 8, 'F': 9, 'G': 10,
-        'H': 11, 'I': 12, 'J': 13, 'K': 14, 'L': 15, 'M': 16, 'N': 17,
-        'O': 18, 'P': 19, 'Q': 20, 'R': 21, 'S': 22, 'T': 23, 'U': 24,
-        'V': 25, 'W': 26, 'X': 27, 'Y': 28, 'Z': 29,
-        '1': 30, '2': 31, '3': 32, '4': 33, '5': 34, '6': 35, '7': 36,
-        '8': 37, '9': 38, '0': 39,
-        ' ': 44, '\n': 40, '\t': 43,
-        '!': 30, '@': 31, '#': 32, '$': 33, '%': 34, '^': 35,
-        '&': 36, '*': 37, '(': 38, ')': 39,
-        '-': 45, '_': 45, '=': 46, '+': 46,
-        '[': 47, '{': 47, ']': 48, '}': 48, '\\': 49, '|': 49,
-        ';': 51, ':': 51, "'": 52, '"': 52, '`': 53, '~': 53,
-        ',': 54, '<': 54, '.': 55, '>': 55, '/': 56, '?': 56,
-        'Backspace': 42, 'Tab': 43, 'Enter': 40, 'Escape': 41,
-        'Left': 80, 'Right': 79, 'Up': 82, 'Down': 81,
-        'Insert': 82, 'Delete': 83, 'Home': 74, 'End': 77,
-        'PageUp': 75, 'PageDown': 78, 'F1': 58, 'F2': 59, 'F3': 60,
-        'F4': 61, 'F5': 62, 'F6': 63, 'F7': 64, 'F8': 65,
-        'F9': 66, 'F10': 67, 'F11': 68, 'F12': 69,
-        'PrintScreen': 70, 'ScrollLock': 71, 'Pause': 72,
-        'NumLock': 83, 'NumPad0': 82, 'NumPad1': 79, 'NumPad2': 80,
-        'NumPad3': 81, 'NumPad4': 75, 'NumPad5': 76,
-        'NumPad6': 77, 'NumPad7': 71, 'NumPad8': 72,
-        'NumPad9': 73, 'NumPadPlus': 78, 'NumPadMinus': 74,
-        'NumPadMultiply': 55, 'NumPadDivide': 53,
-        'NumPadEnter': 40, 'NumPadDecimal': 83,
-        'NumPadComma': 83, 'NumPadPeriod': 83,
-        'NumPadEqual': 83,
-    }
-
-
-    def send_keyboard_command(self, keyboard_command):
-        """
-        Send a keyboard command via serial to type a key.
-        expected format: "X1 X2 X3 X4 X5 X6 X7 X8"
-        Args:
-            key (str): The key to be typed.
-        """
-        self.ser.write((keyboard_command + "\n").encode("utf-8"))
-        time.sleep(0.1)
-
-    def keyboard(self, text: str) -> None:
-        """
-        Sends keyboard commands to the BLE mouse device.
-
-        Args:
-            text (str): The text to be sent as keyboard commands.
-
-        Returns:
-            None
-        """
-        # Define characters that require Shift key
-        shift_characters = {
-            '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
-            '_', '+', '{', '}', '|', ':', '"', '~', '<', '>', '?'
-        }
-
-        skipped = 0
-        for char in text:
-            key_code = self.hid_key_codes.get(char)
-
-            if key_code is None:
-                skipped += 1
-                continue
-
-            # Check if the character requires Shift key (uppercase letters or special characters)
-            if char.isupper() or char in shift_characters:
-                # Send the shift key press
-                keyboard_command = f"2 0 {key_code} 0 0 0 0 0"  # Shift key press
-                self.send_keyboard_command(keyboard_command)
-            else:
-                # Convert char to HID report format
-                keyboard_command = f"0 0 {key_code} 0 0 0 0 0"
-                self.send_keyboard_command(keyboard_command)
-
-            self.send_keyboard_command(self.KEYBOARD_RESET)
-        self.send_keyboard_command(self.KEYBOARD_RESET)
-        if skipped:
-            internal_logger.warning(f"Skipped {skipped} of {len(text)} characters that have no HID key code")
-
-    def launch_app(
-        self,
-        app_identifier: str | None = None,
-        app_activity: str | None = None,
-        event_name: str | None = None,
-    ) -> None:
-        """
-        Launch an application using BLE.
-
-        :param event_name: The event triggering the app launch.
-        :type event_name: str
-        """
-        raise NotImplementedError("BLE driver does not support launching apps.")
-
-    def launch_other_app(self, app_name, event_name):
-        raise NotImplementedError("BLE driver does not support launching apps.")
-
-    def get_app_version(self) -> str:
-        raise NotImplementedError("BLE driver does not support getting app version.")
-
-    def press_element(
-        self, element: str, repeat: int, event_name: Optional[str] = None
-    ) -> None:
-        raise NotImplementedError("BLE driver does not support pressing elements.")
-
-    def press_percentage_coordinates(
-        self,
-        percentage_x: float,
-        percentage_y: float,
-        repeat: int,
-        event_name: Optional[str] = None,
-    ) -> None:
-        """
-        Press an element by percentage coordinates using BLE.
-
-        :param percentage_x: X coordinate of the press as a percentage.
-        :type percentage_x: float
-        :param percentage_y: Y coordinate of the press as a percentage.
-        :type percentage_y: float
-        :param repeat: Number of times to repeat the press.
-        :type repeat: int
-        :param event_name: The event triggering the press.
-        :type event_name: str | None
-        """
-        internal_logger.debug(
-            f"Pressing percentage coordinates ({percentage_x}, {percentage_y}) via BLE."
-        )
-        x_coor = int((percentage_x / 100.0) * self.pixel_width)
-        y_coor = int((percentage_y / 100.0) * self.pixel_height)
-        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
-        timestamp: str | None = self.event_sdk.get_current_time_for_events()
-        for _ in range(repeat):
-            self.mouse_tap()
-            time.sleep(0.1)
-        if event_name:
-            self.event_sdk.capture_event_with_time_input(event_name, timestamp)
-
-        self.mouse_reset_position()
-
-    def enter_text(self, text: str, event_name: Optional[str] = None) -> None:
-        """
-        Enter text using BLE.
-
-        :param text: The text to be entered.
-        :type text: str
-        :param event_name: The event triggering the text entry.
-        :type event_name: str | None
-        """
-        internal_logger.debug(f"Entering {len(text)} characters via BLE.")
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        self.keyboard(utils.strip_sensitive_prefix(text))
+    def enter_text_using_keyboard(self, text: str | utils.SpecialKey, event_name: Optional[str] = None) -> None:
+        self.enter_text(text, event_name)
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
-        """
-        Press a keycode using BLE.
-
-        :param keycode: The keycode to be pressed.
-        :type keycode: str
-        :param event_name: The event triggering the key press.
-        :type event_name: str | None
-        """
-        internal_logger.debug("Pressing a keycode via BLE.")
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        self.keyboard(utils.strip_sensitive_prefix(keycode))
-
-    def enter_text_element(self, element, text, event_name=None) -> None:
-        raise NotImplementedError(
-            "BLE driver does not support entering text into elements."
-        )
-
-    def enter_text_using_keyboard(
-        self, text: Union[str, utils.SpecialKey], event_name: Optional[str] = None
-    ) -> None:
-        """
-        Enter text using the keyboard via BLE.
-
-        Supports SpecialKey instances and regular text strings.
-
-        :param text: The text to be entered or a SpecialKey instance.
-        :type text: Union[str, SpecialKey]
-        :param event_name: The event triggering the text entry.
-        :type event_name: str
-        """
-        internal_logger.debug("Entering text using keyboard via BLE.")
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-
-        if isinstance(text, utils.SpecialKey):
-            # Handle special keys using class-level mapping
-            mapped_key = self.SPECIAL_KEY_MAPPING.get(text)
-            if mapped_key:
-                internal_logger.debug(f"Typing special key: {mapped_key}")
-                self.keyboard(mapped_key)
+        name = utils.strip_sensitive_prefix(str(keycode)).strip().lower()
+        if name in NO_HID_KEY:
+            self._unsupported(f"press_keycode {name}")
+        if name == "back":
+            self.go_back(event_name)
+            return
+        media = MEDIA.get(name, name)
+        self._capture(event_name)
+        with _mapped():
+            if name == "search":
+                self._search()
+            elif media in airhand.MEDIA and (name != "home" or self.platform.media_home):
+                self._dongle.media(media)
             else:
-                internal_logger.warning(f"Unknown special key: {text}")
-        else:
-            # Regular text
-            text_value = utils.strip_sensitive_prefix(str(text))
-            self.keyboard(text_value)
+                self._dongle.key(name)
 
     def clear_text(self, event_name: Optional[str] = None) -> None:
-        """
-        Clear text using BLE.
+        self._capture(event_name)
+        with _mapped():
+            self._dongle.key(self.platform.select_all)
+            self._dongle.key("backspace")
 
-        :param event_name: The event triggering the text clearing.
-        :type event_name: str
-        """
-        internal_logger.debug("Clearing text via BLE.")
-        self.send_keyboard_command(self.KEYBOARD_SELECT_ALL)
-        self.send_keyboard_command(self.KEYBOARD_BACKSPACE)
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-
-    def clear_text_element(
-        self, element: str, event_name: Optional[str] = None
-    ) -> None:
-        raise NotImplementedError(
-            "BLE driver does not support clearing text from elements."
-        )
-
-    def swipe(
-        self,
-        x_coor: int,
-        y_coor: int,
-        direction: str,
-        swipe_length: int,
-        event_name: Optional[str] = None,
-    ) -> None:
-        """
-        Perform a swipe action using BLE.
-
-        :param x_coor: X coordinate of the swipe.
-        :type x_coor: int
-        :param y_coor: Y coordinate of the swipe.
-        :type y_coor: int
-        :param direction: Direction of the swipe (e.g., "up", "down", "left", "right").
-        :type direction: str
-        :param swipe_length: Length of the swipe.
-        :type swipe_length: int
-        :param event_name: The event triggering the swipe.
-        :type event_name: str
-        """
-        internal_logger.debug(
-            f"Swiping {direction} from ({x_coor}, {y_coor}) with length {swipe_length} via BLE."
-        )
-        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        self.swipe_ble(direction, swipe_length)
-
-    def swipe_percentage(
-        self,
-        x_percentage: int,
-        y_percentage: int,
-        direction: str,
-        swipe_length_percentage: int,
-        event_name: Optional[str] = None,
-    ) -> None:
-        """
-        Perform a swipe action using percentage coordinates via BLE.
-
-        :param x_percentage: X coordinate of the swipe as a percentage (0-100).
-        :type x_percentage: int
-        :param y_percentage: Y coordinate of the swipe as a percentage (0-100).
-        :type y_percentage: int
-        :param direction: Direction of the swipe (e.g., "up", "down", "left", "right").
-        :type direction: str
-        :param swipe_length_percentage: Length of the swipe as a percentage (0-100).
-        :type swipe_length_percentage: int
-        :param event_name: The event triggering the swipe.
-        :type event_name: str
-        """
-        internal_logger.debug(
-            f"Swiping {direction} from ({x_percentage}, {y_percentage}) with length {swipe_length_percentage} via BLE."
-        )
-        x_coor = int(x_percentage * self.pixel_width / 100)
-        y_coor = int(y_percentage * self.pixel_height / 100)
-        swipe_length = int(swipe_length_percentage * self.pixel_width / 100)
-        self.translate_coordinates_relative_pixel(self.MOUSE_BUTTON_RELEASED, x_coor, y_coor)
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        self.swipe_ble(direction, swipe_length)
-
-    def swipe_element(self, element, direction, swipe_length, event_name=None) -> None:
-        raise NotImplementedError("BLE driver does not support swiping elements.")
-
-    def scroll(
-        self, direction: str, duration: int, event_name: Optional[str] = None
-    ) -> None:
-        """
-        Perform a scroll action using BLE.
-
-        :param direction: Direction of the scroll (e.g., "up", "down", "left", "right").
-        :type direction: str
-        :param duration: Duration of the scroll in milliseconds.
-        :type duration: int
-        :param event_name: The event triggering the scroll.
-        :type event_name: str
-        """
-        internal_logger.debug(
-            f"Scrolling {direction} with duration {duration} via BLE."
-        )
-        if direction.lower() == "up":
-            for _ in range(duration):
-                self.keyboard(
-                    "PageUp"
-                )  # HID code for PageUp (usually 0x4b, but here sending '\x0b' as placeholder)
-        elif direction.lower() == "down":
-            for _ in range(duration):
-                self.keyboard(
-                    "PageDown"
-                )  # HID code for PageDown (usually 0x4e, but here sending '\x4e' as placeholder)
-        else:
-            internal_logger.warning(f"Scroll direction '{direction}' not supported.")
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        # Implementation for scrolling has to be added first at firmware level(Mouse HID characteristics.
-        # for now, we will use keyboard style page up and down.
-
-    def get_text_element(self, element) -> str:
-        raise NotImplementedError(
-            "BLE driver does not support getting text from elements."
-        )
-
-    def force_terminate_app(
-        self, app_name: str, event_name: Optional[str] = None
-    ) -> None:
-        """
-        Forcefully terminates the specified application.
-
-        :param app_name: The name of the application to terminate.
-        :type app_name: str
-        :param event_name: The event triggering the forced termination, if any.
-        :type event_name: str | None
-        """
-        internal_logger.debug(f"Force terminating app '{app_name}' via BLE.")
-        if event_name:
-            self.event_sdk.capture_event(event_name)
-        # Implementation for force terminating an app has to be added first at firmware level.
-        # For now, we will use Alt + F4 to close the active window.
-        self.send_keyboard_command(self.KEYBOARD_CLOSE_APP)
-        self.send_keyboard_command(self.KEYBOARD_RESET)
-        internal_logger.debug(f"App '{app_name}' force terminated via BLE.")
+    def go_back(self, event_name: Optional[str] = None) -> None:
+        self._require("go_back")
+        self._capture(event_name)
+        kind, name = self.platform.back
+        with _mapped():
+            getattr(self._dongle, kind)(name)
 
     def terminate(self) -> None:
-        """
-        Terminate the BLE connection.
-
-        :return: None
-        :rtype: None
-        """
-        internal_logger.debug("Closing all applications.")
-        # self.send_keyboard_command("4 0 43 0 0 0 0 0")  # press Alt + Tab
-        self.send_keyboard_command(self.KEYBOARD_CLOSE_APP)
-        self.send_keyboard_command(self.KEYBOARD_RESET)
-        internal_logger.debug("Terminating the BLE connection.")
-        if self.ser.is_open:
-            self.ser.close()
-        else:
-            internal_logger.warning("Serial port is not open.")
+        self._dongle.close()
         self.event_sdk.send_all_events()
+
+    def launch_app(self, app_identifier: str | None = None, app_activity: str | None = None, event_name: str | None = None) -> None:
+        # A session opens the configured app with no name; a ble project configures none, so the screen stays as it is.
+        if not app_identifier or not app_identifier.strip():
+            return
+        self._require("launch_app")
+        self._open_app(app_identifier, event_name)
+
+    def launch_other_app(self, app_name: str, event_name: str | None) -> None:
+        self._require("launch_other_app")
+        self._open_app(app_name, event_name)
+
+    def get_app_version(self) -> str:
+        self._unsupported("get_app_version")
+
+    def force_terminate_app(self, app_name: str, event_name: Optional[str] = None) -> None:
+        self._require("force_terminate_app")
+        self._open_app(app_name, event_name)
+        card = self.platform.last_app_card
+        with _mapped():
+            self._go_home()
+            if self.platform.switcher:
+                self._dongle.key(self.platform.switcher)
+            else:
+                self._dongle.media("home")
+                time.sleep(HOME_TWICE_S)
+                self._dongle.media("home")
+            time.sleep(SWITCHER_OPEN_S)
+        start, end = self.platform.card_flick
+        self._drag((card, start), (card, end), FLICK_MS)
+        with _mapped():
+            self._dongle.media("home")
+        time.sleep(SWITCHER_OPEN_S)
+
+    def press_element(self, element: str, repeat: int, event_name: Optional[str] = None) -> None:
+        self._unsupported("press_element")
+
+    def enter_text_element(self, element: str, text: str, event_name: Optional[str] = None) -> None:
+        self._unsupported("enter_text_element")
+
+    def clear_text_element(self, element: str, event_name: Optional[str] = None) -> None:
+        self._unsupported("clear_text_element")
+
+    def swipe_element(self, element: str, direction: str, swipe_length: int, event_name: Optional[str] = None) -> None:
+        self._unsupported("swipe_element")
+
+    def get_text_element(self, element: str) -> str:
+        self._unsupported("get_text_element")
+
+    def execute_script(self, script: str, *args, event_name: Optional[str] = None) -> Any:
+        self._unsupported("execute_script")
+
+    def _search(self) -> None:
+        if self.platform.launcher:
+            self._dongle.key(self.platform.launcher)
+        else:
+            self._dongle.media("search")
+
+    def attach_screen(self, read: Optional[Callable[[], list[dict]]]) -> None:
+        self._read_screen = read
+
+    def _open_app(self, app_name: str | None, event_name: str | None) -> None:
+        name = (app_name or "").strip()
+        if not name:
+            raise OpticsError(Code.E0403, message="The ble driver opens an app by the name the system search shows; give that name")
+        self._capture(event_name)
+        methods = self.capabilities.launch_methods
+        if self._read_screen is None:
+            self._launch_unchecked(name, methods)
+            return
+        for method in methods:
+            if self._launched(method, name):
+                if method != methods[0]:
+                    internal_logger.warning(f"'{name}' opened with {method} after {', '.join(methods[:methods.index(method)])} did not open it; "
+                                            f"to try it first on this device, set capabilities.launch: [{', '.join([method] + [m for m in methods if m != method])}]")
+                return
+            internal_logger.info(f"{method} did not open '{name}'")
+            with _mapped():
+                self._go_home()
+        raise OpticsError(Code.E0405, message=f"No launch method opened '{name}': tried {', '.join(methods)}. "
+                                              "Set capabilities.launch to the methods that open apps on this device")
+
+    def _launch_unchecked(self, name: str, methods: list[str]) -> None:
+        blind = [method for method in methods if method != "home_icon"]
+        if not blind:
+            raise OpticsError(Code.E0501, message="The home_icon launch method finds the app with the camera; add camera_screenshot and an OCR engine, or another launch method")
+        with _mapped():
+            self._type_query(blind[0], name)
+            self._commit(blind[0])
+        time.sleep(APP_OPEN_S)
+        internal_logger.info(f"Opened '{name}' with {blind[0]}; no camera reads the screen, so the launch is not checked")
+
+    def _launched(self, method: str, name: str) -> bool:
+        if method == "home_icon":
+            return self._tap_home_icon(name)
+        with _mapped():
+            self._type_query(method, name)
+        search = self._read()
+        if search is not None and len(_labels(search, name)) < SEARCH_SHOWS_NAME:
+            return False
+        with _mapped():
+            self._commit(method)
+        return self._opened(search, method, name)
+
+    def _opened(self, before: Optional[list[dict]], method: str, name: str) -> bool:
+        time.sleep(APP_OPEN_S)
+        after = self._read() if before is not None else None
+        if not after:
+            internal_logger.info(f"Opened '{name}' with {method}; the camera did not read the screen, so the launch is not checked")
+            return True
+        return not any(_near(shown, still) for shown in _labels(before, name) for still in _labels(after, name))
+
+    def _read(self) -> Optional[list[dict]]:
+        try:
+            return self._read_screen()
+        except OpticsError as exc:
+            if exc.code == Code.E0106:
+                raise
+            internal_logger.warning(f"The camera did not read the screen: {exc}")
+            return None
+
+    def _type_query(self, method: str, name: str) -> None:
+        if method in DRAWER_METHODS:
+            self._dongle.media("home")
+            time.sleep(SEARCH_OPEN_S)
+            self._dongle.key(self.platform.app_list)
+        else:
+            # Cmd+Space closes a search that is already open.
+            if self.platform.search_returns:
+                self._go_home()
+            if method == "search_key":
+                self._dongle.media("search")
+            else:
+                self._dongle.key(self.platform.launcher)
+        time.sleep(SEARCH_OPEN_S)
+        box = self.capabilities.app_search
+        if method == "drawer_tap" and box:
+            self._dongle.tap(*self._to_fractions(box.x, box.y))
+            time.sleep(SEARCH_OPEN_S)
+        self._dongle.type_text(name)
+        time.sleep(SEARCH_RESULTS_S)
+
+    def _commit(self, method: str) -> None:
+        # A tapped box keeps the focus, so Up moves it to the top result; a launcher that searches as keys come opens it on Enter.
+        if method == "drawer_tap":
+            self._dongle.key("up")
+            time.sleep(FOCUS_MOVE_S)
+        self._dongle.key("enter")
+
+    def _tap_home_icon(self, name: str) -> bool:
+        with _mapped():
+            self._go_home()
+        home = self._read()
+        labels = _labels(home, name) if home is not None else []
+        if not labels:
+            return False
+        left, top, right, bottom = labels[0]
+        x = (left + right) / 2
+        y = max(top - ICON_ABOVE_LABEL * (bottom - top), 0)
+        with _mapped():
+            self._dongle.tap(*self._to_fractions(x, y))
+            self._park()
+        return self._opened(home, "home_icon", name)
+
+    def _go_home(self) -> None:
+        self._dongle.media("home")
+        time.sleep(HOME_SETTLE_S)
+        if self.platform.search_returns:
+            self._dongle.media("home")
+            time.sleep(SEARCH_CLOSED_S)
+
+    def _drag(self, start: tuple[float, float], end: tuple[float, float], ms: int) -> None:
+        frame = self.capabilities.frame
+        heights = math.hypot((end[0] - start[0]) * frame.width, (end[1] - start[1]) * frame.height) / frame.height
+        with _mapped():
+            self._dongle.swipe(start, end, max(1, min(ms, round(1000 * heights / MIN_DRAG_SPEED))))
+            self._park()
+
+    def _park(self) -> None:
+        if self.platform.touch and not self.platform.finger:
+            self._dongle.move(*PARK)
+
+    def _require(self, capability: str) -> None:
+        if not self.supports(capability):
+            self._unsupported(capability)
+
+    def _to_fractions(self, x: float, y: float) -> tuple[float, float]:
+        frame = self.capabilities.frame
+        return float(x) / frame.width, float(y) / frame.height
+
+    def _capture(self, event_name: Optional[str]) -> None:
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+
+@contextmanager
+def _mapped() -> Iterator[None]:
+    try:
+        yield
+    except (airhand.DongleLost, airhand.HostUnavailable) as exc:
+        raise OpticsError(Code.E0106, message=str(exc)) from exc
+    except airhand.WrongFirmware as exc:
+        raise OpticsError(Code.E0501, message=str(exc)) from exc
+    except airhand.Unsupported as exc:
+        raise OpticsError(Code.E0403, message=str(exc)) from exc
+    except airhand.AirhandError as exc:
+        raise OpticsError(Code.E0401, message=str(exc)) from exc
+
+
+def _direction(direction: str) -> tuple[int, int]:
+    if direction not in DIRECTIONS:
+        raise OpticsError(Code.E0403, message=f"Unknown swipe direction '{direction}'")
+    return DIRECTIONS[direction]
+
+
+def _key(text: str) -> str:
+    return "".join(text.split()).casefold()
+
+
+def _box(row: dict) -> tuple[int, int, int, int]:
+    bounds = row["bounds"]
+    return bounds["x1"], bounds["y1"], bounds["x2"], bounds["y2"]
+
+
+def _same_line(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    short, tall = sorted((a, b), key=lambda box: box[3] - box[1])
+    return tall[1] <= (short[1] + short[3]) / 2 <= tall[3]
+
+
+def _beside(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    """b starts within half a text height of a's end, as the next word of one label does."""
+    return b[0] - a[2] <= min(a[3] - a[1], b[3] - b[1]) / 2
+
+
+def _cut_off(text: str, wanted: str) -> bool:
+    """A label the launcher shortened, read as its start and the ellipsis."""
+    shown = re.fullmatch(r"(.*[^\W_])[\W_]+", text.strip())
+    start = _key(shown.group(1)) if shown else ""
+    return len(start) >= 4 and wanted.startswith(start)
+
+
+def _labels(rows: list[dict], name: str) -> list[tuple[int, int, int, int]]:
+    """Boxes of the rows, or runs of words side by side on one line, that read exactly the name or its cut-off start."""
+    wanted = _key(name)
+    rows = sorted((row for row in rows if _key(row.get("text", ""))), key=lambda row: _box(row)[0])
+    found = []
+    for i in range(len(rows)):
+        run, read = _run_from(rows, i, wanted)
+        if read == wanted:
+            found.append((min(b[0] for b in run), min(b[1] for b in run), max(b[2] for b in run), max(b[3] for b in run)))
+    return found
+
+
+def _run_from(rows: list[dict], start: int, wanted: str) -> tuple[list[tuple[int, int, int, int]], str]:
+    """The boxes and joined text of the words from ``rows[start]`` on that read toward ``wanted``."""
+    first = rows[start]
+    run, read = [_box(first)], _key(first["text"])
+    if read != wanted and _cut_off(first["text"], wanted):
+        read = wanted
+    for row in rows[start + 1:]:
+        if read == wanted or not wanted.startswith(read):
+            break
+        if _same_line(run[-1], _box(row)) and _beside(run[-1], _box(row)):
+            run.append(_box(row))
+            read += _key(row["text"])
+    return run, read
+
+
+def _near(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    return all(abs(p - q) <= (a[3] - a[1]) / 2 for p, q in zip(a, b))
