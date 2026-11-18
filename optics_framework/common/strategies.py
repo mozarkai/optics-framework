@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass
 import inspect
 import time
-from typing import List, NamedTuple, Union, Tuple, Generator, Set, Optional, Any
+from typing import Iterator, List, NamedTuple, Union, Tuple, Generator, Set, Optional, Any
 import cv2
 import numpy as np
 from optics_framework.common.base_factory import InstanceFallback
@@ -26,6 +28,47 @@ NO_SCREEN_MSG = (
     "No elements_sources entry is enabled, so Optics cannot see the screen. "
     "Add one (for example camera_screenshot) to find elements, check them or take screenshots."
 )
+
+_held_frames: ContextVar[dict[int, Any] | None] = ContextVar("held_frames", default=None)
+
+
+@contextmanager
+def one_capture_per_source() -> Iterator[None]:
+    """Inside, each source's screen is captured once and shared; a nested block shares the outer one's frames."""
+    if _held_frames.get() is not None:
+        yield
+        return
+    token = _held_frames.set({})
+    try:
+        yield
+    finally:
+        _held_frames.reset(token)
+
+
+@contextmanager
+def changing_screen() -> Iterator[None]:
+    """Around an action: the frames held before it are dropped, and every capture inside it is new."""
+    held = _held_frames.get()
+    if held:
+        held.clear()
+    token = _held_frames.set(None)
+    try:
+        yield
+    finally:
+        _held_frames.reset(token)
+
+
+def screen_of(source: ElementSourceInterface) -> Any:
+    """``source``'s screen: the frame held for it, else a new capture."""
+    held = _held_frames.get()
+    if held is None:
+        return source.capture()
+    frame = held.get(id(source))
+    if frame is None:
+        frame = source.capture()
+        if frame is not None:
+            held[id(source)] = frame
+    return frame
 
 
 class LocateValueWithFrame(NamedTuple):
@@ -199,7 +242,7 @@ class TextDetectionStrategy(LocatorStrategy):
     def locate(self, element: str, index: int = 0) -> Optional[LocateValueWithFrame]:
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
-        screenshot = self.element_source.capture()
+        screenshot = screen_of(self.element_source)
         found = self.text_detection.find_element(screenshot, _ocr_text(element), index=index, strict=self._strict())
         if found is None:
             return None
@@ -227,7 +270,7 @@ class TextDetectionStrategy(LocatorStrategy):
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
         # Capture full screenshot
-        full_screenshot = self.element_source.capture()
+        full_screenshot = screen_of(self.element_source)
 
         # Crop screenshot to AOI
         try:
@@ -268,7 +311,7 @@ class TextDetectionStrategy(LocatorStrategy):
         """Every text OCR reads on the screen, in window coordinates and reading order, as tappable rows."""
         if self.text_detection is None:
             return []
-        screenshot = self.element_source.capture()
+        screenshot = screen_of(self.element_source)
         try:
             _, results = self.text_detection.detect_text(screenshot)
         except ValueError:
@@ -350,7 +393,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         return self._element_source
 
     def locate(self, element: str, index: int = 0) -> Optional[LocateValueWithFrame]:
-        screenshot = self.element_source.capture()
+        screenshot = screen_of(self.element_source)
         found = self.image_detection.find_element(screenshot, element, index)
         if found is None:
             return None
@@ -375,7 +418,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         :return: Coordinates in the driver's window space, or (coords, annotated_frame)
         """
         # Capture full screenshot
-        full_screenshot = self.element_source.capture()
+        full_screenshot = screen_of(self.element_source)
 
         # Crop screenshot to AOI
         try:
@@ -439,6 +482,22 @@ _SAME_SCREEN_TOLERANCE = 8
 
 def _is_vision(strategy: LocatorStrategy) -> bool:
     return isinstance(strategy, (TextDetectionStrategy, ImageDetectionStrategy))
+
+
+def _run_locate(strategy: LocatorStrategy, element: str, index: int, aoi: tuple | None) -> Any:
+    # A source lookup may scroll an element into view, so a vision read after it needs a new frame.
+    with nullcontext() if _is_vision(strategy) else changing_screen():
+        if aoi is not None:
+            return strategy.locate_with_aoi(element, *aoi, index=index)
+        return strategy.locate(element, index=index)
+
+
+def _value_and_frame(result: Any) -> tuple[Any, Any]:
+    if isinstance(result, LocateValueWithFrame):
+        return result.value, result.annotated_frame
+    if isinstance(result, tuple) and len(result) == 2 and (result[1] is None or hasattr(result[1], "shape")):
+        return result[0], result[1]
+    return result, None
 
 
 def _same_screen(frame: np.ndarray, previous: np.ndarray | None) -> bool:
@@ -589,7 +648,7 @@ class ScreenshotStrategy:
 
     def capture(self) -> Optional[np.ndarray]:
         try:
-            screenshot = self.element_source.capture()
+            screenshot = screen_of(self.element_source)
         except Exception as e:
             if _is_blind(e):
                 raise
@@ -779,18 +838,11 @@ class StrategyManager:
             return None
         try:
             locate_with_aoi = getattr(strategy, "locate_with_aoi", None)
-            if use_aoi and locate_with_aoi is not None:
-                result = locate_with_aoi(element, aoi_x, aoi_y, aoi_width, aoi_height, index=index)
-            else:
-                result = strategy.locate(element, index=index)
+            aoi = (aoi_x, aoi_y, aoi_width, aoi_height) if use_aoi and locate_with_aoi is not None else None
+            result = _run_locate(strategy, element, index, aoi)
             if result is None:
                 return None
-            if isinstance(result, LocateValueWithFrame):
-                value, annotated_frame = result.value, result.annotated_frame
-            elif isinstance(result, tuple) and len(result) == 2 and (result[1] is None or hasattr(result[1], "shape")):
-                value, annotated_frame = result[0], result[1]
-            else:
-                value, annotated_frame = result, None
+            value, annotated_frame = _value_and_frame(result)
             # Strategy can't scope to the AOI itself (accessibility/XPath/web) — enforce
             # it here so an out-of-AOI match falls through to an AOI-capable strategy.
             if (
