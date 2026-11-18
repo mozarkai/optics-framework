@@ -157,6 +157,7 @@ class TestRenderProjectConfig:
             "platform_name": "iOS",
             "bundle_id": "com.acme.ios",
             "appium_url": "http://127.0.0.1:4723",
+            "ocr_engine": project_config.preferred_local_engine(),
             "ocr": False,
             "log_level": "INFO",
         }
@@ -185,10 +186,10 @@ class TestRenderProjectConfig:
         assert pw["capabilities"]["headless"] is True
 
     @pytest.mark.parametrize("ocr, expected", [(True, True), (False, False)])
-    def test_ocr_toggles_easyocr_only(self, ocr, expected):
+    def test_ocr_toggles_one_engine_only(self, ocr, expected):
         text = project_config.render_project_config(_answers_for("android", ocr=ocr))
         config = yaml.safe_load(text)
-        assert _enabled_names(config, "text_detection") == (["easyocr"] if expected else [])
+        assert _enabled_names(config, "text_detection") == (["rapidocr"] if expected else [])
         assert _enabled_names(config, "image_detection") == []
 
     def test_missing_keys_fall_back_to_defaults(self):
@@ -276,6 +277,7 @@ class TestPromptProjectConfig:
             "app_package": "com.acme.app",
             "app_activity": "com.acme.MainActivity",
             "appium_url": "http://127.0.0.1:4723",
+            "ocr_engine": project_config.preferred_local_engine(),
             "ocr": True,
             "log_level": "DEBUG",
         }
@@ -291,6 +293,7 @@ class TestPromptProjectConfig:
             "platform_name": "Windows",
             "app": "notepad.exe",
             "appium_url": "http://10.0.0.5:4723",
+            "ocr_engine": project_config.preferred_local_engine(),
             "ocr": False,
             "log_level": "INFO",
         }
@@ -305,6 +308,7 @@ class TestPromptProjectConfig:
             "platform": "web-playwright",
             "browser": "webkit",
             "headless": True,
+            "ocr_engine": project_config.preferred_local_engine(),
             "ocr": False,
             "log_level": "WARNING",
         }

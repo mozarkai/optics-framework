@@ -26,6 +26,7 @@ from rich.prompt import Confirm, Prompt
 
 from optics_framework.common import safe_fs
 from optics_framework.common.config_handler import load_project_yaml
+from optics_framework.engines.vision_models.ocr_models import preferred_local_engine
 from optics_framework.helper.onboarding import blank_line
 
 # Every platform maps to exactly ONE action driver; that driver owns the
@@ -172,8 +173,9 @@ def prompt_project_config(domain: str | None = None) -> dict:
             default="chromium")
         answers["headless"] = _confirm(
             "Run headless (no browser window)?", default=False)
+    answers["ocr_engine"] = preferred_local_engine()
     answers["ocr"] = _confirm(
-        "Also find elements by on-screen text (EasyOCR)? Useful when there "
+        f"Also find elements by on-screen text ({answers['ocr_engine']})? Useful when there "
         "are no stable locators.", default=bool(answers.get("camera_url")))
     answers["log_level"] = _ask(
         "Log level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -333,11 +335,15 @@ def _elements_sources_section(driver: str, answers: dict) -> list[str]:
     return lines
 
 
+def ocr_entry(engine: str) -> str:
+    return f"  - {engine}:{' ' * max(1, 18 - len(engine))}# install: optics setup --install {engine}"
+
+
 def _vision_sections(answers: dict) -> list[str]:
     return [
         "# Optional vision fallbacks: locate elements by on-screen text (OCR) or image.",
         "text_detection:",
-        "  - easyocr:            # install: optics setup --install easyocr",
+        ocr_entry(answers.get("ocr_engine") or "rapidocr"),
         f"      enabled: {_enabled(bool(answers.get('ocr', False)))}",
         "image_detection:",
         "  - templatematch:",
@@ -351,8 +357,8 @@ def render_project_config(answers: dict) -> str:
 
     Pure function — no prompts, no filesystem. Missing keys fall back to the
     same example values the interactive flow suggests. Exactly one driver plus
-    its matching elements sources end up ``enabled: true`` (plus EasyOCR under
-    ``text_detection`` when ``answers["ocr"]``); every other entry stays listed
+    its matching elements sources end up ``enabled: true`` (plus the
+    ``answers["ocr_engine"]`` OCR engine when ``answers["ocr"]``); every other entry stays listed
     but disabled so the file doubles as a reference."""
     platform = answers.get("platform")
     if platform not in _DRIVER_BY_PLATFORM:

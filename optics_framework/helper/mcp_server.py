@@ -5,7 +5,6 @@ import bisect
 import contextlib
 import contextvars
 import functools
-import importlib.util
 import inspect
 import itertools
 import json
@@ -72,6 +71,7 @@ from optics_framework.common.screen_snapshot import (
 from optics_framework.common.session_manager import Session
 from optics_framework.engines.drivers import playwright_profiles
 from optics_framework.engines.elementsources import camera_screenshot
+from optics_framework.engines.vision_models.ocr_models import installed_local_engines
 from optics_framework.helper.abort import MissingExtraError
 from optics_framework.helper.onboarding import optics_home
 from optics_framework.helper.version import VERSION
@@ -93,10 +93,6 @@ def _default_sources_for_driver(driver: str) -> list[str]:
     return sorted(matches, key=rank)
 
 
-# Engines that read a camera frame on this machine, in order of preference.
-_LOCAL_OCR = ("easyocr", "pytesseract")
-
-
 def _camera_source(capabilities: dict[str, Any]) -> dict[str, Any] | None:
     """The server's camera as an element source, when one is set."""
     if not os.environ.get(camera_screenshot.ENV_SCREENSHOT_URL):
@@ -107,10 +103,6 @@ def _camera_source(capabilities: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(frame, dict) and {"width", "height"} <= frame.keys():
         size = {"out_width": frame["width"], "out_height": frame["height"]}
     return {"camera_screenshot": {"capabilities": size}}
-
-
-def _local_ocr() -> list[str]:
-    return [name for name in _LOCAL_OCR if importlib.util.find_spec(name)][:1]
 
 
 try:
@@ -920,7 +912,7 @@ def _session_config(
         camera = None if sources else _camera_source(capabilities)
         if camera is not None:
             sources = [camera]
-    defaults = {"text_detection": _local_ocr, "image_detection": lambda: ["templatematch"]}
+    defaults = {"text_detection": lambda: installed_local_engines()[:1], "image_detection": lambda: ["templatematch"]}
     for key, default in defaults.items():
         if fields.get(key) is None:
             fields[key] = default() if camera is not None else []
