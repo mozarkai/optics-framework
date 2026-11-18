@@ -1,10 +1,4 @@
-"""CLAUDE.md `path:line` anchors must still point at the symbol they name.
-
-Coding agents navigate this repo by the anchors in CLAUDE.md, so a stale one sends
-them to the wrong code with full confidence. This checks every
-"`symbol` (`path.py:line`)" pair: the named symbol's definition (def, class,
-or assignment) must sit within a few lines of the anchor.
-"""
+"""CLAUDE.md `path:line` anchors must still point at the symbol they name."""
 import pathlib
 import re
 

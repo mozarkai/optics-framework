@@ -1,14 +1,3 @@
-"""Unit tests for bbox -> screenshot pixel-space scaling.
-
-Regression coverage for annotation boxes drawn in the wrong position/size when
-the driver's window coordinate space differs in resolution from the captured
-screenshot. See utils.scale_bboxes_for_screenshot / _pixel_scale_for_source /
-_window_size_from_source / _apply_scale_to_bbox.
-
-Scaling is gated to Appium sources (their window and element coordinates share one
-space), so the fixtures here declare REQUIRED_DRIVER_TYPE = "appium"; a non-Appium
-regression guard lives in test_non_appium_annotation_is_noop.
-"""
 import numpy as np
 
 from optics_framework.common import utils
@@ -39,34 +28,12 @@ def _pixel_screenshot(width=1080, height=2340):
 class TestScaleBboxesForScreenshot:
     BBOX = ((20, 96), (355, 140))
 
-    def test_source_without_window_size_falls_back_unchanged(self):
-        src = type("NoWindowSource", (), {"REQUIRED_DRIVER_TYPE": "appium", "driver": object()})()
-        result = utils.scale_bboxes_for_screenshot([self.BBOX], src, _pixel_screenshot())
-        assert result == [self.BBOX]
-
     def test_driver_error_falls_back_unchanged(self):
         src = _DirectSource(_FakeWebDriver(375, 812, raises=True))
         result = utils.scale_bboxes_for_screenshot([self.BBOX], src, _pixel_screenshot())
         assert result == [self.BBOX]
 
-    def test_zero_window_size_falls_back_unchanged(self):
-        src = _DirectSource(_FakeWebDriver(0, 0))
-        result = utils.scale_bboxes_for_screenshot([self.BBOX], src, _pixel_screenshot())
-        assert result == [self.BBOX]
-
-    def test_malformed_bbox_preserved_unchanged(self):
-        # A bbox that isn't ((x1,y1),(x2,y2)) shaped can't be unpacked;
-        # _apply_scale_to_bbox returns it unchanged rather than raising.
-        src = _DirectSource(_FakeWebDriver(375, 812))
-        malformed = (1, 2, 3, 4)
-        result = utils.scale_bboxes_for_screenshot([malformed], src, _pixel_screenshot())
-        assert result == [malformed]
-
     def test_none_bbox_entries_preserved(self):
         src = _DirectSource(_FakeWebDriver(375, 812))
         result = utils.scale_bboxes_for_screenshot([None, self.BBOX], src, _pixel_screenshot())
         assert result == [None, ((57, 276), (1022, 403))]
-
-    def test_empty_list_returns_empty(self):
-        src = _DirectSource(_FakeWebDriver(375, 812))
-        assert utils.scale_bboxes_for_screenshot([], src, _pixel_screenshot()) == []

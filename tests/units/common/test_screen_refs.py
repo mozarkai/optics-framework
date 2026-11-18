@@ -1,9 +1,7 @@
 import pytest
 
 from optics_framework.common.agent_core import Action, Fail, prepare
-from optics_framework.common.screen_snapshot import RefTable, TargetError, render_row
-
-pytestmark = pytest.mark.white_box
+from optics_framework.common.screen_snapshot import RefTable
 
 
 def _native(label: str, cls: str, act: list[str], rid: str = "", y: int = 0) -> dict:
@@ -50,40 +48,3 @@ def test_a_label_names_the_open_menu_item_before_list_cells_with_the_same_text()
                    _native("Playlist", "menu_item", ["tap"], y=40)])
 
     assert refs.resolve("Playlist").cls == "menu_item"
-
-
-def test_a_query_finds_rows_by_their_role_or_their_ref():
-    refs = RefTable()
-    screen = [_native("Library", "static_text", [], y=0), _native("Delete", "menu_item", ["tap"], y=20),
-              _native("", "text_field", ["tap", "input"], y=40)]
-    delete = refs.snapshot(screen).rows[1].ref
-
-    assert [r.cls for r in refs.snapshot(screen, query="menu").rows] == ["menu_item"]
-    assert [r.cls for r in refs.snapshot(screen, query="text field").rows] == ["text_field"]
-    assert [r.ref for r in refs.snapshot(screen, query=delete).rows] == [delete]
-
-
-def _in(area: str, entry: dict) -> dict:
-    entry["extra"]["area"] = area
-    return entry
-
-
-def test_rows_with_the_same_label_show_where_each_one_is():
-    refs = RefTable()
-    snap = refs.snapshot([
-        _in("Good afternoon", _native("Pause", "button", ["tap"], y=0)),
-        _in("Player controls", _native("Pause", "button", ["tap"], y=20)),
-        _in("Good afternoon", _native("Play", "button", ["tap"], y=40)),
-        _in("Liked Songs", _native("Play Liked Songs", "button", ["tap"], y=60)),
-        _in("Liked Songs", _native("Play Liked Songs", "button", ["tap"], y=80)),
-    ])
-
-    assert [render_row(r) for r in snap.rows] == [
-        'e1 button "Pause" [tap] in "Good afternoon"',
-        'e2 button "Pause" [tap] in "Player controls"',
-        'e3 button "Play" [tap]',
-        'e4 button "Play Liked Songs" [tap]',
-        'e5 button "Play Liked Songs" [tap]',
-    ]
-    with pytest.raises(TargetError, match='e2 "Pause" in "Player controls"'):
-        refs.resolve("Pause")

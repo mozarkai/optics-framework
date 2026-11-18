@@ -1,11 +1,4 @@
-"""In-process FastAPI mock used by the API-invocation tests.
-
-Exposes a token + OTP endpoint pair and a :func:`start_server` helper that binds
-an **ephemeral** port (race-free: we own the socket, so we know the port before
-uvicorn starts) and guarantees teardown. Consume it through the session-scoped
-``mock_api_server`` fixture in ``tests/conftest.py`` rather than starting it by
-hand — that keeps the suite hermetic and free of fixed-port collisions.
-"""
+"""In-process FastAPI mock used by the API-invocation tests."""
 from __future__ import annotations
 
 import socket

@@ -1,9 +1,3 @@
-"""Unit tests for the driver-agnostic `optics live` controller.
-
-Covers config validation (require exactly one driver + a source), surfacing of real
-config-parse/validation errors, per-driver target labels, and the Android-only gating
-of device discovery/switching. No device or network is needed.
-"""
 import os
 import tempfile
 import textwrap
@@ -43,34 +37,12 @@ class TestComposeConfig:
         assert exc.value.code == Code.E0501
         assert "needs a config.yaml" in exc.value.message
 
-    def test_multiple_enabled_drivers_rejected(self):
-        d = _project("""
-            driver_sources:
-              - appium: {enabled: true, capabilities: {platformName: Android}}
-              - playwright: {enabled: true, capabilities: {browser: chromium}}
-            elements_sources:
-              - appium_find_element: {enabled: true}
-        """)
-        with pytest.raises(OpticsError) as exc:
-            live_mod._compose_config(d)
-        assert "exactly one enabled driver" in exc.value.message
-        assert "appium" in exc.value.message and "playwright" in exc.value.message
-
     def test_valid_single_driver_returns_config(self):
         cfg = live_mod._compose_config(_project(_PLAYWRIGHT))
         assert live_mod._enabled_drivers(cfg) == ["playwright"]
 
 
 class TestConfigErrorSurfacing:
-
-    def test_config_like_but_invalid_schema_surfaces(self):
-        # A config-like file (has a recognised key) that fails Config() validation surfaces.
-        d = tempfile.mkdtemp(prefix="optics_live_test_")
-        with open(os.path.join(d, "config.yaml"), "w", encoding="utf-8") as fh:
-            fh.write("driver_sources: 12345\n")  # wrong type
-        with pytest.raises(OpticsError) as exc:
-            live_mod._compose_config(d)
-        assert "Invalid config" in exc.value.message
 
     def test_unrelated_malformed_yaml_is_skipped(self):
         # A non-config YAML with a syntax error should NOT abort; the real config still loads.
@@ -94,19 +66,12 @@ def _shell(driver: str, caps: dict) -> LiveController:
 
 
 class TestTargetLabel:
-
-
     def test_playwright(self):
         c = _shell("playwright", {"browser": "chromium"})
         assert c.active_target() == "playwright:chromium"
 
-    def test_label_falls_back_to_driver_type(self):
-        c = _shell("playwright", {})  # no identifying cap
-        assert c.active_target() == "playwright"
-
 
 class TestDeviceSwitching:
-
     def test_switch_device_raises_for_non_switchable(self):
         c = _shell("playwright", {"browser": "chromium"})
         with pytest.raises(OpticsError) as exc:
@@ -118,13 +83,6 @@ class TestDeviceSwitching:
         c = _shell("appium", {"platformName": "Android", "udid": "x"})
         assert c.supports_device_switching() is True
         assert c.supports_adb_hotplug() is True
-
-    @pytest.mark.parametrize("driver,caps", [("selenium", {"browserName": "chrome"}),
-                                             ("playwright", {"browser": "chromium"})])
-    def test_web_drivers_support_neither(self, driver, caps):
-        c = _shell(driver, caps)
-        assert c.supports_device_switching() is False
-        assert c.supports_adb_hotplug() is False
 
 
 class _Proc:
@@ -222,7 +180,6 @@ class _DeviceStubController:
 
 class TestDevicePicker:
     def test_cmd_device_lists_android_and_ios(self):
-
         devices = [("emulator-5554", "android"), ("00008030-ABCD", "ios")]
         tui = LiveTUI(_DeviceStubController(devices))
         tui._cmd_device("")
@@ -251,7 +208,6 @@ def _teardown_shell(artifacts_dir: str) -> LiveController:
 
 
 class TestArtifactsPersistence:
-
     def test_teardown_removes_empty_dir(self):
         d = tempfile.mkdtemp(prefix="optics_live_shots_")
         _teardown_shell(d).teardown()

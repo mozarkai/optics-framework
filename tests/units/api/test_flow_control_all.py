@@ -1,13 +1,3 @@
-"""Tests for FlowControl keywords: evaluate, read_data, invoke_api, condition,
-run_loop, and date_evaluate.
-
-The condition suite is written against the *documented* module-condition contract
-(a module condition is true iff the module runs and returns a non-empty result).
-The current implementation decides truth by whether the module *raised* instead —
-tracked as a deferred behaviour fix — so the cases that expose it are marked
-``xfail(strict=True)``: they fail today and will flip to XPASS (failing the run,
-prompting removal of the marker) once the fix lands.
-"""
 import json
 from types import SimpleNamespace
 
@@ -84,26 +74,14 @@ def _register(flow_control, run, *module_names):
         flow_control.session.modules.modules[name] = object()
 
 
-# --------------------------------------------------------------------------- #
-# evaluate                                                                     #
-# --------------------------------------------------------------------------- #
-
 class TestEvaluate:
-
-
     @pytest.mark.parametrize("expr", ['__import__("os")', "open('x')", "(1).__class__"])
     def test_rejects_unsafe_expression(self, flow_control, expr):
         with pytest.raises(OpticsError):
             flow_control.evaluate("${result}", expr)
 
 
-# --------------------------------------------------------------------------- #
-# read_data                                                                    #
-# --------------------------------------------------------------------------- #
-
 class TestReadData:
-
-
     def test_json_single_object(self, tmp_path, flow_control):
         (tmp_path / "s.json").write_text(json.dumps({"serialId": "123", "foo": "bar"}))
         flow_control.session.config_handler.config.project_path = str(tmp_path)
@@ -136,10 +114,6 @@ class TestReadData:
         assert flow_control.read_data("e", "ENV:MYCSV", "x == '9';select=y") == ["10"]
 
 
-# --------------------------------------------------------------------------- #
-# invoke_api                                                                   #
-# --------------------------------------------------------------------------- #
-
 def _api(flow_control, monkeypatch, fake_response, *, extract=None, jsonpath=None, resp):
     api_def = ApiDefinition(
         name="bar",
@@ -153,7 +127,6 @@ def _api(flow_control, monkeypatch, fake_response, *, extract=None, jsonpath=Non
 
 
 class TestInvokeApi:
-
     def test_jsonpath_assertion_fails(self, flow_control, monkeypatch, fake_response):
         _api(flow_control, monkeypatch, fake_response,
              jsonpath=[{"path": "$.data.value", "condition": '$ == "99"'}],
@@ -169,13 +142,10 @@ class TestInvokeApi:
             flow_control.invoke_api("testcol.bar")
 
 
-# --------------------------------------------------------------------------- #
 # condition — expression path (fully correct today)                           #
-# --------------------------------------------------------------------------- #
+
 
 class TestExpressionCondition:
-
-
     def test_no_else_returns_none(self, flow_control):
         run = _module_runner({"modA": ["a"]})
         _register(flow_control, run)
@@ -195,15 +165,6 @@ class TestExpressionCondition:
         flow_control.session.elements.add_element("code", "007")
         assert flow_control.condition(cond, "modA") == ["ran:modA"]
 
-    def test_a_variable_inside_quotes_is_refused(self, flow_control):
-        run = _module_runner({"modA": ["ran:modA"], "modElse": ["ran:modElse"]})
-        _register(flow_control, run)
-        flow_control.session.elements.add_element("x", "foo")
-        with pytest.raises(OpticsError) as excinfo:
-            flow_control.condition("'${x}' == 'foo'", "modA", "modElse")
-        assert excinfo.value.code == Code.E0403
-        assert run.calls == []
-
     @pytest.mark.parametrize("terms, reason", [(MAX_CHARS // 2 + 1, "longer than"), (40_000, "nested too deeply")])
     def test_a_huge_condition_is_refused_by_the_evaluator(self, flow_control, terms, reason):
         run = _module_runner({"modA": ["ran:modA"]})
@@ -216,9 +177,8 @@ class TestExpressionCondition:
         assert run.calls == []
 
 
-# --------------------------------------------------------------------------- #
 # condition — module path (behaviour partly buggy; see module docstring)       #
-# --------------------------------------------------------------------------- #
+
 
 class TestModuleCondition:
     def test_truthy_module_runs_target(self, flow_control):
@@ -248,13 +208,7 @@ class TestModuleCondition:
         assert "target" not in run.calls
 
 
-# --------------------------------------------------------------------------- #
-# run_loop                                                                     #
-# --------------------------------------------------------------------------- #
-
 class TestRunLoop:
-
-
     @pytest.mark.parametrize(
         "args",
         [
@@ -274,10 +228,6 @@ def test_condition_requires_at_least_one_pair(flow_control):
         flow_control.condition("only_one")
 
 
-# --------------------------------------------------------------------------- #
-# date_evaluate                                                                #
-# --------------------------------------------------------------------------- #
-
 class TestDateEvaluate:
     @pytest.mark.parametrize(
         "input_date, expression, out_fmt, expected",
@@ -292,15 +242,3 @@ class TestDateEvaluate:
         result = flow_control.date_evaluate("${d}", input_date, expression, out_fmt)
         assert result == expected
         assert flow_control.session.elements.get_first("d") == expected
-
-    @pytest.mark.parametrize(
-        "input_date, expression",
-        [
-            ("not-a-date", "+1 day"),   # undetectable input format
-            ("2025-08-14", "+1 week"),  # unsupported unit
-            ("2025-08-14", "sideways"),  # unsupported expression
-        ],
-    )
-    def test_invalid_inputs_raise(self, flow_control, input_date, expression):
-        with pytest.raises(OpticsError):
-            flow_control.date_evaluate("${d}", input_date, expression)

@@ -3,8 +3,6 @@ import pytest
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.error import Code, OpticsError
 
-pytestmark = pytest.mark.white_box
-
 
 class _BareDriver(DriverInterface):
     pass

@@ -1,12 +1,3 @@
-"""Unit tests for the `optics live` `/save` workflow (``LiveController.save``).
-
-These exercise the CSV serialisation directly, without a device or session: a
-lightweight subclass overrides ``__init__`` to set only the attributes ``save``
-touches (``folder_path``, ``_artifacts_dir``, ``recorded``, ``saved``, plus a
-stub ``session`` holding the session's known elements). The output is validated
-both structurally and by round-tripping through ``CSVDataReader`` so it stays
-compatible with the batch runner.
-"""
 import csv
 import os
 from types import SimpleNamespace
@@ -17,18 +8,9 @@ from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.models import ElementData
 from optics_framework.helper.live import LiveController, SaveConflictError
 
-pytestmark = pytest.mark.white_box
-
 
 class _Controller(LiveController):
-    """LiveController with the heavy session __init__ bypassed.
-
-    Intentionally does not call super().__init__() since we're unit-testing
-    the save logic without a real session. Only the attributes that save()
-    touches are initialized.
-    """
-
-    def __init__(self, folder: str, elements: ElementData | None = None):  # noqa: super-init-not-called
+    def __init__(self, folder: str, elements: ElementData | None = None):
         self.folder_path = folder
         self._artifacts_dir = os.path.join(folder, "no_artifacts")  # absent -> no snapshot
         self.recorded = []
@@ -43,7 +25,6 @@ class _Controller(LiveController):
 
 @pytest.fixture
 def c(tmp_path):
-    """A save-only LiveController rooted at an auto-cleaned temp dir."""
     return _Controller(str(tmp_path))
 
 

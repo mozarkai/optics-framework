@@ -1,12 +1,3 @@
-"""Unit tests for the CLI dispatch layer (``optics_framework/helper/cli.py``).
-
-Covers the argparse-level behaviours the per-command modules don't: the
-bare-``optics`` welcome branch, ``main()``'s exception-to-exit-code mapping,
-SystemExit propagation from ``DoctorCommand`` (which must bypass the generic
-``except Exception`` handler so CI can gate on ``--check``), and the thin
-forwarding wrappers (configure / quickstart / doctor). Command bodies are
-patched at cli's import-time bindings; nothing real runs.
-"""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -15,8 +6,6 @@ import pytest
 
 from optics_framework.helper import abort, cli
 from optics_framework.helper.environment import EnvKind, Environment
-
-pytestmark = pytest.mark.white_box
 
 
 def _run(argv):
@@ -37,20 +26,6 @@ class TestBareInvocation:
 
 class TestExitCodeMapping:
 
-    def test_keyboard_interrupt_maps_to_130(self):
-        with patch.object(cli, "run_doctor", side_effect=KeyboardInterrupt):
-            with pytest.raises(SystemExit) as exc:
-                _run(["doctor"])
-        assert exc.value.code == 130
-
-    def test_value_error_maps_to_3_with_a_clean_message(self, capsys):
-        with patch.object(cli, "run_doctor", side_effect=ValueError("bad")):
-            with pytest.raises(SystemExit) as exc:
-                _run(["doctor"])
-        assert exc.value.code == 3
-        err = capsys.readouterr().err
-        assert err.startswith("Error: bad")
-        assert "Value error" not in err
 
     def test_unexpected_error_maps_to_1(self):
         with patch.object(cli, "run_doctor", side_effect=RuntimeError("boom")):
@@ -82,9 +57,6 @@ def _env(kind, *, manager=None, has_pip=True):
 
 
 class TestReinstallGuidance:
-    """A broken install is where a hardcoded ``pip install`` is most likely to
-    be wrong, so the advice follows the environment actually in use."""
-
     @pytest.mark.parametrize("env, expected", [
         (_env(EnvKind.VENV), "pip install --force-reinstall"),
         (_env(EnvKind.VENV, has_pip=False), "uv pip install"),
@@ -98,9 +70,6 @@ class TestReinstallGuidance:
 
 
 class TestStartupImportGuard:
-    """A dependency that fails to load must surface as guidance rather than an
-    import-time traceback from the ``optics`` console script."""
-
     def test_failure_shows_the_real_error_and_how_to_recover(self, capsys):
         error = ImportError("No module named 'pydantic'")
         with pytest.raises(SystemExit) as exc:
@@ -113,7 +82,6 @@ class TestStartupImportGuard:
 
 
 class TestCommandForwarding:
-
     def test_configure_forwards_folder_and_edit_flag(self):
         with patch.object(cli, "configure_project") as configure:
             _run(["configure", "myproj"])

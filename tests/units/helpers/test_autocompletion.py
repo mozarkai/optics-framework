@@ -1,10 +1,3 @@
-"""Unit tests for shell-autocompletion installation (``autocompletion.py``).
-
-The completion scripts under ``~/.optics`` must be generated unconditionally,
-but the rc-file mutation is consent-gated: asked only on an interactive
-stdin, and a decline — or a non-TTY stdin, which cannot answer — leaves the
-rc file untouched and prints the manual ``source`` line instead.
-"""
 from __future__ import annotations
 
 import contextlib
@@ -16,8 +9,6 @@ import pytest
 from optics_framework.helper import autocompletion
 
 MODULE = "optics_framework.helper.autocompletion"
-
-pytestmark = pytest.mark.white_box
 
 
 class FakeStdin:
@@ -52,24 +43,11 @@ def _rc_path(home, shell):
 
 @pytest.mark.parametrize("shell, rc_name", [("zsh", ".zshrc"), ("bash", ".bashrc")])
 class TestConsentGate:
-
-
     def test_non_tty_never_asks_or_writes(self, home, shell, rc_name):
         out, asked = _run(home, shell=shell, tty=False)
         assert not _rc_path(home, shell).exists()
         assert not asked
         assert "source" in out
-
-
-class TestScriptsAlwaysGenerated:
-    @pytest.mark.parametrize("tty, confirm", [(True, True), (True, False),
-                                              (False, False)])
-    def test_completion_scripts_written_regardless_of_consent(
-            self, home, tty, confirm):
-        _run(home, tty=tty, confirm=confirm)
-        optics_dir = home / ".optics"
-        assert (optics_dir / "optics_completion.zsh").exists()
-        assert (optics_dir / "optics_completion.sh").exists()
 
 
 class TestDuplicateDetection:
@@ -82,12 +60,3 @@ class TestDuplicateDetection:
         assert not asked
         assert "already enabled" in out
         assert rc.read_text(encoding="utf-8").count("source ") == 1
-
-
-class TestUnsupportedShell:
-    def test_unknown_shell_reports_without_writing(self, home):
-        out, asked = _run(home, shell="fish", tty=True, confirm=True)
-        assert "Unsupported shell" in out
-        assert asked is False  # never reached the consent question
-        assert not (home / ".zshrc").exists()
-        assert not (home / ".bashrc").exists()

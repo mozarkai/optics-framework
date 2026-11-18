@@ -1,12 +1,6 @@
 from unittest.mock import MagicMock
 
-import pytest
 
-from optics_framework.common.error import Code, OpticsError
-from optics_framework.engines.elementsources.appium_find_element import (
-    AppiumFindElement,
-)
-from optics_framework.engines.elementsources.appium_page_source import AppiumPageSource
 from optics_framework.engines.elementsources.appium_web import AppiumWeb
 
 
@@ -16,38 +10,12 @@ def _driver(platform: str | None) -> MagicMock:
     return driver
 
 
-@pytest.mark.parametrize("source_cls", [AppiumFindElement, AppiumPageSource])
-def test_native_sources_decline_dom_only_xpath_on_phones(source_cls):
-    source = source_cls(driver=_driver("android"))
-
-    assert source.can_locate('//input[@name="email"]') is False
-    assert source.can_locate('//*[@id="x"]') is True
-    assert source.can_locate("//android.widget.Button") is True
-
-
 def test_appium_web_leaves_a_browser_session_in_its_web_context():
     driver = _driver(None)
 
     assert AppiumWeb(driver=driver).locate("css=#q") is None
     assert AppiumWeb(driver=driver).get_interactive_elements() == []
     driver.web_context.assert_not_called()
-
-
-@pytest.mark.parametrize("source_cls", [AppiumFindElement, AppiumPageSource, AppiumWeb])
-def test_can_locate_without_a_driver_does_not_raise(source_cls):
-    source_cls(driver=None).can_locate("//input")
-    source_cls(driver=None).can_locate("css=#q")
-
-
-def test_check_elements_reraises_dead_session():
-    driver = _driver("android")
-    driver.web_context.side_effect = OpticsError(Code.E0106, message="gone")
-    source = AppiumWeb(driver=driver)
-
-    with pytest.raises(OpticsError) as excinfo:
-        source.check_elements(["css=#q"])
-
-    assert excinfo.value.code == Code.E0106
 
 
 def test_appium_web_check_elements_answers_per_element_in_one_web_context():

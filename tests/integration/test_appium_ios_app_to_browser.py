@@ -1,7 +1,4 @@
-"""Follows an app's link into Safari, a Safari sheet and an in-app WKWebView on an iOS simulator.
-
-    OPTICS_E2E_SIMULATOR=<simulator udid> pytest tests/integration/test_appium_ios_app_to_browser.py
-"""
+"""Follows an app's link into Safari, a Safari sheet and an in-app WKWebView on an iOS simulator."""
 
 import functools
 import http.server

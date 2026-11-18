@@ -5,8 +5,6 @@ import pytest
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.engines.drivers.appium import Appium
 
-pytestmark = pytest.mark.white_box
-
 
 def _driver_instance(platform: str) -> Appium:
     webdriver = MagicMock()

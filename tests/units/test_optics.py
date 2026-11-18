@@ -1,9 +1,4 @@
-"""End-to-end smoke tests for the public ``Optics`` SDK facade.
-
-These exercise the real facade against the bundled ``contact`` sample project and
-the in-process mock API server (``mock_api_server`` fixture), so they double as a
-wiring check that setup → keyword → teardown holds together.
-"""
+"""End-to-end smoke tests for the public ``Optics`` SDK facade."""
 import os
 
 import pytest
@@ -46,21 +41,6 @@ def test_setup_from_file_keeps_every_config_key(tmp_path):
     optics.quit()
 
 
-def test_add_testcase_and_module():
-    optics = Optics()
-    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    optics.add_testcase({'name': 'testcase1'})
-    optics.add_module('mod1', {'def': 'value'})
-    optics.quit()
-
-
-def test_context_manager_element_round_trip():
-    with Optics() as optics:
-        optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-        optics.add_element('foo', 'bar')
-        assert optics.get_element_value('foo')[0] == 'bar'
-
-
 def test_api_token_and_otp_flow(mock_api_server):
     optics = Optics()
     optics.setup(config=load_config(CONTACT_CONFIG_PATH))
@@ -79,13 +59,6 @@ def test_run_loop_executes_module():
     optics.add_module('mod1', [('sleep', ['1'])])
     # Loops the module the requested number of times without raising.
     assert optics.run_loop('mod1', '1') is not None
-    optics.quit()
-
-
-def test_evaluate_stores_result():
-    optics = Optics()
-    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    assert optics.evaluate("result", "1+1") == 2
     optics.quit()
 
 

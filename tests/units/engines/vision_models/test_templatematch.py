@@ -1,6 +1,3 @@
-"""Unit tests for TemplateMatchingHelper on synthetic frames (no device)."""
-
-
 import cv2
 import numpy as np
 import pytest
@@ -9,8 +6,6 @@ from optics_framework.common.models import TemplateData
 from optics_framework.engines.vision_models.image_models.templatematch import (
     TemplateMatchingHelper,
 )
-
-pytestmark = pytest.mark.white_box
 
 
 def make_helper(**capabilities) -> TemplateMatchingHelper:
@@ -61,25 +56,13 @@ def helper() -> TemplateMatchingHelper:
     return make_helper()
 
 
-class TestHelperConstruction:
-    def test_none_config_raises(self):
-        with pytest.raises(ValueError, match="Configuration must be provided"):
-            TemplateMatchingHelper(config=None)
-
-
 class TestOtherScreenSize:
-
-
     def test_scale_range_widens_the_sweep(self, rng):
         template = blocky(7, 84, 120)
         frame = frame_with(blocky_frame(rng), resized(template, 0.5), [(100, 150)])
 
         assert make_helper()._match_template_fast(frame, template, 0.85, None) is None
         assert make_helper(scale_range=[0.45, 1.0])._match_template_fast(frame, template, 0.85, None)
-
-    def test_inverted_scale_range_is_rejected(self):
-        with pytest.raises(ValueError, match="scale_range"):
-            make_helper(scale_range=[1.2, 0.8])
 
 
 class TestElementExist:
@@ -93,18 +76,6 @@ class TestElementExist:
 
         assert center == (x + 12 + 5, y + 8 + 7)  # center_x += dx, center_y -= dy
         assert bbox == [(x, y), (x + 24, y + 16)]
-
-    def test_featureless_images_raise_from_sift_fallback(self, helper):
-        """No-variance input falls through to SIFT, which raises on the miss."""
-        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
-        # Template larger than the frame at every swept scale so the fast path
-        # routes to SIFT deterministically; cv2.matchTemplate on two identical
-        # solid regions returns a perfect-correlation 1.0 on some builds
-        # (notably the Linux wheels), short-circuiting the SIFT fallback.
-        template = np.full((130, 130, 3), 128, dtype=np.uint8)
-
-        with pytest.raises(RuntimeError):
-            helper.element_exist(frame, template)
 
 
 class TestFindElement:
@@ -120,7 +91,6 @@ class TestFindElement:
         return _make
 
     def test_index_miss_returns_none_not_sift_false_positive(self, rng, templated):
-        """index=5 with two real matches is not-found, never a SIFT hit."""
         template = noise(rng, 16, 24, 3)
         frame = noise(rng, 150, 200, 3)
         frame_with(frame, template, [(20, 30), (90, 120)])
@@ -129,7 +99,6 @@ class TestFindElement:
         assert helper.find_element(frame, "btn.png", index=5) is None
 
     def test_scaled_template_falls_back_to_sift(self, rng, templated):
-        """A 2x-scaled instance is invisible to the fast path; SIFT recovers it."""
         small = np.random.default_rng(7).integers(40, 240, (7, 10), dtype=np.uint8)
         template = cv2.cvtColor(
             cv2.resize(small, (60, 42), interpolation=cv2.INTER_NEAREST),

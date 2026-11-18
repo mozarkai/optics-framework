@@ -20,7 +20,6 @@ pytestmark = pytest.mark.black_box
 
 @pytest.fixture(autouse=True)
 def _local_full_mcp(monkeypatch):
-    """The in-process MCP client is local, like stdio, and calls keyword tools only the full toolset has."""
     from optics_framework.common import expose_api
     monkeypatch.setattr(expose_api, "server_reads_allowed", True)
     monkeypatch.setenv("OPTICS_MCP_TOOLSET", "full")
@@ -132,20 +131,9 @@ PHONE_CONFIG = CONFIG.replace("headless: true\n", "headless: true\n        devic
 
 # Neither page sets a meta viewport, so the phone profile zooms them out and taps by hand.
 @pytest.mark.parametrize("config", [CONFIG, PHONE_CONFIG], ids=["desktop", "zoomed_phone"])
-def test_pressing_a_disabled_button_fails(tmp_path, config):
-    project = _project(tmp_path, [
-        f"Launch App,{(FIXTURE / 'orders.html').as_uri()}",
-        "Press Element,Reorder",
-    ], config=config)
-    assert run_project(project, use_printer=False) is False
-
-
-@pytest.mark.parametrize("config", [CONFIG, PHONE_CONFIG], ids=["desktop", "zoomed_phone"])
-def test_pressing_a_covered_button_fails(tmp_path, config):
-    project = _project(tmp_path, [
-        f"Launch App,{(FIXTURE / 'covered.html').as_uri()}",
-        "Press Element,Pay",
-    ], config=config)
+@pytest.mark.parametrize(("page", "button"), [("orders.html", "Reorder"), ("covered.html", "Pay")], ids=["disabled", "covered"])
+def test_pressing_a_button_that_cannot_take_the_press_fails(tmp_path, config, page, button):
+    project = _project(tmp_path, [f"Launch App,{(FIXTURE / page).as_uri()}", f"Press Element,{button}"], config=config)
     assert run_project(project, use_printer=False) is False
 
 

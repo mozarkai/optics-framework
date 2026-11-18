@@ -44,20 +44,15 @@ def test_an_elements_file_without_a_locator_column_stops_the_run(project):
     assert not (project / "execution_output" / "junit_output.xml").exists()
 
 
-def test_an_elements_file_with_a_locator_column_resolves_its_elements(project):
+@pytest.mark.parametrize(("name", "content"), [
+    (None, None),
+    ("products.csv", b"element_name,price\nmilk,2\n"),
+    ("export.csv", b"\xff\xfe\x00binary"),
+], ids=["locator_column", "data_file_with_element_name", "binary_csv"])
+def test_an_elements_file_resolves_beside_other_csv_files(project, name, content):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
-    assert dry_run(project).returncode == 0
-
-
-def test_a_data_file_with_an_element_name_column_is_left_alone(project):
-    (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
-    (project / "products.csv").write_text("element_name,price\nmilk,2\n")
-    assert dry_run(project).returncode == 0
-
-
-def test_a_csv_that_is_not_text_is_skipped(project):
-    (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
-    (project / "export.csv").write_bytes(b"\xff\xfe\x00binary")
+    if name:
+        (project / name).write_bytes(content)
     assert dry_run(project).returncode == 0
 
 

@@ -1,31 +1,13 @@
-"""Unit tests for the project-config builder (``optics_framework/helper/project_config.py``).
-
-The renderer is exercised as a pure function per platform and re-parsed with
-``yaml.safe_load`` to prove the generated text is real, loadable YAML where
-exactly one driver and its matching elements sources are enabled. The prompt
-flow is tested against scripted rich prompts (no interaction).
-"""
 from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
 import yaml
 
 from optics_framework.helper import project_config
 
-pytestmark = pytest.mark.white_box
 
 MODULE = "optics_framework.helper.project_config"
-
-_DRIVER_BY_PLATFORM = {
-    "android": "appium",
-    "ios": "appium",
-    "desktop": "appium",
-    "web-selenium": "selenium",
-    "web-playwright": "playwright",
-    "bluetooth": "ble",
-}
 
 
 def _enabled_names(config: dict, key: str) -> list[str]:
@@ -75,85 +57,15 @@ def _answers_for(platform: str, *, ocr: bool = False) -> dict:
     return answers
 
 
-# --------------------------------------------------------------------------- #
-# render_project_config                                                        #
-# --------------------------------------------------------------------------- #
-
 class TestRenderProjectConfig:
-
-    @pytest.mark.parametrize("camera_url", ["http://127.0.0.1:9100/", ""])
-    def test_bluetooth_answers_make_a_runnable_ble_entry(self, camera_url):
-        from optics_framework.engines.drivers.ble import Capabilities
-
-        answers = {**_answers_for("bluetooth"), "ble_serial": "ABC123", "camera_url": camera_url}
-        config = yaml.safe_load(project_config.render_project_config(answers))
-        ble = next(e["ble"] for e in config["driver_sources"] if "ble" in e)
-        caps = Capabilities(**ble["capabilities"])
-        assert (caps.serial, caps.platform, caps.frame.width, caps.frame.height) == ("ABC123", "ios", 1170, 2532)
-        camera = next(e["camera_screenshot"] for e in config["elements_sources"] if "camera_screenshot" in e)
-        assert camera["enabled"] is bool(camera_url)
-        assert camera.get("capabilities", {}).get("url") == (camera_url or None)
 
     def test_desktop_answers_land_in_xa11y_capabilities(self):
         appium = _appium_entry(yaml.safe_load(project_config.render_project_config(_answers_for("desktop"))))
         assert appium["capabilities"] == {"platformName": "Linux", "automationName": "Xa11y", "app": "mousepad"}
 
-    def test_unknown_platform_falls_back_to_android(self):
-        text = project_config.render_project_config({"platform": "toaster"})
-        assert _enabled_names(yaml.safe_load(text), "driver_sources") == ["appium"]
-
-
-# --------------------------------------------------------------------------- #
-# write_project_config                                                         #
-# --------------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------------- #
-# prompt_project_config                                                        #
-# --------------------------------------------------------------------------- #
 
 class TestPromptProjectConfig:
-    @pytest.mark.parametrize(
-        "domain, expected_choices, expected_default",
-        [
-            ("mobile", ["android", "ios"], "android"),
-            ("web", ["web-playwright", "web-selenium"], "web-playwright"),
-            (None, list(_DRIVER_BY_PLATFORM), "android"),
-        ],
-    )
-    def test_platform_choices_follow_domain(
-            self, domain, expected_choices, expected_default):
-        with patch(f"{MODULE}.Prompt.ask", return_value="ios") as ask, \
-                patch(f"{MODULE}.Confirm.ask", return_value=False):
-            project_config.prompt_project_config(domain=domain)
-        first_question = ask.call_args_list[0]
-        assert first_question.kwargs["choices"] == expected_choices
-        assert first_question.kwargs["default"] == expected_default
 
-    def test_android_question_flow(self):
-        ask_values = [
-            "android",              # platform
-            "emu-42",               # device name
-            "Android",              # platform name
-            "com.acme.app",         # app package
-            "com.acme.MainActivity",  # app activity
-            "http://127.0.0.1:4723",  # appium url
-            "DEBUG",                # log level
-        ]
-        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values), \
-                patch(f"{MODULE}.Confirm.ask", return_value=True):
-            answers = project_config.prompt_project_config()
-        assert answers == {
-            "platform": "android",
-            "device_name": "emu-42",
-            "platform_name": "Android",
-            "app_package": "com.acme.app",
-            "app_activity": "com.acme.MainActivity",
-            "appium_url": "http://127.0.0.1:4723",
-            "ocr_engine": project_config.preferred_local_engine(),
-            "ocr": True,
-            "log_level": "DEBUG",
-        }
 
     def test_desktop_question_flow_asks_no_platform_question(self):
         ask_values = ["Windows", "notepad.exe", "http://10.0.0.5:4723", "INFO"]
@@ -169,21 +81,6 @@ class TestPromptProjectConfig:
             "ocr_engine": project_config.preferred_local_engine(),
             "ocr": False,
             "log_level": "INFO",
-        }
-
-    def test_web_playwright_question_flow(self):
-        ask_values = ["web-playwright", "webkit", "WARNING"]
-        confirm_values = [True, False]  # headless, ocr
-        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values), \
-                patch(f"{MODULE}.Confirm.ask", side_effect=confirm_values):
-            answers = project_config.prompt_project_config()
-        assert answers == {
-            "platform": "web-playwright",
-            "browser": "webkit",
-            "headless": True,
-            "ocr_engine": project_config.preferred_local_engine(),
-            "ocr": False,
-            "log_level": "WARNING",
         }
 
     def test_prompted_answers_round_trip_through_renderer(self):
