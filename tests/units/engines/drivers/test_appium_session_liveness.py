@@ -22,26 +22,6 @@ def _webdriver(session_id: str = "stale-session-id", probe_error=None) -> MagicM
     return webdriver
 
 
-class TestIsSessionAlive:
-    def test_live_session_is_alive(self):
-        assert _driver_instance(_webdriver())._is_session_alive() is True
-
-    def test_dropped_session_is_not_alive(self):
-        instance = _driver_instance(
-            _webdriver(probe_error=InvalidSessionIdException("the session is not running"))
-        )
-        assert instance._is_session_alive() is False
-
-    def test_unsupported_probe_leaves_session_presumed_alive(self):
-        instance = _driver_instance(
-            _webdriver(probe_error=WebDriverException("unknown command: window rect"))
-        )
-        assert instance._is_session_alive() is True
-
-    def test_no_driver_is_not_alive(self):
-        assert _driver_instance(None)._is_session_alive() is False
-
-
 class TestLaunchAppRecreatesDeadSession:
     def test_stale_session_is_restarted(self):
         instance = _driver_instance(
@@ -65,6 +45,15 @@ class TestLaunchAppRecreatesDeadSession:
 
         instance.start_session.assert_not_called()
         assert result == "live-session-id"
+
+    def test_unsupported_probe_leaves_session_presumed_alive(self):
+        instance = _driver_instance(
+            _webdriver(session_id="live-session-id", probe_error=WebDriverException("unknown command: window rect"))
+        )
+        instance.start_session = MagicMock()
+
+        assert instance.launch_app(app_identifier="com.example.app") == "live-session-id"
+        instance.start_session.assert_not_called()
 
     def test_absent_driver_starts_a_session_without_probing(self):
         instance = _driver_instance(None)

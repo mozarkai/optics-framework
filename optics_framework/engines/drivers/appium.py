@@ -1012,7 +1012,7 @@ class Appium(DriverInterface):
     ) -> str:
         """Launch the app, or open a URL or deep link in the app that handles it, starting a session if none is alive."""
         session_id = self.get_session_id()
-        alive = self.driver is not None and self._is_session_alive()
+        alive = self._is_session_alive()
         if app_identifier and self._is_deeplink(app_identifier):
             if not alive:
                 session_id = self.start_session(event_name=event_name)
