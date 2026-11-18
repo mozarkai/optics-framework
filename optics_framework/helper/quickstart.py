@@ -9,13 +9,13 @@ nothing blocking and only behind a yes/no — the first execution stays an
 intentional, visible act, it just no longer has to be typed out by hand.
 ``dry_run`` is never invoked; it stays a printed next move.
 """
-import importlib.util
 import os
 import types
 
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
+from optics_framework.engines.vision_models.ocr_models import installed_local_engines
 from optics_framework.helper import (doctor, execute, initialize, onboarding,
                                      project_config)
 from optics_framework.helper.setup import install_extras, resolve_engines
@@ -219,5 +219,5 @@ def _build_config(project_path: str, template: str | None, domain: str) -> None:
     text = project_config.render_project_config(answers)
     written = project_config.write_project_config(project_path, text)
     _console.print(f"Wrote [bold]{written}[/bold]")
-    if answers.get("ocr") and importlib.util.find_spec("easyocr") is None:
-        _offer_engine_install("easyocr")
+    if answers.get("ocr") and answers["ocr_engine"] not in installed_local_engines():
+        _offer_engine_install(answers["ocr_engine"])

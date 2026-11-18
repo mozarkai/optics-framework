@@ -7,7 +7,8 @@ import sys
 
 from optics_framework.helper.environment import shell_join
 from optics_framework.helper.onboarding import blank_line, print_next_steps
-from optics_framework.helper.project_config import write_project_config
+from optics_framework.engines.vision_models.ocr_models import preferred_local_engine
+from optics_framework.helper.project_config import ocr_entry, write_project_config
 
 
 # Files/directories that must never be copied out of a sample template.
@@ -123,7 +124,7 @@ driver_sources:
   - selenium:
       enabled: false
       url: "http://localhost:4444/wd/hub"
-      capabilities: {}
+      capabilities: {{}}
   # Web via Playwright (no external server).  Install:  optics setup --install playwright
   - playwright:
       enabled: false
@@ -158,7 +159,7 @@ elements_sources:
 
 # Optional vision fallbacks: locate elements by on-screen text (OCR) or image.
 text_detection:
-  - easyocr:            # install: optics setup --install easyocr
+{ocr_entry}
       enabled: false
 image_detection:
   - templatematch:
@@ -202,7 +203,7 @@ def _scaffold_project(project_path: str) -> None:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-    write_project_config(project_path, _STARTER_CONFIG)
+    write_project_config(project_path, _STARTER_CONFIG.format(ocr_entry=ocr_entry(preferred_local_engine())))
     print("Created starter project (test_cases/, modules/, test_data/, config.yaml).")
 
 
