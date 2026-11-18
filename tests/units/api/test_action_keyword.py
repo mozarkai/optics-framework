@@ -10,6 +10,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.api.action_keyword import _find_dropdown_container
 from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.strategies import LocateResult
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -451,6 +452,13 @@ class TestDeprecatedAliases:
     def _no_disk_writes(self):
         with patch('optics_framework.common.utils.save_screenshot'):
             yield
+
+    def test_aliases_stay_in_the_keyword_map(self, action_keyword):
+        registry = KeywordRegistry()
+        registry.register(action_keyword)
+
+        for alias in ("press_checkbox", "press_radio_button", "swipe_seekbar_to_right_android"):
+            assert callable(registry.get_method(alias)), alias
 
     @pytest.mark.parametrize("alias", ["press_checkbox", "press_radio_button"])
     def test_alias_delegates_to_press_element_with_deprecation_log(self, action_keyword, alias):
