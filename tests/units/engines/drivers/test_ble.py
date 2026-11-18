@@ -219,12 +219,12 @@ def test_other_firmware_asks_for_a_flash(plugged):
     assert refused.value.code == Code.E0501
 
 
-def test_v1_capabilities_point_to_the_migration_note(plugged):
+def test_v1_capabilities_are_refused(plugged):
     fake = plugged()
     with pytest.raises(OpticsError) as refused:
         make_driver(fake, mickeys_width=1080)
     assert refused.value.code == Code.E0503
-    assert "Migrating from the v1 ble driver" in str(refused.value)
+    assert "mickeys_width belong to the v1 ble driver" in str(refused.value)
 
 
 def test_element_keywords_are_offered_only_where_they_run(plugged):

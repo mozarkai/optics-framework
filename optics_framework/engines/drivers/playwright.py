@@ -150,8 +150,8 @@ class Playwright(DriverInterface):
         internal_logger.info("[Playwright] Driver initialized")
 
     def _setting(self, key, default):
-        """A driver setting from config.yaml's `capabilities`, where the docs and
-        `optics configure` put it, or from the top level of the driver entry."""
+        """A driver setting from config.yaml's `capabilities`, where
+        `optics configure` puts it, or from the top level of the driver entry."""
         capabilities = self.config.get("capabilities") or {}
         if key in capabilities:
             return capabilities[key]

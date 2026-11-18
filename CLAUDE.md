@@ -65,7 +65,7 @@ This is automatic. Library/Robot users get on-demand equivalents, `Add Error Def
 3. `LiveController.__init__` (`live.py:301`) creates a `Session` via `SessionManager`, and `_build_registry` (`:433`) builds a `KeywordRegistry` exactly like `RunnerFactory.create_runner`. Live executes through the API layer, so it gets self-healing, AOI and screenshots for free.
 4. `run_keyword` (`live.py:532`). Live builds its own candidates (`_build_candidates` / `_resolve_candidate`) and runs them through the shared `fallback.run` in `_attempt_combos` (`:638`), so level 1 behaves as in the runner. `_run_single_combo` runs under `keyword_outcome.capture()`, so an error the keyword logs without raising fails it as `E0401`.
 5. **Natural-language mode** — `NaturalLanguageAgent` (`common/nl_agent.py:243`) is a bounded loop (`max_steps`, default 15) over one `agent_core.AgentSession` per run (`run`, `nl_agent.py:259`; each session call runs in its own `asyncio.run`, so `run` raises inside a running loop). Each turn (`_turn`, `nl_agent.py:297`) observes the screen as `e<N>` ref rows, asks the LLM for one reply against `ACTION_SCHEMA` (`nl_agent.py:92`), and sends at most one correction (`_correction`, `nl_agent.py:409`). `AgentSession.act` runs, settles, judges and records each action. Guards on `session.steps` end runs that act blindly or stop changing the screen. The screenshot goes to the LLM only when `_wants_image` (`nl_agent.py:359`) asks for it, and a hard turn goes to the `escalation_model`. A failed screen read falls back to the page source (no refs; a `done` then ends as `done_unverified`), and an `E0106` ends the run as a lost session. `done` is gated by `AgentSession.check` (`_done`, `nl_agent.py:435`); a `done` without expectations ends as `done_unverified`. Wired in `LiveController._get_nl_agent` (`live.py:1238`), whose `_agent_call` (`live.py:672`) goes through `_attempt_combos`, so level-1 fallback still applies; driven by `run_natural_language` (`:1313`). Recording is commit-on-done: `_commit` (`live.py:1364`) keeps the run's steps and elements only for `done` / `done_unverified`, and `_elements_to_save` (`live.py:1381`) writes secret values as `<redacted>`. With `curate_on_done`, `_curate` (`nl_agent.py:595`) runs `curate_steps` (`step_curation.py:57`) to keep a minimal replayable subset; any abnormal outcome keeps every step, so curation never destroys a working recording. The LLM comes from `session.optics.get_llm()` (`gemini` / `openai` / `anthropic`, each a same-named extra; `optics-framework[llm]` installs all). Screenshot bytes for self-heal and NL mode come from `StrategyManager.capture_screenshot_bytes` (`strategies.py:1097`), which prefers each source's native encoded screenshot.
-6. The TUI is `helper/live_tui.py`. `/save` (`live.py:804`, `save(test_case, module_name, *, allow_append=False)`) **appends** to `modules/modules.csv`, `test_cases/test_cases.csv` and `elements/elements.csv`, one module per `/save`. A name collision raises `SaveConflictError` (`:164`) unless `allow_append=True`. User docs: `docs/usage/live_usage.md`.
+6. The TUI is `helper/live_tui.py`. `/save` (`live.py:804`, `save(test_case, module_name, *, allow_append=False)`) **appends** to `modules/modules.csv`, `test_cases/test_cases.csv` and `elements/elements.csv`, one module per `/save`. A name collision raises `SaveConflictError` (`:164`) unless `allow_append=True`.
 
 Device features are Appium only, for Android and iOS: `list_devices` (`live.py:1124`) shells out to `adb` and `idevice_id` and `switch_device` (`:1136`) rebuilds the session with the chosen `udid`, gated by `supports_device_switching` (`:1058`). The `adb` hot-plug monitor is Android only (`supports_adb_hotplug`). If device hot-swap should generalise, it belongs behind `DriverInterface`, not in `helper/live.py`.
 
@@ -89,11 +89,11 @@ Device features are Appium only, for Android and iOS: `list_devices` (`live.py:1
 
 **Deliberately tool-light.** There are **no** recording, suite-CRUD, replay, device-discovery or `doctor` tools: an agent builds a suite from the `steps` resource and `optics://project-format` and runs it with `optics execute`. The MCP layer never shells out to `adb` or assumes a device type; the earlier `mcp_authoring.py`/`mcp_diagnostics.py` modules (~24 tools) were removed for this reason.
 
-`optics mcp` and `optics serve` have separate `SessionManager`s, so sessions are **not shared**; stopping `optics mcp` (including SIGTERM) ends its sessions. User docs: `docs/usage/mcp_usage.md`.
+`optics mcp` and `optics serve` have separate `SessionManager`s, so sessions are **not shared**; stopping `optics mcp` (including SIGTERM) ends its sessions.
 
 ## Mobile web journey (Appium: browsers and WebViews on Android and iOS)
 
-Web pages on a device run through the **same Appium session** as native apps, with no browser driver and no context-switch keyword. The session stays in `NATIVE_APP`, so native locators and OCR keep working on web pages and an app that taps a link continues in the browser. User docs: `docs/usage/mobile_web.md`. End-to-end tests: `tests/integration/test_appium_app_to_browser.py` (emulator in `OPTICS_E2E_EMULATOR`; clears Messages and Chrome data) and `tests/integration/test_appium_ios_app_to_browser.py` (simulator in `OPTICS_E2E_SIMULATOR`).
+Web pages on a device run through the **same Appium session** as native apps, with no browser driver and no context-switch keyword. The session stays in `NATIVE_APP`, so native locators and OCR keep working on web pages and an app that taps a link continues in the browser. End-to-end tests: `tests/integration/test_appium_app_to_browser.py` (emulator in `OPTICS_E2E_EMULATOR`; clears Messages and Chrome data) and `tests/integration/test_appium_ios_app_to_browser.py` (simulator in `OPTICS_E2E_SIMULATOR`).
 
 1. **Web locators** (`css=…`, bare CSS, DOM XPath) reach `AppiumWeb` (`engines/elementsources/appium_web.py`). `AppiumWeb.locate` (`appium_web.py:99`) returns `None` for text, image and native XPath (`utils.is_native_xpath`, `common/utils.py:380`) and acts only while `Appium.native_ui_platform` (`appium.py:394`) is Android or iOS: an iOS `browserName`/`autoWebview` session already reads the page natively, and `web_context` would drop it to `NATIVE_APP`.
 2. `Appium.web_context` (`engines/drivers/appium.py:1823`) enters the page and always switches back to `NATIVE_APP`. **iOS** (`_enter_ios_web_context`, `appium.py:1850`): tries `com.apple.SafariViewService` pages first, then pages of the app in front, and takes the first visible page that holds a locator (`_page_holds`); a page that times out goes into `_frozen_web_contexts` until its URL or title changes. `_IOS_CONTEXT_OPTIONS` (`appium_platforms.py:67`, native sessions only) lists every app's pages and bounds the waits (an ad-hoc app's inspector bundle id is `process-<Name>`). **Android**: the first entry goes through `_foreground_web_context` (`appium.py:1931`) and `_context_name` (`appium.py:178`; the switchable name is `webviewName`, not `webview`); `_focus_window` (`appium.py:1948`) picks the tab showing that URL from `Target.getTargets`, because `switch_to.window` brings a tab to the front. A `browserName` session names Chrome `CHROMIUM`, not `WEBVIEW_chrome`. Later entries use `_reenter_web_context` (`appium.py:1913`), since `mobile: getContexts` waits 2 s on every frozen app's DevTools socket; `_ANDROID_CONTEXT_OPTIONS` (`appium_platforms.py:59`) keeps context switches off those sockets.
@@ -105,7 +105,7 @@ Web pages on a device run through the **same Appium session** as native apps, wi
 
 ## TV web app journey (Appium: Tizen and webOS)
 
-A Tizen or webOS app is a web page with no native tree and no touch. Both profiles set `PlatformProfile.web_ui` (`engines/drivers/appium_platforms.py`), read by `Appium.is_web_ui` (`engines/drivers/appium.py:401`). User docs: "Smart TV (Appium)" in `docs/configuration.md`.
+A Tizen or webOS app is a web page with no native tree and no touch. Both profiles set `PlatformProfile.web_ui` (`engines/drivers/appium_platforms.py`), read by `Appium.is_web_ui` (`engines/drivers/appium.py:401`).
 
 1. **Lookup.** `AppiumFindElement._query` (`engines/elementsources/appium_find_element.py:102`) accepts `css=` and turns a text locator into `utils.dom_text_xpath` (`common/utils.py:328`).
 2. **Dispatch.** `press_element`, `enter_text_element`, `clear_text_element` and `get_text_element` carry `@_on_tv` (`engines/drivers/appium.py:246`) above `@supported_on(*POINTER)`, which calls the same method on `TvWebApp` (`engines/drivers/appium_tv.py:263`, one per session via `Appium._tv_app` (`appium.py:418`)). Other phone and desktop methods raise `E0105`.
@@ -117,7 +117,7 @@ TV chromedrivers are old (Tizen 5.5: Chrome 69; webOS 4: Chrome 53): JS must be 
 
 ## Bluetooth journey (`ble` driver on airhand)
 
-The `ble` driver drives a phone, tablet, computer or TV that has nothing installed, through an [airhand](https://github.com/chinmayajha/airhand) dongle: a Bluetooth keyboard, mouse and media remote on USB serial. The protocol, retries and refusals live in the `airhand` package (the `ble` extra); Optics keeps only the mapping. User docs: "BLE" in `docs/configuration.md`.
+The `ble` driver drives a phone, tablet, computer or TV that has nothing installed, through an [airhand](https://github.com/chinmayajha/airhand) dongle: a Bluetooth keyboard, mouse and media remote on USB serial. The protocol, retries and refusals live in the `airhand` package (the `ble` extra); Optics keeps only the mapping.
 
 1. `BLEDriver` (`engines/drivers/ble.py:178`) validates `Capabilities` (`ble.py:119`: `platform`, `frame`, and `serial` or `port` or neither for the only plugged-in dongle) and opens `airhand.Dongle`. `PLATFORMS` (`ble.py:87`) holds each platform's select-all, Back, launcher shortcut or Android app-drawer key, which `Scroll` directions turn the wheel (`Platform.wheel`; iOS only up and down, with the sign reversed and the pointer over the middle of the screen) and which drag (Android for `Platform.scroll_ms`, slowly, because Android flings content on by the release speed), and where the App Switcher shows the last app (`force_terminate_app` (`ble.py:326`) opens the app and flicks that card away; Android opens Recents with Meta+Tab); `supports` hides `go_back`/`launch_app` where the platform has none. Android sets `finger`: the dongle opens in touch mode (airhand 0.1.2), because Android ignores a mouse's absolute position.
 2. Positions go to the dongle as fractions of `frame`; vision matches are in camera pixels, so `frame` must equal the camera's `out_width` × `out_height`. `_drag` (`ble.py:482`) keeps touch drags at `MIN_DRAG_SPEED`, because iOS takes a slow drag for a tap. On iOS `_park` (`ble.py:489`) moves the pointer to the status bar after every tap, drag and wheel scroll, so it does not hide the next target from the camera; a refused move is logged, so the touch is not tried again. `press_keycode` (`ble.py:278`) sends media keys as consumer reports and everything else as a key combination. A webcam's `camera_screenshot` finds the screen's corners with `find_screen` (`engines/elementsources/screen_finder.py`): `brightness` presses the driver's brightness keys and keeps what changed, and a `ViewGuard` compares the area around the screen at each capture to catch a moved phone.
@@ -220,13 +220,11 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - the end-of-run screenshot + page source (`_capture_end_of_run_artifacts`, `test_runnner.py:647`).
 - `<time>-failure_<test case>.jpg` + page source per failed test case (`TestRunner._capture_failure_artifacts`, `test_runnner.py:670`).
 
-Local SonarQube (same checks as CI's `.github/workflows/mozarksonar.yml`): see [Local Static Analysis](docs/contribution/developer_guide.md#5-local-static-analysis-sonarqube-optional).
-
 ## Working agreement
 
 - **Never co-author commits.** No `Co-Authored-By: Claude ...` or other AI attribution in commits or PR bodies.
 - **Assume Codex reviews every PR.** No dead code, debug leftovers or "fix later" hacks; explain non-obvious choices in the commit body and keep diffs focused.
-- **Split large pushes** into logical commits (e.g. scaffolding → core → tests → docs), each green on its own.
+- **Split large pushes** into logical commits (e.g. scaffolding → core → tests), each green on its own.
 - **After pushing or raising a PR, do a gap analysis** of the implementation and the chat history; show the gaps, risks and follow-ups to the user, open GitHub issues for the ones they approve, and reference them in the PR description.
 - **No unnecessary code comments.** Comment only a non-obvious *why*; never restate what the code does.
 
@@ -235,13 +233,13 @@ Local SonarQube (same checks as CI's `.github/workflows/mozarksonar.yml`): see [
 1. **Run pre-commit before committing** (`poetry run pre-commit run --files <changed>` or the git hook; never `--no-verify`). It chains ruff, bandit, whitespace/YAML/JSON checks, commitizen and gitleaks.
 2. **Trace the blast radius before changing a function** (`grep -rn "<name>" optics_framework/ tests/`):
    - Renaming a public method on `ActionKeyword` / `AppManagement` / `Verifier` / `FlowControl` breaks every CSV/YAML that names it, its `optics.py:Optics` wrapper and both `keyword_registry`s in `helper/generate.py`.
-   - A keyword's display name (the `@keyword(...)` string and the `generate.py` keys) is independent of the method name; changing only it still needs all three places plus docs.
+   - A keyword's display name (the `@keyword(...)` string and the `generate.py` keys) is independent of the method name; changing only it still needs all three places.
    - The `E02*` / `X0201` prefix check in `fallback.advances` (`common/fallback.py:18`) is load-bearing; don't reuse the prefix for non-element errors.
    - `Event.entity_type` values drive `JUnitEventHandler._handle_test_case_event` (`Junit_eventhandler.py:233`) / `_handle_module_event` (`:256`) / `_handle_keyword_event` (`:266`).
    - Changing how `determine_element_type` (`utils.py:335`) classifies a string changes which strategy fires.
 3. **Conventional Commits** — the commitizen hook (`.cz.toml`) rejects anything but `feat:` / `fix:` / `refactor:` / `docs:` / `chore:` / `test:` / `perf:` / `style:` / `build:` / `ci:`.
 4. **Python 3.12+ only** (`python = ">=3.12,<4.0"`); use modern typing.
-5. **Do not edit generated trees** (`__pycache__/`, `dist/`, `docs/build/`, `.tox/`, `htmlcov/`, `execution_output/`).
+5. **Do not edit generated trees** (`__pycache__/`, `dist/`, `.tox/`, `htmlcov/`, `execution_output/`).
 
 ## Pitfalls
 
@@ -261,12 +259,11 @@ Local SonarQube (same checks as CI's `.github/workflows/mozarksonar.yml`): see [
 ## Commands
 
 ```bash
-poetry install --with dev,test,docs       # full setup
+poetry install --with dev,test            # full setup
 poetry run pytest                          # tests + coverage (configured in pytest.toml)
 poetry run pytest -m white_box             # unit subset
 poetry run ruff check --fix .              # lint + autofix
 poetry run pre-commit run --files <paths>  # hook chain on touched files
-poetry run mkdocs serve                    # docs preview
 poetry build                               # wheel + sdist
 optics setup                               # install driver/browser extras (e.g. Playwright + Chromium)
 optics execute <folder>                    # smoke a project against the installed CLI

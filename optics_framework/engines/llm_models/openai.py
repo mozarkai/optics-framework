@@ -28,7 +28,6 @@ class OpenAILLM(LLMInterface):
 
     Without a ``url`` (or ``OPENAI_BASE_URL``) this talks to OpenAI; with one, to whatever
     serves the protocol there: OpenRouter, Azure OpenAI, Ollama, vLLM, LM Studio, Groq.
-    Capabilities are documented under "LLM Models" in ``docs/configuration.md``.
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
