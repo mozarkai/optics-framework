@@ -329,7 +329,7 @@ def test_screenshot_tool_returns_rendered_image(owned):
 def test_require_fastmcp_raises_when_missing():
     with (
         patch.object(mcp_server, "_FASTMCP_IMPORT_ERROR", ImportError("no fastmcp")),
-        pytest.raises(RuntimeError, match="optics-framework\\[mcp\\]"),
+        pytest.raises(RuntimeError, match="optics setup --install mcp"),
     ):
         mcp_server._require_fastmcp()
 

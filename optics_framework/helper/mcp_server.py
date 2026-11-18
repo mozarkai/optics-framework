@@ -70,6 +70,7 @@ from optics_framework.common.screen_snapshot import (
 )
 from optics_framework.common.session_manager import Session
 from optics_framework.engines.drivers import playwright_profiles
+from optics_framework.helper.abort import MissingExtraError
 from optics_framework.helper.onboarding import optics_home
 from optics_framework.helper.version import VERSION
 
@@ -198,10 +199,7 @@ def _idle_lease_s() -> int:
 
 def _require_fastmcp() -> None:
     if _FASTMCP_IMPORT_ERROR is not None:
-        raise RuntimeError(
-            "The 'mcp' extra is required to run the Optics MCP server. "
-            "Install it with: pip install 'optics-framework[mcp]'"
-        ) from _FASTMCP_IMPORT_ERROR
+        raise MissingExtraError("The Optics MCP server", "mcp") from _FASTMCP_IMPORT_ERROR
 
 
 def _tool_error(exc: HTTPException) -> "ToolError":
