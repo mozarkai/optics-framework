@@ -14,8 +14,6 @@ from optics_framework.helper.generate import (
 pytestmark = pytest.mark.generate
 
 
-# Sample project data, expressed once in each format and materialised on disk. #
-
 CSV_TEST_CASES = """\
 test_case,test_step
 Login Test,Login Module
@@ -103,10 +101,6 @@ class TestYAMLDataReader:
         assert modules == {"Login Module": [("Sleep", ["1"])]}
 
 
-# Registry drift guard: every generator keyword must be recognised by the YAML #
-# reader's own keyword set, otherwise multi-word keywords silently mis-split.  #
-
-
 def _resolve(framework, params, elements, method_name):
     if framework == "pytest":
         return PytestGenerator()._resolve_params(params, elements, method_name)
@@ -118,9 +112,6 @@ class TestResolveParams:
 
     def test_unknown_method_keeps_name_value_as_kwarg(self):
         assert _resolve("pytest", ["mode=fast"], {}, "custom_widget_tap") == ["mode='fast'"]
-
-
-# read_mixed_data merge + conflict detection                                  #
 
 
 def _generated_output(folder: Path, framework: str) -> str:
@@ -149,5 +140,3 @@ class TestGenerateTestFile:
         copied = csv_project / "generated" / "Tests" / "input_templates" / "logo.png"
         assert copied.exists()
         assert copied.read_bytes() == b"fake-png"
-
-

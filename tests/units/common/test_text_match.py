@@ -70,6 +70,11 @@ def test_numbers_are_placed_where_bidirectional_text_draws_them(line, text, left
     assert left <= center[0] <= right, center
 
 
+def test_without_strict_a_part_of_a_word_is_found_after_whole_words():
+    ocr = Replay([_line("Payment", 10, 10, 200, 40), _line("Pay", 10, 100, 90, 130)])
+    assert [ocr.find_element(FRAME, "Pay", index=i)[1][1] for i in (0, 1)] == [115, 25]
+
+
 def test_extra_spaces_inside_one_detection_do_not_split_it():
     assert Replay([_line("Sign      in", 0, 0, 120, 20)]).find_element(FRAME, "Sign in", strict=True)[0]
 

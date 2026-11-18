@@ -57,8 +57,6 @@ class TestInstallExtras:
         assert "stdout detail" in message
 
 
-# install_extras — streamed CLI path                                           #
-
 def _popen_result(lines: list[str], returncode: int = 0) -> MagicMock:
     proc = MagicMock()
     proc.stdout = io.StringIO("".join(f"{line}\n" for line in lines))
@@ -78,8 +76,6 @@ class TestStreamedInstall:
         assert popen.call_args_list[1].args[0][-1] == "chromium"
         assert ok is True
 
-
-# Drift guard — setup.py tables must stay in sync with pyproject extras        #
 
 def _pyproject_extras() -> dict:
     root = Path(__file__).resolve().parents[3]

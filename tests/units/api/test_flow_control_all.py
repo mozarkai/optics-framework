@@ -142,15 +142,21 @@ class TestInvokeApi:
             flow_control.invoke_api("testcol.bar")
 
 
-# condition — expression path (fully correct today)                           #
-
-
 class TestExpressionCondition:
     def test_no_else_returns_none(self, flow_control):
         run = _module_runner({"modA": ["a"]})
         _register(flow_control, run)
         flow_control.session.elements.add_element("x", "no")
         assert flow_control.condition('${x} == "yes"', "modA") is None
+        assert run.calls == []
+
+    def test_a_variable_inside_quotes_is_refused(self, flow_control):
+        run = _module_runner({"modA": ["ran:modA"], "modElse": ["ran:modElse"]})
+        _register(flow_control, run)
+        flow_control.session.elements.add_element("x", "foo")
+        with pytest.raises(OpticsError) as excinfo:
+            flow_control.condition("'${x}' == 'foo'", "modA", "modElse")
+        assert excinfo.value.code == Code.E0403
         assert run.calls == []
 
     @pytest.mark.parametrize("cond", [
@@ -175,9 +181,6 @@ class TestExpressionCondition:
         assert excinfo.value.code == Code.E0406
         assert reason in excinfo.value.message
         assert run.calls == []
-
-
-# condition — module path (behaviour partly buggy; see module docstring)       #
 
 
 class TestModuleCondition:
