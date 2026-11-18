@@ -268,6 +268,21 @@ def _refuse_env_references(name: str, url: str | None, capabilities: dict[str, A
         raise OpticsError(Code.E0501, f"{name}: $NAME references are only read from a project's config.yaml; send the value")
 
 
+def _refuse_unknown_dongle(capabilities: dict[str, Any]) -> None:
+    """A remote session names a plugged-in airhand dongle by its serial: a port, or any other serial, opens a server device."""
+    if "port" in capabilities:
+        raise OpticsError(Code.E0501, "ble: a remote session names the dongle by its serial, not a port")
+    serial = capabilities.get("serial")
+    if serial is None:
+        return
+    try:
+        from airhand import serial_numbers
+    except ImportError:
+        return
+    if str(serial) not in serial_numbers():
+        raise OpticsError(Code.E0501, f"ble: no plugged-in airhand dongle has the serial {serial}")
+
+
 def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str, Any]) -> None:
     """Refuse caller values that would make the server read its own environment or files."""
     _refuse_env_references(name, url, capabilities)
@@ -281,9 +296,8 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
         raise OpticsError(Code.E0501, f"{name}: credentials_path is read only from a project's config.yaml")
     if server_reads_allowed:
         return
-    if name == "ble" and "port" in capabilities:
-        # A port names a device file of the server; a serial number only matches a USB serial port.
-        raise OpticsError(Code.E0501, f"{name}: a remote session names the dongle by its serial, not a port")
+    if name == "ble":
+        _refuse_unknown_dongle(capabilities)
     if name == "camera_screenshot" and (url or capabilities.get("url") or "camera_index" in capabilities):
         # The server would fetch any address, or open any of its own cameras, that the caller names.
         raise OpticsError(Code.E0501, f"{name}: a remote session reads the camera the server sets in WEBCAM_SCREENSHOT_URL")
