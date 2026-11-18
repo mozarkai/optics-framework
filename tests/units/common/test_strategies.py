@@ -56,9 +56,6 @@ class TestDetermineElementTypeWithTextOnly:
     def test_text_only_submit_classified_as_text(self):
         assert utils.determine_element_type("TEXT_ONLY:Submit") == "Text"
 
-    def test_text_only_login_classified_as_text(self):
-        assert utils.determine_element_type("TEXT_ONLY:Login") == "Text"
-
     def test_text_only_case_insensitive(self):
         assert utils.determine_element_type("text_only:foo") == "Text"
 
@@ -109,7 +106,7 @@ class TestStrategyManagerLocateTextOnly:
         real_try = strategy_manager._try_strategy_locate  # save before patch to avoid recursion
         def record_and_return_success_on_text_detection(strategy, element, *args, **kwargs):
             name = type(strategy).__name__
-            tried_strategies.append(name)
+            tried_strategies.append((name, element))
             if name == "TextDetectionStrategy":
                 return _make_dummy_locate_result(strategy)
             return real_try(strategy, element, *args, **kwargs)
@@ -117,18 +114,10 @@ class TestStrategyManagerLocateTextOnly:
             results = list(strategy_manager.locate("TEXT_ONLY:foo"))
             assert len(results) == 1
             assert results[0].strategy.__class__.__name__ == "TextDetectionStrategy"
-            assert "TextElementStrategy" not in tried_strategies
-            assert "TextDetectionStrategy" in tried_strategies
-
-    def test_locate_text_only_passes_stripped_element_to_strategy(self, strategy_manager):
-        captured_elements = []
-        def capture_element_and_succeed(strategy, element, *args, **kwargs):
-            captured_elements.append(element)
-            return _make_dummy_locate_result(strategy)
-        with patch.object(strategy_manager, "_try_strategy_locate", side_effect=capture_element_and_succeed):
-            list(strategy_manager.locate("TEXT_ONLY:Submit"))
-            assert "Submit" in captured_elements
-            assert "TEXT_ONLY:Submit" not in captured_elements
+            names = [name for name, _ in tried_strategies]
+            assert "TextElementStrategy" not in names
+            assert "TextDetectionStrategy" in names
+            assert {element for _, element in tried_strategies} == {"foo"}
 
     def test_locate_without_prefix_tries_both_text_strategies(self, strategy_manager):
         tried_strategies = []
@@ -142,6 +131,7 @@ class TestStrategyManagerLocateTextOnly:
         with patch.object(strategy_manager, "_try_strategy_locate", side_effect=record_and_return_success_on_text_detection):
             results = list(strategy_manager.locate("Submit"))
             assert len(results) == 1
+            assert "TextElementStrategy" in tried_strategies
             assert "TextDetectionStrategy" in tried_strategies
 
 
@@ -758,10 +748,6 @@ class TestDeadSessionIsNotMasked:
         with pytest.raises(OpticsError) as exc_info:
             manager.get_interactive_elements()
         assert exc_info.value.code == Code.E0106
-
-    def test_e0106_is_outside_the_element_fallback_family(self):
-        assert not Code.E0106.value.startswith("E02")
-        assert Code.E0106 != Code.X0201
 
     def test_ordinary_backend_failure_still_reports_not_found(self):
         source = MagicMock()

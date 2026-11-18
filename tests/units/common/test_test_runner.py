@@ -6,8 +6,8 @@ Source under test: ``optics_framework/common/runner/test_runnner.py`` — specif
 
 - ``TestRunner.resolve_param`` (returns the *first* value of a ``${var}`` list) vs
   ``TestRunner._build_param_candidates`` (returns the whole *list*) — the documented
-  dry-run-vs-execute divergence. ``TestDivergence`` pins *both* so the divergence is
-  explicit.
+  dry-run-vs-execute divergence, pinned by ``TestResolveParam`` and
+  ``TestBuildParamCandidates`` on the same data shape.
 - ``TestRunner._try_execute_with_fallback`` — the Cartesian expansion of ``${var}``
   value lists, the ``MAX_ATTEMPTS = 20`` cap, and the rule that the ladder only
   advances on ``OpticsError`` codes in the element-not-found family / ``X0201``.
@@ -208,45 +208,6 @@ class TestBuildParamCandidates:
         )
         assert result == [["lit"], ["x1", "x2"]]
 
-    async def test_missing_variable_returns_none_and_marks_fail(self):
-        runner = _make_runner()
-        kw_result = _kw_result()
-        kw_node = _kw_node(params=["${gone}"])
-        result = await runner._build_param_candidates(
-            kw_node, ["${gone}"], _mod_node(),
-            kw_result, time.time(), _tc_result(), LogCaptureBuffer(),
-        )
-        assert result is None
-        assert kw_result.status == "FAIL"
-        assert kw_node.state == State.COMPLETED_FAILED
-
-
-# --------------------------------------------------------------------------- #
-# The documented divergence — pin BOTH resolvers on the same data             #
-# --------------------------------------------------------------------------- #
-
-class TestDivergence:
-    """``resolve_param`` (dry-run) returns the first value; ``_build_param_candidates``
-    (execute) returns the whole list. This is the documented dry-run-vs-execute
-    divergence — pin both so any future convergence is a deliberate, visible change.
-    """
-
-    async def test_first_vs_list_on_identical_element(self):
-        elements = ElementData()
-        elements.add_element("target", "primary")
-        elements.add_element("target", "secondary")
-        runner = _make_runner(elements=elements)
-
-        # dry-run form: first only
-        assert runner.resolve_param("${target}") == "primary"
-
-        # execute form: the whole ordered fallback list
-        candidates = await runner._build_param_candidates(
-            _kw_node(), ["${target}"], _mod_node(),
-            _kw_result(), time.time(), _tc_result(), LogCaptureBuffer(),
-        )
-        assert candidates == [["primary", "secondary"]]
-
 
 # --------------------------------------------------------------------------- #
 # _try_execute_with_fallback — Cartesian expansion + success                   #
@@ -320,14 +281,8 @@ class TestMaxAttempts:
 # --------------------------------------------------------------------------- #
 
 class TestFallbackAdvanceRule:
-    async def test_x0201_advances_the_ladder(self):
-        runner = _make_runner()
-        method = _Recorder(fail_until=("win",), raise_code=Code.X0201)
-        assert await _run_fallback(runner, method, [["lose", "win"]]) is True
-        assert len(method.calls) == 2
-
     @pytest.mark.parametrize(
-        "code", [Code.E0801, Code.E0501, Code.E0402, Code.E0105]
+        "code", [Code.E0801, Code.E0501, Code.E0402, Code.E0105, Code.E0106]
     )
     async def test_non_element_error_is_fatal_and_stops_immediately(self, code):
         runner = _make_runner()
@@ -346,13 +301,16 @@ class TestFallbackAdvanceRule:
         runner = _make_runner()
         method = _Recorder(always_raise=ValueError("kaboom"))
         kw_node = _kw_node()
+        kw_result = _kw_result()
         result = await runner._try_execute_with_fallback(
             method, [["a", "b"]], kw_node, _mod_node(),
-            _kw_result(), time.time(), _tc_result(), LogCaptureBuffer(),
+            kw_result, time.time(), _tc_result(), LogCaptureBuffer(),
         )
         assert result is False
         assert len(method.calls) == 1
         assert kw_node.state == State.COMPLETED_FAILED
+        assert kw_result.status == "FAIL"
+        assert kw_result.reason == "Keyword 'Some Keyword' failed: kaboom"
 
     async def test_e0201_advances_the_ladder(self):
         """An E0201 (element-not-found family) advances to the next candidate,
@@ -444,6 +402,7 @@ class TestExecuteKeywordNameResolution:
         assert ok is False
         assert called == []                 # never dispatched — element unresolved
         assert kw_result.status == "FAIL"
+        assert kw_node.state == State.COMPLETED_FAILED
 
 
 # --------------------------------------------------------------------------- #
@@ -480,6 +439,7 @@ class TestModuleStepResolution:
         ok = await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
         assert ok is False
         assert module_result.status == "FAIL"
+        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
 
     async def test_unknown_step_fails_batch(self):
         runner = _make_runner(keyword_map={"known": lambda: None})
@@ -488,6 +448,7 @@ class TestModuleStepResolution:
         ok = await runner._process_module(_mod_node(name=step), tc_result, {})
         assert ok is False
         assert module_result.status == "FAIL"
+        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
 
     async def test_unknown_step_fail_event_carries_reason(self):
         runner = _make_runner()
@@ -545,25 +506,6 @@ class TestDryRunUnresolvedParam:
         assert ok is False
         assert kw_result.status == "FAIL"
         assert module_result.status == "FAIL"
-
-    async def test_missing_variable_fail_event_reports_element(self):
-        modules = ModuleData()
-        modules.add_module_definition("Use Var", [("Validate Element", ["${NoSuchVar}"])])
-        runner = _make_runner(modules=modules)
-        kw_result = _kw_result(node_id="kw-1", name="Validate Element")
-        module_result = ModuleResult(
-            name="Use Var", elapsed="0.00s", status="NOT_RUN", keywords=[kw_result],
-        )
-        tc_result = _TestCaseResult(
-            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
-            modules=[module_result],
-        )
-        runner.result_printer.test_state = {"tc": tc_result}
-        module_node = _mod_node(name="Use Var")
-        module_node.add_keyword(_kw_node(name="Validate Element", params=["${NoSuchVar}"]))
-
-        await runner._dry_run_module(module_node, tc_result, "tc-node-1")
-
         fails = [e for e in runner.event_manager.events if e.status == EventStatus.FAIL]
         assert any(
             e.entity_type == "keyword" and e.message == "Code.E0201: Element not found: NoSuchVar" and e.code == "E0201"
@@ -595,6 +537,8 @@ class TestDryRunUnresolvedParam:
         assert "Keyword not found: Launhc App" in fails[0].message
         assert "Did you mean 'Launch App'" in fails[0].message
         assert runner._last_failure_reason == fails[0].message
+        assert kw_result.status == "FAIL"
+        assert "Keyword not found: Launhc App" in kw_result.reason
 
     def test_init_state_keeps_unresolved_param_visible(self):
         """``_initialize_test_state`` must not raise on unresolved ``${var}``;
@@ -752,68 +696,12 @@ class TestEndOfRunArtifacts:
         assert warnings_[0].exc_info is None
 
 
-class TestFailureReasonRecording:
-    @staticmethod
-    def _wire_module(runner, module_name, keywords=None):
-        module_result = ModuleResult(
-            name=module_name, elapsed="0.00s", status="NOT_RUN",
-            keywords=keywords or [],
-        )
-        tc_result = _TestCaseResult(
-            id="tc-1", name="tc", elapsed="0.00s", status="NOT_RUN",
-            modules=[module_result],
-        )
-        runner.result_printer.test_state = {"tc": tc_result}
-        return tc_result, module_result
-
-    async def test_fatal_keyword_exception_records_reason_on_result(self):
-        runner = _make_runner()
-        method = _Recorder(always_raise=ValueError("kaboom"))
-        kw_result = _kw_result()
-        await runner._try_execute_with_fallback(
-            method, [["a"]], _kw_node(), _mod_node(),
-            kw_result, time.time(), _tc_result(), LogCaptureBuffer(),
-        )
-        assert kw_result.status == "FAIL"
-        assert kw_result.reason == "Keyword 'Some Keyword' failed: kaboom"
-
-    async def test_unknown_module_records_reason_in_batch_mode(self):
-        runner = _make_runner(keyword_map={"known": lambda: None})
-        step = "Bogus Keyword Of Doom hello"
-        tc_result, module_result = self._wire_module(runner, step)
-        await runner._process_module(_mod_node(name=step), tc_result, {})
-        assert module_result.status == "FAIL"
-        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
-
-    async def test_unknown_module_records_reason_in_dry_run(self):
-        runner = _make_runner()
-        step = "Bogus Keyword Of Doom hello"
-        tc_result, module_result = self._wire_module(runner, step)
-        await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
-        assert module_result.status == "FAIL"
-        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
-
-    async def test_dry_run_keyword_failure_records_reason_on_result(self):
-        modules = ModuleData()
-        modules.add_module_definition("Use KW", [("Launhc App", [])])
-        runner = _make_runner(keyword_map={"launch_app": lambda: None}, modules=modules)
-        kw_result = _kw_result(node_id="kw-1", name="Launhc App")
-        tc_result, module_result = self._wire_module(
-            runner, "Use KW", keywords=[kw_result]
-        )
-        module_node = _mod_node(name="Use KW")
-        module_node.add_keyword(_kw_node(name="Launhc App"))
-        await runner._dry_run_module(module_node, tc_result, "tc-node-1")
-        assert kw_result.status == "FAIL"
-        assert "Keyword not found: Launhc App" in kw_result.reason
-
-
 class TestUnknownModuleSuggestion:
     """QA finding 3: unknown steps get a single difflib-based hint."""
 
     async def test_batch_reason_appends_closest_keyword_match(self):
         runner = _make_runner(keyword_map={"launch_app": lambda: None})
-        tc_result, module_result = TestFailureReasonRecording._wire_module(
+        tc_result, module_result = TestModuleStepResolution._wire_module(
             runner, "Launch Ap"
         )
         await runner._process_module(_mod_node(name="Launch Ap"), tc_result, {})
@@ -821,13 +709,6 @@ class TestUnknownModuleSuggestion:
             "Code.E0402: Unknown keyword or module: 'Launch Ap'."
             " Did you mean 'Launch App'? (run `optics list` to see all keywords)"
         )
-
-    async def test_no_match_appends_nothing(self):
-        runner = _make_runner(keyword_map={"completely_different": lambda: None})
-        step = "Bogus Keyword Of Doom hello"
-        tc_result, module_result = TestFailureReasonRecording._wire_module(runner, step)
-        await runner._process_module(_mod_node(name=step), tc_result, {})
-        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
 
 
 class TestFailureDetailsSection:

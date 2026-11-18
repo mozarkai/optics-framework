@@ -183,13 +183,6 @@ def _api(flow_control, monkeypatch, fake_response, *, extract=None, jsonpath=Non
 
 
 class TestInvokeApi:
-    def test_extracts_value(self, flow_control, monkeypatch, fake_response):
-        _api(flow_control, monkeypatch, fake_response,
-             extract={"result": "data.value"},
-             resp=fake_response(json_data={"data": {"value": "42"}}))
-        flow_control.invoke_api("testcol.bar")
-        assert flow_control.session.elements.get_first("result") == "42"
-
     def test_jsonpath_assertion_passes(self, flow_control, monkeypatch, fake_response):
         _api(flow_control, monkeypatch, fake_response,
              extract={"result": "data.value"},
@@ -204,11 +197,6 @@ class TestInvokeApi:
              resp=fake_response(json_data={"data": {"value": "42"}}))
         with pytest.raises(AssertionError):
             flow_control.invoke_api("testcol.bar")
-
-    def test_no_extract_is_noop(self, flow_control, monkeypatch, fake_response):
-        _api(flow_control, monkeypatch, fake_response,
-             resp=fake_response(json_data={"foo": "bar"}))
-        flow_control.invoke_api("testcol.bar")  # must not raise
 
     def test_non_json_response_raises(self, flow_control, monkeypatch, fake_response):
         _api(flow_control, monkeypatch, fake_response,

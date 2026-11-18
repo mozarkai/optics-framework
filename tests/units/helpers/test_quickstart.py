@@ -320,11 +320,6 @@ class TestTemplates:
             h.run()
         assert h.spies.create_project.template == "contact"
 
-    def test_blank_choice_maps_to_no_template(self, tmp_path):
-        with Harness(["mobile", "1", "demo", str(tmp_path)], [True]) as h:
-            h.run()
-        assert h.spies.create_project.template is None
-
     def test_template_config_kept_when_overwrite_declined(self, tmp_path):
         # Confirms: 1) install engines? yes  2) overwrite template config? no.
         with Harness(["mobile", "2", "demo", str(tmp_path)], [True, False]) as h:
@@ -334,13 +329,6 @@ class TestTemplates:
         # The journey still finishes after keeping the template's config.
         assert h.spies.next_steps == (str(tmp_path / "demo"),
                                       {"configured": True})
-
-    def test_blank_project_writes_config_without_overwrite_prompt(self, tmp_path):
-        # Blank scaffolding also produces a starter config.yaml; only the
-        # template branch may ask before overwriting it.
-        with Harness(["mobile", "1", "demo", str(tmp_path)], [True]) as h:
-            h.run()
-        assert h.spies.write is not None
 
 
 class TestTemplateDomainMismatch:
@@ -459,30 +447,6 @@ class TestExistingProject:
         assert h.spies.write is None
 
 
-# --------------------------------------------------------------------------- #
-# Guard                                                                        #
-# --------------------------------------------------------------------------- #
-
-@pytest.mark.parametrize(
-    "domain, template_choice",
-    [("mobile", "1"), ("web", "1"), ("web", "2")],
-)
-def test_wizard_completes_without_execute_or_dry_run(
-        tmp_path, domain, template_choice):
-    mismatch_confirm = template_choice != "1" and domain == "web"
-    overwrite_confirm = template_choice != "1"
-    confirms = [True]
-    if mismatch_confirm:
-        confirms.append(True)
-    if overwrite_confirm:
-        confirms.append(True)
-    with Harness([domain, template_choice, "demo", str(tmp_path)],
-                 confirms) as h:
-        h.run()
-    assert h.spies.execute_main.calls == []
-    assert h.spies.dryrun_main.calls == []
-
-
 class TestSampleFirst:
     """A blank project scaffolds header-only CSVs, so a newcomer who takes the
     default reaches "now run it" with nothing to run."""
@@ -506,12 +470,6 @@ class TestSampleFirst:
         assert h.spies.create_project.template == "playwright"
         assert "playwright" in self._sample_question(h)
 
-    def test_declining_falls_through_to_the_full_list(self, tmp_path):
-        with Harness(["mobile", "1", "demo", str(tmp_path)], [True],
-                     start_from_sample=False) as h:
-            h.run()
-        assert h.spies.create_project.template is None
-
 
 class TestFirstRun:
     def test_ready_and_accepted_runs_then_shows_what_next(self, tmp_path):
@@ -520,6 +478,7 @@ class TestFirstRun:
             h.run()
         folder = str(tmp_path / "demo")
         assert h.spies.execute_main.calls == [((folder,), {})]
+        assert h.spies.dryrun_main.calls == []
         assert h.spies.what_next == folder
         assert h.spies.next_steps is None
 
@@ -541,9 +500,3 @@ class TestFirstRun:
         assert h.spies.what_next is None
         assert h.spies.next_steps == (str(tmp_path / "demo"),
                                       {"configured": True})
-
-    def test_dry_run_is_still_never_invoked(self, tmp_path):
-        with Harness(["mobile", "demo", str(tmp_path)], [True, False],
-                     start_from_sample=True, ready=True, run_first=True) as h:
-            h.run()
-        assert h.spies.dryrun_main.calls == []

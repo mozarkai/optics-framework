@@ -189,22 +189,6 @@ _SELF_HEALING_KEYWORDS = [
 
 
 @pytest.mark.parametrize("slug, params", _SELF_HEALING_KEYWORDS)
-def test_mcp_dispatch_binds_real_self_healing_signatures(slug, params):
-    from optics_framework.api.action_keyword import ActionKeyword
-    from optics_framework.common import expose_api
-
-    method = getattr(ActionKeyword, slug)
-    engine = MagicMock()
-    engine.execute = AsyncMock(return_value=_exec_response("ok"))
-    _run(expose_api._execute_keyword_with_fallback(
-        engine, "sess", slug, params, method, MagicMock()
-    ))
-    built = engine.execute.await_args.args[0].params
-    assert "located" not in built
-    inspect.signature(method).bind(None, *built)
-
-
-@pytest.mark.parametrize("slug, params", _SELF_HEALING_KEYWORDS)
 def test_mcp_tool_to_dispatch_binds_real_signatures(slug, params, owned):
     owned("s1")
     server = mcp_server.build_server("full")

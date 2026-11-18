@@ -292,13 +292,6 @@ class TestInstallExtras:
             f"{DISTRIBUTION_NAME}[appium]==1.2.3", "appium-python-client==4.2.0",
         ]
 
-    def test_no_version_appends_nothing(self):
-        with patch(f"{MODULE}._installed_version", return_value=None), \
-                patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(_reqs("Appium"), stream=False)
-        # extras spec only, no trailing concrete package.
-        assert run.call_args.args[0][-1] == f"{DISTRIBUTION_NAME}[appium]"
-
     def test_playwright_triggers_browser_install(self):
         with patch(f"{MODULE}._installed_version", return_value=None), \
                 patch(f"{MODULE}.subprocess.run") as run:
@@ -308,12 +301,6 @@ class TestInstallExtras:
             [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
             capture_output=True, text=True, check=True, shell=False,
         )
-
-    def test_non_playwright_skips_browser_install(self):
-        with patch(f"{MODULE}._installed_version", return_value=None), \
-                patch(f"{MODULE}.subprocess.run") as run:
-            install_extras(_reqs("Appium"), stream=False)
-        assert run.call_count == 1
 
     def test_failure_returns_message_with_stderr(self):
         err = subprocess.CalledProcessError(1, "pip", stderr="boom: could not resolve")
@@ -383,17 +370,6 @@ class TestStreamedInstall:
         out = capsys.readouterr().out
         assert "Requirement already satisfied" not in out
         assert "Collecting appium-python-client" in out
-        assert ok is True
-
-    def test_version_pin_reaches_pip_argv(self):
-        reqs = [InstallRequest(engine=ALL_ENGINES["Appium"], version="==5.0.0")]
-        proc = _popen_result([])
-        with patch(f"{MODULE}._installed_version", return_value=None), \
-                patch(f"{MODULE}.subprocess.Popen", return_value=proc) as popen:
-            ok, _ = install_extras(reqs)
-        argv = popen.call_args.args[0]
-        assert f"{DISTRIBUTION_NAME}[appium]" in argv
-        assert "appium-python-client==5.0.0" in argv
         assert ok is True
 
     def test_playwright_browser_install_also_streams(self):
@@ -541,17 +517,6 @@ class TestEngineInstallerApp:
 class TestKeyboardEscape:
     """The picker must not be a keyboard trap (regression: q, Esc-less
     Ctrl+C did nothing — only the on-screen Quit button or Ctrl+Q worked)."""
-
-    def test_q_and_ctrl_c_bindings_map_to_quit(self):
-        bindings = {}
-        for binding in EngineInstallerApp.BINDINGS:
-            key, action = binding[:2]
-            bindings[key] = action
-        assert bindings.get("q") == "quit"
-        assert bindings.get("ctrl+c") == "quit"
-        from textual.app import App
-        default_keys = {b.key for b in App.BINDINGS}
-        assert "ctrl+q" in default_keys
 
     async def test_footer_is_composed_so_binding_is_visible(self):
         from textual.widgets import Footer

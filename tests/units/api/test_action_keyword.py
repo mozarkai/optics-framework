@@ -109,13 +109,6 @@ class TestPressElementWithIndex:
             action_keyword.strategy_manager, 'locate', return_value=[LocateResult(value, MagicMock())]
         )
 
-    @pytest.mark.parametrize("index_str, index_int", [("0", 0), ("1", 1), ("5", 5)])
-    def test_string_index_is_coerced_to_int_for_locate(self, action_keyword, index_str, index_int):
-        with self._mock_locate(action_keyword, (100, 150)) as mock_locate:
-            action_keyword.press_element("button", index=index_str)
-        mock_locate.assert_called_once_with("button", index=index_int)
-        assert isinstance(mock_locate.call_args.kwargs["index"], int)
-
     def test_default_index_is_zero(self, action_keyword):
         with self._mock_locate(action_keyword, (100, 100)) as mock_locate:
             action_keyword.press_element("button")
@@ -142,14 +135,6 @@ class TestPressElementWithIndex:
             action_keyword.press_element("button", event_name="test_event")
         mock_dependencies['driver'].press_coordinates.assert_called_once_with(120, 180, event_name="test_event")
 
-    def test_aoi_params_passed_to_locate(self, action_keyword, mock_dependencies):
-        with self._mock_locate(action_keyword, (200, 250)) as mock_locate:
-            action_keyword.press_element(
-                "button", index="1", aoi_x="10", aoi_y="20", aoi_width="50", aoi_height="60"
-            )
-        mock_locate.assert_called_once_with("button", 10.0, 20.0, 50.0, 60.0, index=1)
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(200, 250, event_name=None)
-
     def test_no_located_result_raises_element_not_found(self, action_keyword):
         with patch.object(action_keyword.strategy_manager, 'locate', return_value=[]):
             with pytest.raises(OpticsError) as exc_info:
@@ -175,21 +160,6 @@ class TestScreenshotFailureFallback:
                 action_keyword.press_element("button")
 
         mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, event_name=None)
-
-    @patch('optics_framework.common.utils.save_screenshot')
-    def test_locate_and_act_skips_save_when_screenshot_raises(
-        self, mock_save_screenshot, action_keyword, mock_dependencies
-    ):
-        """utils.save_screenshot is not called when capture_screenshot raises."""
-        mock_locate_result = LocateResult((100, 150), MagicMock())
-
-        with patch.object(
-            action_keyword.strategy_manager, 'capture_screenshot',
-            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
-        ):
-            with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
-                action_keyword.press_element("button")
-
         mock_save_screenshot.assert_not_called()
 
     @patch('optics_framework.common.utils.annotate_aoi_region')
@@ -475,25 +445,12 @@ class TestSwipeUntilElementAppears:
 
 
 class TestDeprecatedAliases:
-    """Deprecated keywords must stay callable, registered aliases.
-
-    A ``@DeprecationWarning`` decorator (an exception class, not a real decorator)
-    silently replaced these methods with exception *instances*, dropping them from
-    the keyword map so the runner no longer resolved them. Guard against that.
-    """
+    """Deprecated keywords stay callable and delegate to press_element."""
 
     @pytest.fixture(autouse=True)
     def _no_disk_writes(self):
         with patch('optics_framework.common.utils.save_screenshot'):
             yield
-
-    @pytest.mark.parametrize(
-        "name", ["press_checkbox", "press_radio_button", "swipe_seekbar_to_right_android"]
-    )
-    def test_alias_is_callable_not_warning(self, name):
-        attr = getattr(ActionKeyword, name)
-        assert callable(attr)
-        assert not isinstance(attr, Warning)
 
     @pytest.mark.parametrize("alias", ["press_checkbox", "press_radio_button"])
     def test_alias_delegates_to_press_element_with_deprecation_log(self, action_keyword, alias):

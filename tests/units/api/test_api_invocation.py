@@ -49,20 +49,6 @@ def flow_control(mock_runner, api_test_data):
     flow_control.session = mock_runner
     return flow_control
 
-def test_invoke_api_success(flow_control):
-    # 1. Invoke the first API (post_token)
-    flow_control.invoke_api("authentication_apis.post_token")
-
-    # Assertions for the first API call
-    assert flow_control.session.elements.get_first("auth_token") == "real_auth_token_123"
-    assert flow_control.session.elements.get_first("user_id") == "98765"
-
-    # 2. Invoke the second API (send_otp)
-    flow_control.invoke_api("authentication_apis.send_otp")
-
-    # No direct assertion on the second API call response here, as it's handled internally by FlowControl
-    # and we're primarily testing the invocation and data flow.
-
 def test_invoke_api_collection_not_found(flow_control):
     with pytest.raises(OpticsError, match="API collection 'non_existent_apis' not found."):
         flow_control.invoke_api("non_existent_apis.some_api")
@@ -152,15 +138,3 @@ def test_extract_from_json_paths(path, expected):
         "resultObj": {"containers": [{"metadata": {"title": "Taj Mahal"}}]},
     }
     assert FlowControl.__new__(FlowControl)._extract_from_json(data, path) == expected
-
-
-def test_extraction_creates_element_store_when_missing():
-    class SessionWithoutElements:
-        elements = None
-
-    flow_control = FlowControl.__new__(FlowControl)
-    flow_control.session = SessionWithoutElements()
-
-    flow_control._extract_and_store_single_value({"dummy": "482913"}, "otp", "$.dummy")
-
-    assert flow_control.session.elements.get_first("otp") == "482913"

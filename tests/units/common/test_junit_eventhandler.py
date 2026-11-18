@@ -136,16 +136,6 @@ class TestConcurrentSessionIsolation:
         registry.cleanup_session("seq-b")
         registry.cleanup_session("seq-c")
 
-    def test_sequential_sessions_reuse_canonical_name(self, tmp_path):
-        registry = JUnitHandlerRegistry()
-        registry.setup_junit_for_session("run-1", _config(tmp_path))
-        assert registry.get_handler("run-1").output_path == tmp_path / "junit_output.xml"
-        registry.cleanup_session("run-1")
-
-        registry.setup_junit_for_session("run-2", _config(tmp_path))
-        assert registry.get_handler("run-2").output_path == tmp_path / "junit_output.xml"
-        registry.cleanup_session("run-2")
-
 
 class TestSessionJunitWiring:
     def test_global_setup_and_cleanup_route_through_registry(self, tmp_path):

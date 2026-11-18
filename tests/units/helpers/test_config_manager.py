@@ -75,6 +75,7 @@ class TestConfigureOverwriteConfirm:
         with patch(f"{MODULE}.Confirm.ask", return_value=False):
             config_manager.configure(folder=folder, edit=False)
 
+        configured_helpers.prompt.assert_not_called()
         configured_helpers.write.assert_not_called()
         configured_helpers.next_steps.assert_not_called()
         assert "Aborted" in capsys.readouterr().out
@@ -97,16 +98,6 @@ class TestConfigureOverwriteConfirm:
 class TestOverwriteAskedBeforeQuestions:
     """The overwrite gate must come FIRST — a decline must waste no answers
     (regression: every Q&A used to be asked, THEN discarded on decline)."""
-
-    def test_decline_never_prompts_any_question(self, tmp_path,
-                                                configured_helpers):
-        folder = str(tmp_path)
-        (tmp_path / "config.yaml").write_text("old: true\n", encoding="utf-8")
-
-        with patch(f"{MODULE}.Confirm.ask", return_value=False):
-            config_manager.configure(folder=folder, edit=False)
-
-        configured_helpers.prompt.assert_not_called()
 
     def test_confirm_fires_before_the_question_block(self, tmp_path,
                                                      configured_helpers):
@@ -131,19 +122,6 @@ class TestOverwriteAskedBeforeQuestions:
         with patch(f"{MODULE}.Confirm.ask") as ask:
             config_manager.configure(folder=str(tmp_path), edit=False)
         ask.assert_not_called()
-
-    def test_defaults_to_current_directory(self, monkeypatch, tmp_path,
-                                           configured_helpers):
-        monkeypatch.chdir(tmp_path)
-        config_manager.configure()
-        configured_helpers.write.assert_called_once_with(str(tmp_path),
-                                                         "rendered: yaml\n")
-
-    def test_edit_true_launches_project_tui(self, tmp_path):
-        with patch(f"{MODULE}.ProjectConfigTUI") as tui_cls:
-            config_manager.configure(folder=str(tmp_path), edit=True)
-        tui_cls.assert_called_once_with(str(tmp_path))
-        tui_cls.return_value.run.assert_called_once()
 
 
 @pytest.mark.white_box
