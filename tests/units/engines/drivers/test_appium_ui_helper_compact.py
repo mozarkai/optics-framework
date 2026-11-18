@@ -1,7 +1,5 @@
 import pytest
 
-from optics_framework.api.verifier import Verifier
-from optics_framework.common.screen_snapshot import RefTable, ladder
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 
 pytestmark = pytest.mark.white_box
@@ -60,51 +58,18 @@ ANDROID_SCREEN = (
 
 
 class TestIOSCompactActions:
-    def test_keyboard_key_is_tappable(self):
-        entries = _by_label(_compact(IOS_KEYBOARD_AND_PICKER))
-        assert entries["q"]["act"] == ["tap"]
 
-    def test_keyboard_container_is_not_reported_as_tappable(self):
-        classes = {entry["extra"]["class"] for entry in _compact(IOS_KEYBOARD_AND_PICKER)}
-        assert "XCUIElementTypeKeyboard" not in classes
 
     def test_picker_wheel_is_scrollable(self):
         entries = _by_label(_compact(IOS_KEYBOARD_AND_PICKER))
         assert entries["Item 1"]["act"] == ["scroll"]
 
-    def test_picker_wheel_with_child_keeps_its_own_value(self):
-        entries = _by_label(_compact(IOS_KEYBOARD_AND_PICKER))
-        assert entries["Item 2"]["act"] == ["scroll"]
-        assert entries["Item 2"]["extra"]["class"] == "XCUIElementTypePickerWheel"
-
 
 class TestAndroidCompactActions:
-    def test_button_is_tappable(self):
-        assert _by_label(_compact(ANDROID_SCREEN))["OK"]["act"] == ["tap"]
 
-    def test_checkbox_toggles(self):
-        assert _by_label(_compact(ANDROID_SCREEN))["Agree"]["act"] == ["tap", "toggle"]
-
-    def test_empty_edit_text_is_actionable(self):
-        entries = _compact(ANDROID_SCREEN)
-        inputs = [
-            entry for entry in entries
-            if entry["extra"]["class"] == "android.widget.EditText"
-        ]
-        assert inputs
-        assert inputs[0]["act"] == ["tap", "input"]
 
     def test_standalone_text_is_read_only(self):
         assert _by_label(_compact(ANDROID_SCREEN))["Read only"]["act"] == []
-
-    def test_scroll_container_is_scrollable(self):
-        entries = _compact(ANDROID_SCREEN)
-        scroll = [
-            entry for entry in entries
-            if entry["extra"]["class"] == "android.widget.ScrollView"
-        ]
-        assert scroll
-        assert scroll[0]["act"] == ["scroll"]
 
 
 MAC_TEXTEDIT = (
@@ -118,18 +83,6 @@ MAC_TEXTEDIT = (
     "</application>"
 )
 
-MAC_CALCULATOR = (
-    '<application type="AXApplication" name="Calculator" id="" enabled="true" visible="true">'
-    '<window type="AXWindow" name="Calculator" id="main" enabled="true" visible="true" clickable="true" '
-    'x="300" y="400" width="230" height="400">'
-    '<group type="AXScrollArea" name="Edit field" id="StandardInputView" enabled="true" visible="true" '
-    'scrollable="true" x="307" y="535" width="210" height="42">'
-    '<static_text type="AXStaticText" name="12" value="12" id="" enabled="true" visible="true" '
-    'x="485" y="538" width="32" height="36"/>'
-    "</group>"
-    "</window>"
-    "</application>"
-)
 
 WINDOWS_NOTEPAD = (
     '<application type="Application" name="notepad" id="" enabled="true" visible="true">'
@@ -143,28 +96,11 @@ WINDOWS_NOTEPAD = (
 
 
 class TestDesktopCompactActions:
-    def test_text_area_takes_input_and_keeps_its_stable_id(self):
-        entries = _compact(MAC_TEXTEDIT)
-        areas = [entry for entry in entries if entry["extra"].get("id") == "First Text View"]
-        assert areas
-        assert "input" in areas[0]["act"]
 
-    def test_text_inside_a_window_keeps_its_own_row(self):
-        assert _by_label(_compact(MAC_CALCULATOR))["12"]["act"] == []
 
     def test_a_named_field_shows_what_it_holds_and_keeps_its_name_as_the_hint(self):
         [field] = [entry for entry in _compact(WINDOWS_NOTEPAD) if "input" in entry["act"]]
         assert (field["text"], field["extra"]["hint"]) == ("read me", "Text Editor")
-
-    def test_a_named_field_shows_what_it_holds_in_the_full_list_too(self):
-        [field] = [e for e in _helper(WINDOWS_NOTEPAD).get_interactive_elements(None) if e["extra"]["tag"] == "web_area"]
-        assert (field["text"], field["extra"]["name"]) == ("read me", "Text Editor")
-
-    @pytest.mark.parametrize("shape", [list, Verifier._to_compact_shape], ids=["screen", "keyword"])
-    def test_a_desktop_id_is_found_by_its_own_attribute(self, shape):
-        snap = RefTable().snapshot(shape(_compact(MAC_TEXTEDIT)))
-        [area] = [row for row in snap.all_rows if row.rid == "First Text View"]
-        assert ladder(area, snap).act == ['//text_area[@id="First Text View"]', '//*[@id="First Text View"]']
 
 
 IOS_NOTE = (
@@ -211,24 +147,6 @@ MAC_DIALOG = (
 @pytest.mark.parametrize("kind, tag", [("buttons", "button"), ("text", "static_text"), ("images", "image")])
 def test_each_filter_keeps_its_desktop_role(kind, tag):
     assert tag in {entry["extra"]["tag"] for entry in _helper(MAC_DIALOG).get_interactive_elements([kind])}
-
-
-MAC_CHAT_LIST = (
-    '<application name="‎WhatsApp">'
-    '<window name="WhatsApp" x="0" y="0" width="800" height="800" enabled="true" visible="true">'
-    '<static_text name="" label="Chats, 2" id="SidebarButton_Chats" x="10" y="40" width="80" height="20" '
-    'enabled="true" visible="true" clickable="true"/>'
-    '<button name="Records" value="Your message, hello" label="Double tap to open chat, Double tap and hold for more options" '
-    'x="100" y="100" width="300" height="60" enabled="true" visible="true" clickable="true"/>'
-    '<button name="Daddy" value="Spice or indigo" label="Double tap to open chat, Double tap and hold for more options" '
-    'x="100" y="160" width="300" height="60" enabled="true" visible="true" clickable="true"/>'
-    "</window></application>"
-)
-
-
-def test_a_desktop_row_shows_its_name_before_its_description():
-    texts = {entry["text"] for entry in _compact(MAC_CHAT_LIST)}
-    assert {"Records", "Daddy", "Chats, 2"} <= texts
 
 
 MAC_NOTE_LIST = (

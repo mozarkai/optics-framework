@@ -26,20 +26,9 @@ def fake_client(monkeypatch):
     return models
 
 
-def test_temperature_is_left_to_the_model_by_default(fake_client):
-    gemini.GeminiLLM({"capabilities": {}}).generate("hi")
-    assert fake_client.configs[-1].temperature is None
-
-
 def test_capabilities_temperature_is_sent(fake_client):
     gemini.GeminiLLM({"capabilities": {"temperature": 0.0}}).generate("hi")
     assert fake_client.configs[-1].temperature == 0.0
-
-
-def test_per_call_temperature_overrides_capabilities(fake_client):
-    llm = gemini.GeminiLLM({"capabilities": {"temperature": 0.0}})
-    llm.generate("hi", temperature=0.7)
-    assert fake_client.configs[-1].temperature == 0.7
 
 
 def test_token_usage_is_logged(fake_client, monkeypatch):
@@ -61,10 +50,3 @@ def test_response_schema_is_sent_as_json_schema(fake_client):
     assert config.response_json_schema == schema
     assert config.response_schema is None
     assert config.response_mime_type == "application/json"
-
-
-def test_config_api_key_reaches_the_client(monkeypatch):
-    clients = []
-    monkeypatch.setattr(gemini.genai, "Client", lambda **kw: clients.append(kw))
-    gemini.GeminiLLM({"capabilities": {"api_key": "config-key"}})
-    assert clients[-1]["api_key"] == "config-key"

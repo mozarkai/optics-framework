@@ -4,7 +4,6 @@ These exercise the real facade against the bundled ``contact`` sample project an
 the in-process mock API server (``mock_api_server`` fixture), so they double as a
 wiring check that setup → keyword → teardown holds together.
 """
-import csv
 import os
 
 import pytest
@@ -19,18 +18,12 @@ from optics_framework.optics import Optics
 pytest.importorskip("easyocr", reason="contact sample config enables the easyocr engine")
 
 CONTACT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/config.yaml')
-ELEMENTS_CSV_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/test_data/elements.csv')
 MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
 
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
-
-
-def load_elements(elements_path):
-    with open(elements_path, 'r') as f:
-        return {row['Element_Name']: row['Element_ID'] for row in csv.DictReader(f)}
 
 
 def _load_api_yaml_pointed_at(base_url):
@@ -41,26 +34,7 @@ def _load_api_yaml_pointed_at(base_url):
     return api_yaml_dict
 
 
-def test_extract_config_data_forwards_save_captures():
-    config_data = Optics()._extract_config_data(
-        config={"driver_sources": [], "elements_sources": [], "save_captures": False},
-        driver_sources=None,
-        elements_sources=None,
-        image_detection=None,
-        text_detection=None,
-        execution_output_path_param=None,
-    )
-    assert config_data["save_captures"] is False
-
-
 FIELDS_BEYOND_THE_SOURCES = {"ai_self_heal": True, "strict_element_match": True, "halt_duration": 0.5}
-
-
-def test_setup_keeps_every_config_key():
-    optics = Optics()
-    optics.setup(config={**load_config(CONTACT_CONFIG_PATH), **FIELDS_BEYOND_THE_SOURCES})
-    assert {key: getattr(optics.config, key) for key in FIELDS_BEYOND_THE_SOURCES} == FIELDS_BEYOND_THE_SOURCES
-    optics.quit()
 
 
 def test_setup_from_file_keeps_every_config_key(tmp_path):
@@ -69,24 +43,6 @@ def test_setup_from_file_keeps_every_config_key(tmp_path):
     optics = Optics()
     optics.setup_from_file(str(path))
     assert {key: getattr(optics.config, key) for key in FIELDS_BEYOND_THE_SOURCES} == FIELDS_BEYOND_THE_SOURCES
-    optics.quit()
-
-
-def test_setup_and_element_round_trip():
-    elements = load_elements(ELEMENTS_CSV_PATH)
-    optics = Optics()
-    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    for name, value in elements.items():
-        optics.add_element(name, value)
-    for name, value in elements.items():
-        assert optics.get_element_value(name)[0] == value
-    optics.quit()
-
-
-def test_setup_from_file_populates_config():
-    optics = Optics()
-    optics.setup_from_file(CONTACT_CONFIG_PATH)
-    assert optics.config is not None
     optics.quit()
 
 

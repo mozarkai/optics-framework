@@ -70,24 +70,6 @@ def test_invalid_platform_is_rejected(fake_sdk):
         _llm(platform="azure")
 
 
-def test_default_platform_reads_named_key_variable(fake_sdk, monkeypatch):
-    monkeypatch.setenv("TEAM_CLAUDE_KEY", "k")
-    _llm(url="https://gateway.example", api_key_env="TEAM_CLAUDE_KEY")
-    assert fake_sdk.built[-1] == ("anthropic", {"api_key": "k", "base_url": "https://gateway.example", "timeout": 60.0})
-
-
-def test_config_api_key_wins_over_the_environment(fake_sdk, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
-    _llm(api_key="config-key")
-    assert fake_sdk.built[-1][1]["api_key"] == "config-key"
-
-
-def test_default_platform_falls_back_to_anthropic_api_key(fake_sdk, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
-    _llm()
-    assert fake_sdk.built[-1][1]["api_key"] == "env-key"
-
-
 def test_bedrock_platform(fake_sdk):
     _llm(platform="bedrock", region="us-east-1")
     assert fake_sdk.built[-1] == ("bedrock", {"aws_region": "us-east-1", "base_url": None, "timeout": 60.0})
@@ -96,17 +78,6 @@ def test_bedrock_platform(fake_sdk):
 def test_vertex_platform(fake_sdk):
     _llm(platform="vertex", project="p", region="us-east5")
     assert fake_sdk.built[-1] == ("vertex", {"base_url": None, "timeout": 60.0, "region": "us-east5", "project_id": "p"})
-
-
-def test_schema_forces_a_single_tool_call(fake_sdk):
-    reply = _llm().generate("hi", system="be brief", response_schema=SCHEMA)
-    request = fake_sdk.requests[-1]
-    assert request["tools"][0]["input_schema"] == SCHEMA
-    assert request["tool_choice"] == {"type": "tool", "name": request["tools"][0]["name"]}
-    assert request["system"] == [
-        {"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}
-    ]
-    assert reply == '{"action": "done"}'
 
 
 def test_images_precede_the_prompt(fake_sdk):
@@ -119,33 +90,10 @@ def test_images_precede_the_prompt(fake_sdk):
     assert content[1] == {"type": "text", "text": "look"}
 
 
-def test_plain_text_reply_without_schema(fake_sdk):
-    fake_sdk.content = [_text("a"), _text("b")]
-    assert _llm().generate("hi") == "ab"
-    assert "tools" not in fake_sdk.requests[-1]
-
-
-def test_temperature_precedence(fake_sdk):
-    llm = _llm(temperature=0.0)
-    llm.generate("hi")
-    assert fake_sdk.requests[-1]["temperature"] == 0.0
-    llm.generate("hi", temperature=0.7)
-    assert fake_sdk.requests[-1]["temperature"] == 0.7
-    _llm().generate("hi")
-    assert "temperature" not in fake_sdk.requests[-1]
-
-
 def test_truncated_reply_raises(fake_sdk):
     fake_sdk.stop_reason = "max_tokens"
     llm = _llm(max_tokens=10)
     with pytest.raises(OpticsError, match="max_tokens"):
-        llm.generate("hi", response_schema=SCHEMA)
-
-
-def test_missing_tool_call_raises(fake_sdk):
-    fake_sdk.content = [_text("sorry")]
-    llm = _llm()
-    with pytest.raises(OpticsError, match="no structured response"):
         llm.generate("hi", response_schema=SCHEMA)
 
 

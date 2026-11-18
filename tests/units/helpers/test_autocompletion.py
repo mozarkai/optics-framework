@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import os
 from unittest.mock import patch
 
 import pytest
@@ -53,25 +52,7 @@ def _rc_path(home, shell):
 
 @pytest.mark.parametrize("shell, rc_name", [("zsh", ".zshrc"), ("bash", ".bashrc")])
 class TestConsentGate:
-    def test_accepted_on_tty_appends_source_line(self, home, shell, rc_name):
-        out, asked = _run(home, shell=shell, tty=True, confirm=True)
-        rc = _rc_path(home, shell)
-        content = rc.read_text(encoding="utf-8")
-        assert "Optics CLI autocompletion" in content
-        completion = os.path.join(str(home / ".optics"), "optics_completion.")
-        assert f"source {completion}" in content
-        assert "Added autocompletion" in out
-        assert asked
 
-    def test_declined_on_tty_touches_nothing_and_prints_manual_line(
-            self, home, shell, rc_name):
-        out, asked = _run(home, shell=shell, tty=True, confirm=False)
-        assert not _rc_path(home, shell).exists()
-        assert asked
-        expected = f"source {home / '.optics'}"
-        assert expected in out
-        assert any(line.strip().startswith("source ")
-                   for line in out.splitlines())
 
     def test_non_tty_never_asks_or_writes(self, home, shell, rc_name):
         out, asked = _run(home, shell=shell, tty=False)

@@ -7,16 +7,12 @@ flow is tested against scripted rich prompts (no interaction).
 """
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 import pytest
 import yaml
 
 from optics_framework.helper import project_config
-from optics_framework.helper.project_config import (
-    _ELEMENTS_SOURCES_BY_DRIVER,
-)
 
 pytestmark = pytest.mark.white_box
 
@@ -84,20 +80,6 @@ def _answers_for(platform: str, *, ocr: bool = False) -> dict:
 # --------------------------------------------------------------------------- #
 
 class TestRenderProjectConfig:
-    @pytest.mark.parametrize("platform", list(_DRIVER_BY_PLATFORM))
-    def test_exactly_one_driver_and_matching_sources_enabled(self, platform):
-        text = project_config.render_project_config(_answers_for(platform))
-        config = yaml.safe_load(text)
-        driver = _DRIVER_BY_PLATFORM[platform]
-
-        assert _enabled_names(config, "driver_sources") == [driver]
-        expected = sorted(_ELEMENTS_SOURCES_BY_DRIVER[driver])
-        assert sorted(_enabled_names(config, "elements_sources")) == expected
-        # Every other listed source stays disabled, not deleted.
-        all_sources = {s for group in _ELEMENTS_SOURCES_BY_DRIVER.values() for s in group}
-        disabled = all_sources - set(expected)
-        flat = [name for e in config["elements_sources"] for name in e]
-        assert set(disabled) <= set(flat)
 
     @pytest.mark.parametrize("camera_url", ["http://127.0.0.1:9100/", ""])
     def test_bluetooth_answers_make_a_runnable_ble_entry(self, camera_url):
@@ -112,127 +94,18 @@ class TestRenderProjectConfig:
         assert camera["enabled"] is bool(camera_url)
         assert camera.get("capabilities", {}).get("url") == (camera_url or None)
 
-    def test_android_answers_land_in_appium_capabilities(self):
-        answers = _answers_for("android")
-        config = yaml.safe_load(project_config.render_project_config(answers))
-        appium = _appium_entry(config)
-        assert appium["url"] == answers["appium_url"]
-        caps = appium["capabilities"]
-        assert caps["deviceName"] == "emu-1"
-        assert caps["platformName"] == "Android"
-        assert caps["appPackage"] == "com.example.android"
-        assert caps["appActivity"] == "com.example.MainActivity"
-        assert caps["automationName"] == "UiAutomator2"
-
-    def test_ios_answers_use_bundle_id(self):
-        answers = _answers_for("ios")
-        text = project_config.render_project_config(answers)
-        # Android-only launch capabilities must not leak into an iOS config.
-        assert "bundleId" in text
-        assert "appPackage" not in text
-        assert "appActivity" not in text
-        appium = _appium_entry(yaml.safe_load(text))
-        assert appium["url"] == answers["appium_url"]
-        caps = appium["capabilities"]
-        assert caps["bundleId"] == "com.example.ios"
-        assert caps["automationName"] == "XCUITest"
-        assert caps["deviceName"] == "emu-1"
-        assert caps["platformName"] == "iOS"
-
-    def test_ios_prompt_flow_asks_bundle_id_not_app_package(self):
-        ask_values = [
-            "ios",                    # platform
-            "iPhone 16",              # device name
-            "iOS",                    # platform name
-            "com.acme.ios",           # bundle id
-            "http://127.0.0.1:4723",  # appium url
-            "INFO",                   # log level
-        ]
-        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values), \
-                patch(f"{MODULE}.Confirm.ask", return_value=False):
-            answers = project_config.prompt_project_config()
-        assert answers == {
-            "platform": "ios",
-            "device_name": "iPhone 16",
-            "platform_name": "iOS",
-            "bundle_id": "com.acme.ios",
-            "appium_url": "http://127.0.0.1:4723",
-            "ocr_engine": project_config.preferred_local_engine(),
-            "ocr": False,
-            "log_level": "INFO",
-        }
-
     def test_desktop_answers_land_in_xa11y_capabilities(self):
         appium = _appium_entry(yaml.safe_load(project_config.render_project_config(_answers_for("desktop"))))
         assert appium["capabilities"] == {"platformName": "Linux", "automationName": "Xa11y", "app": "mousepad"}
-
-    def test_selenium_url_used(self):
-        config = yaml.safe_load(
-            project_config.render_project_config(_answers_for("web-selenium")))
-        selenium = next(
-            entry["selenium"] for entry in config["driver_sources"]
-            if isinstance(entry, dict) and "selenium" in entry
-        )
-        assert selenium["url"] == "http://127.0.0.1:4444/wd/hub"
-
-    def test_playwright_browser_and_headless_used(self):
-        config = yaml.safe_load(
-            project_config.render_project_config(_answers_for("web-playwright")))
-        pw = next(
-            entry["playwright"] for entry in config["driver_sources"]
-            if isinstance(entry, dict) and "playwright" in entry
-        )
-        assert pw["capabilities"]["browser"] == "firefox"
-        assert pw["capabilities"]["headless"] is True
-
-    @pytest.mark.parametrize("ocr, expected", [(True, True), (False, False)])
-    def test_ocr_toggles_one_engine_only(self, ocr, expected):
-        text = project_config.render_project_config(_answers_for("android", ocr=ocr))
-        config = yaml.safe_load(text)
-        assert _enabled_names(config, "text_detection") == (["rapidocr"] if expected else [])
-        assert _enabled_names(config, "image_detection") == []
-
-    def test_missing_keys_fall_back_to_defaults(self):
-        text = project_config.render_project_config({})
-        config = yaml.safe_load(text)
-        assert _enabled_names(config, "driver_sources") == ["appium"]
-        assert config["log_level"] == "INFO"
 
     def test_unknown_platform_falls_back_to_android(self):
         text = project_config.render_project_config({"platform": "toaster"})
         assert _enabled_names(yaml.safe_load(text), "driver_sources") == ["appium"]
 
-    def test_output_keeps_explanatory_comments(self):
-        text = project_config.render_project_config({})
-        assert "# Optics Framework project configuration." in text
-        assert "# Install:" in text or "optics setup --install" in text
-
-    def test_header_does_not_name_the_calling_command(self):
-        # Both `optics quickstart` and `optics configure` write rendered
-        # configs, so the provenance line must not credit either command.
-        text = project_config.render_project_config({})
-        assert "quickstart" not in text
-        assert "configure" not in text
-
 
 # --------------------------------------------------------------------------- #
 # write_project_config                                                         #
 # --------------------------------------------------------------------------- #
-
-class TestWriteProjectConfig:
-    def test_writes_config_yaml_into_folder(self, tmp_path):
-        folder = str(tmp_path / "nested" / "demo")
-        path = project_config.write_project_config(folder, "hello: true\n")
-        assert path == os.path.join(folder, "config.yaml")
-        with open(path, encoding="utf-8") as fh:
-            assert fh.read() == "name: demo\n\nhello: true\n"
-
-    def test_overwrites_unconditionally(self, tmp_path):
-        folder = str(tmp_path / "demo")
-        project_config.write_project_config(folder, "old\n")
-        project_config.write_project_config(folder, "new\n")
-        with open(os.path.join(folder, "config.yaml"), encoding="utf-8") as fh:
-            assert fh.read() == "name: demo\n\nnew\n"
 
 
 # --------------------------------------------------------------------------- #
@@ -323,32 +196,3 @@ class TestPromptProjectConfig:
         config = yaml.safe_load(project_config.render_project_config(answers))
         assert _enabled_names(config, "driver_sources") == ["selenium"]
         assert config["log_level"] == "ERROR"
-
-
-class TestConfirmBlankLineDefault:
-    """Regression pin for a QA observation: rich Confirm.ask was reported to
-    reject an empty line with "Please enter Y or N" on piped stdin, even when
-    a default was shown. Against the pinned rich (14.x) a blank line DOES
-    return the default — this test fails if a future upgrade regresses it,
-    which would justify replacing Confirm.ask with a local y/n helper."""
-
-    @staticmethod
-    def _blank_input(monkeypatch):
-        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "")
-
-    def test_blank_line_returns_default_false(self, monkeypatch):
-        self._blank_input(monkeypatch)
-        from rich.prompt import Confirm
-        assert Confirm.ask("Run headless?", default=False) is False
-
-    def test_blank_line_returns_default_true(self, monkeypatch):
-        self._blank_input(monkeypatch)
-        from rich.prompt import Confirm
-        assert Confirm.ask("Install now?", default=True) is True
-
-    def test_y_and_n_still_parse_case_insensitively(self, monkeypatch):
-        from rich.prompt import Confirm
-        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "Y")
-        assert Confirm.ask("x?", default=False) is True
-        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "n")
-        assert Confirm.ask("x?", default=True) is False

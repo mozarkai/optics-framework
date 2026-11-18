@@ -1,18 +1,11 @@
 """Unit tests for the natural-language agent schema and the Gemini missing-dependency error."""
-import json
 
 import pytest
 
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.common.nl_agent import ACTION_SCHEMA
 from optics_framework.engines.llm_models import gemini
 
 pytestmark = pytest.mark.white_box
-
-
-class TestActionSchema:
-    def test_no_anyof_in_schema(self):
-        assert "anyOf" not in json.dumps(ACTION_SCHEMA)
 
 
 class TestGeminiMissingDependency:

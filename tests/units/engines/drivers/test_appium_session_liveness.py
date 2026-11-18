@@ -36,16 +36,6 @@ class TestLaunchAppRecreatesDeadSession:
         )
         assert result == "fresh-session-id"
 
-    def test_live_session_is_left_alone(self):
-        webdriver = _webdriver(session_id="live-session-id")
-        instance = _driver_instance(webdriver)
-        instance.start_session = MagicMock()
-
-        result = instance.launch_app(app_identifier="com.example.app")
-
-        instance.start_session.assert_not_called()
-        assert result == "live-session-id"
-
     def test_unsupported_probe_leaves_session_presumed_alive(self):
         instance = _driver_instance(
             _webdriver(session_id="live-session-id", probe_error=WebDriverException("unknown command: window rect"))

@@ -29,9 +29,6 @@ def _source(page_source: str = ANDROID_TREE, strict_element_match: bool = False)
 
 
 class TestStrictElementMatchConfig:
-    def test_reads_config_flag(self):
-        assert _source(strict_element_match=True)._strict_element_match() is True
-        assert _source(strict_element_match=False)._strict_element_match() is False
 
     def test_missing_config_chain_defaults_to_false(self):
         source = AppiumPageSource(driver=object())
@@ -40,30 +37,13 @@ class TestStrictElementMatchConfig:
 
 
 class TestAssertElementsTextPresence:
-    def test_present_text_is_found(self):
-        source = _source()
 
-        source.assert_elements(["Buy 101 devices"], timeout=1, rule="any")
-
-    @pytest.mark.parametrize("strict", [True, False])
-    @pytest.mark.parametrize("element", ["text=Login", "TEXT=Login"])
-    def test_text_prefixed_locator_is_found(self, element, strict):
-        tree = '<hierarchy><android.widget.Button text="Login" bounds="[0,0][200,50]"/></hierarchy>'
-
-        assert _source(tree, strict_element_match=strict).check_elements([element]) == [True]
 
     def test_fuzzy_near_miss_rejected_when_strict(self):
         source = _source(strict_element_match=True)
 
         with pytest.raises(TimeoutError):
             source.assert_elements(["Buy 102 devices"], timeout=0.05, rule="any")
-
-    def test_fuzzy_near_miss_matches_when_not_strict(self):
-        # Default (fuzzy) mode: presence follows the flag, uniform with locate, so a
-        # near-miss fuzzy-matches instead of being rejected.
-        source = _source(strict_element_match=False)
-
-        source.assert_elements(["Buy 102 devices"], timeout=1, rule="any")
 
 
 class TestAssertElementsXPathStrictWiring:

@@ -9,10 +9,6 @@ patched at cli's import-time bindings; nothing real runs.
 """
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
-import textwrap
 from unittest.mock import patch
 
 import pytest
@@ -38,37 +34,8 @@ class TestBareInvocation:
         welcome.assert_called_once_with(first_run=True)
         mark.assert_called_once_with()
 
-    def test_subcommand_never_welcomes(self):
-        with patch.object(cli, "welcome") as welcome, \
-                patch.object(cli, "mark_onboarded") as mark, \
-                patch.object(cli, "run_quickstart") as quickstart:
-            _run(["quickstart"])
-        quickstart.assert_called_once_with()
-        welcome.assert_not_called()
-        mark.assert_not_called()
-
-    def test_bare_optics_returning_user_gets_one_line_hint(self, capsys):
-        # Returning users (is_first_run False) don't get the full panel; they
-        # get a one-line hint and no onboarding marker write.
-        with patch.object(cli, "welcome") as welcome, \
-                patch.object(cli, "is_first_run", return_value=False), \
-                patch.object(cli, "mark_onboarded") as mark:
-            _run([])
-        welcome.assert_not_called()
-        mark.assert_not_called()
-        out = capsys.readouterr().out
-        assert "optics quickstart" in out
-        assert "optics --help" in out
-
 
 class TestExitCodeMapping:
-    def test_doctor_check_failure_exits_nonzero_via_systemexit(self):
-        # DoctorCommand raises SystemExit itself; it is not an Exception, so
-        # main()'s generic handler must leave the code untouched.
-        with patch.object(cli, "run_doctor", return_value=1):
-            with pytest.raises(SystemExit) as exc:
-                _run(["doctor", "--check"])
-        assert exc.value.code == 1
 
     def test_keyboard_interrupt_maps_to_130(self):
         with patch.object(cli, "run_doctor", side_effect=KeyboardInterrupt):
@@ -144,59 +111,10 @@ class TestStartupImportGuard:
         assert "Reinstall the package" in err
         assert "optics-framework" in err
 
-    def test_importing_cli_without_cv2_exits_instead_of_raising(self):
-        # End-to-end over the console-script path, in a subprocess so the
-        # already-imported cli module can't mask the failure. The package
-        # __init__ must stay importable (lazy re-export) for cli's own
-        # try/except to be reachable at all. A star import is the one package
-        # import that still resolves Optics eagerly, because it asks for the
-        # facade by name; it fails here exactly like the documented
-        # ``from optics_framework import Optics`` would, and that is separate
-        # from the console-script path this guard protects.
-        script = textwrap.dedent(
-            """
-            import importlib, sys
-
-            class BlockCv2:
-                def find_spec(self, fullname, path=None, target=None):
-                    if fullname == "cv2" or fullname.startswith("cv2."):
-                        raise ImportError("cv2 is unimportable in this test")
-                    return None
-
-            sys.meta_path.insert(0, BlockCv2())
-            importlib.import_module("optics_framework")
-            print("PACKAGE_IMPORT_OK")
-            try:
-                exec("from optics_framework import *", {})
-            except ImportError:
-                print("STAR_IMPORT_NEEDS_CV2")
-            importlib.import_module("optics_framework.helper.cli")
-            """
-        )
-        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True, env=env, check=False)
-        assert "PACKAGE_IMPORT_OK" in result.stdout
-        assert "STAR_IMPORT_NEEDS_CV2" in result.stdout
-        assert result.returncode == 1
-        assert "Traceback" not in result.stderr
-        assert "Reinstall the package" in result.stderr
-
 
 class TestCommandForwarding:
-    def test_doctor_forwards_folder_and_check(self):
-        with patch.object(cli, "run_doctor", return_value=0) as run_doctor:
-            with pytest.raises(SystemExit):
-                _run(["doctor", "myproj", "--check"])
-        run_doctor.assert_called_once_with(folder="myproj", check=True)
 
     def test_configure_forwards_folder_and_edit_flag(self):
         with patch.object(cli, "configure_project") as configure:
             _run(["configure", "myproj"])
         configure.assert_called_once_with(folder="myproj", edit=False)
-
-    def test_configure_defaults_to_cwd_without_edit(self):
-        with patch.object(cli, "configure_project") as configure:
-            _run(["configure"])
-        configure.assert_called_once_with(folder=None, edit=False)

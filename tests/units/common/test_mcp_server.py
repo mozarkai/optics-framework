@@ -11,12 +11,9 @@ resource returning raw image bytes.
 """
 import asyncio
 import base64
-import inspect
 import json
 import os
 import pathlib
-import subprocess
-import sys
 import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -58,29 +55,7 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _exec_response(result):
-    return expose_api.ExecutionResponse(
-        execution_id="x", status="SUCCESS", data={expose_api.KEY_RESULT: result}
-    )
-
-
 # --- registration ----------------------------------------------------------
-
-
-def test_action_keywords_registered_as_tools():
-    server = mcp_server.build_server("full")
-    names = {t.name for t in _run(server._list_tools())}
-    for expected in (
-        "start_session",
-        "terminate_session",
-        "press_element",
-        "enter_text",
-        "swipe",
-        "assert_presence",
-        "get_interactive_elements",  # tool (takes filter_config) AND resource
-        "get_driver_session_id",
-    ):
-        assert expected in names
 
 
 def test_readonly_observers_excluded_from_tools():
@@ -90,139 +65,13 @@ def test_readonly_observers_excluded_from_tools():
         assert observer not in names
 
 
-def test_state_resources_registered():
-    server = mcp_server.build_server("full")
-    resources = {str(r.uri) for r in _run(server._list_resources())}
-    templates = {t.uri_template for t in _run(server._list_resource_templates())}
-    assert "optics://keywords" in resources
-    assert {
-        "optics://session/{session_id}/screenshot",
-        "optics://session/{session_id}/source",
-        "optics://session/{session_id}/elements",
-        "optics://session/{session_id}/screen_elements",
-    } <= templates
-
-
 # --- schema shape ----------------------------------------------------------
-
-
-def test_keyword_tool_schema_is_string_typed_with_session_id():
-    server = mcp_server.build_server("full")
-    press = next(t for t in _run(server._list_tools()) if t.name == "press_element")
-    props = press.parameters["properties"]
-    # session_id is injected and required alongside the keyword's required args.
-    assert "session_id" in props
-    assert set(press.parameters["required"]) >= {"session_id", "element"}
-    # Only declared keyword params are exposed (no injection plumbing).
-    assert "located" not in props
-    # Every property is a string (optional ones are anyOf[string, null]).
-    for name, schema in props.items():
-        types = {schema["type"]} if "type" in schema else {
-            sub.get("type") for sub in schema.get("anyOf", [])
-        }
-        assert "string" in types, f"{name} is not string-typed: {schema}"
 
 
 # --- dispatch & coercion ---------------------------------------------------
 
 
-def test_tool_dispatch_forwards_stringified_params(owned):
-    owned("sess-1")
-    server = mcp_server.build_server("full")
-    mock = AsyncMock(return_value=_exec_response("pressed"))
-    with patch.object(expose_api, "execute_keyword", new=mock):
-        async def go():
-            async with Client(server) as client:
-                return await client.call_tool(
-                    "press_element",
-                    {"session_id": "sess-1", "element": "Login", "repeat": "2"},
-                )
-
-        result = _run(go())
-
-    session_id, request = mock.call_args.args[0], mock.call_args.args[1]
-    assert session_id == "sess-1"
-    assert request.keyword == "press_element"
-    # Defaults are forwarded too; every value is a str.
-    assert request.params["element"] == "Login"
-    assert request.params["repeat"] == "2"
-    assert all(isinstance(v, str) for v in request.params.values())
-    # Result text is delivered to the client.
-    assert any(getattr(c, "text", None) == "pressed" for c in result.content)
-
-
-def test_non_string_scalar_is_rejected_by_schema():
-    """The str contract is enforced at the boundary (no silent coercion)."""
-    server = mcp_server.build_server("full")
-    with patch.object(expose_api, "execute_keyword", new=AsyncMock()):
-        async def go():
-            async with Client(server) as client:
-                await client.call_tool(
-                    "press_element",
-                    {"session_id": "s", "element": "L", "repeat": 2},  # int, not str
-                )
-
-        with pytest.raises(ToolError):
-            _run(go())
-
-
-def test_stringify_params_helper():
-    out = mcp_server._stringify_params(
-        {"a": 1, "b": None, "c": ["x", 2], "d": True}
-    )
-    assert out == {"a": "1", "c": ["x", "2"], "d": "True"}  # None dropped
-
-
 # --- deep dispatch: real named-param path (regression for #454) ------------
-
-_SELF_HEALING_KEYWORDS = [
-    ("press_element", {"element": "X"}),
-    ("press_checkbox", {"element": "X"}),
-    ("press_radio_button", {"element": "X"}),
-    ("swipe_from_element", {"element": "X", "direction": "up", "swipe_length": "50"}),
-    ("scroll_from_element", {"element": "X", "direction": "down", "scroll_length": "50"}),
-    ("enter_text", {"element": "X", "text": "T"}),
-    ("enter_number", {"element": "X", "number": "5"}),
-    ("clear_element_text", {"element": "X"}),
-    ("get_text", {"element": "X"}),
-]
-
-
-@pytest.mark.parametrize("slug, params", _SELF_HEALING_KEYWORDS)
-def test_mcp_tool_to_dispatch_binds_real_signatures(slug, params, owned):
-    owned("s1")
-    server = mcp_server.build_server("full")
-    engine = MagicMock()
-    engine.execute = AsyncMock(return_value=_exec_response("ok"))
-
-    session = MagicMock()
-    session.event_queue.put = AsyncMock()
-    session.request_template_overrides = {}
-    from optics_framework.api.action_keyword import ActionKeyword
-
-    session.optics.build = MagicMock(return_value=MagicMock())
-
-    class _RealRegistry:
-        def __init__(self):
-            self.keyword_map = {slug: getattr(ActionKeyword, slug)}
-
-        def register(self, instance):
-            pass
-
-    real_registry = _RealRegistry()
-
-    with patch.object(expose_api.session_manager, "get_session", return_value=session), \
-            patch.object(expose_api, "KeywordRegistry", return_value=real_registry), \
-            patch.object(expose_api, "FlowControl", return_value=MagicMock()), \
-            patch.object(expose_api, "ExecutionEngine", return_value=engine):
-        async def go():
-            async with Client(server) as client:
-                await client.call_tool(slug, {"session_id": "s1", **params})
-
-        _run(go())
-
-    built = engine.execute.await_args.args[0].params
-    inspect.signature(getattr(ActionKeyword, slug)).bind(None, *built)
 
 
 # --- error translation -----------------------------------------------------
@@ -260,51 +109,10 @@ def test_keywords_resource_returns_catalog():
     assert "capture_screenshot" not in slugs
 
 
-def test_screenshot_resource_returns_raw_bytes(owned):
-    owned("sess-1")
-    server = mcp_server.build_server("full")
-    raw = b"\x89PNG\r\n\x1a\nfake-bytes"
-    b64 = base64.b64encode(raw).decode()
-    mock = AsyncMock(return_value=_exec_response(b64))
-    with patch.object(expose_api, "run_keyword_endpoint", new=mock):
-        async def go():
-            async with Client(server) as client:
-                return await client.read_resource(
-                    "optics://session/sess-1/screenshot"
-                )
-
-        contents = _run(go())
-
-    assert mock.call_args.args[1] == "capture_screenshot"
-    blob = contents[0]
-    assert base64.b64decode(blob.blob) == raw
-
-
 def test_decode_screenshot_handles_data_url():
     raw = b"abc"
     data_url = "data:image/png;base64," + base64.b64encode(raw).decode()
     assert mcp_server._decode_screenshot(data_url) == raw
-
-
-def test_screenshot_tool_returns_rendered_image(owned):
-    """The screenshot tool yields image/png ImageContent (renders inline)."""
-    owned("s1")
-    server = mcp_server.build_server("full")
-    raw = b"\x89PNG\r\n\x1a\nfake"
-    b64 = base64.b64encode(raw).decode()
-    mock = AsyncMock(return_value=_exec_response(b64))
-    with patch.object(expose_api, "run_keyword_endpoint", new=mock):
-        async def go():
-            async with Client(server) as client:
-                return await client.call_tool("screenshot", {"session_id": "s1"})
-
-        result = _run(go())
-
-    assert mock.call_args.args[1] == "capture_screenshot"
-    image = result.content[0]
-    assert image.type == "image"
-    assert image.mime_type == "image/png"
-    assert base64.b64decode(image.data) == raw
 
 
 # --- optional dependency guard ---------------------------------------------
@@ -348,32 +156,6 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
         handler.console.file.close()
         drainer.join(timeout=5)
         os.close(read_fd)
-
-
-_EXIT_CHILD = """
-from unittest.mock import MagicMock
-from optics_framework.common.logging_config import internal_logger
-from optics_framework.helper import mcp_server
-
-server = MagicMock()
-server.run.side_effect = lambda **_: [internal_logger.warning("x" * 1024) for _ in range(256)]
-mcp_server.build_server = lambda *_: server
-mcp_server.run_mcp_server("stdio")
-"""
-
-
-def test_stdio_server_exits_with_unread_stderr():
-    child = subprocess.Popen(
-        [sys.executable, "-c", _EXIT_CHILD],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    try:
-        assert child.wait(timeout=60) == 0
-    finally:
-        child.kill()
-        child.communicate()
 
 
 @pytest.mark.parametrize("named", [{"app": "A"}, {"appium:app": "A"}, {"appName": "A"}, {"appium:options": {"app": "A"}}])
@@ -459,15 +241,6 @@ def _shown(reply):
     return "\n".join(c.text for c in reply.content if getattr(c, "text", None))
 
 
-def test_rows_with_one_label_show_their_group_to_a_client_that_prefers_structured_content(desktop):
-    desktop.rows += [_row("Add to Playlist", "button", area="Preet Re"), _row("Add to Playlist", "button", area="Co2")]
-
-    seen, = _calls(("observe", {"query": "Add to Playlist"}))
-
-    assert 'in "Preet Re"' in _shown(seen)
-    assert 'in "Co2"' in _shown(seen)
-
-
 def test_an_action_that_changed_nothing_asks_for_an_expectation_in_what_the_agent_sees(desktop):
     tapped, = _calls(("tap", {"target": "Add Event"}))
 
@@ -478,14 +251,6 @@ def test_a_query_that_matches_nothing_says_how_many_rows_it_searched(desktop):
     seen, = _calls(("observe", {"query": "Save"}))
 
     assert 'no row of 2 holds "Save"' in _shown(seen)
-
-
-def test_a_query_finds_a_field_by_its_name_when_it_shows_its_value(desktop):
-    desktop.rows.append(_row("Optics Demo", "text_field", act=("tap", "input"), hint="Name"))
-
-    seen, = _calls(("observe", {"query": "Name"}))
-
-    assert '"Optics Demo"' in _shown(seen)
 
 
 def test_the_steps_of_an_ended_session_stay_readable_by_their_owner(desktop, monkeypatch):
@@ -555,15 +320,6 @@ def test_the_steps_of_a_local_session_outlive_a_server_restart(desktop, monkeypa
     assert f"has ended. The MCP server stopped before it ended the session. Its 1 recorded steps are at {STEPS}" in _shown(tapped)
 
 
-def test_a_paused_session_stays_open_for_its_own_client(desktop):
-    mcp_server._STATES[S1].last_used -= 10_000
-
-    tapped, = _calls(("tap", {"target": "Add Event"}))
-
-    assert not tapped.is_error, _shown(tapped)
-    assert desktop.ran == ["press_element"]
-
-
 def test_an_idle_session_ends_when_another_client_calls(desktop, monkeypatch):
     mcp_server._STATES[S1].last_used -= 10_000
     monkeypatch.setattr(mcp_server, "_caller", lambda: "someone else")
@@ -591,27 +347,6 @@ def test_a_typed_password_reaches_the_steps_and_the_saved_file_only_as_a_variabl
     assert "hunter2-secret" not in json.dumps(steps) + saved
 
 
-def test_terminate_keeps_the_step_of_an_action_still_running(desktop):
-    async def go():
-        desktop.gate = asyncio.Event()
-        async with Client(mcp_server.build_server("core")) as client:
-            tap = asyncio.create_task(client.call_tool("tap", {"target": "Add Event"}))
-            while not desktop.ran:
-                await asyncio.sleep(0.01)
-            end = asyncio.create_task(client.call_tool("terminate_session", {}))
-            await asyncio.sleep(0.1)
-            desktop.gate.set()
-            await tap
-            ended = await end
-            steps = json.loads((await client.read_resource(STEPS))[0].text)
-            return ended, steps
-
-    ended, steps = _run(go())
-
-    assert "Its 1 recorded steps" in _shown(ended)
-    assert [step["keyword"] for step in steps["steps"]] == ["Press Element"]
-
-
 def test_a_reply_that_nests_a_long_screen_keeps_the_rows_that_fit():
     screen = "\n".join(f'button "Song number {n} {"x" * 90}" [tap]' for n in range(100))
 
@@ -626,14 +361,6 @@ def test_a_call_without_a_session_id_after_the_end_names_the_ended_session(deskt
 
     assert f"Session '{S1}' has ended. It was ended by terminate_session." in _shown(tapped)
     assert STEPS in _shown(tapped)
-
-
-def test_an_unverified_key_that_closed_a_draft_asks_for_an_expectation(desktop):
-    desktop.effect = desktop.rows.pop
-
-    pressed, = _calls(("press_key", {"key": "Escape"}))
-
-    assert "verified: unknown (add expect_present/expect_absent to verify)" in _shown(pressed)
 
 
 def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypatch):

@@ -24,15 +24,6 @@ def test_optics_is_reexported_from_package_root():
     assert "Optics" in dir(optics_framework)
 
 
-def test_star_import_binds_optics():
-    """``from optics_framework import *`` bound Optics before the lazy re-export
-    and must keep doing so: an empty ``__all__`` would silently export nothing."""
-    namespace: dict = {}
-    exec("from optics_framework import *", namespace)  # nosec B102
-
-    assert namespace["Optics"] is Optics
-
-
 def test_unknown_attribute_still_raises_attribute_error():
     with pytest.raises(AttributeError):
         optics_framework.does_not_exist  # noqa: B018

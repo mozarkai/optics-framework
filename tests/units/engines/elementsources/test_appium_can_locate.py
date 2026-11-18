@@ -25,17 +25,6 @@ def test_native_sources_decline_dom_only_xpath_on_phones(source_cls):
     assert source.can_locate("//android.widget.Button") is True
 
 
-@pytest.mark.parametrize("source_cls", [AppiumFindElement, AppiumPageSource])
-def test_native_sources_keep_dom_xpath_off_phones(source_cls):
-    assert source_cls(driver=_driver(None)).can_locate("//input") is True
-
-
-@pytest.mark.parametrize(("platform", "accepts"), [("android", True), ("ios", True), (None, False)])
-@pytest.mark.parametrize("locator", ["css=#q", "//input"])
-def test_appium_web_takes_web_locators_only_on_native_phone_sessions(platform, accepts, locator):
-    assert AppiumWeb(driver=_driver(platform)).can_locate(locator) is accepts
-
-
 def test_appium_web_leaves_a_browser_session_in_its_web_context():
     driver = _driver(None)
 

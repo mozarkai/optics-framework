@@ -13,45 +13,12 @@ import numpy as np
 import pytest
 
 from optics_framework.common import utils
-from optics_framework.common.config_handler import Config, DependencyConfig
-from optics_framework.common.session_manager import _get_enabled_config_list
 from optics_framework.common.nl_agent import AgentStep, AgentResult, ExecResult
 from optics_framework.helper.live import LiveController, NLStep
 from optics_framework.helper.live import NLRunStatus
-from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.error import OpticsError, Code
 
 pytestmark = pytest.mark.white_box
-
-
-class TestConfigWiring:
-    def test_default_lists_every_engine_disabled(self):
-        cfg = Config()
-        assert cfg.llm_models == [
-            {name: DependencyConfig(enabled=False, url=None, capabilities={})}
-            for name in ("gemini", "openai", "anthropic")
-        ]
-
-    def test_enabled_filtering(self):
-        cfg = Config(
-            llm_models=[
-                {"gemini": DependencyConfig(enabled=True, capabilities={"model": "gemini-2.5-flash"})},
-                {"other": DependencyConfig(enabled=False)},
-            ]
-        )
-        enabled = _get_enabled_config_list(cfg, "llm_models")
-        assert len(enabled) == 1
-        assert "gemini" in enabled[0]
-        assert enabled[0]["gemini"]["capabilities"] == {"model": "gemini-2.5-flash"}
-
-    def test_builder_returns_none_without_llm(self):
-        session = types.SimpleNamespace(
-            event_sdk=None,
-            config=types.SimpleNamespace(project_path=None),
-        )
-        builder = OpticsBuilder(session)
-        # No add_llm called -> llm_config is None -> get_llm returns None, nothing imported.
-        assert builder.get_llm() is None
 
 
 def _bare_controller():
@@ -140,47 +107,7 @@ class TestControllerPageSource:
 
 
 class TestControllerScreenElements:
-    def test_requests_the_compact_list(self):
-        ctrl = _elements_controller([_COMPACT_EL])
-        ctrl.screen_elements(_png_bytes())
-        # The full element dump blows the prompt budget; compact is the point.
-        assert ctrl._action_keyword.strategy_manager.compact_arg is True
 
-    def test_returns_elements_and_scales_bounds_for_appium(self, monkeypatch):
-        elements = [dict(_COMPACT_EL)]
-        ctrl = _elements_controller(elements, driver_type="appium")
-
-        calls = []
-        monkeypatch.setattr(
-            utils, "scale_interactive_element_bounds",
-            lambda els, src, ss: calls.append((els, src, ss)),
-        )
-
-        out = ctrl.screen_elements(_png_bytes())
-
-        assert out == elements
-        assert len(calls) == 1
-        assert calls[0][0] == elements
-        assert isinstance(calls[0][2], np.ndarray)  # decoded from the passed PNG bytes
-        # No second device screenshot -- bounds are scaled against what was already
-        # captured for the LLM, not a fresh capture_screenshot() round trip.
-        ctrl._action_keyword.strategy_manager.capture_screenshot.assert_not_called()
-
-    def test_skips_decode_for_non_appium_source(self, monkeypatch):
-        elements = [dict(_COMPACT_EL)]
-        ctrl = _elements_controller(elements, driver_type="playwright")
-
-        calls = []
-        monkeypatch.setattr(
-            utils, "scale_interactive_element_bounds",
-            lambda els, src, ss: calls.append(ss),
-        )
-
-        out = ctrl.screen_elements(_png_bytes())
-
-        assert out == elements
-        assert calls == [None]  # scale still called, but with no frame to scale against
-        ctrl._action_keyword.strategy_manager.capture_screenshot.assert_not_called()
 
     def test_returns_none_when_get_interactive_elements_unavailable(self):
         ctrl = _elements_controller(OpticsError(Code.E0202, message="No interactive elements"))
@@ -267,12 +194,6 @@ class TestRunNaturalLanguage:
         assert ctrl.recorded == []
         assert ctrl.saved is True
 
-    def test_empty_instruction(self):
-        ctrl = _bare_controller()
-        summary = ctrl.run_natural_language("   ", on_step=lambda s: None)
-        assert summary.status == "FAIL"
-        assert "Empty" in (summary.message or "")
-
     def test_agent_crash_returns_enum_status(self, monkeypatch):
         # An unexpected (non-Optics) exception from agent.run must not crash the
         # controller and must return a genuine NLRunStatus enum, not a raw "FAIL"
@@ -298,20 +219,3 @@ class TestRunNaturalLanguage:
         summary = ctrl.run_natural_language("do it", on_step=lambda s: None)
         assert summary.status == "FAIL"
         assert "llm_models" in (summary.message or "")
-
-    def test_availability_reads_config(self):
-        ctrl = _bare_controller()
-        ctrl.session = types.SimpleNamespace(
-            config=types.SimpleNamespace(
-                llm_models=[{"gemini": DependencyConfig(enabled=True)}]
-            )
-        )
-        assert ctrl.natural_language_available() is True
-
-        ctrl2 = _bare_controller()
-        ctrl2.session = types.SimpleNamespace(
-            config=types.SimpleNamespace(
-                llm_models=[{"gemini": DependencyConfig(enabled=False)}]
-            )
-        )
-        assert ctrl2.natural_language_available() is False

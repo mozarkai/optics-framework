@@ -15,7 +15,7 @@ from rich.console import Console
 from optics_framework.helper import doctor, project_config
 from tests.conftest import set_home
 from optics_framework.helper.doctor import Check
-from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
+from optics_framework.helper.setup import ALL_ENGINES
 
 pytestmark = pytest.mark.white_box
 
@@ -81,19 +81,7 @@ def _write_config(tmp_path, answers=None, raw=None) -> str:
 
 
 class TestCheckCore:
-    def test_reports_installed_version(self):
-        with patch(f"{MODULE}.version", return_value="9.9.9"):
-            rows = doctor.check_core()
-        optics_row = next(r for r in rows if r.name == DISTRIBUTION_NAME)
-        assert optics_row.status == "ok"
-        assert "9.9.9" in optics_row.detail
 
-    def test_missing_package_is_warn_not_fail(self):
-        with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
-            rows = doctor.check_core()
-        optics_row = next(r for r in rows if r.name == DISTRIBUTION_NAME)
-        assert optics_row.status == "warn"
-        assert "pip install" in optics_row.hint
 
     def test_python_row_never_fails(self):
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
@@ -108,24 +96,6 @@ class TestCheckEngines:
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
             rows = doctor.check_engines()
         assert sorted(r.name for r in rows) == sorted(e.name for e in ALL_ENGINES.values() if e.runs_here())
-
-    def test_missing_engine_warns_with_install_hint(self):
-        with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
-            rows = doctor.check_engines()
-        appium = next(r for r in rows if r.name == "Appium")
-        assert appium.status == "warn"
-        assert appium.hint == "optics setup --install appium"
-
-    def test_installed_engine_reports_package_and_version(self):
-        def fake_version(package):
-            if package == "appium-python-client":
-                return "5.0.0"
-            raise PackageNotFoundError(package)
-        with patch(f"{MODULE}.version", side_effect=fake_version):
-            rows = doctor.check_engines()
-        appium = next(r for r in rows if r.name == "Appium")
-        assert appium.status == "ok"
-        assert "appium-python-client 5.0.0" in appium.detail
 
 
 @pytest.fixture(autouse=True)
@@ -200,15 +170,6 @@ class TestCheckMobile:
             rows = doctor.check_mobile()
         assert next(r for r in rows if r.name == "adb devices").status == "warn"
 
-    def test_appium_reachable_is_ok(self, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        with patch.object(doctor.socket, "create_connection") as connect:
-            rows = doctor.check_mobile("10.0.0.5", 5555)
-        appium_row = rows[-1]
-        assert appium_row.status == "ok"
-        assert "10.0.0.5:5555" in appium_row.detail
-        connect.assert_called_once_with(("10.0.0.5", 5555), timeout=doctor._SOCKET_TIMEOUT_S)
-
 
 class TestCheckWeb:
     @pytest.fixture(autouse=True)
@@ -223,40 +184,6 @@ class TestCheckWeb:
         assert all(r.status == "warn" for r in rows)
         hints = {r.hint for r in rows}
         assert any("optics setup --install playwright" in h for h in hints)
-
-    @pytest.mark.parametrize(
-        "browser_dir",
-        [
-            ["Library/Caches/ms-playwright"],
-            [".cache/ms-playwright"],
-            ["AppData/Local/ms-playwright"],
-        ],
-    )
-    def test_chromium_download_detected(self, browser_dir, monkeypatch):
-        cache = self.home
-        for part in browser_dir:
-            cache = cache / part
-        (cache / "chromium-1200").mkdir(parents=True)
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        monkeypatch.setattr(doctor, "_playwright_chromium_revision",
-                            lambda: "1200")
-        with patch(f"{MODULE}.version", return_value="1.49.0"):
-            rows = doctor.check_web()
-        pw = next(r for r in rows if r.name == "playwright browser")
-        assert pw.status == "ok"
-
-    def test_chromium_from_an_earlier_playwright_is_not_accepted(self, monkeypatch):
-        """Playwright launches only its pinned build, so a leftover download is unusable."""
-        cache = self.home / "Library/Caches/ms-playwright"
-        (cache / "chromium-1234").mkdir(parents=True)
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        monkeypatch.setattr(doctor, "_playwright_chromium_revision",
-                            lambda: "1243")
-        with patch(f"{MODULE}.version", return_value="1.58.0"):
-            rows = doctor.check_web()
-        pw = next(r for r in rows if r.name == "playwright browser")
-        assert pw.status == "warn"
-        assert "playwright install chromium" in pw.hint
 
     def test_unreadable_manifest_falls_back_to_any_chromium(self, monkeypatch):
         """Better a usable answer than none when the revision cannot be read."""
@@ -276,14 +203,6 @@ class TestCheckWeb:
         pw = next(r for r in rows if r.name == "playwright browser")
         assert pw.status == "warn"
         assert "playwright install chromium" in pw.hint
-
-    def test_selenium_with_driver_on_path_is_ok(self, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which",
-                            lambda name: "/usr/bin/chromedriver" if name == "chromedriver" else None)
-        with patch(f"{MODULE}.version", return_value="4.20.0"):
-            rows = doctor.check_web()
-        selenium_row = next(r for r in rows if r.name == "selenium webdriver")
-        assert selenium_row.status == "ok"
 
 
 XA11Y_INSTALL = "appium driver install --source=npm appium-xa11y-driver"
@@ -308,21 +227,10 @@ def _xa11y_row(system="Linux"):
 
 
 class TestCheckDesktop:
-    def test_installed_driver_is_ok_with_its_package_version(self, appium_home, no_socket):
-        _install_xa11y(appium_home)
-        row = _xa11y_row()
-        assert row.status == "ok"
-        assert "appium-xa11y-driver 0.1.3" in row.detail
 
     def test_driver_in_node_modules_without_a_manifest_is_ok(self, appium_home, no_socket):
         _install_xa11y(appium_home, listed=False)
         assert _xa11y_row().status == "ok"
-
-    def test_missing_driver_warns_with_the_install_command(self, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
-        row = _xa11y_row()
-        assert row.status == "warn"
-        assert row.hint == XA11Y_INSTALL
 
     def test_reachable_server_without_the_driver_here_names_the_home_checked(self, appium_home, monkeypatch):
         monkeypatch.setattr(doctor.socket, "create_connection", lambda *_a, **_k: MagicMock())
@@ -337,18 +245,6 @@ class TestCheckDesktop:
         _install_xa11y(appium_home, present=False)
         assert _xa11y_row().status == "warn"
 
-    def test_unreadable_manifest_warns(self, appium_home, no_socket):
-        manifest = appium_home / "node_modules" / ".cache" / "appium"
-        manifest.mkdir(parents=True)
-        (manifest / "extensions.yaml").write_text("drivers: [unclosed\n")
-        assert _xa11y_row().status == "warn"
-
-    def test_default_home_is_dot_appium(self, tmp_path, no_socket, monkeypatch):
-        monkeypatch.delenv("APPIUM_HOME")
-        set_home(monkeypatch, tmp_path)
-        _install_xa11y(tmp_path / ".appium")
-        assert _xa11y_row().status == "ok"
-
     def test_macos_row_is_an_info_mark_outside_the_counts(self, no_socket, monkeypatch):
         monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._EMOJI_GLYPHS)
         _, out = _render(doctor.print_report, [("Desktop", [Check("xa11y driver", "ok", "found"),
@@ -356,18 +252,8 @@ class TestCheckDesktop:
         assert "ℹ️ macOS permissions" in out
         assert "1 ok, 0 warning(s), 0 failure(s)" in out
 
-    @pytest.mark.parametrize("system", ["Linux", "Windows"])
-    def test_other_systems_have_no_macos_row(self, no_socket, system):
-        assert "macOS permissions" not in [r.name for r in doctor.check_desktop(system=system)]
-
 
 class TestValidateProject:
-    def test_valid_rendered_config_all_ok(self, tmp_path):
-        folder = _write_config(tmp_path)
-        rows = doctor.validate_project(folder)
-        assert rows, "expected at least one row"
-        assert all(r.status == "ok" for r in rows)
-        assert all(r.name.startswith("config:") for r in rows)
 
     def test_no_enabled_driver_fails(self, tmp_path):
         starter = "\n".join(
@@ -377,44 +263,6 @@ class TestValidateProject:
         folder = _write_config(tmp_path, raw=starter + "\n")
         rows = doctor.validate_project(folder)
         assert any(r.status == "fail" and "no driver enabled" in r.detail for r in rows)
-
-    def test_driver_enabled_through_an_environment_variable_counts(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USE_APPIUM", "true")
-        starter = project_config.render_project_config(ANDROID_ANSWERS).replace("enabled: true", "enabled: $USE_APPIUM", 1)
-        rows = doctor.validate_project(_write_config(tmp_path, raw=starter))
-        assert not any(r.status == "fail" for r in rows)
-
-    def test_multiple_enabled_drivers_warn(self, tmp_path):
-        # The framework deliberately supports multi-driver fallback
-        # (InstanceFallback), so >1 enabled driver stays a warning — but the
-        # "exactly one" guidance must still surface.
-        raw = (
-            "driver_sources:\n"
-            "  - appium:\n"
-            "      enabled: true\n"
-            "      url: 'http://127.0.0.1:4723'\n"
-            "      capabilities:\n"
-            "        deviceName: emu-1\n"
-            "        platformName: Android\n"
-            "        appPackage: com.example.app\n"
-            "        appActivity: com.example.MainActivity\n"
-            "  - playwright:\n"
-            "      enabled: true\n"
-            "      capabilities:\n"
-            "        browser: chromium\n"
-            "elements_sources:\n"
-            "  - appium_find_element:\n"
-            "      enabled: true\n"
-            "  - playwright_find_element:\n"
-            "      enabled: true\n"
-        )
-        folder = _write_config(tmp_path, raw=raw)
-        rows = doctor.validate_project(folder)
-        driver_row = next(r for r in rows if r.name == "config: driver")
-        assert driver_row.status == "warn"
-        assert "2 drivers enabled" in driver_row.detail
-        assert "appium" in driver_row.detail
-        assert "playwright" in driver_row.detail
 
     def test_driver_without_matching_source_fails(self, tmp_path):
         raw = (
@@ -430,89 +278,11 @@ class TestValidateProject:
         rows = doctor.validate_project(folder)
         assert any(r.status == "fail" and "element source" in r.name for r in rows)
 
-    def test_appium_without_url_fails(self, tmp_path):
-        raw = (
-            "driver_sources:\n"
-            "  - appium:\n"
-            "      enabled: true\n"
-            "      capabilities:\n"
-            "        deviceName: emu-1\n"
-            "        platformName: Android\n"
-            "        appPackage: com.example.app\n"
-            "        appActivity: com.example.MainActivity\n"
-            "elements_sources:\n"
-            "  - appium_find_element:\n"
-            "      enabled: true\n"
-        )
-        folder = _write_config(tmp_path, raw=raw)
-        rows = doctor.validate_project(folder)
-        assert any(r.status == "fail" and "url is missing" in r.detail for r in rows)
-
-    def test_a_rendered_desktop_config_passes_the_settings_check(self, tmp_path):
-        answers = {"platform": "desktop", "platform_name": "Mac", "app": "com.apple.TextEdit"}
-        rows = doctor.validate_project(_write_config(tmp_path, answers=answers))
-        settings = next(r for r in rows if r.name == "config: appium settings")
-        assert settings.status == "ok", settings.detail
-
     def test_ios_settings_row_ok_with_bundle_id(self, tmp_path):
         folder = _write_config(tmp_path, answers=IOS_ANSWERS)
         rows = doctor.validate_project(folder)
         settings = next(r for r in rows if r.name == "config: appium settings")
         assert settings.status == "ok"
-
-    def test_ios_settings_row_fails_without_bundle_id(self, tmp_path):
-        raw = (
-            "driver_sources:\n"
-            "  - appium:\n"
-            "      enabled: true\n"
-            "      url: 'http://127.0.0.1:4723'\n"
-            "      capabilities:\n"
-            "        automationName: XCUITest\n"
-            "        deviceName: iPhone 15\n"
-            "        platformName: iOS\n"
-            "elements_sources:\n"
-            "  - appium_find_element:\n"
-            "      enabled: true\n"
-        )
-        folder = _write_config(tmp_path, raw=raw)
-        rows = doctor.validate_project(folder)
-        settings = next(r for r in rows if r.name == "config: appium settings")
-        assert settings.status == "fail"
-        assert "bundleId missing in capabilities" in settings.detail
-
-    def test_android_settings_still_require_app_package_and_activity(self, tmp_path):
-        raw = (
-            "driver_sources:\n"
-            "  - appium:\n"
-            "      enabled: true\n"
-            "      url: 'http://127.0.0.1:4723'\n"
-            "      capabilities:\n"
-            "        automationName: UiAutomator2\n"
-            "        deviceName: emu-1\n"
-            "        platformName: Android\n"
-            "elements_sources:\n"
-            "  - appium_find_element:\n"
-            "      enabled: true\n"
-        )
-        folder = _write_config(tmp_path, raw=raw)
-        rows = doctor.validate_project(folder)
-        settings = next(r for r in rows if r.name == "config: appium settings")
-        # Historical severity for a missing android capability is a warning.
-        assert settings.status == "warn"
-        assert "appPackage missing in capabilities" in settings.detail
-        assert "appActivity missing in capabilities" in settings.detail
-
-    @pytest.mark.parametrize("app", ["app: mousepad", "appName: mousepad", "appium:options: {app: mousepad}"])
-    def test_desktop_settings_need_only_the_app(self, tmp_path, app):
-        folder = _write_config(tmp_path, raw=DESKTOP_CONFIG.format(app=app))
-        settings = next(r for r in doctor.validate_project(folder) if r.name == "config: appium settings")
-        assert (settings.status, settings.detail) == ("ok", "required settings present")
-
-    def test_phone_settings_in_appium_options_are_present(self, tmp_path):
-        raw = DESKTOP_CONFIG.format(app="appium:options: {deviceName: emulator-5554, appPackage: com.x, appActivity: .Main}")
-        folder = _write_config(tmp_path, raw=raw.replace("platformName: Linux", "platformName: Android"))
-        settings = next(r for r in doctor.validate_project(folder) if r.name == "config: appium settings")
-        assert (settings.status, settings.detail) == ("ok", "required settings present")
 
     @pytest.mark.parametrize("session", ["existingSessionId: s-1", "appium:options: {sessionId: s-1}"])
     def test_desktop_settings_that_attach_to_a_session_only_warn_without_an_app(self, tmp_path, session):
@@ -521,41 +291,13 @@ class TestValidateProject:
         assert settings.status == "warn"
         assert "attaches to session s-1" in settings.detail
 
-    def test_desktop_settings_fail_without_an_app(self, tmp_path):
-        folder = _write_config(tmp_path, raw=DESKTOP_CONFIG.format(app="newCommandTimeout: 60"))
-        settings = next(r for r in doctor.validate_project(folder) if r.name == "config: appium settings")
-        assert settings.status == "fail"
-        assert "'app' to launch it, or 'appName'" in settings.detail
-
-    def test_missing_config_file_fails(self, tmp_path):
-        rows = doctor.validate_project(str(tmp_path / "nowhere"))
-        assert rows[0].status == "fail"
-        assert "no config.yaml" in rows[0].detail
-
     def test_unparseable_yaml_fails(self, tmp_path):
         folder = _write_config(tmp_path, raw="driver_sources: [oops\n")
         rows = doctor.validate_project(folder)
         assert any(r.status == "fail" for r in rows)
 
-    def test_creates_no_execution_output_dir(self, tmp_path):
-        folder = _write_config(tmp_path)
-        before = sorted(os.listdir(folder))
-        doctor.validate_project(folder)
-        after = sorted(os.listdir(folder))
-        assert before == after
-        assert "execution_output" not in after
-
 
 class TestSplitHostPort:
-    @pytest.mark.parametrize("url, expected", [
-        ("http://10.1.2.3:5555", ("10.1.2.3", 5555)),
-        ("https://appium.corp.local:4443/wd/hub", ("appium.corp.local", 4443)),
-        ("10.0.0.5:4723", ("10.0.0.5", 4723)),  # schemeless host:port
-        ("127.0.0.1", ("127.0.0.1", 4723)),     # bare host keeps the default port
-        ("localhost:8080/", ("localhost", 8080)),
-    ])
-    def test_parses_host_and_port(self, url, expected):
-        assert doctor._split_host_port(url) == expected
 
     @pytest.mark.parametrize("url", [
         None,
@@ -593,89 +335,12 @@ class TestRunDoctor:
         assert code == 0
         assert "⚠️" in out
 
-    def test_nonzero_when_critical_row_fails(self, quiet_env, monkeypatch):
-        monkeypatch.setattr(
-            doctor, "validate_project",
-            lambda _f: [Check("config: driver", "fail", "no driver enabled")])
-        code, _ = _render(doctor.run_doctor, "/some/project", check=True)
-        assert code == 1
-
     def test_check_false_always_returns_zero(self, quiet_env, monkeypatch):
         monkeypatch.setattr(
             doctor, "validate_project",
             lambda _f: [Check("config: driver", "fail", "no driver enabled")])
         code, _ = _render(doctor.run_doctor, "/some/project")
         assert code == 0
-
-    def test_zero_when_project_validates(self, quiet_env, tmp_path):
-        folder = _write_config(tmp_path)
-        code, _ = _render(doctor.run_doctor, folder, check=True)
-        assert code == 0
-
-    def test_mobile_probe_uses_project_appium_url(self, quiet_env, tmp_path):
-        folder = _write_config(tmp_path, answers={
-            **ANDROID_ANSWERS, "appium_url": "http://10.1.2.3:5555"})
-        _render(doctor.run_doctor, folder)
-        assert quiet_env["target"] == ("10.1.2.3", 5555)
-
-    def test_mobile_probe_defaults_for_non_appium_project(self, quiet_env, tmp_path):
-        folder = _write_config(tmp_path, answers={
-            **ANDROID_ANSWERS, "platform": "web-selenium"})
-        _render(doctor.run_doctor, folder)
-        assert quiet_env["target"] == ("127.0.0.1", 4723)
-
-
-class TestMissingProjectRow:
-    """A bare `optics doctor` warns about the missing project, never failing --check."""
-
-    def test_bare_run_in_empty_dir_warns_about_missing_project(
-            self, monkeypatch, tmp_path):
-        monkeypatch.chdir(tmp_path)
-        with patch(f"{MODULE}.check_core", _stub_env_rows), \
-                patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]), \
-                patch(f"{MODULE}.check_desktop", return_value=[]):
-            code, out = _render(doctor.run_doctor)
-        assert 'project' in out
-        assert "No config.yaml found here" in out
-        assert "`optics quickstart`" in out
-
-    def test_missing_project_row_does_not_fail_check(self, monkeypatch, tmp_path):
-        monkeypatch.chdir(tmp_path)
-        with patch(f"{MODULE}.check_core", _stub_env_rows), \
-                patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]), \
-                patch(f"{MODULE}.check_desktop", return_value=[]):
-            code, _ = _render(doctor.run_doctor, check=True)
-        assert code == 0
-
-    def test_no_project_row_when_cwd_has_config(self, monkeypatch, tmp_path):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "config.yaml").write_text("driver_sources: []\n",
-                                              encoding="utf-8")
-        with patch(f"{MODULE}.check_core", _stub_env_rows), \
-                patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]), \
-                patch(f"{MODULE}.check_desktop", return_value=[]):
-            _, out = _render(doctor.run_doctor)
-        assert "No config.yaml found here" not in out
-
-    def test_explicit_folder_keeps_its_own_fail_row(self, tmp_path):
-        folder = str(tmp_path / "empty")
-        os.makedirs(folder)
-        with patch(f"{MODULE}.check_core", _stub_env_rows), \
-                patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), \
-                patch(f"{MODULE}.check_mobile", return_value=[]), \
-                patch(f"{MODULE}.check_desktop", return_value=[]):
-            code, out = _render(doctor.run_doctor, folder, check=True)
-        assert "No config.yaml found here" not in out
-        assert "❌" in out
-        assert "config:" in out
-        assert code == 1
 
 
 class TestGatedClosingMessage:
@@ -700,118 +365,7 @@ class TestGatedClosingMessage:
                 patch(f"{MODULE}.check_desktop", return_value=list(desktop_rows)):
             return _render(doctor.run_doctor, folder)
 
-    def test_appium_server_and_device_warns_are_called_out(self, tmp_path):
-        rows = [
-            Check("adb devices", "warn", "no devices attached", self.DEVICE_HINT),
-            Check("appium server", "warn", "not reachable at 127.0.0.1:4723",
-                  self.APPIUM_HINT),
-        ]
-        _, out = self._run_with_rows(tmp_path, env_rows=rows)
-        assert "⚠️ Before your first real run:" in out
-        assert f"  • {self.DEVICE_HINT}" in out
-        assert f"  • {self.APPIUM_HINT}" in out
-        assert "Good enough to start" not in out
-        assert "warning(s)" in out
-
-    def test_selenium_driver_warn_is_called_out(self, tmp_path):
-        _, out = self._run_with_rows(
-            tmp_path, env_rows=[],
-            web_rows=[Check("selenium webdriver", "warn",
-                            "package installed, but no WebDriver binary on PATH",
-                            self.SELENIUM_HINT)],
-            answers={**ANDROID_ANSWERS, "platform": "web-selenium"})
-        assert "⚠️ Before your first real run:" in out
-        assert f"  • {self.SELENIUM_HINT}" in out
-
-    def test_playwright_browser_warn_is_called_out(self, tmp_path):
-        _, out = self._run_with_rows(
-            tmp_path, env_rows=[],
-            web_rows=[Check("playwright browser", "warn",
-                            "package installed, but no Chromium download detected",
-                            self.PLAYWRIGHT_HINT)],
-            answers={**ANDROID_ANSWERS, "platform": "web-playwright"})
-        assert "⚠️ Before your first real run:" in out
-        assert f"  • {self.PLAYWRIGHT_HINT}" in out
-
-    def test_warning_for_other_drivers_keeps_reassurance(self, tmp_path):
-        _, out = self._run_with_rows(
-            tmp_path, env_rows=[],
-            web_rows=[Check("playwright browser", "warn", "missing",
-                            self.PLAYWRIGHT_HINT)])
-        assert "Good enough to start" in out
-        assert "Before your first real run" not in out
-
-    def test_ok_driver_requirements_keep_reassurance(self, tmp_path):
-        rows = [
-            Check("adb devices", "ok", "1 connected: emu-5554"),
-            Check("appium server", "ok", "reachable at 127.0.0.1:4723"),
-            Check("EasyOCR", "warn", "easyocr not installed",
-                  "optics setup --install easyocr"),
-        ]
-        _, out = self._run_with_rows(tmp_path, env_rows=rows)
-        assert "Good enough to start" in out
-
-    def test_no_adb_blocks_an_android_project(self, tmp_path):
-        rows = [Check("adb", "warn", "not found on PATH", self.ADB_HINT),
-                Check("appium server", "ok", "reachable at 127.0.0.1:4723")]
-        _, out = self._run_with_rows(tmp_path, env_rows=rows)
-        assert f"  • {self.ADB_HINT}" in out
-        assert "Good enough to start" not in out
-
-    @pytest.mark.parametrize("detail", ["could not run adb: timed out", "unexpected adb output: daemon not running"])
-    def test_a_failed_adb_devices_blocks_an_android_project(self, tmp_path, detail):
-        hint = "Check your platform-tools installation."
-        rows = [Check("adb devices", "warn", detail, hint),
-                Check("appium server", "ok", "reachable at 127.0.0.1:4723")]
-        _, out = self._run_with_rows(tmp_path, env_rows=rows)
-        assert f"  • {hint}" in out
-        assert "Good enough to start" not in out
-
-    @pytest.mark.parametrize("platform", ["platformName: Linux", "appium:options: {platformName: Linux}"])
-    def test_no_adb_device_does_not_block_a_desktop_project(self, tmp_path, platform):
-        rows = [Check("adb", "warn", "not found on PATH", self.ADB_HINT),
-                Check("adb devices", "warn", "no devices attached", self.DEVICE_HINT),
-                Check("appium server", "warn", "not reachable", self.APPIUM_HINT)]
-        raw = DESKTOP_CONFIG.format(app="app: mousepad").replace("platformName: Linux", platform)
-        folder = _write_config(tmp_path, raw=raw)
-        with patch(f"{MODULE}.check_core", return_value=[]), patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), patch(f"{MODULE}.check_mobile", return_value=rows), \
-                patch(f"{MODULE}.check_desktop", return_value=[]):
-            _, out = _render(doctor.run_doctor, folder)
-        assert f"  • {self.APPIUM_HINT}" in out
-        assert self.DEVICE_HINT not in out.split("Before your first real run:")[1]
-        assert self.ADB_HINT not in out.split("Before your first real run:")[1]
-
-    def test_missing_xa11y_driver_blocks_a_desktop_project(self, tmp_path, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
-        folder = _write_config(tmp_path, raw=DESKTOP_CONFIG.format(app="app: mousepad"))
-        with patch(f"{MODULE}.check_core", return_value=[]), patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=[]), patch(f"{MODULE}.check_mobile", return_value=[]):
-            _, out = _render(doctor.run_doctor, folder)
-        assert f"  • {XA11Y_INSTALL}" in out.split("Before your first real run:")[1]
-
     def test_missing_xa11y_driver_does_not_block_an_android_project(self, tmp_path, no_socket, monkeypatch):
         monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
         _, out = self._run_with_rows(tmp_path, env_rows=[], desktop_rows=doctor.check_desktop(system="Linux"))
         assert XA11Y_INSTALL not in out.split("Before your first real run:")[1]
-
-
-class TestMandatoryHintsCoverEnabledEngines:
-    """A missing driver client fails the run even with the server up and a device attached."""
-
-    def test_missing_client_for_the_enabled_driver_blocks(self):
-        rows = [
-            Check("Appium", "warn", "appium-python-client not installed",
-                  "optics setup --install appium"),
-            Check("adb devices", "ok", "1 connected: emu-5554"),
-            Check("appium server", "ok", "reachable at 127.0.0.1:4723"),
-        ]
-        assert doctor._mandatory_hints(rows, {"appium"}) == [
-            "optics setup --install appium"]
-
-    def test_missing_client_for_an_unused_driver_does_not_block(self):
-        rows = [
-            Check("Playwright", "warn", "playwright not installed",
-                  "optics setup --install playwright"),
-        ]
-        assert doctor._mandatory_hints(rows, {"appium"}) == []

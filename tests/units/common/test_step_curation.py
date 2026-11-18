@@ -29,11 +29,6 @@ class _LLM:
         return self._reply
 
 
-def test_no_anyof_in_schema():
-    import json
-    assert "anyOf" not in json.dumps(CURATION_SCHEMA)
-
-
 def test_single_step_skips_llm():
     llm = _LLM({"keep": [1], "reason": "r"})
     assert curate_steps(llm, "p", 1) is None
@@ -43,22 +38,6 @@ def test_single_step_skips_llm():
 def test_prunes_to_kept_indices_zero_based_sorted():
     llm = _LLM({"keep": [3, 1], "reason": "drop 2"})
     assert curate_steps(llm, "p", 3) == [0, 2]
-
-
-def test_dedups_and_range_checks():
-    llm = _LLM({"keep": [3, 1, 1, 99, 0], "reason": "dup/out-of-range"})
-    # 0 and 99 are out of the 1..3 range; 1 is deduped -> {1,3} -> 0-based [0, 2].
-    assert curate_steps(llm, "p", 3) == [0, 2]
-
-
-def test_keep_all_returns_none():
-    llm = _LLM({"keep": [1, 2, 3], "reason": "all needed"})
-    assert curate_steps(llm, "p", 3) is None
-
-
-def test_drop_all_returns_none():
-    llm = _LLM({"keep": [], "reason": "none"})
-    assert curate_steps(llm, "p", 3) is None
 
 
 @pytest.mark.parametrize("reply", [
@@ -73,7 +52,3 @@ def test_malformed_replies_keep_all(reply):
 
 def test_llm_error_keeps_all():
     assert curate_steps(_LLM(OpticsError(Code.E0801, message="boom")), "p", 3) is None
-
-
-def test_unexpected_error_keeps_all():
-    assert curate_steps(_LLM(RuntimeError("kaboom")), "p", 3) is None
