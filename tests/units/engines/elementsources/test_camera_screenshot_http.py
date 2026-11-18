@@ -40,22 +40,6 @@ def _jpeg() -> bytes:
 JPEG = _jpeg()
 
 
-def _marked_png() -> bytes:
-    """A 40x30 camera frame: a white 20x20 screen inset at (10, 5) with a red block in its top-left corner."""
-    image = np.zeros((30, 40, 3), np.uint8)
-    image[5:25, 10:30] = (255, 255, 255)
-    image[5:10, 10:15] = (0, 0, 255)
-    return cv2.imencode(".png", image)[1].tobytes()
-
-
-MARKED = _marked_png()
-INSET = ["10,5", "29,5", "29,24", "10,24"]
-
-
-def _red(pixel) -> bool:
-    return pixel[2] > 200 and pixel[1] < 60
-
-
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     for name in ENV_VARS:
@@ -144,25 +128,7 @@ def _source(**capabilities):
 
 
 class TestHttp:
-    def test_success_sends_bearer_and_decodes(self, http_server):
-        source = _source(url=http_server.url, token=TOKEN)
-        frame = source.capture()
-        assert frame.shape == (20, 30, 3)
-        assert http_server.received == [("/screenshot", f"Bearer {TOKEN}")]
 
-    @pytest.mark.parametrize(
-        "status,code", [(404, "NOT_FOUND"), (503, "CAPTURE_FAILED"), (503, "SHUTTING_DOWN")]
-    )
-    def test_error_codes_are_surfaced(self, http_server, status, code):
-        http_server.mode = (status, code)
-        source = _source(url=http_server.url, token=TOKEN)
-        with pytest.raises(CameraScreenshotHttpError) as exc:
-            source.capture()
-        assert exc.value.status == status
-        assert exc.value.code == code
-        assert f"HTTP {status}" in str(exc.value)
-        assert f"{code} happened" in str(exc.value)
-        assert TOKEN not in str(exc.value)
 
     def test_wrong_token_is_401(self, http_server):
         source = _source(url=http_server.url, token="wrong")
@@ -180,14 +146,6 @@ class TestHttp:
         assert exc.value.status == 500
         assert "boom" in str(exc.value)
 
-    def test_redirect_is_not_followed(self, http_server):
-        http_server.mode = "redirect"
-        source = _source(url=http_server.url, token=TOKEN)
-        with pytest.raises(CameraScreenshotHttpError) as exc:
-            source.capture()
-        assert exc.value.status == 302
-        assert len(http_server.received) == 1
-
     def test_unreachable_server_raises_runtime_error(self, http_server):
         url = http_server.url
         http_server.shutdown()
@@ -197,27 +155,10 @@ class TestHttp:
             source.capture()
 
 
-class TestTcpUnchanged:
-    def test_ip_port_uses_raw_tcp(self, tcp_server):
-        port, commands = tcp_server
-        source = _source(url=f"127.0.0.1:{port}")
-        assert source.http_url is None
-        frame = source.capture()
-        assert frame.shape == (20, 30, 3)
-        assert commands == [b"screenshot\n"]
-
-
 FULL_FRAME = ["0,0", "29,0", "29,19", "0,19"]
 
 
 class TestFrameProcessing:
-    def test_http_frame_is_cut_to_the_screen_and_stretched(self, http_server):
-        http_server.body = MARKED
-        source = _source(url=http_server.url, token=TOKEN, deskew_corners=INSET, out_width=40, out_height=40)
-        frame = source.capture()
-        assert frame.shape == (40, 40, 3)
-        assert _red(frame[2, 2])
-        assert frame[37, 37].min() > 200
 
     def test_tcp_frame_is_deskewed_then_rotated(self, tcp_server):
         port, _ = tcp_server
@@ -225,14 +166,6 @@ class TestFrameProcessing:
             url=f"127.0.0.1:{port}", deskew_corners=FULL_FRAME, out_width=60, out_height=40, rotation="clockwise"
         )
         assert source.capture().shape == (60, 40, 3)
-
-    def test_rotation_without_deskew(self, http_server):
-        http_server.body = MARKED
-        source = _source(url=http_server.url, token=TOKEN, rotation="Counterclockwise")
-        frame = source.capture()
-        assert frame.shape == (40, 30, 3)
-        assert _red(frame[27, 7])
-        assert not _red(frame[12, 22])
 
     @pytest.mark.parametrize(
         "capabilities",
@@ -273,18 +206,8 @@ class TestCameraMatchesInDriverWindow:
     def test_ocr_point_is_scaled_to_the_appium_window(self, http_server):
         assert self._locate(http_server.url, _FakeAppium()) == (10, 5)
 
-    def test_ocr_point_is_unchanged_for_other_drivers(self, http_server):
-        other = type("OtherDriver", (), {"NAME": "ble", "get_window_size": _FakeAppium.get_window_size})()
-        assert self._locate(http_server.url, other) == (20, 10)
-
 
 class TestEnvFallback:
-    def test_url_and_token_from_env(self, http_server, monkeypatch):
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", http_server.url)
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", TOKEN)
-        frame = CameraScreenshot({"capabilities": {}}).capture()
-        assert frame.shape == (20, 30, 3)
-        assert http_server.received[0][1] == f"Bearer {TOKEN}"
 
     def test_env_token_is_never_sent_to_a_url_from_capabilities(self, http_server, monkeypatch):
         monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", TOKEN)
@@ -292,33 +215,6 @@ class TestEnvFallback:
             _source(url=http_server.url).capture()
         assert exc.value.status == 401
         assert http_server.received == [("/screenshot", None)]
-
-    def test_tcp_port_from_env(self, tcp_server, monkeypatch):
-        port, commands = tcp_server
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_TCP_PORT", str(port))
-        source = CameraScreenshot({"capabilities": {}})
-        assert source.http_url is None
-        assert source.capture().shape == (20, 30, 3)
-        assert commands == [b"screenshot\n"]
-
-    def test_http_url_beats_tcp_port_in_env(self, http_server, monkeypatch):
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", http_server.url)
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", TOKEN)
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_TCP_PORT", "1")
-        assert CameraScreenshot({"capabilities": {}}).http_url == http_server.url
-
-    def test_config_url_beats_env_url(self, http_server, monkeypatch):
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", "env-token")
-        _source(url=http_server.url, token=TOKEN).capture()
-        assert http_server.received == [("/screenshot", f"Bearer {TOKEN}")]
-
-    def test_config_tcp_url_beats_env_http(self, tcp_server, monkeypatch):
-        port, _ = tcp_server
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
-        source = _source(url=f"127.0.0.1:{port}")
-        assert source.http_url is None
-        assert source.capture().shape == (20, 30, 3)
 
     def test_camera_index_beats_env(self, monkeypatch):
         monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")

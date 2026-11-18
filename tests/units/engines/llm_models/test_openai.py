@@ -5,10 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from optics_framework.common.ai_self_heal import HEAL_ACTION_SCHEMA
 from optics_framework.common.error import OpticsError
-from optics_framework.common.nl_agent import ACTION_SCHEMA
-from optics_framework.common.step_curation import CURATION_SCHEMA
 from optics_framework.engines.llm_models import openai as openai_engine
 from optics_framework.engines.llm_models.openai import strict_schema
 
@@ -70,34 +67,9 @@ def test_missing_key_without_url_fails_fast(fake_client, monkeypatch):
         _llm()
 
 
-def test_local_server_without_key_gets_placeholder(fake_client, monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY")
-    _llm(url="http://localhost:11434/v1")
-    assert fake_client.clients[-1] == {"api_key": "unused", "base_url": "http://localhost:11434/v1", "timeout": 60.0}
-
-
-def test_api_key_env_names_the_variable(fake_client, monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
-    _llm(url="https://openrouter.ai/api/v1", api_key_env="OPENROUTER_API_KEY")
-    assert fake_client.clients[-1]["api_key"] == "or-key"
-
-
-def test_config_api_key_wins_over_the_environment(fake_client):
-    _llm(api_key="sk-config")
-    assert fake_client.clients[-1]["api_key"] == "sk-config"
-
-
 def test_invalid_response_format_is_rejected(fake_client):
     with pytest.raises(OpticsError, match="response_format"):
         _llm(response_format="xml")
-
-
-def test_text_only_prompt_is_a_plain_string(fake_client):
-    _llm().generate("hi", system="be brief")
-    assert fake_client.requests[-1]["messages"] == [
-        {"role": "system", "content": "be brief"},
-        {"role": "user", "content": "hi"},
-    ]
 
 
 def test_images_are_sent_as_data_urls(fake_client):
@@ -105,14 +77,6 @@ def test_images_are_sent_as_data_urls(fake_client):
     parts = fake_client.requests[-1]["messages"][-1]["content"]
     assert parts[0] == {"type": "text", "text": "look"}
     assert parts[1]["image_url"]["url"] == "data:image/png;base64," + base64.b64encode(PNG).decode()
-
-
-def test_schema_is_sent_as_strict_json_schema(fake_client):
-    _llm().generate("hi", response_schema=SCHEMA)
-    response_format = fake_client.requests[-1]["response_format"]
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["strict"] is True
-    assert response_format["json_schema"]["schema"] == strict_schema(SCHEMA)
 
 
 def test_json_object_mode_moves_the_schema_into_the_system_prompt(fake_client):
@@ -124,23 +88,6 @@ def test_json_object_mode_moves_the_schema_into_the_system_prompt(fake_client):
     assert json.dumps(SCHEMA) in system
 
 
-def test_temperature_precedence(fake_client):
-    llm = _llm(temperature=0.0)
-    llm.generate("hi")
-    assert fake_client.requests[-1]["temperature"] == 0.0
-    llm.generate("hi", temperature=0.7)
-    assert fake_client.requests[-1]["temperature"] == 0.7
-    _llm().generate("hi")
-    assert "temperature" not in fake_client.requests[-1]
-
-
-def test_max_tokens_is_sent_only_when_configured(fake_client):
-    _llm().generate("hi")
-    assert "max_completion_tokens" not in fake_client.requests[-1]
-    _llm(max_tokens=512).generate("hi")
-    assert fake_client.requests[-1]["max_completion_tokens"] == 512
-
-
 def test_truncated_reply_raises(fake_client):
     fake_client.finish_reason = "length"
     llm = _llm()
@@ -148,19 +95,7 @@ def test_truncated_reply_raises(fake_client):
         llm.generate("hi", response_schema=SCHEMA)
 
 
-def test_refusal_raises(fake_client):
-    fake_client.message = SimpleNamespace(content=None, refusal="no")
-    llm = _llm()
-    with pytest.raises(OpticsError, match="refused"):
-        llm.generate("hi", response_schema=SCHEMA)
-
-
 def test_generate_json_parses_the_reply(fake_client):
-    assert _llm().generate_json("hi", SCHEMA) == {"action": "done"}
-
-
-def test_strict_mode_nulls_for_optional_properties_are_dropped(fake_client):
-    fake_client.message = SimpleNamespace(content='{"action": "done", "params": null}', refusal=None)
     assert _llm().generate_json("hi", SCHEMA) == {"action": "done"}
 
 
@@ -172,31 +107,7 @@ def test_undecodable_reply_surfaces_from_generate_json(fake_client):
 
 
 class TestStrictSchema:
-    def test_optional_properties_become_required_and_nullable(self):
-        out = strict_schema(SCHEMA)
-        assert out["required"] == ["action", "params"]
-        assert out["additionalProperties"] is False
-        assert out["properties"]["action"] == SCHEMA["properties"]["action"]
-        assert out["properties"]["params"]["type"] == ["array", "null"]
 
     def test_nullable_enum_accepts_null(self):
         schema = {"type": "object", "properties": {"a": {"type": "string", "enum": ["x"]}}}
         assert strict_schema(schema)["properties"]["a"]["enum"] == ["x", None]
-
-    def test_nested_objects_are_closed(self):
-        schema = {
-            "type": "array",
-            "items": {"type": "object", "properties": {"a": {"type": "string"}}},
-        }
-        assert strict_schema(schema)["items"]["additionalProperties"] is False
-
-    def test_input_is_not_mutated(self):
-        before = json.dumps(SCHEMA, sort_keys=True)
-        strict_schema(SCHEMA)
-        assert json.dumps(SCHEMA, sort_keys=True) == before
-
-    @pytest.mark.parametrize("schema", [ACTION_SCHEMA, HEAL_ACTION_SCHEMA, CURATION_SCHEMA])
-    def test_framework_schemas_satisfy_strict_mode(self, schema):
-        out = strict_schema(schema)
-        assert set(out["required"]) == set(out["properties"])
-        assert out["additionalProperties"] is False

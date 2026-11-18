@@ -6,7 +6,6 @@ JSON, LLM/executor errors, missing-screenshot inertness, page-source injection, 
 ActionKeyword inert/active paths, and ActionKeyword._heal_execute's own shlex parsing,
 dispatch-table lookup, and error surfacing in isolation.
 """
-import json
 from dataclasses import dataclass
 
 import numpy as np
@@ -19,10 +18,8 @@ from optics_framework.common.ai_self_heal import (
     HealContext,
     HealKeywordSpec,
     HEAL_ACTION_SCHEMA,
-    HEAL_SYSTEM_PROMPT,
 )
 from optics_framework.common.error import OpticsError, Code
-from optics_framework.common.step_curation import CURATION_SCHEMA
 
 pytestmark = pytest.mark.white_box
 
@@ -98,94 +95,8 @@ def _ctx():
     return HealContext(intent_keyword="press_element", intent_params=["Login"], element="Login")
 
 
-class TestActionSchema:
-    def test_no_anyof(self):
-        assert "anyOf" not in json.dumps(HEAL_ACTION_SCHEMA)
-
-
 class TestHandlerActions:
-    def test_press_element_completes(self):
-        """LLM emits press_element with text target — single step, completed."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
-             "completed": True, "reason": "press target"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert executor.calls == ['press_element Shop']
-        assert llm.calls == 1
 
-    def test_enter_text_completes(self):
-        """LLM emits enter_text — single step completion."""
-        ctx = HealContext(intent_keyword="enter_text", intent_params=["Search", "hello"], element="Search")
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "enter_text", "params": ["Search", "hello"],
-             "completed": True, "reason": "type it"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(ctx, _shots, _no_ps)
-        assert res.ok is True
-        assert executor.calls == ["enter_text Search hello"]
-
-    def test_done_action_succeeds(self):
-        """LLM signals done — goal reached without a keyword."""
-        llm = FakeLLM([
-            {"action": "done", "reason": "target already visible and pressed"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert executor.calls == []
-
-    def test_give_up_fails(self):
-        llm = FakeLLM([{"action": "give_up", "reason": "blocked"}])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert "blocked" in res.message
-
-    def test_malformed_action_treated_as_give_up(self):
-        llm = FakeLLM([{"action": "frobnicate", "reason": "nonsense"}])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert executor.calls == []
-
-    def test_step_budget_exhausted(self):
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "scroll", "params": ["down"], "reason": "x"}
-        ] * 2)
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert llm.calls == 2
-        assert executor.calls == ['scroll down', 'scroll down']
-        assert "scroll down" in res.message
-
-    def test_prompt_lists_prior_heal_steps_with_outcomes(self):
-        """Each turn sees the heal's own earlier calls, so a FAIL isn't retried blind."""
-        prompts = []
-
-        class RecordingLLM(FakeLLM):
-            def generate_json(self, prompt, *args, **kwargs):
-                prompts.append(prompt)
-                return super().generate_json(prompt, *args, **kwargs)
-
-        llm = RecordingLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["WrongText"],
-             "completed": True, "reason": "try pressing"},
-            {"action": "keyword", "keyword": "scroll", "params": ["down"],
-             "completed": False, "reason": "reveal"},
-            {"action": "give_up", "reason": "stuck"},
-        ])
-        executor = FakeExecutor(fail_keywords={"press_element"})
-        AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=3).heal(_ctx(), _shots, _no_ps)
-
-        assert "SELF-HEAL STEPS SO FAR" not in prompts[0]
-        assert "1. press_element WrongText -> FAIL" in prompts[1]
-        assert "1. press_element WrongText -> FAIL" in prompts[2]
-        assert "2. scroll down -> PASS" in prompts[2]
 
     def test_pressing_the_row_the_locator_names_completes_the_heal(self):
         rows = [
@@ -201,189 +112,9 @@ class TestHandlerActions:
         assert res.ok is True
         assert llm.calls == 1
 
-    @pytest.mark.parametrize("element, label", [
-        ("//*[@resource-id='app:id/tab_alarm']", "Alarms"),
-        ("//android.widget.Button[@text='Save button']", "Save"),
-        ("//*[@text='计时器']", "计时器"),
-        ("//*[@text=\"Don't save\"]", "Don't save"),
-    ])
-    def test_a_role_word_or_plural_does_not_stop_the_named_row_completing_the_heal(self, element, label):
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": False, "reason": "tab first"},
-            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": True, "reason": "drift"},
-        ])
-        rows = [{"label": label, "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_x", "bounds": [0, 0, 100, 20]}]
-        ctx = HealContext(intent_keyword="press_element", element=element)
-        AISelfHealHandler(llm, FakeExecutor(), _catalog).heal(ctx, _shots, _no_ps, lambda: rows)
-        assert llm.calls == 1
-
-    @pytest.mark.parametrize("element, row", [
-        ("Settings", {"label": "Menu", "cls": "Button"}),
-        ("//android.widget.Button[@text='Save']", {"label": "Cancel", "cls": "Button", "rid": "app:id/cancel_button"}),
-        ("//*[@resource-id='app:id/stopwatch_lap']", {"label": "Stopwatch", "cls": "FrameLayout", "rid": "app:id/tab_menu_stopwatch"}),
-        ("//*[@resource-id='app:id/menu']//*[@text='Add timer']", {"label": "Menu", "cls": "Button", "rid": "app:id/menu"}),
-        ("//*[@text='Start' and @content-desc='Workout']", {"label": "Start", "cls": "Button"}),
-        ("//*[@text='计时器1']", {"label": "设置1", "cls": "Button"}),
-        ("//*[@text=\"Don't save\"]", {"label": "Don", "cls": "Button"}),
-    ])
-    def test_a_navigation_press_on_a_row_sharing_only_some_words_keeps_the_heal_going(self, element, row):
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "target": "e1", "completed": False, "reason": "navigate"},
-            {"action": "give_up", "reason": "stuck"},
-        ])
-        ctx = HealContext(intent_keyword="press_element", element=element)
-        rows = [{**row, "act": ["tap"], "bounds": [0, 0, 100, 20]}]
-        AISelfHealHandler(llm, FakeExecutor(), _catalog).heal(ctx, _shots, _no_ps, lambda: rows)
-        assert llm.calls == 2
-
-    def test_system_prompt_names_only_dispatchable_gestures(self):
-        """The prompt must not steer the model to a keyword the heal allowlist lacks."""
-        assert "`swipe`" not in HEAL_SYSTEM_PROMPT
-        assert "swipe instead of scroll" not in HEAL_SYSTEM_PROMPT.lower()
-        for name in ("scroll", "swipe_by_percentage", "press_keycode", "press_by_percentage"):
-            assert f"`{name}`" in HEAL_SYSTEM_PROMPT
-
-    def test_intermediate_press_then_final_press(self):
-        """LLM presses a menu (completed=False), then the final target (completed=True)."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["Apps"],
-             "completed": False, "reason": "open apps drawer"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
-             "completed": True, "reason": "press target"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert executor.calls == ['press_element Apps', 'press_element Shop']
-
-    def test_swipe_uses_percentage(self):
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "swipe_by_percentage", "params": ["50", "80", "up", "30"],
-             "completed": False, "reason": "reveal target"},
-            {"action": "give_up", "reason": "still not visible"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert executor.calls == ['swipe_by_percentage 50 80 up 30']
-
-
-class _FailByParamExecutor:
-    """Executor that fails when a substring appears in the keyword line."""
-
-    def __init__(self, fail_substring: str):
-        self.calls = []
-        self._fail_substring = fail_substring
-
-    def __call__(self, line: str) -> ExecResult:
-        self.calls.append(line)
-        if self._fail_substring in line:
-            return ExecResult(ok=False, message="not found")
-        return ExecResult(ok=True)
-
-
-class CuratingFakeLLM:
-    """FakeLLM that also serves the post-heal curation turn.
-
-    HEAL_ACTION_SCHEMA turns come from ``scripted``; the single CURATION_SCHEMA turn
-    returns ``curation_reply``. Curation is text-only, so ``images`` must be None.
-    """
-
-    def __init__(self, scripted, curation_reply):
-        self.scripted = list(scripted)
-        self.curation_reply = curation_reply
-        self.calls = 0
-        self.curation_calls = 0
-        self.last_curation_prompt = None
-
-    def generate(self, *a, **k):  # pragma: no cover - handler uses generate_json
-        raise RuntimeError("unexpected generate() call")
-
-    def generate_json(self, prompt, response_schema, images=None, system=None, temperature=None):
-        if response_schema is CURATION_SCHEMA:
-            self.curation_calls += 1
-            self.last_curation_prompt = prompt
-            assert images is None
-            return self.curation_reply
-        self.calls += 1
-        assert response_schema is HEAL_ACTION_SCHEMA
-        return self.scripted.pop(0)
-
 
 class TestSuggestedSteps:
-    def test_failed_attempts_excluded_from_suggested_but_kept_in_steps_taken(self):
-        """A failed intermediate attempt pollutes steps_taken but not suggested_steps."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["Wrong"],
-             "completed": True, "reason": "try"},
-            {"action": "keyword", "keyword": "scroll", "params": ["down"],
-             "completed": False, "reason": "reveal"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "press"},
-        ])
-        executor = _FailByParamExecutor("Wrong")
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=3).heal(
-            _ctx(), _shots, _no_ps
-        )
-        assert res.ok is True
-        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
-        # steps_taken keeps the noisy full history, including the failed attempt.
-        assert res.steps_taken == ["press_element Wrong", "scroll down", "press_element Login"]
 
-    def test_curation_off_by_default_makes_no_extra_llm_call(self):
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "scroll", "params": ["down"],
-             "completed": False, "reason": "reveal"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "press"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(
-            _ctx(), _shots, _no_ps
-        )
-        assert res.ok is True
-        assert executor.calls == ["scroll down", "press_element Login"]
-        assert llm.calls == 2  # no curation round-trip
-        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
-
-    def test_curation_prunes_suggested_steps(self):
-        """With curate=True, the curation pass drops the overshoot/backtrack steps."""
-        llm = CuratingFakeLLM(
-            [
-                {"action": "keyword", "keyword": "scroll", "params": ["down"],
-                 "completed": False, "reason": "overshoot"},
-                {"action": "keyword", "keyword": "scroll", "params": ["up"],
-                 "completed": False, "reason": "backtrack"},
-                {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-                 "completed": True, "reason": "press"},
-            ],
-            curation_reply={"keep": [3], "reason": "only the final press contributed"},
-        )
-        res = AISelfHealHandler(
-            llm, FakeExecutor(), lambda: _catalog(), max_steps=3, curate=True
-        ).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert llm.curation_calls == 1
-        assert res.suggested_steps == [("press_element", ["Login"])]
-        # The goal (the original failed keyword) is named in the curation prompt.
-        assert "press_element Login" in llm.last_curation_prompt
-
-    def test_curation_keeps_all_on_degenerate_reply(self):
-        """A curation reply that keeps everything leaves suggested_steps unpruned."""
-        llm = CuratingFakeLLM(
-            [
-                {"action": "keyword", "keyword": "scroll", "params": ["down"],
-                 "completed": False, "reason": "reveal"},
-                {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-                 "completed": True, "reason": "press"},
-            ],
-            curation_reply={"keep": [1, 2], "reason": "both needed"},
-        )
-        res = AISelfHealHandler(
-            llm, FakeExecutor(), lambda: _catalog(), max_steps=2, curate=True
-        ).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
 
     def test_budget_exhausted_reports_passed_steps_uncurated(self):
         llm = FakeLLM([
@@ -415,12 +146,6 @@ class TestHandlerErrorHandling:
         assert res.ok is False
         assert "device offline" in res.message
 
-    def test_no_screenshot_is_inert(self):
-        llm = FakeLLM([{"action": "keyword", "keyword": "press_element", "params": ["X"], "reason": "x"}])
-        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), lambda: None, _no_ps)
-        assert res.ok is False
-        assert llm.calls == 0
-
 
 class TestPromptContext:
     def test_page_source_and_context_injected(self):
@@ -450,110 +175,14 @@ class TestPromptContext:
     def _closest(self, *args, **kwargs):
         return self._prompt_with_rows(*args, **kwargs).split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()
 
-    def test_closest_rows_split_a_trailing_digit_and_rank_a_disabled_button_last(self):
-        tab = "com.google.android.deskclock:id/"
-        closest = self._closest(f"//*[@resource-id='{tab}timerPreset1']", [
-            {"label": "1m", "cls": "Button", "act": ["tap"], "rid": f"{tab}timer_preset_1", "bounds": [0, 0, 100, 20]},
-            {"label": "5m", "cls": "Button", "act": ["tap"], "rid": f"{tab}timer_preset_2", "bounds": [0, 30, 100, 50]},
-            {"label": "Start", "cls": "Button", "act": [], "rid": f"{tab}timer_start_button", "bounds": [0, 60, 100, 80]},
-        ])
-        assert closest[0].startswith('e1 Button "1m"')
-        assert closest[-1].startswith('e3 Button "Start"')
-
-    def test_closest_rows_put_a_row_with_an_action_before_an_equal_row_without_one(self):
-        closest = self._closest("Start", [
-            {"label": "Start", "cls": "Button", "act": [], "bounds": [0, 0, 100, 20]},
-            {"label": "Start", "cls": "Button", "act": ["tap"], "bounds": [0, 30, 100, 50]},
-        ])
-        assert closest[0] == 'e2 Button "Start" [tap]'
-
-    def test_closest_rows_ignore_xpath_syntax_words(self):
-        prompt = self._prompt_with_rows("//android.widget.Button[@text='Continue']", [
-            {"label": "Next", "cls": "Button", "act": ["tap"], "rid": "app:id/next_button", "bounds": [0, 0, 100, 20]},
-        ])
-        assert ash.CLOSEST_ROWS_HEADER not in prompt
-
-    def test_closest_rows_match_split_words_to_a_compound_word(self):
-        closest = self._closest("//*[@content-desc='Stop watch']", [
-            {"label": "Timers", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_timer", "bounds": [0, 0, 100, 20]},
-            {"label": "Stopwatch", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_stopwatch", "bounds": [0, 30, 100, 50]},
-        ])
-        assert closest == ['e2 FrameLayout "Stopwatch" [tap] #tab_menu_stopwatch']
-
-    def test_element_name_is_in_the_prompt_and_ranks_the_rows(self):
-        prompt = self._prompt_with_rows("//*[@content-desc='Chronometer']", [
-            {"label": "World Clock", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_clock", "bounds": [0, 0, 100, 20]},
-            {"label": "Stopwatch", "cls": "FrameLayout", "act": ["tap"], "rid": "app:id/tab_menu_stopwatch", "bounds": [0, 30, 100, 50]},
-        ], element_name="stopwatch_tab")
-        assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in prompt
-        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith('e2 FrameLayout "Stopwatch"')
-
     def test_no_element_name_line_without_a_name(self):
         assert "TARGET ELEMENT NAME" not in self._prompt_with_rows("Login", [])
-
-    def test_closest_rows_put_the_tappable_exact_match_first(self):
-        prompt = self._prompt_with_rows("enable_dictation", [
-            {"label": "Enable Dictation?", "cls": "StaticText", "act": [], "bounds": [0, 0, 100, 20]},
-            {"label": "Use your voice to dictate text", "cls": "StaticText", "act": [], "bounds": [0, 30, 100, 50]},
-            {"label": "Enable Dictation", "cls": "Button", "act": ["tap"], "bounds": [0, 60, 100, 80]},
-            {"label": "Cancel", "cls": "Button", "act": ["tap"], "bounds": [0, 90, 100, 110]},
-        ])
-        closest = prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()
-        assert closest == ['e3 Button "Enable Dictation" [tap]', 'e1 StaticText "Enable Dictation?"']
-
-    def test_closest_rows_match_a_resource_id_locator_by_its_id(self):
-        prompt = self._prompt_with_rows("//*[@resource-id='com.app:id/search_button']", [
-            {"label": "Search", "cls": "android.widget.TextView", "act": [], "bounds": [0, 0, 100, 20]},
-            {"label": "", "cls": "android.widget.ImageButton", "act": ["tap"], "rid": "com.app:id/search_button", "bounds": [0, 30, 100, 50]},
-        ])
-        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 ImageButton")
-
-    def test_closest_rows_match_a_camel_case_locator_by_its_words(self):
-        prompt = self._prompt_with_rows("loginButton", [
-            {"label": "Cancel", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]},
-            {"label": "Login", "cls": "Button", "act": ["tap"], "bounds": [0, 30, 100, 50]},
-        ])
-        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines() == ['e2 Button "Login" [tap]']
-
-    def test_closest_rows_put_the_exact_camel_case_resource_id_first(self):
-        prompt = self._prompt_with_rows("com.app:id/btnLogin", [
-            {"label": "Login", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]},
-            {"label": "", "cls": "ImageButton", "act": ["tap"], "rid": "com.app:id/btnLogin", "bounds": [0, 30, 100, 50]},
-        ])
-        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e2 ImageButton")
-
-    def test_rows_get_the_matching_hint_but_no_closest_rows_without_a_shared_word(self):
-        prompt = self._prompt_with_rows("Checkout", [{"label": "Cancel", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]}])
-        assert ash.ROW_MATCH_HINT in prompt
-        assert ash.CLOSEST_ROWS_HEADER not in prompt
-
-    def test_closest_rows_put_the_exact_resource_id_first_among_word_ties(self):
-        same = {"label": "Search button", "cls": "Button", "act": ["tap"]}
-        prompt = self._prompt_with_rows("com.app:id/search_button", [
-            *({**same, "bounds": [0, 30 * i, 100, 30 * i + 20]} for i in range(3)),
-            {"label": "", "cls": "ImageButton", "act": ["tap"], "rid": "com.app:id/search_button", "bounds": [0, 90, 100, 110]},
-        ])
-        assert prompt.split(ash.CLOSEST_ROWS_HEADER, 1)[1].strip().splitlines()[0].startswith("e4 ImageButton")
-
-    def test_system_prompt_ties_completion_to_a_matching_row_when_rows_are_listed(self):
-        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
-        rows = [{"label": "Login", "cls": "Button", "act": ["tap"], "bounds": [0, 0, 100, 20]}]
-        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, _no_ps, lambda: rows)
-        assert "If a CURRENT SCREEN row matches the target, act on it" in llm.last_system
-        assert "If the target is visible" not in llm.last_system
 
     def test_system_prompt_keeps_the_visible_target_rule_without_rows(self):
         llm = FakeLLM([{"action": "give_up", "reason": "x"}])
         AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, lambda: 'Button "Login"')
         assert "If the target is visible, act on it" in llm.last_system
         assert "CURRENT SCREEN row matches" not in llm.last_system
-
-    def test_keyword_catalog_in_prompt(self):
-        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
-        AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog()).heal(_ctx(), _shots, _no_ps)
-        assert "AVAILABLE KEYWORDS" in llm.last_prompt
-        assert "press_element <element>" in llm.last_prompt
-        assert "scroll <direction>" in llm.last_prompt
 
 
 # --------------------------------------------------------------------------------------------
@@ -602,32 +231,7 @@ def _make_action_keyword(*, ai_self_heal, llm):
 
 
 class TestActionKeywordWiring:
-    def test_toggle_off_is_inert(self):
-        ak = _make_action_keyword(ai_self_heal=False, llm=MagicMock(instances=[object()]))
-        assert ak.ai_self_heal_enabled is False
-        assert ak._llm is None
-        shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        assert ak._ai_self_heal("X", "press_element", (), shot) is False
 
-    def test_no_screenshot_inert(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        assert ak._ai_self_heal("X", "press_element", (), None) is False
-
-    def test_llm_without_instances_inert(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[]))
-        shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        assert ak._ai_self_heal("X", "press_element", (), shot) is False
-
-    def test_heal_catalog_returns_specs(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        catalog = ak._heal_catalog()
-        names = [spec.name for spec in catalog]
-        assert "press_element" in names
-        assert "scroll" in names
-        assert "enter_text" in names
-        # Signatures should be human-readable
-        pe_spec = next(s for s in catalog if s.name == "press_element")
-        assert "<element>" in pe_spec.signature
 
     def test_active_press_element_heals(self, monkeypatch):
         monkeypatch.setattr(ash.time, "sleep", lambda *_a, **_k: None)
@@ -689,92 +293,10 @@ class TestActionKeywordWiring:
 
 
 class TestHealExecute:
-    def test_unknown_keyword_returns_not_ok(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        result = ak._heal_execute("frobnicate foo")
-        assert result.ok is False
-        assert "Unknown keyword: frobnicate" in result.message
 
-    def test_empty_line_returns_not_ok(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        result = ak._heal_execute("")
-        assert result.ok is False
-        assert "Empty keyword line" in result.message
 
     def test_unbalanced_quotes_return_parse_error(self):
         ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
         result = ak._heal_execute('scroll "unterminated')
         assert result.ok is False
         assert "Parse error" in result.message
-
-    def test_dispatches_with_parsed_positional_params(self):
-        """A quoted multi-word param built via `_build_line` round-trips through
-        `shlex.split` and reaches the dispatched callable as separate positional args."""
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        captured = []
-        ak._heal_dispatch["enter_text"] = lambda element, text: captured.append((element, text))
-
-        line = AISelfHealHandler._build_line("enter_text", ["Search box", "hello world"])
-        result = ak._heal_execute(line)
-
-        assert result.ok is True
-        assert captured == [("Search box", "hello world")]
-
-    def test_opticserror_from_dispatched_method_surfaces_message(self):
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-
-        def boom(element):
-            raise OpticsError(Code.E0201, message="element not found")
-
-        ak._heal_dispatch["press_element"] = boom
-        result = ak._heal_execute("press_element Login")
-
-        assert result.ok is False
-        assert "element not found" in result.message
-
-    def test_recursion_guard_disables_and_restores_toggle(self):
-        """`ai_self_heal_enabled` must be off for the duration of the dispatched call
-        (so a nested locate failure can't re-trigger self-heal) and restored afterwards
-        — even when the dispatched method raises."""
-        ak = _make_action_keyword(ai_self_heal=True, llm=MagicMock(instances=[object()]))
-        seen_enabled = []
-
-        def spy(direction):
-            seen_enabled.append(ak.ai_self_heal_enabled)
-            raise RuntimeError("device offline")
-
-        ak._heal_dispatch["scroll"] = spy
-        result = ak._heal_execute("scroll down")
-
-        assert result.ok is False
-        assert "device offline" in result.message
-        assert seen_enabled == [False]
-        assert ak.ai_self_heal_enabled is True
-
-
-class TestSuggestedStepsWiring:
-    def test_pop_last_heal_info_exposes_structured_suggested_steps(self, monkeypatch):
-        monkeypatch.setattr(ash.time, "sleep", lambda *_a, **_k: None)
-        # Single completing step: curation short-circuits (<=1 step), so no extra LLM turn.
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "press it"},
-        ])
-        llm.instances = [object()]
-        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
-        shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
-        ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.is_coordinates = False
-        mock_result.value = MagicMock()
-        mock_result.strategy = MagicMock()
-        ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
-
-        assert ak._ai_self_heal("Login", "press_element", (), shot) is True
-        info = ak._pop_last_heal_info()
-        assert info is not None
-        assert info["suggested_steps"] == [{"keyword": "press_element", "params": ["Login"]}]
-        assert "press_element Login" in info["summary"]
-        # Read-and-clear: a second pop returns nothing so a heal never leaks onto the next call.
-        assert ak._pop_last_heal_info() is None

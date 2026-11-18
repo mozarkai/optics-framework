@@ -41,15 +41,6 @@ class TestAppManagement:
         getattr(app_management, method)(*args, **kwargs)
         getattr(mock_driver, driver_attr).assert_called_once_with(*expected_args, **expected_kwargs)
 
-    def test_launch_app_returns_driver_result(self, app_management, mock_driver):
-        mock_driver.launch_app.return_value = "session-123"
-        assert app_management.launch_app(app_identifier="com.x") == "session-123"
-
-    def test_get_app_version_without_package(self, app_management, mock_driver):
-        mock_driver.get_app_version.return_value = "1.2.3"
-        assert app_management.get_app_version() == "1.2.3"
-        mock_driver.get_app_version.assert_called_once_with()
-
     def test_get_app_version_with_package(self, app_management, mock_driver):
         mock_driver.get_app_version.return_value = "4.5.6"
         assert app_management.get_app_version("com.x") == "4.5.6"

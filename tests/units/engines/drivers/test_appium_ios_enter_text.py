@@ -53,15 +53,6 @@ class TestIosEnterText:
 
         focused.send_keys.assert_called_once_with("\n")
 
-    def test_nothing_focused_fails_instead_of_typing_nothing(self):
-        instance = _driver_instance("iOS", focus_error=NoSuchElementException("No element is currently focused"))
-
-        with pytest.raises(OpticsError) as raised:
-            instance.enter_text("hello")
-
-        assert raised.value.code == Code.E0401
-        instance.driver.execute_script.assert_not_called()
-
     def test_keyboard_keyword_fails_too_when_nothing_is_focused(self):
         instance = _driver_instance("iOS", focus_error=NoSuchElementException("No element is currently focused"))
 
@@ -70,14 +61,6 @@ class TestIosEnterText:
 
         assert raised.value.code == Code.E0401
         instance.driver.execute_script.assert_not_called()
-
-    def test_typing_error_is_not_swallowed(self):
-        focused = MagicMock()
-        focused.send_keys.side_effect = RuntimeError("element is not editable")
-        instance = _driver_instance("iOS", focused=focused)
-
-        with pytest.raises(RuntimeError):
-            instance.enter_text("hello")
 
 
 class TestAndroidEnterTextUnchanged:

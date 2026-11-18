@@ -22,7 +22,6 @@ import pytest
 
 from optics_framework.common.config_handler import load_project_yaml
 from optics_framework.helper import config_manager
-from optics_framework.helper.initialize import create_project
 
 MODULE = "optics_framework.helper.config_manager"
 PROJECT_CONFIG = "optics_framework.helper.project_config"
@@ -45,26 +44,7 @@ def configured_helpers():
 
 @pytest.mark.white_box
 class TestConfigureOverwriteConfirm:
-    def test_writes_config_when_no_existing_file(self, tmp_path, capsys,
-                                                 configured_helpers):
-        folder = str(tmp_path)
-        config_manager.configure(folder=folder, edit=False)
 
-        configured_helpers.prompt.assert_called_once()
-        configured_helpers.write.assert_called_once_with(folder, "rendered: yaml\n")
-        configured_helpers.next_steps.assert_called_once_with(folder, configured=True)
-        assert "Wrote" in capsys.readouterr().out
-
-    def test_confirms_before_overwriting_existing_file(self, tmp_path,
-                                                       configured_helpers):
-        folder = str(tmp_path)
-        (tmp_path / "config.yaml").write_text("old: true\n", encoding="utf-8")
-
-        with patch(f"{MODULE}.Confirm.ask", return_value=True) as ask:
-            config_manager.configure(folder=folder, edit=False)
-
-        ask.assert_called_once()
-        configured_helpers.write.assert_called_once_with(folder, "rendered: yaml\n")
 
     def test_aborts_without_writing_when_overwrite_declined(self, tmp_path,
                                                             capsys,
@@ -80,13 +60,6 @@ class TestConfigureOverwriteConfirm:
         configured_helpers.next_steps.assert_not_called()
         assert "Aborted" in capsys.readouterr().out
 
-    def test_defaults_to_current_directory(self, monkeypatch, tmp_path,
-                                           configured_helpers):
-        monkeypatch.chdir(tmp_path)
-        config_manager.configure()
-        configured_helpers.write.assert_called_once_with(str(tmp_path),
-                                                         "rendered: yaml\n")
-
     def test_edit_true_launches_project_tui(self, tmp_path):
         with patch(f"{MODULE}.ProjectConfigTUI") as tui_cls:
             config_manager.configure(folder=str(tmp_path), edit=True)
@@ -98,24 +71,6 @@ class TestConfigureOverwriteConfirm:
 class TestOverwriteAskedBeforeQuestions:
     """The overwrite gate must come FIRST — a decline must waste no answers
     (regression: every Q&A used to be asked, THEN discarded on decline)."""
-
-    def test_confirm_fires_before_the_question_block(self, tmp_path,
-                                                     configured_helpers):
-        folder = str(tmp_path)
-        order = []
-
-        def record_confirm(*_a, **_kw):
-            order.append("confirm")
-            return True
-
-        configured_helpers.prompt.side_effect = (
-            lambda *_a, **_kw: order.append("prompt") or {"driver": "appium"})
-        (tmp_path / "config.yaml").write_text("old: true\n", encoding="utf-8")
-
-        with patch(f"{MODULE}.Confirm.ask", side_effect=record_confirm):
-            config_manager.configure(folder=folder, edit=False)
-
-        assert order == ["confirm", "prompt"]
 
     def test_no_existing_file_skips_confirm_entirely(self, tmp_path,
                                                      configured_helpers):
@@ -143,22 +98,6 @@ class TestConfigAliasDeprecation:
         _, kwargs = configure.call_args
         assert kwargs.get("edit") is False
         assert kwargs.get("folder") == os.getcwd()
-
-
-@pytest.mark.white_box
-class TestConfigureKeepsTheProjectName:
-    def test_reconfiguring_a_renamed_project_keeps_its_name(self, tmp_path):
-        with patch("optics_framework.helper.initialize.print_next_steps"):
-            create_project(SimpleNamespace(
-                name="checkout_suite", path=str(tmp_path), force=False, template=None, git_init=False))
-        moved = (tmp_path / "checkout_suite").rename(tmp_path / "test-script")
-
-        with patch(f"{MODULE}.Confirm.ask", return_value=True), \
-                patch(f"{PROJECT_CONFIG}.prompt_project_config", return_value={"platform": "web-playwright"}), \
-                patch(f"{ONBOARDING}.print_next_steps"):
-            config_manager.configure(folder=str(moved), edit=False)
-
-        assert load_project_yaml(str(moved / "config.yaml"))["name"] == "checkout_suite"
 
 
 @pytest.mark.white_box

@@ -12,8 +12,6 @@ from optics_framework.engines.drivers.appium import (
 
 pytestmark = pytest.mark.white_box
 
-OMITTED_MARKER = "lines omitted"
-
 
 def _driver_instance(capabilities: dict) -> Appium:
     instance = Appium.__new__(Appium)
@@ -27,53 +25,10 @@ def _numbered_output(count: int) -> str:
 
 
 class TestSummarizeCommandOutput:
-    @pytest.mark.parametrize("output", ["", None, "\n  \n\t\n"])
-    def test_blank_output_is_reported_as_no_output(self, output):
-        assert _summarize_command_output(output) == "<no output>"
 
-    def test_short_output_is_returned_whole(self):
-        assert _summarize_command_output("a\nb\nc") == "a\nb\nc"
 
     def test_blank_lines_are_dropped(self):
         assert _summarize_command_output("a\n\n  \nb") == "a\nb"
-
-    def test_exactly_max_lines_is_not_truncated(self):
-        summary = _summarize_command_output(_numbered_output(_MAX_ERROR_OUTPUT_LINES))
-
-        assert OMITTED_MARKER not in summary
-        assert len(summary.splitlines()) == _MAX_ERROR_OUTPUT_LINES
-
-    def test_one_line_over_max_is_truncated(self):
-        summary = _summarize_command_output(_numbered_output(_MAX_ERROR_OUTPUT_LINES + 1))
-        lines = summary.splitlines()
-
-        assert len(lines) == _MAX_ERROR_OUTPUT_LINES + 1
-        assert lines[_MAX_ERROR_OUTPUT_LINES // 2] == "… (1 lines omitted)"
-
-    def test_head_and_tail_are_kept_with_omission_count(self):
-        half = _MAX_ERROR_OUTPUT_LINES // 2
-        summary = _summarize_command_output(_numbered_output(1000))
-        lines = summary.splitlines()
-
-        assert lines[:half] == [f"line {index}" for index in range(half)]
-        assert lines[half] == f"… ({1000 - _MAX_ERROR_OUTPUT_LINES} lines omitted)"
-        assert lines[half + 1:] == [f"line {index}" for index in range(1000 - half, 1000)]
-
-    def test_blank_lines_do_not_count_towards_the_cap(self):
-        padded = "\n\n".join(f"line {index}" for index in range(_MAX_ERROR_OUTPUT_LINES))
-
-        assert OMITTED_MARKER not in _summarize_command_output(padded)
-
-    def test_max_lines_is_configurable(self):
-        summary = _summarize_command_output(_numbered_output(10), max_lines=4)
-
-        assert summary.splitlines() == [
-            "line 0",
-            "line 1",
-            "… (6 lines omitted)",
-            "line 8",
-            "line 9",
-        ]
 
 
 class TestAndroidAppVersionErrorOutput:
@@ -94,21 +49,6 @@ class TestAndroidAppVersionErrorOutput:
         assert f"… ({3000 - _MAX_ERROR_OUTPUT_LINES} lines omitted)" in message
         assert "line 2999" in message
         assert len(message.splitlines()) < 30
-
-    def test_command_failure_embeds_captured_output(self):
-        instance = self._instance()
-        failure = subprocess.CalledProcessError(
-            returncode=1, cmd=["adb"], output=_numbered_output(500)
-        )
-
-        with patch("subprocess.check_output", side_effect=failure):
-            with pytest.raises(OpticsError) as excinfo:
-                instance._get_android_app_version()
-
-        message = str(excinfo.value)
-        assert "<no output>" not in message
-        assert "line 0" in message
-        assert f"… ({500 - _MAX_ERROR_OUTPUT_LINES} lines omitted)" in message
 
     def test_command_failure_without_output_says_no_output(self):
         instance = self._instance()

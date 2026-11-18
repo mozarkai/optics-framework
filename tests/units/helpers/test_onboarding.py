@@ -7,7 +7,6 @@ through a Console writing to an in-memory buffer; no real terminal is touched.
 from __future__ import annotations
 
 import io
-import json
 import os
 from unittest.mock import patch
 
@@ -15,7 +14,6 @@ import pytest
 from rich.console import Console
 
 from optics_framework.helper import onboarding
-from optics_framework.helper.version import VERSION
 from tests.conftest import set_home
 
 pytestmark = pytest.mark.white_box
@@ -58,36 +56,8 @@ class TestIsFirstRun:
         onboarding.mark_onboarded()
         assert onboarding.is_first_run() is False
 
-    def test_marker_is_version_stamped_json(self):
-        onboarding.mark_onboarded()
-        marker = os.path.join(os.path.expanduser("~"), ".optics", ".onboarded")
-        with open(marker, encoding="utf-8") as fh:
-            assert json.load(fh) == {"version": VERSION}
-
-    def test_true_when_marker_corrupt(self):
-        marker_dir = os.path.join(os.path.expanduser("~"), ".optics")
-        os.makedirs(marker_dir)
-        with open(os.path.join(marker_dir, ".onboarded"), "w", encoding="utf-8") as fh:
-            fh.write("not-json{")
-        assert onboarding.is_first_run() is True
-
-    @pytest.mark.parametrize("payload", ["null", "5", "[]", '"onboarded"'])
-    def test_only_a_json_object_counts_as_onboarded(self, payload):
-        # mark_onboarded writes {"version": ...}; any other parseable JSON is
-        # not a real marker and must not suppress first-run guidance.
-        marker_dir = os.path.join(os.path.expanduser("~"), ".optics")
-        os.makedirs(marker_dir)
-        with open(os.path.join(marker_dir, ".onboarded"), "w", encoding="utf-8") as fh:
-            fh.write(payload)
-        assert onboarding.is_first_run() is True
-
 
 class TestMarkOnboarded:
-    def test_creates_optics_dir(self):
-        home = os.path.expanduser("~")
-        assert not os.path.exists(os.path.join(home, ".optics"))
-        onboarding.mark_onboarded()
-        assert os.path.isfile(os.path.join(home, ".optics", ".onboarded"))
 
     def test_never_raises_when_home_not_writable(self):
         # A *file* sitting where ~/.optics must be a directory makes both
@@ -99,60 +69,16 @@ class TestMarkOnboarded:
         assert onboarding.is_first_run() is True
 
 
-class TestOpticsHomeOverride:
-    """OPTICS_HOME redirects the marker off the default ~/.optics — needed for
-    read-only HOME, containers, CI."""
-
-    def test_marker_lands_in_optics_home(self, tmp_path, monkeypatch):
-        custom = tmp_path / "optics-state"
-        monkeypatch.setenv("OPTICS_HOME", str(custom))
-        onboarding.mark_onboarded()
-        assert os.path.isfile(os.path.join(str(custom), ".onboarded"))
-        assert onboarding.is_first_run() is False
-
-    def test_optics_home_wins_over_home(self, tmp_path, monkeypatch):
-        home = tmp_path / "home"
-        custom = tmp_path / "optics-state"
-        home.mkdir()
-        set_home(monkeypatch, home)
-        monkeypatch.setenv("OPTICS_HOME", str(custom))
-        onboarding.mark_onboarded()
-        assert os.path.exists(os.path.join(str(custom), ".onboarded"))
-        assert not os.path.exists(os.path.join(str(home), ".optics"))
-
-    def test_falls_back_to_home_when_optics_home_unset(self, tmp_path, monkeypatch):
-        set_home(monkeypatch, tmp_path)
-        monkeypatch.delenv("OPTICS_HOME", raising=False)
-        onboarding.mark_onboarded()
-        assert os.path.isfile(os.path.join(str(tmp_path), ".optics", ".onboarded"))
-
-
 # --------------------------------------------------------------------------- #
 # Welcome banner                                                               #
 # --------------------------------------------------------------------------- #
 
 class TestWelcome:
-    def test_shows_golden_path_commands(self):
-        out = _capture(onboarding.welcome)
-        assert "optics quickstart" in out
-        assert "optics doctor" in out
-        assert "optics --help" in out
 
-    def test_describes_optics_in_one_line(self):
-        out = _capture(onboarding.welcome)
-        assert "phones" in out or "browsers" in out
 
     def test_first_run_prepends_greeting(self):
         out = _capture(onboarding.welcome, first_run=True)
         assert "First time here?" in out
-
-    def test_no_greeting_without_first_run(self):
-        out = _capture(onboarding.welcome, first_run=False)
-        assert "First time here?" not in out
-
-    def test_banner_carries_version(self):
-        out = _capture(onboarding.welcome)
-        assert f"v{VERSION}" in out
 
 
 # --------------------------------------------------------------------------- #

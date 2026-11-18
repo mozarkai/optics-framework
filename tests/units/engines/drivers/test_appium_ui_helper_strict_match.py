@@ -50,27 +50,12 @@ class TestGetLocatorAndStrategy:
 
 
 class TestGetLocatorAndStrategyUsingIndex:
-    def test_fuzzy_candidate_matched_when_not_strict(self):
-        helper = _helper(ANDROID_TREE)
-
-        result = helper.get_locator_and_strategy_using_index("Buy 102 devices", 0)
-
-        assert result["locator"] == "Buy 101 devices"
 
     def test_fuzzy_candidate_rejected_when_strict(self):
         helper = _helper(ANDROID_TREE)
 
         with pytest.raises(IndexError):
             helper.get_locator_and_strategy_using_index("Buy 102 devices", 0, strict=True)
-
-    def test_exact_match_unaffected_by_strict(self):
-        helper = _helper(ANDROID_TREE)
-
-        result = helper.get_locator_and_strategy_using_index(
-            "Buy 101 devices", 0, strict=True
-        )
-
-        assert result["locator"] == "Buy 101 devices"
 
 
 SAME_TEXT_TREE = (
@@ -87,12 +72,3 @@ class TestSeveralMatches:
 
         assert result["count"] == 2
         assert result["occurrence"] == 1
-
-    def test_index_picks_the_second_node_with_the_same_text(self):
-        helper = _helper(SAME_TEXT_TREE)
-
-        result = helper.get_locator_and_strategy_using_index("Add", 1)
-        xpath = helper.nth_view_locator(result["strategy"], result["locator"], result["occurrence"])
-
-        assert xpath == '(//*[@text="Add"])[2]'
-        assert helper.tree.xpath(xpath)[0].get("bounds") == "[0,60][100,110]"

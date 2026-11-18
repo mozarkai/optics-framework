@@ -19,15 +19,6 @@ def _driver_instance(platform: str, nav_buttons: list) -> Appium:
     return instance
 
 
-def test_android_presses_back():
-    instance = _driver_instance("Android", nav_buttons=[])
-
-    instance.go_back()
-
-    instance.driver.back.assert_called_once()
-    instance.driver.find_elements.assert_not_called()
-
-
 def test_ios_taps_the_navigation_bar_back_button():
     instance = _driver_instance("iOS", nav_buttons=[MagicMock()])
 

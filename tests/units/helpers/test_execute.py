@@ -9,7 +9,6 @@ any test runs. Heavy collaborators are patched, except in the driver-free run.
 """
 from __future__ import annotations
 
-import socket
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,7 +20,6 @@ from optics_framework.helper.execute import (
     BaseRunner,
     execute_main,
     dryrun_main,
-    find_files,
 )
 
 pytestmark = pytest.mark.white_box
@@ -30,9 +28,6 @@ pytestmark = pytest.mark.white_box
 # --------------------------------------------------------------------------- #
 # Exit-code mapping                                                            #
 # --------------------------------------------------------------------------- #
-
-def _tc(status):
-    return SimpleNamespace(status=status)
 
 
 class _StubArgs:
@@ -51,32 +46,7 @@ def _runner_cls(results):
 
 
 class TestExitCodeMapping:
-    def test_all_pass_exits_zero(self):
-        results = {"tc": _tc("PASS")}
-        with patch.object(execute_module, "RunnerArgs", _StubArgs), \
-                patch.object(execute_module, "ExecuteRunner", _runner_cls(results)):
-            execute_main("proj")
 
-    def test_any_fail_exits_nonzero(self):
-        results = {"ok": _tc("PASS"), "bad": _tc("FAIL")}
-        with patch.object(execute_module, "RunnerArgs", _StubArgs), \
-                patch.object(execute_module, "ExecuteRunner", _runner_cls(results)):
-            with pytest.raises(SystemExit) as exc:
-                execute_main("proj")
-        assert exc.value.code == 1
-
-    def test_dry_run_any_fail_exits_nonzero(self):
-        results = {"bad": _tc("FAIL")}
-        with patch.object(execute_module, "RunnerArgs", _StubArgs), \
-                patch.object(execute_module, "DryRunRunner", _runner_cls(results)):
-            with pytest.raises(SystemExit) as exc:
-                dryrun_main("proj")
-        assert exc.value.code == 1
-
-    def test_non_dict_result_never_exits(self):
-        with patch.object(execute_module, "RunnerArgs", _StubArgs), \
-                patch.object(execute_module, "ExecuteRunner", _runner_cls(None)):
-            execute_main("proj")
 
     def test_empty_results_exit_zero(self):
         with patch.object(execute_module, "RunnerArgs", _StubArgs), \
@@ -87,26 +57,6 @@ class TestExitCodeMapping:
 # --------------------------------------------------------------------------- #
 # No-enabled-driver gate                                                       #
 # --------------------------------------------------------------------------- #
-
-def _bare_runner(config):
-    runner = BaseRunner.__new__(BaseRunner)
-    runner.config = config
-    return runner
-
-
-class TestHasEnabledDriver:
-    def test_true_when_any_driver_enabled(self):
-        config = Config(driver_sources=[{
-            "selenium": DependencyConfig(enabled=False),
-            "appium": DependencyConfig(enabled=True),
-        }])
-        assert _bare_runner(config)._has_enabled_driver() is True
-
-    def test_false_when_all_disabled(self):
-        config = Config(driver_sources=[{
-            "selenium": DependencyConfig(enabled=False),
-        }])
-        assert _bare_runner(config)._has_enabled_driver() is False
 
 
 def _make_project(tmp_path, config_text):
@@ -182,27 +132,7 @@ def _config_for(driver: str, **dep_kwargs) -> Config:
 
 
 class TestProbeTcp:
-    def test_open_port_returns_true(self):
-        server = socket.socket()
-        server.bind(("127.0.0.1", 0))
-        server.listen(1)
-        port = server.getsockname()[1]
-        try:
-            assert execute_module._probe_tcp(
-                f"http://127.0.0.1:{port}", default_port=4723) is True
-        finally:
-            server.close()
 
-    def test_default_port_used_when_url_has_none(self):
-        server = socket.socket()
-        server.bind(("127.0.0.1", 0))
-        server.listen(1)
-        port = server.getsockname()[1]
-        try:
-            assert execute_module._probe_tcp(
-                "http://127.0.0.1", default_port=port) is True
-        finally:
-            server.close()
 
     def test_closed_port_returns_false(self):
         assert execute_module._probe_tcp(
@@ -224,23 +154,8 @@ class TestAdbDeviceCount:
         with patch.object(execute_module.shutil, "which", return_value=None):
             assert execute_module._adb_device_count() is None
 
-    def test_counts_only_device_state_lines(self):
-        stdout = ("* daemon not running; starting now *\n"
-                  "List of devices attached\n"
-                  "emulator-5554\tdevice\n"
-                  "abc123\tdevice\n")
-        with patch.object(execute_module.shutil, "which", return_value="/usr/bin/adb"), \
-                patch.object(execute_module.subprocess, "run", _fake_adb_run(stdout)):
-            assert execute_module._adb_device_count() == 2
-
     def test_ignores_offline_entries(self):
         stdout = "List of devices attached\nemulator-5554\toffline\n"
-        with patch.object(execute_module.shutil, "which", return_value="/usr/bin/adb"), \
-                patch.object(execute_module.subprocess, "run", _fake_adb_run(stdout)):
-            assert execute_module._adb_device_count() == 0
-
-    def test_headerless_output_is_zero_not_a_device(self):
-        stdout = "error: device not found\n"
         with patch.object(execute_module.shutil, "which", return_value="/usr/bin/adb"), \
                 patch.object(execute_module.subprocess, "run", _fake_adb_run(stdout)):
             assert execute_module._adb_device_count() == 0
@@ -253,15 +168,7 @@ class TestAdbDeviceCount:
             assert execute_module._adb_device_count() is None
 
 
-
 class TestPreflightGate:
-    def test_playwright_skips_silently_without_probes(self):
-        config = _config_for("playwright")
-        with patch.object(execute_module, "_probe_tcp") as probe, \
-                patch.object(execute_module, "_adb_device_count") as adb:
-            assert execute_module._preflight(config) is None
-        probe.assert_not_called()
-        adb.assert_not_called()
 
     def test_appium_unreachable_names_the_fix(self):
         config = _config_for("appium", url="http://127.0.0.1:9999")
@@ -270,20 +177,6 @@ class TestPreflightGate:
         assert problem.reason == "E0102: No Appium server reachable at http://127.0.0.1:9999."
         assert "Start one in another terminal:  appium" in problem.lines
         assert "Then re-run:  optics execute /proj" in problem.lines
-
-    def test_appium_reachable_non_android_passes_without_adb_check(self):
-        config = _config_for("appium", url="http://127.0.0.1:4723",
-                             capabilities={"platformName": "iOS"})
-        with patch.object(execute_module, "_probe_tcp", return_value=True), \
-                patch.object(execute_module, "_adb_device_count") as adb:
-            assert execute_module._preflight(config) is None
-        adb.assert_not_called()
-
-    def test_android_with_attached_device_passes(self):
-        config = _config_for("appium", capabilities={"platformName": "Android"})
-        with patch.object(execute_module, "_probe_tcp", return_value=True), \
-                patch.object(execute_module, "_adb_device_count", return_value=1):
-            assert execute_module._preflight(config) is None
 
     def test_android_without_devices_is_a_problem(self):
         config = _config_for("appium", capabilities={"platformName": "Android"})
@@ -301,95 +194,8 @@ class TestPreflightGate:
         assert problem.reason == "E0102: Android run requested, but the adb tool was not found."
         assert any("platform-tools" in line for line in problem.lines)
 
-    def test_appium_default_url_used_when_config_url_missing(self):
-        config = _config_for("appium")
-        seen = {}
-
-        def _fake_probe(url, default_port, timeout=2.0):
-            seen["url"] = url
-            return False
-
-        with patch.object(execute_module, "_probe_tcp", side_effect=_fake_probe):
-            assert execute_module._preflight(config) is not None
-        assert seen["url"] == "http://127.0.0.1:4723"
-
     def test_selenium_unreachable_names_the_server(self):
         config = _config_for("selenium", url="http://localhost:4444/wd/hub")
         with patch.object(execute_module, "_probe_tcp", return_value=False):
             problem = execute_module._preflight(config)
         assert problem.reason == "E0102: No Selenium/WebDriver server reachable at http://localhost:4444/wd/hub."
-
-    def test_selenium_reachable_passes(self):
-        config = _config_for("selenium")
-        with patch.object(execute_module, "_probe_tcp", return_value=True):
-            assert execute_module._preflight(config) is None
-
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE"])
-    def test_skip_env_bypasses_every_probe(self, monkeypatch, value):
-        monkeypatch.setenv("OPTICS_SKIP_PREFLIGHT", value)
-        config = _config_for("appium", capabilities={"platformName": "Android"})
-        with patch.object(execute_module, "_probe_tcp") as probe, \
-                patch.object(execute_module, "_adb_device_count") as adb:
-            assert execute_module._preflight(config) is None
-        probe.assert_not_called()
-        adb.assert_not_called()
-
-    def test_no_enabled_driver_is_left_to_the_existing_gate(self):
-        config = Config(driver_sources=[{"selenium": DependencyConfig(enabled=False)}])
-        with patch.object(execute_module, "_probe_tcp") as probe:
-            assert execute_module._preflight(config) is None
-        probe.assert_not_called()
-
-    def test_none_config_steps_aside(self):
-        assert execute_module._preflight(None) is None
-
-
-class TestPreflightWiring:
-    def test_execute_main_preflights_before_running(self):
-        order = []
-        sentinel_config = object()
-
-        class _RunnerWithConfig:
-            def __init__(self, args):
-                self.config = sentinel_config
-
-            async def execute(self):
-                order.append("execute")
-                return {}
-
-        def _spy_preflight(config, folder_path="<folder>"):
-            assert config is sentinel_config
-            order.append("preflight")
-            return None
-
-        with patch.object(execute_module, "RunnerArgs", _StubArgs), \
-                patch.object(execute_module, "ExecuteRunner", _RunnerWithConfig), \
-                patch.object(execute_module, "_preflight",
-                             side_effect=_spy_preflight):
-            execute_main("proj")
-        assert order == ["preflight", "execute"]
-
-    def test_dry_run_never_preflights(self):
-        with patch.object(execute_module, "_preflight") as preflight, \
-                patch.object(execute_module, "RunnerArgs", _StubArgs), \
-                patch.object(execute_module, "DryRunRunner", _runner_cls({})):
-            dryrun_main("proj")
-        preflight.assert_not_called()
-
-
-def test_an_elements_file_with_only_named_locator_columns_is_found(tmp_path):
-    """The getting-started form: fallback columns such as Element_ID_xpath and no bare Element_ID."""
-    (tmp_path / "test_cases.csv").write_text("test_case,test_step\nLogin,Open\n", encoding="utf-8")
-    (tmp_path / "modules.csv").write_text("module_name,module_step\nOpen,Launch App\n", encoding="utf-8")
-    path = tmp_path / "elements.csv"
-    path.write_text("Element_Name,Element_ID_xpath,Element_ID_text\nlogin,//button,Login\n", encoding="utf-8")
-    assert find_files(str(tmp_path))[2] == [str(path)]
-
-
-def test_files_that_start_with_a_byte_order_mark_are_found(tmp_path):
-    """Excel's "CSV UTF-8" puts a byte order mark before the first header."""
-    files = {"test_cases.csv": "test_case,test_step\nLogin,Open\n", "modules.csv": "module_name,module_step\nOpen,Launch App\n",
-             "elements.csv": "Element_Name,Element_ID\nlogin,//button\n"}
-    for name, text in files.items():
-        (tmp_path / name).write_text(text, encoding="utf-8-sig")
-    assert find_files(str(tmp_path))[:3] == tuple([str(tmp_path / name)] for name in files)

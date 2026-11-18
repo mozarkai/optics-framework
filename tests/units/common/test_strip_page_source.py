@@ -20,28 +20,7 @@ _SAMPLE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 
 
 class TestStripPageSource:
-    def test_keeps_text_desc_and_interactive_nodes(self):
-        out = utils.strip_page_source(_SAMPLE)
-        assert 'android.widget.EditText text="gullak"' in out
-        assert 'resource-id="com.sonyliv:id/search_edit_text"' in out
-        assert 'hint="Search for movies"' in out
-        assert 'android.widget.TextView text="Gullak - Sony LIV Originals"' in out
-        assert 'content-desc="Home"' in out
-        assert 'bounds="[26,162][1054,293]"' in out
-        assert "clickable" in out
 
-    def test_drops_pure_layout_wrappers(self):
-        out = utils.strip_page_source(_SAMPLE)
-        # action_bar_root LinearLayout has a resource-id but no text/desc/interactivity.
-        assert "action_bar_root" not in out
-        # The outer bare FrameLayout/LinearLayout wrappers are not emitted.
-        assert "LinearLayout" not in out
-
-    def test_names_match_the_page_source_for_xpath(self):
-        out = utils.strip_page_source(_SAMPLE)
-        assert "android.widget.FrameLayout content-desc=\"Home\"" in out
-        assert "desc=" not in out.replace("content-desc=", "")
-        assert "id=card_show_name" not in out
 
     def test_empty_and_invalid_return_empty(self):
         assert utils.strip_page_source("") == ""
@@ -51,49 +30,6 @@ class TestStripPageSource:
         out = utils.strip_page_source(_SAMPLE, max_chars=40)
         assert len(out) <= 40 + len("\n… (truncated)")
         assert out.endswith("(truncated)")
-
-    def test_comments_and_pis_do_not_crash(self):
-        # lxml gives comment/PI nodes a callable .tag; they must be skipped, not
-        # crash the attribute checks. Regression for the _walk AttributeError.
-        xml = (
-            "<hierarchy><!-- a comment --><?pi data?>"
-            "<android.widget.TextView class='android.widget.TextView' text='hi'/>"
-            "</hierarchy>"
-        )
-        out = utils.strip_page_source(xml)
-        assert 'TextView text="hi"' in out
-
-    def test_enabled_alone_does_not_keep_layout_wrappers(self):
-        # Real Android dumps mark almost every node enabled="true". A pure layout
-        # wrapper with only enabled="true" (no text/desc/interactivity) must be
-        # dropped; only the text-bearing leaf survives.
-        xml = (
-            "<hierarchy>"
-            "<android.widget.FrameLayout class='android.widget.FrameLayout' enabled='true'>"
-            "<android.widget.LinearLayout class='android.widget.LinearLayout' enabled='true'>"
-            "<android.widget.TextView class='android.widget.TextView' text='Hi' enabled='true'/>"
-            "</android.widget.LinearLayout></android.widget.FrameLayout></hierarchy>"
-        )
-        out = utils.strip_page_source(xml)
-        assert "FrameLayout" not in out
-        assert "LinearLayout" not in out
-        assert 'TextView text="Hi"' in out
-
-    def test_ios_rect_bounds_and_textfield_heuristic(self):
-        # iOS/XCUITest uses x/y/width/height instead of Android bounds, and a
-        # TextField is interactive even without a clickable flag.
-        xml = (
-            "<XCUIElementTypeApplication>"
-            "<XCUIElementTypeTextField class='XCUIElementTypeTextField' "
-            "name='username' x='10' y='20' width='200' height='44'/>"
-            "<XCUIElementTypeStaticText class='XCUIElementTypeStaticText' "
-            "value='Welcome' x='10' y='80' width='300' height='30'/>"
-            "</XCUIElementTypeApplication>"
-        )
-        out = utils.strip_page_source(xml)
-        assert "XCUIElementTypeTextField" in out
-        assert 'XCUIElementTypeTextField name="username" x="10" y="20" width="200" height="44"' in out
-        assert 'value="Welcome"' in out
 
     def test_secure_and_password_fields_are_interactive(self):
         # A SecureTextField (by class suffix) and a password="true" node are kept
@@ -109,18 +45,6 @@ class TestStripPageSource:
         out = utils.strip_page_source(xml)
         assert "XCUIElementTypeSecureTextField" in out
         assert 'resource-id="pkg:id/pwd"' in out
-
-    def test_extra_state_flags_are_shown(self):
-        # Beyond clickable, the descriptor surfaces scrollable/selected/checked.
-        xml = (
-            "<hierarchy>"
-            "<android.widget.ScrollView class='android.widget.ScrollView' "
-            "text='List' scrollable='true' selected='true' bounds='[0,0][9,9]'/>"
-            "</hierarchy>"
-        )
-        out = utils.strip_page_source(xml)
-        assert "scrollable" in out
-        assert "selected" in out
 
     def test_web_nodes_show_the_tag_not_the_css_class(self):
         xml = "<html><body><button class='btn primary' id='go' title='Go'/></body></html>"

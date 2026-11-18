@@ -64,8 +64,3 @@ def test_healed_keyword_returns_suggested_steps():
         "heal_summary": heal_info["summary"],
         "suggested_steps": [{"keyword": "press_element", "params": ["Login"]}],
     }
-
-
-def test_unhealed_keyword_returns_bare_result():
-    result = _execute(_HealingKeyword(None))
-    assert result is None

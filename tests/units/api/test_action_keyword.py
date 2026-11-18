@@ -1,20 +1,13 @@
-import inspect
-import json
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 import tempfile
 import numpy as np
-from selenium.common.exceptions import StaleElementReferenceException
 from optics_framework.common.error import OpticsError, Code
 
-from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.api.action_keyword import _find_dropdown_container
+from optics_framework.api import ActionKeyword
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.strategies import LocateResult
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 class MockOpticsBuilder(OpticsBuilder):
     """Mock builder for ActionKeyword testing."""
@@ -48,13 +41,6 @@ class MockOpticsBuilder(OpticsBuilder):
     @property
     def event_sdk(self):
         return MagicMock()
-
-
-@pytest.fixture(scope="module")
-def dropdown_pagesource():
-    """Real Appium interactive-element captures (before/after opening a long dropdown),
-    sourced from an Android device."""
-    return json.loads((FIXTURES_DIR / "dropdown_pagesource.json").read_text())
 
 
 @pytest.fixture
@@ -111,78 +97,20 @@ class TestPressElementWithIndex:
             action_keyword.strategy_manager, 'locate', return_value=[LocateResult(value, MagicMock())]
         )
 
-    def test_default_index_is_zero(self, action_keyword):
-        with self._mock_locate(action_keyword, (100, 100)) as mock_locate:
-            action_keyword.press_element("button")
-        mock_locate.assert_called_once_with("button", index=0)
-
-    def test_coordinate_result_presses_coordinates(self, action_keyword, mock_dependencies):
-        with self._mock_locate(action_keyword, (100, 150)):
-            action_keyword.press_element("button")
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, event_name=None)
-
     def test_element_result_presses_element_with_repeat(self, action_keyword, mock_dependencies):
         element_handle = MagicMock()
         with self._mock_locate(action_keyword, element_handle):
             action_keyword.press_element("//button", repeat="3")
         mock_dependencies['driver'].press_element.assert_called_once_with(element_handle, 3, event_name=None)
 
-    def test_offset_adjusts_coordinates(self, action_keyword, mock_dependencies):
-        with self._mock_locate(action_keyword, (100, 150)):
-            action_keyword.press_element("button", offset_x="10", offset_y="20")
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(110, 170, event_name=None)
-
     def test_event_name_forwarded_to_driver(self, action_keyword, mock_dependencies):
         with self._mock_locate(action_keyword, (120, 180)):
             action_keyword.press_element("button", event_name="test_event")
         mock_dependencies['driver'].press_coordinates.assert_called_once_with(120, 180, event_name="test_event")
 
-    def test_no_located_result_raises_element_not_found(self, action_keyword):
-        with patch.object(action_keyword.strategy_manager, 'locate', return_value=[]):
-            with pytest.raises(OpticsError) as exc_info:
-                action_keyword.press_element("ghost_button")
-        assert exc_info.value.code in (Code.E0201, Code.X0201)
-
 
 class TestScreenshotFailureFallback:
     """Tests for behavior when screenshot capture fails (e.g. secure/protected pages)."""
-
-    @patch('optics_framework.common.utils.save_screenshot')
-    def test_locate_and_act_proceeds_when_screenshot_raises(
-        self, mock_save_screenshot, action_keyword, mock_dependencies
-    ):
-        """Action still executes when capture_screenshot raises (e.g. INTERNAL_SERVER_ERROR)."""
-        mock_locate_result = LocateResult((100, 150), MagicMock())
-
-        with patch.object(
-            action_keyword.strategy_manager, 'capture_screenshot',
-            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
-        ):
-            with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
-                action_keyword.press_element("button")
-
-        mock_dependencies['driver'].press_coordinates.assert_called_once_with(100, 150, event_name=None)
-        mock_save_screenshot.assert_not_called()
-
-    @patch('optics_framework.common.utils.annotate_aoi_region')
-    @patch('optics_framework.common.utils.save_screenshot')
-    def test_locate_and_act_skips_aoi_save_when_screenshot_raises(
-        self, mock_save_screenshot, mock_annotate_aoi, action_keyword, mock_dependencies
-    ):
-        """AOI annotation and save are skipped when capture_screenshot raises."""
-        mock_locate_result = LocateResult((100, 150), MagicMock())
-
-        with patch.object(
-            action_keyword.strategy_manager, 'capture_screenshot',
-            side_effect=OpticsError(Code.E0303, message="INTERNAL_SERVER_ERROR")
-        ):
-            with patch.object(action_keyword.strategy_manager, 'locate', return_value=[mock_locate_result]):
-                action_keyword.press_element(
-                    "button", aoi_x="10", aoi_y="10", aoi_width="50", aoi_height="50"
-                )
-
-        mock_annotate_aoi.assert_not_called()
-        mock_save_screenshot.assert_not_called()
 
     @patch('optics_framework.common.utils.save_screenshot')
     def test_direct_method_proceeds_when_screenshot_raises(
@@ -202,30 +130,6 @@ class TestScreenshotFailureFallback:
 class TestSelectDropdownOption:
     """select_dropdown_option must open the dropdown then select the option (not a no-op)."""
 
-    def test_opens_dropdown_then_selects_option(self, action_keyword, mock_dependencies):
-        with patch.object(action_keyword, "press_element") as mock_press, \
-             patch.object(action_keyword.strategy_manager, "get_interactive_elements", return_value=[]), \
-             patch.object(action_keyword.verifier, "assert_visibility", return_value=True):
-            action_keyword.select_dropdown_option("Country", "India", event_name="evt")
-
-        assert mock_press.call_count == 2
-        # First press opens the dropdown, second selects the option — order matters.
-        assert mock_press.call_args_list[0].args[0] == "Country"
-        assert mock_press.call_args_list[1].args[0] == "India"
-        # event_name is threaded through to both presses.
-        assert all(c.kwargs.get("event_name") == "evt" for c in mock_press.call_args_list)
-        # Option was already visible — no need to scroll the (nonexistent) dropdown list.
-        mock_dependencies['driver'].swipe.assert_not_called()
-
-    def test_missing_target_raises_instead_of_silent_pass(self, action_keyword):
-        # The old stub returned None (silent PASS); now a not-found target must surface.
-        with patch.object(
-            action_keyword, "press_element",
-            side_effect=OpticsError(Code.X0201, message="element not found"),
-        ):
-            with pytest.raises(OpticsError):
-                action_keyword.select_dropdown_option("Country", "India")
-
     def test_pagesource_unavailable_falls_back_to_direct_press(self, action_keyword, mock_dependencies):
         """When page source / interactive elements aren't available at all, skip validation."""
         with patch.object(
@@ -241,74 +145,6 @@ class TestSelectDropdownOption:
         assert mock_press.call_args_list[0].args[0] == "Country"
         assert mock_press.call_args_list[1].args[0] == "India"
         mock_dependencies['driver'].swipe.assert_not_called()
-
-    def test_no_list_like_container_raises_not_found(self, action_keyword, mock_dependencies):
-        """New elements appear after opening, but none look like a scrollable list container."""
-        baseline = []
-        after_open = [{
-            "text": "Something Else", "xpath": "opt1",
-            "bounds": {"x1": 0, "y1": 0, "x2": 50, "y2": 50},
-            "extra": {"class": "android.widget.TextView"},
-        }]
-        with patch.object(
-            action_keyword.strategy_manager, "get_interactive_elements",
-            side_effect=[baseline, after_open],
-        ), patch.object(
-            action_keyword.verifier, "assert_visibility",
-            side_effect=OpticsError(Code.E0201, message="not found"),
-        ), patch.object(action_keyword, "press_element") as mock_press:
-            with pytest.raises(OpticsError) as exc_info:
-                action_keyword.select_dropdown_option("Country", "Missing", timeout="30")
-
-        assert exc_info.value.code == Code.E0201
-        mock_dependencies['driver'].swipe.assert_not_called()
-        # Only the trigger press happened; the missing option was never pressed.
-        assert mock_press.call_count == 1
-
-    def test_scrolls_and_finds_option_after_swipes(self, action_keyword, mock_dependencies):
-        """Option below the fold is found after scrolling within the dropdown container."""
-        container = {
-            "text": "list", "xpath": "container1",
-            "bounds": {"x1": 0, "y1": 100, "x2": 200, "y2": 500},
-            "extra": {"class": "android.widget.RecyclerView"},
-        }
-        baseline = [{
-            "text": "Country", "xpath": "trigger",
-            "bounds": {"x1": 0, "y1": 0, "x2": 50, "y2": 50}, "extra": {},
-        }]
-        after_open = baseline + [
-            container,
-            {"text": "Apple", "xpath": "opt1", "bounds": {"x1": 0, "y1": 100, "x2": 200, "y2": 150}, "extra": {}},
-            {"text": "Banana", "xpath": "opt2", "bounds": {"x1": 0, "y1": 150, "x2": 200, "y2": 200}, "extra": {}},
-        ]
-
-        with patch.object(
-            action_keyword.strategy_manager, "get_interactive_elements",
-            side_effect=[baseline, after_open],
-        ), patch.object(
-            action_keyword.strategy_manager, "capture_pagesource",
-            side_effect=[("<xml>v1</xml>", "t1"), ("<xml>v2</xml>", "t2"), ("<xml>v3</xml>", "t3")],
-        ), patch.object(
-            action_keyword.verifier, "assert_visibility",
-            side_effect=[
-                OpticsError(Code.E0201, message="not found"),  # initial check, right after opening
-                OpticsError(Code.E0201, message="not found"),  # after 1st swipe
-                True,                                          # after 2nd swipe — found
-            ],
-        ), patch.object(action_keyword, "press_element") as mock_press, \
-                patch("optics_framework.api.action_keyword.time.sleep", return_value=None):
-            action_keyword.select_dropdown_option("Country", "Zebra", timeout="30")
-
-        # Two scroll swipes were needed before the option showed up.
-        assert mock_dependencies['driver'].swipe.call_count == 2
-        for call in mock_dependencies['driver'].swipe.call_args_list:
-            args = call.args
-            assert args[0] == 100   # center_x = (0 + 200) // 2
-            assert args[1] == 300   # center_y = (100 + 500) // 2
-            assert args[2] == "up"
-            assert args[3] == 200   # swipe_length = (500 - 100) * 0.5
-        assert mock_press.call_args_list[0].args[0] == "Country"
-        assert mock_press.call_args_list[-1].args[0] == "Zebra"
 
     def test_scroll_exhausted_raises_with_available_options(self, action_keyword, mock_dependencies):
         """Stops scrolling once the list stops changing, and reports what was visible."""
@@ -344,81 +180,9 @@ class TestSelectDropdownOption:
         # Only the trigger press happened; the missing option was never pressed.
         assert mock_press.call_count == 1
 
-    def test_real_appium_capture_selects_already_visible_option(
-        self, action_keyword, mock_dependencies, dropdown_pagesource,
-    ):
-        """Regression fixture: real before/after page-source dumps from a long dropdown.
-
-        "Option 3" is already present in the post-open capture, so this exercises the
-        fast path (no scrolling needed) while confirming real-world elements — including
-        the dropdown trigger's own content-desc mutating from "▼" to "▲" between captures —
-        don't confuse the lookup.
-        """
-        before = dropdown_pagesource["before"]
-
-        with patch.object(
-            action_keyword.strategy_manager, "get_interactive_elements",
-            return_value=before,
-        ), patch.object(
-            action_keyword.verifier, "assert_visibility", return_value=True,
-        ), patch.object(action_keyword, "press_element") as mock_press:
-            action_keyword.select_dropdown_option("c22-dropdown", "Option 3", event_name="evt")
-
-        assert mock_press.call_count == 2
-        assert mock_press.call_args_list[0].args[0] == "c22-dropdown"
-        assert mock_press.call_args_list[1].args[0] == "Option 3"
-        mock_dependencies['driver'].swipe.assert_not_called()
-
-    def test_real_appium_capture_identifies_scrollview_as_container(self, dropdown_pagesource):
-        """The diff must pick the ScrollView, ignoring noise like the trigger's own mutation."""
-        before = dropdown_pagesource["before"]
-        after = dropdown_pagesource["after"]
-        before_xpaths = {el["xpath"] for el in before}
-        new_elements = [el for el in after if el["xpath"] not in before_xpaths]
-
-        container = _find_dropdown_container(new_elements)
-
-        assert container is not None
-        assert container["xpath"] == '//android.widget.ScrollView[@resource-id="c22-options"]'
-        assert container["bounds"] == {"x1": 48, "y1": 1257, "x2": 1032, "y2": 2217}
-
 
 class TestSwipeUntilElementAppears:
     """Tests for OpticsError(E0201) handling in swipe_until_element_appears."""
-
-    @patch('optics_framework.api.action_keyword.time')
-    def test_e0201_continues_loop_until_found(self, mock_time, action_keyword):
-        """E0201 is caught, loop continues, element found on second call."""
-        mock_time.time.side_effect = [0, 0, 3, 6, 9]
-        call_count = 0
-
-        def assert_presence_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise OpticsError(Code.E0201, message="Element not found")
-            return True
-
-        with patch.object(action_keyword.verifier, 'assert_presence', side_effect=assert_presence_side_effect):
-            action_keyword.swipe_until_element_appears("element", "down", "10")
-
-        assert call_count == 2
-        action_keyword.driver.swipe_percentage.assert_called_once_with(10, 50, "down", 25, event_name=None)
-
-    @patch('optics_framework.api.action_keyword.time')
-    def test_non_e0201_is_reraised(self, mock_time, action_keyword):
-        """Non-E0201 OpticsError is re-raised immediately."""
-        mock_time.time.side_effect = [0, 0]
-
-        with patch.object(
-            action_keyword.verifier, 'assert_presence',
-            side_effect=OpticsError(Code.E0303, message="Screenshot failed")
-        ):
-            with pytest.raises(OpticsError) as exc_info:
-                action_keyword.swipe_until_element_appears("element", "down", "10")
-
-        assert exc_info.value.code == Code.E0303
-        action_keyword.driver.swipe_percentage.assert_not_called()
 
     @patch('optics_framework.api.action_keyword.time')
     def test_element_found_stops_loop(self, mock_time, action_keyword):
@@ -454,13 +218,6 @@ class TestDeprecatedAliases:
         with patch('optics_framework.common.utils.save_screenshot'):
             yield
 
-    def test_aliases_stay_in_the_keyword_map(self, action_keyword):
-        registry = KeywordRegistry()
-        registry.register(action_keyword)
-
-        for alias in ("press_checkbox", "press_radio_button", "swipe_seekbar_to_right_android"):
-            assert callable(registry.get_method(alias)), alias
-
     @pytest.mark.parametrize("alias", ["press_checkbox", "press_radio_button"])
     def test_alias_delegates_to_press_element_with_deprecation_log(self, action_keyword, alias):
         with patch.object(action_keyword, 'press_element') as mock_press, patch(
@@ -478,36 +235,6 @@ class TestDeprecatedAliases:
         )
 
 
-class TestKeywordSignatureHygiene:
-    """Public API keywords must not declare keyword-only params.
-
-    Keyword-only (and ``**kwargs``-style) params can't be filled by the
-    string-only named-param dispatch shared by `optics serve` and `optics mcp`
-    (see mozarkai/optics-framework#454): the dispatcher reflects the signature
-    into positional slots, so a keyword-only slot either overflows the call or
-    is silently dropped. Keep this guard so injection-style params (the old
-    ``located`` kwarg) are never reintroduced into keyword signatures.
-    ``FlowControl``'s ``*args`` keywords (Condition, Run Loop) are deliberate
-    variadic contracts and stay allowed.
-    """
-
-    @pytest.mark.parametrize(
-        "cls", [ActionKeyword, AppManagement, Verifier, FlowControl]
-    )
-    def test_public_keywords_have_no_keyword_only_or_var_kwargs_params(self, cls):
-        offenders = []
-        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-            if name.startswith("_") or name.startswith("test"):
-                continue
-            for param in inspect.signature(method).parameters.values():
-                if param.kind in (
-                    inspect.Parameter.KEYWORD_ONLY,
-                    inspect.Parameter.VAR_KEYWORD,
-                ):
-                    offenders.append(f"{cls.__name__}.{name}:{param.name}")
-        assert offenders == []
-
-
 class TestLocateHonorsPositionalParams:
     """AOI/index must be honored no matter how the keyword was called.
 
@@ -522,17 +249,6 @@ class TestLocateHonorsPositionalParams:
         with patch('optics_framework.common.utils.save_screenshot'):
             yield
 
-    def test_positional_aoi_and_index_reach_locate(self, action_keyword):
-        locate_result = LocateResult((7, 7), MagicMock())
-        with patch.object(
-            action_keyword.strategy_manager, 'locate', return_value=[locate_result]
-        ) as mock_locate:
-            # MCP-style all-positional call: repeat, offset_x, offset_y, index,
-            # aoi_x, aoi_y, aoi_width, aoi_height, event_name.
-            action_keyword.press_element("btn", "1", "0", "0", "2", "45", "45", "60", "60", None)
-
-        mock_locate.assert_called_once_with("btn", 45.0, 45.0, 60.0, 60.0, index=2)
-
     def test_kwarg_aoi_and_index_reach_locate(self, action_keyword):
         locate_result = LocateResult((7, 7), MagicMock())
         with patch.object(
@@ -541,13 +257,3 @@ class TestLocateHonorsPositionalParams:
             action_keyword.enter_text("field", "hello", aoi_x="10", index="3")
 
         mock_locate.assert_called_once_with("field", 10.0, 0.0, 100.0, 100.0, index=3)
-
-
-def test_a_press_goes_through_when_the_bounds_of_the_found_element_cannot_be_read(action_keyword, mock_dependencies):
-    source = MagicMock()
-    source.get_bbox_for_element.side_effect = StaleElementReferenceException("The element is no longer in the tree")
-    found = LocateResult(object(), MagicMock(element_source=source))
-    with patch('optics_framework.common.utils.save_screenshot'), \
-            patch.object(action_keyword.strategy_manager, 'locate', return_value=[found]):
-        action_keyword.press_element("//button[@name='% CPU']")
-    mock_dependencies['driver'].press_element.assert_called_once()

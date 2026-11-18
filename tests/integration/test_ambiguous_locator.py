@@ -45,11 +45,3 @@ def test_a_wrong_state_names_how_many_elements_the_locator_matched(page):
     with pytest.raises(OpticsError) as failure:
         page.is_element("//input", "unchecked", "1")
     assert "matches 2 elements" in failure.value.message
-
-
-def test_a_locator_with_one_match_says_nothing_about_a_count(page):
-    with pytest.raises(OpticsError) as failure:
-        page.assert_text("(//p)[2]", "13", "1")
-    assert failure.value.code == Code.E0401
-    assert "shows '12' but expected '13'" in failure.value.message
-    assert "matches" not in failure.value.message

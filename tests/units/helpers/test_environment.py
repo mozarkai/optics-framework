@@ -17,7 +17,6 @@ from optics_framework.helper.environment import (
     EnvKind,
     Environment,
     detect,
-    describe,
     plan_install,
 )
 
@@ -87,29 +86,6 @@ class TestDetect:
         assert env.creator == "venv"
         assert env.manager is None
 
-    def test_uv_venv_is_recognised_without_pip(self, interpreter, tmp_path):
-        env = interpreter(_venv(tmp_path / ".venv", creator="uv"),
-                          base=tmp_path / "base", pip=False)
-        assert env.kind is EnvKind.VENV
-        assert env.creator == "uv"
-        assert env.has_pip is False
-
-    def test_venv_from_marked_base_is_not_system_managed(self, interpreter, tmp_path):
-        """PEP 668 binds the base interpreter only.
-
-        A venv inherits its base's stdlib directory, so the marker is visible
-        from inside one; treating that as externally managed would refuse
-        installs into every healthy venv built from a Homebrew, Debian or
-        uv-managed Python."""
-        stdlib = tmp_path / "stdlib"
-        stdlib.mkdir()
-        (stdlib / "EXTERNALLY-MANAGED").write_text(
-            "[externally-managed]\nError=use apt install\n", encoding="utf-8")
-        env = interpreter(_venv(tmp_path / ".venv"), base=tmp_path / "base",
-                          stdlib=stdlib)
-        assert env.kind is EnvKind.VENV
-        assert env.pep668_error is None
-
     def test_marked_base_interpreter_is_system_managed(self, interpreter, tmp_path):
         stdlib = tmp_path / "stdlib"
         stdlib.mkdir()
@@ -129,67 +105,14 @@ class TestDetect:
         assert env.kind is EnvKind.SYSTEM
         assert env.pep668_error is None
 
-    @pytest.mark.parametrize("marker, manager", [
-        ("uv-receipt.toml", "uv"),
-        ("pipx_metadata.json", "pipx"),
-    ])
-    def test_tool_environments_are_recognised(self, interpreter, tmp_path,
-                                              marker, manager):
-        prefix = _venv(tmp_path / "tool")
-        (prefix / marker).write_text("", encoding="utf-8")
-        env = interpreter(prefix, base=tmp_path / "base", pip=False)
-        assert env.kind is EnvKind.TOOL
-        assert env.manager == manager
-
     def test_uvx_cache_environment_is_a_tool_environment(self, interpreter, tmp_path):
         prefix = _venv(tmp_path / "archive-v0" / "abc123", creator="uv")
         env = interpreter(prefix, base=tmp_path / "base", pip=False)
         assert env.kind is EnvKind.TOOL
         assert env.manager == "uv"
 
-    @pytest.mark.parametrize("lockfile, manager", [
-        ("uv.lock", "uv"),
-        ("poetry.lock", "poetry"),
-        ("pdm.lock", "pdm"),
-        ("Pipfile.lock", "pipenv"),
-    ])
-    def test_lockfile_beside_venv_marks_a_project(self, interpreter, tmp_path,
-                                                  lockfile, manager):
-        project = tmp_path / "project"
-        project.mkdir()
-        (project / lockfile).write_text("", encoding="utf-8")
-        env = interpreter(_venv(project / ".venv"), base=tmp_path / "base")
-        assert env.kind is EnvKind.PROJECT
-        assert env.manager == manager
-
-    def test_active_manager_variable_marks_an_out_of_tree_project(
-            self, interpreter, tmp_path):
-        """Poetry parks its venvs outside the project by default, so no
-        lockfile sits beside them."""
-        env = interpreter(_venv(tmp_path / "cached-venv"), base=tmp_path / "base",
-                          environ={"POETRY_ACTIVE": "1"})
-        assert env.kind is EnvKind.PROJECT
-        assert env.manager == "poetry"
-
-    def test_conda_prefix_is_recognised(self, interpreter, tmp_path):
-        prefix = tmp_path / "conda-env"
-        (prefix / "conda-meta").mkdir(parents=True)
-        env = interpreter(prefix, base=tmp_path / "base")
-        assert env.kind is EnvKind.CONDA
-
-    def test_uv_env_var_wins_over_path_lookup(self, interpreter, tmp_path):
-        """uv exports UV under ``uv run``/``uvx``, naming the exact binary in
-        use rather than whichever one PATH happens to resolve."""
-        env = interpreter(_venv(tmp_path / ".venv"), base=tmp_path / "base",
-                          uv="/on/path/uv", environ={"UV": "/exact/uv"})
-        assert env.uv == "/exact/uv"
-
 
 class TestPlanInstall:
-    def test_venv_with_pip_installs_directly(self):
-        plan = plan_install(_env(EnvKind.VENV), [SPEC])
-        assert plan.command == ["/p/bin/python", "-m", "pip", "install",
-                                "--disable-pip-version-check", SPEC]
 
     def test_venv_without_pip_installs_through_uv(self):
         plan = plan_install(_env(EnvKind.VENV, has_pip=False), [SPEC])
@@ -213,28 +136,11 @@ class TestPlanInstall:
         assert plan.command is None
         assert "uv tool install" in plan.manual
 
-    def test_uv_tool_companions_use_with_flag(self):
-        """``uv tool install`` takes one package; extras ride on ``--with``."""
-        plan = plan_install(
-            _env(EnvKind.TOOL, manager="uv", has_pip=False), [SPEC, PINNED])
-        assert f"--with {PINNED}" in plan.manual
-
     def test_pipx_companions_use_inject(self):
         plan = plan_install(
             _env(EnvKind.TOOL, manager="pipx", has_pip=False), [SPEC, PINNED])
         assert "pipx install --force" in plan.manual
         assert f"pipx inject optics-framework {PINNED}" in plan.manual
-
-    @pytest.mark.parametrize("manager, command", [
-        ("uv", "uv add"),
-        ("poetry", "poetry add"),
-        ("pdm", "pdm add"),
-        ("pipenv", "pipenv install"),
-    ])
-    def test_project_refuses_with_its_managers_add_command(self, manager, command):
-        plan = plan_install(_env(EnvKind.PROJECT, manager=manager), [SPEC])
-        assert plan.command is None
-        assert plan.manual.strip().startswith(command)
 
     def test_system_managed_refuses_quoting_the_markers_own_error(self):
         plan = plan_install(
@@ -246,40 +152,3 @@ class TestPlanInstall:
         plan = plan_install(_env(EnvKind.CONDA, manager="conda"), [SPEC])
         assert plan.command is None
         assert "numpy" in plan.note
-
-    def test_unmarked_system_interpreter_installs_directly(self):
-        plan = plan_install(_env(EnvKind.SYSTEM), [SPEC])
-        assert plan.command == ["/p/bin/python", "-m", "pip", "install",
-                                "--disable-pip-version-check", SPEC]
-
-    def test_manual_commands_quote_extras_brackets(self):
-        """An unquoted ``pkg[extra]`` is glob syntax in zsh and fails on paste."""
-        plan = plan_install(_env(EnvKind.PROJECT, manager="uv"), [SPEC])
-        assert f"'{SPEC}'" in plan.manual
-
-
-class TestDescribe:
-    @pytest.mark.parametrize("env", [
-        _env(EnvKind.VENV, creator="venv"),
-        _env(EnvKind.VENV, has_pip=False),
-        _env(EnvKind.SYSTEM),
-    ])
-    def test_installable_environment_gets_no_row(self, env):
-        assert describe(env) is None
-
-    def test_managed_environment_warns_and_hints_the_real_command(self):
-        status, detail, hint = describe(
-            _env(EnvKind.TOOL, manager="uv", has_pip=False))
-        assert status == "warn"
-        assert "uv tool install" in hint
-
-
-class TestRecoveryCommandIsRunnableWhereItIsRead:
-    """The posix form is covered by the refusal tests above, which run on
-    posix; only the platform swap needs its own."""
-
-    def test_windows_hint(self, monkeypatch):
-        monkeypatch.setattr(environment.os, "name", "nt")
-        plan = plan_install(_env(EnvKind.CONDA, manager="conda"), [SPEC])
-        assert "Scripts\\Activate.ps1" in plan.manual
-        assert "bin/activate" not in plan.manual

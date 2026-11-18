@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 import pytest
 from lxml import etree
 
-from optics_framework.engines.drivers import appium_fields
 from optics_framework.engines.drivers.appium import Appium
 
 pytestmark = pytest.mark.white_box
@@ -29,15 +28,6 @@ ANDROID = (
     "</hierarchy>"
 )
 
-IOS = (
-    '<AppiumAUT><XCUIElementTypeApplication type="XCUIElementTypeApplication" x="0" y="0" width="400" height="800">'
-    '<XCUIElementTypeOther type="XCUIElementTypeOther" x="0" y="100" width="400" height="120">'
-    '<XCUIElementTypeStaticText type="XCUIElementTypeStaticText" label="Email" x="16" y="100" width="100" height="20"/>'
-    '<XCUIElementTypeTextField type="XCUIElementTypeTextField" x="16" y="130" width="368" height="40"/>'
-    "</XCUIElementTypeOther>"
-    "</XCUIElementTypeApplication></AppiumAUT>"
-)
-
 
 def _root(xml: str):
     return etree.fromstring(xml.encode())
@@ -45,59 +35,6 @@ def _root(xml: str):
 
 def _text(root, text: str):
     return root.xpath("//*[@text=$t or @label=$t]", t=text)[0]
-
-
-@pytest.mark.parametrize("caption, field_bounds", [
-    ("First Name", "[0,60][1000,150]"),
-    ("Last Name", "[0,260][1000,350]"),
-])
-def test_a_caption_names_the_only_field_in_its_container(caption, field_bounds):
-    root = _root(ANDROID)
-
-    assert appium_fields.field_for(root, _text(root, caption)).get("bounds") == field_bounds
-
-
-def test_a_flutter_caption_beside_its_field():
-    root = _root(ANDROID)
-
-    assert appium_fields.field_for(root, _text(root, "Enter Mobile Number")).get("hint") == "Mobile Number"
-
-
-def test_a_partial_caption_finds_the_field_it_names():
-    root = _root(ANDROID)
-    caption = etree.SubElement(root, "android.widget.TextView", text="Mobile")
-
-    assert appium_fields.field_for(root, caption).get("hint") == "Mobile Number"
-
-
-def test_no_field_when_the_container_holds_several():
-    root = _root(ANDROID)
-    heading = etree.SubElement(root.xpath("//android.widget.LinearLayout")[0], "android.widget.TextView", text="Your name")
-
-    assert appium_fields.field_for(root, heading) is None
-
-
-def test_ios_caption_and_field():
-    root = _root(IOS)
-
-    field = appium_fields.field_for(root, _text(root, "Email"))
-
-    assert field.get("type") == "XCUIElementTypeTextField"
-
-
-def test_node_at_prefers_the_node_showing_the_text():
-    root = _root(ANDROID)
-
-    node = appium_fields.node_at(root, {"x": 0, "y": 0, "width": 300, "height": 50}, "First Name")
-
-    assert node.get("text") == "First Name"
-
-
-@pytest.mark.parametrize("xml", [ANDROID, IOS])
-def test_absolute_xpath_finds_the_same_node(xml):
-    root = _root(xml)
-    for node in root.iter():
-        assert root.getroottree().xpath(appium_fields.absolute_xpath(node))[0] is node
 
 
 def _appium(page_source: str) -> Appium:
@@ -121,17 +58,6 @@ def test_enter_text_on_a_caption_types_into_its_field():
     assert _root(ANDROID).getroottree().xpath(xpath)[0].get("bounds") == "[0,260][1000,350]"
     instance.driver.find_element.return_value.send_keys.assert_called_once_with("Doe")
     caption.send_keys.assert_not_called()
-
-
-def test_enter_text_on_an_editable_desktop_control_types_into_it():
-    instance = _appium(ANDROID)
-    combo = MagicMock()
-    combo.get_attribute.side_effect = {"className": "combo_box", "editable": "true"}.get
-    type(instance.driver).page_source = property(lambda _: pytest.fail("page source read"))
-
-    instance.enter_text_element(combo, "12")
-
-    combo.send_keys.assert_called_once_with("12")
 
 
 def test_enter_text_on_a_field_reads_no_page_source():

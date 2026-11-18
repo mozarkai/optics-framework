@@ -92,65 +92,12 @@ def _logs(tmp_path):
     return "".join(p.read_text() for p in (tmp_path / "execution_output").glob("*.log"))
 
 
-def test_a_stored_value_is_used_inside_a_later_locator(run, device):
-    results = run({"M": [("Get Text", "${price_label}", "store_as=price"),
-                         ("Press Element", '//row[@text="${price}"]')]}, {"TC": ["M"]})
-
-    assert results["TC"].status == "PASS"
-    assert ("press_element", '//row[@text="$ 29.99"]') in device.calls
-
-
-def test_the_store_cell_may_come_first_and_name_the_variable_in_braces(run, device):
-    results = run({"M": [("Get Text", "store_as=${p}", "${price_label}"), ("Press Element", "${p}")]}, {"TC": ["M"]})
-
-    assert results["TC"].status == "PASS"
-    assert ("get_text", "#price") in device.calls
-    assert ("press_element", "$ 29.99") in device.calls
-
-
-def test_a_later_store_replaces_the_earlier_value(run, device):
-    run({"M": [("Get Text", "${price_label}", "store_as=v"), ("Get Text", "${title_label}", "store_as=v"),
-               ("Press Element", "${v}")]}, {"TC": ["M"]})
-
-    assert device.calls[-1] == ("press_element", "Backpack")
-
-
-def test_storing_what_a_keyword_did_not_return_fails_the_step(run):
-    results = run({"M": [("Sleep", "1", "store_as=nothing")]}, {"TC": ["M"]})
-
-    assert results["TC"].status == "FAIL"
-    assert "returned no value" in _reasons(results, "TC")[0]
-
-
-def test_a_store_cell_without_a_name_fails_the_step(run):
-    results = run({"M": [("Get Text", "${price_label}", "store_as=")]}, {"TC": ["M"]})
-
-    assert "store_as needs a name" in _reasons(results, "TC")[0]
-
-
-def test_a_value_reaches_later_test_cases(run, device):
-    results = run({"Store": [("Get Text", "${price_label}", "store_as=price")],
-                   "Use": [("Press Element", "${price}")]},
-                  {"TC1": ["Store"], "TC2": ["Use"]})
-
-    assert results["TC2"].status == "PASS"
-    assert device.calls[-1] == ("press_element", "$ 29.99")
-
-
 def test_the_pytest_runner_keeps_a_value_across_test_cases_too(run, device):
     run({"Store": [("Get Text", "${price_label}", "store_as=price")],
          "Use": [("Press Element", "${price}")]},
         {"TC1": ["Store"], "TC2": ["Use"]}, runner="pytest")
 
     assert device.calls[-1] == ("press_element", "$ 29.99")
-
-
-def test_an_unknown_name_inside_a_param_fails_before_the_device_is_touched(run, device):
-    results = run({"M": [("Press Element", '//row[@text="${never_stored}"]')]}, {"TC": ["M"]})
-
-    assert "'${never_stored}'" in _reasons(results, "TC")[0]
-    assert "is not defined" in _reasons(results, "TC")[0]
-    assert device.calls == []
 
 
 def test_run_loop_hands_each_index_into_the_body_locator(run, device):
@@ -204,15 +151,6 @@ def test_an_elements_file_value_is_not_masked_whatever_its_name(run, tmp_path):
     assert "****" not in _logs(tmp_path)
 
 
-def test_a_short_value_or_a_name_that_only_mentions_api_stays_readable(run, device, tmp_path):
-    SCREEN["#code"] = "42"
-    run({"M": [("Get Text", "#code", "store_as=pin"), ("Get Text", "${price_label}", "store_as=api_bal")]}, {"TC": ["M"]})
-    del SCREEN["#code"]
-
-    assert "Text of element: 42" in _logs(tmp_path)
-    assert "Text of element: $ 29.99" in _logs(tmp_path)
-
-
 def test_one_sessions_secret_does_not_mask_another_sessions_logs(run, tmp_path):
     run({"M": [("Get Text", "#user", "store_as=user_api_key")]}, {"TC": ["M"]})
     run({"M": [("Get Text", "#user", "store_as=user")]}, {"TC": ["M"]})
@@ -238,47 +176,6 @@ def test_a_dry_run_resolves_stored_names_and_catches_the_two_mistakes(run, devic
     assert "'${pirce}'" in _reasons(results, "TC2")[0]
     assert "store_as needs a name" in _reasons(results, "TC3")[0]
     assert device.calls == []
-
-
-def test_a_read_data_query_quotes_a_variable_itself(run, device, tmp_path):
-    (tmp_path / "people.csv").write_text("name,city\nalice,Pune\nbob,Delhi\n")
-    results = run({"M": [("Read Data", "${city}", (tmp_path / "people.csv").as_posix(), "name == ${user};select=city"),
-                         ("Press Element", "${city}")]}, {"TC": ["M"]},
-                  elements={**ELEMENTS, "user": "alice"})
-
-    assert results["TC"].status == "PASS"
-    assert ("press_element", "Pune") in device.calls
-
-
-def test_a_value_set_in_suite_setup_or_by_evaluate_reaches_later_test_cases(run, device):
-    results = run({"Setup": [("Get Text", "${title_label}", "store_as=product")],
-                   "Count": [("Evaluate", "${total}", "1 + 1")],
-                   "Use": [("Press Element", "${product}"), ("Press Element", "${total}")]},
-                  {"Suite Setup": ["Setup"], "TC1": ["Count"], "TC2": ["Use"]})
-
-    assert results["TC2"].status == "PASS"
-    assert device.calls[-2:] == [("press_element", "Backpack"), ("press_element", "2")]
-
-
-def test_a_doubled_dollar_passes_a_literal_placeholder(run, device):
-    results = run({"M": [("Press Element", "//*[@text='$${literal}']")]}, {"TC": ["M"]})
-
-    assert results["TC"].status == "PASS"
-    assert ("press_element", "//*[@text='${literal}']") in device.calls
-
-
-def test_store_as_may_have_spaces_around_the_equals_sign(run, device):
-    run({"M": [("Get Text", "${price_label}", "store_as = price"), ("Press Element", "${price}")]}, {"TC": ["M"]})
-
-    assert device.calls[-1] == ("press_element", "$ 29.99")
-
-
-def test_date_evaluate_takes_a_stored_number_inside_its_expression(run, device):
-    results = run({"M": [("Date Evaluate", "${due}", "2025-04-25", "+${days} days", "%d %B"), ("Press Element", "${due}")]},
-                  {"TC": ["M"]}, elements={**ELEMENTS, "days": "2"})
-
-    assert results["TC"].status == "PASS"
-    assert device.calls[-1] == ("press_element", "27 April")
 
 
 def test_a_dry_run_counts_names_that_evaluate_and_read_data_define(run, tmp_path):

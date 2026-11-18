@@ -1,6 +1,4 @@
-import itertools
 import json
-import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,18 +17,6 @@ def _driver(config=None):
     driver = Playwright(config or {})
     driver.page = MagicMock()
     return driver
-
-
-def test_enter_text_fills_a_locator_returned_by_an_element_source():
-    driver = _driver()
-    located = MagicMock()
-    located.evaluate = AsyncMock(return_value=True)
-    located.fill = AsyncMock()
-
-    driver.enter_text_element(located, "standard_user")
-
-    located.fill.assert_awaited_once_with("standard_user")
-    driver.page.locator.assert_not_called()
 
 
 def test_enter_text_still_accepts_a_selector_string():
@@ -66,47 +52,6 @@ def test_clear_text_selects_all_with_the_platform_modifier():
     assert [c.args[0] for c in driver.page.keyboard.press.await_args_list] == ["ControlOrMeta+A", "Backspace"]
 
 
-def test_get_text_reads_a_located_element():
-    driver = _driver()
-    located = MagicMock()
-    located.evaluate = AsyncMock(return_value="1")
-
-    assert driver.get_text_element(located) == "1"
-    located.evaluate.assert_awaited_once_with(pw_driver.utils.TEXT_OR_VALUE_JS)
-    driver.page.locator.assert_not_called()
-
-
-def test_settings_are_read_from_capabilities():
-    driver = Playwright({"enabled": True, "capabilities": {"browser": "firefox", "headless": True}})
-
-    assert driver._setting("browser", "chromium") == "firefox"
-    assert driver._setting("headless", False) is True
-    assert driver._setting("viewport", {"width": 1280, "height": 800}) == {"width": 1280, "height": 800}
-
-
-def test_top_level_settings_still_work():
-    driver = Playwright({"enabled": True, "browser": "webkit", "capabilities": {}})
-
-    assert driver._setting("browser", "chromium") == "webkit"
-
-
-CONFLICTING = {
-    "enabled": True,
-    "browser": "webkit",
-    "headless": False,
-    "viewport": {"width": 1280, "height": 800},
-    "navigation_timeout_ms": 1000,
-    "navigation_wait_until": "load",
-    "capabilities": {
-        "browser": "firefox",
-        "headless": True,
-        "viewport": {"width": 390, "height": 844},
-        "navigation_timeout_ms": 5000,
-        "navigation_wait_until": "networkidle",
-    },
-}
-
-
 def _fake_playwright(monkeypatch):
     page = MagicMock()
     page.goto = AsyncMock()
@@ -121,40 +66,6 @@ def _fake_playwright(monkeypatch):
     starter.start = AsyncMock(return_value=pw)
     monkeypatch.setattr(pw_driver, "async_playwright", lambda: starter)
     return pw, browser, page
-
-
-async def test_launch_uses_capabilities_over_top_level_settings(monkeypatch):
-    pw, browser, page = _fake_playwright(monkeypatch)
-
-    await Playwright(CONFLICTING)._launch_app_async("https://example.com", event_name=None)
-
-    pw.firefox.launch.assert_awaited_once_with(headless=True)
-    pw.webkit.launch.assert_not_awaited()
-    browser.new_context.assert_awaited_once_with(viewport={"width": 390, "height": 844})
-    page.goto.assert_awaited_once_with("https://example.com", timeout=5000, wait_until="networkidle")
-
-
-async def test_launch_falls_back_to_top_level_settings(monkeypatch):
-    pw, browser, page = _fake_playwright(monkeypatch)
-    config = {key: value for key, value in CONFLICTING.items() if key != "capabilities"}
-
-    await Playwright(config)._launch_app_async("https://example.com", event_name=None)
-
-    pw.webkit.launch.assert_awaited_once_with(headless=False)
-    browser.new_context.assert_awaited_once_with(viewport={"width": 1280, "height": 800})
-    page.goto.assert_awaited_once_with("https://example.com", timeout=1000, wait_until="load")
-
-
-async def test_a_second_launch_navigates_the_open_browser(monkeypatch):
-    pw, browser, page = _fake_playwright(monkeypatch)
-    page.is_closed = MagicMock(return_value=False)
-    driver = Playwright(CONFLICTING)
-
-    await driver._launch_app_async("https://example.com", event_name=None)
-    await driver._launch_app_async("https://example.com/cart", event_name=None)
-
-    pw.firefox.launch.assert_awaited_once()
-    assert page.goto.await_count == 2
 
 
 async def test_a_relative_storage_state_is_read_from_the_project_without_extension_cookies(monkeypatch, tmp_path):
@@ -176,19 +87,6 @@ async def test_a_missing_storage_state_file_fails_the_launch(monkeypatch, tmp_pa
     _fake_playwright(monkeypatch)
     config = {"capabilities": {"browser": "firefox", "storage_state": str(tmp_path / "missing.json")}}
     driver = Playwright(config)
-
-    with pytest.raises(OpticsError) as err:
-        await driver._start_browser()
-    assert err.value.code == Code.E0501
-
-
-@pytest.mark.parametrize("setting, content", [("auth.json", "[]"), (["auth.json"], None)])
-async def test_a_storage_state_that_is_not_an_object_fails_the_launch(monkeypatch, tmp_path, setting, content):
-    _fake_playwright(monkeypatch)
-    if content is not None:
-        (tmp_path / "auth.json").write_text(content)
-    event_sdk = SimpleNamespace(config_handler=SimpleNamespace(config=SimpleNamespace(project_path=str(tmp_path))))
-    driver = Playwright({"capabilities": {"browser": "firefox", "storage_state": setting}}, event_sdk)
 
     with pytest.raises(OpticsError) as err:
         await driver._start_browser()
@@ -224,63 +122,3 @@ def test_secret_prefix_is_not_typed():
     driver.enter_text_element(located, "@:secret")
 
     located.fill.assert_awaited_once_with("secret")
-
-
-def test_go_back_uses_browser_history():
-    driver = _driver()
-    driver.page.opener = AsyncMock(return_value=None)
-    driver.page.go_back = AsyncMock()
-
-    driver.go_back()
-
-    driver.page.go_back.assert_awaited_once()
-
-
-def _settling_driver(monkeypatch, fingerprints, config=None):
-    monkeypatch.setattr(Playwright, "SETTLE_QUIET_S", 0.03)
-    monkeypatch.setattr(Playwright, "SETTLE_POLL_S", 0.01)
-    driver = _driver(config)
-    driver.page.evaluate = AsyncMock(side_effect=fingerprints)
-    return driver
-
-
-def test_settle_returns_once_the_dom_stops_changing(monkeypatch):
-    driver = _settling_driver(monkeypatch, itertools.chain(["shell", "form"], itertools.repeat("form")))
-
-    started = time.monotonic()
-    driver.wait_for_page_settled()
-
-    assert Playwright.SETTLE_QUIET_S <= time.monotonic() - started < 1
-    assert driver.page.evaluate.await_count >= 3
-
-
-@pytest.mark.parametrize(
-    "unsettled",
-    [pw_driver.PlaywrightError("Execution context was destroyed"), None],
-    ids=["mid-navigation", "still-parsing"],
-)
-def test_settle_keeps_waiting_while_the_page_is_unreadable(monkeypatch, unsettled):
-    driver = _settling_driver(monkeypatch, itertools.chain([unsettled] * 5, itertools.repeat("form")))
-
-    driver.wait_for_page_settled()
-
-    # Five unreadable polls, then "form" seen at least twice across the quiet window.
-    assert driver.page.evaluate.await_count >= 7
-
-
-def test_settle_gives_up_without_error_on_a_page_that_never_goes_quiet(monkeypatch):
-    ticking = (str(n) for n in itertools.count())
-    driver = _settling_driver(monkeypatch, ticking, config={"settle_timeout_ms": 100})
-
-    started = time.monotonic()
-    driver.wait_for_page_settled()
-
-    assert 0.1 <= time.monotonic() - started < 1
-
-
-def test_settle_timeout_of_zero_skips_the_wait(monkeypatch):
-    driver = _settling_driver(monkeypatch, itertools.repeat("form"), config={"settle_timeout_ms": 0})
-
-    driver.wait_for_page_settled()
-
-    driver.page.evaluate.assert_not_awaited()

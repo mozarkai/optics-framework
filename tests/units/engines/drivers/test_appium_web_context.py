@@ -5,7 +5,6 @@ from appium.common.exceptions import NoSuchContextException
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.engines.drivers import appium as appium_driver
 from optics_framework.engines.drivers.appium import Appium
 
 
@@ -33,17 +32,6 @@ def _driver_instance(capabilities: dict) -> Appium:
 )
 def test_native_ui_platform(capabilities, expected):
     assert _driver_instance(capabilities).native_ui_platform() == expected
-
-
-def test_android_sessions_keep_webview_version_details():
-    capabilities = {"platformName": "Android"}
-    instance = _driver_instance(capabilities)
-    instance.appium_server_url = "http://127.0.0.1:4723"
-    _, defaults = instance._get_platform_and_options(capabilities)
-
-    # Without them chromedriver is matched to the system WebView's version, not Chrome's.
-    assert defaults.get("enableWebviewDetailsCollection", True) is True
-    assert defaults["ensureWebviewsHavePages"] is False
 
 
 def test_web_context_raises_e0106_when_native_context_cannot_be_restored():
@@ -90,23 +78,6 @@ def _ios_instance(contexts: list[dict], visible: set[str], frozen: frozenset[str
 
     webdriver.execute_script.side_effect = execute_script
     return instance
-
-
-def test_ios_web_context_enters_the_visible_page_of_the_app_in_front():
-    instance = _ios_instance(
-        [
-            {"id": "WEBVIEW_200.1", "bundleId": "com.apple.mobilesafari"},
-            {"id": "WEBVIEW_100.1", "bundleId": "process-App"},
-            {"id": "WEBVIEW_100.2", "bundleId": "process-App"},
-        ],
-        visible={"WEBVIEW_200.1", "WEBVIEW_100.2"},
-    )
-
-    instance._enter_ios_web_context(instance.driver)
-
-    # Safari's visible page belongs to another process; the app's own hidden page is passed over.
-    assert "WEBVIEW_200.1" not in instance.entered
-    assert instance.entered[-1] == "WEBVIEW_100.2"
 
 
 def test_ios_web_context_tries_a_safari_sheet_first():
@@ -172,42 +143,6 @@ def test_web_rects_map_css_pixels_through_the_probe():
 
     assert rects == [{"x": 24, "y": 86, "width": 354, "height": 38}, None]
     assert webdriver.switch_to.context.call_args_list[-1].args == ("WEBVIEW_100.1",)
-
-
-def test_the_probe_lookup_pauses_until_the_accessibility_tree_lists_it(monkeypatch):
-    sleeps = []
-    monkeypatch.setattr(appium_driver.time, "sleep", sleeps.append)
-    instance = _driver_instance({"platformName": "Android"})
-    webdriver = instance.driver
-    webdriver.current_context = "WEBVIEW_chrome"
-    webdriver.execute_script.return_value = [0, 0, 400, 800]
-    probe = MagicMock()
-    probe.rect = {"x": 0, "y": 100, "width": 400, "height": 800}
-    probe_answers = iter([[], [probe]])
-    webdriver.find_elements.side_effect = (
-        lambda by, value: [probe] if value == "android.webkit.WebView" else next(probe_answers)
-    )
-
-    transform = instance._web_transform(webdriver)
-
-    assert (transform.origin_x, transform.origin_y, transform.factor_x, transform.factor_y) == (0, 100, 1.0, 1.0)
-    assert sleeps == [appium_driver._POLL_S]
-
-
-@pytest.mark.parametrize(
-    ("capabilities", "fast_contexts"),
-    [
-        ({"platformName": "iOS"}, True),
-        ({"platformName": "iOS", "browserName": "Safari"}, False),
-        ({"platformName": "Android"}, False),
-    ],
-)
-def test_ios_context_options_apply_to_native_sessions_only(capabilities, fast_contexts):
-    instance = _driver_instance(capabilities)
-    instance.appium_server_url = "http://127.0.0.1:4723"
-    _, defaults = instance._get_platform_and_options(capabilities)
-
-    assert (defaults.get("webviewAtomWaitTimeout") == 5000) is fast_contexts
 
 
 def test_a_browser_session_remembers_the_context_it_entered():

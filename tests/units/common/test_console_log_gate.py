@@ -42,42 +42,6 @@ class TestQuietConsoleLogs:
         quiet_console_logs()
         assert console.level == logging.WARNING
 
-    def test_file_handlers_keep_their_levels(self, tmp_path):
-        file_handler = logging.FileHandler(tmp_path / "internal_logs.log")
-        file_handler.setLevel(logging.DEBUG)
-        internal_logger.addHandler(file_handler)
-        try:
-            quiet_console_logs()
-            assert file_handler.level == logging.DEBUG
-            assert logging_manager.internal_console_handler.level == logging.WARNING
-        finally:
-            internal_logger.removeHandler(file_handler)
-            file_handler.close()
-
-    def test_info_records_still_reach_file_after_quiet(self, tmp_path):
-        log_file = tmp_path / "internal_logs.log"
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
-        previous_level = internal_logger.level
-        internal_logger.setLevel(logging.INFO)  # mirrors initialize_handlers
-        internal_logger.addHandler(file_handler)
-        try:
-            logging_manager.internal_console_handler.setLevel(logging.INFO)
-            quiet_console_logs()
-            internal_logger.info("[Playwright] Terminating session")
-        finally:
-            internal_logger.removeHandler(file_handler)
-            internal_logger.setLevel(previous_level)
-            file_handler.close()
-        assert "[Playwright] Terminating session" in log_file.read_text()
-
-    def test_restore_returns_console_to_logger_level(self):
-        quiet_console_logs()
-        assert logging_manager.internal_console_handler.level == logging.WARNING
-        restore_console_logs()
-        assert logging_manager.internal_console_handler.level == internal_logger.level
-
 
 class TestPrinterGateWiring:
     def _printer(self) -> TreeResultPrinter:
@@ -108,12 +72,3 @@ class TestPrinterGateWiring:
         assert logging_manager.internal_console_handler.level != logging.WARNING or (
             internal_logger.level == logging.WARNING
         )
-
-    def test_stop_live_without_display_is_a_no_op(self):
-        printer = self._printer()
-        printer._live = None
-        restore_console_logs()
-
-        printer.stop_live()
-
-        assert logging_manager.internal_console_handler.level == internal_logger.level

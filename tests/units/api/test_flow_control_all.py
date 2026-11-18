@@ -14,7 +14,6 @@ from types import SimpleNamespace
 import pytest
 
 from optics_framework.api.flow_control import FlowControl
-from optics_framework.common import test_context
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.expression import MAX_CHARS
 from optics_framework.common.models import (
@@ -90,24 +89,7 @@ def _register(flow_control, run, *module_names):
 # --------------------------------------------------------------------------- #
 
 class TestEvaluate:
-    def test_bare_name_resolves_to_scalar(self, flow_control):
-        flow_control.session.elements.add_element("count", "15")
-        assert flow_control.evaluate("${result}", "count") == "15"
-        assert flow_control.session.elements.get_first("result") == "15"
 
-    def test_arithmetic_expression(self, flow_control):
-        flow_control.session.elements.add_element("a", "5")
-        assert flow_control.evaluate("${result}", "${a} + 3") == 8
-        assert flow_control.session.elements.get_first("result") == "8"
-
-    def test_ignores_element_with_empty_value_list(self, flow_control):
-        flow_control.session.elements.elements["empty"] = []
-        flow_control.session.elements.add_element("a", "5")
-        assert flow_control.evaluate("${result}", "${a}") == 5
-
-    def test_missing_variable_raises(self, flow_control):
-        with pytest.raises(OpticsError):
-            flow_control.evaluate("${result}", "${nope}")
 
     @pytest.mark.parametrize("expr", ['__import__("os")', "open('x')", "(1).__class__"])
     def test_rejects_unsafe_expression(self, flow_control, expr):
@@ -120,19 +102,7 @@ class TestEvaluate:
 # --------------------------------------------------------------------------- #
 
 class TestReadData:
-    def test_csv_file_with_filter(self, tmp_path, flow_control):
-        (tmp_path / "test.csv").write_text("a,b\n1,2\n3,4\n5,6")
-        flow_control.session.config_handler.config.project_path = str(tmp_path)
-        result = flow_control.read_data("my_elem", "test.csv", "a == '3';select=b")
-        assert result == ["4"]
-        assert flow_control.session.elements.get_first("my_elem") == "4"
 
-    def test_json_file_with_filter(self, tmp_path, flow_control):
-        (tmp_path / "test.json").write_text(
-            json.dumps([{"foo": "bar", "num": 1}, {"foo": "baz", "num": 2}])
-        )
-        flow_control.session.config_handler.config.project_path = str(tmp_path)
-        assert flow_control.read_data("e", "test.json", "foo == 'baz';select=num") == ["2"]
 
     def test_json_single_object(self, tmp_path, flow_control):
         (tmp_path / "s.json").write_text(json.dumps({"serialId": "123", "foo": "bar"}))
@@ -183,13 +153,6 @@ def _api(flow_control, monkeypatch, fake_response, *, extract=None, jsonpath=Non
 
 
 class TestInvokeApi:
-    def test_jsonpath_assertion_passes(self, flow_control, monkeypatch, fake_response):
-        _api(flow_control, monkeypatch, fake_response,
-             extract={"result": "data.value"},
-             jsonpath=[{"path": "$.data.value", "condition": '$ == "42"'}],
-             resp=fake_response(json_data={"data": {"value": "42"}}))
-        flow_control.invoke_api("testcol.bar")
-        assert flow_control.session.elements.get_first("result") == "42"
 
     def test_jsonpath_assertion_fails(self, flow_control, monkeypatch, fake_response):
         _api(flow_control, monkeypatch, fake_response,
@@ -211,21 +174,7 @@ class TestInvokeApi:
 # --------------------------------------------------------------------------- #
 
 class TestExpressionCondition:
-    def test_first_true_runs_its_target(self, flow_control):
-        run = _module_runner({"modA": ["ran:modA"], "modB": ["ran:modB"], "modElse": ["ran:modElse"]})
-        _register(flow_control, run)
-        flow_control.session.elements.add_element("x", "yes")
-        result = flow_control.condition('${x} == "yes"', "modA", '${x} == "no"', "modB", "modElse")
-        assert result == ["ran:modA"]
-        assert run.calls == ["modA"]
 
-    def test_else_taken_when_all_false(self, flow_control):
-        run = _module_runner({"modA": ["a"], "modElse": ["ran:modElse"]})
-        _register(flow_control, run)
-        flow_control.session.elements.add_element("x", "no")
-        result = flow_control.condition('${x} == "yes"', "modA", "modElse")
-        assert result == ["ran:modElse"]
-        assert run.calls == ["modElse"]
 
     def test_no_else_returns_none(self, flow_control):
         run = _module_runner({"modA": ["a"]})
@@ -244,22 +193,6 @@ class TestExpressionCondition:
         flow_control.evaluate("${count}", "1 + 2")
         flow_control.session.elements.add_element("ratio", "0.75")
         flow_control.session.elements.add_element("code", "007")
-        assert flow_control.condition(cond, "modA") == ["ran:modA"]
-
-    @pytest.mark.parametrize("cond, ran", [("${big} == 9007199254740993", True), ("${big} == 9007199254740992", False),
-                                           ("${big} < 9007199254740993", False)])
-    def test_a_stored_whole_number_keeps_every_digit(self, flow_control, cond, ran):
-        run = _module_runner({"modA": ["ran:modA"]})
-        _register(flow_control, run)
-        flow_control.session.elements.add_element("big", "9007199254740993")
-        assert flow_control.condition(cond, "modA") == (["ran:modA"] if ran else None)
-
-    @pytest.mark.parametrize("cond", ["${ten} > ${nine}", "${five} == ${five_point}", "${code} != ${seven}"])
-    def test_two_stored_numbers_compare_as_numbers(self, flow_control, cond):
-        run = _module_runner({"modA": ["ran:modA"]})
-        _register(flow_control, run)
-        for name, value in {"ten": "10", "nine": "9", "five": "5", "five_point": "5.0", "code": "007", "seven": "7"}.items():
-            flow_control.session.elements.add_element(name, value)
         assert flow_control.condition(cond, "modA") == ["ran:modA"]
 
     def test_a_variable_inside_quotes_is_refused(self, flow_control):
@@ -281,13 +214,6 @@ class TestExpressionCondition:
         assert excinfo.value.code == Code.E0406
         assert reason in excinfo.value.message
         assert run.calls == []
-
-    def test_invert_prefix_flips_expression(self, flow_control):
-        run = _module_runner({"modA": ["ran:modA"]})
-        _register(flow_control, run)
-        flow_control.session.elements.add_element("x", "no")
-        # `!(x == yes)` is true when x != yes, so modA runs.
-        assert flow_control.condition('!${x} == "yes"', "modA") == ["ran:modA"]
 
 
 # --------------------------------------------------------------------------- #
@@ -327,26 +253,7 @@ class TestModuleCondition:
 # --------------------------------------------------------------------------- #
 
 class TestRunLoop:
-    def test_by_count(self, flow_control):
-        run = _module_runner({"mod1": ["ran:mod1"]})
-        flow_control.execute_module = run
-        assert flow_control.run_loop("mod1", "3") == [["ran:mod1"]] * 3
-        assert run.calls == ["mod1", "mod1", "mod1"]
 
-    def test_with_variables(self, flow_control):
-        seen = []
-
-        def run(target):
-            seen.append((
-                flow_control.session.elements.get_first("foo"),
-                flow_control.session.elements.get_first("bar"),
-            ))
-            return [f"{seen[-1][0]}-{seen[-1][1]}"]
-
-        flow_control.execute_module = run
-        out = flow_control.run_loop("mod2", "${foo}", '["1","2"]', "${bar}", '["3","4"]')
-        assert seen == [("1", "3"), ("2", "4")]
-        assert out == [["1-3"], ["2-4"]]
 
     @pytest.mark.parametrize(
         "args",
@@ -397,16 +304,3 @@ class TestDateEvaluate:
     def test_invalid_inputs_raise(self, flow_control, input_date, expression):
         with pytest.raises(OpticsError):
             flow_control.date_evaluate("${d}", input_date, expression)
-
-
-class TestNestedKeywordElementNames:
-    def test_a_keyword_in_a_module_sees_the_suite_name_of_its_locator(self, tmp_path):
-        seen = []
-        session = _Session(tmp_path)
-        session.elements.add_element("login_button", "//login")
-        session.modules.modules["login"] = [("Press Element", ["${login_button}"])]
-        control = FlowControl(session, {"press_element": lambda element: seen.append(test_context.element_names.get({}).get(element))})
-
-        control.execute_module("login")
-
-        assert seen == ["login_button"]

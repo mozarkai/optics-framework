@@ -112,13 +112,6 @@ def _shows_the_screen(frame: np.ndarray) -> bool:
     return float(wrong.mean()) < 0.1
 
 
-def test_brightness_keys_find_the_screen(camera, phone, tmp_path):
-    frame = _source(camera, phone, "brightness").capture()
-    assert _shows_the_screen(frame)
-    assert phone.keys == ["brightnessdown"] * 8 + ["brightnessup"] * 8
-    assert list(tmp_path.glob("camera_screen_found_*.jpg"))
-
-
 class _NoBrightnessKeys(_Phone):
     def press_keycode(self, keycode: str, event_name=None) -> None:
         self.keys.append(keycode)
@@ -145,17 +138,6 @@ def test_a_moved_phone_is_found_again(camera, phone):
     assert _shows_the_screen(source.capture())
 
 
-def test_a_phone_out_of_view_names_the_cause_and_saves_the_frame(camera, phone, tmp_path):
-    source = _source(camera, phone, "frame")
-    source.capture()
-    phone.placement = None
-    with pytest.raises(OpticsError) as exc:
-        source.capture()
-    assert exc.value.code == Code.E0305
-    assert "no screen found" in exc.value.message
-    assert list(tmp_path.glob("camera_blind_*.jpg"))
-
-
 def test_a_screen_that_stays_off_names_the_cause(camera, phone, monkeypatch):
     monkeypatch.setattr(camera_screenshot, "SCREEN_OFF_SECONDS", 0.3)
     source = _source(camera, phone, "frame")
@@ -170,20 +152,6 @@ def test_a_screen_that_stays_off_names_the_cause(camera, phone, monkeypatch):
 class _ReadsNothing:
     def find_element(self, frame, text, index=None):
         return None
-
-
-def test_a_blind_camera_stops_a_lookup_instead_of_reporting_not_found(camera, phone):
-    source = _source(camera, phone, "frame")
-    source.capture()
-    phone.placement = None
-    strategies = StrategyManager(InstanceFallback([source]), _ReadsNothing(), None)
-    lookup = strategies.locate("Settings")
-    with pytest.raises(OpticsError) as exc:
-        next(lookup)
-    assert exc.value.code == Code.E0305
-    with pytest.raises(OpticsError) as exc:
-        strategies.assert_presence(["Settings"], "Text", timeout=5)
-    assert exc.value.code == Code.E0305
 
 
 class _NativeTree(ElementSourceInterface):

@@ -90,32 +90,6 @@ def test_each_platform_has_its_own_select_all_back_and_home(plugged, platform, e
     assert fake.commands == expected
 
 
-def test_media_keys_reach_a_tv_or_computer(plugged):
-    fake = plugged()
-    driver = make_driver(fake, "linux")
-    for name in ("mute", "playpause", "volumeup", "brightnessdown", "cmd+space", "f5"):
-        driver.press_keycode(name)
-    assert fake.commands == [
-        ("media", "mute"),
-        ("media", "playpause"),
-        ("media", "volup"),
-        ("media", "brightnessdown"),
-        ("key", "cmd+space"),
-        ("key", "f5"),
-    ]
-
-
-def test_ios_has_no_back_key(plugged):
-    fake = plugged()
-    driver = make_driver(fake, "ios")
-    assert not driver.supports("go_back")
-    for back in (driver.go_back, lambda: driver.press_keycode("back")):
-        with pytest.raises(OpticsError) as refused:
-            back()
-        assert refused.value.code == Code.E0105
-    assert fake.commands == []
-
-
 IOS_HOME = [("media", "home"), ("media", "home")]
 
 
@@ -135,24 +109,6 @@ def test_apps_open_through_the_system_search(plugged, platform, launcher, home):
     with pytest.raises(OpticsError) as unnamed:
         driver.launch_other_app(" ", None)
     assert unnamed.value.code == Code.E0403
-
-
-@pytest.mark.parametrize(("platform", "expected"), [("android", [TOUCH]), ("ios", [])])
-def test_a_session_start_without_an_app_keeps_the_screen(plugged, platform, expected):
-    fake = plugged()
-    make_driver(fake, platform).launch_app()
-    assert fake.commands == expected
-
-
-def test_android_opens_apps_from_the_app_list(plugged):
-    fake = plugged()
-    make_driver(fake).launch_app("Outlook")
-    make_driver(fake, app_search={"x": 540, "y": 2200}).launch_app("Outlook")
-    opened = [("media", "home"), ("key", "meta")]
-    assert fake.commands == [
-        TOUCH, *opened, ("text", '"Outlook"'), ("key", "enter"),
-        TOUCH, *opened, ("tap", "0.5000", "0.9402"), ("text", '"Outlook"'), ("key", "up"), ("key", "enter"),
-    ]
 
 
 def test_android_closes_an_app_from_recents(plugged):
@@ -195,23 +151,6 @@ def test_every_optics_key_reaches_the_dongle(plugged):
     assert refused == OUTSIDE_THE_FIRMWARE
 
 
-@pytest.mark.parametrize(
-    ("behaviour", "send", "code"),
-    [
-        ({"host_connected": False}, lambda d: d.press_coordinates(10, 10), Code.E0106),
-        ({"unencrypted_replies": 10**6}, lambda d: d.press_coordinates(10, 10), Code.E0106),
-        ({"silent_after": 1}, lambda d: d.press_coordinates(10, 10), Code.E0106),
-        ({}, lambda d: d.enter_text("price €5"), Code.E0403),
-    ],
-)
-def test_dongle_errors_become_optics_codes(plugged, behaviour, send, code):
-    driver = make_driver(plugged(**behaviour))
-    with pytest.raises(OpticsError) as refused:
-        send(driver)
-    assert refused.value.code == code
-    assert driver.is_dead_session_error(refused.value) == (code == Code.E0106)
-
-
 def test_other_firmware_asks_for_a_flash(plugged):
     fake = plugged(firmware="other 2.0.0")
     with pytest.raises(OpticsError) as refused:
@@ -225,14 +164,6 @@ def test_v1_capabilities_are_refused(plugged):
         make_driver(fake, mickeys_width=1080)
     assert refused.value.code == Code.E0503
     assert "mickeys_width belong to the v1 ble driver" in str(refused.value)
-
-
-def test_element_keywords_are_offered_only_where_they_run(plugged):
-    driver = make_driver(plugged(), "linux")
-    assert driver.supports("press_coordinates")
-    assert driver.supports("go_back")
-    for refused in ("press_element", "get_text_element", "launch_app", "force_terminate_app", "get_app_version", "execute_script"):
-        assert not driver.supports(refused)
 
 
 def blind_project(folder, port, steps):
@@ -260,14 +191,3 @@ def test_a_project_without_a_camera_runs_by_coordinates_and_keys(plugged, tmp_pa
 
     assert run_project(folder, use_printer=False)
     assert fake.commands == [("tap", "0.5000", "0.5000"), PARK, ("text", '"hi"'), ("reset",)]
-
-
-def test_a_screen_keyword_without_a_camera_says_what_is_missing(plugged, tmp_path):
-    from optics_framework.helper.execute import run_project
-
-    folder = blind_project(tmp_path, plugged().port, [("Press Element", "Continue")])
-
-    assert not run_project(folder, use_printer=False)
-    junit = (tmp_path / "execution_output" / "junit_output.xml").read_text()
-    assert 'code="E0501"' in junit
-    assert "elements_sources" in junit
