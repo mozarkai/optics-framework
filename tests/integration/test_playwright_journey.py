@@ -186,7 +186,7 @@ async def test_mcp_session_offers_unique_locators_for_the_suite():
         started = await client.call_tool(
             "start_session", {"driver": "playwright", "capabilities": {"headless": True}}
         )
-        session_id = started.data["session_id"]
+        session_id = started.content[0].text.split()[1]
         try:
             await client.call_tool(
                 "launch_app", {"session_id": session_id, "app_identifier": STORE_URL}
@@ -220,7 +220,7 @@ async def _core_session(client, page):
         "start_session",
         {"driver": "playwright", "app": (FIXTURE / page).as_uri(), "capabilities": {"headless": True}},
     )
-    return started.data["session_id"]
+    return started.content[0].text.split()[1]
 
 
 async def test_mcp_tap_waits_through_a_blank_sign_in_hop():
@@ -235,8 +235,8 @@ async def test_mcp_tap_waits_through_a_blank_sign_in_hop():
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
 
-    assert tapped.structured_content["verified"] == "pass"
-    assert any(row["label"] == "Settings" for row in tapped.structured_content["screen"]["rows"])
+    assert "· verified: pass" in tapped.content[0].text
+    assert '"Settings"' in tapped.content[0].text
 
 
 async def test_mcp_offers_and_taps_an_option_a_script_handles():
@@ -246,14 +246,13 @@ async def test_mcp_offers_and_taps_an_option_a_script_handles():
         session_id = await _core_session(client, "settings.html")
         try:
             seen = await client.call_tool("observe", {"query": "No meetings"})
-            tapped = await client.call_tool(
-                "tap", {"target": seen.structured_content["rows"][0]["ref"], "expect_present": ["Picked No meetings"]}
-            )
+            row = seen.content[0].text.splitlines()[1]
+            tapped = await client.call_tool("tap", {"target": row.split()[0], "expect_present": ["Picked No meetings"]})
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
 
-    assert seen.structured_content["rows"][0]["act"] == ["tap"]
-    assert tapped.structured_content["verified"] == "pass"
+    assert '"No meetings" [tap]' in row
+    assert "· verified: pass" in tapped.content[0].text
 
 
 async def test_mcp_press_key_takes_key_names_and_points_refs_to_tap():
@@ -268,7 +267,7 @@ async def test_mcp_press_key_takes_key_names_and_points_refs_to_tap():
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
 
-    assert escape.structured_content["ok"] is True
+    assert escape.content[0].text.startswith("press_key esc -> ok")
     assert 'tap(target="e1")' in ref.content[0].text
     assert "Escape" in unknown.content[0].text
 
@@ -290,7 +289,7 @@ async def test_mcp_session_lists_only_the_keywords_its_browser_runs():
     names = {entry["keyword"] for entry in during}
     assert {entry["keyword"] for entry in before} - names == {"force_terminate_app"}
     assert "press_element" in names
-    assert refused.structured_content["error"]["kind"] == "unsupported"
+    assert "force_terminate_app is not supported" in refused.content[0].text
     assert "https://optics-framework.org/docs/reference/keywords/index.md" in refused.content[0].text
 
 
@@ -310,8 +309,9 @@ async def test_mcp_run_keyword_takes_one_misnamed_param_as_the_one_it_needs():
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
 
-    assert ran.structured_content["result"] == 2
-    assert two_wrong.structured_content["error"]["kind"] == "invalid_params"
+    assert "result: 2" in ran.content[0].text
+    assert two_wrong.is_error
+    assert "Example: run_keyword" in two_wrong.content[0].text
 
 
 async def test_mcp_rows_show_what_a_field_holds_but_never_a_password():
@@ -364,7 +364,6 @@ async def test_mcp_a_large_change_lists_the_controls_first_and_counts_the_rest()
     assert len(added) == 40
     assert any('button "Done"' in line for line in added)
     assert "… 21 more added rows" in lines[-1]
-    assert len(shown.structured_content["screen"]["added"]) == 40
 
 
 async def test_mcp_batch_runs_steps_in_order_and_stops_at_the_first_failure():
@@ -376,7 +375,7 @@ async def test_mcp_batch_runs_steps_in_order_and_stops_at_the_first_failure():
             filled = await client.call_tool("batch", {"steps": [
                 {"tool": "type_text", "target": "css=#city", "text": "Paris"},
                 {"tool": "tap", "target": "css=#terms"},
-                {"tool": "press_key", "target": "Tab"},
+                {"tool": "press_key", "key": "Tab"},
             ]})
             stopped = await client.call_tool("batch", {"steps": [
                 {"tool": "tap", "target": "css=#missing"},
@@ -387,12 +386,12 @@ async def test_mcp_batch_runs_steps_in_order_and_stops_at_the_first_failure():
             await client.call_tool("terminate_session", {"session_id": session_id})
 
     text = filled.content[0].text
-    assert filled.structured_content["ok"] is True
-    assert [step["ok"] for step in filled.structured_content["steps"]] == [True, True, True]
+    assert not filled.is_error
+    assert [line.split(" -> ")[1].split()[0] for line in text.splitlines() if " -> " in line] == ["ok"] * 3
     assert '= "Paris"' in text
     assert "(checked)" in text
     assert stopped.is_error
-    assert len(stopped.structured_content["steps"]) == 1
+    assert "stopped: 2 of 2 steps did not pass" in stopped.content[0].text
     assert "Rome" not in seen.content[0].text
 
 

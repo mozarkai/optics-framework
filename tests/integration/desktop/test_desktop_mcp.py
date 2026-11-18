@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import re
 import urllib.request
 
 import pytest
@@ -24,7 +25,7 @@ fastmcp = pytest.importorskip("fastmcp")
 
 
 class Agent:
-    """One MCP client and its desktop session; every tool call must succeed unless told otherwise."""
+    """One MCP client and its desktop session; every tool call must succeed, and its reply text is what an agent reads."""
 
     def __init__(self, client, desktop):
         self.client, self.desktop, self.sid = client, desktop, None
@@ -34,20 +35,27 @@ class Agent:
                                              raise_on_error=False)
         text = "\n".join(c.text for c in result.content if getattr(c, "text", None))
         assert not result.is_error, text
-        return result.structured_content or {}, text
+        return text
 
     async def start(self, host, app, **caps):
-        started, _ = await self.call("start_session", driver="appium", app=app, url=host,
-                                     capabilities={"platformName": self.desktop.platform, "automationName": "Xa11y",
-                                                   **fresh_start(), **caps})
-        self.sid = started["session_id"]
+        started = await self.call("start_session", driver="appium", app=app, url=host,
+                                  capabilities={"platformName": self.desktop.platform, "automationName": "Xa11y",
+                                                **fresh_start(), **caps})
+        self.sid = session_id(started)
 
     async def field(self):
-        _, screen = await self.call("observe")
-        return self.desktop.field_ref(screen)
+        return self.desktop.field_ref(await self.call("observe"))
 
     async def resource(self, name):
         return await self.client.read_resource(f"optics://session/{self.sid}/{name}")
+
+
+def session_id(started):
+    return started.split()[1]
+
+
+def verified(reply):
+    return re.search(r"· verified: (\w+)", reply).group(1)
 
 
 def _journey(host, desktop, steps, toolset=None):
@@ -66,13 +74,13 @@ def _journey(host, desktop, steps, toolset=None):
 def test_an_agent_types_presses_chords_and_switches_apps(host, desktop):
     async def steps(agent):
         editor = await agent.field()
-        typed, _ = await agent.call("type_text", target=editor, text="from an agent", expect_present=["from an agent"])
-        away, _ = await agent.call("launch_app", app=desktop.calculator, expect_absent=["from an agent"])
-        back, _ = await agent.call("launch_app", app=desktop.editor, expect_present=["from an agent"])
+        typed = await agent.call("type_text", target=editor, text="from an agent", expect_present=["from an agent"])
+        away = await agent.call("launch_app", app=desktop.calculator, expect_absent=["from an agent"])
+        back = await agent.call("launch_app", app=desktop.editor, expect_present=["from an agent"])
         await agent.call("press_key", key=desktop.select_all)
-        cleared, _ = await agent.call("press_key", key="BackSpace", expect_absent=["from an agent"])
+        cleared = await agent.call("press_key", key="BackSpace", expect_absent=["from an agent"])
         await agent.call("run_keyword", keyword="force_terminate_app", params={"app_name": desktop.calculator})
-        return [step["verified"] for step in (typed, away, back, cleared)]
+        return [verified(step) for step in (typed, away, back, cleared)]
 
     assert _journey(host, desktop, steps) == ["pass"] * 4
     assert not runs(host, desktop.calculator_name)
@@ -127,10 +135,10 @@ def test_an_agent_starts_the_app_named_in_appium_options(host, desktop):
     async def start():
         async with fastmcp.Client(mcp_server.build_server()) as client:
             agent = Agent(client, desktop)
-            started, _ = await agent.call("start_session", driver="appium", url=host, capabilities={
+            started = await agent.call("start_session", driver="appium", url=host, capabilities={
                 "platformName": desktop.platform, "automationName": "Xa11y",
                 "appium:options": {"app": desktop.editor, **fresh_start()}})
-            agent.sid = started["session_id"]
+            agent.sid = session_id(started)
             try:
                 return await agent.field()
             finally:
@@ -170,10 +178,10 @@ def test_an_agent_presses_by_percentage_of_the_app_window(host, desktop, monkeyp
             await agent.start(host, desktop.calculator)
             try:
                 await agent.call("run_keyword", keyword="press_element", params={"element": desktop.key_of("clear")})
-                pressed, _ = await agent.call("run_keyword", keyword="press_by_percentage", expect_present=["7"],
-                                              params={"percent_x": str(percent_x), "percent_y": str(percent_y)})
+                pressed = await agent.call("run_keyword", keyword="press_by_percentage", expect_present=["7"],
+                                           params={"percent_x": str(percent_x), "percent_y": str(percent_y)})
                 await agent.call("run_keyword", keyword="force_terminate_app", params={"app_name": desktop.calculator})
-                return pressed["verified"]
+                return verified(pressed)
             finally:
                 await agent.call("terminate_session")
 

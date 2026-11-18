@@ -29,7 +29,6 @@ REMOVED_ROWS = 10
 _WINDOW_BOUNDS = "window_bounds"
 _XPATH = "xpath="
 _CONTEXT_ROWS = 2
-_STATE_CHARS = len('= "') + 80
 _CAPTION_MAX_WORDS = 3
 _NAME_MAX_WORDS = 4
 
@@ -59,11 +58,6 @@ class Row:
     def __post_init__(self) -> None:
         if self.name is None:
             object.__setattr__(self, "name", self.label)
-
-    @property
-    def shown_state(self) -> str:
-        """``state`` with a long value cut; the whole value stays in ``state`` so that a change past the cut shows."""
-        return f'{self.state[:_STATE_CHARS]}…"' if len(self.state) > _STATE_CHARS + 1 else self.state
 
 
 @dataclass(frozen=True)
@@ -327,12 +321,13 @@ def _ref_ranges(refs: Iterable[str]) -> str:
 
 
 def _matches(row: Row, query: str) -> bool:
-    """A row whose ref is the query, or whose label, id or role holds it ("menu", "text field")."""
+    """A row whose ref is the query, or whose label, name, id or role holds it ("menu", "text field")."""
     if REF_RE.match(query):
         return row.ref == query
     needle = fold(query)
     role = row.cls.replace("_", " ").casefold()
-    return any(needle in text for text in (fold(row.label), row.rid.rsplit("/", 1)[-1].casefold(), role))
+    texts = (fold(row.label), fold(row.name or ""), row.rid.rsplit("/", 1)[-1].casefold(), role)
+    return any(needle in text for text in texts)
 
 
 def _is_menu(row: Row) -> bool:

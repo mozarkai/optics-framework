@@ -3,7 +3,8 @@
 An optics test project is a folder of CSV files plus a `config.yaml` that
 `optics execute <folder>` runs. Write one from the steps you ran in this session.
 The MCP has no save or record tool. The `optics://session/{id}/steps` resource
-gives you the rows to start from.
+gives you the rows to start from, also after the session ended: a stdio server keeps
+them for 7 days, an HTTP server for its 64 latest ended sessions until it stops.
 
 ## Layout
     <project>/

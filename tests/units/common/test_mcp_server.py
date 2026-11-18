@@ -14,6 +14,7 @@ import base64
 import inspect
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import threading
@@ -414,3 +415,238 @@ def test_an_unknown_driver_says_how_to_start_a_desktop_app():
         reply = _run(go())
 
     assert 'platformName' in reply.content[0].text
+
+
+S1 = "0b6f9c1e-6a8e-4d3b-9b8e-2f4c1a7d5e90"
+STEPS = f"optics://session/{S1}/steps"
+
+
+class _Desktop:
+    """A driver whose screen is a list of compact rows; it records each keyword it runs."""
+
+    def __init__(self, rows):
+        self.rows, self.ran, self.gate, self.effect = rows, [], None, None
+
+    async def read(self, _png):
+        return [dict(row, extra=dict(row["extra"])) for row in self.rows]
+
+    async def run(self, keyword, params):
+        self.ran.append(keyword)
+        if self.gate:
+            await self.gate.wait()
+        if self.effect:
+            self.effect()
+        return None, "XPath"
+
+
+def _row(text, cls, act=("tap",), area="", hint=""):
+    extra = {"class": cls, **({"area": area} if area else {}), **({"hint": hint} if hint else {})}
+    loc = f'//{cls}[@name="{hint or text}"]'
+    return {"text": text, "act": list(act), "bounds": [0, 0, 10, 10], "loc": loc, "extra": extra}
+
+
+@pytest.fixture
+def desktop(monkeypatch):
+    """One open session ``S1`` of this test's client over a fake desktop screen."""
+    from optics_framework.common.agent_core import AgentSession, keyword_catalog
+
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
+    monkeypatch.setattr(expose_api, "delete_session", AsyncMock())
+    screen = _Desktop([_row("Calendar", "window"), _row("Add Event", "button")])
+    keywords = keyword_catalog(mcp_server._keyword_functions(), coordinates=True)
+    agent = AgentSession(screen.read, screen.run, keywords)
+    monkeypatch.setitem(mcp_server._STATES, S1, mcp_server._Slot(agent, AsyncMock(), owner="client"))
+    monkeypatch.setitem(expose_api.session_manager.sessions, S1, object())
+    return screen
+
+
+def _calls(*calls):
+    async def go():
+        async with Client(mcp_server.build_server("core")) as client:
+            return [await client.call_tool(tool, args, raise_on_error=False) for tool, args in calls]
+
+    return _run(go())
+
+
+def _shown(reply):
+    """What a client that prefers structured content, as Claude Code does, puts in front of the agent."""
+    if reply.structured_content is not None:
+        return json.dumps(reply.structured_content)
+    return "\n".join(c.text for c in reply.content if getattr(c, "text", None))
+
+
+def test_rows_with_one_label_show_their_group_to_a_client_that_prefers_structured_content(desktop):
+    desktop.rows += [_row("Add to Playlist", "button", area="Preet Re"), _row("Add to Playlist", "button", area="Co2")]
+
+    seen, = _calls(("observe", {"query": "Add to Playlist"}))
+
+    assert 'in "Preet Re"' in _shown(seen)
+    assert 'in "Co2"' in _shown(seen)
+
+
+def test_an_action_that_changed_nothing_asks_for_an_expectation_in_what_the_agent_sees(desktop):
+    tapped, = _calls(("tap", {"target": "Add Event"}))
+
+    assert "expect_present" in _shown(tapped)
+
+
+def test_a_query_that_matches_nothing_says_how_many_rows_it_searched(desktop):
+    seen, = _calls(("observe", {"query": "Save"}))
+
+    assert 'no row of 2 holds "Save"' in _shown(seen)
+
+
+def test_a_query_finds_a_field_by_its_name_when_it_shows_its_value(desktop):
+    desktop.rows.append(_row("Optics Demo", "text_field", act=("tap", "input"), hint="Name"))
+
+    seen, = _calls(("observe", {"query": "Name"}))
+
+    assert '"Optics Demo"' in _shown(seen)
+
+
+def test_the_steps_of_an_ended_session_stay_readable_by_their_owner(desktop, monkeypatch):
+    async def go():
+        async with Client(mcp_server.build_server("core")) as client:
+            await client.call_tool("tap", {"target": "Add Event"})
+            ended = await client.call_tool("terminate_session", {})
+            steps = json.loads((await client.read_resource(STEPS))[0].text)
+            monkeypatch.setattr(mcp_server, "_caller", lambda: "someone else")
+            with pytest.raises(Exception, match="No session"):
+                await client.read_resource(STEPS)
+            return ended, steps
+
+    ended, steps = _run(go())
+
+    assert STEPS in _shown(ended)
+    assert [step["keyword"] for step in steps["steps"]] == ["Press Element"]
+    assert "Press Element" in steps["modules_csv"]
+
+
+def test_a_check_names_each_unmet_expectation_and_shows_the_screen(desktop):
+    checked, = _calls(("check", {"present": ["Calendar"], "absent": ["Add Event"], "timeout_s": 0}))
+
+    assert 'present "Calendar": met' in _shown(checked)
+    assert 'absent "Add Event": not met' in _shown(checked)
+    assert 'button "Add Event"' in _shown(checked)
+
+
+def test_batch_presses_a_key_by_the_name_press_key_takes(desktop):
+    ran, = _calls(("batch", {"steps": [{"tool": "tap", "target": "Add Event"}, {"tool": "press_key", "key": "Escape"}]}))
+
+    assert not ran.is_error, _shown(ran)
+    assert desktop.ran == ["press_element", "press_keycode"]
+
+
+def test_rows_with_a_screenshot_give_each_box_in_the_image(desktop):
+    import cv2
+    import numpy as np
+
+    png = cv2.imencode(".png", np.zeros((40, 60, 3), dtype=np.uint8))[1].tobytes()
+    mcp_server._STATES[S1].shot = AsyncMock(return_value=png)
+
+    seen, = _calls(("observe", {"screenshot": True}))
+
+    assert 'button "Add Event" [tap] @0,0,10,10' in _shown(seen)
+    assert any(c.type == "image" for c in seen.content)
+
+
+def _steps_of(sid):
+    async def go():
+        async with Client(mcp_server.build_server("core")) as client:
+            return json.loads((await client.read_resource(f"optics://session/{sid}/steps"))[0].text)
+
+    return _run(go())
+
+
+def test_the_steps_of_a_local_session_outlive_a_server_restart(desktop, monkeypatch):
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "")
+    mcp_server._STATES[S1].owner = ""
+    _calls(("tap", {"target": "Add Event"}))
+
+    mcp_server._STATES.clear()
+    mcp_server._ENDED.clear()
+    tapped, = _calls(("tap", {"target": "Add Event", "session_id": S1}))
+
+    assert [step["keyword"] for step in _steps_of(S1)["steps"]] == ["Press Element"]
+    assert f"has ended. The MCP server stopped before it ended the session. Its 1 recorded steps are at {STEPS}" in _shown(tapped)
+
+
+def test_a_paused_session_stays_open_for_its_own_client(desktop):
+    mcp_server._STATES[S1].last_used -= 10_000
+
+    tapped, = _calls(("tap", {"target": "Add Event"}))
+
+    assert not tapped.is_error, _shown(tapped)
+    assert desktop.ran == ["press_element"]
+
+
+def test_an_idle_session_ends_when_another_client_calls(desktop, monkeypatch):
+    mcp_server._STATES[S1].last_used -= 10_000
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "someone else")
+    _calls(("observe", {}))
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
+
+    tapped, = _calls(("tap", {"target": "Add Event", "session_id": S1}))
+
+    assert "It ended after 900 s idle." in _shown(tapped)
+
+
+def test_a_typed_password_reaches_the_steps_and_the_saved_file_only_as_a_variable(desktop, monkeypatch):
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "")
+    mcp_server._STATES[S1].owner = ""
+    desktop.rows.append(_row("", "text_field", act=("tap", "input"), hint="Password"))
+
+    _calls(("type_text", {"target": "Password", "text": "hunter2-secret"}))
+    steps = _steps_of(S1)
+    saved = (pathlib.Path(os.environ["OPTICS_HOME"]) / "mcp" / "steps" / f"{S1}.json").read_text()
+
+    assert "${password_value}" in steps["modules_csv"]
+    assert "<redacted>" not in steps["modules_csv"]
+    assert "password_value,<redacted>" in steps["elements_csv"]
+    assert any("<redacted>" in note and "ENV:" in note for note in steps["notes"])
+    assert "hunter2-secret" not in json.dumps(steps) + saved
+
+
+def test_terminate_keeps_the_step_of_an_action_still_running(desktop):
+    async def go():
+        desktop.gate = asyncio.Event()
+        async with Client(mcp_server.build_server("core")) as client:
+            tap = asyncio.create_task(client.call_tool("tap", {"target": "Add Event"}))
+            while not desktop.ran:
+                await asyncio.sleep(0.01)
+            end = asyncio.create_task(client.call_tool("terminate_session", {}))
+            await asyncio.sleep(0.1)
+            desktop.gate.set()
+            await tap
+            ended = await end
+            steps = json.loads((await client.read_resource(STEPS))[0].text)
+            return ended, steps
+
+    ended, steps = _run(go())
+
+    assert "Its 1 recorded steps" in _shown(ended)
+    assert [step["keyword"] for step in steps["steps"]] == ["Press Element"]
+
+
+def test_a_reply_that_nests_a_long_screen_keeps_the_rows_that_fit():
+    screen = "\n".join(f'button "Song number {n} {"x" * 90}" [tap]' for n in range(100))
+
+    reply = mcp_server._reply(["session s1 (xa11y)", screen])
+
+    assert 'button "Song number 0 ' in _shown(reply)
+    assert "more lines cut" in _shown(reply)
+
+
+def test_a_call_without_a_session_id_after_the_end_names_the_ended_session(desktop):
+    ended, tapped = _calls(("terminate_session", {}), ("tap", {"target": "Add Event"}))
+
+    assert f"Session '{S1}' has ended. It was ended by terminate_session." in _shown(tapped)
+    assert STEPS in _shown(tapped)
+
+
+def test_an_unverified_key_that_closed_a_draft_asks_for_an_expectation(desktop):
+    desktop.effect = desktop.rows.pop
+
+    pressed, = _calls(("press_key", {"key": "Escape"}))
+
+    assert "verified: unknown (add expect_present/expect_absent to verify)" in _shown(pressed)
