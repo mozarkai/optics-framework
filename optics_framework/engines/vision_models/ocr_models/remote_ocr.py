@@ -7,7 +7,6 @@ import base64
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common.config_handler import Config
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.engines.vision_models.base_methods import save_match_annotation
 
 
 class RemoteOCR(TextInterface):
@@ -20,7 +19,6 @@ class RemoteOCR(TextInterface):
         Accept either a `Config` Pydantic object or a plain dict-like config for
         convenience in tests and REPL usage.
         """
-        self.execution_output_dir = config.get("execution_output_path") if config else None
         if not config:
             internal_logger.error(
                 f"No configuration found for {self.DEPENDENCY_TYPE}: {self.NAME}")
@@ -117,70 +115,3 @@ class RemoteOCR(TextInterface):
 
         detected_text = " ".join(t for t in texts if t)
         return detected_text, formatted_results
-
-    def find_element(self, input_data: Union[str, "np.ndarray"], text: str, index: Optional[int] = None) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """
-        Locate multiple instances of a specific text in the given image using OCR and return the center coordinates
-        of the text at the given index with bounding box coordinates.
-
-        Parameters:
-        - input_data (str): Base64 encoded image string
-        - text (str): The text to locate in the image
-        - index (int): The index of the match to retrieve (default: None, returns first match)
-
-        Returns:
-        - Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-            Tuple of (success, center coordinates, bounding box) if found, None if not found or index out of bounds
-        """
-        detect_result = self.detect_text(input_data)
-        if not detect_result:
-            return None
-        _, detections = detect_result
-
-        matching_elements = self._find_matching_elements(detections, text)
-        result = self._select_matching_result(matching_elements, text, index)
-
-        if result is not None:
-            save_match_annotation(input_data, [result[1:]], "detected_text", self.execution_output_dir)
-
-        return result
-
-    def _find_matching_elements(self, detections: List[Tuple[List[Tuple[int, int]], str, float]], text: str) -> List[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Find all matching elements for the given text."""
-        matching_elements = []
-        for bbox, detected_text, _ in detections:
-            if text.lower() in detected_text.lower() and len(bbox) >= 4:
-                top_left = (int(bbox[0][0]), int(bbox[0][1]))
-                bottom_right = (int(bbox[2][0]), int(bbox[2][1]))
-                center_x = (top_left[0] + bottom_right[0]) // 2
-                center_y = (top_left[1] + bottom_right[1]) // 2
-                matching_elements.append(
-                    (True, (center_x, center_y), (top_left, bottom_right))
-                )
-        return matching_elements
-
-    def _select_matching_result(self, matching_elements: List[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]], text: str, index: Optional[int]) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Select the matching result based on index or return the first match."""
-        if not matching_elements:
-            internal_logger.debug(f"Text '{text}' not found in the image")
-            return None
-        if index is not None:
-            if 0 <= index < len(matching_elements):
-                return matching_elements[index]
-            internal_logger.debug(
-                f"Index {index} out of bounds for {len(matching_elements)} matches")
-            return None
-        return matching_elements[0]
-
-    def element_exist(self, input_data: str, reference_data: str) -> Tuple[int, int] | None:
-        """
-        Check if reference text exists in the input data and return its coordinates.
-
-        Args:
-            input_data (str): Text to search in
-            reference_data (str): Text to search for
-
-        Returns:
-            Tuple[int, int] | None: Coordinates of the reference text if found, otherwise None
-        """
-        return super().element_exist(input_data, reference_data)

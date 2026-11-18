@@ -499,50 +499,6 @@ class YourOCR(TextInterface):
         # Your initialization logic
         pass
 
-    def element_exist(
-        self,
-        input_data: Any,
-        reference_data: Any
-    ) -> Optional[Tuple[int, int]]:
-        """
-        Check if text exists in input data.
-
-        Args:
-            input_data: Screenshot/image as NumPy array
-            reference_data: Text to search for
-
-        Returns:
-            Tuple (x, y) of text location, or None if not found
-        """
-        # Your text detection logic
-        # Return (x, y) coordinates or None
-        pass
-
-    def find_element(
-        self,
-        input_data,
-        text,
-        index=None
-    ) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """
-        Locate specific text in input data.
-
-        Args:
-            input_data: Screenshot/image as NumPy array
-            text: Text to locate
-            index: Index if multiple matches
-
-        Returns:
-            Tuple (found, center, bounds) where:
-            - found: bool
-            - center: (x, y) coordinates
-            - bounds: ((x1, y1), (x2, y2)) bounding box
-            Returns None if not found
-        """
-        # Your text location logic
-        # Return (True, (x, y), ((x1, y1), (x2, y2))) or None
-        pass
-
     def detect_text(
         self,
         input_data
@@ -574,7 +530,7 @@ text_detection:
 
 ### Key Points
 
-- Implement all abstract methods from `TextInterface`
+- Implement only `detect_text`: `TextInterface.find_element` matches the text the same way for every engine
 - Handle NumPy array inputs (screenshots)
 - Return bounding boxes with confidence scores
 - Support multiple language detection

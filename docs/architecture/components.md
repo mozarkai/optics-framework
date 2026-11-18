@@ -1545,8 +1545,7 @@ Abstract interface for OCR and text detection.
 
 #### Key Methods
 
-- `element_exist()` - Check if text exists
-- `find_element()` - Locate text with bounding box
+- `find_element()` - Locate text with bounding box (shared; see `common/text_match.py`)
 - `detect_text()` - Full text detection with confidence
 
 #### Implementations

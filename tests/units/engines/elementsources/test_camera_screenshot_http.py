@@ -260,7 +260,7 @@ class _FakeAppium:
 
 
 class _FakeOcr:
-    def find_element(self, frame, text, index=None):
+    def find_element(self, frame, text, index=None, strict=False):
         return True, (20, 10), ((18, 8), (22, 12))
 
 

@@ -33,58 +33,6 @@ class GoogleVisionHelper(TextInterface):
             self._client = ImageAnnotatorClient()
         return self._client
 
-    def find_element(self, frame, text, index=None):
-        """
-        Locate a specific text in the given frame using OCR and return the center coordinates with an optional offset.
-
-        Parameters:
-        - frame (np.array): Image data of the frame.
-        - text (str): The text to locate in the frame.
-
-        Returns:
-        - bool: True if the text is found in the frame, False otherwise.
-        - tuple: (x, y) coordinates of the center of the text in the frame or (None, None) if no match is found.
-        - tuple: Bounding box coordinates of the detected text.
-        - frame (np.array): The frame with the text bounding box and adjusted center dot annotated.
-        """
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, ocr_results = self.detect_text(gray_frame)
-
-        matches = []
-        # Iterate over each detected text
-        for (bbox, detected_text, _) in ocr_results:
-            detected_text = detected_text.strip()
-            if text in detected_text:
-
-                # Get the bounding box coordinates of the detected text
-                (top_left, top_right, bottom_right, bottom_left) = bbox
-                x, y = int(top_left[0]), int(top_left[1])
-                w = int(bottom_right[0] - top_left[0])
-                h = int(bottom_right[1] - top_left[1])
-
-                # Calculate the center coordinates
-                center_x = x + w // 2
-                center_y = y + h // 2
-
-                matches.append(((center_x, center_y), (top_left, bottom_right)))
-
-        if not matches:
-            return False, (None, None), None
-
-        if index is not None:
-            if 0 <= index < len(matches):
-                selected_centre, selected_bbox = matches[index]
-            else:
-                return False, (None, None), None
-        else:
-            selected_centre, selected_bbox = matches[0]
-        return True, selected_centre, selected_bbox
-
-
-    def element_exist(self, input_data, reference_data):
-        return super().element_exist(input_data, reference_data)
-
-
     def detect_text(self,frame: np.ndarray):
         """
         Detects text in a given NumPy array using Google Vision API and returns standardized OCR format.
