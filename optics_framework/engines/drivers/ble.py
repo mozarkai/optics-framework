@@ -278,7 +278,7 @@ class BLEDriver(DriverInterface):
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         name = utils.strip_sensitive_prefix(str(keycode)).strip().lower()
         if not name or any(char.isspace() for char in name):
-            raise OpticsError(Code.E0403, message=f"Key name {keycode!r} is empty or holds a space or line break")
+            raise OpticsError(Code.E0403, message="A key name is empty or holds a space or line break")
         if name in NO_HID_KEY:
             self._unsupported(f"press_keycode {name}")
         if name == "back":

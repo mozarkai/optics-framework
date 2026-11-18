@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from optics_framework import api
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.common import expose_api, keyword_outcome
+from optics_framework.common.strategies import LocatorStrategy
 from optics_framework.common.agent_core import (
     ADVICE,
     COORDINATE_TAPS,
@@ -905,20 +906,25 @@ def _decode_screenshot(result: Any) -> bytes:
     return base64.b64decode(payload)
 
 
+def _screen_sources(
+    driver: str, capabilities: dict[str, Any], elements_sources: list[str] | None,
+) -> tuple[list[Any], dict[str, Any] | None]:
+    """The session's element sources, and the camera among them that reads the screen in the driver's frame."""
+    if elements_sources is None:
+        sources = list(_default_sources_for_driver(driver))
+        camera = None if sources else _camera_source(capabilities)
+        return ([camera] if camera else sources), camera
+    if "camera_screenshot" not in elements_sources:
+        return list(elements_sources), None
+    camera = _sized_camera(capabilities)
+    return [camera if name == "camera_screenshot" else name for name in elements_sources], camera
+
+
 def _session_config(
     driver: str, url: str, capabilities: dict[str, Any], elements_sources: list[str] | None, **fields: Any,
 ) -> expose_api.SessionConfig:
     source = {driver: {"enabled": True, "url": url or None, "capabilities": dict(capabilities)}}
-    sources = elements_sources
-    camera = None
-    if sources is None:
-        sources = list(_default_sources_for_driver(driver))
-        camera = None if sources else _camera_source(capabilities)
-        if camera is not None:
-            sources = [camera]
-    elif "camera_screenshot" in sources:
-        camera = _sized_camera(capabilities)
-        sources = [camera if name == "camera_screenshot" else name for name in sources]
+    sources, camera = _screen_sources(driver, capabilities, elements_sources)
     defaults = {"text_detection": lambda: installed_local_engines()[:1], "image_detection": lambda: ["templatematch"]}
     for key, default in defaults.items():
         if fields.get(key) is None:
@@ -976,11 +982,13 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
 async def _first_look(sid: str, head: list[str]) -> Any:
     """The new session's first screen read; a session that cannot list rows still starts and says what it lacks."""
     optics = expose_api.session_manager.get_session(sid).optics
-    if not optics.get_element_source().instances:
+    sources = optics.get_element_source().instances
+    if not sources:
         return _reply([*head, "No screen source: position and key keywords run; observe and check need a camera."])
-    shown = await _guarded(sid, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
-    if shown.is_error and optics.get_text_detection() is None:
+    ocr = optics.get_text_detection()
+    if not (ocr and ocr.instances) and not any(LocatorStrategy._is_method_implemented(s, "get_interactive_elements") for s in sources):
         return _reply([*head, "No OCR engine: observe and check cannot list a camera's rows; pass text_detection to read them."])
+    shown = await _guarded(sid, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
     return _reply([*head, shown.content[0].text], is_error=shown.is_error)
 
 
