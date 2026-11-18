@@ -223,6 +223,9 @@ class _QueryForwardingConnection(AppiumConnection):
         return super()._request(method, urlunsplit(parts._replace(query=query)), body=body)
 
 
+_MISSING_DRIVER = re.compile(r"Could not find a driver for automationName '([^']*)'")
+
+
 def _command_executor_and_config(
     server_url: str, timeout: int
 ) -> tuple[str | AppiumConnection, AppiumClientConfig | None]:
@@ -517,9 +520,17 @@ class Appium(DriverInterface):
         except Exception as e:
             internal_logger.debug(f"Failed to create new Appium session: {e}")
             self.driver = None
-            raise OpticsError(
-                Code.E0102, message=f"Failed to create new Appium session due to: {e}", cause=e
-            ) from e
+            raise OpticsError(Code.E0102, message=self._session_error(e), cause=e) from e
+
+    def _session_error(self, error: Exception) -> str:
+        missing = _MISSING_DRIVER.search(str(error))
+        if missing is None:
+            return f"Failed to create new Appium session due to: {error}"
+        return (
+            f"The Appium server at {self.appium_server_url} has no driver for automationName '{missing[1]}'. "
+            "Install the driver for that server. If it is installed, the server uses a different APPIUM_HOME, "
+            f"or another Appium server uses this port.\nAppium said: {error}"
+        )
 
     def start_session(
         self,
