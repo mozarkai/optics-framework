@@ -28,6 +28,7 @@ _DRIVER_BY_PLATFORM = {
     "desktop": "appium",
     "web-selenium": "selenium",
     "web-playwright": "playwright",
+    "bluetooth": "ble",
 }
 
 
@@ -71,6 +72,8 @@ def _answers_for(platform: str, *, ocr: bool = False) -> dict:
         answers.update(platform_name="Linux", app="mousepad", appium_url="http://127.0.0.1:4723")
     elif platform == "web-selenium":
         answers["selenium_url"] = "http://127.0.0.1:4444/wd/hub"
+    elif platform == "bluetooth":
+        answers.update(ble_platform="ios", ble_serial="", width=1170, height=2532, camera_url="http://127.0.0.1:9100/")
     else:  # web-playwright
         answers.update(browser="firefox", headless=True)
     return answers
@@ -95,6 +98,19 @@ class TestRenderProjectConfig:
         disabled = all_sources - set(expected)
         flat = [name for e in config["elements_sources"] for name in e]
         assert set(disabled) <= set(flat)
+
+    @pytest.mark.parametrize("camera_url", ["http://127.0.0.1:9100/", ""])
+    def test_bluetooth_answers_make_a_runnable_ble_entry(self, camera_url):
+        from optics_framework.engines.drivers.ble import Capabilities
+
+        answers = {**_answers_for("bluetooth"), "ble_serial": "ABC123", "camera_url": camera_url}
+        config = yaml.safe_load(project_config.render_project_config(answers))
+        ble = next(e["ble"] for e in config["driver_sources"] if "ble" in e)
+        caps = Capabilities(**ble["capabilities"])
+        assert (caps.serial, caps.platform, caps.frame.width, caps.frame.height) == ("ABC123", "ios", 1170, 2532)
+        camera = next(e["camera_screenshot"] for e in config["elements_sources"] if "camera_screenshot" in e)
+        assert camera["enabled"] is bool(camera_url)
+        assert camera.get("capabilities", {}).get("url") == (camera_url or None)
 
     def test_android_answers_land_in_appium_capabilities(self):
         answers = _answers_for("android")

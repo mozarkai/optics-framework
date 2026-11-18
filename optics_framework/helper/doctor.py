@@ -13,6 +13,7 @@ never constructs ``ConfigHandler``, because its constructor creates an
 ``execution_output/`` directory as a side effect and a diagnostic command must
 not mutate the project it is inspecting.
 """
+import importlib
 import json
 import os
 import platform
@@ -56,6 +57,10 @@ _PLAYWRIGHT_BROWSER = "playwright browser"
 _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
 _CONFIG_FILE = "config: file"
+_BLE_DONGLE = "ble dongle"
+_BLE_DEVICE = "ble paired device"
+_ANY_DRIVER_SOURCES = frozenset({"camera_screenshot"})
+_AIRHAND_DOCS = "https://github.com/chinmayajha/airhand"
 _XA11Y_DRIVER = "xa11y driver"
 _XA11Y_PACKAGE = "appium-xa11y-driver"
 _XA11Y_INSTALL = f"appium driver install --source=npm {_XA11Y_PACKAGE}"
@@ -443,10 +448,15 @@ def _desktop_problem(caps: dict) -> tuple[list[str], bool] | None:
 
 
 def _source_row(driver: str, enabled_sources: set[str]) -> Check:
-    matching = sorted(s for s in enabled_sources if s.startswith(f"{driver}_"))
+    matching = sorted(s for s in enabled_sources
+                      if s.startswith(f"{driver}_") or s in _ANY_DRIVER_SOURCES)
     if matching:
         return Check(f"config: {driver} element source", "ok",
                      f"enabled: {', '.join(matching)}")
+    if driver == "ble":
+        return Check("config: ble element source", "warn",
+                     "no screen source: only keywords that do not read the screen run",
+                     "Enable camera_screenshot under elements_sources to read the screen.")
     return Check(f"config: {driver} element source", "fail",
                  f"no {driver}_* element source enabled",
                  "Enable at least one matching entry under elements_sources.")
@@ -460,10 +470,75 @@ def _settings_row(driver: str, cfg: dict) -> Check:
         problems, fatal = ["url is missing", *problems], True
     if driver == "playwright" and not caps.get("browser"):
         problems.append("capabilities.browser missing (chromium is the default)")
+    if driver == "ble":
+        problems.extend(_ble_problems(caps))
+        fatal = bool(problems)
     if not problems:
         return Check(name, "ok", "required settings present")
     return Check(name, "fail" if fatal else "warn", "; ".join(problems),
                  "Edit config.yaml in this project folder.")
+
+
+def _ble_problems(caps: Any) -> list[str]:
+    from optics_framework.engines.drivers.ble import Capabilities
+
+    try:
+        Capabilities.model_validate(caps)
+    except ValidationError as exc:
+        return [f"{'.'.join(map(str, error['loc'])) or 'capabilities'}: {error['msg']}"
+                for error in exc.errors()]
+    return []
+
+
+def _airhand() -> Any:
+    """airhand when it is installed, imported at each check, so a package that quickstart has just installed is seen."""
+    importlib.invalidate_caches()
+    try:
+        return importlib.import_module("airhand")
+    except ImportError:
+        return None
+
+
+def check_ble(caps: Any) -> list[Check]:
+    """The dongle the ble driver opens, and whether a paired device holds an encrypted link to it."""
+    airhand = _airhand()
+    # The settings row reports capabilities that are not a mapping.
+    if airhand is None or not isinstance(caps, dict):
+        return []
+    serial, port = caps.get("serial"), caps.get("port")
+    if serial is not None and port is not None:
+        return []
+    try:
+        dongle = airhand.Dongle(serial, port=port)
+    except ValueError as exc:
+        return [Check(_BLE_DONGLE, "warn", str(exc), "Set capabilities.serial in config.yaml.")]
+    except airhand.DongleLost as exc:
+        return [Check(_BLE_DONGLE, "warn", str(exc), "Plug in the airhand dongle named in config.yaml.")]
+    except airhand.WrongFirmware as exc:
+        return [Check(_BLE_DONGLE, "warn", str(exc), f"Install the firmware for this airhand version: {_AIRHAND_DOCS}#quick-start")]
+    with dongle:
+        try:
+            status = dongle.status()
+        except airhand.AirhandError as exc:
+            return [Check(_BLE_DONGLE, "warn", str(exc), "Replug the dongle, then run doctor again.")]
+        rows = [Check(_BLE_DONGLE, "ok", dongle.identity)]
+    if status.get("conn") != "yes":
+        rows.append(Check(_BLE_DEVICE, "warn", "no device connected",
+                          "Select airhand in the device's Bluetooth settings."))
+    elif int(status.get("sec", "0")) < 2:
+        rows.append(Check(_BLE_DEVICE, "warn", "connected, but the link is not encrypted",
+                          "Forget airhand in the device's Bluetooth settings and pair again."))
+    else:
+        rows.append(Check(_BLE_DEVICE, "ok", "connected and encrypted"))
+    return rows
+
+
+def _ble_caps(folder: str | None) -> dict | None:
+    data, _ = _load_project_yaml(folder) if folder else (None, None)
+    if data is None:
+        return None
+    cfg = _enabled_entries(data.get("driver_sources")).get("ble")
+    return None if cfg is None else cfg.get("capabilities") or {}
 
 
 def _appium_problems(caps: dict) -> tuple[list[str], bool]:
@@ -492,6 +567,7 @@ _NO_CONFIG_HINT = ("Run `optics quickstart` to create a project, "
 _DRIVER_ROW_NAMES = {
     "selenium": (_SELENIUM_WEBDRIVER,),
     "playwright": (_PLAYWRIGHT_BROWSER,),
+    "ble": (_BLE_DONGLE, _BLE_DEVICE),
 }
 
 
@@ -692,6 +768,9 @@ def diagnose(folder: str | None = None) -> Diagnosis:
         ("Desktop", check_desktop(host, port)),
         ("Web", check_web(_playwright_is_remote(folder))),
     ]
+    ble_caps = _ble_caps(folder)
+    if ble_caps is not None:
+        sections.append(("Bluetooth", check_ble(ble_caps)))
     if folder:
         sections.append(("Project", validate_project(folder)))
     elif not os.path.isfile(os.path.join(os.getcwd(), "config.yaml")):

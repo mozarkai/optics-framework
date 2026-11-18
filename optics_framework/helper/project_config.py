@@ -14,6 +14,7 @@ Answers schema (normalised):
   desktop:        platform_name (Mac | Linux | Windows), app, appium_url
   web-selenium:   selenium_url
   web-playwright: browser, headless (bool)
+  bluetooth:      ble_platform, ble_serial, width, height, camera_url
   common:         ocr (bool), log_level (str, default "INFO")
 """
 import os
@@ -35,24 +36,31 @@ _DRIVER_BY_PLATFORM = {
     "desktop": "appium",
     "web-selenium": "selenium",
     "web-playwright": "playwright",
+    "bluetooth": "ble",
 }
 
 _ELEMENTS_SOURCES_BY_DRIVER = {
     "appium": ["appium_find_element", "appium_page_source", "appium_web", "appium_screenshot"],
     "selenium": ["selenium_find_element", "selenium_page_source", "selenium_screenshot"],
     "playwright": ["playwright_find_element", "playwright_page_source", "playwright_screenshot"],
+    "ble": ["camera_screenshot"],
 }
 
 _SOURCE_GROUP_TITLES = {
     "appium": "Appium locators / page source / web pages / screenshots:",
     "selenium": "Selenium locators / page source / screenshots:",
     "playwright": "Playwright locators / page source / screenshots:",
+    "ble": "A camera over the screen (works with any driver):",
 }
+
+_CAPABILITIES_KEY = "      capabilities:"
+_BLE_PLATFORMS = ["ios", "android", "macos", "windows", "linux"]
 
 _PLATFORMS_BY_DOMAIN = {
     "mobile": (["android", "ios"], "android"),
     "web": (["web-playwright", "web-selenium"], "web-playwright"),
     "desktop": (["desktop"], "desktop"),
+    "bluetooth": (["bluetooth"], "bluetooth"),
 }
 
 _APPIUM_URL = "http://127.0.0.1:4723"
@@ -81,6 +89,34 @@ def _ask(question: str, **kwargs) -> str:
 def _confirm(question: str, **kwargs) -> bool:
     blank_line()
     return Confirm.ask(question, **kwargs)
+
+
+def _ask_pixels(question: str, default: int) -> int:
+    while True:
+        value = _ask(question, default=str(default)).strip()
+        if value.isdigit() and int(value) > 0:
+            return int(value)
+
+
+def _detected_dongle() -> str:
+    try:
+        import airhand
+    except ImportError:
+        return ""
+    found = airhand.serial_numbers()
+    return found[0] if len(found) == 1 else ""
+
+
+def _ask_bluetooth(answers: dict) -> None:
+    answers["ble_platform"] = _ask(
+        "Which device does the dongle drive?", choices=_BLE_PLATFORMS, default="ios")
+    answers["ble_serial"] = _ask(
+        "Dongle USB serial number (empty: the only plugged-in dongle)",
+        default=_detected_dongle())
+    answers["width"] = _ask_pixels("Screen width in pixels", 1080)
+    answers["height"] = _ask_pixels("Screen height in pixels", 1920)
+    answers["camera_url"] = _ask(
+        "Camera screenshot URL (empty: no camera)", default="")
 
 
 def prompt_project_config(domain: str | None = None) -> dict:
@@ -128,6 +164,8 @@ def prompt_project_config(domain: str | None = None) -> dict:
     elif platform == "web-selenium":
         answers["selenium_url"] = _ask(
             "Selenium/WebDriver server URL", default="http://127.0.0.1:4444/wd/hub")
+    elif platform == "bluetooth":
+        _ask_bluetooth(answers)
     else:  # web-playwright
         answers["browser"] = _ask(
             "Which browser?", choices=["chromium", "firefox", "webkit"],
@@ -136,7 +174,7 @@ def prompt_project_config(domain: str | None = None) -> dict:
             "Run headless (no browser window)?", default=False)
     answers["ocr"] = _confirm(
         "Also find elements by on-screen text (EasyOCR)? Useful when there "
-        "are no stable locators.", default=False)
+        "are no stable locators.", default=bool(answers.get("camera_url")))
     answers["log_level"] = _ask(
         "Log level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO")
@@ -177,7 +215,7 @@ def _appium_block(answers: dict, enabled: bool) -> list[str]:
         "  - appium:",
         f"      enabled: {_enabled(enabled)}",
         f"      url: {_quote(answers.get('appium_url') or _APPIUM_URL)}",
-        "      capabilities:",
+        _CAPABILITIES_KEY,
         *_CAPABILITIES.get(platform, _android_capabilities)(answers),
     ]
 
@@ -231,6 +269,20 @@ def _desktop_capabilities(answers: dict) -> list[str]:
 _CAPABILITIES = {"ios": _ios_capabilities, "desktop": _desktop_capabilities}
 
 
+def _ble_block(answers: dict, enabled: bool) -> list[str]:
+    serial = answers.get("ble_serial")
+    return [
+        "  # Any device that accepts a Bluetooth keyboard and mouse, through an airhand",
+        "  # dongle; frame is the screen size in pixels.  Install:  optics setup --install ble",
+        "  - ble:",
+        f"      enabled: {_enabled(enabled)}",
+        _CAPABILITIES_KEY,
+        *([f"        serial: {_quote(serial)}"] if serial else []),
+        f"        platform: {answers.get('ble_platform') or 'ios'}",
+        f"        frame: {{width: {answers.get('width') or 1080}, height: {answers.get('height') or 1920}}}",
+    ]
+
+
 def _driver_sources_section(answers: dict, driver: str) -> list[str]:
     lines = [
         "driver_sources:",
@@ -244,22 +296,39 @@ def _driver_sources_section(answers: dict, driver: str) -> list[str]:
         "  # Web via Playwright (no external server).  Install:  optics setup --install playwright",
         "  - playwright:",
         f"      enabled: {_enabled(driver == 'playwright')}",
-        "      capabilities:",
+        _CAPABILITIES_KEY,
         f"        browser: {answers.get('browser') or 'chromium'}",
         f"        headless: {_enabled(bool(answers.get('headless', False)))}",
+        *_ble_block(answers, enabled=driver == "ble"),
         "",
     ]
     return lines
 
 
-def _elements_sources_section(driver: str) -> list[str]:
+def _camera_capabilities(answers: dict) -> list[str]:
+    url = answers.get("camera_url")
+    if not url:
+        return []
+    return [
+        _CAPABILITIES_KEY,
+        f"        url: {_quote(url)}",
+        f"        out_width: {answers.get('width') or 1080}",
+        f"        out_height: {answers.get('height') or 1920}",
+    ]
+
+
+def _elements_sources_section(driver: str, answers: dict) -> list[str]:
     wanted = _ELEMENTS_SOURCES_BY_DRIVER[driver]
+    if driver == "ble" and not answers.get("camera_url"):
+        wanted = []
     lines = ["elements_sources:"]
     for group, sources in _ELEMENTS_SOURCES_BY_DRIVER.items():
         lines.append(f"  # {_SOURCE_GROUP_TITLES[group]}")
         for source in sources:
             lines.append(f"  - {source}:")
             lines.append(f"      enabled: {_enabled(source in wanted)}")
+            if source == "camera_screenshot":
+                lines += _camera_capabilities(answers)
         lines.append("")
     return lines
 
@@ -293,7 +362,7 @@ def render_project_config(answers: dict) -> str:
     sections: list[str] = [
         *_header(platform),
         *_driver_sources_section(answers, driver),
-        *_elements_sources_section(driver),
+        *_elements_sources_section(driver, answers),
         *_vision_sections(answers),
         f"log_level: {answers.get('log_level') or 'INFO'}",
         "json_log: true",
