@@ -28,6 +28,8 @@ HTTP_OK = 200
 ROTATIONS = {"clockwise": cv2.ROTATE_90_CLOCKWISE, "counterclockwise": cv2.ROTATE_90_COUNTERCLOCKWISE}
 HTTP_ERROR_FIELD_LIMIT = 300
 HTTP_ERROR_BODY_LIMIT = 4096
+# Larger than any screen; a remote caller sets the size, and the frame is allocated at it.
+MAX_OUTPUT_SIDE = 8192
 CAPTURE_DEADLINE_SECONDS = 15
 READ_CHUNK_BYTES = 65536
 # Backends clamp a size they cannot give to the largest one they can.
@@ -105,8 +107,8 @@ class CapabilitiesConfig(BaseModel):
         None,
         description="Bearer token sent to an http(s):// url; masked in repr and dumps",
     )
-    out_width: int = Field(1080, gt=0, description="Output width of the screenshot")
-    out_height: int = Field(1920, gt=0, description="Output height of the screenshot")
+    out_width: int = Field(1080, gt=0, le=MAX_OUTPUT_SIDE, description="Output width of the screenshot")
+    out_height: int = Field(1920, gt=0, le=MAX_OUTPUT_SIDE, description="Output height of the screenshot")
     deskew_corners: Optional[list[str]] = Field(
         None,
         description="The screen's corners in the camera frame as 'x,y': top-left, top-right, bottom-right, bottom-left",
