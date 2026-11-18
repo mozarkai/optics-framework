@@ -296,7 +296,8 @@ class ViewGuard:
     """Remembers the area around the screen, which no screen content changes, to tell when the phone or camera moved."""
 
     def __init__(self, frame: np.ndarray, corners: np.ndarray):
-        self._scale = min(1.0, WORK_SIZE / max(frame.shape[:2]))
+        self._shape = frame.shape[:2]
+        self._scale = min(1.0, WORK_SIZE / max(self._shape))
         gray = self._small(frame)
         quad = corners * self._scale
         self._ring = self._ring_mask(gray.shape, quad)
@@ -319,7 +320,9 @@ class ViewGuard:
         return (outer > 0) & (inner == 0)
 
     def moved(self, frame: np.ndarray) -> bool:
-        """Whether the area around the screen no longer looks as it did; never True when that area has no texture."""
+        """Whether the frame changed size or the area around the screen no longer looks as it did, when that area has texture."""
+        if frame.shape[:2] != self._shape:
+            return True
         if not self.anchored:
             return False
         current = self._small(frame)[self._ring]
