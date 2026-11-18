@@ -1,8 +1,8 @@
 <div align="center">
 
 <a href="https://optics-framework.org/?ref=readme"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/hero-dark.webp">
-  <img alt="Optics. Create tests your way. Run them forever. Write, record, say, delegate." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/hero-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/hero-dark.webp">
+  <img alt="Optics. Create tests your way. Run them forever. Write, record, say, delegate." src="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/hero-light.webp" width="100%">
 </picture></a>
 
 [![PyPI](https://img.shields.io/pypi/v/optics-framework.svg)](https://pypi.org/project/optics-framework/)
@@ -27,8 +27,8 @@ These four pages on optics-framework.org need no install. Click an image to open
 ### Real Optics, in the browser
 
 <a href="https://optics-framework.org/playground?ref=readme"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/playground-dark.webp">
-  <img alt="The playground runs the optics-framework wheel on Pyodide and executes a suite against the Birch shop app." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/playground-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/playground-dark.webp">
+  <img alt="The playground runs the optics-framework wheel on Pyodide and executes a suite against the Birch shop app." src="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/playground-light.webp" width="100%">
 </picture></a>
 
 [/playground](https://optics-framework.org/playground?ref=readme) loads the `optics-framework` wheel from PyPI on Pyodide. Edit the suite, break a locator, then run `dry_run` or `execute` on Birch, a demo shop app. The output and `junit_output.xml` come from Optics itself.
@@ -36,8 +36,8 @@ These four pages on optics-framework.org need no install. Click an image to open
 ### `optics live`, next to a phone
 
 <a href="https://optics-framework.org/?ref=readme#playground"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/live-dark.webp">
-  <img alt="A simulation of optics live: typed steps run on a phone, then /save writes them into the suite." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/live-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/live-dark.webp">
+  <img alt="A simulation of optics live: typed steps run on a phone, then /save writes them into the suite." src="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/live-light.webp" width="100%">
 </picture></a>
 
 [The homepage playground](https://optics-framework.org/?ref=readme#playground) is a simulation of `optics live`. Type a step or tap the phone. Each step runs at once and shows how Optics found the element. `/save` writes the steps that passed into `modules.csv` and `elements.csv`. Under the phone, each step also shows as CSV, Python, Robot, an HTTP call and an MCP call.
@@ -45,8 +45,8 @@ These four pages on optics-framework.org need no install. Click an image to open
 ### A real run, frame by frame
 
 <a href="https://optics-framework.org/run?ref=readme"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/run-dark.webp">
-  <img alt="A replay of a real Optics run against two releases of Birch, with the screenshots and logs the run wrote." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/run-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/run-dark.webp">
+  <img alt="A replay of a real Optics run against two releases of Birch, with the screenshots and logs the run wrote." src="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/run-light.webp" width="100%">
 </picture></a>
 
 [/run](https://optics-framework.org/run?ref=readme) replays a real run of the Birch suite against two releases of the app. Each frame is a file that the run wrote. Release 2.2 passes every step and fails the run, because the last screen shows "Session expired".
@@ -54,8 +54,8 @@ These four pages on optics-framework.org need no install. Click an image to open
 ### Explain a suite
 
 <a href="https://optics-framework.org/explain?ref=readme"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/explain-dark.webp">
-  <img alt="The suite explainer reads a suite row by row and shows what optics dry_run reports." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/explain-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/explain-dark.webp">
+  <img alt="The suite explainer reads a suite row by row and shows what optics dry_run reports." src="https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/readme/explain-light.webp" width="100%">
 </picture></a>
 
 [/explain](https://optics-framework.org/explain?ref=readme) reads a suite row by row. It shows what each step does, how each value resolves and what `optics dry_run` reports for it.
