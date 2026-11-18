@@ -59,3 +59,25 @@ def test_a_csv_that_is_not_text_is_skipped(project):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
     (project / "export.csv").write_bytes(b"\xff\xfe\x00binary")
     assert dry_run(project).returncode == 0
+
+
+def test_a_step_without_the_params_its_keyword_needs_fails(project):
+    (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
+    (project / "modules.csv").write_text("module_name,module_step,param_1\nPress Seven,Press Element,\n")
+    assert dry_run(project).returncode != 0
+    junit = (project / "execution_output" / "junit_output.xml").read_text()
+    assert "E0403" in junit
+    assert "'element'" in junit
+
+
+def test_a_passed_dry_run_says_what_it_did_not_check(project):
+    (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
+    result = dry_run(project)
+    assert result.returncode == 0
+    assert "does not check locators" in result.stdout
+
+
+def test_a_value_that_holds_a_reference_is_substituted_once(project):
+    (project / "elements.csv").write_text("Element_Name,Element_ID\nsnippet,${literal}\n")
+    (project / "modules.csv").write_text("module_name,module_step,param_1\nPress Seven,Enter Text Direct,prefix ${snippet}\n")
+    assert dry_run(project).returncode == 0

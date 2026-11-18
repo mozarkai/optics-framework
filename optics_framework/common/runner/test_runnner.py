@@ -1,3 +1,4 @@
+import inspect
 import json
 import re
 import os
@@ -933,9 +934,9 @@ class TestRunner(Runner):
 
     def _dry_run_keyword(self, keyword_node: KeywordNode, keyword_result: Any) -> None:
         """Resolve a keyword's params without running it; raise what a run would fail on before acting."""
-        params, store_as = utils.split_store_as(keyword_node.params)
+        written, store_as = utils.split_store_as(keyword_node.params)
         method = self.keyword_map.get("_".join(keyword_node.name.split()).lower())
-        params = utils.substitute_inline(method, params, self.elements)
+        params = utils.substitute_inline(method, written, self.elements)
         raw = utils.raw_param_indices(method)
         resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
         # Nothing runs here, so define the names a run would set.
@@ -952,6 +953,16 @@ class TestRunner(Runner):
             )
         if method is None:
             raise keyword_not_found(keyword_node.name, self.keyword_map)
+        self._check_params(keyword_node.name, method, written)
+
+    def _check_params(self, name: str, method: Callable, params: List[str]) -> None:
+        """Bind the params as a run would, so a step that cannot run fails in dry_run too."""
+        positional, keywords = self._resolve_candidate_params(method, params)
+        try:
+            inspect.signature(method).bind(*positional, **keywords)
+        except TypeError as e:
+            raise OpticsError(Code.E0403, message=(
+                f"'{name}' cannot take these params: {e}. See its params with: optics list {name}")) from e
 
     async def _dry_run_module(
         self,

@@ -1035,5 +1035,7 @@ def dryrun_main(
     )
     runner_instance = DryRunRunner(args)
     results = _run_until_stopped(runner_instance.execute())
+    print("\ndry_run checks the keywords, their params and the names they use. "
+          "It does not check locators, the app or the device: optics execute does.")
     if _has_failed_results(results):
         sys.exit(1)

@@ -13,7 +13,6 @@ Create Single Alarm,Enter Text,${minute_display_image},${minute},,
 Create Single Alarm,Press Element,${am_pm_toggle_image},,,
 Create Single Alarm,Press Element,${save_button_image},,,
 
-Close Clock App,Force Terminate App,,,,
 Close Clock App,Close And Terminate App,,,,
 
 Create Multiple Alarms,Run Loop,Create Single Alarm,minute,${minute_list},,
