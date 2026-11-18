@@ -261,6 +261,8 @@ class Config(BaseModel):
             ]
         if not self.text_detection:
             self.text_detection = [
+                {"apple_vision": DependencyConfig(enabled=False, url=None, capabilities={})},
+                {"rapidocr": DependencyConfig(enabled=False, url=None, capabilities={})},
                 {"easyocr": DependencyConfig(enabled=False, url=None, capabilities={})},
                 {"pytesseract": DependencyConfig(enabled=False, url=None, capabilities={})},
                 {"google_vision": DependencyConfig(enabled=False, url=None, capabilities={})},

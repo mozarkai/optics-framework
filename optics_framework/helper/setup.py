@@ -36,6 +36,10 @@ class EngineBackend(BaseModel):
     extra: str         # pyproject extra name, e.g. "google-vision"
     packages: List[str]  # concrete packages the extra pulls in (shown to the user)
     aliases: List[str] = []  # extra tokens accepted on the CLI
+    platforms: List[str] = []  # the sys.platform values it runs on; empty for all
+
+    def runs_here(self) -> bool:
+        return not self.platforms or sys.platform in self.platforms
 
 
 class EngineCategory(BaseModel):
@@ -72,6 +76,11 @@ ACTION_DRIVERS = EngineCategory(
 TEXT_ENGINES = EngineCategory(
     name="OCR Engine",
     engines={
+        "Apple Vision": EngineBackend(
+            name="Apple Vision", extra="apple-vision", packages=["pyobjc-framework-vision"], aliases=["apple_vision"],
+            platforms=["darwin"],
+        ),
+        "RapidOCR": EngineBackend(name="RapidOCR", extra="rapidocr", packages=["rapidocr", "onnxruntime"]),
         "EasyOCR": EngineBackend(name="EasyOCR", extra="easyocr", packages=["easyocr"]),
         "Pytesseract": EngineBackend(name="Pytesseract", extra="pytesseract", packages=["pytesseract", "pillow"]),
         "Google Vision": EngineBackend(

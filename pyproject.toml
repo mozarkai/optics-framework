@@ -57,6 +57,9 @@ playwright = { version = ">=1.40,<2.0", optional = true }
 airhand = { version = ">=0.1.2,<0.2", optional = true }
 easyocr = { version = ">=1.7,<2.0", optional = true }
 pytesseract = { version = ">=0.3.10,<0.4.0", optional = true }
+rapidocr = { version = ">=3.4,<4.0", optional = true }
+onnxruntime = { version = ">=1.20,<2.0", optional = true }
+pyobjc-framework-vision = { version = ">=10.0,<14.0", optional = true, markers = "sys_platform == 'darwin'" }
 pillow = { version = ">=12.3,<14.0", optional = true }
 google-cloud-vision = { version = ">=3.4,<4.0", optional = true }
 google-auth = { version = ">=2.15,<3.0", optional = true }
@@ -76,6 +79,8 @@ playwright = ["playwright"]
 ble = ["airhand"]
 easyocr = ["easyocr"]
 pytesseract = ["pytesseract", "pillow"]
+rapidocr = ["rapidocr", "onnxruntime"]
+apple-vision = ["pyobjc-framework-vision"]
 google-vision = ["google-cloud-vision", "google-auth"]
 gemini = ["google-genai"]
 openai = ["openai"]
@@ -84,11 +89,15 @@ mcp = ["fastmcp"]
 # Convenience bundles.
 mobile = ["appium-python-client"]
 web = ["selenium", "playwright"]
-vision = ["easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-auth"]
+vision = [
+	"rapidocr", "onnxruntime", "pyobjc-framework-vision", "easyocr", "pytesseract", "pillow", "google-cloud-vision",
+	"google-auth",
+]
 llm = ["google-genai", "openai", "anthropic"]
 all = [
 	"appium-python-client", "selenium", "playwright", "airhand",
-	"easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-auth", "google-genai", "openai", "anthropic",
+	"rapidocr", "onnxruntime", "pyobjc-framework-vision", "easyocr", "pytesseract", "pillow", "google-cloud-vision",
+	"google-auth", "google-genai", "openai", "anthropic",
 ]
 
 [tool.poetry.group.dev.dependencies]
