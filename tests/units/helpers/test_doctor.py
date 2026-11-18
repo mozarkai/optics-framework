@@ -107,7 +107,7 @@ class TestCheckEngines:
     def test_one_row_per_engine(self):
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
             rows = doctor.check_engines()
-        assert sorted(r.name for r in rows) == sorted(e.name for e in ALL_ENGINES.values())
+        assert sorted(r.name for r in rows) == sorted(e.name for e in ALL_ENGINES.values() if e.runs_here())
 
     def test_missing_engine_warns_with_install_hint(self):
         with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
