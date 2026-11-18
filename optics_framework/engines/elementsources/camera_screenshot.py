@@ -276,9 +276,6 @@ class CameraScreenshot(ElementSourceInterface):
     def _screen(self, frame: np.ndarray) -> np.ndarray:
         """The deskewed screen; E0305 when the phone left its place or the screen stays dark."""
         if self._guard is None:
-            if self._found_on not in (None, frame.shape[:2]):
-                # The frame after finding the screen has another size, so its corners are elsewhere.
-                self._calibrate(frame)
             self._guard = screen_finder.ViewGuard(frame, self._corners)
             if not self._guard.anchored:
                 internal_logger.info("The area around the screen has no texture, so a moved phone or camera goes unnoticed")
@@ -299,6 +296,9 @@ class CameraScreenshot(ElementSourceInterface):
         return screen
 
     def _warp(self, frame: np.ndarray) -> np.ndarray:
+        """The deskewed screen; a frame of another size than the one the corners came from finds the screen again."""
+        if self._found_on not in (None, frame.shape[:2]):
+            self._calibrate(frame)
         return cv2.warpPerspective(frame, self._deskew, (self.out_width, self.out_height))
 
     def _calibrate(self, frame: np.ndarray) -> None:
@@ -306,7 +306,8 @@ class CameraScreenshot(ElementSourceInterface):
         reasons = []
         for name, signals in self._screen_signals(frame):
             try:
-                corners = screen_finder.find_screen(*signals(), aspect)
+                region, edge = signals()
+                corners = screen_finder.find_screen(region, edge, aspect)
                 break
             except screen_finder.ScreenNotFound as exc:
                 internal_logger.info(f"No screen found by {name}: {exc}")
@@ -314,7 +315,7 @@ class CameraScreenshot(ElementSourceInterface):
         else:
             raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
         self._use_corners(corners)
-        self._found_on = frame.shape[:2]
+        self._found_on = region.shape[:2]
         found = ", ".join(f'"{x:.0f},{y:.0f}"' for x, y in corners)
         internal_logger.info(f"Found the screen in the camera frame by {name}: deskew_corners: [{found}]")
         marked = frame.copy()

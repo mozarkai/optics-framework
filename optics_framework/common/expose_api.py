@@ -253,7 +253,7 @@ def _make_dependency_entry(name: str, cfg: Any, top_level_url: Optional[str] = N
         # Unknown scalar -> keep enabled True and defaults
         pass
 
-    _refuse_server_side_reads(name, url, capabilities)
+    _refuse_server_side_reads(name, url, capabilities, enabled)
     return {name: DependencyConfig(enabled=enabled, url=url, capabilities=capabilities)}
 
 
@@ -268,12 +268,12 @@ def _refuse_env_references(name: str, url: str | None, capabilities: dict[str, A
         raise OpticsError(Code.E0501, f"{name}: $NAME references are only read from a project's config.yaml; send the value")
 
 
-def _refuse_unknown_dongle(capabilities: dict[str, Any]) -> None:
+def _refuse_unknown_dongle(capabilities: dict[str, Any], enabled: bool) -> None:
     """A remote session names a plugged-in airhand dongle by its serial: a port, or any other serial, opens a server device."""
     if "port" in capabilities:
         raise OpticsError(Code.E0501, "ble: a remote session names the dongle by its serial, not a port")
     serial = capabilities.get("serial")
-    if serial is None:
+    if serial is None or not enabled:
         return
     try:
         from airhand import serial_numbers
@@ -283,7 +283,7 @@ def _refuse_unknown_dongle(capabilities: dict[str, Any]) -> None:
         raise OpticsError(Code.E0501, f"ble: no plugged-in airhand dongle has the serial {serial}")
 
 
-def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str, Any]) -> None:
+def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str, Any], enabled: bool = True) -> None:
     """Refuse caller values that would make the server read its own environment or files."""
     _refuse_env_references(name, url, capabilities)
     storage_state = capabilities.get("storage_state")
@@ -297,7 +297,7 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
     if server_reads_allowed:
         return
     if name == "ble":
-        _refuse_unknown_dongle(capabilities)
+        _refuse_unknown_dongle(capabilities, enabled)
     if name == "camera_screenshot" and (url or capabilities.get("url") or "camera_index" in capabilities):
         # The server would fetch any address, or open any of its own cameras, that the caller names.
         raise OpticsError(Code.E0501, f"{name}: a remote session reads the camera the server sets in WEBCAM_SCREENSHOT_URL")
