@@ -293,6 +293,22 @@ def _height(box: Box | None) -> int:
     return max(box[3] - box[1], 1) if box else 0
 
 
+def _nearest(placed: list[tuple[str, Box | None]], box: Box | None) -> tuple[str, Box | None] | None:
+    """The placed ref nearest ``box``, when it is within a row height of it."""
+    near = min(placed, key=lambda ref_box: _gap(ref_box[1], box), default=None)
+    return near if near is not None and _gap(near[1], box) <= _height(box) else None
+
+
+def _normalized(elements: list[dict] | None) -> list[tuple[dict, dict]]:
+    """Each element that makes a row, with its Row fields."""
+    read: list[tuple[dict, dict]] = []
+    for el in elements or []:
+        fields = normalize(el, read[-1][1] if read else None)
+        if fields is not None:
+            read.append((el, fields))
+    return read
+
+
 def _same_reading(earlier: str, now: str) -> bool:
     """Two OCR reads of one text: the same but for case or a punctuation mark read as another."""
     a, b = fold(earlier), fold(now)
@@ -417,8 +433,8 @@ class RefTable:
                 continue
             free = list(before)
             for i in now:
-                near = min(free, key=lambda placed: _gap(placed[1], read[i][1]), default=None)
-                if near is not None and _gap(near[1], read[i][1]) <= _height(read[i][1]):
+                near = _nearest(free, read[i][1])
+                if near is not None:
                     free.remove(near)
                     refs[i] = near[0]
         refs = [ref or self._new_ref() for ref in refs]
@@ -426,12 +442,15 @@ class RefTable:
             self._ocr_places[text] = [(refs[i], read[i][1]) for i in now]
         return refs
 
+    def _ocr_fields(self, ref: str, fields: dict) -> dict:
+        """The row's fields, with the text it was first read as when OCR now reads it with other punctuation."""
+        earlier = self._issued.get(ref)
+        if earlier is not None and _same_reading(earlier.label, fields["label"]):
+            return {**fields, "label": earlier.label, "name": earlier.name}
+        return fields
+
     def snapshot(self, elements: list[dict], *, max_rows: int = 80, query: str = "") -> Snapshot:
-        read: list[tuple[dict, dict]] = []
-        for el in elements or []:
-            fields = normalize(el, read[-1][1] if read else None)
-            if fields is not None:
-                read.append((el, fields))
+        read = _normalized(elements)
         seen: Counter = Counter()
         every: list[Row] = []
         ids = Counter(fields["rid"] for _, fields in read if fields["rid"])
@@ -446,9 +465,7 @@ class RefTable:
                 fields["area"] = ""
             if fields["ocr"]:
                 ref = next(ocr_refs)
-                earlier = self._issued.get(ref)
-                if earlier is not None and _same_reading(earlier.label, fields["label"]):
-                    fields = {**fields, "label": earlier.label, "name": earlier.name}
+                fields = self._ocr_fields(ref, fields)
             else:
                 key = _identity(fields, bounds, context, following, ids[fields["rid"]] == 1)
                 ref = self._ref(key, seen[key])
