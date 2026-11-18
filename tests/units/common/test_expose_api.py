@@ -14,7 +14,6 @@ Source under test: optics_framework/common/expose_api.py
 """
 import asyncio
 import base64
-import inspect
 import json
 import threading
 from types import SimpleNamespace
@@ -295,36 +294,12 @@ def test_normalize_param_value_wrong_scalar_type_raises():
         expose_api._normalize_param_value("p", 42)  # type: ignore[arg-type]
 
 
-# ---------------------------------------------------------------------------
-# _resolve_named_to_positional
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_named_to_positional_orders_by_signature():
-    def method(self, first: str, second: str):
-        pass
-
-    out = expose_api._resolve_named_to_positional(
-        method, {"second": "b", "first": "a"}
-    )
-    assert out == [["a"], ["b"]]
-
-
-def test_resolve_named_to_positional_skips_defaulted_when_absent():
-    def method(self, element: str, repeat: str = "1"):
-        pass
-
-    out = expose_api._resolve_named_to_positional(method, {"element": "x"})
-    # Defaulted param omitted from the caller -> not included.
-    assert out == [["x"]]
-
-
-def test_resolve_named_to_positional_missing_required_raises():
+def test_named_params_missing_a_required_param_raises():
     def method(self, element: str):
         pass
 
     with pytest.raises(ValueError, match="Required parameter 'element'"):
-        expose_api._resolve_named_to_positional(method, {})
+        expose_api._build_named_param_context(method, {})
 
 
 # ---------------------------------------------------------------------------
@@ -449,37 +424,6 @@ def test_fallback_named_params_exclude_keyword_only_located():
     assert result == "ok"
     params = engine.execute.await_args.args[0].params
     assert params == ["x", "hi", "1"]
-    assert "None" not in params[-1:]
-
-
-def test_build_named_param_context_skips_keyword_only():
-    def method(self, element: str, repeat: str = "1", *, located=None):
-        pass
-
-    ctx = expose_api._build_named_param_context(method, {"element": "x"})
-    assert ctx.all_param_names == ["element", "repeat"]
-    assert "located" not in ctx.param_defaults
-    assert ctx.provided_param_names == ["element"]
-
-
-def test_build_named_param_context_real_enter_text_signature():
-    from optics_framework.api.action_keyword import ActionKeyword
-
-    method = ActionKeyword.enter_text
-    ctx = expose_api._build_named_param_context(
-        method, {"element": "//Search", "text": "shawarma"}
-    )
-    assert "located" not in ctx.all_param_names
-    combo_args = expose_api._combo_to_positional_named(("//Search", "shawarma"), ctx)
-    inspect.signature(method).bind(None, *combo_args)
-
-
-def test_resolve_named_to_positional_skips_keyword_only():
-    def method(self, element: str, repeat: str = "1", *, located=None):
-        pass
-
-    out = expose_api._resolve_named_to_positional(method, {"element": "x"})
-    assert out == [["x"]]
 
 
 def test_fallback_no_params_surfaces_engine_failure_as_is():

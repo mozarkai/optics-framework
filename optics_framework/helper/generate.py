@@ -692,19 +692,6 @@ def _detect_yaml_type(file_path: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-def _assign_yaml_files(yaml_files, files):
-    """Assign YAML files to test_cases, modules, and elements if not already assigned."""
-    for yaml_file in yaml_files:
-        data = load_project_yaml(yaml_file) or {}
-        for content_type in ["test_cases", "modules", "elements"]:
-            key = (
-                "Test Cases"
-                if content_type == "test_cases"
-                else content_type.capitalize()
-            )
-            if key in data and not files[content_type]:
-                files[content_type] = yaml_file
-
 # Directories that never hold source project files — skipped when scanning so a
 # recursive walk doesn't pick up generated code, run artefacts or caches.
 _SKIP_SCAN_DIRS = {"__pycache__", "generated", "execution_output"}
@@ -771,31 +758,6 @@ def find_all_files(folder_path: str) -> dict[str, list[str]]:
     files["config"] = all_files_by_type["config"]["yaml"]
 
     return files
-
-
-def find_files(
-    folder_path: str,
-) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """Find test cases, modules, elements, and config files, detecting their format."""
-    files: dict[str, Union[str, None]] = {
-        "test_cases": None,
-        "modules": None,
-        "elements": None,
-        "config": None,
-    }
-    yaml_files = []
-
-    for file_path, file_format, content_type in _iter_project_files(folder_path):
-        if file_format == "csv":
-            files[content_type] = file_path
-        elif file_format == "yaml" and content_type != "config":
-            yaml_files.append(file_path)
-        else:
-            files["config"] = file_path
-
-    _assign_yaml_files(yaml_files, files)
-
-    return files["test_cases"], files["modules"], files["elements"], files["config"]
 
 
 def read_mixed_data(files: list[str], data_type: str) -> dict:

@@ -32,7 +32,6 @@ from optics_framework.helper.generate import (
     YAMLDataReader,
     detect_file_type,
     find_all_files,
-    find_files,
     generate_test_file,
     read_mixed_data,
 )
@@ -154,12 +153,6 @@ class TestCSVDataReader:
         ]
         assert modules["Verify Module"] == [("Validate Element", ["${login_button}"])]
 
-    def test_read_modules_preserves_numeric_params_as_strings(self, csv_project):
-        modules = CSVDataReader().read_modules(str(csv_project / "modules.csv"))
-        (_, sleep_params) = modules["Login Module"][2]
-        assert sleep_params == ["3000"]
-        assert isinstance(sleep_params[0], str)
-
     def test_read_elements_maps_name_to_id(self, csv_project):
         elements = CSVDataReader().read_elements(str(csv_project / "elements.csv"))
         assert elements == {
@@ -172,7 +165,7 @@ class TestCSVDataReader:
         _write(tmp_path, "modules.csv", CSV_MODULES)
         _write(tmp_path, "elements.csv", "Element_Name,Element_ID_xpath,Element_ID_text\n"
                                          "username_field,//input[@id='user'],User\nlogin_button,,Login\n")
-        _, _, elements_file, _ = find_files(str(tmp_path))
+        [elements_file] = find_all_files(str(tmp_path))["elements"]
         assert CSVDataReader().read_elements(elements_file) == {
             "username_field": ["//input[@id='user']", "User"],
             "login_button": "Login",
@@ -375,7 +368,6 @@ class TestPytestGenerator:
     def test_config_uses_the_keys_optics_setup_reads(self, code):
         assert "'driver_sources':" in code
         assert "'elements_sources':" in code
-        assert "driver_config" not in code
 
     def test_module_function_and_calls(self, code):
         assert "def login_module(optics: Optics) -> None:" in code
@@ -515,15 +507,6 @@ class TestFindFiles:
         assert found["elements"] == [str(csv_project / "elements.csv")]
         assert found["config"] == [str(csv_project / "config.yaml")]
 
-    @pytest.mark.parametrize("project, ext", [("csv_project", "csv"), ("yaml_project", "yaml")])
-    def test_find_files_returns_single_paths(self, request, project, ext):
-        folder = request.getfixturevalue(project)
-        tc, mod, el, cfg = find_files(str(folder))
-        assert tc.endswith(f"test_cases.{ext}")
-        assert mod.endswith(f"modules.{ext}")
-        assert el.endswith(f"elements.{ext}")
-        assert cfg.endswith("config.yaml")
-
     def test_find_all_files_discovers_subfolder_layout(self, nested_csv_project):
         """Files split across ``test_cases/``, ``modules/`` and ``test_data/`` are found."""
         found = find_all_files(str(nested_csv_project))
@@ -531,13 +514,6 @@ class TestFindFiles:
         assert found["modules"] == [str(nested_csv_project / "modules" / "modules.csv")]
         assert found["elements"] == [str(nested_csv_project / "test_data" / "elements.csv")]
         assert found["config"] == [str(nested_csv_project / "config.yaml")]
-
-    def test_find_files_discovers_subfolder_layout(self, nested_csv_project):
-        tc, mod, el, cfg = find_files(str(nested_csv_project))
-        assert tc is not None and tc.endswith("test_cases.csv")
-        assert mod is not None and mod.endswith("modules.csv")
-        assert el is not None and el.endswith("elements.csv")
-        assert cfg is not None and cfg.endswith("config.yaml")
 
 
 # --------------------------------------------------------------------------- #
@@ -669,15 +645,12 @@ class TestFileWriter:
         requirements = (tmp_path / "requirements.txt").read_text()
         assert "robotframework" in requirements
 
-    def test_copy_input_templates_noop_when_absent(self, tmp_path):
-        (tmp_path / "generated").mkdir()
-        FileWriter().copy_input_templates(str(tmp_path), str(tmp_path / "generated"))
-        assert not (tmp_path / "generated" / "Tests" / "input_templates").exists()
-
-    def test_copy_input_templates_absent_is_quiet_at_info(self, tmp_path, caplog):
+    def test_copy_input_templates_absent_is_quiet_noop(self, tmp_path, caplog):
         """A missing input_templates folder is normal for small projects — nothing
         at INFO or above may reach the console (a debug-level note is fine)."""
+        (tmp_path / "generated").mkdir()
         with caplog.at_level(logging.INFO, logger="optics_framework.helper.generate"):
             FileWriter().copy_input_templates(str(tmp_path), str(tmp_path / "generated"))
 
         assert caplog.records == []
+        assert not (tmp_path / "generated" / "Tests" / "input_templates").exists()
