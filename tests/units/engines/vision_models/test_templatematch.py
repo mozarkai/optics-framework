@@ -37,6 +37,22 @@ def frame_with(frame: np.ndarray, template: np.ndarray, spots: list) -> np.ndarr
     return frame
 
 
+def blocky(seed: int, h: int, w: int) -> np.ndarray:
+    """A flat-shaded pattern that, like UI, stays recognisable when resized."""
+    cells = np.random.default_rng(seed).integers(40, 220, (7, 10), dtype=np.uint8)
+    return cv2.cvtColor(cv2.resize(cells, (w, h), interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR)
+
+
+def resized(image: np.ndarray, scale: float) -> np.ndarray:
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+    return cv2.resize(image, None, fx=scale, fy=scale, interpolation=interpolation)
+
+
+def blocky_frame(rng: np.random.Generator) -> np.ndarray:
+    cells = rng.integers(0, 255, (30, 40), dtype=np.uint8)
+    return cv2.cvtColor(cv2.resize(cells, (400, 300), interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR)
+
+
 @pytest.fixture
 def rng() -> np.random.Generator:
     return np.random.default_rng(1234)
@@ -131,6 +147,46 @@ class TestMatchTemplateFast:
         result = helper._match_template_fast(frame, template, 0.85, -1)
 
         assert result is _INDEX_MISS
+
+
+class TestOtherScreenSize:
+    @pytest.mark.parametrize("scale", [0.82, 0.9, 1.15, 1.22])
+    def test_template_from_another_screen_size_matches_to_a_pixel(self, rng, helper, scale):
+        template = blocky(7, 42, 60)
+        shown = resized(template, scale)
+        y, x = 100, 150
+        frame = frame_with(blocky_frame(rng), shown, [(y, x)])
+        sh, sw = shown.shape[:2]
+
+        found, center, bbox = helper._match_template_fast(frame, template, 0.85, None)
+
+        assert found is True
+        assert np.allclose(center, (x + sw / 2, y + sh / 2), atol=1)
+        assert np.allclose(bbox, ((x, y), (x + sw, y + sh)), atol=2)
+
+    def test_index_counts_scaled_instances_in_reading_order(self, rng, helper):
+        template = blocky(7, 42, 60)
+        shown = resized(template, 0.9)
+        sh, sw = shown.shape[:2]
+        frame = frame_with(blocky_frame(rng), shown, [(200, 40), (30, 250)])
+
+        _, first, _ = helper._match_template_fast(frame, template, 0.85, 0)
+        _, second, _ = helper._match_template_fast(frame, template, 0.85, 1)
+
+        assert first == (250 + sw // 2, 30 + sh // 2)
+        assert second == (40 + sw // 2, 200 + sh // 2)
+        assert helper._match_template_fast(frame, template, 0.85, 2) is _INDEX_MISS
+
+    def test_scale_range_widens_the_sweep(self, rng):
+        template = blocky(7, 84, 120)
+        frame = frame_with(blocky_frame(rng), resized(template, 0.5), [(100, 150)])
+
+        assert make_helper()._match_template_fast(frame, template, 0.85, None) is None
+        assert make_helper(scale_range=[0.45, 1.0])._match_template_fast(frame, template, 0.85, None)
+
+    def test_inverted_scale_range_is_rejected(self):
+        with pytest.raises(ValueError, match="scale_range"):
+            make_helper(scale_range=[1.2, 0.8])
 
 
 class TestDistinctPeaks:
@@ -254,11 +310,11 @@ class TestElementExist:
     def test_featureless_images_raise_from_sift_fallback(self, helper):
         """No-variance input falls through to SIFT, which raises on the miss."""
         frame = np.full((100, 100, 3), 128, dtype=np.uint8)
-        # Template larger than the frame so the fast path's oversized guard
+        # Template larger than the frame at every swept scale so the fast path
         # routes to SIFT deterministically; cv2.matchTemplate on two identical
         # solid regions returns a perfect-correlation 1.0 on some builds
         # (notably the Linux wheels), short-circuiting the SIFT fallback.
-        template = np.full((120, 120, 3), 128, dtype=np.uint8)
+        template = np.full((130, 130, 3), 128, dtype=np.uint8)
 
         with pytest.raises(RuntimeError):
             helper.element_exist(frame, template)
