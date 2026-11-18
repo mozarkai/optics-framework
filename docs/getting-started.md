@@ -185,6 +185,20 @@ login_button,"//android.widget.Button[@resource-id=""com.app.login:id/btnLogin""
 
 Here `login_button` is located by XPath first, then by matching `button_login.png`, then by the on-screen text `Login`.
 
+### Text on the Screen
+
+When OCR finds a text locator, it ignores letter case and the spaces between words. All other characters must be the same. By default, the text can be a part of a word. With `strict_element_match: true` in `config.yaml`, it must be complete words.
+
+| Locator | Text on the screen | Found | Found when strict |
+|---|---|---|---|
+| `Sign in` | "Sign in to your account" | Yes | Yes |
+| `sign IN` | "Sign in" | Yes | Yes |
+| `World clock` | "World" at the end of one line, "clock" at the start of the next | Yes | Yes |
+| `Pay` | "Payment" | Yes | No |
+| `Sign in.` | "Sign in" | No | No |
+
+If the text shows more than once, `index` selects one match: `0` is the first. Matches of complete words come first, then matches inside words, each counted from the top. To find a text with OCR only, start the locator with `TEXT_ONLY:`, for example `TEXT_ONLY:Login`. See [Text Detection](configuration.md#text-detection).
+
 ### Values as Data
 
 An element can also just hold a value your steps consume via `${...}` (e.g. text to type):

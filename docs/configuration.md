@@ -342,6 +342,16 @@ All configurations are defined in YAML format. The main configuration file (`con
     event_attributes_json: "./config/event_attributes.json"
     ```
 
+    ### `strict_element_match`
+
+    **Type:** `bool` | **Default:** `false`
+
+    Find a text locator only where it shows exactly. By default, the page source sources also accept a close spelling, and OCR also accepts a part of a word. Set it to `true` when your screens have labels that differ by a few letters, such as `Pay` and `Payment`.
+
+    ```yaml
+    strict_element_match: true
+    ```
+
 === "AI Self-Healing"
 
     ### `ai_self_heal`
@@ -915,6 +925,13 @@ Element sources define methods for locating and capturing UI elements.
 ## Text Detection
 
 Text detection engines provide OCR (Optical Character Recognition) capabilities for locating text on screen.
+
+All engines find text with the same rule. The text can be on one line, or it can continue on the next line. The rule does not compare letter case or the spaces between words. All other characters must be the same.
+
+- By default, the text can also be a part of a word: `Pay` finds "Payment".
+- With [`strict_element_match: true`](#strict_element_match), the text must show as complete words in the same sequence: `Sign in` finds "Sign in to your account", but `Pay` does not find "Payment". Spaces are still not compared, so `Log in` also finds "Login": OCR often reads two words without the space between them.
+
+In a script that has no spaces between words, such as Chinese, Japanese or Thai, each character is a word. A tap goes to the center of the words that match. When the text continues on the next line, the tap goes to the center of its words on the first line. The `index` parameter counts the matches of complete words first, then the matches inside words. In each group, it counts from the top row to the bottom row, and from left to right in a row. To find a text with OCR only, start the locator with `TEXT_ONLY:`.
 
 === "EasyOCR"
 
