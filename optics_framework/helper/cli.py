@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Literal, NoReturn, Optional
 
-from optics_framework.helper.abort import abort_with_panel, reinstall_guidance
+from optics_framework.helper.abort import MissingExtraError, abort_with_panel, reinstall_guidance
 
 
 def _abort_on_import_error(exc: ImportError) -> NoReturn:
@@ -226,14 +226,7 @@ class MCPCommand(Command):
             port=args.port,
             toolset=args.toolset,
         )
-        # Lazy import so the optional 'mcp' extra (fastmcp) is only required
-        # when this command actually runs.
-        try:
-            from optics_framework.helper.mcp_server import run_mcp_server
-        except ModuleNotFoundError as exc:
-            if (exc.name or "").split(".")[0] != "fastmcp":
-                raise
-            abort_with_panel(["`optics mcp` needs the mcp extra.", "", "Install it with: optics setup --install mcp"])
+        from optics_framework.helper.mcp_server import run_mcp_server
         run_mcp_server(
             transport=mcp_args.transport,
             host=mcp_args.host,
@@ -635,6 +628,8 @@ def main():
         except ValueError as e:
             print(mask_secrets(f"Error: {e}"), file=sys.stderr)
             sys.exit(3)
+        except MissingExtraError as e:
+            abort_with_panel(str(e).splitlines())
         except Exception as e:
             print(mask_secrets(f"Unexpected error ({type(e).__name__}): {e}"), file=sys.stderr)
             print(
@@ -644,15 +639,16 @@ def main():
             )
             sys.exit(1)
     elif len(sys.argv) == 1:
-        # Bare `optics`: greet first-timers with the full banner, then mark
-        # them onboarded. Returning users get a one-line hint instead — they
-        # already know the golden path. `optics --help` is handled by argparse
-        # above and is left untouched.
-        if is_first_run():
-            welcome(first_run=True)
-            mark_onboarded()
-        else:
-            print("Run `optics quickstart` to start a project, or `optics --help` for everything else.")
+        _greet()
+
+
+def _greet() -> None:
+    """Bare `optics`: the full banner on a first run, then a one-line hint for returning users."""
+    if is_first_run():
+        welcome(first_run=True)
+        mark_onboarded()
+    else:
+        print("Run `optics quickstart` to start a project, or `optics --help` for everything else.")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,13 @@ from optics_framework.helper.environment import (EnvKind, detect,
                                                  project_add_command)
 
 
+class MissingExtraError(RuntimeError):
+    """A feature needs an optional extra that is not installed."""
+
+    def __init__(self, feature: str, extra: str) -> None:
+        super().__init__(f"{feature} needs the {extra} extra. Install it with:\n\n  optics setup --install {extra}")
+
+
 def reinstall_guidance() -> tuple[str, ...]:
     """Reinstall advice for the environment actually in use.
 

@@ -90,8 +90,18 @@ LLM_ENGINES = EngineCategory(
     }
 )
 
+SERVERS = EngineCategory(
+    name="Server",
+    engines={"MCP server": EngineBackend(name="MCP server", extra="mcp", packages=["fastmcp"])},
+)
+
+# Keyed by the checkbox-id prefix of the TUI.
+_CATEGORIES: Dict[str, EngineCategory] = {
+    "action": ACTION_DRIVERS, "text": TEXT_ENGINES, "llm": LLM_ENGINES, "server": SERVERS,
+}
+
 ALL_ENGINES: Dict[str, EngineBackend] = {
-    **ACTION_DRIVERS.engines, **TEXT_ENGINES.engines, **LLM_ENGINES.engines
+    name: engine for category in _CATEGORIES.values() for name, engine in category.engines.items()
 }
 
 # Convenience bundles — mirror the aggregate extras in pyproject.toml so a token
@@ -102,11 +112,8 @@ _BUNDLES: Dict[str, List[EngineBackend]] = {
     "web": [ACTION_DRIVERS.engines["Selenium"], ACTION_DRIVERS.engines["Playwright"]],
     "vision": list(TEXT_ENGINES.engines.values()),
     "llm": list(LLM_ENGINES.engines.values()),
-    "all": list(ALL_ENGINES.values()),
+    "all": [*ACTION_DRIVERS.engines.values(), *TEXT_ENGINES.engines.values(), *LLM_ENGINES.engines.values()],
 }
-
-# Maps a checkbox-id prefix to its engine category.
-_CATEGORY_BY_PREFIX = {"action": ACTION_DRIVERS, "text": TEXT_ENGINES, "llm": LLM_ENGINES}
 
 
 def _norm(token: str) -> str:
@@ -265,17 +272,11 @@ class EngineInstallerApp(App):
         with VerticalScroll(id="engine-list"):
             yield Static("Select engines to install:", classes="title")
 
-            yield Static("Action Drivers:")
-            for name, engine in ACTION_DRIVERS.engines.items():
-                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"action_{name.lower().replace(' ', '_')}")
-
-            yield Static("OCR Engines:")
-            for name, engine in TEXT_ENGINES.engines.items():
-                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"text_{name.lower().replace(' ', '_')}")
-
-            yield Static("LLM Engines:")
-            for name, engine in LLM_ENGINES.engines.items():
-                yield Checkbox(f"{name} ({', '.join(engine.packages)})", id=f"llm_{name.lower().replace(' ', '_')}")
+            for prefix, category in _CATEGORIES.items():
+                yield Static(f"{category.name}s:")
+                for name, engine in category.engines.items():
+                    yield Checkbox(f"{name} ({', '.join(engine.packages)})",
+                                   id=f"{prefix}_{name.lower().replace(' ', '_')}")
 
         yield Static("", id="status")
         yield Button("Install Selected", id="install", variant="primary")
@@ -286,7 +287,7 @@ class EngineInstallerApp(App):
         if event.checkbox.id is None:
             return
         category_prefix, engine_key = event.checkbox.id.split("_", 1)
-        category = _CATEGORY_BY_PREFIX.get(category_prefix, ACTION_DRIVERS)
+        category = _CATEGORIES.get(category_prefix, ACTION_DRIVERS)
         engine_name = next(
             name for name in category.engines.keys()
             if name.lower().replace(' ', '_') == engine_key
@@ -507,7 +508,7 @@ def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tu
 
 def list_engines() -> None:
     print("Available engines (install with `optics setup --install <name>`):\n")
-    for category in (ACTION_DRIVERS, TEXT_ENGINES, LLM_ENGINES):
+    for category in _CATEGORIES.values():
         print(f"{category.name}s:")
         for engine in category.engines.values():
             print(f"  {engine.extra:<15} ({', '.join(engine.packages)})")

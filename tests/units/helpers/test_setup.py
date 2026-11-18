@@ -26,6 +26,7 @@ from optics_framework.helper.setup import (
     ALL_ENGINES,
     DISTRIBUTION_NAME,
     EngineInstallerApp,
+    list_engines,
     InstallRequest,
     SetupError,
     _BUNDLES,
@@ -131,11 +132,6 @@ class TestResolveEngines:
     def test_bundle_expands_to_member_engines(self, bundle, expected_extras):
         resolved, invalid = resolve_engines([bundle])
         assert [r.engine.extra for r in resolved] == expected_extras
-        assert invalid == []
-
-    def test_all_bundle_expands_to_every_engine(self):
-        resolved, invalid = resolve_engines(["all"])
-        assert {r.engine.extra for r in resolved} == {e.extra for e in ALL_ENGINES.values()}
         assert invalid == []
 
     def test_bundle_is_case_insensitive(self):
@@ -412,6 +408,10 @@ class TestPyprojectParity:
         for engine in ALL_ENGINES.values():
             assert engine.extra in extras, f"{engine.extra} missing from pyproject extras"
 
+    def test_every_pyproject_extra_installs_through_optics_setup(self):
+        resolved, invalid = resolve_engines(list(_pyproject_extras()))
+        assert invalid == []
+
     def test_every_bundle_declared_in_pyproject(self):
         extras = _pyproject_extras()
         for bundle in _BUNDLES:
@@ -531,3 +531,10 @@ class TestKeyboardEscape:
             await pilot.press(key)
             await pilot.pause()
         assert not app.is_running
+
+
+def test_the_engine_list_names_every_extra_with_its_install_command(capsys):
+    list_engines()
+    out = capsys.readouterr().out
+    assert "optics setup --install <name>" in out
+    assert {"appium", "playwright", "mcp"} <= {line.split()[0] for line in out.splitlines() if line.startswith("  ")}
