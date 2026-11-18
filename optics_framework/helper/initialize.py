@@ -5,6 +5,7 @@ import subprocess # nosec
 import pathlib
 import sys
 
+from optics_framework.helper.environment import shell_join
 from optics_framework.helper.onboarding import blank_line, print_next_steps
 from optics_framework.helper.project_config import write_project_config
 
@@ -112,6 +113,12 @@ driver_sources:
         automationName: UiAutomator2
         deviceName: emulator-5554
         platformName: Android
+      # A desktop app (Mac, Linux, Windows) uses appium-xa11y-driver instead:
+      #   capabilities:
+      #     platformName: Mac
+      #     automationName: Xa11y
+      #     app: com.apple.TextEdit
+      # or start from the desktop sample:  optics init <name> --template desktop_editor
   # Web via a Selenium/WebDriver server.  Install:  optics setup --install selenium
   - selenium:
       enabled: false
@@ -332,3 +339,11 @@ def create_project(args, *, show_next_steps: bool = True,
         if not template:
             print("Test steps go in test_cases/test_cases.csv — run `optics list` "
                   "to see every available step.")
+            _print_samples(project_name, args.path)
+
+
+def _print_samples(name: str, path: str | None) -> None:
+    where = shell_join([name, "--path", path] if path else [name])
+    print(f"\nOr replace it with a sample: optics init {where} --force --template <sample>")
+    for display, folder in _template_choices()[1:]:
+        print(f"  {folder:<16} {display}")
