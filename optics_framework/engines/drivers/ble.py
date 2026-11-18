@@ -277,6 +277,8 @@ class BLEDriver(DriverInterface):
 
     def press_keycode(self, keycode: str, event_name: Optional[str] = None) -> None:
         name = utils.strip_sensitive_prefix(str(keycode)).strip().lower()
+        if not name or any(char.isspace() for char in name):
+            raise OpticsError(Code.E0403, message=f"Key name {keycode!r} is empty or holds a space or line break")
         if name in NO_HID_KEY:
             self._unsupported(f"press_keycode {name}")
         if name == "back":
@@ -424,7 +426,7 @@ class BLEDriver(DriverInterface):
         try:
             return self._read_screen()
         except OpticsError as exc:
-            if exc.code == Code.E0106:
+            if exc.code in (Code.E0106, Code.E0305):
                 raise
             internal_logger.warning(f"The camera did not read the screen: {exc}")
             return None
@@ -487,8 +489,15 @@ class BLEDriver(DriverInterface):
             self._park()
 
     def _park(self) -> None:
-        if self.platform.touch and not self.platform.finger:
+        """Move the pointer off the screen; a refused move must not make the touch before it count as failed."""
+        if not self.platform.touch or self.platform.finger:
+            return
+        try:
             self._dongle.move(*PARK)
+        except (airhand.DongleLost, airhand.HostUnavailable):
+            raise
+        except airhand.AirhandError as exc:
+            internal_logger.warning(f"The pointer was not moved off the screen: {exc}")
 
     def _require(self, capability: str) -> None:
         if not self.supports(capability):
@@ -550,15 +559,16 @@ def _cut_off(text: str, wanted: str) -> bool:
 
 
 def _labels(rows: list[dict], name: str) -> list[tuple[int, int, int, int]]:
-    """Boxes of the rows, or runs of words side by side on one line, that read exactly the name or its cut-off start."""
+    """Boxes of the rows, or runs of words side by side on one line, that read the name, then those that read its cut-off start."""
     wanted = _key(name)
     rows = sorted((row for row in rows if _key(row.get("text", ""))), key=lambda row: _box(row)[0])
     found = []
-    for i in range(len(rows)):
+    for i, row in enumerate(rows):
         run, read = _run_from(rows, i, wanted)
         if read == wanted:
-            found.append((min(b[0] for b in run), min(b[1] for b in run), max(b[2] for b in run), max(b[3] for b in run)))
-    return found
+            cut = _key(row["text"]) != wanted and _cut_off(row["text"], wanted)
+            found.append((cut, (min(b[0] for b in run), min(b[1] for b in run), max(b[2] for b in run), max(b[3] for b in run))))
+    return [box for _, box in sorted(found, key=lambda f: f[0])]
 
 
 def _run_from(rows: list[dict], start: int, wanted: str) -> tuple[list[tuple[int, int, int, int]], str]:
