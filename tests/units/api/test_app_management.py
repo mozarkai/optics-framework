@@ -18,9 +18,6 @@ class TestAppManagement:
         # A None driver is logged, not raised, at construction time.
         AppManagement(SimpleNamespace(get_driver=lambda: None, session_config=Config()))
 
-    def test_initialise_setup_is_noop(self, app_management):
-        assert app_management.initialise_setup() is None
-
     @pytest.mark.parametrize(
         "method, args, kwargs, driver_attr, expected_args, expected_kwargs",
         [

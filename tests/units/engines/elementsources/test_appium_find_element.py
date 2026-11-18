@@ -87,14 +87,18 @@ class TestIsWithinScreenBounds:
         assert source._is_within_screen_bounds(located) is False
 
 
-class TestAssertElementsVisible:
-    """assert_elements_visible must require is_displayed() AND on-screen bounds, not just
-    locate() success."""
+def _element(displayed=True, stale=False):
+    element = MagicMock()
+    if stale:
+        element.is_displayed.side_effect = StaleElementReferenceException("stale")
+    else:
+        element.is_displayed.return_value = displayed
+    return element
 
+
+class TestAssertElementsVisible:
     def test_visible_element_satisfies_any_rule(self, source):
-        visible_element = MagicMock()
-        visible_element.is_displayed.return_value = True
-        source.locate = MagicMock(return_value=visible_element)
+        source.locate = MagicMock(return_value=_element())
         source._is_within_screen_bounds = MagicMock(return_value=True)
 
         result, timestamp = source.assert_elements_visible(["Option 1"], timeout=1, rule="any")
@@ -102,63 +106,34 @@ class TestAssertElementsVisible:
         assert result is True
         assert timestamp is not None
 
-    def test_displayed_but_off_screen_does_not_satisfy_rule(self, source):
-        """The exact bug found live: is_displayed() alone reports True for elements well
-        outside the current screen bounds (confirmed on both iOS and Android) -- pairing
-        it with _is_within_screen_bounds is what actually catches this."""
-        offscreen_but_displayed = MagicMock()
-        offscreen_but_displayed.is_displayed.return_value = True
-        source.locate = MagicMock(return_value=offscreen_but_displayed)
-        source._is_within_screen_bounds = MagicMock(return_value=False)
+    @pytest.mark.parametrize(
+        "locate, on_screen",
+        [
+            pytest.param(lambda: MagicMock(return_value=_element()), False, id="displayed-but-off-screen"),
+            pytest.param(lambda: MagicMock(return_value=_element(displayed=False)), True, id="not-displayed"),
+            pytest.param(lambda: MagicMock(return_value=None), True, id="not-located"),
+            pytest.param(
+                lambda: MagicMock(side_effect=OpticsError(Code.E0201, message="not found")), True, id="not-found"
+            ),
+            pytest.param(lambda: MagicMock(return_value=_element(stale=True)), True, id="stale"),
+        ],
+    )
+    def test_element_that_is_not_visible_does_not_satisfy_rule(self, source, locate, on_screen):
+        source.locate = locate()
+        source._is_within_screen_bounds = MagicMock(return_value=on_screen)
 
         with pytest.raises(TimeoutError):
             source.assert_elements_visible(["Option 47"], timeout=0.05, rule="any")
-
-    def test_located_but_not_displayed_does_not_satisfy_rule(self, source):
-        """The exact bug this method fixes: an element present in the tree but off-screen
-        (is_displayed() == False) must not count as found."""
-        offscreen_element = MagicMock()
-        offscreen_element.is_displayed.return_value = False
-        source.locate = MagicMock(return_value=offscreen_element)
-
-        with pytest.raises(TimeoutError):
-            source.assert_elements_visible(["Option 47"], timeout=0.05, rule="any")
-
-    def test_locate_returning_none_does_not_satisfy_rule(self, source):
-        source.locate = MagicMock(return_value=None)
-
-        with pytest.raises(TimeoutError):
-            source.assert_elements_visible(["Missing"], timeout=0.05, rule="any")
-
-    def test_locate_not_found_is_treated_as_not_visible(self, source):
-        """_is_located_and_displayed must swallow locate()'s not-found OpticsError, not propagate it."""
-        source.locate = MagicMock(side_effect=OpticsError(Code.E0201, message="not found"))
-
-        with pytest.raises(TimeoutError):
-            source.assert_elements_visible(["Whatever"], timeout=0.05, rule="any")
-
-    def test_stale_element_on_is_displayed_is_treated_as_not_visible(self, source):
-        """An element that goes stale between locate() and is_displayed() (e.g. list
-        re-rendered mid-scroll) must count as not visible, not blow up the assertion."""
-        stale_element = MagicMock()
-        stale_element.is_displayed.side_effect = StaleElementReferenceException("stale")
-        source.locate = MagicMock(return_value=stale_element)
-
-        with pytest.raises(TimeoutError):
-            source.assert_elements_visible(["Whatever"], timeout=0.05, rule="any")
 
     def test_unexpected_error_propagates(self, source):
-        """A genuine bug (e.g. a bad mock/typo) must not be silently swallowed as 'not visible'."""
         source.locate = MagicMock(side_effect=RuntimeError("boom"))
 
         with pytest.raises(OpticsError):
             source.assert_elements_visible(["Whatever"], timeout=0.05, rule="any")
 
     def test_all_rule_requires_every_element_visible(self, source):
-        visible = MagicMock()
-        visible.is_displayed.return_value = True
-        hidden = MagicMock()
-        hidden.is_displayed.return_value = False
+        visible = _element()
+        hidden = _element(displayed=False)
 
         def fake_locate(element, index=None):
             return visible if element == "Visible" else hidden

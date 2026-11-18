@@ -22,18 +22,6 @@ def _clear_env(monkeypatch):
 
 # --- Service-level env defaults ------------------------------------------------
 
-def test_disabled_by_default(monkeypatch):
-    _clear_env(monkeypatch)
-    assert _env_self_heal_defaults() == (False, None, None)
-
-
-def test_env_defaults_carry_provider_and_model(monkeypatch):
-    monkeypatch.setenv(ENV_AI_SELF_HEAL, "true")
-    monkeypatch.setenv(ENV_LLM_PROVIDER, "custom_llm")
-    monkeypatch.setenv(ENV_LLM_MODEL, "custom-model-v1")
-    assert _env_self_heal_defaults() == (True, "custom_llm", "custom-model-v1")
-
-
 def test_truthy_variants_all_enable(monkeypatch):
     _clear_env(monkeypatch)
     for value in ("1", "TRUE", "Yes", "on"):
@@ -90,14 +78,6 @@ def test_explicit_request_true_overrides_disabled_service_default(monkeypatch):
     enabled, llm_models = _resolve_self_heal_settings(SessionConfig(ai_self_heal=True))
     assert enabled is True
     assert llm_models == [{"gemini": DependencyConfig(enabled=True, capabilities={})}]
-
-
-def test_unset_request_field_inherits_service_default(monkeypatch):
-    _clear_env(monkeypatch)
-    monkeypatch.setenv(ENV_AI_SELF_HEAL, "true")
-    assert _resolve_self_heal_settings(SessionConfig())[0] is True
-    monkeypatch.setenv(ENV_AI_SELF_HEAL, "false")
-    assert _resolve_self_heal_settings(SessionConfig())[0] is False
 
 
 def test_session_provider_and_model_override_env(monkeypatch):

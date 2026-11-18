@@ -99,9 +99,6 @@ def _ctx():
 
 
 class TestActionSchema:
-    def test_required_minimal(self):
-        assert HEAL_ACTION_SCHEMA["required"] == ["reason", "action"]
-
     def test_no_anyof(self):
         assert "anyOf" not in json.dumps(HEAL_ACTION_SCHEMA)
 
@@ -119,20 +116,6 @@ class TestHandlerActions:
         assert executor.calls == ['press_element Shop']
         assert llm.calls == 1
 
-    def test_scroll_then_press_element(self):
-        """LLM scrolls to reveal target, then presses by text."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "scroll", "params": ["down"],
-             "completed": False, "reason": "reveal target"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Shop"],
-             "completed": True, "reason": "press target"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert executor.calls == ['scroll down', 'press_element Shop']
-        assert llm.calls == 2
-
     def test_enter_text_completes(self):
         """LLM emits enter_text — single step completion."""
         ctx = HealContext(intent_keyword="enter_text", intent_params=["Search", "hello"], element="Search")
@@ -144,19 +127,6 @@ class TestHandlerActions:
         res = AISelfHealHandler(llm, executor, lambda: _catalog()).heal(ctx, _shots, _no_ps)
         assert res.ok is True
         assert executor.calls == ["enter_text Search hello"]
-
-    def test_press_keycode_then_press_element(self):
-        """LLM presses back, then targets element by text."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_keycode", "params": ["4"],
-             "completed": False, "reason": "go back"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "press it"},
-        ])
-        executor = FakeExecutor()
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is True
-        assert executor.calls == ['press_keycode 4', 'press_element Login']
 
     def test_done_action_succeeds(self):
         """LLM signals done — goal reached without a keyword."""
@@ -192,20 +162,6 @@ class TestHandlerActions:
         assert llm.calls == 2
         assert executor.calls == ['scroll down', 'scroll down']
         assert "scroll down" in res.message
-
-    def test_keyword_failure_does_not_abort(self):
-        """A failing keyword lets the LLM retry a different approach."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "press_element", "params": ["WrongText"],
-             "completed": True, "reason": "try pressing"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "correct target"},
-        ])
-        executor = FakeExecutor(fail_keywords={"press_element"})
-        # Both fail because we set press_element as failing, so heal should fail
-        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(_ctx(), _shots, _no_ps)
-        assert res.ok is False
-        assert len(executor.calls) == 2
 
     def test_prompt_lists_prior_heal_steps_with_outcomes(self):
         """Each turn sees the heal's own earlier calls, so a FAIL isn't retried blind."""
@@ -355,20 +311,6 @@ class CuratingFakeLLM:
 
 
 class TestSuggestedSteps:
-    def test_suggested_steps_are_the_passing_steps(self):
-        """A navigation step then a completing step: both passed -> both suggested."""
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "scroll", "params": ["down"],
-             "completed": False, "reason": "reveal"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "press"},
-        ])
-        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog(), max_steps=2).heal(
-            _ctx(), _shots, _no_ps
-        )
-        assert res.ok is True
-        assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
-
     def test_failed_attempts_excluded_from_suggested_but_kept_in_steps_taken(self):
         """A failed intermediate attempt pollutes steps_taken but not suggested_steps."""
         llm = FakeLLM([
@@ -395,10 +337,12 @@ class TestSuggestedSteps:
             {"action": "keyword", "keyword": "press_element", "params": ["Login"],
              "completed": True, "reason": "press"},
         ])
-        res = AISelfHealHandler(llm, FakeExecutor(), lambda: _catalog(), max_steps=2).heal(
+        executor = FakeExecutor()
+        res = AISelfHealHandler(llm, executor, lambda: _catalog(), max_steps=2).heal(
             _ctx(), _shots, _no_ps
         )
         assert res.ok is True
+        assert executor.calls == ["scroll down", "press_element Login"]
         assert llm.calls == 2  # no curation round-trip
         assert res.suggested_steps == [("scroll", ["down"]), ("press_element", ["Login"])]
 

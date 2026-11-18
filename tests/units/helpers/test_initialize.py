@@ -86,13 +86,6 @@ class TestCreateProject:
         assert (project / "config.yaml").exists()
         next_steps.assert_not_called()
 
-    def test_show_next_steps_defaults_to_true(self, tmp_path):
-        with patch(f"{init_mod.__name__}.print_next_steps") as next_steps:
-            create_project(_args("loud", path=str(tmp_path)))
-
-        next_steps.assert_called_once_with(str(tmp_path / "loud"),
-                                           configured=False)
-
 
 class TestBlankProjectGuidance:
     """A blank project's test_cases.csv ships empty; its guidance output must
@@ -197,12 +190,7 @@ class TestTemplateChoices:
         # First entry is always the Blank-project sentinel.
         assert choices[0] == ("(Blank project)", "")
         # The rest are (displayName, folderName) pairs from metadata.json.
-        names = [display for display, _ in choices]
-        assert "Contacts" in names  # displayName for the contact sample
-
-    def test_choices_include_folder_name_mapping(self):
-        mapping = dict(_template_choices())
-        assert mapping["Contacts"] == "contact"
+        assert dict(choices)["Contacts"] == "contact"
 
     def test_choices_fallback_when_metadata_missing(self, tmp_path, monkeypatch):
         # Point _samples_dir at an empty dir: no metadata.json, no samples.

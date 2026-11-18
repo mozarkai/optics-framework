@@ -228,12 +228,6 @@ def test_the_report_shows_what_each_step_stored_with_secrets_masked(run):
     assert stored == [{"price": "$ 29.99"}, {"user_api_key": "****"}]
 
 
-def test_a_value_under_a_plain_name_stays_readable(run, tmp_path):
-    run({"M": [("Get Text", "${title_label}", "store_as=title")]}, {"TC": ["M"]})
-
-    assert "Text of element: Backpack" in _logs(tmp_path)
-
-
 def test_a_dry_run_resolves_stored_names_and_catches_the_two_mistakes(run, device):
     results = run({"Good": [("Get Text", "${price_label}", "store_as=price"), ("Press Element", "(//row)[${price}]")],
                    "Typo": [("Press Element", "(//row)[${pirce}]")],

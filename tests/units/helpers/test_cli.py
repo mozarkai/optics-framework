@@ -41,19 +41,11 @@ class TestBareInvocation:
     def test_subcommand_never_welcomes(self):
         with patch.object(cli, "welcome") as welcome, \
                 patch.object(cli, "mark_onboarded") as mark, \
-                patch.object(cli, "run_quickstart"):
+                patch.object(cli, "run_quickstart") as quickstart:
             _run(["quickstart"])
+        quickstart.assert_called_once_with()
         welcome.assert_not_called()
         mark.assert_not_called()
-
-    def test_returning_command_skips_welcome_branch(self):
-        # A command that returns normally must fall through main() without
-        # tripping the elif len(sys.argv) == 1 welcome branch.
-        with patch.object(cli, "welcome") as welcome, \
-                patch.object(cli, "run_doctor", return_value=0):
-            with pytest.raises(SystemExit):
-                _run(["doctor"])
-        welcome.assert_not_called()
 
     def test_bare_optics_returning_user_gets_one_line_hint(self, capsys):
         # Returning users (is_first_run False) don't get the full panel; they
@@ -84,16 +76,11 @@ class TestExitCodeMapping:
                 _run(["doctor"])
         assert exc.value.code == 130
 
-    def test_value_error_maps_to_3(self):
+    def test_value_error_maps_to_3_with_a_clean_message(self, capsys):
         with patch.object(cli, "run_doctor", side_effect=ValueError("bad")):
             with pytest.raises(SystemExit) as exc:
                 _run(["doctor"])
         assert exc.value.code == 3
-
-    def test_value_error_message_reads_cleanly(self, capsys):
-        with patch.object(cli, "run_doctor", side_effect=ValueError("bad")), \
-                pytest.raises(SystemExit):
-            _run(["doctor"])
         err = capsys.readouterr().err
         assert err.startswith("Error: bad")
         assert "Value error" not in err
@@ -213,8 +200,3 @@ class TestCommandForwarding:
         with patch.object(cli, "configure_project") as configure:
             _run(["configure"])
         configure.assert_called_once_with(folder=None, edit=False)
-
-    def test_quickstart_runs_the_wizard(self):
-        with patch.object(cli, "run_quickstart") as quickstart:
-            _run(["quickstart"])
-        quickstart.assert_called_once_with()

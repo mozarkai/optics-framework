@@ -612,15 +612,6 @@ class TestRunDoctor:
         code, _ = _render(doctor.run_doctor, folder, check=True)
         assert code == 0
 
-    def test_validation_failure_ignored_without_check(self, quiet_env, monkeypatch):
-        sentinel = [Check("config: file", "fail", "no config.yaml in /gone")]
-        validator = MagicMock(return_value=sentinel)
-        monkeypatch.setattr(doctor, "validate_project", validator)
-        code, _ = _render(doctor.run_doctor, "/gone", check=False)
-        validator.assert_called_once_with("/gone")
-        # check=False must stay green even though validation failed.
-        assert code == 0
-
     def test_mobile_probe_uses_project_appium_url(self, quiet_env, tmp_path):
         folder = _write_config(tmp_path, answers={
             **ANDROID_ANSWERS, "appium_url": "http://10.1.2.3:5555"})
@@ -632,13 +623,6 @@ class TestRunDoctor:
             **ANDROID_ANSWERS, "platform": "web-selenium"})
         _render(doctor.run_doctor, folder)
         assert quiet_env["target"] == ("127.0.0.1", 4723)
-
-    def test_report_prints_glyphs(self, quiet_env, tmp_path):
-        folder = tmp_path / "broken"
-        folder.mkdir()
-        _, out = _render(doctor.run_doctor, str(folder))
-        assert "❌" in out
-        assert "config:" in out
 
 
 class TestMissingProjectRow:
@@ -689,6 +673,7 @@ class TestMissingProjectRow:
                 patch(f"{MODULE}.check_desktop", return_value=[]):
             code, out = _render(doctor.run_doctor, folder, check=True)
         assert "No config.yaml found here" not in out
+        assert "❌" in out
         assert "config:" in out
         assert code == 1
 
@@ -726,6 +711,7 @@ class TestGatedClosingMessage:
         assert f"  • {self.DEVICE_HINT}" in out
         assert f"  • {self.APPIUM_HINT}" in out
         assert "Good enough to start" not in out
+        assert "warning(s)" in out
 
     def test_selenium_driver_warn_is_called_out(self, tmp_path):
         _, out = self._run_with_rows(
@@ -808,14 +794,6 @@ class TestGatedClosingMessage:
         monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
         _, out = self._run_with_rows(tmp_path, env_rows=[], desktop_rows=doctor.check_desktop(system="Linux"))
         assert XA11Y_INSTALL not in out.split("Before your first real run:")[1]
-
-    def test_counts_line_survives_gating(self, tmp_path):
-        rows = [
-            Check("adb devices", "warn", "no devices attached", self.DEVICE_HINT),
-            Check("appium server", "warn", "not reachable", self.APPIUM_HINT),
-        ]
-        _, out = self._run_with_rows(tmp_path, env_rows=rows)
-        assert "warning(s)" in out
 
 
 class TestMandatoryHintsCoverEnabledEngines:

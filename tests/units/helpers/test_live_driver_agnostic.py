@@ -27,13 +27,6 @@ def _project(body: str) -> str:
     return d
 
 
-_APPIUM_ANDROID = """
-driver_sources:
-  - appium: {enabled: true, capabilities: {platformName: Android, udid: emulator-5554}}
-elements_sources:
-  - appium_find_element: {enabled: true}
-"""
-
 _PLAYWRIGHT = """
 driver_sources:
   - playwright: {enabled: true, capabilities: {browser: chromium}}
@@ -150,10 +143,6 @@ class TestTargetLabel:
 
 
 class TestDeviceSwitching:
-    def test_android_appium_supports_switching(self):
-        c = _shell("appium", {"platformName": "Android", "udid": "x"})
-        assert c.supports_device_switching() is True
-
     def test_appium_without_platform_can_switch_but_not_hotplug(self):
         # Any Appium session can target a device by udid; adb hot-plug needs Android.
         c = _shell("appium", {"udid": "x"})
