@@ -203,6 +203,8 @@ class KeywordParameter(BaseModel):
     name: str
     type: str
     default: Any = None
+    required: bool = False
+    variadic: bool = False
 
 
 class KeywordInfo(BaseModel):
@@ -403,7 +405,9 @@ def _get_keyword_parameters(sig: inspect.Signature) -> List[KeywordParameter]:
         )
         params.append(
             KeywordParameter(
-                name=pname, type=param_type, default=default
+                name=pname, type=param_type, default=default,
+                required=param.default is inspect.Parameter.empty and param.kind is not param.VAR_POSITIONAL,
+                variadic=param.kind is param.VAR_POSITIONAL,
             )
         )
     return params

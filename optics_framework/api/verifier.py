@@ -200,7 +200,7 @@ class Verifier:
         """
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
-        :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
+        :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths).
         :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
@@ -216,7 +216,7 @@ class Verifier:
         from :meth:`assert_presence`, which reports found even for elements that exist in
         the page/DOM but are off-screen (e.g. not yet scrolled into view).
 
-        :param elements: Comma-separated string of elements to check (Image templates, OCR templates, or XPaths).
+        :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths).
         :param timeout_str: The time to wait for the elements to become visible, in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
@@ -309,7 +309,7 @@ class Verifier:
 
         Use ``assert_presence`` when a missing element must fail the test.
 
-        :param elements: Comma-separated string of elements to verify (Image templates, OCR templates, or XPaths).
+        :param elements: Elements separated by "|" to verify (Image templates, OCR templates, or XPaths).
         :param timeout: The time to wait for verification in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the verification, if any.

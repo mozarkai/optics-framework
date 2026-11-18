@@ -71,12 +71,13 @@ class Command:
 class ListCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
         parser = subparsers.add_parser(
-            "list", help="List all available methods in the API"
+            "list", help="List the keywords, or show one keyword's parameters"
         )
+        parser.add_argument("keyword", nargs="*", help="A keyword, e.g. Assert Presence")
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
-        list_main()
+        list_main(" ".join(args.keyword) or None)
 
 class AutocompletionCommand(Command):
     def register(self, subparsers: argparse._SubParsersAction):
