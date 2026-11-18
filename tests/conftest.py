@@ -18,6 +18,7 @@ from prompt_toolkit.application import create_app_session
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
+from optics_framework.common import logging_config
 from tests.mock_servers.single_server import start_server
 
 _BOX_MARKERS = {"white_box", "black_box", "hybrid"}
@@ -37,6 +38,14 @@ def pytest_collection_modifyitems(config, items):
 def _optics_home(tmp_path_factory, monkeypatch):
     """Keep what a test saves for the user, such as MCP session steps, out of the real ~/.optics."""
     monkeypatch.setenv("OPTICS_HOME", str(tmp_path_factory.mktemp("optics_home")))
+
+
+@pytest.fixture(autouse=True)
+def _no_secrets_from_other_tests(monkeypatch):
+    """The masker keeps secrets for the life of the process, so one test's secret would mask another test's text."""
+    for name in ("_config_secrets", "_unscoped_secrets", "_process_order"):
+        monkeypatch.setattr(logging_config, name, getattr(logging_config, name))
+    logging_config._active_secrets.set(None)
 
 
 def set_home(monkeypatch, path) -> None:
