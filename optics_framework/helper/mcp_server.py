@@ -97,6 +97,10 @@ def _camera_source(capabilities: dict[str, Any]) -> dict[str, Any] | None:
     """The server's camera as an element source, when one is set."""
     if not os.environ.get(camera_screenshot.ENV_SCREENSHOT_URL):
         return None
+    return _sized_camera(capabilities)
+
+
+def _sized_camera(capabilities: dict[str, Any]) -> dict[str, Any]:
     # Vision matches are in camera pixels and the driver reads them in its frame, so the two sizes match.
     frame = capabilities.get("frame")
     size = {}
@@ -912,6 +916,9 @@ def _session_config(
         camera = None if sources else _camera_source(capabilities)
         if camera is not None:
             sources = [camera]
+    elif "camera_screenshot" in sources:
+        camera = _sized_camera(capabilities)
+        sources = [camera if name == "camera_screenshot" else name for name in sources]
     defaults = {"text_detection": lambda: installed_local_engines()[:1], "image_detection": lambda: ["templatematch"]}
     for key, default in defaults.items():
         if fields.get(key) is None:
@@ -960,12 +967,20 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
     unsupported = sorted(_STATES[sid].unsupported & _reachable().keys())
     if unsupported:
         head.append(f"run_keyword cannot run here: {', '.join(unsupported)}")
-    if app:
-        shown = await _act(Action("open", target=app, text=app), "full", sid)
-    elif not expose_api.session_manager.get_session(sid).optics.get_element_source().instances:
+    if not app:
+        return await _first_look(sid, head)
+    shown = await _act(Action("open", target=app, text=app), "full", sid)
+    return _reply([*head, shown.content[0].text], is_error=shown.is_error)
+
+
+async def _first_look(sid: str, head: list[str]) -> Any:
+    """The new session's first screen read; a session that cannot list rows still starts and says what it lacks."""
+    optics = expose_api.session_manager.get_session(sid).optics
+    if not optics.get_element_source().instances:
         return _reply([*head, "No screen source: position and key keywords run; observe and check need a camera."])
-    else:
-        shown = await _guarded(sid, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
+    shown = await _guarded(sid, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
+    if shown.is_error and optics.get_text_detection() is None:
+        return _reply([*head, "No OCR engine: observe and check cannot list a camera's rows; pass text_detection to read them."])
     return _reply([*head, shown.content[0].text], is_error=shown.is_error)
 
 

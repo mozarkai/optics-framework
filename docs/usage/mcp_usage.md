@@ -544,8 +544,8 @@ sources automatically (appium → `appium_find_element`/`appium_page_source`/
 `appium_web`/`appium_screenshot`; ble → `camera_screenshot` at the `frame` size when
 the server has `WEBCAM_SCREENSHOT_URL` set, else none). When `start_session` picks the server's camera this way,
 the session also gets the installed local OCR engine (`easyocr`, else `pytesseract`) and `templatematch`. Pass
-`text_detection` or `image_detection` to choose the engines, or an empty list for none. A camera that you name in
-`elements_sources` gets only the engines that you pass, and no frame size: set its `out_width` and `out_height` to the ble `frame`, or taps land off target. Pass `elements_sources` only to narrow or extend the defaults. An
+`text_detection` or `image_detection` to choose the engines, or an empty list for none. A `camera_screenshot` that you name in
+`elements_sources` gets the same frame size and engines. Pass `elements_sources` only to narrow or extend the defaults. An
 explicit **empty** list is passed through and disables element sources entirely
 (the session starts without the screen: position and key keywords run, and keywords that must see the screen stop with `E0501`) — omit the argument for the defaults:
 
