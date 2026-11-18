@@ -1,5 +1,6 @@
 import pytest
 
+from optics_framework.common.agent_core import Action, Fail, prepare
 from optics_framework.common.screen_snapshot import RefTable, TargetError, diff, render_diff, render_row, verify
 
 pytestmark = pytest.mark.white_box
@@ -81,6 +82,73 @@ def test_a_field_row_shows_the_line_breaks_of_its_text():
     row = RefTable().snapshot([_native("Hello optics\nSecond line 42", "text_area", ["input"], y=0)]).rows[0]
 
     assert '"Hello optics\\nSecond line 42"' in render_row(row)
+
+
+def _read(*texts: str, shift: int = 0) -> list[dict]:
+    return [
+        {"text": text, "bounds": {"x1": shift, "y1": 40 * i + shift, "x2": 100 + shift, "y2": 40 * i + 30 + shift},
+         "act": ["tap"], "extra": {"class": "Text"}, "ocr": True, "ocr_index": texts[:i].count(text)}
+        for i, text in enumerate(texts)
+    ]
+
+
+def test_ocr_rows_keep_refs_and_text_when_a_camera_frame_moves_and_reads_punctuation_differently():
+    refs = RefTable()
+    first = refs.snapshot(_read("8.57", "Picture in Picture", "AirDrop and more:"))
+
+    moved = refs.snapshot(_read("8:57", "picture in Picture", "AirDrop and more.", shift=3))
+
+    assert [(r.ref, r.label) for r in moved.rows] == [(r.ref, r.label) for r in first.rows]
+    assert moved.digest == first.digest
+
+
+def test_an_ocr_row_shows_its_new_text_when_the_text_changes():
+    refs = RefTable()
+    refs.snapshot(_read("4.2", "+"))
+
+    now = refs.snapshot(_read("42", "="))
+
+    assert [r.label for r in now.rows] == ["42", "="]
+    assert len({r.ref for r in now.all_rows} | {r.ref for r in refs.snapshot(_read("+")).all_rows}) == 3
+
+
+def test_a_tap_on_one_of_two_ocr_rows_with_the_same_text_presses_that_one():
+    refs = RefTable()
+    first, second = refs.snapshot(_read("Delete", "Cancel", "Delete")).all_rows[::2]
+
+    def press_element(element, repeat="1", index="0"):
+        return None
+
+    calls = [prepare(Action("tap", target=row.ref), refs, {"press_element": press_element}).calls[0] for row in (first, second)]
+
+    assert [(c.params["element"], c.params.get("index")) for c in calls] == [(["Delete"], None), (["Delete"], "1")]
+
+
+def test_only_a_tap_acts_on_the_second_of_two_ocr_rows_with_the_same_text():
+    refs = RefTable()
+    second = refs.snapshot(_read("Delete", "Cancel", "Delete")).all_rows[2]
+
+    def swipe_from_element(element, direction="up"):
+        return None
+
+    with pytest.raises(Fail) as refused:
+        prepare(Action("keyword", target=second.ref, keyword="swipe_from_element"), refs, {"swipe_from_element": swipe_from_element})
+
+    assert refused.value.kind == "no_locator"
+
+
+def test_typing_targets_a_camera_read_label_but_not_a_known_label():
+    def enter_text(element, text):
+        return None
+
+    refs = RefTable()
+    search = refs.snapshot(_read("Search", "Wi-Fi")).rows[0]
+    calls = prepare(Action("type", target=search.ref, text="wallpaper"), refs, {"enter_text": enter_text}).calls
+    assert [(c.keyword, c.params["text"]) for c in calls] == [("enter_text", "wallpaper")]
+
+    label = refs.snapshot([_native("Search", "static_text", [])]).rows[0]
+    with pytest.raises(Fail, match="not a text field"):
+        prepare(Action("type", target=label.ref, text="wallpaper"), refs, {"enter_text": enter_text})
 
 
 _VOICE = "Double tap and hold to record, release to send or slide left to cancel"
@@ -172,7 +240,6 @@ def test_a_search_field_keeps_its_ref_when_its_results_change_below_it():
                            _native("Delete filters", "button", ["tap"], y=40)])
 
     assert typed.rows[1].ref == empty.rows[1].ref
-
 
 
 def test_a_query_finds_rows_by_their_role_or_their_ref():

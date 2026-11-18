@@ -867,15 +867,22 @@ class BaseRunner:
                 f"Run `optics configure {self.folder_path}`, then re-run.",
             ], Code.E0104.value)
         self.manager: SessionManager = SessionManager()
-        self.session_id: str = self.manager.create_session(
-            self.config,
-            self.execution_queue,
-            self.modules_data,
-            self.elements_data,
-            self.api_data,
-            self.templates_data,
-            self.error_definitions_data,
-        )
+        try:
+            self.session_id: str = self.manager.create_session(
+                self.config,
+                self.execution_queue,
+                self.modules_data,
+                self.elements_data,
+                self.api_data,
+                self.templates_data,
+                self.error_definitions_data,
+            )
+        except OpticsError as error:
+            abort_with_panel([
+                error.message,
+                "",
+                f"Check the setup with:  optics doctor {self.folder_path}",
+            ], error.code.value)
         self.engine: ExecutionEngine = ExecutionEngine(self.manager)
 
     def _has_enabled_driver(self) -> bool:

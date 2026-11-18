@@ -4,7 +4,7 @@ import inspect
 import textwrap
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Optional, Any
+from typing import Any, NoReturn, Optional
 
 from optics_framework.common.error import Code, OpticsError
 
@@ -321,8 +321,11 @@ class DriverInterface(ABC):
         """Whether this driver's ``capability`` method can run in the session, so agents are offered only what works."""
         return not _only_refuses(getattr(type(self), capability))
 
-    def _unsupported(self, capability: str) -> None:
+    def _unsupported(self, capability: str) -> NoReturn:
         raise OpticsError(
             Code.E0105,
             message=f"'{capability}' is not supported by the {type(self).__name__} driver.",
         )
+
+    def attach_screen(self, read: Optional[Callable[[], list[dict]]]) -> None:
+        """Hands the driver a reader of the session's screen rows, or None when nothing reads the screen."""

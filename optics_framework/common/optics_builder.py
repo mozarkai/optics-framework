@@ -124,7 +124,8 @@ class OpticsBuilder:
 
     def instantiate_element_source(self) -> InstanceFallback[ElementSourceInterface]:
         if not self.config.element_source_config:
-            raise OpticsError(Code.E0501, message="Element source configuration must be set")
+            self._instances["element_source"] = InstanceFallback([])
+            return self._instances["element_source"]
         driver: InstanceFallback[DriverInterface] = self.get_driver()
         # Normalize config before passing to factory
         normalized_config = self.normalise_config(self.config.element_source_config)

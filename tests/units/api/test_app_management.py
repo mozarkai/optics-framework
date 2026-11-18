@@ -4,12 +4,16 @@ from types import SimpleNamespace
 import pytest
 
 from optics_framework.api.app_management import AppManagement
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.config_handler import Config
 
 
 @pytest.fixture
 def app_management(mock_driver):
-    builder = SimpleNamespace(get_driver=lambda: mock_driver, session_config=Config())
+    builder = SimpleNamespace(
+        get_driver=lambda: InstanceFallback([mock_driver]), session_config=Config(),
+        get_element_source=lambda: InstanceFallback([]), get_text_detection=lambda: None, get_image_detection=lambda: None,
+    )
     return AppManagement(builder)
 
 

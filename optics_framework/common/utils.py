@@ -194,6 +194,15 @@ def call_and_store(elements: ElementData, method: Callable, args: list, kwargs: 
         return returned, {store_as: mask_secrets(store_result(elements, store_as, returned))}
 
 
+# (start x, start y, end x, end y) as fractions of the screen; "down" brings later content into view.
+SCROLL_FRACTIONS: dict[str, tuple[float, float, float, float]] = {
+    "down": (0.5, 0.8, 0.5, 0.2),
+    "up": (0.5, 0.2, 0.5, 0.8),
+    "right": (0.8, 0.5, 0.2, 0.5),
+    "left": (0.2, 0.5, 0.8, 0.5),
+}
+
+
 class SpecialKey(Enum):
     # Basic keys (supported by both BLE and Appium)
     ENTER = 'enter'
@@ -257,7 +266,7 @@ class SpecialKey(Enum):
     NUM_PAD_PERIOD = 'numpadperiod'
     NUM_PAD_EQUAL = 'numpadequal'
 
-    # Mobile/System specific keys (Appium only)
+    # Mobile/System specific keys (Appium; BLE sends back and volume as media keys)
     BACK = 'back'
     MENU = 'menu'
     VOLUME_UP = 'volumeup'

@@ -281,6 +281,12 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
         raise OpticsError(Code.E0501, f"{name}: credentials_path is read only from a project's config.yaml")
     if server_reads_allowed:
         return
+    if name == "ble" and "port" in capabilities:
+        # A port names a device file of the server; a serial number only matches a USB serial port.
+        raise OpticsError(Code.E0501, f"{name}: a remote session names the dongle by its serial, not a port")
+    if name == "camera_screenshot" and (url or capabilities.get("url") or "camera_index" in capabilities):
+        # The server would fetch any address, or open any of its own cameras, that the caller names.
+        raise OpticsError(Code.E0501, f"{name}: a remote session reads the camera the server sets in WEBCAM_SCREENSHOT_URL")
     if "profile" in capabilities:
         # A host profile carries the server owner's sign-ins, so only a local stdio client may use one.
         raise OpticsError(Code.E0501, f"{name}: a browser profile works only through a local stdio MCP server")

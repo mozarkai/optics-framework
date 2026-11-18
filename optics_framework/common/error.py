@@ -55,6 +55,7 @@ class Code(str, Enum):
     W0302 = "W0302"
     E0303 = "E0303"
     E0304 = "E0304"
+    E0305 = "E0305"
 
     # Keyword Execution issues
     E0401 = "E0401"
@@ -219,6 +220,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Image too large to decode or not a valid image",
         category=Category.SCREENSHOT,
         default_status=422,
+    ),
+    "E0305": ErrorSpec(
+        code=Code.E0305,
+        default_message="The camera does not see the device screen",
+        category=Category.SCREENSHOT,
+        default_status=503,
     ),
     # Keyword Execution issues
     "E0401": ErrorSpec(
