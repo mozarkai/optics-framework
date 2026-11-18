@@ -6,7 +6,7 @@ from functools import partial
 from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.strategies import StrategyManager
+from optics_framework.common.strategies import StrategyManager, changing_screen, one_capture_per_source
 from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import keyword_outcome, test_context, utils
@@ -311,9 +311,10 @@ class ActionKeyword:
                 curate=True,
             )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
-        result = self._ai_healer.heal(
-            ctx, providers.screenshot, providers.pagesource, snapshot_provider=providers.snapshot
-        )
+        with changing_screen():
+            result = self._ai_healer.heal(
+                ctx, providers.screenshot, providers.pagesource, snapshot_provider=providers.snapshot
+            )
         self._log_heal_outcome(result, func_name, element, intent_args, value)
         return result.ok
 
@@ -469,25 +470,26 @@ class ActionKeyword:
         A covered point is skipped like a failed action; a keyword that only reads it sets ``allow_covered``.
         """
         self.strategy_manager.require_screen()
-        screenshot_np = self._capture_screenshot_safe()
-        aoi_x = _parse_aoi_param(aoi[0], 0)
-        aoi_y = _parse_aoi_param(aoi[1], 0)
-        aoi_width = _parse_aoi_param(aoi[2], 100)
-        aoi_height = _parse_aoi_param(aoi[3], 100)
-        is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
-        if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
-            _maybe_save_aoi_screenshot(
-                screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
-                self.capture_output_dir, func_name,
+        with one_capture_per_source():
+            screenshot_np = self._capture_screenshot_safe()
+            aoi_x = _parse_aoi_param(aoi[0], 0)
+            aoi_y = _parse_aoi_param(aoi[1], 0)
+            aoi_width = _parse_aoi_param(aoi[2], 100)
+            aoi_height = _parse_aoi_param(aoi[3], 100)
+            is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
+            if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
+                _maybe_save_aoi_screenshot(
+                    screenshot_np, aoi_x, aoi_y, aoi_width, aoi_height,
+                    self.capture_output_dir, func_name,
+                )
+            self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
+            results = _locate_element(
+                self.strategy_manager, element,
+                aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
             )
-        self._save_screenshot_if_available(screenshot_np, f"pre_{func_name}")
-        results = _locate_element(
-            self.strategy_manager, element,
-            aoi_x, aoi_y, aoi_width, aoi_height, int(index), is_aoi_used,
-        )
-        return self._act_until_success(
-            results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
-        )
+            return self._act_until_success(
+                results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
+            )
 
     def _act_on(
         self, result: Any, act: Callable[[Any], Any], element: Any, func_name: str, allow_covered: bool
@@ -496,7 +498,7 @@ class ActionKeyword:
         try:
             _refuse_covered(result.value, element, allow_covered)
             # Only the driver behind this result's element source can use its element handle.
-            with self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
+            with changing_screen(), self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
                 return act(result.value), None
         except OpticsError as e:
             if e.code in (Code.E0405, Code.E0106):
