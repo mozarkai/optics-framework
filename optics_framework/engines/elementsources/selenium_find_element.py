@@ -55,6 +55,9 @@ class SeleniumFindElement(ElementSourceInterface):
             raise RuntimeError(NOT_INITIALISED_MSG)
         return selenium_locator.find(self.driver, element, index or 0, timeout_s=self.driver.element_timeout_s)
 
+    def count(self, element: str) -> Optional[int]:
+        return selenium_locator.count(self.driver, element)
+
     def get_element_bboxes(
         self, elements: list
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:

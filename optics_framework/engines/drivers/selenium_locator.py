@@ -28,6 +28,12 @@ def find(driver: Any, element: str, index: int = 0, *, visible: bool = False, ti
         time.sleep(_POLL_INTERVAL_S)
 
 
+def count(driver: Any, element: str) -> int:
+    """How many nodes the first query of ``element`` that matches anything finds."""
+    webdriver = driver.require_webdriver()
+    return next((len(m) for q in _queries(element, _strict_element_match(driver)) if (m := _matches(webdriver, q, False))), 0)
+
+
 def check(driver: Any, elements: list[str], visible: bool = False) -> list[bool]:
     """One look, no waiting: whether each element is present, or on screen when ``visible``."""
     return [find(driver, element, visible=visible) is not None for element in elements]

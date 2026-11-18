@@ -124,6 +124,11 @@ def find(
         time.sleep(_POLL_INTERVAL_S)
 
 
+def count(driver: Playwright, element: str, *, exact: bool = False) -> int:
+    """How many visible nodes the first matching candidate of ``element`` has."""
+    return _first_match(candidates(driver.page, element, exact=exact), 0, True, False, driver.run)[1]
+
+
 def _first_match(options: list[Any], index: int, visible_only: bool, on_screen: bool, run: Callable) -> tuple[Any | None, int]:
     count = 0
     for locator in options:

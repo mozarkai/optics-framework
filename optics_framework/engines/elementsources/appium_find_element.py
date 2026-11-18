@@ -152,6 +152,16 @@ class AppiumFindElement(ElementSourceInterface):
             return found_element
         return None
 
+    def count(self, element: str) -> Optional[int]:
+        element_type = utils.determine_element_type(element)
+        if element_type == "XPath":
+            query = (AppiumBy.XPATH, utils.without_prefix(element, utils.XPATH_PREFIX))
+        elif self.can_locate(element):
+            query = self._query(element, element_type)
+        else:
+            return None
+        return len(self._require_driver().find_elements(*query))
+
     @staticmethod
     def _find_nth(driver: WebDriver, by: str, value: str, position: int) -> Any:
         """The match at ``position`` or None; the first is fetched alone, as XCUITest resolves every match of a list lookup."""

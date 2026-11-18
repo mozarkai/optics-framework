@@ -83,6 +83,10 @@ class ElementSourceInterface(ABC):
         """Whether this source can look ``element`` up."""
         return True
 
+    def count(self, element: str) -> Optional[int]:
+        """How many nodes ``element`` matches now; None when this source cannot tell."""
+        return None
+
     @abstractmethod
     def assert_elements(self, elements: Any, timeout: int = 30, rule: str = 'any') -> None:
         """
