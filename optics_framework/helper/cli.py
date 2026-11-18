@@ -194,6 +194,10 @@ class MCPCommand(Command):
             "mcp", help="Run the Optics Framework MCP server (requires the 'mcp' extra)"
         )
         parser.add_argument(
+            "action", nargs="?", choices=["install"],
+            help="register the server with Claude Code for all folders, or print its config"
+        )
+        parser.add_argument(
             "--transport", choices=["stdio", "http"], default="stdio",
             help="MCP transport: stdio (default, local clients) or http"
         )
@@ -210,6 +214,12 @@ class MCPCommand(Command):
         parser.set_defaults(func=self.execute)
 
     def execute(self, args):
+        if args.action == "install":
+            if args.transport != "stdio":
+                raise SystemExit("optics mcp install registers a stdio server: leave out --transport.")
+            from optics_framework.helper.mcp_install import install
+            install(args.toolset)
+            return
         mcp_args = MCPArgs(
             transport=args.transport,
             host=args.host,
