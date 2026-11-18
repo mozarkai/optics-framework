@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import pathlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,6 +25,16 @@ def test_make_dependency_entry_refuses_a_storage_state_path():
     state = {"cookies": [], "origins": []}
     entry = expose_api._make_dependency_entry("playwright", {"capabilities": {"storage_state": state}})
     assert entry["playwright"].capabilities["storage_state"] == state
+
+
+@pytest.mark.parametrize("cfg", [{"url": "http://169.254.169.254/"}, {"capabilities": {"url": "10.0.0.5:3000"}}])
+def test_a_remote_session_reads_only_the_servers_camera(cfg):
+    with pytest.raises(OpticsError) as err:
+        expose_api._make_dependency_entry("camera_screenshot", cfg)
+    assert err.value.code == Code.E0501
+
+    entry = expose_api._make_dependency_entry("camera_screenshot", {"capabilities": {"out_width": 1170}})
+    assert entry["camera_screenshot"].capabilities == {"out_width": 1170}
 
 
 def test_loggable_masks_storage_state():
@@ -88,20 +99,18 @@ def test_compute_workspace_hash_includes_source_when_present():
     assert expose_api._compute_workspace_hash(base) != expose_api._compute_workspace_hash(with_source)
 
 
-def test_upload_template_success_writes_file_and_registers(client, tmp_path):
+@pytest.mark.parametrize(("name", "status"), [("my_btn", 200), ("../../etc/passwd", 400), ("a/b", 400), ("..", 400)])
+def test_an_uploaded_template_is_stored_only_under_a_safe_name(client, tmp_path, name, status):
     session = MagicMock()
     session._session_dir = str(tmp_path / "inline")
     session.inline_templates = {}
     raw = cv2.imencode(".png", np.zeros((2, 2, 3), np.uint8))[1].tobytes()
-    payload = {"name": "my_btn", "image_base64": base64.b64encode(raw).decode("ascii")}
+    payload = {"name": name, "image_base64": base64.b64encode(raw).decode("ascii")}
     with patch.object(expose_api.session_manager, "get_session", return_value=session):
         resp = client.post("/v1/sessions/s1/templates", json=payload)
-    assert resp.status_code == 200
-    assert resp.json() == {"name": "my_btn", "status": expose_api.STATUS_OK}
-    # The logical name now maps to a file on disk containing the decoded bytes.
-    stored_path = session.inline_templates["my_btn"]
-    with open(stored_path, "rb") as f:
-        assert f.read() == raw
+    assert resp.status_code == status
+    stored = [pathlib.Path(p) for p in session.inline_templates.values()]
+    assert [(p.parent, p.read_bytes()) for p in stored] == ([(tmp_path / "inline", raw)] if status == 200 else [])
 
 
 def test_get_session_variables_empty_when_store_absent(client):

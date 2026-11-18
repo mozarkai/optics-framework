@@ -18,6 +18,42 @@ def _read(*texts: str, shift: int = 0) -> list[dict]:
     ]
 
 
+def _calculator(display: str) -> list[dict]:
+    return [_native(display, "static_text", []), _native("7", "button", ["tap"], rid="Seven", y=20),
+            _native("", "button", ["tap"], rid="Equals", y=40)]
+
+
+def _note(text: str, rid: str = "") -> list[dict]:
+    return [_native("File menu", "menu_item", ["tap"]), _native(text, "text_area", ["tap", "input"], rid=rid, y=20)]
+
+
+def _editor(title: str) -> list[dict]:
+    return [_native(title, "window", ["tap"]), _native("File menu", "menu_item", ["tap"], y=20),
+            _native("Edit menu", "menu_item", ["tap"], y=40)]
+
+
+@pytest.mark.parametrize(("before", "after"), [
+    (_calculator("0"), _calculator("17×23")),
+    (_note(""), _note("Hello optics")),
+    (_note("", rid="First Text View"), _note("Hello optics", rid="First Text View")),
+    (_editor("Untitled 1 - Mousepad"), _editor("*Untitled 1 - Mousepad")),
+], ids=["own_id_under_a_changing_display", "field_gets_text", "field_with_id_gets_text", "window_title_changes"])
+def test_controls_keep_their_refs_when_text_on_the_screen_changes(before, after):
+    refs = RefTable()
+    first = [row.ref for row in refs.snapshot(before).rows]
+
+    assert [row.ref for row in refs.snapshot(after).rows][1:] == first[1:]
+
+
+def test_ocr_rows_keep_refs_and_text_when_a_camera_frame_moves_and_reads_punctuation_differently():
+    refs = RefTable()
+    first = refs.snapshot(_read("8.57", "Picture in Picture", "AirDrop and more:"))
+
+    moved = refs.snapshot(_read("8:57", "picture in Picture", "AirDrop and more.", shift=3))
+
+    assert [(r.ref, r.label) for r in moved.rows] == [(r.ref, r.label) for r in first.rows]
+
+
 def test_an_ocr_row_shows_its_new_text_when_the_text_changes():
     refs = RefTable()
     refs.snapshot(_read("4.2", "+"))

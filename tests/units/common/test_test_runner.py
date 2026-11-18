@@ -1,6 +1,7 @@
 import time
 from types import SimpleNamespace
 
+import pytest
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import LogCaptureBuffer
@@ -11,8 +12,6 @@ from optics_framework.common.models import (
     ModuleNode,
     State,
 )
-# Aliased on import: pytest would otherwise try to collect the ``Test``-prefixed
-# class and emit PytestCollectionWarning.
 from optics_framework.common.runner.printers import (
     NullResultPrinter,
     ModuleResult,
@@ -20,8 +19,7 @@ from optics_framework.common.runner.printers import (
     TerminalWidthProvider,
     TreeResultPrinter,
 )
-# Aliased on import: pytest would otherwise try to collect these ``Test``-prefixed
-# classes and emit PytestCollectionWarning.
+# Aliased so pytest does not collect them.
 from optics_framework.common.runner.printers import TestCaseResult as _TestCaseResult
 from optics_framework.common.runner.test_runnner import TestRunner as _TestRunner
 
@@ -87,12 +85,7 @@ async def _run_fallback(runner, method, param_candidates, keyword_node=None):
 
 
 class _Recorder:
-    """A callable that records every (args, kwargs) it is invoked with.
-
-    ``fail_until`` — if the positional args don't equal this tuple, raise
-    ``raise_code``; otherwise succeed. ``always_raise`` overrides and raises on
-    every call.
-    """
+    """Raises ``raise_code`` until called with ``fail_until``; ``always_raise`` raises every time."""
 
     def __init__(self, fail_until=None, raise_code=Code.X0201, always_raise=None):
         self.calls = []
@@ -109,31 +102,14 @@ class _Recorder:
         return None
 
 
-# resolve_param — the "first value" resolver (dry-run form)                    #
+@pytest.mark.parametrize(("values", "code", "tried", "result"), [
+    (3, Code.X0201, 3, None), (25, Code.E0201, 20, None), (3, Code.E0105, 1, False), (3, Code.E0106, 1, False),
+])
+async def test_only_element_not_found_advances_the_ladder_up_to_twenty_values(values, code, tried, result):
+    method = _Recorder(fail_until=("never",), raise_code=code)
+    assert await _run_fallback(_make_runner(), method, [[f"v{i}" for i in range(values)]]) is result
+    assert len(method.calls) == tried
 
-
-# _build_param_candidates — the "whole list" resolver (execute form)          #
-
-
-# _try_execute_with_fallback — Cartesian expansion + success                   #
-
-
-# _try_execute_with_fallback — MAX_ATTEMPTS cap                                #
-
-
-class TestMaxAttempts:
-    async def test_exhausting_fewer_than_cap_returns_none(self):
-        runner = _make_runner()
-        method = _Recorder(fail_until=("never",), raise_code=Code.X0201)
-        result = await _run_fallback(runner, method, [["a", "b", "c"]])
-        assert result is None
-        assert len(method.calls) == 3
-
-
-# _try_execute_with_fallback — advance rule (X0201 advances, others fatal)     #
-
-
-# _execute_keyword — name resolution + keyword-not-found (E0402-shaped) path   #
 
 def _wire_execute_context(runner, keyword_node, module_name="mod"):
     """Populate ``test_state`` so ``_find_result`` can locate the keyword result."""
@@ -177,10 +153,6 @@ class TestExecuteKeywordNameResolution:
         assert kw_node.state == State.COMPLETED_FAILED
 
 
-# Module-step resolution — a test-case step must name a known module or a      #
-# registered keyword, in dry-run AND batch mode                                #
-
-
 class TestModuleStepResolution:
     @staticmethod
     def _wire_module(runner, module_name, keywords=None):
@@ -212,12 +184,6 @@ class TestModuleStepResolution:
         assert ok is False
         assert module_result.status == "FAIL"
         assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
-
-
-# Dry-run param resolution — an unresolved ``${var}`` is a per-keyword FAIL,   #
-
-
-# --------------------------------------------------------------------------- #
 
 
 class TestFailureDetailsSection:
@@ -270,7 +236,3 @@ class TestFailureDetailsSection:
         group = failing_printer._render_tree()
         titles = [getattr(r, "title", None) for r in group.renderables]
         assert "Failure details" in titles
-
-
-# Signature-aware param split — a 'text='/'css=' locator is the positional      #
-# element, never a keyword argument (regression: playwright sample TypeError)   #

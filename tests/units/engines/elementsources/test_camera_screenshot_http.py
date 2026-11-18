@@ -133,6 +133,13 @@ class TestHttp:
         assert exc.value.code == "UNAUTHORIZED"
         assert "wrong" not in str(exc.value)
 
+    def test_redirect_is_not_followed(self, http_server):
+        http_server.mode = "redirect"
+        with pytest.raises(CameraScreenshotHttpError) as exc:
+            _source(url=http_server.url, token=TOKEN).capture()
+        assert exc.value.status == 302
+        assert len(http_server.received) == 1
+
     def test_unreachable_server_raises_runtime_error(self, http_server):
         url = http_server.url
         http_server.shutdown()

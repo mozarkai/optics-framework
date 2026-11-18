@@ -41,26 +41,11 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-# --- registration ----------------------------------------------------------
-
-
 def test_readonly_observers_excluded_from_tools():
     server = mcp_server.build_server("full")
     names = {t.name for t in _run(server._list_tools())}
     for observer in RESOURCE_KEYWORDS:
         assert observer not in names
-
-
-# --- schema shape ----------------------------------------------------------
-
-
-# --- dispatch & coercion ---------------------------------------------------
-
-
-# --- deep dispatch: real named-param path (regression for #454) ------------
-
-
-# --- error translation -----------------------------------------------------
 
 
 def test_http_error_translates_to_tool_error(owned):
@@ -78,16 +63,10 @@ def test_http_error_translates_to_tool_error(owned):
             _run(go())
 
 
-# --- resources -------------------------------------------------------------
-
-
 def test_decode_screenshot_handles_data_url():
     raw = b"abc"
     data_url = "data:image/png;base64," + base64.b64encode(raw).decode()
     assert mcp_server._decode_screenshot(data_url) == raw
-
-
-# --- optional dependency guard ---------------------------------------------
 
 
 def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
