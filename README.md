@@ -1,35 +1,68 @@
 <div align="center">
 
-# Optics Framework
-
-**Self-healing test automation for mobile, web, TV — and AI agents.**
-
-One keyword engine. Six ways to drive it: CSV/YAML files, a Python SDK, Robot Framework, a REST API, an interactive terminal, or an MCP server your AI agent talks to.
+<a href="https://optics-framework.org/?ref=readme"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/hero-dark.webp">
+  <img alt="Optics. Create tests your way. Run them forever. Write, record, say, delegate." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/hero-light.webp" width="100%">
+</picture></a>
 
 [![PyPI](https://img.shields.io/pypi/v/optics-framework.svg)](https://pypi.org/project/optics-framework/)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](https://github.com/mozarkai/optics-framework/blob/main/LICENSE)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/optics-framework.svg)](https://pypi.org/project/optics-framework/)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mozarkai_optics-framework&metric=coverage)](https://sonarcloud.io/summary/new_code?id=mozarkai_optics-framework)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10842/badge)](https://www.bestpractices.dev/projects/10842)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/mozarkai/optics-framework)
 
-![Optics demo](https://raw.githubusercontent.com/mozarkai/optics-framework/main/.github/assets/optics-demo.gif)
-
-[Documentation](https://optics-framework.org/docs/?ref=readme) · [Install](https://optics-framework.org/docs/get-started/install?ref=readme) · [Getting Started](https://optics-framework.org/docs/get-started/quickstart?ref=readme) · [Keywords](https://optics-framework.org/docs/reference/keywords/?ref=readme) · [Architecture](https://mozarkai.github.io/optics-framework/architecture/)
+**[Docs](https://optics-framework.org/docs/?ref=readme)** · **[Install](https://optics-framework.org/docs/get-started/install?ref=readme)** · **[Quickstart](https://optics-framework.org/docs/get-started/quickstart?ref=readme)** · **[Playground](https://optics-framework.org/playground?ref=readme)** · **[Keywords](https://optics-framework.org/docs/reference/keywords/?ref=readme)**
 
 </div>
 
----
+Optics is open-source test automation for Android, iOS, web, smart TV and desktop apps. You write a test as data, in CSV or YAML. Each element can have more than one way to find it, and Optics tries them in order: XPath, text, OCR, image, then an optional AI recovery. When the app changes and one way breaks, the next way finds the element and the test continues.
 
-Most frameworks assume a UI element has one true locator, and a test breaks the moment that locator changes. Optics assumes an element has **several plausible identities** — its XPath, its visible text, what it looks like on screen — and tries all of them before giving up.
+## Try it in your browser
 
-That idea runs through the whole framework: locators fall back, drivers fall back, element values fall back. Tests are data (CSV or YAML), so non-coders can write them, and the same keywords are reachable from Python, Robot Framework, HTTP, and MCP.
+These four pages on optics-framework.org need no install. Click an image to open the page.
+
+### Real Optics, in the browser
+
+<a href="https://optics-framework.org/playground?ref=readme"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/playground-dark.webp">
+  <img alt="The playground runs the optics-framework wheel on Pyodide and executes a suite against the Birch shop app." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/playground-light.webp" width="100%">
+</picture></a>
+
+[/playground](https://optics-framework.org/playground?ref=readme) loads the `optics-framework` wheel from PyPI on Pyodide. Edit the suite, break a locator, then run `dry_run` or `execute` on Birch, a demo shop app. The output and `junit_output.xml` come from Optics itself.
+
+### `optics live`, next to a phone
+
+<a href="https://optics-framework.org/?ref=readme#playground"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/live-dark.webp">
+  <img alt="A simulation of optics live: typed steps run on a phone, then /save writes them into the suite." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/live-light.webp" width="100%">
+</picture></a>
+
+[The homepage playground](https://optics-framework.org/?ref=readme#playground) is a simulation of `optics live`. Type a step or tap the phone. Each step runs at once and shows how Optics found the element. `/save` writes the steps that passed into `modules.csv` and `elements.csv`. Under the phone, each step also shows as CSV, Python, Robot, an HTTP call and an MCP call.
+
+### A real run, frame by frame
+
+<a href="https://optics-framework.org/run?ref=readme"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/run-dark.webp">
+  <img alt="A replay of a real Optics run against two releases of Birch, with the screenshots and logs the run wrote." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/run-light.webp" width="100%">
+</picture></a>
+
+[/run](https://optics-framework.org/run?ref=readme) replays a real run of the Birch suite against two releases of the app. Each frame is a file that the run wrote. Release 2.2 passes every step and fails the run, because the last screen shows "Session expired".
+
+### Explain a suite
+
+<a href="https://optics-framework.org/explain?ref=readme"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/explain-dark.webp">
+  <img alt="The suite explainer reads a suite row by row and shows what optics dry_run reports." src="https://raw.githubusercontent.com/mozarkai/optics-framework/docs/readme-redesign/.github/assets/readme/explain-light.webp" width="100%">
+</picture></a>
+
+[/explain](https://optics-framework.org/explain?ref=readme) reads a suite row by row. It shows what each step does, how each value resolves and what `optics dry_run` reports for it.
 
 ## Install
 
-One line puts the `optics` CLI on your PATH:
+One line installs the `optics` command into its own environment under `~/.optics`:
 
 ```bash
 curl -fsSL https://optics-framework.org/install | sh      # macOS, Linux
@@ -39,91 +72,41 @@ curl -fsSL https://optics-framework.org/install | sh      # macOS, Linux
 irm https://optics-framework.org/install.ps1 | iex        # Windows
 ```
 
-It installs into its own virtual environment under `~/.optics`, so nothing lands in your system Python. Then `optics quickstart` builds a project, checks your setup, and runs your first test.
+Then run `optics quickstart`. It asks what you want to test, installs the engine for it, makes a project, checks your setup and runs the first test. Each prompt has a default.
 
-Already managing your own environment? Optics needs **Python 3.12+**, and the core install ships no drivers, OCR, or LLM backends — you add only what you need:
+To use pip, you need Python 3.12 or newer. The core package has no drivers, OCR or AI engines. Add the extras that you need:
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install "optics-framework[appium,easyocr]"
 ```
 
-Most extra names match the `config.yaml` source keys, so the word you install is usually the word you enable (exceptions: `google-vision` enables `google_vision`, and the bundles and `mcp` aren't config keys):
-
-| | |
+| Kind | Extras |
 |---|---|
 | **Drivers** | `appium` · `selenium` · `playwright` · `ble` |
-| **OCR** | `easyocr` · `pytesseract` · `google-vision` |
-| **AI** | `gemini` · `openai` · `anthropic` (natural-language mode + self-heal) · `mcp` (MCP server) |
+| **OCR** | `apple-vision` · `rapidocr` · `easyocr` · `pytesseract` · `google-vision` |
+| **AI** | `gemini` · `openai` · `anthropic` |
+| **MCP server** | `mcp` |
 | **Bundles** | `mobile` · `web` · `vision` · `llm` · `all` |
 
-`optics setup` installs the drivers, OCR and LLM engines above (and the bundles) by name — pinned to your installed Optics version — and bare `optics setup` opens a TUI picker. `optics quickstart` goes one step further and offers the right extras for the platform you pick:
-
-```bash
-optics setup --list
-optics setup --install appium easyocr
-```
-
-> [!NOTE]
-> The installer always includes the `mcp` server extra. With pip, add it yourself (it isn't an engine backend `optics setup` manages): `pip install "optics-framework[mcp]"`.
+`optics setup --list` shows the same engines, and `optics setup --install appium easyocr` installs them for the Optics version you have.
 
 > [!IMPORTANT]
-> Some extras need system tooling beyond the Python package. A driver extra installs only the **Python client** — mobile testing also needs the Appium server, a device/emulator, and platform tooling (Node.js, Android SDK/`adb`, JDK). `pytesseract` needs the Tesseract binary; `playwright` needs its browsers (`playwright install`). See the [Installation guide](https://optics-framework.org/docs/get-started/install?ref=readme).
+> A driver extra installs only the Python client. A phone test also needs the Appium server, a device or emulator, and the platform tools. `pytesseract` needs the Tesseract program, and `playwright` needs its browsers (`playwright install`). See the [install guide](https://optics-framework.org/docs/get-started/install?ref=readme).
 
 > [!WARNING]
-> Conda is not supported for `easyocr` + `optics-framework` together (conflicting NumPy 1.x/2.x requirements). Use a standard `venv`.
+> Do not use Conda with `easyocr`. Its NumPy version conflicts with the one that Optics needs. Use `venv`.
 
-## Quickstart
+## Four ways to create a test
 
-From a fresh install to a running test with **one guided command**:
+1. **Write it.** Elements, modules and test cases are plain CSV or YAML files. The same keywords are also a Python library and a Robot Framework library.
+2. **Record it.** Run keywords one at a time in `optics live` next to your device. Each step that works is recorded, and `/save` writes the recording into your suite as a module.
+3. **Describe it.** Press <kbd>Ctrl</kbd>+<kbd>N</kbd> in `optics live` and describe the flow. An AI model (Gemini, Claude, OpenAI or a local model) drives the device one step at a time, then keeps only the steps that mattered.
+4. **Delegate it.** Run `optics mcp install` to register the MCP server with Claude Code, or add `optics mcp` to any MCP client. Your agent looks, taps, types and checks through the tools. When it is done, it gets the steps it ran as a suite.
 
-```bash
-pip install optics-framework
-optics quickstart
-```
+## A test is data
 
-`optics quickstart` asks what you want to automate, installs the matching engine, scaffolds the project, writes a platform-correct `config.yaml`, and runs an `optics doctor` check — then prints your next steps. Every prompt has a default, so pressing Enter throughout yields a runnable project.
-
-Prefer to drive each step yourself?
-
-```bash
-optics init my_test_project --template contact
-# point my_test_project/config.yaml at your device/app, start the Appium server, then:
-optics dry_run my_test_project    # validate keywords, elements and module refs — no device (but the config's engines must be installed)
-optics execute my_test_project
-```
-
-`--template` scaffolds a working project from a bundled sample. Each needs the matching extras installed (see [Install](#install)); the headline `[appium,easyocr]` above covers the first three:
-
-- `contact` · `calendar` · `youtube` — Appium/Android, easyocr → `[appium,easyocr]`
-- `clock` — Appium/Android, image templates + Tesseract OCR → `[appium,pytesseract]` (plus the Tesseract binary)
-- `gmail_web` — Selenium → `[selenium,easyocr]`
-- `playwright` — Playwright → `[playwright]` (then `playwright install` for the browsers)
-
-Omit `--template` for an empty scaffold with a commented starter `config.yaml`. Need only a config for an existing folder? `optics configure <folder>` writes one from a few questions, and `optics doctor [folder] [--check]` verifies engines, tooling, and project config.
-
-## Why Optics
-
-**A locator ladder, not a locator.** Every element-based keyword walks a priority-ordered chain until one strategy succeeds:
-
-| # | Strategy | How it finds the element |
-|---|----------|--------------------------|
-| 1 | `XPathStrategy` | Native XPath query through the driver's accessibility tree |
-| 2 | `TextElementStrategy` | Direct text / CSS / class lookup through the element source |
-| 3 | `TextDetectionStrategy` | Screenshot → OCR (EasyOCR, Pytesseract, Google Vision, remote OCR) |
-| 4 | `ImageDetectionStrategy` | Screenshot → template matching against a reference PNG |
-| 5 | AI self-heal *(opt-in)* | All four failed → an LLM reads the screen and recovers |
-
-Cheap strategies run first, so vision only costs you time when the tree can't help. Steps 1–4 are `LocatorStrategy` registrations; step 5 is a separate recovery layer, bounded to five turns and a six-keyword allowlist so it re-enters the ladder rather than tapping blind coordinates. Two more fallback axes sit alongside: **multiple values per element name**, and **multiple enabled drivers or element sources**, each tried in config order.
-
-Beyond the ladder:
-
-- **Tests are data** — elements, modules and test cases as plain CSV or YAML. No IDE, no programming.
-- **Targets** — Android, iOS, web (Selenium/Playwright), Android TV, Samsung Tizen, LG webOS.
-- **Non-intrusive** — the `ble` driver drives production devices as a Bluetooth HID mouse/keyboard where debugging and screenshots are blocked. Coordinate-only, so pair it with `camera_screenshot` and the vision strategies.
-- **Agent-ready** — `optics mcp` exposes every keyword as a typed MCP tool and device state as MCP resources.
-
-## Write a test as data
+A suite is three kinds of file. Optics finds each file by its CSV header or YAML keys, not by its folder.
 
 ```text
 my_test_project/
@@ -136,66 +119,112 @@ my_test_project/
     └── input_templates/*.png      # optional, for image matching
 ```
 
-Optics discovers these files by their **content** (CSV headers / YAML top-level keys), not their path — the folder names above are a convention, so `elements.csv` works equally under `test_data/` or `elements/` (the folder `optics live`'s `/save` writes to).
-
-**`test_data/elements.csv`** — names mapped to locators. Doubles as a general variable store; repeating a name builds a fallback list.
+**`elements.csv`** gives a name to each element. Give a name more than one row and Optics tries each value in order.
 
 ```csv
 Element_Name,Element_ID
-Add_Contact_Button,//android.widget.Button[@content-desc="Create contact"]
-First_Name_element,//android.widget.EditText[@text="First name"]
-Save_Button,Save
-First_Name,John
+email_field,//android.widget.EditText[@resource-id="email"]
+email_field,Email
+sign_in,Sign in
+sign_in,sign_in_button.png
 ```
 
-A locator can be an XPath, `text=…`, `css=…`, a plain string, an image filename from `input_templates/`, or `TEXT_ONLY:…` to force a vision-based search.
+A value can be an XPath, `text=…`, `css=…`, plain text, an image file from `input_templates/`, or `TEXT_ONLY:…` to search with OCR only.
 
-**`modules/modules.csv`** — a reusable sequence of keywords; `${name}` resolves against `elements.csv`.
+**`modules.csv`** holds the steps, one keyword for each row. `${name}` reads a value from `elements.csv`.
 
 ```csv
 module_name,module_step,param_1,param_2
-Add Contact,Press Element,${Add_Contact_Button}
-Add Contact,Enter Text,${First_Name_element},${First_Name}
-Add Contact,Press Element,${Save_Button}
+Sign In,Enter Text,${email_field},ava@birch.shop
+Sign In,Press Element,${sign_in}
 ```
 
-**`test_cases/test_cases.csv`** — modules sequenced into scenarios. A test case whose name contains *suite* + *setup* (or *teardown*) is hoisted to run around the whole suite.
+**`test_cases.csv`** sets the modules that each test case runs, in order. A test case named `Suite Setup` or `Suite Teardown` runs before or after all the others.
 
 ```csv
 test_case,test_step
-Suite Setup,Launch Contact Application
-Add Contact with Contact App,Add Contact
-Add Contact with Contact App,Verify Contact is Added
+Suite Setup,Launch Birch
+Sign in and buy,Sign In
+Sign in and buy,Add To Cart
 ```
 
-## Six ways to run the same keywords
+## How Optics finds an element
 
-| Surface | Command / import | Best for |
-|---------|------------------|----------|
-| **CLI runner** | `optics execute <project>` | CI suites written as CSV/YAML |
-| **Interactive TUI** | `optics live [project]` | Building a test by doing it — recording is always on, `Ctrl-N` toggles natural-language mode |
-| **Python SDK** | `from optics_framework import Optics` | Custom logic, embedding in existing suites |
-| **Robot Framework** | `Library  optics_framework.optics.Optics` | Teams already on Robot |
-| **REST API** | `optics serve` | Remote/orchestrated execution, live workspace streaming over SSE |
-| **MCP server** | `optics mcp` | Letting an AI agent drive a real device |
+Each keyword that acts on an element tries these ways in order and stops at the first one that works:
 
-<details>
-<summary><b>optics live — turning a session into a reusable module</b></summary>
+| # | Way | What it does |
+|---|---|---|
+| 1 | XPath | Queries the accessibility tree through the driver |
+| 2 | Text | Finds the visible text, CSS or class in the page source |
+| 3 | OCR | Reads the screenshot with Apple Vision, RapidOCR, EasyOCR, Tesseract, Google Vision or a remote OCR server |
+| 4 | Image | Matches a reference picture of the element on the screenshot |
+| 5 | AI self-heal (optional) | An LLM reads the screen and recovers with the same keywords |
 
-Every successful keyword is buffered as you work. To persist the buffer:
+The fast ways run first, so OCR and image matching cost time only when the tree cannot help. Two more fallbacks run next to this one: the values of one element name, and the drivers or element sources that you enable, in `config.yaml` order.
 
-```text
-/save <test_case> <module_name>
+## Run a suite
+
+```bash
+optics dry_run my_test_project    # check keywords, parameters, elements and modules without a device
+optics execute my_test_project    # run the suite
 ```
 
-That appends the recorded keywords to `modules/modules.csv` as `<module_name>`, adds a `(<test_case>, <module_name>)` row to `test_cases/test_cases.csv`, creates a header-only `elements/elements.csv` stub if none exists, and copies the session's screenshots to `execution_output/<module_name>/`. The buffer then clears, so the next actions become the next module. If either name already exists, re-run the identical `/save` to confirm the append.
+Each run writes to `my_test_project/execution_output/`:
 
-Other commands: `/device [id]`, `/elements`, `/screenshot`, `/help`, `/quit`. Full reference: [Live Usage](https://optics-framework.org/docs/create/record?ref=readme).
+- **`junit_output.xml`**, written once when the run ends, also when you stop the run.
+- **Screenshots** of each step that finds an element, with a box around what Optics found.
+- **Detected errors.** Put an `error_definitions.csv` in the project and Optics reads the last screen for crash dialogs, `Session expired` and other messages. A match adds a failure to the JUnit report, with no assertion. See [error detection](https://optics-framework.org/docs/run/error-detection?ref=readme).
 
-</details>
+`optics execute` exits with `1` when a test fails, so CI marks the build as failed. See [Run in CI](https://optics-framework.org/docs/run/ci?ref=readme) for GitHub Actions and GitLab.
+
+## One suite, many targets
+
+| Target | Driver |
+|---|---|
+| Android, iOS | `appium` with UiAutomator2 or XCUITest |
+| Web | `playwright` or `selenium` |
+| Android TV, Samsung Tizen, LG webOS | `appium` |
+| macOS, Linux and Windows apps (Windows is experimental) | `appium` with appium-xa11y-driver |
+| Production devices that block debugging and screenshots | `ble`: a Bluetooth dongle taps and types, and `camera_screenshot` reads the screen |
+
+`config.yaml` sets the driver and how to find elements. Each section is a list in order of priority, and each entry has an `enabled` flag. Enable a second driver and it becomes a fallback.
+
+```yaml
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: Android
+        automationName: UiAutomator2
+        deviceName: emulator-5554
+
+elements_sources:
+  - appium_find_element: { enabled: true }
+  - appium_page_source:  { enabled: true }
+  - appium_screenshot:   { enabled: true }
+
+text_detection:
+  - easyocr: { enabled: true }
+```
+
+`optics configure <folder>` writes this file from a few questions. See the [configuration reference](https://optics-framework.org/docs/reference/config?ref=readme) for every key, the AI engines and self-heal.
+
+## Use the keywords from code
+
+The same keywords work from each of these:
+
+| Surface | Start it with |
+|---|---|
+| CLI runner | `optics execute <project>` |
+| Interactive session | `optics live [project]` |
+| Python | `from optics_framework import Optics` |
+| Robot Framework | `Library    optics_framework.optics.Optics` |
+| HTTP API | `optics serve` ([OpenAPI](https://optics-framework.org/openapi.json)) |
+| MCP server | `optics mcp`, or `optics mcp install` for Claude Code |
 
 <details>
-<summary><b>Python SDK example</b></summary>
+<summary><b>Python example</b></summary>
 
 ```python
 from optics_framework import Optics
@@ -216,159 +245,64 @@ optics.quit()
 </details>
 
 <details>
-<summary><b>MCP client config</b></summary>
+<summary><b>MCP client configuration</b></summary>
 
 ```json
 { "mcpServers": { "optics": { "command": "optics", "args": ["mcp"] } } }
 ```
 
-Then: `start_session` → observe (`screenshot`, `optics://session/{id}/source`) → act (`press_element`, `enter_text`, …) → `terminate_session`. For networked use: `optics mcp --transport http --port 8090`. Sessions are **not** shared with `optics serve` — each is its own process.
+The server gives the agent 11 tools: `start_session`, `observe`, `tap`, `type_text`, `scroll`, `press_key`, `launch_app`, `batch`, `check`, `run_keyword` and `terminate_session`. Each action replies with what changed on the screen. For a network client, run `optics mcp --transport http --port 8090`. See the [MCP reference](https://optics-framework.org/docs/reference/mcp?ref=readme).
 
 </details>
 
 ## Keywords
 
-Every public method on the four API classes is automatically a keyword, on every surface above. CSV/YAML uses Title Case (`Press Element` → `press_element`).
+In CSV and YAML, keywords are in Title Case (`Press Element`). In Python they are in snake case (`press_element`).
 
-| Category | Keywords |
-|----------|----------|
-| **Actions** | Press Element · Press By Percentage · Press By Coordinates · Detect And Press · Select Dropdown Option · Swipe · Swipe By Percentage · Swipe From Element · Swipe Until Element Appears · Scroll · Scroll From Element · Scroll Until Element Appears · Enter Text · Enter Text Direct · Enter Text Using Keyboard · Enter Number · Clear Element Text · Press Keycode · Get Text · Sleep · Execute Script |
-| **Verification** | Assert Presence · Assert Visibility · Assert Equality · Validate Element · Validate Screen · Is Element · Get Interactive Elements · Get Screen Elements · Capture Screenshot · Capture Pagesource |
-| **App lifecycle** | Launch App · Launch Other App · Start Appium Session · Get Driver Session Id · Close And Terminate App · Force Terminate App · Get App Version |
-| **Flow control** | Run Loop · Condition · Read Data · Evaluate · Date Evaluate · Invoke API |
+| Kind | Keywords |
+|---|---|
+| **Actions** | Press Element · Press By Percentage · Press By Coordinates · Detect And Press · Select Dropdown Option · Swipe · Swipe By Percentage · Swipe From Element · Swipe Until Element Appears · Scroll · Scroll From Element · Scroll Until Element Appears · Enter Text · Enter Text Direct · Enter Text Using Keyboard · Enter Number · Clear Element Text · Press Keycode · Go Back · Get Text · Sleep · Execute Script |
+| **Checks** | Assert Presence · Assert Visibility · Assert Text · Assert Equality · Validate Element · Validate Screen · Is Element · Get Interactive Elements · Get Screen Elements · Capture Screenshot · Capture Pagesource |
+| **App** | Launch App · Launch Other App · Start Appium Session · Initialise Setup · Get Driver Session Id · Close And Terminate App · Force Terminate App · Get App Version |
+| **Flow** | Execute Module · Run Loop · Condition · Read Data · Evaluate · Date Evaluate · Invoke API |
 
-Run `optics list` for the live catalogue with signatures, or read the [Keyword Usage guide](https://optics-framework.org/docs/reference/keywords/?ref=readme) for parameters and examples. Location keywords accept percentage-based **Area-of-Interest** bounds (`aoi_x/y/width/height`, 0–100) to scope a vision search to part of the screen.
+`optics list` prints every keyword, and `optics list press_element` prints the parameters of one. The [keyword reference](https://optics-framework.org/docs/reference/keywords/?ref=readme) has an example for each.
 
-> [!NOTE]
-> `Press Checkbox` and `Press Radio Button` still resolve but are deprecated aliases of `Press Element` — use `Press Element` directly. `Add API` is available on the `Optics` Python class only, not to the CSV/YAML runner; define APIs in an `api.yaml` and call them with `Invoke API` instead.
-
-## Configure once, in `config.yaml`
-
-Every section is a priority-ordered list and every entry has an `enabled` flag. Enable a second driver and it becomes a fallback. Prefer not to hand-write it? `optics configure <folder>` writes one from a few questions, or `optics quickstart` builds the whole project including the config.
-
-```yaml
-driver_sources:
-  - appium:
-      enabled: true
-      url: "http://localhost:4723"
-      capabilities:
-        platformName: Android
-        automationName: UiAutomator2
-        deviceName: emulator-5554
-        appPackage: com.google.android.contacts
-        appActivity: com.android.contacts.activities.PeopleActivity
-
-elements_sources:
-  - appium_find_element: { enabled: true }
-  - appium_page_source:  { enabled: true }
-  - appium_screenshot:   { enabled: true }
-
-text_detection:
-  - easyocr: { enabled: true }
-
-image_detection:
-  - templatematch: { enabled: false }
-
-log_level: INFO
-```
-
-| Layer | Available engines |
-|-------|-------------------|
-| **Drivers** | `appium` (Android, iOS, Android TV, Tizen, webOS) · `selenium` · `playwright` · `ble` |
-| **Element sources** | `appium_find_element` · `appium_page_source` · `appium_web` · `appium_screenshot` · `selenium_*` · `playwright_*` · `camera_screenshot` |
-| **Text detection** | `easyocr` · `pytesseract` · `google_vision` · `remote_ocr` |
-| **Image detection** | `templatematch` · `remote_oir` |
-| **LLM** | `gemini` · `openai` (and any OpenAI-compatible server) · `anthropic` |
-
-### Enabling the LLM features
-
-The `llm_models` block powers both natural-language mode in `optics live` (`Ctrl-N`) and AI self-heal. Pick the engine that matches the account you already have, install its extra, and enable it:
-
-| You have | Install | Enable |
-|---|---|---|
-| A Gemini API key, or Vertex AI | `optics-framework[gemini]` | `gemini` |
-| An OpenAI key | `optics-framework[openai]` | `openai` with a `model` |
-| An OpenRouter key (any hosted model) | `optics-framework[openai]` | `openai` with `url: https://openrouter.ai/api/v1` |
-| A local model (Ollama, vLLM, LM Studio) | `optics-framework[openai]` | `openai` with the server's `url` |
-| A Claude key, or Claude on Bedrock / Vertex | `optics-framework[anthropic]` | `anthropic` with a `model` |
-
-```yaml
-llm_models:
-  - openai:
-      enabled: true
-      url: https://openrouter.ai/api/v1         # omit for OpenAI itself
-      capabilities:
-        model: anthropic/claude-sonnet-5-5
-        api_key_env: OPENROUTER_API_KEY         # default OPENAI_API_KEY
-
-ai_self_heal: true                              # opt into the LLM backstop; default false
-```
-
-Each engine reads its key from `capabilities.api_key`, else from the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). For `openai` and `anthropic`, `api_key_env` names the variable to read in place of that default. For direct Anthropic clients, if the named variable is unset, the SDK can fall back to `ANTHROPIC_API_KEY`. Anthropic on Bedrock or Vertex uses the platform credentials, not a key. Write `api_key: ${MY_KEY}` to keep the key out of a committed `config.yaml`; logs show `****` in its place. If `MY_KEY` is not set, the run stops with `E0501` before it starts, so set it first. Enable more than one entry and Optics falls back to the next when a call fails. A misconfigured LLM degrades to "no self-heal" rather than a hard failure.
-
-Full reference: [Configuration](https://optics-framework.org/docs/reference/config?ref=readme). Adding your own engine is a file drop plus an interface — see [Extending the Framework](https://mozarkai.github.io/optics-framework/architecture/extending/).
-
-## Results
-
-An `optics execute` run writes to `<project>/execution_output/`:
-
-- **`junit_output.xml`** — written incrementally, so CI sees progress as it happens
-- **`logs.json`** — structured logs when `json_log: true`
-- **screenshots** — pre/post action frames, plus strategy-annotated and AOI overlays
-- **`detected_errors_<session_id>.json`** — on-screen error detection
-
-Drop an `error_definitions.csv` into `test_data/` and Optics scans visible text for crash dialogs, `Session expired`, network errors, and the like — no assertions required. Matches also land in the JUnit XML as a synthetic failing testcase, so CI fails a build on "the app crashed mid-test" the same way it fails a normal assertion. See [Error Detection](https://optics-framework.org/docs/run/error-detection?ref=readme).
-
-## CLI reference
+## CLI
 
 ```text
-optics init        Scaffold a new project (positional NAME; --template, --path, --force, --git-init)
-optics quickstart  Guided walkthrough: engines + project + config + doctor check
-optics configure   Write/edit a project's config.yaml (guided prompts; --edit opens a TUI)
-optics doctor      Diagnose engines, tooling and a project's config (--check for CI)
-optics setup       Install engine backends (--list, --install); bare command opens a TUI
-optics dry_run     Validate a project without touching a device
-optics execute     Run a project (--runner test_runner|pytest; --include/--exclude test cases)
-optics live        Interactive keyword session against a live target
-optics generate    Emit pytest or Robot Framework code from a project
-optics list        Print every discoverable keyword
-optics serve       Start the REST API server (--host, --port, --workers)
-optics mcp         Start the MCP server (--transport stdio|http)
-optics completion  Install shell autocompletion
-optics --version   Print the installed version
+optics quickstart   Make a first project, step by step
+optics init         Make a project (--template for a sample)
+optics configure    Write or edit config.yaml
+optics doctor       Check engines, tools and project config (--check for CI)
+optics setup        Install engines (--list, --install)
+optics list         Print the keywords, or the parameters of one
+optics dry_run      Check a project without a device
+optics execute      Run a project (--include, --exclude)
+optics live         Run keywords one at a time on a device
+optics generate     Write pytest or Robot Framework code from a project
+optics serve        Start the HTTP API
+optics mcp          Start the MCP server (install registers it with Claude Code)
+optics completion   Install shell completion
 ```
 
-Details in the [CLI guide](https://optics-framework.org/docs/reference/cli?ref=readme).
+See the [CLI reference](https://optics-framework.org/docs/reference/cli?ref=readme) for every option.
 
-## Contributing
+## Contribute
 
-Contributions welcome — bug reports, docs, and code are all first-class.
-
-- **Bigger items** are queued under [`help wanted`](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
-- **Found a bug or missing a keyword?** [Open an issue](https://github.com/mozarkai/optics-framework/issues/new/choose).
-
-The [contribution guide](CONTRIBUTING.md) covers development setup, step-by-step recipes (adding a keyword or engine backend), commit conventions, and the pull-request format reviewers expect. Tooling details live in the [Developer Guide](docs/contribution/developer_guide.md); behaviour expectations in our [Code of Conduct](CODE_OF_CONDUCT.md).
+Bug reports, docs and code are welcome. Larger tasks have the [`help wanted`](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) label. To report a bug or ask for a keyword, [open an issue](https://github.com/mozarkai/optics-framework/issues/new/choose).
 
 ```bash
 git clone git@github.com:mozarkai/optics-framework.git
 cd optics-framework
 pipx install poetry
 poetry install --with dev,test,docs
-
-poetry run pytest                    # tests + coverage
-poetry run ruff check --fix .        # lint
+poetry run pytest
 poetry run pre-commit run --all-files
-poetry run mkdocs serve              # docs preview
 ```
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by commitizen in the commit-msg hook.
+The [contribution guide](https://github.com/mozarkai/optics-framework/blob/main/CONTRIBUTING.md) has the development setup, how to add a keyword or an engine, and the commit format. Report security issues as [SECURITY.md](https://github.com/mozarkai/optics-framework/blob/main/SECURITY.md) tells you, not in a public issue.
 
-Security issues follow [SECURITY.md](SECURITY.md) rather than public issues.
+## License
 
-## License & support
-
-Apache 2.0 — see [LICENSE](LICENSE).
-
-Questions and bugs: [GitHub Issues](https://github.com/mozarkai/optics-framework/issues).
-
-<div align="center"><sub>Built by the community.</sub></div>
+Apache 2.0. See [LICENSE](https://github.com/mozarkai/optics-framework/blob/main/LICENSE).
