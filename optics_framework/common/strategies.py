@@ -114,21 +114,11 @@ class LocatorStrategy(ABC):
         except Exception as e:
             internal_logger.exception("Failed to capture screenshot for an assertion: %s", e)
             frame = None
-        if frame is not None:
-            bboxes = []
-            if hasattr(self.element_source, 'get_element_bboxes'):
-                bboxes = [
-                    b for b in self.element_source.get_element_bboxes(elements)
-                    if b is not None
-                ]
-            if bboxes:
-                # Element bboxes are in the driver's window coordinate space;
-                # scale them to the screenshot's pixel space before drawing
-                # (no-op when the two resolutions already match).
-                bboxes = utils.scale_bboxes_for_screenshot(bboxes, self.element_source, frame)
-                return utils.annotate(frame.copy(), bboxes)
-            return frame.copy()
-        return None
+        if frame is None:
+            return None
+        read = getattr(self.element_source, "get_element_bboxes", None)
+        boxed = utils.boxed_frame(frame, self.element_source, lambda: read(elements)) if read else None
+        return frame.copy() if boxed is None else boxed
 
 
 class XPathStrategy(LocatorStrategy):

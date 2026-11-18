@@ -87,13 +87,9 @@ def _save_annotated_for_result(
     element_source = getattr(result.strategy, "element_source", None)
     if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
         return
-    bbox = element_source.get_bbox_for_element(result.value)
-    if bbox is None:
+    framed = utils.boxed_frame(screenshot_np, element_source, lambda: [element_source.get_bbox_for_element(result.value)])
+    if framed is None:
         return
-    # Element bbox is in the driver's window coordinate space; scale it to the
-    # screenshot's pixel space before drawing (no-op when the two already match).
-    bbox = utils.scale_bboxes_for_screenshot([bbox], element_source, screenshot_np)[0]
-    framed = utils.annotate(screenshot_np.copy(), [bbox])
     utils.save_screenshot(
         framed,
         f"{func_name}_element_detection_result",
