@@ -54,7 +54,7 @@ packaging = ">=24"
 appium-python-client = { version = ">=6.1.2,<7.0", optional = true }
 selenium = { version = ">=4.10,<5.0", optional = true }
 playwright = { version = ">=1.40,<2.0", optional = true }
-pyserial = { version = ">=3.5,<4.0", optional = true }
+airhand = { version = ">=0.1.2,<0.2", optional = true }
 easyocr = { version = ">=1.7,<2.0", optional = true }
 pytesseract = { version = ">=0.3.10,<0.4.0", optional = true }
 pillow = { version = ">=12.3,<14.0", optional = true }
@@ -73,7 +73,7 @@ fastmcp = { version = ">=3.4.4,<5.0.0", optional = true }
 appium = ["appium-python-client"]
 selenium = ["selenium"]
 playwright = ["playwright"]
-ble = ["pyserial"]
+ble = ["airhand"]
 easyocr = ["easyocr"]
 pytesseract = ["pytesseract", "pillow"]
 google-vision = ["google-cloud-vision", "google-auth"]
@@ -87,7 +87,7 @@ web = ["selenium", "playwright"]
 vision = ["easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-auth"]
 llm = ["google-genai", "openai", "anthropic"]
 all = [
-	"appium-python-client", "selenium", "playwright", "pyserial",
+	"appium-python-client", "selenium", "playwright", "airhand",
 	"easyocr", "pytesseract", "pillow", "google-cloud-vision", "google-auth", "google-genai", "openai", "anthropic",
 ]
 

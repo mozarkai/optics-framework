@@ -1029,7 +1029,7 @@ class LiveController:
         """A driver-appropriate target identifier from the enabled driver's capabilities.
 
         appium -> device udid/name; selenium -> browser name/URL; playwright -> browser
-        engine; ble -> serial port / device id. Returns ``None`` when nothing identifying
+        engine; ble -> dongle USB serial / port. Returns ``None`` when nothing identifying
         is configured.
         """
         caps = self._enabled_driver_caps() or {}
@@ -1042,7 +1042,7 @@ class LiveController:
         elif self.driver_type == "playwright":
             return caps.get("browser")
         elif self.driver_type == "ble":
-            return caps.get("port") or caps.get("device_id")
+            return caps.get("serial") or caps.get("port") or caps.get("platform")
         return None
 
     def active_target(self) -> str:

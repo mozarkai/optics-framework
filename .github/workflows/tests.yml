@@ -28,7 +28,7 @@ jobs:
           POETRY_INSTALLER_ONLY_BINARY: ':all:'
           POETRY_INSTALLER_NO_BINARY: 'csscompressor,jsmin'
         run: |
-          poetry install --with test --extras appium --extras selenium --extras playwright --extras google-vision --extras llm --extras mcp
+          poetry install --with test --extras appium --extras selenium --extras playwright --extras google-vision --extras llm --extras mcp --extras ble
           poetry run pip install --only-binary=:all: robotframework==7.5.1
       - name: Install Chromium
         env:
