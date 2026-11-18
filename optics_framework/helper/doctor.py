@@ -40,7 +40,7 @@ from optics_framework.common.logging_config import escape_control, mask_secrets
 from optics_framework.helper.console import can_encode, safe_console
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
-from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME
+from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME, EngineBackend
 
 _console = safe_console()
 
@@ -116,7 +116,7 @@ def check_core() -> list[Check]:
 def check_engines() -> list[Check]:
     """One row per known engine backend, keyed on its primary pip package."""
     rows: list[Check] = []
-    for backend in ALL_ENGINES.values():
+    for backend in filter(EngineBackend.runs_here, ALL_ENGINES.values()):
         package = backend.packages[0]
         try:
             rows.append(Check(backend.name, "ok", f"{package} {version(package)}"))

@@ -125,7 +125,7 @@ class TestResolveEngines:
         [
             ("mobile", ["appium"]),
             ("web", ["selenium", "playwright"]),
-            ("vision", ["easyocr", "pytesseract", "google-vision"]),
+            ("vision", ["apple-vision", "rapidocr", "easyocr", "pytesseract", "google-vision"]),
             ("llm", ["gemini", "openai", "anthropic"]),
         ],
     )

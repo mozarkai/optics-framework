@@ -1417,6 +1417,7 @@ _NOISY_LOGGERS = (
     "asyncio",
     "PIL",
     "easyocr",
+    "RapidOCR",
     "websockets",
 )
 

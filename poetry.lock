@@ -623,6 +623,25 @@ files = [
 markers = {main = "platform_system == \"Windows\" or sys_platform == \"win32\"", test = "sys_platform == \"win32\""}
 
 [[package]]
+name = "colorlog"
+version = "6.12.0"
+description = "Add colours to the output of Python's logging module."
+optional = true
+python-versions = ">=3.6"
+groups = ["main"]
+markers = "extra == \"rapidocr\" or extra == \"vision\" or extra == \"all\""
+files = [
+    {file = "colorlog-6.12.0-py3-none-any.whl", hash = "sha256:30d392604e9110045a2c2aeefc27d7a017abbab63f3a8aee594eac0801df784e"},
+    {file = "colorlog-6.12.0.tar.gz", hash = "sha256:2a7924c1dadf18b22a0eb8b06d1c7b01d5341707ec1641eb6fcc4fde0c3e8e5f"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "sys_platform == \"win32\""}
+
+[package.extras]
+development = ["black", "flake8", "mypy", "pytest", "types-colorama"]
+
+[[package]]
 name = "commitizen"
 version = "4.19.2"
 description = "Python commitizen client tool"
@@ -1259,6 +1278,18 @@ files = [
     {file = "filelock-4.2.1.tar.gz", hash = "sha256:c4c937ccac2a813cee448e662a56366cfb374c0f8702e75f295c412cc1c5d5a3"},
 ]
 markers = {main = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""}
+
+[[package]]
+name = "flatbuffers"
+version = "25.12.19"
+description = "The FlatBuffers serialization format for Python"
+optional = true
+python-versions = "*"
+groups = ["main"]
+markers = "extra == \"rapidocr\" or extra == \"vision\" or extra == \"all\""
+files = [
+    {file = "flatbuffers-25.12.19-py2.py3-none-any.whl", hash = "sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4"},
+]
 
 [[package]]
 name = "fsspec"
@@ -3463,6 +3494,70 @@ files = [
 ]
 
 [[package]]
+name = "omegaconf"
+version = "2.4.0"
+description = "A flexible configuration library"
+optional = true
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "extra == \"rapidocr\" or extra == \"vision\" or extra == \"all\""
+files = [
+    {file = "omegaconf-2.4.0-py3-none-any.whl", hash = "sha256:f141a664c777582405e3cc6e0545ecc79429e79f844995b1a6e71c35946a025c"},
+    {file = "omegaconf-2.4.0.tar.gz", hash = "sha256:7e219a70bea371da250285b9c01c7db027bc421722799c2cc4ff14bc4a2a753b"},
+]
+
+[package.dependencies]
+PyYAML = ">=5.1.0"
+
+[package.extras]
+dev = ["PyYAML (>=5.1.0)", "attrs", "build", "bump-my-version", "coveralls", "nox[pbs]", "pre-commit", "pydevd", "pyrefly (==1.2.0)", "pytest", "pytest-benchmark", "pytest-mock", "ruff (==0.15.22)", "sphinx", "sphinx-tabs", "towncrier", "twine"]
+
+[[package]]
+name = "onnxruntime"
+version = "1.32.0"
+description = "ONNX Runtime is a runtime accelerator for Machine Learning models"
+optional = true
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "extra == \"rapidocr\" or extra == \"vision\" or extra == \"all\""
+files = [
+    {file = "onnxruntime-1.32.0-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:366b9e53d07812cc5c92822cecf7563b76a8a0f32ba3bb8dd232a206ac3bcb6c"},
+    {file = "onnxruntime-1.32.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:2303372a85299b6757b0e11e1cbf13e410ddf7e10c37f4b37e99d1c90e7daf7c"},
+    {file = "onnxruntime-1.32.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:5a34fc4dfeb5a7b4a74c95dcba1e773d722abda720b474edf1b0c419dc6d163d"},
+    {file = "onnxruntime-1.32.0-cp311-cp311-win_amd64.whl", hash = "sha256:d7e0c45cc5f456ad7805e6dd256a7662736cda9c2fd17becae194eb3c2f6df72"},
+    {file = "onnxruntime-1.32.0-cp311-cp311-win_arm64.whl", hash = "sha256:23361cdf98afac352d10aa7d9e0a10ceaeb02d38430fb693c6eff370196db62d"},
+    {file = "onnxruntime-1.32.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:d52510bbbcc880c13b826f7d75cdf33ac5cf0bb864d960000fc29ce73f0cb83e"},
+    {file = "onnxruntime-1.32.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:e36c187006e7a7c8b8d6d57f1a209dd63f52430dca6c282b177718ad6b841054"},
+    {file = "onnxruntime-1.32.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:99e1074c4b2197accd5073052a465361be17b89c093b8ffb6e6bd8f986c52df8"},
+    {file = "onnxruntime-1.32.0-cp312-cp312-win_amd64.whl", hash = "sha256:efe7456952c243a05a53d5b8732953625144642c2f3989094277f6217f0c0c40"},
+    {file = "onnxruntime-1.32.0-cp312-cp312-win_arm64.whl", hash = "sha256:64d394c69d561af3efd4d4f49dcac8f11d0ce135a20701c16d53b74056cd4cf8"},
+    {file = "onnxruntime-1.32.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:27bf5dad46355a8a435c9c4e1556464d99ca834ea44e0f452909712068b8821b"},
+    {file = "onnxruntime-1.32.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:54d02baff2df38777b4c3cc7af326406fe8b8a48f54720f4c446d2d327920a79"},
+    {file = "onnxruntime-1.32.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:02ea12a28c069ea8510093d95a7f6ff8126bfd9fc5c0d3381c03b80fb2b424ba"},
+    {file = "onnxruntime-1.32.0-cp313-cp313-win_amd64.whl", hash = "sha256:c7f9aa98036ba2a47aa041a4a8c6d0a1f7bfe1bde44c131dcd15ce334f2f148d"},
+    {file = "onnxruntime-1.32.0-cp313-cp313-win_arm64.whl", hash = "sha256:29e4b0fdd3bea834ace358bd8c48641266ec327f730363ab0ab5d0ca574d38fe"},
+    {file = "onnxruntime-1.32.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:b01314ab8aa8176919818b19b899cd1cd72b5e4fc33e1127396f043206b6ceed"},
+    {file = "onnxruntime-1.32.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:926b6a87ffdcef56805b213807c28b97ae53763a630795baee1dfb420c2a5b68"},
+    {file = "onnxruntime-1.32.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:ab327b736552324af8d2a38bef5a65ed773f67184a36ff642beec7f5b4e9b03f"},
+    {file = "onnxruntime-1.32.0-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:4135431395c1f37de0811f452c20a8b774f51812fda6c49611ed9899bbdbeeb4"},
+    {file = "onnxruntime-1.32.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:48b878f9551d465aa79ee94ecaf49a1f6b5d27f2975efa775ded374db14d0af1"},
+    {file = "onnxruntime-1.32.0-cp314-cp314-win_amd64.whl", hash = "sha256:2b08ee990d00ab2ee129c5e039f7339963335a4d76f5bd22bfb4f896ae1cec0a"},
+    {file = "onnxruntime-1.32.0-cp314-cp314-win_arm64.whl", hash = "sha256:b33d822c19d036944bd969491d20095fc8def8ad0f32a969f6376df7568c0344"},
+    {file = "onnxruntime-1.32.0-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:2c4338c899144fd055a86c1d89424001db60e48a474e198c0fd0d1d577e4b663"},
+    {file = "onnxruntime-1.32.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:b224d11cfaecc95b85bdbd69f1673a984c7879af5823bb3ff377b9cb90b176fc"},
+]
+
+[package.dependencies]
+flatbuffers = "*"
+numpy = ">=1.21.6"
+packaging = "*"
+protobuf = ">=4.25.8"
+
+[package.extras]
+quantization = ["ml_dtypes"]
+symbolic = ["sympy"]
+
+[[package]]
 name = "openai"
 version = "3.50.0"
 description = "The official Python library for the openai API"
@@ -3932,7 +4027,7 @@ description = ""
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"google-vision\" or extra == \"vision\" or extra == \"all\" or extra == \"rapidocr\""
 files = [
     {file = "protobuf-7.35.1-cp310-abi3-macosx_10_9_universal2.whl", hash = "sha256:24f857477359a85c0c235261b8ba905fd51b2562f4a64ca1df5473f29850cbf6"},
     {file = "protobuf-7.35.1-cp310-abi3-manylinux2014_aarch64.whl", hash = "sha256:11d6b0ec246892d85215b0a13ca6e0233cf5284b68f0ac02646427f4ff88a799"},
@@ -4027,7 +4122,7 @@ description = "Cython wrapper for the C++ translation of the Angus Johnson's Cli
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\" or extra == \"rapidocr\""
 files = [
     {file = "pyclipper-1.4.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:bafad70d2679c187120e8c44e1f9a8b06150bad8c0aecf612ad7dfbfa9510f73"},
     {file = "pyclipper-1.4.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:0b74a9dd44b22a7fd35d65fb1ceeba57f3817f34a97a28c3255556362e491447"},
@@ -4374,6 +4469,123 @@ pyyaml = "*"
 
 [package.extras]
 extra = ["pygments (>=2.19.1)"]
+
+[[package]]
+name = "pyobjc-core"
+version = "13.0"
+description = "Python<->ObjC Interoperability Module"
+optional = true
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and (extra == \"apple-vision\" or extra == \"vision\" or extra == \"all\")"
+files = [
+    {file = "pyobjc_core-13.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:4627348cb31c8deb2bb94702d9bcaa74869f4fef9559fd134416a6a4ca42006e"},
+    {file = "pyobjc_core-13.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:5818e3d8cc2677a1e767968ebfe3bc0cb7f80c1f7c19c653ee25ef1cc1b3e188"},
+    {file = "pyobjc_core-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:f29f7cdb3969268716017ada9516b94f6dd1c66c2e415274b5ac1169440da1a4"},
+    {file = "pyobjc_core-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:1e8752b3950ceec603bf36f57083151abed15e0c2e7c5b8c3efded9c81dc732c"},
+    {file = "pyobjc_core-13.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:fe470bd7b8163b4b8d216b1ebe5b227f01c0fa1c4e0085d7ccade269dec02bb0"},
+    {file = "pyobjc_core-13.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:c497a23077ba0a42b59b879d81049eebfb0b7b67a8ca80c68b6d3683bbbd6d6f"},
+    {file = "pyobjc_core-13.0-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:d65d383efed5a803e43f6c67ccc9f4c94754842b2268da24319bb57a852b016f"},
+    {file = "pyobjc_core-13.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:292462e0947a09aca3737a06c44457cb2aa58f267cfc581c16fca036fc073b45"},
+    {file = "pyobjc_core-13.0.tar.gz", hash = "sha256:ffe154462d14aa4852f424e9116f17b5f8d44f78fc0f6c4727e721a5fa7177da"},
+]
+
+[[package]]
+name = "pyobjc-framework-cocoa"
+version = "13.0"
+description = "Wrappers for the Cocoa frameworks on macOS"
+optional = true
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and (extra == \"apple-vision\" or extra == \"vision\" or extra == \"all\")"
+files = [
+    {file = "pyobjc_framework_cocoa-13.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:16dd1e8890ed695ce12bcd367ed0ac9f3e70dd1f7a8098b6398427c162591b83"},
+    {file = "pyobjc_framework_cocoa-13.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:e1618d315939c9fae57cb858d4db496ec61f82495ce6a877398131ee494fc19d"},
+    {file = "pyobjc_framework_cocoa-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:bb0bcba2e4e9d05af875306e0e055cfc2f152fd602d5f2f1a54490adebebcd34"},
+    {file = "pyobjc_framework_cocoa-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:d6fa11ea29d85d46e65ed1c9fdba3a5131ad26971bf24bb7d16aa55f06bcdc1e"},
+    {file = "pyobjc_framework_cocoa-13.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:88be6d452e7531f695ce6d41428aa74bcaade9ddbc50af592419b9f2fbb7c879"},
+    {file = "pyobjc_framework_cocoa-13.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:1a6b9f9e0ab123e51fa7df43bbc6c0414a444facd2225ad4f221a0d842c49ad6"},
+    {file = "pyobjc_framework_cocoa-13.0-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:9282ebad57784ec18f4b7ea2e6b65bac0a6f56cc21a5c63e061fa48a9b49dd26"},
+    {file = "pyobjc_framework_cocoa-13.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:f1e26ad2225d1c84973cce725f2f4aeeb4d5f653a36c8a9f0b691c5529dc7780"},
+    {file = "pyobjc_framework_cocoa-13.0.tar.gz", hash = "sha256:bb7a23941fc8d7866578dbc84e56140efd343a1d28510f530dd1dbf80807daf4"},
+]
+
+[package.dependencies]
+pyobjc-core = ">=13.0"
+
+[[package]]
+name = "pyobjc-framework-coreml"
+version = "13.0"
+description = "Wrappers for the framework CoreML on macOS"
+optional = true
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and (extra == \"apple-vision\" or extra == \"vision\" or extra == \"all\")"
+files = [
+    {file = "pyobjc_framework_coreml-13.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:f8ac329b0e1ef7fc480b5d3b73bd53be9d87d9e50221f2c007d022b354a20f8c"},
+    {file = "pyobjc_framework_coreml-13.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:9c4a59f161ef553d0979934cdc23ad90c106c391f2cb3a9d35420d605537cf29"},
+    {file = "pyobjc_framework_coreml-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:60a83c3cdd3fc5822ede58983edf72f5eab37d6a19990ebe4b7b4416305a9e87"},
+    {file = "pyobjc_framework_coreml-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:c6ceb15b9e914ca10d5f24ec6771d9c916149af439927a787d9419959da46b84"},
+    {file = "pyobjc_framework_coreml-13.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:de28b771adc331f875bd755b0873a95895fe668eb22b9215a3bb71747f77c445"},
+    {file = "pyobjc_framework_coreml-13.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:fcd94991d0575bb8351e40c59789d82727f44a425ebde2af7e6f9f52428b4d9f"},
+    {file = "pyobjc_framework_coreml-13.0-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:a92494ddf19a90c1a289026fc90edf506dba2336a84dd971ad1dfb39138d4c65"},
+    {file = "pyobjc_framework_coreml-13.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:67544443bf54c517f47380be3e1ec6fef0eae040c0480e74e81bc5d2316e846d"},
+    {file = "pyobjc_framework_coreml-13.0.tar.gz", hash = "sha256:c2a41fb9fb008646df7fbd71e6aeb2284a7c985cbddb30189a511560e06ebdcf"},
+]
+
+[package.dependencies]
+pyobjc-core = ">=13.0"
+pyobjc-framework-Cocoa = ">=13.0"
+
+[[package]]
+name = "pyobjc-framework-quartz"
+version = "13.0"
+description = "Wrappers for the Quartz frameworks on macOS"
+optional = true
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and (extra == \"apple-vision\" or extra == \"vision\" or extra == \"all\")"
+files = [
+    {file = "pyobjc_framework_quartz-13.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:90630977d69975e94f49f06e7b32b5e757334d71239944ad38c3efabb73aa4ef"},
+    {file = "pyobjc_framework_quartz-13.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:5e1d49f2699d128553a52fad473622ff4fd424d05e879d9585dad0a9f7c3dcfd"},
+    {file = "pyobjc_framework_quartz-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:f7a4fab3bb1a78640135db257f2c75277d0931bad26c500e34b88480c33dece1"},
+    {file = "pyobjc_framework_quartz-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:b94ba73bfbd1b707723c88997aaf38b2aad03d9417f6fe54f243fc583237a353"},
+    {file = "pyobjc_framework_quartz-13.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:ea179def24ffbdd61e43e7c33a0cb2b2d79c7cb39fa8d212ab87c964702e5f87"},
+    {file = "pyobjc_framework_quartz-13.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:fdba4c5d095e2f88812d0584fdb4b35dc31f38d93145830cc955f42710f1f8ec"},
+    {file = "pyobjc_framework_quartz-13.0-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:d76914284e721b96e2a7850da81343cd4af083a00d07afd87545be432d1e2e24"},
+    {file = "pyobjc_framework_quartz-13.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:ab6f410ac494b63ed48294392650b88ce8229511a0eb0059458982daeeacc6f7"},
+    {file = "pyobjc_framework_quartz-13.0.tar.gz", hash = "sha256:b9a4942182efbbc7e18e6cb7f5a8faa166dc2fc5e33bece7c7b1355494274add"},
+]
+
+[package.dependencies]
+pyobjc-core = ">=13.0"
+pyobjc-framework-Cocoa = ">=13.0"
+
+[[package]]
+name = "pyobjc-framework-vision"
+version = "13.0"
+description = "Wrappers for the framework Vision on macOS"
+optional = true
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and (extra == \"apple-vision\" or extra == \"vision\" or extra == \"all\")"
+files = [
+    {file = "pyobjc_framework_vision-13.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:1dfdc86b7ca4c9ec1c95d34589e96879c09b3ef2fbb33af76f7e69e564545368"},
+    {file = "pyobjc_framework_vision-13.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:bade47ff19574d3f798d7256ff81a1560da212f2c4d7fde90e1629148c3a9d89"},
+    {file = "pyobjc_framework_vision-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:8309f855674ce83485958008e69545184eec2fb47186bf6de42bd8df2a4a19f1"},
+    {file = "pyobjc_framework_vision-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:f10398eb18b2563ad9a9b613afa4e9ffa3d7e8b8934e730e4edda97aeed46000"},
+    {file = "pyobjc_framework_vision-13.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:cef65bfbb399fcebb755ee79f6ec3aab78c925292073ae8daf4244bdd85ed938"},
+    {file = "pyobjc_framework_vision-13.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:91a684aeb16222ca95b43a9df3167907928d9c763d20d3f2169ea90e66420f25"},
+    {file = "pyobjc_framework_vision-13.0-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:fade5e0c9883d851299bfeee6f4e4709b178e1722f2ea6972ec39c9edab1858c"},
+    {file = "pyobjc_framework_vision-13.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:b43ec5fb043bf226ccac199f032ca21715f2df301d306519ee82f79876f6ccc1"},
+    {file = "pyobjc_framework_vision-13.0.tar.gz", hash = "sha256:e9197f267528bf345ccae3f949d4acf6330b69658b9b02dd03088e6e1f4395bb"},
+]
+
+[package.dependencies]
+pyobjc-core = ">=13.0"
+pyobjc-framework-Cocoa = ">=13.0"
+pyobjc-framework-CoreML = ">=13.0"
+pyobjc-framework-Quartz = ">=13.0"
 
 [[package]]
 name = "pyperclip"
@@ -5014,6 +5226,34 @@ files = [
 all = ["numpy"]
 
 [[package]]
+name = "rapidocr"
+version = "3.10.0"
+description = "Awesome OCR Library"
+optional = true
+python-versions = "<4,>=3.8"
+groups = ["main"]
+markers = "extra == \"rapidocr\" or extra == \"vision\" or extra == \"all\""
+files = [
+    {file = "rapidocr-3.10.0-py3-none-any.whl", hash = "sha256:2fc34e26cd0f48514804a94f8832283039c7334076bff60768b1fed9ad068050"},
+]
+
+[package.dependencies]
+colorlog = "*"
+numpy = ">=1.19.5,<3.0.0"
+omegaconf = "!=2.2.1"
+opencv-python-headless = ">=4.5.1.48"
+Pillow = "*"
+pyclipper = ">=1.2.0"
+PyYAML = "*"
+requests = "*"
+Shapely = ">=1.7.1,!=2.0.4"
+six = ">=1.15.0"
+tqdm = "*"
+
+[package.extras]
+rtl = ["python-bidi (>=0.4.2,<1.0)"]
+
+[[package]]
 name = "referencing"
 version = "0.37.0"
 description = "JSON Referencing + Python"
@@ -5487,7 +5727,7 @@ description = "Manipulation and analysis of geometric objects"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\""
+markers = "extra == \"easyocr\" or extra == \"vision\" or extra == \"all\" or extra == \"rapidocr\""
 files = [
     {file = "shapely-2.1.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7ae48c236c0324b4e139bea88a306a04ca630f49be66741b340729d380d8f52f"},
     {file = "shapely-2.1.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:eba6710407f1daa8e7602c347dfc94adc02205ec27ed956346190d66579eb9ea"},
@@ -5948,6 +6188,28 @@ virtualenv = ">=21.1"
 [package.extras]
 completion = ["argcomplete (>=3.6.3)"]
 testing = ["devpi-process (>=1.1.1)", "pytest (>=9.0.2)", "pytest-mock (>=3.15.1)"]
+
+[[package]]
+name = "tqdm"
+version = "4.70.1"
+description = "Fast, Extensible Progress Meter"
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "extra == \"rapidocr\" or extra == \"vision\" or extra == \"all\""
+files = [
+    {file = "tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73"},
+    {file = "tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[package.extras]
+discord = ["envwrap", "requests"]
+notebook = ["ipywidgets (>=6)"]
+slack = ["envwrap", "slack-sdk"]
+telegram = ["envwrap", "requests"]
 
 [[package]]
 name = "trio"
@@ -6543,9 +6805,10 @@ files = [
 h11 = ">=0.16.0,<1"
 
 [extras]
-all = ["airhand", "anthropic", "appium-python-client", "easyocr", "google-auth", "google-cloud-vision", "google-genai", "openai", "pillow", "playwright", "pytesseract", "selenium"]
+all = ["airhand", "anthropic", "appium-python-client", "easyocr", "google-auth", "google-cloud-vision", "google-genai", "onnxruntime", "openai", "pillow", "playwright", "pyobjc-framework-vision", "pytesseract", "rapidocr", "selenium"]
 anthropic = ["anthropic"]
 appium = ["appium-python-client"]
+apple-vision = ["pyobjc-framework-vision"]
 ble = ["airhand"]
 easyocr = ["easyocr"]
 gemini = ["google-genai"]
@@ -6556,11 +6819,12 @@ mobile = ["appium-python-client"]
 openai = ["openai"]
 playwright = ["playwright"]
 pytesseract = ["pillow", "pytesseract"]
+rapidocr = ["onnxruntime", "rapidocr"]
 selenium = ["selenium"]
-vision = ["easyocr", "google-auth", "google-cloud-vision", "pillow", "pytesseract"]
+vision = ["easyocr", "google-auth", "google-cloud-vision", "onnxruntime", "pillow", "pyobjc-framework-vision", "pytesseract", "rapidocr"]
 web = ["playwright", "selenium"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "ff26a125b4430c10f98a3dcaf3723807b691e93b08982347d8369bae82fc258a"
+content-hash = "1e73e95f8cd05b71006aeea34201c91107c475be9c2fa678b897328051e7876b"
