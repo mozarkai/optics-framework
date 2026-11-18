@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import cv2
 import numpy as np
 import pytest
-from selenium.common.exceptions import InvalidSessionIdException, WebDriverException
+from selenium.common.exceptions import InvalidSessionIdException, StaleElementReferenceException, WebDriverException
 
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -27,6 +27,7 @@ from optics_framework.common.strategies import (
     TextElementStrategy,
     LocateResult,
 )
+from optics_framework.engines.elementsources.appium_find_element import AppiumFindElement
 from optics_framework.engines.elementsources.appium_screenshot import AppiumScreenshot
 from optics_framework.engines.elementsources.selenium_screenshot import SeleniumScreenshot
 
@@ -770,3 +771,44 @@ class TestDeadSessionIsNotMasked:
         with pytest.raises(OpticsError) as exc_info:
             list(results)
         assert exc_info.value.code == Code.E0201
+
+
+class _StaleAfterFind:
+    """A handle the driver gives out but can no longer resolve, as xa11y does inside an AppKit table."""
+
+    @property
+    def rect(self):
+        raise StaleElementReferenceException("The element is no longer in the tree")
+
+
+class _TableWebDriver:
+    def native_ui_platform(self):
+        return None
+
+    def find_element(self, by, value):
+        return _StaleAfterFind()
+
+
+class _Screen(ElementSourceInterface):
+    def capture(self):
+        return np.full((100, 100, 3), 255, dtype=np.uint8)
+
+    def get_interactive_elements(self, filter_config=None):
+        return []
+
+    def locate(self, element, index=None):
+        return None
+
+    def assert_elements(self, elements, timeout=30, rule='any'):
+        raise TimeoutError(elements)
+
+    def check_elements(self, elements, visible=False):
+        return [False] * len(elements)
+
+
+class TestEvidenceNeverDecidesTheVerdict:
+    def test_a_found_element_passes_when_its_bounds_cannot_be_read(self):
+        manager = _sm(AppiumFindElement(_TableWebDriver()), _Screen())
+        passed, _, frame = manager.assert_presence(["//button[@name='% CPU']"], "XPath", timeout=1, rule="any")
+        assert passed is True
+        assert frame is not None

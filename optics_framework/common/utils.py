@@ -22,6 +22,7 @@ from optics_framework.common.logging_config import (
 )
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.models import ElementData
+from optics_framework.common.session_liveness import raise_if_session_dead
 
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 TEXT_ONLY_PREFIX = "text_only:"
@@ -1297,6 +1298,26 @@ def _apply_scale_to_bbox(
         )
     except (TypeError, ValueError, AttributeError):
         return bbox
+
+
+def boxed_frame(
+    frame: np.ndarray,
+    element_source: Any,
+    read_bboxes: Callable[[], List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]],
+) -> Optional[np.ndarray]:
+    """``frame`` with the boxes ``read_bboxes`` gives drawn on it, or None when there is none.
+
+    The boxes are evidence for a verdict already made, so a failure to read them never fails the keyword.
+    """
+    try:
+        bboxes = [b for b in read_bboxes() if b is not None]
+    except Exception as e:
+        raise_if_session_dead(e)
+        internal_logger.debug(f"Reading element bounds for the screenshot failed: {e}")
+        return None
+    if not bboxes:
+        return None
+    return annotate(frame.copy(), scale_bboxes_for_screenshot(bboxes, element_source, frame))
 
 
 def scale_bboxes_for_screenshot(

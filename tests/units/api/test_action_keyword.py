@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import tempfile
 import numpy as np
+from selenium.common.exceptions import StaleElementReferenceException
 from optics_framework.common.error import OpticsError, Code
 
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
@@ -575,3 +576,13 @@ class TestLocateHonorsPositionalParams:
             action_keyword.enter_text("field", "hello", aoi_x="10", index="3")
 
         mock_locate.assert_called_once_with("field", 10.0, 0.0, 100.0, 100.0, index=3)
+
+
+def test_a_press_goes_through_when_the_bounds_of_the_found_element_cannot_be_read(action_keyword, mock_dependencies):
+    source = MagicMock()
+    source.get_bbox_for_element.side_effect = StaleElementReferenceException("The element is no longer in the tree")
+    found = LocateResult(object(), MagicMock(element_source=source))
+    with patch('optics_framework.common.utils.save_screenshot'), \
+            patch.object(action_keyword.strategy_manager, 'locate', return_value=[found]):
+        action_keyword.press_element("//button[@name='% CPU']")
+    mock_dependencies['driver'].press_element.assert_called_once()
