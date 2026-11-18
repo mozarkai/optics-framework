@@ -23,7 +23,6 @@ _RESPONSE_TOOL = "respond"
 class AnthropicLLM(LLMInterface):
     """
     Claude via the ``anthropic`` SDK, on the Claude API, Amazon Bedrock or Google Vertex AI.
-    Capabilities are documented under "LLM Models" in ``docs/configuration.md``.
 
     Structured output is a forced call to a single tool whose input schema is the response
     schema. Forced tool use works on every platform and Claude model, which native JSON

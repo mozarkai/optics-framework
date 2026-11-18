@@ -115,8 +115,7 @@ def print_what_next(project_path: str) -> None:
     body.append("  optics serve", style=_CMD_STYLE)
     body.append("      Run keywords over HTTP.\n")
     body.append("  optics mcp", style=_CMD_STYLE)
-    body.append("        Let an AI agent drive your app.\n")
-    body.append("      The Python SDK and Robot Framework library are in the docs.")
+    body.append("        Let an AI agent drive your app.")
     _console.print(Panel(body, title="What next", border_style="green"))
 
 

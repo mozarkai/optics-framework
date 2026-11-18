@@ -19,7 +19,6 @@ try:
 except ImportError:
     airhand = None
 
-MIGRATION_NOTE = "'Migrating from the v1 ble driver' in the configuration docs"
 LEGACY_KEYS = frozenset({"device_id", "x_invert", "y_invert", "pixel_width", "pixel_height", "mickeys_width", "mickeys_height"})
 SWIPE_MS = 1000
 # In frame heights per second; iOS reads a slower drag as a tap at its start, or ignores it.
@@ -132,7 +131,7 @@ class Capabilities(BaseModel):
     def _refuse_legacy_keys(cls, data: Any) -> Any:
         legacy = sorted(LEGACY_KEYS & set(data)) if isinstance(data, dict) else []
         if legacy:
-            raise ValueError(f"{', '.join(legacy)} belong to the v1 ble driver; see {MIGRATION_NOTE}")
+            raise ValueError(f"{', '.join(legacy)} belong to the v1 ble driver")
         return data
 
     @model_validator(mode="after")

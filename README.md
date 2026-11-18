@@ -290,13 +290,13 @@ See the [CLI reference](https://optics-framework.org/docs/reference/cli?ref=read
 
 ## Contribute
 
-Bug reports, docs and code are welcome. Larger tasks have the [`help wanted`](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) label. To report a bug or ask for a keyword, [open an issue](https://github.com/mozarkai/optics-framework/issues/new/choose).
+Bug reports and code are welcome. Larger tasks have the [`help wanted`](https://github.com/mozarkai/optics-framework/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) label. To report a bug or ask for a keyword, [open an issue](https://github.com/mozarkai/optics-framework/issues/new/choose).
 
 ```bash
 git clone git@github.com:mozarkai/optics-framework.git
 cd optics-framework
 pipx install poetry
-poetry install --with dev,test,docs
+poetry install --with dev,test
 poetry run pytest
 poetry run pre-commit run --all-files
 ```

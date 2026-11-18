@@ -37,7 +37,6 @@ body:
         - REST API / MCP server
         - Robot Framework / Python SDK
         - Reporting & output artefacts
-        - Documentation
         - Other
     validations:
       required: true
