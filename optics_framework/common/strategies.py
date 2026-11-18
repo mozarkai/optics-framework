@@ -656,6 +656,9 @@ class ScreenshotStrategy:
             raise OpticsError(Code.E0303, message=f"Error capturing screenshot: {e}")
         if screenshot is not None and not utils.is_black_screen(screenshot):
             return screenshot
+        held = _held_frames.get()
+        if held:
+            held.pop(id(self.element_source), None)
         internal_logger.warning("Invalid screenshot captured: black screen detected.")
         raise OpticsError(
             Code.E0303, message="Invalid screenshot captured, black screen detected."
