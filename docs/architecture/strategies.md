@@ -263,8 +263,8 @@ sequenceDiagram
 
 #### Features
 
-- Template-based matching
-- SIFT/FLANN feature matching
+- Template-based matching across screen sizes (scale sweep)
+- SIFT/FLANN feature matching as the last fallback
 - Area of Interest (AOI) support
 - Multiple match support (index-based)
 
@@ -392,7 +392,7 @@ def annotate_aoi_region(screenshot, aoi_x, aoi_y, aoi_width, aoi_height):
 # Process:
 #   1. Capture screenshot
 #   2. Load template image from project_path/input_templates/
-#   3. Match template in screenshot using SIFT/FLANN
+#   3. Match template in screenshot (scale sweep, then SIFT/FLANN)
 #   4. Return center coordinates
 press_element("button_template.png")
 ```
@@ -426,10 +426,9 @@ project/
 ```
 
 **Performance:**
-- Slowest strategy (typically 2-5s)
-- Requires screenshot capture
-- SIFT feature detection
-- FLANN matching computation
+- Slowest strategy, mostly in screenshot capture
+- Template correlation runs on a reduced copy of the screen (tens of milliseconds)
+- SIFT and FLANN run only when correlation finds nothing
 - Performance improves with AOI
 
 ## Strategy Selection
