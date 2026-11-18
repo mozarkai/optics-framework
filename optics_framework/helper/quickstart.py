@@ -9,6 +9,7 @@ nothing blocking and only behind a yes/no — the first execution stays an
 intentional, visible act, it just no longer has to be typed out by hand.
 ``dry_run`` is never invoked; it stays a printed next move.
 """
+import importlib.util
 import os
 import types
 
@@ -131,12 +132,12 @@ def _suggest_free_name(base_path: str, name: str) -> str:
 def _ask_domain() -> str:
     onboarding.blank_line()
     return Prompt.ask(
-        "What do you want to automate?", choices=["mobile", "web", "desktop"],
+        "What do you want to automate?", choices=["mobile", "web", "desktop", "bluetooth"],
         default="mobile")
 
 
 def _offer_engine_install(domain: str) -> None:
-    """Offer to pip-install the engines the chosen domain needs.
+    """Offer to pip-install the engines the chosen domain (or one engine name) needs.
 
     The domain doubles as a ``setup`` bundle token ("mobile"/"web"), so engine
     resolution keeps a single source of truth in setup.py's bundles — this
@@ -218,3 +219,5 @@ def _build_config(project_path: str, template: str | None, domain: str) -> None:
     text = project_config.render_project_config(answers)
     written = project_config.write_project_config(project_path, text)
     _console.print(f"Wrote [bold]{written}[/bold]")
+    if answers.get("ocr") and importlib.util.find_spec("easyocr") is None:
+        _offer_engine_install("easyocr")
