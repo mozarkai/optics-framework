@@ -3,6 +3,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.caller_policy import refuse_local_resource
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.strategies import StrategyManager
 
 
 class AppManagement:
@@ -23,6 +24,12 @@ class AppManagement:
             internal_logger.error("Driver could not be initialized due to not being provided.")
             # Optionally raise an exception if this should halt execution
             # raise ValueError(f"Driver '{builder.driver_config}' could not be initialized.")
+            return
+        text_detection = builder.get_text_detection()
+        screen = StrategyManager(builder.get_element_source(), text_detection, builder.get_image_detection(), annotate_assertions=False)
+        read = screen.get_interactive_elements if screen.sees_screen and text_detection is not None else None
+        for driver in self.driver.instances:
+            driver.attach_screen(read)
 
     def initialise_setup(self) -> None:
         """
@@ -79,7 +86,7 @@ class AppManagement:
 
         Behaviour depends on the configured driver: WebDriver-based drivers
         (Appium, Selenium) call quit(); Playwright closes the page, context,
-        and browser; BLE closes the serial port. All variants flush pending
+        and browser; BLE releases held input and closes the serial port. All variants flush pending
         EventSDK events and release the driver reference.
         """
         self.driver.terminate()

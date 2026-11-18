@@ -520,6 +520,8 @@ class AISelfHealHandler:
         if row is None:
             return action.bound(target, [target, *params], action.record_params)
         found = screen_snapshot.ladder(row, refs.latest)
+        if found.index:
+            raise screen_snapshot.TargetError(f"{row.ref} shares its text with another row; pick a row with its own text.", kind="no_locator")
         return action.bound(target, [found.act[0], *params], [found.replay, *params])
 
     @staticmethod

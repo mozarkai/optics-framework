@@ -174,6 +174,16 @@ def test_make_dependency_entry_refuses_a_storage_state_that_is_not_an_object():
     assert err.value.code == Code.E0501
 
 
+@pytest.mark.parametrize("cfg", [{"url": "http://169.254.169.254/"}, {"capabilities": {"url": "10.0.0.5:3000"}}])
+def test_a_remote_session_reads_only_the_servers_camera(cfg):
+    with pytest.raises(OpticsError) as err:
+        expose_api._make_dependency_entry("camera_screenshot", cfg)
+    assert err.value.code == Code.E0501
+
+    entry = expose_api._make_dependency_entry("camera_screenshot", {"capabilities": {"out_width": 1170}})
+    assert entry["camera_screenshot"].capabilities == {"out_width": 1170}
+
+
 def test_loggable_masks_storage_state():
     state = {"cookies": [{"name": "sid", "value": "secret-session"}], "origins": []}
     sources = {"driver_sources": [expose_api._make_dependency_entry("playwright", {"capabilities": {"storage_state": state}})]}

@@ -619,9 +619,12 @@ class TestRunner(Runner):
     def _capture_dir(self) -> Optional[str]:
         """Where a failure's captures go, or None when captures are off or the driver is closed."""
         output_dir = self.config.capture_dir
-        if not output_dir or not self._end_of_run_driver_open():
+        if not output_dir or not self._screen_readable():
             return None
         return output_dir
+
+    def _screen_readable(self) -> bool:
+        return self._end_of_run_driver_open() and bool(self.session.optics.get_element_source().instances)
 
     def _end_of_run_driver_open(self) -> bool:
         """Best-effort check that the driver session is still alive.
@@ -645,7 +648,7 @@ class TestRunner(Runner):
         )
 
     def _capture_end_of_run_artifacts(self) -> None:
-        if not self._end_of_run_driver_open():
+        if not self._screen_readable():
             internal_logger.debug(
                 "End-of-run artifact capture skipped: driver session unavailable."
             )

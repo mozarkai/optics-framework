@@ -13,10 +13,19 @@ from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.session_liveness import raise_if_session_dead
+from optics_framework.common.text_match import TextMatch, find_text
 
 # Constants
 TEXT_DETECTION_NOT_AVAILABLE_MSG = "Text detection is not available."
+# The class of a screen row read by OCR, which knows only the text and where it is.
+OCR_TEXT_CLASS = "Text"
+# Below this, OCR is guessing at an icon or a mark; such a guess is not listed as a screen row.
+OCR_ROW_MIN_CONFIDENCE = 0.2
 OCR_NOT_TRIED_MSG = " OCR was not tried: no text_detection engine is configured."
+NO_SCREEN_MSG = (
+    "No elements_sources entry is enabled, so Optics cannot see the screen. "
+    "Add one (for example camera_screenshot) to find elements, check them or take screenshots."
+)
 
 
 class LocateValueWithFrame(NamedTuple):
@@ -191,7 +200,7 @@ class TextDetectionStrategy(LocatorStrategy):
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
         screenshot = self.element_source.capture()
-        found = self.text_detection.find_element(screenshot, element, index=index, strict=self._strict())
+        found = self.text_detection.find_element(screenshot, _ocr_text(element), index=index, strict=self._strict())
         if found is None:
             return None
         _, coor, bbox = found
@@ -230,7 +239,7 @@ class TextDetectionStrategy(LocatorStrategy):
             raise OpticsError(Code.E0205, message=f"Invalid AOI parameters: {e}")
 
         # Find element in cropped screenshot
-        found = self.text_detection.find_element(cropped_screenshot, element, index=index, strict=self._strict())
+        found = self.text_detection.find_element(cropped_screenshot, _ocr_text(element), index=index, strict=self._strict())
         if found is None:
             return None
         _, coor, bbox = found
@@ -255,6 +264,34 @@ class TextDetectionStrategy(LocatorStrategy):
             internal_logger.debug(f"Coordinate adjustment failed for TextDetectionStrategy: {e}")
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
 
+    def screen_elements(self) -> List[dict]:
+        """Every text OCR reads on the screen, in window coordinates and reading order, as tappable rows."""
+        if self.text_detection is None:
+            return []
+        screenshot = self.element_source.capture()
+        try:
+            _, results = self.text_detection.detect_text(screenshot)
+        except ValueError:
+            return []
+        results = results or []
+        strict = self._strict()
+        rows = []
+        for box, text, confidence in results:
+            # Google Vision reports no confidence.
+            if not text.strip() or (confidence is not None and confidence < OCR_ROW_MIN_CONFIDENCE):
+                continue
+            xs, ys = [p[0] for p in box], [p[1] for p in box]
+            index = _match_index(find_text(results, text, strict), (min(xs), min(ys), max(xs), max(ys)))
+            if index is None:
+                continue
+            x1, y1 = utils.screenshot_point_to_window(self.element_source, screenshot, (min(xs), min(ys)))
+            x2, y2 = utils.screenshot_point_to_window(self.element_source, screenshot, (max(xs), max(ys)))
+            rows.append({
+                "text": text.strip(), "bounds": {"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2)}, "act": ["tap"],
+                "extra": {"class": OCR_TEXT_CLASS}, "ocr": True, "ocr_index": index,
+            })
+        return rows
+
     def _strict(self) -> bool:
         try:
             return bool(self.element_source.driver.event_sdk.config_handler.config.strict_element_match)
@@ -270,14 +307,30 @@ class TextDetectionStrategy(LocatorStrategy):
     ) -> tuple[list[bool], np.ndarray | None]:
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
-        found = dict.fromkeys(elements, False)
+        texts = [_ocr_text(element) for element in elements]
+        found = dict.fromkeys(texts, False)
         _, ocr_results = self.text_detection.detect_text(frame.copy())
-        annotated_frame = match_and_annotate(ocr_results, elements, found, frame.copy(), self._strict())
-        return [found[element] for element in elements], annotated_frame
+        annotated_frame = match_and_annotate(ocr_results, texts, found, frame.copy(), self._strict())
+        return [found[text] for text in texts], annotated_frame
 
     @staticmethod
     def supports(element_type: str, element_source: ElementSourceInterface) -> bool:
         return element_type == "Text" and LocatorStrategy._is_method_implemented(element_source, "capture")
+
+
+def _ocr_text(element: str) -> str:
+    """The text OCR looks for; ``text=`` marks a label that reads like a file name or a path."""
+    return utils.without_prefix(element, "text=")
+
+
+def _match_index(matches: list[TextMatch], box: tuple) -> Optional[int]:
+    """The position of the match that covers exactly this detection's box: the index a tap on it passes."""
+    return next((n for n, (_, (tl, br)) in enumerate(matches) if max(abs(a - b) for a, b in zip((*tl, *br), box)) <= 1), None)
+
+
+def _is_blind(error: Exception) -> bool:
+    """A camera that cannot see the screen: no other element, strategy or retry finds anything on it."""
+    return isinstance(error, OpticsError) and error.code == Code.E0305
 
 
 def _is_unconfigured_ocr(strategy: LocatorStrategy) -> bool:
@@ -538,6 +591,8 @@ class ScreenshotStrategy:
         try:
             screenshot = self.element_source.capture()
         except Exception as e:
+            if _is_blind(e):
+                raise
             internal_logger.debug(f"Error capturing screenshot: {e}")
             raise OpticsError(Code.E0303, message=f"Error capturing screenshot: {e}")
         if screenshot is not None and not utils.is_black_screen(screenshot):
@@ -751,7 +806,16 @@ class StrategyManager:
             internal_logger.debug(f"Strategy {strategy.__class__.__name__} failed: {e}")
             raise
 
+    @property
+    def sees_screen(self) -> bool:
+        return bool(self.element_source.instances)
+
+    def require_screen(self) -> None:
+        if not self.sees_screen:
+            raise OpticsError(Code.E0501, message=NO_SCREEN_MSG)
+
     def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None, index: int = 0) -> Generator[LocateResult, None, None]:
+        self.require_screen()
         effective_element, text_only = utils.parse_text_only_prefix(element)
         element_type = utils.determine_element_type(element)
         internal_logger.info(f"Locating element: {element} of type: {element_type}...")
@@ -759,9 +823,8 @@ class StrategyManager:
 
         yielded = False
         last_error: Exception | None = None
-        for strategy in self.locator_strategies:
-            if text_only and type(strategy).__name__ == "TextElementStrategy":
-                continue
+        blind: Exception | None = None
+        for strategy in self._locate_strategies(text_only):
             execution_logger.debug(f"Trying strategy: {type(strategy).__name__} for element: {effective_element}")
             try:
                 locate_result = self._try_strategy_locate(
@@ -772,13 +835,19 @@ class StrategyManager:
                 # A missing OCR engine explains nothing when a native lookup also ran.
                 if text_only or not _is_unconfigured_ocr(strategy):
                     last_error = e
+                blind = e if _is_blind(e) else blind
                 continue
             if locate_result:
                 yielded = True
                 yield locate_result
         if not yielded:
             hint = self._ocr_not_tried_hint(element_type, text_only)
-            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.{hint}", cause=last_error)
+            raise blind or OpticsError(Code.E0201, message=f"Element '{element}' not found.{hint}", cause=last_error)
+
+    def _locate_strategies(self, text_only: bool) -> list:
+        if not text_only:
+            return self.locator_strategies
+        return [s for s in self.locator_strategies if type(s).__name__ != "TextElementStrategy"]
 
     def _ocr_not_tried_hint(self, element_type: str, text_only: bool) -> str:
         skipped = not text_only and any(
@@ -796,6 +865,7 @@ class StrategyManager:
 
     def _assert(self, elements: list, element_type: str, timeout: int, rule: str, method_name: str):
         """Poll every applicable strategy once per round until the rule is met or ``timeout`` runs out."""
+        self.require_screen()
         self._validate_rule(rule)
         rule = rule.lower()
         execution_logger.info(
@@ -891,7 +961,13 @@ class StrategyManager:
         """The screenshot all vision strategies share this round; None when it cannot be taken or was already read."""
         if state.frame is None:
             started, timestamp = time.monotonic(), utils.get_timestamp()
-            frame = self._vision_frame()
+            try:
+                frame = self._vision_frame()
+            except OpticsError as e:
+                # A camera that sees nothing ends the wait only when no other lookup is left to pass it.
+                if not _is_blind(e) or all(_is_vision(s) for s in state.strategies):
+                    raise
+                state.last_exception, frame = e, None
             if frame is None or _same_screen(frame, state.checked_frame):
                 state.vision_due = False
                 if frame is not None:
@@ -905,7 +981,7 @@ class StrategyManager:
         try:
             return self.capture_screenshot()
         except OpticsError as e:
-            if e.code == Code.E0106:
+            if e.code == Code.E0106 or _is_blind(e):
                 raise
             return None
 
@@ -947,8 +1023,10 @@ class StrategyManager:
 
     def capture_screenshot(self) -> Optional[np.ndarray]:
         """Capture a screenshot using the available strategies."""
+        self.require_screen()
         execution_logger.debug("Capturing screenshot using available strategies.")
         last_error: Exception | None = None
+        blind: Exception | None = None
         for strategy in self.screenshot_strategies:
             try:
                 img = strategy.capture()
@@ -958,6 +1036,9 @@ class StrategyManager:
                 execution_tracer.log_attempt(strategy, "screenshot", "fail", error=str(e))
                 raise_if_session_dead(e)
                 last_error = e
+                blind = e if _is_blind(e) else blind
+        if blind is not None:
+            raise blind
         internal_logger.debug("No screenshot captured.")
         raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.", cause=last_error)
 
@@ -969,6 +1050,7 @@ class StrategyManager:
         Selenium) override that method for efficiency; others encode the numpy frame
         via the default base-class implementation.
         """
+        self.require_screen()
         last_error: Exception | None = None
         for strategy in self.screenshot_strategies:
             source = strategy.element_source
@@ -983,11 +1065,14 @@ class StrategyManager:
                     "Screenshot bytes via %s failed: %s", source.__class__.__name__, e)
                 raise_if_session_dead(e)
                 last_error = e
+        if last_error is not None and _is_blind(last_error):
+            raise last_error
         raise OpticsError(
             Code.E0303, message="No screenshot bytes captured using available strategies.", cause=last_error
         )
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:
+        self.require_screen()
         last_error: Exception | None = None
         for strategy in self.pagesource_strategies:
             try:
@@ -1014,8 +1099,31 @@ class StrategyManager:
             strategy.element_source, "get_interactive_elements"
         )
 
+    def _read_text_rows(self) -> Optional[List[dict]]:
+        """The first source's OCR rows that read, for a setup where no source lists elements; None without OCR."""
+        readers = [s for s in self.locator_strategies if isinstance(s, TextDetectionStrategy) and s.text_detection is not None]
+        if not readers:
+            return None
+        last_error: Exception | None = None
+        read = False
+        for strategy in readers:
+            try:
+                rows = strategy.screen_elements()
+            except Exception as e:
+                internal_logger.debug(f"OCR read no rows from {strategy.element_source.__class__.__name__}: {e}")
+                raise_if_session_dead(e)
+                last_error = e
+                continue
+            if rows:
+                return rows
+            read = True
+        if read or last_error is None:
+            return []
+        raise last_error
+
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
         """Interactive elements of the screen: the first source that lists them, plus what every supplementing source adds."""
+        self.require_screen()
         applicable_strategies = [
             s for s in self.pagesource_strategies
             if self._can_strategy_get_interactive_elements(s)
@@ -1041,6 +1149,13 @@ class StrategyManager:
                 continue
             if elements is not None or added:
                 elements = merge_screen_elements(elements or [], added)
+        if elements is None and not applicable_strategies and not self.screen_element_supplements:
+            try:
+                elements = self._read_text_rows()
+            except Exception as e:
+                internal_logger.debug(f"OCR read no screen elements: {e}")
+                raise_if_session_dead(e)
+                last_error = e
         if elements is not None:
             return elements
         internal_logger.debug("No interactive elements retrieved.")

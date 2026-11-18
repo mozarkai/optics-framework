@@ -1298,12 +1298,7 @@ class Appium(DriverInterface):
         event_name: Optional[str] = None
     ) -> None:
         driver = self._require_driver()
-        fractions = {
-            "down": (0.5, 0.8, 0.5, 0.2),
-            "up": (0.5, 0.2, 0.5, 0.8),
-            "right": (0.8, 0.5, 0.2, 0.5),
-            "left": (0.2, 0.5, 0.8, 0.5),
-        }.get(direction)
+        fractions = utils.SCROLL_FRACTIONS.get(direction)
         if fractions is None:
             internal_logger.error(f"Scroll direction '{direction}' not supported.")
             return

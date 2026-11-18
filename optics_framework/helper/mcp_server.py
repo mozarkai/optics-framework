@@ -5,6 +5,7 @@ import bisect
 import contextlib
 import contextvars
 import functools
+import importlib.util
 import inspect
 import itertools
 import json
@@ -70,6 +71,7 @@ from optics_framework.common.screen_snapshot import (
 )
 from optics_framework.common.session_manager import Session
 from optics_framework.engines.drivers import playwright_profiles
+from optics_framework.engines.elementsources import camera_screenshot
 from optics_framework.helper.abort import MissingExtraError
 from optics_framework.helper.onboarding import optics_home
 from optics_framework.helper.version import VERSION
@@ -80,11 +82,7 @@ _SOURCE_RANK = {"find_element": 0, "page_source": 1, "web": 2, "screenshot": 3}
 
 
 def _default_sources_for_driver(driver: str) -> list[str]:
-    """The driver's elements_sources, found by reflection and ranked by role.
-
-    Returns ``[]`` for an unmatched driver name; ``start_session`` then fails
-    with the usual "Element source configuration must be set" error.
-    """
+    """The driver's elements_sources, found by reflection and ranked by role; ``[]`` starts a session that cannot see the screen."""
     key = (driver or "").strip().lower()
     matches = ElementSourceFactory.available_sources(key)
 
@@ -93,6 +91,26 @@ def _default_sources_for_driver(driver: str) -> list[str]:
         return (_SOURCE_RANK.get(suffix, len(_SOURCE_RANK)), name)
 
     return sorted(matches, key=rank)
+
+
+# Engines that read a camera frame on this machine, in order of preference.
+_LOCAL_OCR = ("easyocr", "pytesseract")
+
+
+def _camera_source(capabilities: dict[str, Any]) -> dict[str, Any] | None:
+    """The server's camera as an element source, when one is set."""
+    if not os.environ.get(camera_screenshot.ENV_SCREENSHOT_URL):
+        return None
+    # Vision matches are in camera pixels and the driver reads them in its frame, so the two sizes match.
+    frame = capabilities.get("frame")
+    size = {}
+    if isinstance(frame, dict) and {"width", "height"} <= frame.keys():
+        size = {"out_width": frame["width"], "out_height": frame["height"]}
+    return {"camera_screenshot": {"capabilities": size}}
+
+
+def _local_ocr() -> list[str]:
+    return [name for name in _LOCAL_OCR if importlib.util.find_spec(name)][:1]
 
 
 try:
@@ -632,7 +650,7 @@ def _row_notes(step: Step, row: Row) -> list[str]:
     lines = []
     if step.ok and step.unchanged and (row.state or "toggle" in row.act):
         lines.append(f"note: {row.ref} did not change; the action may not have reached it")
-    if not step.prepared.exact:
+    if not step.prepared.exact and not step.verdict.vision:
         lines.append(f"note: {row.ref} has no unique locator, so its label was used")
     return lines
 
@@ -648,7 +666,8 @@ def _step_notes(step: Step, keyword: str) -> list[str]:
         lines.append(f"note: {keyword} reports ok even when nothing moved, and the screen did not change")
     lines += _row_notes(step, row) if row is not None else []
     if verdict.vision:
-        lines.append(f'note: "{step.action.target}" was found by {step.strategy}, not by an exact locator')
+        named = step.action.target or step.action.until or next(iter(step.prepared.tried), "")
+        lines.append(f'note: "{named}" was found by {step.strategy}, not by an exact locator')
     if step.result is not None and step.ok and step.action.verb == "keyword":
         # A line break stays visible as \n: an agent that typed two lines must see two lines.
         text = "\\n".join(" ".join(line.split()) for line in str(step.result).splitlines() if line.strip())
@@ -894,7 +913,17 @@ def _session_config(
     driver: str, url: str, capabilities: dict[str, Any], elements_sources: list[str] | None, **fields: Any,
 ) -> expose_api.SessionConfig:
     source = {driver: {"enabled": True, "url": url or None, "capabilities": dict(capabilities)}}
-    sources = elements_sources if elements_sources is not None else _default_sources_for_driver(driver)
+    sources = elements_sources
+    camera = None
+    if sources is None:
+        sources = list(_default_sources_for_driver(driver))
+        camera = None if sources else _camera_source(capabilities)
+        if camera is not None:
+            sources = [camera]
+    defaults = {"text_detection": _local_ocr, "image_detection": lambda: ["templatematch"]}
+    for key, default in defaults.items():
+        if fields.get(key) is None:
+            fields[key] = default() if camera is not None else []
     return expose_api.SessionConfig(
         driver_sources=[source if url or capabilities else driver], elements_sources=sources, **fields,
     )
@@ -941,6 +970,8 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
         head.append(f"run_keyword cannot run here: {', '.join(unsupported)}")
     if app:
         shown = await _act(Action("open", target=app, text=app), "full", sid)
+    elif not expose_api.session_manager.get_session(sid).optics.get_element_source().instances:
+        return _reply([*head, "No screen source: position and key keywords run; observe and check need a camera."])
     else:
         shown = await _guarded(sid, partial(_observe_screen, query="", screenshot=False, max_rows=80, wait_loading=True))
     return _reply([*head, shown.content[0].text], is_error=shown.is_error)
@@ -1034,15 +1065,18 @@ def build_server(toolset: str | None = None) -> "FastMCP":
     mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, version=VERSION)
 
     async def start_session(
-        driver: Annotated[str, Field(description="appium, playwright, selenium, ...")] = "appium",
+        driver: Annotated[str, Field(description="appium, playwright, selenium, ble, ...")] = "appium",
         app: Annotated[str, Field(description="URL or app id to open.")] = "",
         url: Annotated[str, Field(description="Driver server URL.")] = "",
         capabilities: Annotated[dict[str, Any], Field(
-            description="Driver capabilities. Playwright: profile (from optics://browser-profiles) starts signed in.",
+            description=(
+                "Driver capabilities. Playwright: profile (from optics://browser-profiles) starts signed in. "
+                "ble: platform, frame {width, height}, serial."
+            ),
         )] = {},  # noqa: B006
         elements_sources: Annotated[list[str] | None, Field(description="Omit for the driver's own.")] = None,
-        text_detection: Annotated[list[str], Field(description="OCR engines.")] = [],  # noqa: B006
-        image_detection: Annotated[list[str], Field(description="Image engines.")] = [],  # noqa: B006
+        text_detection: Annotated[list[str] | None, Field(description="OCR engines; omit for the default.")] = None,
+        image_detection: Annotated[list[str] | None, Field(description="Image engines; omit for the default.")] = None,
         project_path: Annotated[str, Field(description="Folder with image templates.")] = "",
         ai_self_heal: Annotated[bool | None, Field(description="Omit for the default.")] = None,
         llm_provider: Annotated[str, Field(description="Self-heal LLM engine.")] = "",
@@ -1050,8 +1084,8 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         strict_element_match: Annotated[bool, Field(description="No fuzzy text matches.")] = False,
     ) -> Any:
         config = _session_config(
-            driver, url, _session_caps(driver, app, capabilities), elements_sources, text_detection=list(text_detection),
-            image_detection=list(image_detection), project_path=project_path or None, ai_self_heal=ai_self_heal,
+            driver, url, _session_caps(driver, app, capabilities), elements_sources, text_detection=text_detection,
+            image_detection=image_detection, project_path=project_path or None, ai_self_heal=ai_self_heal,
             llm_provider=llm_provider or None, llm_model=llm_model or None, strict_element_match=strict_element_match,
         )
         return await _start(driver, app, config)

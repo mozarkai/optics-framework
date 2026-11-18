@@ -431,7 +431,7 @@ class ActionKeyword:
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, or None on failure or when neither saved captures nor AI self-heal need it."""
-        if self.capture_output_dir is None and self._llm is None:
+        if (self.capture_output_dir is None and self._llm is None) or not self.strategy_manager.sees_screen:
             return None
         try:
             return self.strategy_manager.capture_screenshot()
@@ -468,6 +468,7 @@ class ActionKeyword:
         ``value`` is the text the keyword types: self-heal may choose where it goes, but never sees it.
         A covered point is skipped like a failed action; a keyword that only reads it sets ``allow_covered``.
         """
+        self.strategy_manager.require_screen()
         screenshot_np = self._capture_screenshot_safe()
         aoi_x = _parse_aoi_param(aoi[0], 0)
         aoi_y = _parse_aoi_param(aoi[1], 0)
@@ -498,8 +499,8 @@ class ActionKeyword:
             with self.driver.routed_to(getattr(result.strategy.element_source, "driver", None)):
                 return act(result.value), None
         except OpticsError as e:
-            if e.code == Code.E0405:
-                raise  # the action ran, so acting again would repeat it
+            if e.code in (Code.E0405, Code.E0106):
+                raise  # the action ran, or the device is gone: another result cannot do better
             error: Exception = e
         except Exception as e:  # noqa: BLE001 - try the next strategy's result
             error = e
@@ -548,6 +549,8 @@ class ActionKeyword:
             # appending after a bare `return` would be unreachable).
             self._record_successful_step(func_name, element, intent_args, value)
             return ret
+        if locate_error is not None and locate_error.code == Code.E0305:
+            raise locate_error
         if result_count == 0:
             if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
                 return None
@@ -971,11 +974,9 @@ class ActionKeyword:
         Scroll the current view one step in a direction.
 
         ``direction`` names the way you move through the content: "down" reveals content
-        further down. Every driver supports up/down; left/right work on Appium, Selenium and
-        Playwright (BLE logs and ignores them). The keyword succeeds whether or not the view
-        actually moved.
+        further down. The keyword succeeds whether or not the view actually moved.
 
-        :param direction: up, down, left or right (left/right not on BLE).
+        :param direction: up, down, left or right.
         :param event_name: The event triggering the scroll.
         """
         screenshot_np = self._capture_screenshot_safe()
@@ -994,25 +995,22 @@ class ActionKeyword:
         """
         screenshot_np = self._capture_screenshot_safe()
         self._save_screenshot_if_available(screenshot_np, "scroll_until_element_appears")
-        start_time = time.time()
-        found = False
-        while time.time() - start_time < int(timeout):
+        deadline = time.time() + int(timeout)
+        # The screen is checked after every scroll, the last one included.
+        while True:
             try:
-                result = self.verifier.assert_presence(
-                    element, timeout_str="3", rule="any")
-                if result:
-                    found = True
-                    break
+                if self.verifier.assert_presence(element, timeout_str="3", rule="any"):
+                    return
             except OpticsError as e:
                 if e.code != Code.E0201:
                     raise
                 # Don't hide configuration/strategy issues; scrolling won't fix these.
                 if "No strategies found" in e.message or "No valid strategies found" in e.message:
                     raise
+            if time.time() >= deadline:
+                raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
             self.driver.scroll(direction, 1000, event_name=event_name)
             time.sleep(3)
-        if not found:
-            raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
 
     def scroll_from_element(self, element: str, direction: str, scroll_length: str, aoi_x: str = "0", aoi_y: str = "0",
                             aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None,

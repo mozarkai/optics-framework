@@ -479,17 +479,19 @@ def _keyword_call(
     return Call(action.keyword, bound), targets
 
 
-def _tap_calls(action: Action, row: Row | None, element: Value, refs: RefTable) -> list[Call]:
+def _tap_calls(action: Action, row: Row | None, element: Value, refs: RefTable, index: int = 0) -> list[Call]:
     if row is not None and row.act and not _TAPPABLE & set(row.act):
         raise _invalid(f"{row.ref} cannot be tapped; it accepts {', '.join(row.act)}")
     repeat = {"repeat": str(action.repeat)} if action.repeat != 1 else {}
-    return [Call("press_element", {"element": element} | repeat)]
+    position = {"index": str(index)} if index else {}
+    return [Call("press_element", {"element": element} | repeat | position)]
 
 
 def _type_calls(action: Action, row: Row | None, element: Value, refs: RefTable) -> list[Call]:
     if not action.text:
         raise _invalid("type needs the text to enter")
-    if row is not None and "input" not in row.act:
+    # A camera reads text, not fields, so an OCR label may be the field's caption or placeholder.
+    if row is not None and not row.ocr and "input" not in row.act:
         raise _invalid(f"{row.ref} is not a text field{_input_rows(row, refs.latest)}")
     calls = [Call("clear_element_text", {"element": element})] if action.clear_first else []
     return [*calls, Call("enter_text", {"element": element, "text": action.text})]
@@ -539,6 +541,13 @@ _CALLS: dict[str, Callable[[Action, Row | None, Value, RefTable], list[Call]]] =
 }
 
 
+def _shared_text_index(found: tuple[Row, Ladder] | None, verb: str) -> int:
+    index = found[1].index if found else 0
+    if index and verb != "tap":
+        raise Fail("no_locator", f"{found[0].ref} shares its text with another row; only tap can pick it.")
+    return index
+
+
 def prepare(action: Action, refs: RefTable, keywords: Keywords, elements: Mapping[str, Any] | None = None) -> Prepared:
     """Resolve the action's target and build its keyword calls; with ``elements``, each ``${name}`` must name one."""
     verb = action.verb
@@ -551,9 +560,12 @@ def prepare(action: Action, refs: RefTable, keywords: Keywords, elements: Mappin
     row = found[0] if found else None
     element: Value = list(found[1].act) if found else action.target.strip()
     targets = {"element": found} if found and verb in _TARGETED else {}
+    index = _shared_text_index(found, verb)
     if verb == "keyword":
         call, targets = _keyword_call(action, refs, keywords, found)
         calls = [call]
+    elif verb == "tap":
+        calls = _tap_calls(action, row, element, refs, index)
     else:
         calls = _CALLS[verb](action, row, element, refs)
     _check_var_slots(calls)

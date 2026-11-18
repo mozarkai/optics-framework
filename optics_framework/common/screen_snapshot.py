@@ -53,7 +53,10 @@ class Row:
     offscreen: bool = False
     tag: str = ""
     state: str = ""
+    ocr: bool = False
     area: str = field(default="", compare=False)
+    # An OCR row's text in the latest read and its place among the engine's matches, which a tap looks it up by.
+    found_as: tuple[str, int] = field(default=("", 0), compare=False)
 
     def __post_init__(self) -> None:
         if self.name is None:
@@ -111,6 +114,8 @@ class Ladder:
     save: list[str]
     by_label: bool
     replay: str
+    # Which of several OCR rows with one text this is; only a tap can pass it on, as press_element's index.
+    index: int = 0
 
 
 class TargetError(ValueError):
@@ -125,7 +130,10 @@ def fold(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def _bounds(raw: Any) -> tuple[int, int, int, int] | None:
+Box = tuple[int, int, int, int]
+
+
+def _bounds(raw: Any) -> Box | None:
     if isinstance(raw, dict):
         raw = [raw.get(k) for k in ("x1", "y1", "x2", "y2")]
     try:
@@ -220,18 +228,30 @@ def normalize(el: dict, before: dict | None = None) -> dict | None:
         return None
     holds_value = _holds_value(act, cls, label)
     hint = _row_hint(str(el.get("hint") or extra.get("hint") or "").strip(), label, holds_value, before)
-    secret = (
-        extra.get("password") is True or "SecureTextField" in cls or _masked(act, label)
-        or _secret_caption(act, before) or any(_names_secret(text) for text in (label, rid, loc, hint))
-    )
+    secret = _secret_row(extra, cls, act, before, (label, rid, loc, hint))
     # A native label that differs from its hint is the typed value, so the hint (even empty) names the row.
     name = hint if label and not web and holds_value and fold(label) != fold(hint) else label
     return {
         "label": label, "cls": cls, "act": act, "rid": rid, "rid_attr": rid_attr, "loc": loc, "bounds": _bounds(el.get("bounds")),
         "secret": secret, "hint": hint, "holds_value": holds_value, "web": web, "name": name,
-        "offscreen": el.get("offscreen") is True, "tag": raw_cls, "state": _state(el, secret),
+        "offscreen": el.get("offscreen") is True, "tag": raw_cls, "state": _state(el, secret), "ocr": el.get("ocr") is True,
         "area": str(extra.get("area") or ""),
+        "found_as": _found_as(el),
     }
+
+
+def _secret_row(extra: dict, cls: str, act: tuple[str, ...], before: dict | None, texts: tuple[str, ...]) -> bool:
+    return (
+        extra.get("password") is True or "SecureTextField" in cls or _masked(act, texts[0])
+        or _secret_caption(act, before) or any(_names_secret(text) for text in texts)
+    )
+
+
+def _found_as(el: dict) -> tuple[str, int]:
+    """The text and index an OCR row was read as, which a tap on it looks up."""
+    if el.get("ocr") is not True:
+        return "", 0
+    return str(el.get("text") or ""), int(el.get("ocr_index") or 0)
 
 
 def loc_stable(loc: str) -> bool:
@@ -256,6 +276,27 @@ def _strong_loc(loc: str) -> bool:
 def _names_by_text(loc: str, label: str) -> bool:
     """True when ``loc`` quotes the row's own text, so a new text gives a new loc."""
     return bool(label) and any(fold(a or b) == fold(label) for a, b in _QUOTED_RE.findall(loc))
+
+
+def _ocr_key(label: str) -> str:
+    folded = fold(label)
+    return "".join(c for c in folded if c.isalnum()) or folded
+
+
+def _gap(a: Box | None, b: Box | None) -> float:
+    if a is None or b is None:
+        return float("inf")
+    return abs(a[0] + a[2] - b[0] - b[2]) / 2 + abs(a[1] + a[3] - b[1] - b[3]) / 2
+
+
+def _height(box: Box | None) -> int:
+    return max(box[3] - box[1], 1) if box else 0
+
+
+def _same_reading(earlier: str, now: str) -> bool:
+    """Two OCR reads of one text: the same but for case or a punctuation mark read as another."""
+    a, b = fold(earlier), fold(now)
+    return len(a) == len(b) and all(x == y or not (x.isalnum() or y.isalnum()) for x, y in zip(a, b))
 
 
 def digest(rows: Iterable[Row]) -> str:
@@ -349,15 +390,41 @@ class RefTable:
     def __init__(self) -> None:
         self._next = 1
         self._refs_by_key: dict[tuple, list[str]] = {}
+        self._ocr_places: dict[str, list[tuple[str, Box | None]]] = {}
         self._issued: dict[str, Row] = {}
         self.latest: Snapshot | None = None
+
+    def _new_ref(self) -> str:
+        self._next += 1
+        return f"e{self._next - 1}"
 
     def _ref(self, key: tuple, occurrence: int) -> str:
         keyed = self._refs_by_key.setdefault(key, [])
         if occurrence == len(keyed):
-            keyed.append(f"e{self._next}")
-            self._next += 1
+            keyed.append(self._new_ref())
         return keyed[occurrence]
+
+    def _ocr_refs(self, read: list[tuple[str, Box | None]]) -> list[str]:
+        """Refs for OCR rows by text and place, so a ref never moves to another row that reads the same."""
+        refs = [""] * len(read)
+        groups: dict[str, list[int]] = {}
+        for i, (text, _) in enumerate(read):
+            groups.setdefault(text, []).append(i)
+        for text, now in groups.items():
+            before = self._ocr_places.get(text, [])
+            if len(before) == len(now) == 1:
+                refs[now[0]] = before[0][0]
+                continue
+            free = list(before)
+            for i in now:
+                near = min(free, key=lambda placed: _gap(placed[1], read[i][1]), default=None)
+                if near is not None and _gap(near[1], read[i][1]) <= _height(read[i][1]):
+                    free.remove(near)
+                    refs[i] = near[0]
+        refs = [ref or self._new_ref() for ref in refs]
+        for text, now in groups.items():
+            self._ocr_places[text] = [(refs[i], read[i][1]) for i in now]
+        return refs
 
     def snapshot(self, elements: list[dict], *, max_rows: int = 80, query: str = "") -> Snapshot:
         read: list[tuple[dict, dict]] = []
@@ -371,13 +438,22 @@ class RefTable:
         areas: dict[tuple[str, str], set[str]] = {}
         for _, fields in read:
             areas.setdefault(_look(fields), set()).add(fields["area"])
-        for (el, fields), (context, following) in zip(read, _contexts([_context_label(f) for _, f in read])):
+        boxes = [_bounds(el.get(_WINDOW_BOUNDS, el.get("bounds"))) for el, _ in read]
+        # Between camera frames OCR boxes move, so a read row is keyed by its letters and digits and its place.
+        ocr_refs = iter(self._ocr_refs([(_ocr_key(f["label"]), box) for (_, f), box in zip(read, boxes) if f["ocr"]]))
+        for (_, fields), bounds, (context, following) in zip(read, boxes, _contexts([_context_label(f) for _, f in read])):
             if len(areas[_look(fields)]) < 2 or fold(fields["area"]) in fold(fields["label"]):
                 fields["area"] = ""
-            bounds = _bounds(el.get(_WINDOW_BOUNDS, el.get("bounds")))
-            key = _identity(fields, bounds, context, following, ids[fields["rid"]] == 1)
-            row = Row(ref=self._ref(key, seen[key]), **fields)
-            seen[key] += 1
+            if fields["ocr"]:
+                ref = next(ocr_refs)
+                earlier = self._issued.get(ref)
+                if earlier is not None and _same_reading(earlier.label, fields["label"]):
+                    fields = {**fields, "label": earlier.label, "name": earlier.name}
+            else:
+                key = _identity(fields, bounds, context, following, ids[fields["rid"]] == 1)
+                ref = self._ref(key, seen[key])
+                seen[key] += 1
+            row = Row(ref=ref, **fields)
             self._issued[row.ref] = row
             every.append(row)
         pool = [r for r in every if _matches(r, query)] if query else every
@@ -549,6 +625,8 @@ def _label_rung(row: Row, snap: Snapshot) -> str:
     """One rung from the label of a row the source gave no locator; never from a typed value."""
     if not row.label or row.name != row.label:
         raise _no_locator(row)
+    if row.ocr:
+        return _text_rung(row.found_as[0] or row.label)
     same = [r for r in snap.all_rows if r.label == row.label]
     if len(same) == 1:
         return _text_rung(row.label)
@@ -569,7 +647,7 @@ def ladder(row: Row, snap: Snapshot, act_only: bool = False) -> Ladder:
         save = [*act, *(r for r in save if r not in act)]
     unique = bool(row.label) and sum(r.label == row.label for r in snap.all_rows) == 1
     replay = save[-1] if unique and not loc_stable(save[0]) else save[0]
-    return Ladder(act, save, not live, replay)
+    return Ladder(act, save, not live, replay, 0 if live else row.found_as[1])
 
 
 def _locator_key(locator: str) -> str:
