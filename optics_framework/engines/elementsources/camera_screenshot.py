@@ -1,5 +1,5 @@
 from itertools import combinations
-from typing import Optional, Dict, Any, List, Literal
+from typing import Callable, Optional, Dict, Any, List, Literal
 import json
 import os
 import socket
@@ -9,10 +9,13 @@ import cv2
 import numpy as np
 import requests
 import urllib3
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator, model_validator
 from optics_framework.common.elementsource_interface import ElementSourceInterface
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.image_decode import MAX_ENCODED_BYTES, check_encoded_length, decode_image
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.session_liveness import raise_if_session_dead
+from optics_framework.engines.elementsources import screen_finder
 
 
 ENV_SCREENSHOT_URL = "WEBCAM_SCREENSHOT_URL"
@@ -27,6 +30,19 @@ HTTP_ERROR_FIELD_LIMIT = 300
 HTTP_ERROR_BODY_LIMIT = 4096
 CAPTURE_DEADLINE_SECONDS = 15
 READ_CHUNK_BYTES = 65536
+# Backends clamp a size they cannot give to the largest one they can.
+LARGEST_SIZE = 10000
+COMMON_SIZES = ((3840, 2160), (2560, 1440), (1920, 1080), (1280, 720))
+SETTLE_SECONDS = 1.0
+MAX_BUFFERED_FRAMES = 10
+DEFAULT_FPS = 30.0
+EXPOSURE_MODES = {"V4L2": (1, 3), "DSHOW": (0.25, 0.75)}
+EXPOSURE_DRIFT = 0.25
+BRIGHTNESS_STEPS = 8
+BRIGHTNESS_RAMP_SECONDS = 1.0
+AVERAGED_FRAMES = 3
+SCREEN_OFF_SECONDS = 3.0
+SCREEN_OFF_POLL_SECONDS = 0.5
 
 
 def _bounded(value: object) -> str | None:
@@ -95,6 +111,15 @@ class CapabilitiesConfig(BaseModel):
         None,
         description="The screen's corners in the camera frame as 'x,y': top-left, top-right, bottom-right, bottom-left",
     )
+    find_screen: Optional[Literal["brightness", "frame"]] = Field(
+        None,
+        description=(
+            "Find the screen's corners in the camera frame instead of deskew_corners: 'brightness' with the driver's"
+            " brightness keys, 'frame' from one frame of a bright screen"
+        ),
+    )
+    camera_width: Optional[int] = Field(None, gt=0, description="Width the webcam captures at; the largest it gives when unset")
+    camera_height: Optional[int] = Field(None, gt=0, description="Height the webcam captures at; the largest it gives when unset")
     rotation: Optional[Literal["clockwise", "counterclockwise"]] = Field(
         None, description="Quarter turn applied after deskewing"
     )
@@ -113,6 +138,14 @@ class CapabilitiesConfig(BaseModel):
         if corners is not None:
             corner_points(corners)
         return corners
+
+    @model_validator(mode="after")
+    def _settings_agree(self) -> "CapabilitiesConfig":
+        if self.deskew_corners and self.find_screen:
+            raise ValueError("set deskew_corners or find_screen, not both")
+        if (self.camera_width is None) != (self.camera_height is None):
+            raise ValueError("set both camera_width and camera_height, or neither")
+        return self
 
     @field_validator("rotation", mode="before")
     @classmethod
@@ -160,7 +193,17 @@ class CameraScreenshot(ElementSourceInterface):
         self.out_width: int = capabilities.out_width
         self.out_height: int = capabilities.out_height
         self.rotation: Optional[str] = capabilities.rotation
-        self._deskew = self._deskew_matrix(capabilities)
+        self.find_screen = capabilities.find_screen
+        self._deskew: np.ndarray | None = None
+        self._corners = np.zeros((4, 2), np.float32)
+        self._guard: screen_finder.ViewGuard | None = None
+        if capabilities.deskew_corners:
+            self._use_corners(corner_points(capabilities.deskew_corners))
+        # A driver reads matches in its own frame, so a frame of another size is scaled to the size asked for.
+        self._resize = (
+            self._deskew is None and not self.find_screen
+            and bool({"out_width", "out_height"} & capabilities.model_fields_set)
+        )
         self.header_size: int = capabilities.header_size
         self.byte_order: Literal["little", "big"] = capabilities.byte_order
 
@@ -168,14 +211,14 @@ class CameraScreenshot(ElementSourceInterface):
         self._http_token: str | None = None
         self.sock = None
         self.cap = None
+        self._frame_period = 1 / DEFAULT_FPS
         self.ip_address = None
         self.port = None
 
         endpoint, token = self._endpoint_and_token(capabilities)
 
-        # Initialize webcam, HTTP endpoint or TCP connection
         if self.camera_index is not None:
-            self.cap = cv2.VideoCapture(self.camera_index)
+            self.cap = self._open_webcam(self.camera_index, capabilities.camera_width, capabilities.camera_height)
         elif endpoint and urlparse(endpoint).scheme.lower() in HTTP_SCHEMES:
             self.http_url = endpoint
             self._http_token = token
@@ -202,26 +245,173 @@ class CameraScreenshot(ElementSourceInterface):
             internal_logger.error(f"Failed to parse URL {endpoint}: {e}")
             raise ValueError(f"Invalid URL format: {endpoint}")
 
-    @staticmethod
-    def _deskew_matrix(capabilities: CapabilitiesConfig) -> np.ndarray | None:
-        if not capabilities.deskew_corners:
-            return None
-        right, bottom = capabilities.out_width - 1, capabilities.out_height - 1
-        return cv2.getPerspectiveTransform(
-            corner_points(capabilities.deskew_corners),
+    def _use_corners(self, corners: np.ndarray) -> None:
+        right, bottom = self.out_width - 1, self.out_height - 1
+        self._deskew = cv2.getPerspectiveTransform(
+            corners.astype(np.float32),
             np.array([[0, 0], [right, 0], [right, bottom], [0, bottom]], dtype=np.float32),
         )
+        self._corners = corners
+        self._guard = None
 
     def capture(self) -> np.ndarray:
         """The screen from the webcam, the HTTP endpoint or the TCP connection, deskewed and rotated as configured."""
         frame = self._capture_frame()
         if frame is None or frame.size == 0:
             return frame
+        if self.find_screen and self._deskew is None:
+            self._calibrate(frame)
+            frame = self._capture_frame()
         if self._deskew is not None:
-            frame = cv2.warpPerspective(frame, self._deskew, (self.out_width, self.out_height))
+            frame = self._screen(frame)
+        elif self._resize and frame.shape[:2] != (self.out_height, self.out_width):
+            frame = cv2.resize(frame, (self.out_width, self.out_height), interpolation=cv2.INTER_AREA)
         if self.rotation:
             frame = cv2.rotate(frame, ROTATIONS[self.rotation])
         return frame
+
+    def _screen(self, frame: np.ndarray) -> np.ndarray:
+        """The deskewed screen; E0305 when the phone left its place or the screen stays dark."""
+        if self._guard is None:
+            self._guard = screen_finder.ViewGuard(frame, self._corners)
+            if not self._guard.anchored:
+                internal_logger.info("The area around the screen has no texture, so a moved phone or camera goes unnoticed")
+        elif self._guard.moved(frame):
+            if not self.find_screen:
+                raise self._blind("the phone or the camera moved since the first frame; set deskew_corners again", frame)
+            internal_logger.warning("The phone or the camera moved; finding the screen again")
+            self._calibrate(frame)
+            frame = self._capture_frame()
+        deadline = time.monotonic() + SCREEN_OFF_SECONDS
+        screen = self._warp(frame)
+        while screen_finder.screen_dark(screen):
+            if time.monotonic() >= deadline:
+                raise self._blind("the screen is off", frame)
+            time.sleep(SCREEN_OFF_POLL_SECONDS)
+            frame = self._capture_frame()
+            screen = self._warp(frame)
+        return screen
+
+    def _warp(self, frame: np.ndarray) -> np.ndarray:
+        return cv2.warpPerspective(frame, self._deskew, (self.out_width, self.out_height))
+
+    def _calibrate(self, frame: np.ndarray) -> None:
+        aspect = self.out_width / self.out_height
+        reasons = []
+        for name, signals in self._screen_signals(frame):
+            try:
+                corners = screen_finder.find_screen(*signals(), aspect)
+                break
+            except screen_finder.ScreenNotFound as exc:
+                internal_logger.info(f"No screen found by {name}: {exc}")
+                reasons.append(str(exc))
+        else:
+            raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
+        self._use_corners(corners)
+        found = ", ".join(f'"{x:.0f},{y:.0f}"' for x, y in corners)
+        internal_logger.info(f"Found the screen in the camera frame by {name}: deskew_corners: [{found}]")
+        marked = frame.copy()
+        cv2.polylines(marked, [corners.astype(np.int32)], True, (0, 255, 0), 2)
+        self._save(marked, "camera_screen_found")
+
+    def _screen_signals(self, frame: np.ndarray) -> list[tuple[str, Callable[[], tuple[np.ndarray, np.ndarray]]]]:
+        """The ways to find the screen, best first; brightness falls back to one frame when the keys do nothing."""
+        ways = [("one frame", lambda: screen_finder.frame_signals(frame))]
+        if self.find_screen != "brightness":
+            return ways
+        if self.driver is None:
+            raise OpticsError(Code.E0501, message="find_screen: brightness presses the brightness keys of a driver; enable one, or use find_screen: frame")
+        try:
+            dim = self._at_brightness("brightnessdown")
+            bright = self._at_brightness("brightnessup")
+        except Exception as exc:
+            raise_if_session_dead(exc)
+            internal_logger.warning(f"The driver did not press the brightness keys ({exc}); finding the screen in one frame")
+            return ways
+        return [("brightness", lambda: screen_finder.brightness_signals(dim, bright)), *ways]
+
+    def _at_brightness(self, key: str) -> np.ndarray:
+        for _ in range(BRIGHTNESS_STEPS):
+            self.driver.press_keycode(key)
+        time.sleep(BRIGHTNESS_RAMP_SECONDS)
+        return np.mean([self._capture_frame().astype(np.float32) for _ in range(AVERAGED_FRAMES)], axis=0)
+
+    def _blind(self, cause: str, frame: np.ndarray) -> OpticsError:
+        saved = self._save(frame, "camera_blind")
+        where = f" The camera frame is saved as {saved}." if saved else ""
+        internal_logger.error(f"The camera does not see the device screen: {cause}.{where}")
+        return OpticsError(Code.E0305, message=f"The camera does not see the device screen: {cause}.{where}")
+
+    def _save(self, frame: np.ndarray, name: str) -> str | None:
+        try:
+            folder = self.driver.event_sdk.config_handler.config.capture_dir
+        except AttributeError:
+            return None
+        if not folder:
+            return None
+        path = os.path.join(folder, f"{name}_{time.strftime('%Y%m%d-%H%M%S')}.jpg")
+        os.makedirs(folder, exist_ok=True)
+        return path if cv2.imwrite(path, frame) else None
+
+    def _open_webcam(self, index: int, width: int | None, height: int | None) -> cv2.VideoCapture:
+        cap = cv2.VideoCapture(index)
+        if not cap.isOpened():
+            internal_logger.error(f"Cannot open the camera at index {index}")
+            return cap
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self._request_size(cap, width, height)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        self._frame_period = 1 / (fps if 1 <= fps <= 240 else DEFAULT_FPS)
+        settle_until = time.monotonic() + SETTLE_SECONDS
+        while time.monotonic() < settle_until:
+            if not cap.grab():
+                break
+        locked = self._lock_controls(cap)
+        ok, frame = cap.read()
+        if not ok:
+            internal_logger.error(f"The camera at index {index} gives no frames")
+            return cap
+        internal_logger.info(
+            f"Camera {index} ({cap.getBackendName()}) captures {frame.shape[1]}x{frame.shape[0]} at"
+            f" {1 / self._frame_period:.0f} fps; locked: {', '.join(locked) or 'nothing'}"
+        )
+        return cap
+
+    @staticmethod
+    def _request_size(cap: cv2.VideoCapture, width: int | None, height: int | None) -> None:
+        if width and height:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            granted = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            if granted != (width, height):
+                internal_logger.warning(f"The camera gives {granted[0]}x{granted[1]}, not {width}x{height}")
+            return
+        default = cap.get(cv2.CAP_PROP_FRAME_WIDTH) * cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, LARGEST_SIZE)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LARGEST_SIZE)
+        if cap.get(cv2.CAP_PROP_FRAME_WIDTH) * cap.get(cv2.CAP_PROP_FRAME_HEIGHT) > default:
+            return
+        for size in COMMON_SIZES:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+            if (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))) == size:
+                return
+
+    @staticmethod
+    def _lock_controls(cap: cv2.VideoCapture) -> list[str]:
+        """Fix focus, white balance and exposure where the backend lets it, so frames do not drift between reads."""
+        locked = [name for name, prop in (("focus", cv2.CAP_PROP_AUTOFOCUS), ("white balance", cv2.CAP_PROP_AUTO_WB)) if cap.set(prop, 0)]
+        modes = EXPOSURE_MODES.get(cap.getBackendName())
+        ok, before = cap.read()
+        if modes is None or not ok:
+            return locked
+        exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
+        if cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, modes[0]) and cap.set(cv2.CAP_PROP_EXPOSURE, exposure):
+            ok, after = cap.read()
+            if ok and abs(float(after.mean()) - float(before.mean())) <= EXPOSURE_DRIFT * max(float(before.mean()), 1.0):
+                return [*locked, "exposure"]
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, modes[1])
+        return locked
 
     def _capture_frame(self) -> np.ndarray:
         if self.http_url:
@@ -235,10 +425,21 @@ class CameraScreenshot(ElementSourceInterface):
         if self.cap is None or not self.cap.isOpened():
             internal_logger.error("No valid webcam connection.")
             raise RuntimeError("No valid webcam connection.")
+        return self._fresh_frame()
 
-        ret, frame = self.cap.read()
-        if ret:
-            return frame
+    def _fresh_frame(self) -> np.ndarray:
+        """A frame exposed after this call: buffered frames come back at once, so grab until one has to wait."""
+        for _ in range(MAX_BUFFERED_FRAMES):
+            started = time.monotonic()
+            if not self.cap.grab():
+                break
+            if time.monotonic() - started >= self._frame_period / 3:
+                break
+        # The frame that waited may have started its exposure before this call.
+        if self.cap.grab():
+            ok, frame = self.cap.retrieve()
+            if ok:
+                return frame
         internal_logger.error("Failed to capture frame from webcam.")
         raise RuntimeError("Failed to capture frame from webcam.")
 
