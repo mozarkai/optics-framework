@@ -1,3 +1,5 @@
+import math
+from dataclasses import dataclass
 from typing import Literal
 import cv2
 import numpy as np
@@ -22,14 +24,135 @@ class _IndexMiss:
 _INDEX_MISS = _IndexMiss()
 
 _PEAK_CANDIDATE_CAP = 4096
+_REFINE_CAP = 64
+_COARSE_SIDE = 24
+_COARSE_SLACK = 0.1
+_COARSE_FIDELITY = 0.8
+_SCALE_STEP = 1.05
+_EQUALIZE_TILE_PX = 192
+_DEFAULT_SCALE_RANGE = (0.8, 1.25)
+
+
+@dataclass(frozen=True)
+class _Coarse:
+    score: float
+    scale: float
+    res: np.ndarray
+    template_shape: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class _Hit:
+    x: int
+    y: int
+    w: int
+    h: int
+    score: float
+
+
+def _gray(image: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+
+def _equalize(gray: np.ndarray) -> np.ndarray:
+    """CLAHE with tiles of a fixed pixel size, so a crop and its frame get the same local mapping."""
+    h, w = gray.shape[:2]
+    tiles = (max(1, round(w / _EQUALIZE_TILE_PX)), max(1, round(h / _EQUALIZE_TILE_PX)))
+    return cv2.createCLAHE(clipLimit=1.5, tileGridSize=tiles).apply(gray)
+
+
+def _resize(image: np.ndarray, factor: float) -> np.ndarray:
+    if math.isclose(factor, 1.0):
+        return image
+    h, w = image.shape[:2]
+    size = (max(1, round(w * factor)), max(1, round(h * factor)))
+    return cv2.resize(image, size, interpolation=cv2.INTER_AREA if factor < 1 else cv2.INTER_CUBIC)
+
+
+def _coarse_factor(template: np.ndarray) -> float:
+    """Largest reduction after which the template, enlarged back, still correlates with itself."""
+    h, w = template.shape[:2]
+    factor = min(1.0, _COARSE_SIDE / min(h, w))
+    while factor < 1.0:
+        restored = cv2.resize(_resize(template, factor), (w, h), interpolation=cv2.INTER_LINEAR)
+        if cv2.matchTemplate(template, restored, cv2.TM_CCOEFF_NORMED)[0, 0] >= _COARSE_FIDELITY:
+            return factor
+        factor = min(1.0, factor * 2)
+    return 1.0
+
+
+def _fits(template: np.ndarray, frame: np.ndarray) -> bool:
+    return template.shape[0] <= frame.shape[0] and template.shape[1] <= frame.shape[1]
+
+
+def _scale_grid(low: float, high: float) -> tuple[float, ...]:
+    step = math.log(_SCALE_STEP)
+    first, last = math.ceil(math.log(low) / step - 1e-9), math.floor(math.log(high) / step + 1e-9)
+    return tuple(_SCALE_STEP ** k for k in range(first, last + 1)) or (math.sqrt(low * high),)
+
+
+def _parse_scale_range(value) -> tuple[float, ...]:
+    low, high = (float(v) for v in (value or _DEFAULT_SCALE_RANGE))
+    if not 0 < low <= high:
+        raise ValueError(f"scale_range must be [low, high] with 0 < low <= high, got {value!r}.")
+    return _scale_grid(low, high)
+
+
+def _coarse_scan(
+    frame: np.ndarray, template: np.ndarray, factor: float, scales: tuple[float, ...]
+) -> _Coarse | None:
+    best: _Coarse | None = None
+    for scale in scales:
+        sized = _resize(template, scale * factor)
+        if not _fits(sized, frame):
+            continue
+        res = cv2.matchTemplate(frame, sized, cv2.TM_CCOEFF_NORMED)
+        score = float(res.max())
+        if best is None or score > best.score:
+            best = _Coarse(score, scale, res, sized.shape[:2])
+    return best
+
+
+def _refine(frame: np.ndarray, template: np.ndarray, center: tuple[float, float], margin: int) -> _Hit | None:
+    """Best full-resolution placement of ``template`` within ``margin`` px of ``center``."""
+    th, tw = template.shape[:2]
+    x0 = max(0, round(center[0] - tw / 2) - margin)
+    y0 = max(0, round(center[1] - th / 2) - margin)
+    window = frame[y0 : y0 + th + 2 * margin, x0 : x0 + tw + 2 * margin]
+    if not _fits(template, window):
+        return None
+    _, score, _, (x, y) = cv2.minMaxLoc(cv2.matchTemplate(window, template, cv2.TM_CCOEFF_NORMED))
+    return _Hit(x0 + x, y0 + y, tw, th, float(score))
+
+
+def _refine_scale(
+    frame: np.ndarray, template: np.ndarray, scale: float, center: tuple[float, float], margin: int
+) -> float:
+    half_step = math.sqrt(_SCALE_STEP)
+    trials = ((s, _refine(frame, _resize(template, s), center, margin)) for s in (scale / half_step, scale, scale * half_step))
+    scored = [(hit.score, s) for s, hit in trials if hit is not None]
+    return max(scored)[1] if scored else scale
+
+
+def _pick(hits: list[_Hit], index: int | None) -> _Hit | _IndexMiss | None:
+    """The strongest hit, or the ``index``-th in reading order."""
+    if not hits:
+        return None
+    if index is None:
+        return max(hits, key=lambda h: h.score)
+    # hits[-1] would otherwise wrap silently to the last match.
+    if index < 0 or index >= len(hits):
+        return _INDEX_MISS
+    return sorted(hits, key=lambda h: (h.y, h.x))[index]
 
 
 class TemplateMatchingHelper(ImageInterface):
-    """Detect a reference template inside a frame via a two-stage strategy.
+    """Detect a reference template inside a frame.
 
-    ``cv2.matchTemplate`` handles exact same-scale matches with one bounded
-    allocation; the SIFT + FLANN + RANSAC fallback (scale/rotation invariant)
-    runs only when that finds nothing. The fallback reuses one feature-capped
+    ``cv2.matchTemplate`` runs coarse-to-fine: first at the template's own
+    size, then over ``scale_range`` on contrast-equalised images. The SIFT +
+    FLANN + RANSAC fallback (rotation invariant) runs only when both find
+    nothing. The fallback reuses one feature-capped
     SIFT and one FLANN matcher per helper and releases large intermediates
     promptly, keeping per-call memory bounded under concurrent load.
     """
@@ -51,6 +174,7 @@ class TemplateMatchingHelper(ImageInterface):
         self._sift_nfeatures = int(
             capabilities.get("sift_nfeatures", self._DEFAULT_SIFT_NFEATURES)
         )
+        self._scales = _parse_scale_range(capabilities.get("scale_range"))
 
         # Safe as singletons: the batch runner is sequential within a session,
         # and the concurrent serve/MCP path holds Session.keyword_lock.
@@ -80,37 +204,48 @@ class TemplateMatchingHelper(ImageInterface):
         ``confidence_level`` (caller may fall back to SIFT), or ``_INDEX_MISS``
         when distinct matches exist but ``index`` selects none. ``index=None``
         takes the strongest match; an integer takes the n-th distinct match in
-        reading order.
+        reading order. The first pass matches at the template's own size; only
+        when it finds nothing does a second pass sweep ``scale_range``. That
+        pass runs on contrast-equalised images, which keeps the many trial
+        scales from lifting look-alike icons over the bar.
         """
         th, tw = template.shape[:2]
-        fh, fw = frame.shape[:2]
-        if th == 0 or tw == 0 or th > fh or tw > fw:
+        if th == 0 or tw == 0:
             return None
+        frame_gray = _gray(frame)
+        template_gray = _gray(template)
+        found = self._search(frame_gray, template_gray, confidence_level, index, (1.0,))
+        if found is None:
+            found = self._search(
+                _equalize(frame_gray), _equalize(template_gray), confidence_level, index, self._scales
+            )
+        return found
 
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        res = cv2.matchTemplate(frame_gray, template_gray, cv2.TM_CCOEFF_NORMED)
-        del frame_gray, template_gray
-
-        if not np.any(res >= confidence_level):
+    def _search(
+        self, frame: np.ndarray, template: np.ndarray, confidence_level: float,
+        index: int | None, scales: tuple[float, ...]
+    ) -> _MatchResult | _IndexMiss | None:
+        """Pick the best scale on a coarse copy, then score each instance at full resolution."""
+        factor = _coarse_factor(template)
+        coarse = _coarse_scan(_resize(frame, factor), template, factor, scales)
+        floor = confidence_level - _COARSE_SLACK
+        if coarse is None or coarse.score < floor:
             return None
-
-        if index is None:
-            # A qualifying pixel exists, so the global max clears the threshold.
-            _, _, _, max_loc = cv2.minMaxLoc(res)
-            x, y = int(max_loc[0]), int(max_loc[1])
-        else:
-            peaks = self._distinct_peaks(res, confidence_level, tw, th)
-            # Negative index is rejected explicitly: peaks[-1] would otherwise
-            # wrap silently to the last match.
-            if index < 0 or index >= len(peaks):
-                return _INDEX_MISS
-            x, y = peaks[index]
-
-        top_left = (x, y)
-        bottom_right = (x + tw, y + th)
-        center = (x + tw // 2, y + th // 2)
-        return True, center, (top_left, bottom_right)
+        ch, cw = coarse.template_shape
+        peaks = self._distinct_peaks(coarse.res, floor, cw, ch)
+        peaks.sort(key=lambda p: -coarse.res[p[1], p[0]])
+        centers = [((x + cw / 2) / factor, (y + ch / 2) / factor) for x, y in peaks[:_REFINE_CAP]]
+        margin = math.ceil(1 / factor) + 2
+        scale = coarse.scale
+        if len(scales) > 1:
+            scale = _refine_scale(frame, template, scale, centers[0], margin)
+        sized = _resize(template, scale)
+        hits = [h for h in (_refine(frame, sized, c, margin) for c in centers) if h and h.score >= confidence_level]
+        hit = _pick(hits, index)
+        if not isinstance(hit, _Hit):
+            return hit
+        internal_logger.debug("Template matched at scale %.2f, score %.3f.", scale, hit.score)
+        return True, (hit.x + hit.w // 2, hit.y + hit.h // 2), ((hit.x, hit.y), (hit.x + hit.w, hit.y + hit.h))
 
     @staticmethod
     def _distinct_peaks(
