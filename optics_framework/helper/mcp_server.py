@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import bisect
+import contextlib
 import contextvars
 import functools
 import inspect
@@ -375,17 +376,27 @@ def _saved_file(sid: str) -> pathlib.Path | None:
     return _steps_dir() / f"{sid}.json" if canonical else None
 
 
+def _write_private(path: pathlib.Path, data: dict[str, Any]) -> None:
+    """Replace ``path`` with ``data`` in one step, readable by this user only; a failed write leaves no temp file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(data, out)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def _save(sid: str, slot: _Slot, why: str = "") -> None:
     """Write a local session's steps to disk, so they outlive the server; a remote caller's stay in memory only."""
     path = _saved_file(sid)
     if _remote(slot.owner) or path is None:
         return
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as out:
-            json.dump({"why": why, **_steps(slot.session)}, out)
-        os.replace(tmp, path)
+        _write_private(path, {"why": why, **_steps(slot.session)})
     except OSError as exc:
         internal_logger.warning("Could not save the steps of MCP session %s: %s", sid, exc)
 

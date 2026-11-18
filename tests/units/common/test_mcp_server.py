@@ -638,7 +638,7 @@ def test_a_reply_that_nests_a_long_screen_keeps_the_rows_that_fit():
 
 
 def test_a_call_without_a_session_id_after_the_end_names_the_ended_session(desktop):
-    ended, tapped = _calls(("terminate_session", {}), ("tap", {"target": "Add Event"}))
+    _, tapped = _calls(("terminate_session", {}), ("tap", {"target": "Add Event"}))
 
     assert f"Session '{S1}' has ended. It was ended by terminate_session." in _shown(tapped)
     assert STEPS in _shown(tapped)
@@ -650,3 +650,14 @@ def test_an_unverified_key_that_closed_a_draft_asks_for_an_expectation(desktop):
     pressed, = _calls(("press_key", {"key": "Escape"}))
 
     assert "verified: unknown (add expect_present/expect_absent to verify)" in _shown(pressed)
+
+
+def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypatch):
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "")
+    mcp_server._STATES[S1].owner = ""
+    monkeypatch.setattr(mcp_server.os, "replace", MagicMock(side_effect=OSError("disk full")))
+
+    tapped, = _calls(("tap", {"target": "Add Event"}))
+
+    assert _shown(tapped).startswith('tap e2 "Add Event" -> ok')
+    assert not list((pathlib.Path(os.environ["OPTICS_HOME"]) / "mcp" / "steps").glob("*"))
