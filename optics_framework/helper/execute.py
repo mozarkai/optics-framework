@@ -160,7 +160,10 @@ def _is_config_file(yaml_data: dict) -> bool:
 
 def _process_csv_file(file_path: str, file_collections: dict):
     """Process a CSV file and categorize by content."""
-    _categorize_file_by_content(file_path, file_collections)
+    try:
+        _categorize_file_by_content(file_path, file_collections)
+    except OpticsError as e:
+        abort_with_panel([e.message, "", f"Fix it in {file_path}, then re-run."], e.code.value)
 
 
 def _categorize_file_by_content(file_path: str, file_collections: dict):
@@ -194,9 +197,18 @@ def _identify_csv_content(headers: Optional[Set[str]]) -> Set[str]:
             content_types.add("modules")
         if is_elements_header(headers):
             content_types.add("elements")
+        elif _misnamed_elements_header(headers):
+            raise OpticsError(Code.E0503, message=(
+                "The elements file has Element_Name but no Element_ID column, so no element has a locator. "
+                "Use the header Element_Name,Element_ID; more locators go in Element_ID_2, Element_ID_3, ..."))
         if {"error_code", "match_string"}.issubset(headers):
             content_types.add("error_definitions")
     return content_types
+
+
+def _misnamed_elements_header(headers: Set[str]) -> bool:
+    """Element_Name with another element_* column, such as Element_Locator: an elements file without Element_ID."""
+    return "element_name" in headers and any(h != "element_name" and h.startswith("element_") for h in headers)
 
 
 def _identify_yaml_content(data: Dict) -> Set[str]:
@@ -240,12 +252,10 @@ def identify_file_content(file_path: str) -> Set[str]:
     :param file_path: Path to the file.
     :return: Set of content types ('test_cases', 'modules', 'elements').
     """
+    if file_path.endswith(".csv"):
+        return _identify_csv_content(read_csv_headers(file_path))
     try:
-        if file_path.endswith(".csv"):
-            headers = read_csv_headers(file_path)
-            return _identify_csv_content(headers)
-        else:  # YAML file
-            return _identify_yaml_content(load_project_yaml(file_path) or {})
+        return _identify_yaml_content(load_project_yaml(file_path) or {})
     except Exception as e:
         internal_logger.exception(f"Error reading {file_path}: {e}")
         return set()
@@ -262,7 +272,7 @@ def read_csv_headers(file_path: str) -> Optional[Set[str]]:
         with open(file_path, "r", encoding="utf-8-sig") as f:
             header = f.readline().strip().split(",")
             return {h.strip().lower() for h in header}
-    except (OSError, IOError) as e:
+    except (OSError, UnicodeDecodeError) as e:
         internal_logger.exception(f"Error reading {file_path}: {e}")
         return None
 
