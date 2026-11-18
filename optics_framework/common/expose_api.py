@@ -277,8 +277,8 @@ def _refuse_unknown_dongle(capabilities: dict[str, Any]) -> None:
         return
     try:
         from airhand import serial_numbers
-    except ImportError:
-        return
+    except ImportError as exc:
+        raise OpticsError(Code.E0501, "ble: airhand cannot list the plugged-in dongles; install optics-framework[ble]") from exc
     if str(serial) not in serial_numbers():
         raise OpticsError(Code.E0501, f"ble: no plugged-in airhand dongle has the serial {serial}")
 

@@ -199,6 +199,7 @@ class CameraScreenshot(ElementSourceInterface):
         self._deskew: np.ndarray | None = None
         self._corners = np.zeros((4, 2), np.float32)
         self._guard: screen_finder.ViewGuard | None = None
+        self._found_on: tuple[int, ...] | None = None
         if capabilities.deskew_corners:
             self._use_corners(corner_points(capabilities.deskew_corners))
         # A driver reads matches in its own frame, so a frame of another size is scaled to the size asked for.
@@ -275,6 +276,9 @@ class CameraScreenshot(ElementSourceInterface):
     def _screen(self, frame: np.ndarray) -> np.ndarray:
         """The deskewed screen; E0305 when the phone left its place or the screen stays dark."""
         if self._guard is None:
+            if self._found_on not in (None, frame.shape[:2]):
+                # The frame after finding the screen has another size, so its corners are elsewhere.
+                self._calibrate(frame)
             self._guard = screen_finder.ViewGuard(frame, self._corners)
             if not self._guard.anchored:
                 internal_logger.info("The area around the screen has no texture, so a moved phone or camera goes unnoticed")
@@ -310,6 +314,7 @@ class CameraScreenshot(ElementSourceInterface):
         else:
             raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
         self._use_corners(corners)
+        self._found_on = frame.shape[:2]
         found = ", ".join(f'"{x:.0f},{y:.0f}"' for x, y in corners)
         internal_logger.info(f"Found the screen in the camera frame by {name}: deskew_corners: [{found}]")
         marked = frame.copy()
