@@ -637,46 +637,6 @@ def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param:
     raise TypeError(f"Parameter '{name}' must be str or List[str], got {type(val)}")
 
 
-def _resolve_named_to_positional(
-    method: Callable[..., Any], named_params: Dict[str, Union[str, List[str]]]
-) -> List[List[str]]:
-    """
-    Convert named parameters to positional parameters based on method signature.
-
-    Args:
-        method: The keyword method to call
-        named_params: Dictionary of named parameters
-
-    Returns:
-        List[List[str]]: List of normalized parameter lists in method signature order
-    """
-    sig = inspect.signature(method)
-    param_names = []
-    for p in sig.parameters.values():
-        if p.name == "self":
-            continue
-        if p.kind == inspect.Parameter.KEYWORD_ONLY:
-            continue
-        param_names.append(p.name)
-
-    normalized_params = []
-    for param_name in param_names:
-        if param_name in named_params:
-            normalized_params.append(_normalize_param_value(param_name, named_params[param_name]))
-        else:
-            # Parameter not provided, check if it has a default
-            param = sig.parameters[param_name]
-            if param.default != inspect.Parameter.empty:
-                # Has default, skip this parameter (method will use its default)
-                # We don't include it in the normalized params list
-                continue
-            else:
-                # Required parameter missing
-                raise ValueError(f"Required parameter '{param_name}' not provided in named params")
-
-    return normalized_params
-
-
 class _NamedParamsContext(NamedTuple):
     """Holds normalized named-param state for fallback execution."""
 
