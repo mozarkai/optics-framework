@@ -108,6 +108,10 @@ class PlaywrightFindElement(ElementSourceInterface):
                 cause=e,
             ) from e
 
+    def count(self, element: str) -> Optional[int]:
+        self._require_page()
+        return playwright_locator.count(self.driver, element, exact=self._strict_element_match())
+
     def get_element_bboxes(
         self, elements: List[str]
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:

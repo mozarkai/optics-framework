@@ -159,6 +159,12 @@ class AppiumPageSource(ElementSourceInterface):
             return self._locate_by_xpath(driver, utils.without_prefix(element, utils.XPATH_PREFIX), element_type)
         raise RuntimeError("Unknown element type.")
 
+    def count(self, element: str) -> Optional[int]:
+        if utils.determine_element_type(element) != "XPath":
+            return None
+        xpath = utils.without_prefix(element, utils.XPATH_PREFIX)
+        return len(self._require_webdriver().find_elements(AppiumBy.XPATH, xpath))
+
     def get_element_bboxes(
         self, elements: List[str]
     ) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:

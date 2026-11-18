@@ -1,12 +1,12 @@
 import time
-from typing import Optional, Any, List, Union
+from typing import Optional, Any, List, Tuple, Union
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.strategies import StrategyManager
+from optics_framework.common.strategies import LocateResult, StrategyManager
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.session_liveness import raise_if_session_dead
 
@@ -99,15 +99,13 @@ class Verifier:
             raise OpticsError(Code.E0401, message=f"Element '{element}' is visible but expected invisible.")
 
     def _check_state(self, element: str, state: str) -> None:
-        located = None
         try:
-            for result in self.strategy_manager.locate(element):
-                located = result.value
-                break
+            result = next(iter(self.strategy_manager.locate(element)), None)
         except OpticsError:
-            pass
-        if located is None:
+            result = None
+        if result is None or result.value is None:
             raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+        located = result.value
         check, positive, opposite = self._ELEMENT_STATES[state]
         if isinstance(located, tuple):
             actual = getattr(located, check, None)
@@ -118,7 +116,18 @@ class Verifier:
         else:
             actual = self.driver.is_element_checked(located)
         if actual != positive:
-            raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.")
+            raise OpticsError(Code.E0401, message=f"Element '{element}' is {opposite} but expected {state}.{self._match_count(element, result)}")
+
+    @staticmethod
+    def _match_count(element: str, result: LocateResult) -> str:
+        """Why a check on the first match can fail while another match would pass; empty when one node matches."""
+        try:
+            count = result.strategy.element_source.count(element)
+        except Exception as e:
+            raise_if_session_dead(e)
+            internal_logger.debug(f"Counting the matches of '{element}' failed: {e}")
+            return ""
+        return f" The locator matches {count} elements; only the first was checked." if count and count > 1 else ""
 
     def assert_text(self, element: str, expected: str, timeout: str = "10", event_name: Optional[str] = None) -> None:
         """
@@ -135,21 +144,22 @@ class Verifier:
         want = utils.strip_sensitive_prefix(expected).strip()
         deadline = time.monotonic() + float(timeout)
         while True:
-            actual = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
+            actual, result = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
             if actual is not None and actual.strip() == want:
                 break
             if time.monotonic() >= deadline:
-                if actual is None:
+                if actual is None or result is None:
                     raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
                 shown = actual.strip()
                 if sensitive:
                     shown, want = "****", "****"
-                raise OpticsError(Code.E0401, message=mask_secrets(f"Element '{element}' shows '{shown}' but expected '{want}'."))
+                message = f"Element '{element}' shows '{shown}' but expected '{want}'.{self._match_count(element, result)}"
+                raise OpticsError(Code.E0401, message=mask_secrets(message))
             time.sleep(self._TEXT_POLL_INTERVAL_S)
         if event_name:
             self.event_sdk.capture_event(event_name)
 
-    def _read_text(self, element: str, timeout: float) -> Optional[str]:
+    def _read_text(self, element: str, timeout: float) -> Tuple[Optional[str], Optional[LocateResult]]:
         try:
             # Wait through the assertion loop, which keeps to the timeout; a locate waits as long as the driver does.
             self.strategy_manager.assert_presence([element], utils.determine_element_type(element), timeout=timeout)
@@ -157,22 +167,22 @@ class Verifier:
         except OpticsError as e:
             if not (e.code.value.startswith("E02") or e.code == Code.X0201):
                 raise
-            return None
+            return None, None
         if result is None:
-            return None
+            return None, None
         if isinstance(result.value, tuple):
             text = getattr(result.value, "text", None)
             if text is None:
                 raise OpticsError(Code.E0401, message=f"Cannot read the text of '{element}': it was found only by OCR or image.")
-            return text
+            return text, result
         try:
-            return self.driver.get_text_element(result.value)
+            return self.driver.get_text_element(result.value), result
         except Exception as e:
             if isinstance(e, OpticsError):
                 raise
             raise_if_session_dead(e)
             internal_logger.debug(f"Reading the text of '{element}' failed: {e}")
-            return None
+            return None, result
 
     def _resolve_param(self, param: str) -> str:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
