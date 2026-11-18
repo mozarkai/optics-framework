@@ -191,7 +191,7 @@ class TextDetectionStrategy(LocatorStrategy):
         if self.text_detection is None:
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
         screenshot = self.element_source.capture()
-        found = self.text_detection.find_element(screenshot, element, index=index)
+        found = self.text_detection.find_element(screenshot, element, index=index, strict=self._strict())
         if found is None:
             return None
         _, coor, bbox = found
@@ -230,7 +230,7 @@ class TextDetectionStrategy(LocatorStrategy):
             raise OpticsError(Code.E0205, message=f"Invalid AOI parameters: {e}")
 
         # Find element in cropped screenshot
-        found = self.text_detection.find_element(cropped_screenshot, element, index=index)
+        found = self.text_detection.find_element(cropped_screenshot, element, index=index, strict=self._strict())
         if found is None:
             return None
         _, coor, bbox = found
@@ -255,6 +255,12 @@ class TextDetectionStrategy(LocatorStrategy):
             internal_logger.debug(f"Coordinate adjustment failed for TextDetectionStrategy: {e}")
             raise OpticsError(Code.E0205, message=f"Coordinate adjustment failed: {e}")
 
+    def _strict(self) -> bool:
+        try:
+            return bool(self.element_source.driver.event_sdk.config_handler.config.strict_element_match)
+        except AttributeError:
+            return False
+
     def can_assert(self, element: str) -> bool:
         # The Verifier groups css= with text; OCR must not search the screen for a selector.
         return utils.determine_element_type(element) != "CSS"
@@ -266,7 +272,7 @@ class TextDetectionStrategy(LocatorStrategy):
             raise OpticsError(Code.E0201, message=TEXT_DETECTION_NOT_AVAILABLE_MSG)
         found = dict.fromkeys(elements, False)
         _, ocr_results = self.text_detection.detect_text(frame.copy())
-        annotated_frame = match_and_annotate(ocr_results, elements, found, frame.copy())
+        annotated_frame = match_and_annotate(ocr_results, elements, found, frame.copy(), self._strict())
         return [found[element] for element in elements], annotated_frame
 
     @staticmethod

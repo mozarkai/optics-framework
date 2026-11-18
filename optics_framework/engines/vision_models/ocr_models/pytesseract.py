@@ -1,5 +1,4 @@
 from optics_framework.common.text_interface import TextInterface
-from optics_framework.engines.vision_models.base_methods import save_match_annotation
 from optics_framework.common.logging_config import internal_logger
 import pytesseract
 import cv2
@@ -22,54 +21,8 @@ class PytesseractHelper(TextInterface):
 
         :raises RuntimeError: If Pytesseract fails to initialize.
         """
-        # Extract parameters from config or use defaults
-        self.execution_output_dir = config.get("execution_output_path") if config else None
-
         self.pytesseract_config = "--oem 3 --psm 6"
         # internal_logger.debug(f"Pytesseract initialized with config: {self.pytesseract_config}")
-
-
-    def find_element(self, frame, text, index=None):
-        """
-        Locate a specific occurrence of a text in the given frame using OCR and return the center coordinates.
-
-        Parameters:
-            - frame (np.array): Image data of the frame.
-            - text (str): The text to locate in the frame.
-            - index (int): The occurrence index (0-based) to select if multiple matches exist.
-
-        Returns:
-            - tuple: (x, y) coordinates of the center of the selected text in the frame or (None, None) if not found.
-            - tuple: Bounding box coordinates of the detected text.
-            - frame (np.array): The frame with the annotated text bounding box and center dot.
-        """
-        _, ocr_results = self.detect_text(frame)
-
-        # internal_logger.debug("Text Detection Results:", ocr_results)
-
-        matches = []
-        for bbox, detected_text, _ in ocr_results:
-            if detected_text.strip().lower() == text.lower():
-                top_left = tuple(map(int, bbox[0]))
-                bottom_right = tuple(map(int, bbox[2]))
-                center_x = (top_left[0] + bottom_right[0]) // 2
-                center_y = (top_left[1] + bottom_right[1]) // 2
-                matches.append(((center_x, center_y), (top_left, bottom_right)))
-
-        if not matches:
-            return False, (None, None), None
-
-        if index is not None:
-            if 0 <= index < len(matches):
-                selected_center, selected_bbox = matches[index]
-            else:
-                return False, (None, None), None
-        else:
-            selected_center, selected_bbox = matches[0]
-
-        save_match_annotation(frame, [(selected_center, selected_bbox)], "annotated_frame", self.execution_output_dir)
-
-        return True, selected_center, selected_bbox
 
     def detect_text(self, image):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -96,7 +49,3 @@ class PytesseractHelper(TextInterface):
 
         internal_logger.debug(f"Pytesseract detected texts: {detected_texts}")
         return binary_image, detected_texts
-
-    def element_exist(self, input_data, reference_data):
-        # dummy implementation
-        return super().element_exist(input_data, reference_data)

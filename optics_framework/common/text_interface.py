@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Any, List
+from typing import Optional, Tuple, List
+
+from optics_framework.common.text_match import find_text
 
 
 class TextInterface(ABC):
@@ -14,44 +16,17 @@ class TextInterface(ABC):
     and reference data as needed.
     """
 
-    @abstractmethod
-    def element_exist(
-        self, input_data: Any, reference_data: Any
-    ) -> Optional[Tuple[int, int]]:
-        """
-        Find the location of a reference image within the input data.
-
-        :param input_data: The input source (e.g., image, video frame) for detection.
-        :type input_data: Any
-        :param reference_data: The reference data used for matching or comparison.
-        :type reference_data: Any
-        :return: A tuple (x, y) representing the top-left corner of the reference image,
-                 or None if not found.
-        :rtype: Optional[Tuple[int, int]]
-        """
-        pass
-
-    @abstractmethod
     def find_element(
-        self, input_data, text, index=None
-    ) -> Optional[
-        Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]
-    ]:
-        """
-        Locate specific text in the input data using OCR and return detailed detection info.
-
-        :param input_data: The input source (e.g., image, video frame) for detection.
-        :type input_data: Any
-        :param text: The text to locate in the input data.
-        :type text: str
-        :return: A tuple (found, center, bounds) where:
-                 - found: bool indicating if the text was found
-                 - center: (x, y) coordinates of the text center
-                 - bounds: ((x1, y1), (x2, y2)) bounding box (top-left, bottom-right)
-                 Returns None if not found.
-        :rtype: Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]
-        """
-        pass
+        self, input_data, text, index=None, strict=False
+    ) -> Optional[Tuple[bool, Tuple[int, int], Tuple[Tuple[int, int], Tuple[int, int]]]]:
+        """Return ``(True, center, (top_left, bottom_right))`` for the ``index``-th match of ``text``, else None."""
+        detected = self.detect_text(input_data)
+        matches = find_text(detected[1] if detected else [], text, strict)
+        position = int(index or 0)
+        if not 0 <= position < len(matches):
+            return None
+        center, box = matches[position]
+        return True, center, box
 
     @abstractmethod
     def detect_text(

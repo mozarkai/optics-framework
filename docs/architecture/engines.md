@@ -393,7 +393,6 @@ text_detection:
 
 - `detect_text()` - Full text detection
 - `find_element()` - Locate specific text
-- `element_exist()` - Check text presence
 
 #### GoogleVision
 

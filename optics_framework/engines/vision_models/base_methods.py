@@ -7,6 +7,7 @@ from optics_framework.common.error import OpticsError
 from optics_framework.common.image_decode import decode_image, read_image
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import TemplateData
+from optics_framework.common.text_match import find_text
 
 def load_template(element: str, template_data: Optional[TemplateData] = None) -> np.ndarray:
     """
@@ -65,32 +66,18 @@ def match_and_annotate(
     ocr_results,
     target_texts,
     found_status,
-    frame: np.ndarray
+    frame: np.ndarray,
+    strict: bool = False,
 ) -> np.ndarray:
-    """
-    Check OCR results for matching text and annotate matched regions.
-
-    :param ocr_results: OCR outputs (bbox, text, confidence).
-    :param target_texts: List of expected strings.
-    :param found_status: Mutable dict to track found targets.
-    :param frame: Image to annotate in place.
-    :return: Annotated image frame.
-    :rtype: np.ndarray
-    """
+    """Mark each target found in ``ocr_results`` in ``found_status`` and draw its first match on a copy of ``frame``."""
     annotated_frame = frame.copy()
-    for (bbox, detected_text, _) in ocr_results:
-        clean_text = detected_text.strip().lower()
-        for target in target_texts:
-            if found_status[target]:
-                continue
-
-            if target.lower() in clean_text:
-                top_left = tuple(map(int, bbox[0]))
-                bottom_right = tuple(map(int, bbox[2]))
-                center_x = (top_left[0] + bottom_right[0]) // 2
-                center_y = (top_left[1] + bottom_right[1]) // 2
-
-                found_status[target] = True
-                cv2.rectangle(annotated_frame, top_left, bottom_right, (0, 255, 0), 2)
-                cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 0, 255), -1)
+    for target in target_texts:
+        if found_status[target]:
+            continue
+        matches = find_text(ocr_results, target, strict)
+        if matches:
+            found_status[target] = True
+            center, (top_left, bottom_right) = matches[0]
+            cv2.rectangle(annotated_frame, top_left, bottom_right, (0, 255, 0), 2)
+            cv2.circle(annotated_frame, center, 5, (0, 0, 255), -1)
     return annotated_frame
