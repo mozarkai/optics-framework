@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
-from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner
+from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner, heal_extra, pop_heal
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code
@@ -173,13 +173,9 @@ class KeywordExecutor(Executor):
     async def execute(self, session: Session, runner: Runner) -> Any:
         """Run one keyword and return its result.
 
-        The bound method's ActionKeyword may have recorded an AI self-heal (invisible
-        here — the call returns normally either way), so it is popped read-and-clear
-        after the call. On a heal the return is a dict {result, healed, heal_summary,
-        suggested_steps} instead of the bare result: the event ``extra`` carries only the
-        string summary, while the structured suggested_steps ride on the return value.
-        The ``"result"`` key mirrors ``expose_api.KEY_RESULT``, kept in sync by convention
-        since this lower layer shouldn't import the HTTP module.
+        On an AI self-heal the return is a dict {result, healed, heal_summary,
+        suggested_steps} instead of the bare result. The ``"result"`` key mirrors
+        ``expose_api.KEY_RESULT``; this lower layer shouldn't import the HTTP module.
         """
         event_manager = self.event_manager
         method = runner.keyword_map.get("_".join(self.keyword.split()).lower())
@@ -190,8 +186,7 @@ class KeywordExecutor(Executor):
                 deserialized_params = _deserialize_params(method, self.params)
                 async with session.keyword_lock:
                     result = await asyncio.to_thread(method, *deserialized_params)
-                    heal_owner = getattr(method, "__self__", None)
-                    heal_info = heal_owner._pop_last_heal_info() if hasattr(heal_owner, "_pop_last_heal_info") else None
+                    heal_info = pop_heal(runner.keyword_map)
             except Exception as e:
                 await event_manager.publish_event(Event(
                     entity_type="keyword",
@@ -206,8 +201,7 @@ class KeywordExecutor(Executor):
                 raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
             extra = {"session_id": session.session_id}
             if heal_info:
-                extra["healed"] = "true"
-                extra["heal_summary"] = heal_info["summary"]
+                extra.update(heal_extra(heal_info, heal_info.get("suggested_steps", [])))
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,

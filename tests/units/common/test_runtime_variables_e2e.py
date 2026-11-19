@@ -1,4 +1,5 @@
 import asyncio
+import xml.etree.ElementTree as ET  # nosec B405
 
 import pytest
 
@@ -27,8 +28,12 @@ SCREEN = {"#price": "$ 29.99", "#title": "Backpack", "#user": "bob@example.com",
 class Device:
     """Stands in for ActionKeyword and Verifier: answers from SCREEN and records what it was asked."""
 
+    _pop_last_heal_info = ActionKeyword._pop_last_heal_info
+
     def __init__(self):
         self.calls = []
+        self.heals = {}
+        self._last_heal_info = None
 
     def get_text(self, element, index="0"):
         self.calls.append(("get_text", element))
@@ -39,6 +44,7 @@ class Device:
 
     def press_element(self, element, repeat="1", offset_x="0", offset_y="0", event_name=None):
         self.calls.append(("press_element", element))
+        self._last_heal_info = self.heals.get(element)
 
     def enter_text(self, element, text, event_name=None):
         self.calls.append(("enter_text", element, text))
@@ -182,3 +188,18 @@ def test_a_dry_run_counts_names_that_evaluate_and_read_data_define(run, tmp_path
                          ("Press Element", "//row[@n='${total}' and @city='${city}']")]}, {"TC": ["M"]}, dry=True)
 
     assert results["TC"].status == "PASS"
+
+
+def test_the_report_shows_a_heal_with_steps_that_name_the_suite_elements(run, device, tmp_path):
+    device.heals["#title"] = {
+        "summary": "AI self-heal recovered 'press_element' after 2 steps",
+        "suggested_steps": [{"keyword": "scroll", "params": ["down"]}, {"keyword": "press_element", "params": ["#title"]}],
+    }
+    run({"M": [("Press Element", "${title_label}")]}, {"TC": ["M"]})
+
+    report = ET.parse(tmp_path / "execution_output" / "junit_output.xml").getroot()
+    [healed] = (kw for kw in report.iter("kw") if kw.get("name") == "Press Element")
+    assert (healed.get("status"), healed.get("healed")) == ("PASS", "true")
+    assert healed.find("heal").get("summary") == "AI self-heal recovered 'press_element' after 2 steps"
+    assert [(s.get("keyword"), [a.text for a in s.iter("arg")]) for s in healed.iter("step")] == [
+        ("scroll", ["down"]), ("press_element", ["${title_label}"])]
