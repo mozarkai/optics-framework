@@ -40,6 +40,7 @@ from optics_framework.common.logging_config import escape_control, mask_secrets
 from optics_framework.helper.console import can_encode, safe_console
 from optics_framework.helper.environment import describe as describe_environment
 from optics_framework.helper.environment import detect as detect_environment
+from optics_framework.helper import updates
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME, EngineBackend
 
 _console = safe_console()
@@ -110,7 +111,18 @@ def check_core() -> list[Check]:
     row = describe_environment(detect_environment())
     if row:
         rows.append(Check("environment", *row))
+    rows.extend(check_release())
     return rows
+
+
+def check_release() -> list[Check]:
+    """Whether a newer release is out, from the daily update check; no row when it cannot tell."""
+    if not updates.enabled():
+        return []
+    newer = updates.newer(updates.refresh("cli"))
+    if not newer:
+        return []
+    return [Check("release", "warn", f"Optics {newer[0]} is out", "optics upgrade")]
 
 
 def check_engines() -> list[Check]:

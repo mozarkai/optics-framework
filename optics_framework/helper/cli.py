@@ -32,6 +32,7 @@ try:
     from optics_framework.helper.onboarding import welcome, is_first_run, mark_onboarded
     from optics_framework.helper.doctor import run_doctor
     from optics_framework.helper.quickstart import run_quickstart
+    from optics_framework.helper import updates
     from optics_framework.common.logging_config import mask_secrets
 except ImportError as exc:
     _abort_on_import_error(exc)
@@ -292,6 +293,15 @@ class DoctorCommand(Command):
 
     def execute(self, args):
         raise SystemExit(run_doctor(folder=args.folder, check=args.check))
+
+
+class UpgradeCommand(Command):
+    def register(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser("upgrade", help="Upgrade Optics to the newest release")
+        parser.set_defaults(func=self.execute)
+
+    def execute(self, args):
+        raise SystemExit(updates.upgrade())
 
 
 class QuickstartCommand(Command):
@@ -602,6 +612,7 @@ def main():
         ConfigureCommand(),
         ConfigCommand(),
         DoctorCommand(),
+        UpgradeCommand(),
         QuickstartCommand(),
         DryRunCommand(),
         InitCommand(),
@@ -617,6 +628,9 @@ def main():
         cmd.register(subparsers)
 
     args = parser.parse_args()
+    notify = bool(sys.stderr and sys.stderr.isatty()) and args.command not in _OWN_NOTICE
+    if notify:
+        updates.refresh_in_background("cli")
     if hasattr(args, "func"):
         try:
             args.func(args)
@@ -639,8 +653,22 @@ def main():
                 file=sys.stderr,
             )
             sys.exit(1)
+        finally:
+            if notify:
+                _print_notice()
     elif len(sys.argv) == 1:
         _greet()
+        if notify:
+            _print_notice()
+
+
+# Long-running or full-screen commands show the notice their own way; upgrade and doctor report the version.
+_OWN_NOTICE = frozenset({"mcp", "serve", "live", "upgrade", "doctor"})
+
+
+def _print_notice() -> None:
+    for line in updates.notice_lines():
+        print(line, file=sys.stderr)
 
 
 def _greet() -> None:
