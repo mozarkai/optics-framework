@@ -21,22 +21,12 @@ def _helper(page_source: str) -> UIHelper:
     return helper
 
 
-class TestGetLocatorAndStrategy:
-    def test_fuzzy_candidate_matched_when_not_strict(self):
-        helper = _helper(ANDROID_TREE)
+@pytest.mark.parametrize("text, strict", [("Buy 102 devices", False), ("Buy 101 devices", True)], ids=["fuzzy when not strict", "exact when strict"])
+def test_a_label_is_found_by_its_text(text, strict):
+    result = _helper(ANDROID_TREE).get_locator_and_strategy(text, strict=strict)
 
-        result = helper.get_locator_and_strategy("Buy 102 devices")
-
-        assert result is not None
-        assert result["locator"] == "Buy 101 devices"
-
-    def test_exact_match_unaffected_by_strict(self):
-        helper = _helper(ANDROID_TREE)
-
-        result = helper.get_locator_and_strategy("Buy 101 devices", strict=True)
-
-        assert result is not None
-        assert result["locator"] == "Buy 101 devices"
+    assert result is not None
+    assert result["locator"] == "Buy 101 devices"
 
 
 class TestGetLocatorAndStrategyUsingIndex:
