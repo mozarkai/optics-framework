@@ -200,7 +200,7 @@ def error_parts(exc: BaseException) -> tuple[str | None, str]:
         code, message = None, str(detail)
     else:
         code, message = getattr(exc, "code", None), getattr(exc, "message", None) or str(exc)
-    return (str(getattr(code, "value", code)).removeprefix("Code.") if code else None), message
+    return (str(code) if code else None), message
 
 
 def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) -> Fail:
