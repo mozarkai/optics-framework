@@ -35,7 +35,6 @@ class LoggingManager:
         self.internal_logger.setLevel(log_level)
         self.execution_logger.setLevel(log_level)
         self.internal_console_handler.setLevel(log_level)
-        self.execution_console_handler.setLevel(log_level)
         # Optionally, add file handlers if config.file_log is True
         if getattr(config, "file_log", False):
             log_path = getattr(config, "log_path", None)
@@ -76,8 +75,6 @@ class LoggingManager:
                 self.internal_logger.warning(f"Error stopping {name}: {e}")
         safe_stop(self.internal_listener, "internal_listener")
         self.internal_listener = None
-        safe_stop(self.execution_listener, "execution_listener")
-        self.execution_listener = None
 
     def shutdown_logging(self):
         try:
@@ -96,12 +93,8 @@ class LoggingManager:
     def get_execution_logger(self):
         return self.execution_logger
 
-    def get_listeners(self):
-        return self.internal_listener, self.execution_listener
-
     def __init__(self):
         self.internal_log_queue = queue.Queue(-1)
-        self.execution_log_queue = queue.Queue(-1)
         self.internal_logger = logging.getLogger("optics.internal")
         self.internal_logger.propagate = False
         self.execution_logger = logging.getLogger("optics.execution")
@@ -111,14 +104,8 @@ class LoggingManager:
         self.internal_console_handler = RichHandler(show_time=True, show_level=True)
         self.internal_console_handler.setFormatter(SensitiveDataFormatter(
             "%(message)s", datefmt="%H:%M:%S"))
-        self.execution_console_handler = RichHandler(
-            rich_tracebacks=False, show_time=True, show_level=True, markup=True)
-        self.execution_console_handler.setFormatter(SensitiveDataFormatter("%(message)s"))
-        self.execution_queue_handler = QueueHandler(self.execution_log_queue)
         self.internal_logger.addHandler(self.internal_console_handler)
-        self.execution_logger.addHandler(self.execution_queue_handler)
         self.internal_listener = None
-        self.execution_listener = None
         self.junit_handler = None
 
 SECRET_NAME_WORDS = frozenset({"pass", "password", "passwd", "passcode", "pwd", "pin", "otp", "secret", "token", "key", "apikey", "auth", "authorization", "bearer", "credential"})
@@ -410,9 +397,8 @@ def wait_for_threads():
     """Waits for listener threads to terminate with a timeout."""
     timeout = 2.0
     start_time = time.time()
-    internal_listener, execution_listener = logging_manager.get_listeners()
     while time.time() - start_time < timeout:
-        if not is_thread_alive(internal_listener) and not is_thread_alive(execution_listener):
+        if not is_thread_alive(logging_manager.internal_listener):
             return
         time.sleep(0.1)
     check_thread_status()
@@ -424,11 +410,8 @@ def is_thread_alive(listener):
 
 
 def check_thread_status():
-    internal_listener, execution_listener = logging_manager.get_listeners()
-    if is_thread_alive(internal_listener):
+    if is_thread_alive(logging_manager.internal_listener):
         internal_logger.warning("internal_listener thread did not terminate")
-    if is_thread_alive(execution_listener):
-        internal_logger.warning("execution_listener thread did not terminate")
 
 def flush_handlers():
     try:
@@ -448,12 +431,12 @@ def flush_handlers():
 
 
 def clear_queues():
-    for log_queue in [logging_manager.internal_log_queue, logging_manager.execution_log_queue]:
-        while not log_queue.empty():
-            try:
-                log_queue.get_nowait()
-            except queue.Empty:
-                break
+    log_queue = logging_manager.internal_log_queue
+    while not log_queue.empty():
+        try:
+            log_queue.get_nowait()
+        except queue.Empty:
+            break
 
 
 atexit.register(shutdown_logging)
@@ -473,7 +456,6 @@ def quiet_console_logs():
     File handlers keep their configured levels and still record everything.
     """
     logging_manager.internal_console_handler.setLevel(logging.WARNING)
-    logging_manager.execution_console_handler.setLevel(logging.WARNING)
 
 
 def decouple_console_logs():
@@ -513,7 +495,6 @@ def restore_console_logs():
     mid-run records are visible on the console again).
     """
     logging_manager.internal_console_handler.setLevel(internal_logger.level)
-    logging_manager.execution_console_handler.setLevel(execution_logger.level)
 
 
 __all__ = ["internal_logger","execution_logger",
