@@ -27,6 +27,7 @@ from optics_framework.common.session_liveness import raise_if_session_dead
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
 TEXT_ONLY_PREFIX = "text_only:"
 XPATH_PREFIX = "xpath="
+ID_PREFIX = "id:"
 # A web field's innerText is empty; what it shows is its value.
 TEXT_OR_VALUE_JS = "el => ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) ? el.value : el.innerText"
 # Per element: rendered, not visibility:hidden and, when onScreen, neither transparent nor clipped by the viewport or an overflow ancestor.
@@ -338,14 +339,14 @@ def determine_element_type(element):
 
     if el.startswith(TEXT_ONLY_PREFIX) or el.startswith("text="):
         return "Text"
+    if el.startswith(ID_PREFIX):
+        return "XPath"
     if el.endswith((".jpg", ".jpeg", ".png", ".bmp")):
         return "Image"
     if el.startswith("css="):
         return "CSS"
     if el.startswith(XPATH_PREFIX) or element.startswith(("/", "//", "(")):
         return "XPath"
-    if el.startswith("id:"):
-        return "ID"
     if el.startswith(("android.", "xcui")):
         return "Class"
 
@@ -402,6 +403,21 @@ def is_dom_only_xpath(xpath: str) -> bool:
     while (stripped := _XPATH_PREDICATE.sub("", spine)) != spine:
         spine = stripped
     return all(_DOM_TAGS & _name_tests(branch) for branch in spine.split("|"))
+
+
+def resolve_locator(element: str) -> str:
+    """``element``, with an ``id:`` locator written as the XPath that finds that id on the web, Android, iOS and desktop."""
+    stripped = element.strip()
+    if not stripped.lower().startswith(ID_PREFIX):
+        return element
+    element_id = stripped[len(ID_PREFIX):].strip()
+    if not element_id:
+        raise OpticsError(Code.E0205, message=f"'{element}' names no id; write it as id:<id>.")
+    value = xpath_literal(element_id)
+    return (
+        f"//*[@id={value} or @resource-id={value} or substring-after(@resource-id, ':id/')={value}"
+        f" or (starts-with(name(), 'XCUIElementType') and @name={value})]"
+    )
 
 
 def parse_text_only_prefix(element: str) -> Tuple[str, bool]:
