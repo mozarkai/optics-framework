@@ -15,7 +15,7 @@ from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.image_decode import MAX_ENCODED_BYTES, check_encoded_length, decode_image
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_liveness import raise_if_session_dead
-from optics_framework.engines.elementsources import screen_finder
+from optics_framework.engines.elementsources import camera_lens, screen_finder
 
 
 ENV_SCREENSHOT_URL = "WEBCAM_SCREENSHOT_URL"
@@ -45,6 +45,9 @@ BRIGHTNESS_RAMP_SECONDS = 1.0
 AVERAGED_FRAMES = 3
 SCREEN_OFF_SECONDS = 3.0
 SCREEN_OFF_POLL_SECONDS = 0.5
+LENS_SETTLE_SECONDS = 0.15
+# The focus sweep also looks this far past the screen's edges, at the phone's body, so a dark screen still has edges.
+FOCUS_MARGIN = 0.1
 
 
 def _bounded(value: object) -> str | None:
@@ -200,6 +203,9 @@ class CameraScreenshot(ElementSourceInterface):
         self._corners = np.zeros((4, 2), np.float32)
         self._guard: screen_finder.ViewGuard | None = None
         self._found_on: tuple[int, ...] | None = None
+        self._lens: camera_lens.Lens | None = None
+        self._focused = False
+        self._focus_value: int | None = None
         if capabilities.deskew_corners:
             self._use_corners(corner_points(capabilities.deskew_corners))
         # A driver reads matches in its own frame, so a frame of another size is scaled to the size asked for.
@@ -256,6 +262,7 @@ class CameraScreenshot(ElementSourceInterface):
         )
         self._corners = corners
         self._guard = None
+        self._focused = False
 
     def capture(self) -> np.ndarray:
         """The screen from the webcam, the HTTP endpoint or the TCP connection, deskewed and rotated as configured."""
@@ -263,8 +270,9 @@ class CameraScreenshot(ElementSourceInterface):
         if frame is None or frame.size == 0:
             return frame
         if self.find_screen and self._deskew is None:
-            self._calibrate(frame)
-            frame = self._capture_frame()
+            frame = self._find_screen(frame)
+        else:
+            frame = self._focus(frame)
         if self._deskew is not None:
             frame = self._screen(frame)
         elif self._resize and frame.shape[:2] != (self.out_height, self.out_width):
@@ -282,9 +290,9 @@ class CameraScreenshot(ElementSourceInterface):
         elif self._guard.moved(frame):
             if not self.find_screen:
                 raise self._blind("the phone or the camera moved since the first frame; set deskew_corners again", frame)
-            internal_logger.warning("The phone or the camera moved; finding the screen again")
-            self._calibrate(frame)
-            frame = self._capture_frame()
+            internal_logger.warning("The phone or the camera moved; focusing and finding the screen again")
+            self._focused = False
+            frame = self._find_screen(frame)
         deadline = time.monotonic() + SCREEN_OFF_SECONDS
         screen = self._warp(frame)
         while screen_finder.screen_dark(screen):
@@ -294,6 +302,54 @@ class CameraScreenshot(ElementSourceInterface):
             frame = self._capture_frame()
             screen = self._warp(frame)
         return screen
+
+    def _find_screen(self, frame: np.ndarray) -> np.ndarray:
+        """A frame taken after the screen is found in a sharp frame and the lens is held on it."""
+        self._calibrate(self._focus(frame))
+        return self._focus(self._capture_frame())
+
+    def _focus(self, frame: np.ndarray) -> np.ndarray:
+        """The frame, or one taken after the lens is held where the screen, or the whole frame before one is found, is sharpest."""
+        if self._lens is None or self._focused:
+            return frame
+        self._focused = True
+        area = self._focus_area(frame.shape[:2])
+
+        def sharpness() -> float:
+            time.sleep(LENS_SETTLE_SECONDS)
+            gray = cv2.cvtColor(self._fresh_frame()[area], cv2.COLOR_BGR2GRAY)
+            return float(cv2.Laplacian(gray, cv2.CV_32F).var())
+
+        started = time.monotonic()
+        try:
+            value = camera_lens.sharpest(self._lens, sharpness, near=self._focus_value)
+        except OSError as exc:
+            internal_logger.warning(f"Cannot set the camera's focus ({exc}); giving focus back to the camera")
+            self._autofocus()
+            self._lens = None
+            return frame
+        except BaseException:
+            self._autofocus()
+            self._focused = False
+            raise
+        self._focus_value = value
+        if value is not None:
+            internal_logger.info(f"Holding the camera's focus at {value} (found in {time.monotonic() - started:.1f}s)")
+        return self._capture_frame()
+
+    def _autofocus(self) -> None:
+        try:
+            self._lens.focus(None)
+        except OSError as exc:
+            internal_logger.warning(f"The camera's autofocus could not be turned back on: {exc}")
+
+    def _focus_area(self, shape: tuple[int, ...]) -> tuple[slice, slice]:
+        if self._deskew is None:
+            return slice(None), slice(None)
+        low, high = self._corners.min(axis=0), self._corners.max(axis=0)
+        pad = (high - low) * FOCUS_MARGIN
+        (left, top), (right, bottom) = np.maximum(low - pad, 0).astype(int), (high + pad).astype(int)
+        return slice(top, min(bottom, shape[0])), slice(left, min(right, shape[1]))
 
     def _warp(self, frame: np.ndarray) -> np.ndarray:
         """The deskewed screen; a frame of another size than the one the corners came from finds the screen again."""
@@ -375,6 +431,7 @@ class CameraScreenshot(ElementSourceInterface):
             if not cap.grab():
                 break
         locked = self._lock_controls(cap)
+        self._lens = camera_lens.uvc_lens()
         ok, frame = cap.read()
         if not ok:
             internal_logger.error(f"The camera at index {index} gives no frames")

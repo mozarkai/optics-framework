@@ -126,17 +126,6 @@ def test_brightness_keys_that_do_nothing_fall_back_to_one_frame(camera, phone):
     assert _shows_the_screen(_source(camera, phone, "brightness").capture())
 
 
-def test_one_frame_finds_a_bright_screen_without_a_driver(camera):
-    assert _shows_the_screen(_source(camera, None, "frame").capture())
-
-
-def test_a_moved_phone_is_found_again(camera, phone):
-    source = _source(camera, phone, "brightness")
-    source.capture()
-    phone.placement = _placement(-4, (430, 290))
-    assert _shows_the_screen(source.capture())
-
-
 def test_a_screen_that_stays_off_names_the_cause(camera, phone, monkeypatch):
     monkeypatch.setattr(camera_screenshot, "SCREEN_OFF_SECONDS", 0.3)
     source = _source(camera, phone, "frame")
@@ -182,3 +171,65 @@ def test_an_assertion_keeps_reading_the_native_tree_while_the_camera_is_blind(ca
     strategies = StrategyManager(InstanceFallback([tree, source]), _ReadsNothing(), None)
     assert strategies.assert_presence(["Settings"], "Text", timeout=5)
     assert tree.looks == 2
+
+
+
+class _Webcam:
+    """A webcam whose view is sharp only within one lens step of ``peak``; ``None`` is its own autofocus, hunting."""
+
+    span = range(0, 256, 5)
+
+    def __init__(self, view):
+        self.view, self.value, self.peak = view, None, 35
+
+    def focus(self, value):
+        self.value = value
+
+    def retrieve(self):
+        blur = 30.0 if self.value is None else 0.3 + 0.4 * abs(self.value - self.peak)
+        return True, cv2.GaussianBlur(self.view(), (0, 0), blur)
+
+    read = retrieve
+
+    def get(self, prop): return {cv2.CAP_PROP_FRAME_WIDTH: CAMERA[0], cv2.CAP_PROP_FRAME_HEIGHT: CAMERA[1]}.get(prop, 30.0)
+    def set(self, prop, value): return False
+    def grab(self): return True
+    def getBackendName(self): return "AVFOUNDATION"
+    isOpened = grab
+
+
+@pytest.fixture
+def webcam(monkeypatch):
+    monkeypatch.setattr(camera_screenshot, "SETTLE_SECONDS", 0)
+    monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 0)
+    monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
+
+    def use(view, **screen):
+        camera = _Webcam(view)
+        monkeypatch.setattr(camera_screenshot.cv2, "VideoCapture", lambda index: camera)
+        monkeypatch.setattr(camera_screenshot.camera_lens, "uvc_lens", lambda: camera)
+        capabilities = {"camera_index": 0, "out_width": SCREEN_W, "out_height": SCREEN_H, **screen}
+        return camera, CameraScreenshot({"capabilities": capabilities})
+
+    return use
+
+
+def test_a_blurred_webcam_focuses_on_the_screen_and_again_on_a_moved_phone(webcam, phone):
+    camera, source = webcam(phone.frame, find_screen="frame")
+    assert _shows_the_screen(source.capture()) and camera.value == 35
+    phone.placement, camera.peak = _placement(-4, (430, 290)), 60
+    source.capture()
+    assert _shows_the_screen(source.capture()) and camera.value == 60
+
+
+def test_fixed_corners_hold_the_lens_on_a_one_step_peak(webcam, phone):
+    screen = np.float32([[0, 0], [SCREEN_W, 0], [SCREEN_W, SCREEN_H], [0, SCREEN_H]])
+    corners = [f"{x},{y}" for x, y in cv2.perspectiveTransform(screen[None], phone.placement)[0]]
+    camera, source = webcam(phone.frame, deskew_corners=corners)
+    assert _shows_the_screen(source.capture()) and camera.value == 35
+
+
+def test_a_view_with_nothing_to_focus_on_gives_focus_back_to_the_camera(webcam):
+    camera, source = webcam(lambda: np.full((CAMERA[1], CAMERA[0], 3), 90, np.uint8))
+    source.capture()
+    assert camera.value is None
