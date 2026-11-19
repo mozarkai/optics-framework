@@ -232,7 +232,7 @@ class BLEDriver(DriverInterface):
             if point is None:
                 self._park()
             else:
-                self._dongle.move(*self._to_fractions(*point))
+                self._dongle.move(*point)
 
     def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int, event_name: Optional[str] = None) -> None:
         self._capture(event_name)

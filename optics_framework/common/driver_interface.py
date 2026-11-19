@@ -314,7 +314,7 @@ class DriverInterface(ABC):
         self._unsupported("go_back")
 
     def point_at(self, point: Optional[tuple[float, float]]) -> None:
-        """Show the pointer at ``point`` in screen pixels without pressing, or move it off the screen with ``None``."""
+        """Show the pointer at ``point``, as fractions of the screen's width and height, without pressing; ``None`` moves it off the screen."""
         self._unsupported("point_at")
 
     def select_option(self, element: Any, option: str, event_name: Optional[str] = None) -> bool:

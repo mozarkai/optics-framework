@@ -73,7 +73,7 @@ class _Phone:
         self.level = min(1.0, max(0.3, self.level + (0.1 if keycode == "brightnessup" else -0.1)))
 
     def point_at(self, point) -> None:
-        self.pointer = point
+        self.pointer = point and (point[0] * SCREEN_W, point[1] * SCREEN_H)
 
     def frame(self) -> np.ndarray:
         return _scene(self.level, self.placement, self.screen_on, self.content, self.pointer)
