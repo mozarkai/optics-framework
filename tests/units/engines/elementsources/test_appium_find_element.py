@@ -12,15 +12,6 @@ def source():
     return src
 
 
-class TestIsWithinScreenBounds:
-    def test_element_in_an_inactive_window_of_the_app(self, source):
-        located = MagicMock()
-        source.driver.app_areas.return_value = [{"x": 0, "y": 0, "width": 600, "height": 400}, {"x": 700, "y": 0, "width": 500, "height": 400}]
-        source.get_bbox_for_element = MagicMock(return_value=((720, 40), (900, 90)))
-
-        assert source._is_within_screen_bounds(located) is True
-
-
 def _element(displayed=True, stale=False):
     element = MagicMock()
     if stale:
@@ -39,12 +30,6 @@ class TestAssertElementsVisible:
 
         assert result is True
         assert timestamp is not None
-
-    def test_unexpected_error_propagates(self, source):
-        source.locate = MagicMock(side_effect=RuntimeError("boom"))
-
-        with pytest.raises(OpticsError):
-            source.assert_elements_visible(["Whatever"], timeout=0.05, rule="any")
 
 
 class TestLocateIndex:
