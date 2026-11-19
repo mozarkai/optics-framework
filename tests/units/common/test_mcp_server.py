@@ -293,3 +293,33 @@ def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypa
 
     assert _shown(tapped).startswith('tap e2 "Add Event" -> ok')
     assert not list((pathlib.Path(os.environ["OPTICS_HOME"]) / "mcp" / "steps").glob("*"))
+
+
+def _tool_names(**env) -> set[str]:
+    async def names():
+        async with Client(mcp_server.build_server()) as client:
+            return {tool.name for tool in await client.list_tools()}
+    with patch.dict(os.environ, env):
+        return asyncio.run(names())
+
+
+def test_send_feedback_is_a_core_tool_unless_the_user_opts_out():
+    assert "send_feedback" in _tool_names()
+    assert "send_feedback" not in _tool_names(OPTICS_NO_FEEDBACK="1")
+    assert "send_feedback" not in _tool_names(DO_NOT_TRACK="1")
+
+
+def test_send_feedback_posts_a_scrubbed_report_and_never_asks_for_a_retry():
+    async def send():
+        async with Client(mcp_server.build_server()) as client:
+            return await client.call_tool("send_feedback", {
+                "kind": "broken", "impact": "blocked", "task": "sign in",
+                "description": "tap did nothing; mail me at dev@example.com",
+            })
+    with patch("optics_framework.helper.feedback.requests.post") as post:
+        post.return_value.status_code = 429
+        reply = asyncio.run(send())
+    body = post.call_args.kwargs["json"]
+    assert body["description"] == "tap did nothing; mail me at [email]"
+    assert body["transport"] == "stdio"
+    assert "Carry on with your task" in reply.content[0].text
