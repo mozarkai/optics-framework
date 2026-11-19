@@ -45,8 +45,8 @@ def _keyword_argument(param: str, accepted: Optional[frozenset]) -> Optional[Tup
     """Split ``name=value`` when ``name`` is a parameter of the target method.
 
     Locators such as ``css=#login`` or ``text=Login`` also look like ``name=value``
-    but are the step's element, so they stay positional. Matching quotes around the
-    value are dropped: ``index="2"`` passes the string ``2``.
+    but are the step's element, so they stay positional. The value is passed as the runner
+    passes it: the YAML reader has already dropped one layer of quotes, a CSV cell none.
     """
     match = _KWARG.match(param)
     if not match or (accepted is not None and match.group(1) not in accepted):
@@ -54,8 +54,6 @@ def _keyword_argument(param: str, accepted: Optional[frozenset]) -> Optional[Tup
     if not match.group(1).isidentifier() or keyword_module.iskeyword(match.group(1)):
         return None
     name, value = match.groups()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-        value = value[1:-1]
     return name, value
 
 TestCaseKey = "Test Cases"
@@ -237,7 +235,7 @@ class YAMLDataReader(DataReader):
 
     def read_modules(self, source: str) -> Modules:
         data = load_project_yaml(source) or {}
-        modules_list = data.get("Modules", [])
+        modules_list = data.get("Modules") or []
         if isinstance(modules_list, dict):
             modules_list = [modules_list]
         items = [entry for item in modules_list if isinstance(item, dict) for entry in item.items()]
@@ -333,9 +331,10 @@ class PytestGenerator(TestFrameworkGenerator):
             _PYTEST_SETUP,
             "# Module functions\n",
         ]
+        module_funcs = {name: names.module(name) for name in modules}
         for module_name, steps in modules.items():
             code_parts.append(
-                self._generate_module_function(names.module(module_name), steps, elements)
+                self._generate_module_function(module_funcs[module_name], steps, elements, module_funcs)
             )
         code_parts.append("# Test functions\n")
         for test_case_name, module_names in test_cases.items():
@@ -385,10 +384,17 @@ class PytestGenerator(TestFrameworkGenerator):
         return _python_literal(arg.value)
 
     def _generate_module_function(
-        self, func_name: str, steps: List[Tuple[str, List[str]]], elements: Elements
+        self,
+        func_name: str,
+        steps: List[Tuple[str, List[str]]],
+        elements: Elements,
+        module_funcs: Mapping[str, str],
     ) -> str:
         lines = [f"def {func_name}(optics: Optics) -> None:"]
         for keyword, params in steps:
+            if keyword in module_funcs:
+                lines.append(f"    {module_funcs[keyword]}(optics)")
+                continue
             method_name = self._method_name(keyword)
             param_str = ", ".join(self._resolve_params(params, elements, method_name))
             lines.append(f"    optics.{method_name}({param_str})")
