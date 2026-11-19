@@ -51,12 +51,21 @@ SWITCHER_OPEN_S = 1.2
 FLICK_MS = 250
 # The cursor stays where it pressed and hides that spot from the camera; the status bar holds nothing a test reads.
 PARK = (1.0, 0.0)
-LaunchMethod = Literal["search_key", "launcher_key", "drawer_search", "drawer_tap", "home_icon"]
+LaunchMethod = Literal["search_key", "launcher_key", "drawer_search", "drawer_tap", "drawer_list", "home_icon"]
 DRAWER_METHODS = frozenset({"drawer_search", "drawer_tap"})
+SEEING_METHODS = frozenset({"home_icon", "drawer_list"})
 # A search that found the app shows its name twice: the typed query and the result.
 SEARCH_SHOWS_NAME = 2
 # The icon's middle is about two label heights above its label.
 ICON_ABOVE_LABEL = 2.0
+# Fractions of the frame height: the status bar, and the band at the top and bottom of an app list that holds its search box.
+STATUS_BAR = 0.05
+SEARCH_BOX_BAND = 0.25
+# A key that opened a screen of its own leaves less than half of the home screen's text; a list that stopped scrolling keeps most of it.
+NEW_SCREEN = 0.5
+SAME_SCREEN = 0.8
+# Scrolls of about 0.65 screens each; an app list of 300 apps is about 12.
+LIST_SCROLLS = 15
 
 
 @dataclass(frozen=True)
@@ -154,6 +163,7 @@ class Capabilities(BaseModel):
             "launcher_key": platform.launcher is None,
             "drawer_search": platform.app_list is None,
             "drawer_tap": platform.app_list is None or self.app_search is None,
+            "drawer_list": platform.app_list is None,
             "home_icon": not platform.media_home,
         }
         refused = [method for method in self.launch or [] if missing.get(method)]
@@ -171,7 +181,10 @@ class Capabilities(BaseModel):
         else:
             methods = ["launcher_key"] if platform.launcher else []
         # Some launchers have no app drawer, or give its key to the assistant; their apps sit on the home screen.
-        return methods + ["home_icon"] if methods and platform.media_home else methods
+        if methods and platform.media_home:
+            methods.append("home_icon")
+        # The last resort reads the app list page by page, so it needs no search box.
+        return methods + ["drawer_list"] if platform.app_list else methods
 
 
 class BLEDriver(DriverInterface):
@@ -192,6 +205,8 @@ class BLEDriver(DriverInterface):
             raise OpticsError(Code.E0503, message=f"Invalid ble capabilities: {exc}") from exc
         self.platform = PLATFORMS[self.capabilities.platform]
         self._read_screen: Optional[Callable[[], list[dict]]] = None
+        self._found_search_box: Optional[tuple[float, float]] = None
+        self._opens_with: Optional[str] = None
         try:
             with _mapped():
                 self._dongle = airhand.Dongle(self.capabilities.serial, port=self.capabilities.port, touch=self.platform.finger)
@@ -390,8 +405,10 @@ class BLEDriver(DriverInterface):
         if self._read_screen is None:
             self._launch_unchecked(name, methods)
             return
-        for method in methods:
+        tried = sorted(methods, key=lambda method: method != self._opens_with)
+        for method in tried:
             if self._launched(method, name):
+                self._opens_with = method
                 if method != methods[0]:
                     internal_logger.warning(f"'{name}' opened with {method} after {', '.join(methods[:methods.index(method)])} did not open it; "
                                             f"to try it first on this device, set capabilities.launch: [{', '.join([method] + [m for m in methods if m != method])}]")
@@ -403,26 +420,52 @@ class BLEDriver(DriverInterface):
                                               "Set capabilities.launch to the methods that open apps on this device")
 
     def _launch_unchecked(self, name: str, methods: list[str]) -> None:
-        blind = [method for method in methods if method != "home_icon"]
+        blind = [method for method in methods if method not in SEEING_METHODS]
         if not blind:
-            raise OpticsError(Code.E0501, message="The home_icon launch method finds the app with the camera; add camera_screenshot and an OCR engine, or another launch method")
+            raise OpticsError(Code.E0501, message="The home_icon and drawer_list launch methods find the app with the camera; add camera_screenshot and an OCR engine, or another launch method")
         with _mapped():
-            self._type_query(blind[0], name)
-            self._commit(blind[0])
+            box = self._search_box(blind[0])
+            self._type_query(blind[0], name, box)
+            self._commit(box)
         time.sleep(APP_OPEN_S)
         internal_logger.info(f"Opened '{name}' with {blind[0]}; no camera reads the screen, so the launch is not checked")
 
     def _launched(self, method: str, name: str) -> bool:
         if method == "home_icon":
             return self._tap_home_icon(name)
+        if method == "drawer_list":
+            return self._tap_listed_app(name)
+        box = self._search_box(method)
         with _mapped():
-            self._type_query(method, name)
+            self._type_query(method, name, box)
         search = self._read()
         if search is not None and len(_labels(search, name)) < SEARCH_SHOWS_NAME:
-            return False
+            return method == "drawer_search" and box is None and self._launched_from_search_box(search, name)
         with _mapped():
-            self._commit(method)
+            self._commit(box)
         return self._opened(search, method, name)
+
+    def _launched_from_search_box(self, untyped: list[dict], name: str) -> bool:
+        """Retry drawer_search through a tap on the app list's search box, when the typing reached no field and the list key opened a screen of its own."""
+        box = _search_box_at(untyped, self.capabilities.frame.height)
+        with _mapped():
+            self._go_home()
+        home = self._read()
+        if box is None or home is None or _overlap(home, untyped) >= NEW_SCREEN:
+            return False
+        self._found_search_box = box
+        if self._launched("drawer_search", name):
+            return True
+        self._found_search_box = None
+        with _mapped():
+            self._go_home()
+        return False
+
+    def _search_box(self, method: str) -> Optional[tuple[float, float]]:
+        box = self.capabilities.app_search
+        if method == "drawer_tap" and box:
+            return box.x, box.y
+        return self._found_search_box if method == "drawer_search" else None
 
     def _opened(self, before: Optional[list[dict]], method: str, name: str) -> bool:
         time.sleep(APP_OPEN_S)
@@ -441,7 +484,7 @@ class BLEDriver(DriverInterface):
             internal_logger.warning(f"The camera did not read the screen: {exc}")
             return None
 
-    def _type_query(self, method: str, name: str) -> None:
+    def _type_query(self, method: str, name: str, box: Optional[tuple[float, float]]) -> None:
         if method in DRAWER_METHODS:
             self._dongle.media("home")
             time.sleep(SEARCH_OPEN_S)
@@ -455,16 +498,15 @@ class BLEDriver(DriverInterface):
             else:
                 self._dongle.key(self.platform.launcher)
         time.sleep(SEARCH_OPEN_S)
-        box = self.capabilities.app_search
-        if method == "drawer_tap" and box:
-            self._dongle.tap(*self._to_fractions(box.x, box.y))
+        if box:
+            self._dongle.tap(*self._to_fractions(*box))
             time.sleep(SEARCH_OPEN_S)
         self._dongle.type_text(name)
         time.sleep(SEARCH_RESULTS_S)
 
-    def _commit(self, method: str) -> None:
+    def _commit(self, box: Optional[tuple[float, float]]) -> None:
         # A tapped box keeps the focus, so Up moves it to the top result; a launcher that searches as keys come opens it on Enter.
-        if method == "drawer_tap":
+        if box:
             self._dongle.key("up")
             time.sleep(FOCUS_MOVE_S)
         self._dongle.key("enter")
@@ -474,15 +516,35 @@ class BLEDriver(DriverInterface):
             self._go_home()
         home = self._read()
         labels = _labels(home, name) if home is not None else []
-        if not labels:
-            return False
-        left, top, right, bottom = labels[0]
+        return bool(labels) and self._tap_icon(home, labels[0], "home_icon", name)
+
+    def _tap_listed_app(self, name: str) -> bool:
+        with _mapped():
+            self._go_home()
+            self._dongle.key(self.platform.app_list)
+        time.sleep(SEARCH_OPEN_S)
+        shown = self._read()
+        for _ in range(LIST_SCROLLS):
+            if shown is None:
+                return False
+            labels = _labels(shown, name)
+            if labels:
+                return self._tap_icon(shown, labels[0], "drawer_list", name)
+            self.scroll("down")
+            moved = self._read()
+            if moved is not None and _overlap(shown, moved) > SAME_SCREEN:
+                return False
+            shown = moved
+        return False
+
+    def _tap_icon(self, rows: list[dict], label: tuple[int, int, int, int], method: str, name: str) -> bool:
+        left, top, right, bottom = label
         x = (left + right) / 2
         y = max(top - ICON_ABOVE_LABEL * (bottom - top), 0)
         with _mapped():
             self._dongle.tap(*self._to_fractions(x, y))
             self._park()
-        return self._opened(home, "home_icon", name)
+        return self._opened(rows, method, name)
 
     def _go_home(self) -> None:
         self._dongle.media("home")
@@ -594,6 +656,32 @@ def _run_from(rows: list[dict], start: int, wanted: str) -> tuple[list[tuple[int
             run.append(_box(row))
             read += _key(row["text"])
     return run, read
+
+
+def _search_box_at(rows: list[dict], height: int) -> Optional[tuple[float, float]]:
+    """The middle of the text nearest the top or bottom edge that stands alone on its line, as a search box's hint does in an app list."""
+    boxes = [_box(row) for row in rows if len(_key(row.get("text", ""))) > 1]
+
+    def edge(box: tuple[int, int, int, int]) -> float:
+        middle = (box[1] + box[3]) / 2
+        return min(middle, height - middle)
+
+    alone = [
+        box for i, box in enumerate(boxes)
+        if box[1] > STATUS_BAR * height and edge(box) < SEARCH_BOX_BAND * height
+        and not any(_same_line(box, other) for j, other in enumerate(boxes) if j != i)
+    ]
+    if not alone:
+        return None
+    left, top, right, bottom = min(alone, key=edge)
+    return (left + right) / 2, (top + bottom) / 2
+
+
+def _overlap(a: list[dict], b: list[dict]) -> float:
+    """The share of the texts on either screen that both screens show."""
+    first, second = ({_key(row.get("text", "")) for row in rows} - {""} for rows in (a, b))
+    both = first | second
+    return len(first & second) / len(both) if both else 1.0
 
 
 def _near(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:

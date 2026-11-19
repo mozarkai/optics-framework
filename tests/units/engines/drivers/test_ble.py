@@ -1,3 +1,4 @@
+import json
 import sys
 
 import pytest
@@ -123,3 +124,75 @@ def test_a_project_without_a_camera_runs_by_coordinates_and_keys(plugged, tmp_pa
 
     assert run_project(folder, use_printer=False)
     assert fake.commands == [("tap", "0.5000", "0.5000"), PARK, ("text", '"hi"'), ("reset",)]
+
+
+def _row(text, x, y):
+    return {"text": text, "bounds": {"x1": x, "y1": y, "x2": x + 30 * len(text), "y2": y + 40}}
+
+
+class Launcher:
+    """A phone whose launcher reacts to the dongle as one kind of real launcher does."""
+
+    APPS = [f"App {n:02}" for n in range(45)] + ["Settings"] + [f"Tool {n:02}" for n in range(6)]
+
+    def __init__(self, fake, opens_list=True, types=False, box_y=None, home=()):
+        self.fake, self.opens_list, self.types, self.box_y, self.home = fake, opens_list, types, box_y, home
+        self.seen, self.screen, self.query, self.focused, self.page = 0, "home", "", False, 0
+
+    def _rows(self):
+        if self.screen == "web":
+            return [_row("12:00", 40, 30), _row(self.query or "Search the web", 40, 200), *([_row(self.query, 40, 400)] if self.query else [])]
+        if self.screen != "list":
+            return [_row("12:00", 40, 30), *({"home": [_row("Search", 300, 2200), *self.home]}.get(self.screen, [_row(self.screen, 40, 150)]))]
+        rows = [_row("12:00", 40, 30), _row("All", 300, 150), _row("Categories", 450, 150), _row("Frequently used", 40, 420)]
+        if self.box_y:
+            rows.append(_row(self.query or "Search", 300, self.box_y))
+        if self.query:
+            return [*rows, _row(self.query, 40, 900), _row(self.query, 40, 1300)]
+        return rows + [_row(app, 40 + 260 * (i % 4), 500 + 350 * (i // 4)) for i, app in enumerate(self.APPS[self.page * 20:][:20])]
+
+    def _tap(self, x, y):
+        for row in self._rows():
+            b = row["bounds"]
+            if row["text"] in self.APPS and b["x1"] - 40 <= x <= b["x2"] + 40 and b["y1"] - 160 <= y <= b["y1"]:
+                self.screen = row["text"]
+        self.focused = self.screen == "list" and self.box_y is not None and abs(y - self.box_y - 20) < 60
+        if self.screen == "home" and abs(y - 2220) < 60:
+            self.screen = "web"
+
+    def read(self):
+        for command, *args in self.fake.commands[self.seen:]:
+            if command == "media" and args == ["home"]:
+                self.screen, self.query, self.focused, self.page = "home", "", False, 0
+            elif (command, args) == ("key", ["meta"]) and self.opens_list:
+                self.screen = "list"
+            elif command == "text" and (self.screen == "web" or self.screen == "list" and (self.types or self.focused)):
+                self.query = json.loads(args[0])
+            elif command == "tap":
+                self._tap(float(args[0]) * 1080, float(args[1]) * 2340)
+            elif command == "swipe" and self.screen == "list":
+                self.page = min(self.page + 1, len(self.APPS) // 20)
+            elif (command, args) == ("key", ["enter"]) and self.query in self.APPS and self.screen in ("list", "web"):
+                self.screen = self.query if self.screen == "list" else "Web results"
+        self.seen = len(self.fake.commands)
+        return self._rows()
+
+
+@pytest.mark.parametrize("launcher", [
+    {"types": True, "box_y": 200},
+    {"box_y": 2100},
+    {"box_y": 200},
+    {},
+    {"opens_list": False, "home": [_row("Phone", 100, 1900), _row("Settings", 400, 1900)]},
+], ids=["types into its app list", "searches from a box at the bottom", "searches from a box at the top", "has no search box", "has no app list"])
+def test_launch_app_opens_the_app_on_any_kind_of_launcher(plugged, launcher):
+    fake = plugged()
+    phone = Launcher(fake, **launcher)
+    driver = make_driver(fake)
+    driver.attach_screen(phone.read)
+    for _ in range(2):
+        before = len(fake.commands)
+        driver.launch_app("Settings")
+        assert phone.read()[1]["text"] == "Settings"
+    assert any(command[0] == "swipe" for command in fake.commands) == (launcher == {})
+    assert any(command[0] == "text" for command in fake.commands[before:]) == ("box_y" in launcher)
