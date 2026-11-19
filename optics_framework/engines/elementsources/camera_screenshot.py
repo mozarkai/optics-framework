@@ -390,12 +390,12 @@ class CameraScreenshot(ElementSourceInterface):
         raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
 
     def _pointer_corners(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
-        """The corners from frames with the driver's pointer at known screen pixels, each between two frames with it elsewhere."""
+        """The corners from frames with the driver's pointer at known places on the screen, each between two frames with it elsewhere."""
         if self.driver is None:
             raise OpticsError(Code.E0501, message="find_screen: pointer moves the pointer of a driver; enable one, or set deskew_corners")
         width, height = (self.out_height, self.out_width) if self.rotation else (self.out_width, self.out_height)
         start, end = screen_finder.POINTER_EDGES
-        places = np.float32([(x * width, y * height) for x, y in (start, *screen_finder.POINTER_GRID, end)])
+        places = np.float32([start, *screen_finder.POINTER_GRID, end])
         try:
             frames = [self._at_pointer(place) for place in places]
             self.driver.point_at(None)
@@ -405,7 +405,9 @@ class CameraScreenshot(ElementSourceInterface):
             raise OpticsError(Code.E0501, message=f"find_screen: pointer needs a driver that shows a pointer ({exc.message}); set deskew_corners") from exc
         seen = np.float32([screen_finder.pointer_spot(*frames[i - 1:i + 2]) for i in range(1, len(frames) - 1)])
         try:
-            corners = screen_finder.pointer_corners(places[1:-1], seen, self._unrotated_corners(), self.out_width / self.out_height, frame.shape)
+            corners = screen_finder.pointer_corners(
+                places[1:-1] * (width, height), seen, self._unrotated_corners(), self.out_width / self.out_height, frame.shape
+            )
         except screen_finder.ScreenNotFound as exc:
             raise self._blind(f"no screen found: {exc}", frames[0].astype(np.uint8)) from exc
         return "pointer", corners
