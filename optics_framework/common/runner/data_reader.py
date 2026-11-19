@@ -225,6 +225,30 @@ def _catalogue_match(step: str) -> Optional[Tuple[str, List[str]]]:
     return None
 
 
+def parse_module_step(step: str, module_names: Optional[Set[str]] = None) -> Tuple[str, List[str]]:
+    """Split a YAML module step into its keyword, or a module named in ``module_names``, and its params."""
+    step = step.strip()
+    if not step:
+        return "", []
+
+    if module_names:
+        matched = _matched_module_name(step, module_names)
+        if matched is not None:
+            return matched, []
+
+    # The catalogue answers first, or a keyword whose first param is a plain value has
+    # nothing to split on and `Sleep 5` reads as a keyword named `sleep 5`.
+    match = _catalogue_match(step)
+    if match is not None and not _mistyped(*match):
+        return match
+
+    split = _split_at_variable(step)
+    if split is not None:
+        return split
+
+    return step, []
+
+
 class DataReader(ABC):
     """Abstract base class for reading data from various file formats."""
 
@@ -503,37 +527,6 @@ class YAMLDataReader(DataReader):
                 test_cases[name] = [step.strip() for step in steps if step.strip()]
         return test_cases
 
-    def _parse_module_step(
-        self, step: str, module_names: Optional[Set[str]] = None
-    ) -> Tuple[str, List[str]]:
-        """
-        Parse a module step to extract the keyword and parameters.
-
-        :param step: The module step string.
-        :param module_names: Module names that win over the keyword catalogue.
-        :return: Tuple of (keyword, list of parameters).
-        """
-        step = step.strip()
-        if not step:
-            return "", []
-
-        if module_names:
-            matched = _matched_module_name(step, module_names)
-            if matched is not None:
-                return matched, []
-
-        # The catalogue answers first, or a keyword whose first param is a plain value has
-        # nothing to split on and `Sleep 5` reads as a keyword named `sleep 5`.
-        match = _catalogue_match(step)
-        if match is not None and not _mistyped(*match):
-            return match
-
-        split = _split_at_variable(step)
-        if split is not None:
-            return split
-
-        return step, []
-
     def _process_module_steps(
         self, steps: List[str], module_names: Optional[Set[str]] = None
     ) -> List[Tuple[str, List[str]]]:
@@ -546,7 +539,7 @@ class YAMLDataReader(DataReader):
         """
         module_steps = []
         for step in steps:
-            keyword, params = self._parse_module_step(step, module_names)
+            keyword, params = parse_module_step(step, module_names)
             if keyword:
                 module_steps.append((keyword, params))
         return module_steps
