@@ -287,7 +287,7 @@ class JUnitEventHandler(EventSubscriber):
         if testcase is None:
             return
         if event.status in (EventStatus.RUNNING, EventStatus.NOT_RUN):
-            self.module_elements[event.entity_id] = ET.SubElement(testcase, "kw", name=event.name, type="setup")
+            self.module_elements[event.entity_id] = ET.SubElement(testcase, "kw", name=event.name, type=_step_type(testcase.get("kind")))
         module_kw = self.module_elements.get(event.entity_id)
         if module_kw is not None:
             _set_step_result(module_kw, event)
@@ -299,7 +299,7 @@ class JUnitEventHandler(EventSubscriber):
 
         kw_element = self.active_keyword_elements.pop(event.entity_id, None)
         if kw_element is None:
-            kw_element = ET.SubElement(module_kw, "kw", name=event.name)
+            kw_element = ET.SubElement(module_kw, "kw", name=event.name, type=KEYWORD_TYPE)
         if event.status == EventStatus.RUNNING:
             self.active_keyword_elements[event.entity_id] = kw_element
         _set_step_result(kw_element, event)
@@ -478,6 +478,18 @@ def run_plan(test_cases: Optional[TestCaseNode]) -> List[PlannedCase]:
     return plan
 
 
+KEYWORD_TYPE = "keyword"
+
+
+def _step_type(kind: str | None) -> str:
+    """The ``type`` of a module's ``<kw>``: what its test case is for (setup, test or teardown), suite-level ones included."""
+    if kind and kind.endswith("setup"):
+        return "setup"
+    if kind and kind.endswith("teardown"):
+        return "teardown"
+    return "test"
+
+
 def _kind(kind: str | None) -> Dict[str, str]:
     return {"kind": kind} if kind else {}
 
@@ -488,11 +500,12 @@ def _add_not_run_steps(testcase: ET.Element, case_plan: CasePlan) -> None:
     if ran and len(ran) <= len(case_plan):
         last = ran[-1]
         for keyword in case_plan[len(ran) - 1][1][len(last.findall("kw")):]:
-            ET.SubElement(last, "kw", name=keyword, status=EventStatus.NOT_RUN.value)
+            ET.SubElement(last, "kw", name=keyword, type=KEYWORD_TYPE, status=EventStatus.NOT_RUN.value)
     for module, keywords in case_plan[len(ran):]:
-        module_kw = ET.SubElement(testcase, "kw", name=module, type="setup", status=EventStatus.NOT_RUN.value)
+        module_kw = ET.SubElement(
+            testcase, "kw", name=module, type=_step_type(testcase.get("kind")), status=EventStatus.NOT_RUN.value)
         for keyword in keywords:
-            ET.SubElement(module_kw, "kw", name=keyword, status=EventStatus.NOT_RUN.value)
+            ET.SubElement(module_kw, "kw", name=keyword, type=KEYWORD_TYPE, status=EventStatus.NOT_RUN.value)
 
 
 def _mask_tree(root: ET.Element) -> None:

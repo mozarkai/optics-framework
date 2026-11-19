@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET  # nosec B405
 
+import pytest
+
 
 from optics_framework.common.Junit_eventhandler import (
     JUnitHandlerRegistry,
@@ -93,3 +95,17 @@ class TestDetectedErrorsBeforeTestCaseEvents:
         assert failures[0].get("message").startswith("ERR_SESSION | high")
         assert cases["Login"].find("failure") is None
         assert cases["Checkout"].find("failure") is None
+
+
+@pytest.mark.parametrize("kind,step_type", [("test", "test"), ("suite_setup", "setup"), ("teardown", "teardown")])
+async def test_step_types_follow_the_case_kind(tmp_path, kind, step_type):
+    registry, sid = JUnitHandlerRegistry(), "kinds"
+    registry.setup_junit_for_session(sid, _config(tmp_path))
+    handler = registry.get_handler(sid)
+    run, ok = EventStatus.RUNNING, EventStatus.PASS
+    for entity, name, parent, status in [("test_case", "TC", None, run), ("module", "Mod", "TC", run), ("keyword", "Press", "Mod", ok), ("test_case", "TC", None, ok)]:
+        extra = {"session_id": sid, **({"kind": kind} if parent is None else {})}
+        await handler.on_event(Event(entity_type=entity, entity_id=name, name=name, status=status, parent_id=parent, extra=extra))
+    registry.cleanup_session(sid)
+    kws = {e.get("name"): e.get("type") for e in ET.parse(tmp_path / "junit_output.xml").getroot().iter("kw")}
+    assert kws == {"Mod": step_type, "Press": "keyword"}
