@@ -338,9 +338,14 @@ class CameraScreenshot(ElementSourceInterface):
             self._autofocus()
             self._focused = False
             raise
+        if value is None:
+            if self._focus_value is None:
+                # Optics cannot tell which camera camera_index opened, so a lens that never sharpened its view may be another camera's.
+                internal_logger.warning("The camera's focus did not change the view; leaving its autofocus on")
+                self._lens = None
+            return self._capture_frame()
         self._focus_value = value
-        if value is not None:
-            internal_logger.info(f"Holding the camera's focus at {value} (found in {time.monotonic() - started:.1f}s)")
+        internal_logger.info(f"Holding the camera's focus at {value} (found in {time.monotonic() - started:.1f}s)")
         return self._capture_frame()
 
     def _autofocus(self) -> None:
