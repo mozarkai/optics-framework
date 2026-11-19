@@ -5,6 +5,19 @@ repos:
       - id: ruff
         args: ["--fix"]
         exclude: '(__pycache__/|\.pyc$|^dist/)'
+      - id: ruff
+        alias: ruff-tests
+        name: ruff (tests)
+        args: ["--select", "PT011,PT017,B011,B015,PLR0124,PLW0129,ERA001"]
+        files: ^tests/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: check-tests
+        name: test quality and line budget
+        entry: python scripts/check_tests.py
+        language: python
+        files: ^tests/
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3

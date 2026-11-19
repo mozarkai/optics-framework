@@ -228,6 +228,25 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - **After pushing or raising a PR, do a gap analysis** of the implementation and the chat history; show the gaps, risks and follow-ups to the user, open GitHub issues for the ones they approve, and reference them in the PR description.
 - **No unnecessary code comments.** Comment only a non-obvious *why*; never restate what the code does.
 
+## Tests
+
+`tests/` has a budget of 10,000 lines. `scripts/check_tests.py` (a pre-commit hook) refuses a commit that goes over it, and refuses tests that assert nothing, sleep for a fixed time outside a polling loop, read source code or assert a tautology (`hasattr`, `callable`, a constant, a value against itself). The `ruff-tests` hook adds a broad `pytest.raises`, an assert inside `except` and commented-out code. To add a test, make room: delete or merge a weaker one.
+
+A test earns its place only when all three are true:
+1. It guards behavior that a user, a caller or a protocol can see, and a credible regression makes it fail.
+2. No other test guards that behavior. Each contract has one owner, at the strongest boundary that is cheap to drive: `run_project`, the `Optics` facade, `optics serve`, an MCP session, a driver against a real browser, a CLI command.
+3. It calls the code as its user does. Do not test a `_private` helper that a public path already covers.
+
+Do not write:
+- a test whose expected value repeats the code's logic, or one that checks that a method, attribute, constant or file exists;
+- a test that asserts removed code stays gone;
+- a test that mocks the unit under test, then asserts what the mock returns;
+- one test per input. Add a row to the table (`pytest.mark.parametrize`) of the test that owns the behavior.
+
+Prefer journeys. One test that runs a project through `run_project`, or one MCP session, and checks several outcomes replaces many tests of helpers (`tests/units/common/test_runtime_variables_e2e.py`, `tests/integration/test_playwright_journey.py`).
+
+When a change breaks a test, either the test found a regression (fix the code) or the test was coupled to the implementation (rewrite it against behavior, or delete it). Never edit a test only to make it agree with new code.
+
 ## Hard rules
 
 1. **Run pre-commit before committing** (`poetry run pre-commit run --files <changed>` or the git hook; never `--no-verify`). It chains ruff, bandit, whitespace/YAML/JSON checks, commitizen and gitleaks.
