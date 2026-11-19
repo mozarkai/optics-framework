@@ -123,7 +123,7 @@ class EventSDK:
     def send_real_time_events(self, interval):
         try:
             while self.all_events:
-                threading.Timer(interval, self.send_batch_events, args=(self.all_events[:])).start()
+                threading.Timer(interval, self.send_batch_events, args=(self.all_events[:],)).start()
                 self.all_events.clear()
         except Exception as e:
             internal_logger.error("Unable to send real-time events", exc_info=e)
