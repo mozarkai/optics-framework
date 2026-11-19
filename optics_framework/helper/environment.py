@@ -288,6 +288,51 @@ def plan_install(env: Environment, specs: list[str]) -> InstallPlan:
     return _direct_plan(env, specs)
 
 
+_UPGRADE_COMMANDS = {
+    "uv": "uv sync --upgrade-package optics-framework",
+    "poetry": "poetry add optics-framework@latest",
+    "pdm": "pdm update --unconstrained optics-framework",
+    "pipenv": "pipenv update optics-framework",
+}
+
+
+def _tool_upgrade(env: Environment) -> InstallPlan:
+    """A tool installer upgrades its own environment; Windows locks the running ``optics`` executable."""
+    manager = env.manager or "uv"
+    if "archive-v0" in Path(env.prefix).parts:
+        return InstallPlan(None, "uvx runs a cached release.", "  uvx optics-framework@latest")
+    command = ["uv", "tool", "upgrade", "optics-framework"] if manager == "uv" else ["pipx", "upgrade", "optics-framework"]
+    found = env.uv if manager == "uv" else shutil.which("pipx")
+    if os.name == "nt" or not found:
+        return InstallPlan(None, f"This is a {manager} tool environment; upgrade it with:", f"  {shell_join(command)}")
+    return InstallPlan([found, *command[1:]])
+
+
+def _project_upgrade(manager: str, spec: str, latest: str) -> str:
+    """The manager's upgrade command; uv keeps a pin on ``uv sync``, so a known release is added as the new floor."""
+    if manager == "uv" and latest:
+        return f'uv add "{spec}>={latest}"'
+    return _UPGRADE_COMMANDS.get(manager, _UPGRADE_COMMANDS["uv"])
+
+
+def plan_upgrade(env: Environment, spec: str = "optics-framework", latest: str = "") -> InstallPlan:
+    """Decide how optics-framework moves to its newest release in ``env``; ``spec`` names the extras to keep."""
+    if env.kind is EnvKind.TOOL:
+        return _tool_upgrade(env)
+    if env.kind is EnvKind.PROJECT:
+        manager = env.manager or "uv"
+        return InstallPlan(
+            None,
+            f"This environment is managed by {manager}; upgrade through it so the lockfile keeps the new version:",
+            f"  {_project_upgrade(manager, spec, latest)}")
+    plan = plan_install(env, ["--upgrade", spec])
+    if os.name == "nt" and plan.command is not None:
+        line = shell_join(plan.command)
+        call = f"& {line}" if line.startswith('"') else line
+        return InstallPlan(None, "Windows locks optics.exe while it runs; upgrade from PowerShell with:", f"  {call}")
+    return plan
+
+
 def describe(env: Environment) -> tuple[str, str, str] | None:
     """``(status, detail, hint)`` for the ``optics doctor`` environment row, or
     None when this environment takes engine installs.

@@ -1548,6 +1548,7 @@ def live_main(folder_path: Optional[str] = None) -> None:
     same live flow works for android, web, iOS, TV, etc. A missing or invalid config
     fails with a clear message (no auto-defaults).
     """
+    from optics_framework.helper import updates
     from optics_framework.helper.live_tui import LiveTUI  # local import: heavy UI deps
 
     try:
@@ -1559,6 +1560,7 @@ def live_main(folder_path: Optional[str] = None) -> None:
         print(f"Error: failed to start live session: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    updates.refresh_in_background("live")
     stderr_log_path = os.path.join(tempfile.gettempdir(), "optics_live_stderr.log")
     live_log_path = controller.live_log_path
     try:
@@ -1577,3 +1579,5 @@ def live_main(folder_path: Optional[str] = None) -> None:
             print(f"Suppressed stderr: {stderr_log_path}", file=sys.stderr)
     except OSError:
         pass
+    for line in updates.notice_lines():
+        print(line, file=sys.stderr)

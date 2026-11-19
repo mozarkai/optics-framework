@@ -3,6 +3,7 @@ import uvicorn
 
 from optics_framework.common.http_guard import warn_if_exposed
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.helper import updates
 
 # Local console format for optics serve only (keeps global logging_config unchanged)
 CONSOLE_FORMAT = "%(levelname)s | %(asctime)s | pid=%(process)d | %(name)s:%(funcName)s:%(lineno)d | %(message)s"
@@ -68,6 +69,7 @@ def run_uvicorn_server(host: str = "127.0.0.1", port: int = 8000, workers: int =
     # Apply Optics logging handlers to uvicorn so access/error logs match
     _apply_optics_logging_to_uvicorn()
     warn_if_exposed("optics serve", host)
+    updates.refresh_in_background("serve", then=internal_logger.warning)
 
     # Provide a uvicorn logging config that uses the project's console format
     # This helps ensure the master and worker startup logs use the same formatting.

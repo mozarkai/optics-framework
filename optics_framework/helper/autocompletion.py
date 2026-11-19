@@ -26,6 +26,7 @@ local -a _optics_subcommands=(
   'setup: Install optional engine backends'
   'serve: Start the optics REST server'
   'mcp: Start the MCP server'
+  'upgrade: Upgrade Optics to the newest release'
   'completion: Enable shell completion'
 )
 
@@ -162,7 +163,7 @@ _optics_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local subcommands="list configure config doctor quickstart dry_run dry-run init execute live generate setup serve mcp completion"
+  local subcommands="list configure config doctor quickstart dry_run dry-run init execute live generate setup serve mcp upgrade completion"
 
   local template_options="__OPTICS_TEMPLATES_BASH__"
   local runner_options="test_runner pytest"

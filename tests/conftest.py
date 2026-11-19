@@ -25,6 +25,7 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(autouse=True)
 def _optics_home(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("OPTICS_HOME", str(tmp_path_factory.mktemp("optics_home")))
+    monkeypatch.setenv("OPTICS_NO_UPDATE_CHECK", "1")
 
 
 @pytest.fixture(autouse=True)
