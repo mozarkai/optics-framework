@@ -197,10 +197,10 @@ class _Webcam:
     span = range(0, 256, 5)
 
     def __init__(self, view):
-        self.view, self.value, self.peak = view, None, 35
+        self.view, self.value, self.peak, self.moves = view, None, 35, 0
 
     def focus(self, value):
-        self.value = value
+        self.value, self.moves = value, self.moves + 1
 
     def retrieve(self):
         blur = 30.0 if self.value is None else 0.3 + 0.4 * abs(self.value - self.peak)
@@ -221,10 +221,10 @@ def webcam(monkeypatch):
     monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 0)
     monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
 
-    def use(view, **screen):
+    def use(view, lens=None, **screen):
         camera = _Webcam(view)
         monkeypatch.setattr(camera_screenshot.cv2, "VideoCapture", lambda index: camera)
-        monkeypatch.setattr(camera_screenshot.camera_lens, "uvc_lens", lambda: camera)
+        monkeypatch.setattr(camera_screenshot.camera_lens, "uvc_lens", lambda: lens or camera)
         capabilities = {"camera_index": 0, "out_width": SCREEN_W, "out_height": SCREEN_H, **screen}
         return camera, CameraScreenshot({"capabilities": capabilities})
 
@@ -245,7 +245,11 @@ def test_fixed_corners_hold_the_lens_on_a_one_step_peak(webcam, phone):
     assert _shows_the_screen(source.capture()) and camera.value == 35
 
 
-def test_a_view_with_nothing_to_focus_on_gives_focus_back_to_the_camera(webcam):
-    camera, source = webcam(lambda: np.full((CAMERA[1], CAMERA[0], 3), 90, np.uint8))
-    source.capture()
-    assert camera.value is None
+def test_another_cameras_lens_is_given_back_its_autofocus_and_left_alone(webcam, phone):
+    other = _Webcam(phone.frame)
+    camera, source = webcam(phone.frame, lens=other, find_screen="frame")
+    camera.value = camera.peak
+    assert _shows_the_screen(source.capture()) and other.value is None
+    moves = other.moves
+    phone.placement = _placement(-4, (430, 290))
+    assert _shows_the_screen(source.capture()) and other.moves == moves
