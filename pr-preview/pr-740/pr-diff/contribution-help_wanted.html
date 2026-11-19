@@ -1,0 +1,134 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8" />
+    <title>docs/contribution/help_wanted.md – docs diff</title>
+    <style type="text/css">
+        table.diff {font-family: Menlo, Consolas, Monaco, Liberation Mono, Lucida Console, monospace; border:medium}
+        .diff_header {background-color:#e0e0e0}
+        td.diff_header {text-align:right}
+        .diff_next {background-color:#c0c0c0}
+        .diff_add {background-color:#aaffaa}
+        .diff_chg {background-color:#ffff77}
+        .diff_sub {background-color:#ffaaaa}
+    </style>
+<style>
+        body{margin:0;background:#f6f8fa;color:#1f2328;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .diff-shell{max-width:1600px;margin:0 auto;padding:16px}
+        table.diff[rules='groups']{table-layout:fixed;width:100%;border-collapse:collapse;border:1px solid #d1d9e0;border-radius:6px;background:#fff;margin:12px 0;font-size:12px;line-height:1.6}
+        table.diff[rules='groups'] colgroup:nth-of-type(1),table.diff[rules='groups'] colgroup:nth-of-type(4){width:14px}
+        table.diff[rules='groups'] colgroup:nth-of-type(2),table.diff[rules='groups'] colgroup:nth-of-type(5){width:52px}
+        table.diff th,table.diff td{vertical-align:top;overflow-wrap:anywhere}
+        table.diff td[nowrap]{white-space:pre-wrap;padding:1px 8px}
+        table.diff th.diff_header{text-align:left;padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;border-bottom:1px solid #d1d9e0;background:#f6f8fa;color:#1f2328}
+        table.diff thead th{position:sticky;top:0;z-index:1}
+        td.diff_header{padding:1px 6px;text-align:right;color:#59636e;background:#f6f8fa;user-select:none}
+        td.diff_next{text-align:center;font-size:10px;line-height:1.4;background-color:#f6f8fa}
+        .diff_add{background-color:#dafbe1}
+        .diff_chg{background-color:#fff8c5}
+        .diff_sub{background-color:#ffebe9}
+        a{color:#0969da}
+        @media (prefers-color-scheme:dark){
+          body{background:#0d1117;color:#e6edf3}
+          table.diff[rules='groups']{background:#161b22;border-color:#30363d}
+          table.diff th.diff_header{border-bottom:1px solid #30363d;background:#1c2129;color:#e6edf3}
+          td.diff_header{color:#9198a1;background:#161b22}
+          td.diff_next{background-color:#21262d}
+          .diff_add{background-color:rgba(46,160,67,.25)}
+          .diff_chg{background-color:rgba(187,128,9,.25)}
+          .diff_sub{background-color:rgba(248,81,73,.22)}
+          a{color:#58a6ff}
+        }
+</style>
+</head>
+
+<body>
+<div class="diff-shell">
+    
+    <table class="diff" id="difflib_chg_to0__top"
+           cellspacing="0" cellpadding="0" rules="groups" >
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <colgroup></colgroup> <colgroup></colgroup> <colgroup></colgroup>
+        <thead><tr><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/contribution/help_wanted.md @ base</th><th class="diff_next"><br /></th><th colspan="2" class="diff_header">docs/contribution/help_wanted.md @ PR head</th></tr></thead>
+        <tbody>
+            <tr><td class="diff_next" id="difflib_chg_to0__0"></td><td class="diff_header" id="from0_1043">1043</td><td nowrap="nowrap">**Priority**: High | **Difficulty**: Beginner to Intermediate</td><td class="diff_next"></td><td class="diff_header" id="to0_1043">1043</td><td nowrap="nowrap">**Priority**: High | **Difficulty**: Beginner to Intermediate</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1044">1044</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1044">1044</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__1"></td><td class="diff_header" id="from0_1045">1045</td><td nowrap="nowrap">### Current State</td><td class="diff_next"></td><td class="diff_header" id="to0_1045">1045</td><td nowrap="nowrap">### Current State</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1046">1046</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1046">1046</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__2"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="from0_1047">1047</td><td nowrap="nowrap"><span class="diff_sub">Current test structure shows limited coverage. Many core components lack comprehensive tests.</span></td><td class="diff_next"><a href="#difflib_chg_to0__1">n</a></td><td class="diff_header" id="to0_1047">1047</td><td nowrap="nowrap"><span class="diff_add">`tests/` has a budget of 10,000 lines, and the `check-tests` pre-commit hook refuses a commit that goes over it. A new test must make room: delete or merge a weaker one.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1048">1048</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1048">1048</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="from0_1049">1049</td><td nowrap="nowrap"><span class="diff_sub">### Missing Tests For</span></td><td class="diff_next"><a href="#difflib_chg_to0__2">n</a></td><td class="diff_header" id="to0_1049">1049</td><td nowrap="nowrap"><span class="diff_add">### What Helps</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1050">1050</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1050">1050</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="from0_1051">1051</td><td nowrap="nowrap"><span class="diff_sub">- Most engine implementations (drivers, element sources, vision models)</span></td><td class="diff_next"><a href="#difflib_chg_to0__3">n</a></td><td class="diff_header" id="to0_1051">1051</td><td nowrap="nowrap"><span class="diff_add">- Journeys that drive a real project through `run_project`, an MCP session or a real browser and check several outcomes. They replace many small tests of helpers.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1052">1052</td><td nowrap="nowrap"><span class="diff_sub">- Strategy manager and location strategies</span></td><td class="diff_next"></td><td class="diff_header" id="to0_1052">1052</td><td nowrap="nowrap"><span class="diff_add">- A row in the table (`pytest.mark.parametrize`) of the test that already owns a behavior, in place of a new test per input.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1053">1053</td><td nowrap="nowrap"><span class="diff_sub">- Event system and event handlers</span></td><td class="diff_next"></td><td class="diff_header" id="to0_1053">1053</td><td nowrap="nowrap"><span class="diff_add">- Deleting a test that guards nothing: one that repeats the code's logic, checks that a name exists, or mocks the unit under test.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1054">1054</td><td nowrap="nowrap"><span class="diff_sub">- Session management edge cases</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1055">1055</td><td nowrap="nowrap"><span class="diff_sub">- Error handling scenarios</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next" id="difflib_chg_to0__3"></td><td class="diff_header" id="from0_1056">1056</td><td nowrap="nowrap"><span class="diff_sub">- Factory pattern implementations</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1057">1057</td><td nowrap="nowrap"><span class="diff_sub">- API layer endpoints</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1058">1058</td><td nowrap="nowrap"><span class="diff_sub">- CLI commands</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1059">1059</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1054">1054</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="from0_1060">1060</td><td nowrap="nowrap"><span class="diff_sub">### Test Files to Create</span></td><td class="diff_next"><a href="#difflib_chg_to0__top">t</a></td><td class="diff_header" id="to0_1055">1055</td><td nowrap="nowrap"><span class="diff_add">The rules are in the "Tests" section of `CLAUDE.md`.</span></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1061">1061</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1062">1062</td><td nowrap="nowrap"><span class="diff_sub">#### Unit Tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1063">1063</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1064">1064</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/engines/drivers/test_ble.py` - BLE driver tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1065">1065</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/engines/drivers/test_playwright.py` - Playwright driver tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1066">1066</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/engines/drivers/test_appium.py` - Appium driver tests (if missing)</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1067">1067</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/engines/elementsources/test_playwright_find_element.py`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1068">1068</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/engines/elementsources/test_playwright_page_source.py`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1069">1069</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/engines/elementsources/test_playwright_screenshot.py`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1070">1070</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/common/test_strategies.py` - Strategy manager tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1071">1071</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/common/test_session_manager.py` - Session management tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1072">1072</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/api/test_verifier.py` - Verifier API tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1073">1073</td><td nowrap="nowrap"><span class="diff_sub">- `tests/units/common/test_factories.py` - Factory pattern tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1074">1074</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1075">1075</td><td nowrap="nowrap"><span class="diff_sub">#### Integration Tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1076">1076</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1077">1077</td><td nowrap="nowrap"><span class="diff_sub">- `tests/integration/test_api_endpoints.py` - API endpoint integration tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1078">1078</td><td nowrap="nowrap"><span class="diff_sub">- `tests/integration/test_session_lifecycle.py` - Full session lifecycle</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1079">1079</td><td nowrap="nowrap"><span class="diff_sub">- `tests/integration/test_driver_fallback.py` - Driver fallback mechanism</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1080">1080</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1081">1081</td><td nowrap="nowrap"><span class="diff_sub">#### Functional Tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1082">1082</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1083">1083</td><td nowrap="nowrap"><span class="diff_sub">- `tests/functional/test_end_to_end.py` - End-to-end test execution</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1084">1084</td><td nowrap="nowrap"><span class="diff_sub">- `tests/functional/test_vision_detection.py` - Vision detection workflows</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1085">1085</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1086">1086</td><td nowrap="nowrap"><span class="diff_sub">### Testing Guidelines</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1087">1087</td><td nowrap="nowrap"><span class="diff_sub"> </span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1088">1088</td><td nowrap="nowrap"><span class="diff_sub">- Use `pytest` for all tests</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1089">1089</td><td nowrap="nowrap"><span class="diff_sub">- Follow existing test patterns in `tests/units/`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1090">1090</td><td nowrap="nowrap"><span class="diff_sub">- Use fixtures from `tests/units/conftest.py`</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1091">1091</td><td nowrap="nowrap"><span class="diff_sub">- Aim for &gt;80% code coverage</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1092">1092</td><td nowrap="nowrap"><span class="diff_sub">- Test both success and failure scenarios</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1093">1093</td><td nowrap="nowrap"><span class="diff_sub">- Include edge cases and error conditions</span></td><td class="diff_next"></td><td class="diff_header"></td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1094">1094</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1056">1056</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1095">1095</td><td nowrap="nowrap">### Related Documentation</td><td class="diff_next"></td><td class="diff_header" id="to0_1057">1057</td><td nowrap="nowrap">### Related Documentation</td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1096">1096</td><td nowrap="nowrap"></td><td class="diff_next"></td><td class="diff_header" id="to0_1058">1058</td><td nowrap="nowrap"></td></tr>
+            <tr><td class="diff_next"></td><td class="diff_header" id="from0_1097">1097</td><td nowrap="nowrap">- [Developer Guide](developer_guide.md#run-tests)</td><td class="diff_next"></td><td class="diff_header" id="to0_1059">1059</td><td nowrap="nowrap">- [Developer Guide](developer_guide.md#run-tests)</td></tr>
+        </tbody>
+    </table>
+    <table class="diff" summary="Legends">
+        <tr> <th colspan="2"> Legends </th> </tr>
+        <tr> <td> <table border="" summary="Colors">
+                      <tr><th> Colors </th> </tr>
+                      <tr><td class="diff_add"> Added </td></tr>
+                      <tr><td class="diff_chg">Changed</td> </tr>
+                      <tr><td class="diff_sub">Deleted</td> </tr>
+                  </table></td>
+             <td> <table border="" summary="Links">
+                      <tr><th colspan="2"> Links </th> </tr>
+                      <tr><td>(f)irst change</td> </tr>
+                      <tr><td>(n)ext change</td> </tr>
+                      <tr><td>(t)op</td> </tr>
+                  </table></td> </tr>
+    </table>
+</div>
+</body>
+
+</html>
