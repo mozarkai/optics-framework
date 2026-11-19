@@ -154,17 +154,10 @@ class _NativeTree(ElementSourceInterface):
     def __init__(self):
         self.looks = 0
 
-    def capture(self):
-        raise NotImplementedError
-
-    def locate(self, element, index=None):
-        return None
-
-    def assert_elements(self, elements, timeout=30, rule="any"):
-        raise NotImplementedError
-
-    def get_interactive_elements(self, filter_config=None):
-        return []
+    def capture(self): raise NotImplementedError
+    def locate(self, element, index=None): return None
+    def assert_elements(self, elements, timeout=30, rule="any"): raise NotImplementedError
+    def get_interactive_elements(self, filter_config=None): return []
 
     def check_elements(self, elements, visible=False):
         self.looks += 1
@@ -195,6 +188,7 @@ class _Webcam:
     """A webcam whose view is sharp only within one lens step of ``peak``; ``None`` is its own autofocus, hunting."""
 
     span = range(0, 256, 5)
+    key = "046d:085e"
 
     def __init__(self, view):
         self.view, self.value, self.peak, self.moves = view, None, 35, 0
@@ -216,7 +210,8 @@ class _Webcam:
 
 
 @pytest.fixture
-def webcam(monkeypatch):
+def webcam(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPTICS_HOME", str(tmp_path))
     monkeypatch.setattr(camera_screenshot, "SETTLE_SECONDS", 0)
     monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 0)
     monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
@@ -238,11 +233,16 @@ def test_a_blurred_webcam_focuses_on_the_screen_and_again_on_a_moved_phone(webca
     assert _shows_the_screen(source.capture()) and camera.value == 60
 
 
-def test_fixed_corners_hold_the_lens_on_a_one_step_peak(webcam, phone):
+def test_fixed_corners_hold_the_lens_on_a_one_step_peak_that_a_new_session_confirms(webcam, phone):
     screen = np.float32([[0, 0], [SCREEN_W, 0], [SCREEN_W, SCREEN_H], [0, SCREEN_H]])
     corners = [f"{x},{y}" for x, y in cv2.perspectiveTransform(screen[None], phone.placement)[0]]
     camera, source = webcam(phone.frame, deskew_corners=corners)
-    assert _shows_the_screen(source.capture()) and camera.value == 35
+    assert _shows_the_screen(source.capture()) and camera.value == 35 and camera.moves > 20
+    camera, source = webcam(phone.frame, deskew_corners=corners)
+    assert _shows_the_screen(source.capture()) and camera.value == 35 and camera.moves < 10
+    camera, source = webcam(phone.frame, deskew_corners=corners)
+    camera.peak = 120
+    assert _shows_the_screen(source.capture()) and camera.value == 120
 
 
 def test_another_cameras_lens_is_given_back_its_autofocus_and_left_alone(webcam, phone):

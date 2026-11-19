@@ -328,7 +328,8 @@ class CameraScreenshot(ElementSourceInterface):
 
         started = time.monotonic()
         try:
-            value = camera_lens.sharpest(self._lens, sharpness, near=self._focus_value)
+            near = self._focus_value if self._focus_value is not None else camera_lens.saved_focus(self._lens)
+            value = camera_lens.sharpest(self._lens, sharpness, near=near)
         except OSError as exc:
             internal_logger.warning(f"Cannot set the camera's focus ({exc}); giving focus back to the camera")
             self._autofocus()
@@ -345,6 +346,7 @@ class CameraScreenshot(ElementSourceInterface):
                 self._lens = None
             return self._capture_frame()
         self._focus_value = value
+        camera_lens.save_focus(self._lens, value)
         internal_logger.info(f"Holding the camera's focus at {value} (found in {time.monotonic() - started:.1f}s)")
         return self._capture_frame()
 

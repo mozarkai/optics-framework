@@ -1,10 +1,13 @@
 """Manual focus for a webcam, so its lens holds on the device screen instead of hunting."""
 import ctypes
+import json
+import os
 import statistics
 import sys
 from typing import Callable, Protocol
 
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.helper.onboarding import optics_home
 
 # A value at least this many times the median sharpness of the sweep is a focus peak, not noise.
 PEAK_RATIO = 3.0
@@ -28,6 +31,7 @@ INTERFACE_220 = bytes.fromhex("770de60c2fe811d8a582000393dcb1d0")
 
 class Lens(Protocol):
     span: range
+    key: str
 
     def focus(self, value: int | None) -> None:
         """Hold the lens at ``value``; ``None`` gives focus back to the camera."""
@@ -37,6 +41,8 @@ def sharpest(lens: Lens, sharpness: Callable[[], float], near: int | None = None
     """Hold the lens where ``sharpness`` peaks, looking ``near`` a value first; ``None``, with autofocus back on, when no value stands out of the blur."""
     span = lens.span
     if near is not None:
+        if _holds(lens, sharpness, near):
+            return near
         reach = NEAR_STEPS * _coarse(span)
         found = _peak(lens, sharpness, range(max(span.start, near - reach), min(span.stop, near + reach + 1), span.step))
         if found is not None:
@@ -46,6 +52,53 @@ def sharpest(lens: Lens, sharpness: Callable[[], float], near: int | None = None
         internal_logger.warning("No focus value stands out of the blur; the camera keeps its autofocus")
         lens.focus(None)
     return found
+
+
+def _holds(lens: Lens, sharpness: Callable[[], float], value: int) -> bool:
+    """Whether ``value`` is still a focus peak: PEAK_RATIO times sharper than one coarse step on each side of it."""
+    step = _coarse(lens.span)
+    if value not in lens.span:
+        return False
+    scores = {}
+    for at in (value - step, value, value + step):
+        if at in lens.span:
+            lens.focus(at)
+            scores[at] = sharpness()
+    lens.focus(value)
+    sides = [score for at, score in scores.items() if at != value]
+    return bool(sides) and scores[value] > PEAK_RATIO * max(sides)
+
+
+def saved_focus(lens: Lens) -> int | None:
+    """The focus value last held for this camera model, so a new session can confirm it instead of sweeping the lens."""
+    try:
+        with open(_focus_file(), encoding="utf-8") as file:
+            value = json.load(file).get(lens.key)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, int) else None
+
+
+def save_focus(lens: Lens, value: int) -> None:
+    path = _focus_file()
+    try:
+        with open(path, encoding="utf-8") as file:
+            saved = json.load(file)
+    except (OSError, ValueError):
+        saved = {}
+    if not isinstance(saved, dict) or saved.get(lens.key) == value:
+        return
+    saved[lens.key] = value
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(saved, file)
+    except OSError as exc:
+        internal_logger.info(f"Cannot save the camera's focus to {path}: {exc}")
+
+
+def _focus_file() -> str:
+    return os.path.join(optics_home(), "camera_focus.json")
 
 
 def _coarse(span: range) -> int:
@@ -170,8 +223,9 @@ class _IOKit:
 class _MacUvc:
     """Focus by UVC control requests on the camera's video control interface; the camera's driver may keep it open."""
 
-    def __init__(self, interface: ctypes.c_void_p) -> None:
+    def __init__(self, interface: ctypes.c_void_p, key: str) -> None:
         self._interface = interface
+        self.key = key
         self._release = _method(interface, RELEASE, ctypes.c_uint32)
         self._control = _method(interface, CONTROL_REQUEST, ctypes.c_int32, ctypes.c_uint8, ctypes.POINTER(_Request))
         number = ctypes.c_uint8()
@@ -192,7 +246,8 @@ class _MacUvc:
         for service in kit.services(b"IOUSBHostInterface"):
             try:
                 if (kit.number(service, "bInterfaceClass"), kit.number(service, "bInterfaceSubClass")) == (VIDEO, VIDEO_CONTROL):
-                    lens = cls(kit.interface(service))
+                    model = f"{kit.number(service, 'idVendor') or 0:04x}:{kit.number(service, 'idProduct') or 0:04x}"
+                    lens = cls(kit.interface(service), model)
                     if lens.can_focus:
                         lenses.append(lens)
             except OSError as exc:
