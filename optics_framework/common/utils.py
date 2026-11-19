@@ -405,6 +405,30 @@ def is_dom_only_xpath(xpath: str) -> bool:
     return all(_DOM_TAGS & _name_tests(branch) for branch in spine.split("|"))
 
 
+def _union_branches(xpath: str) -> list[str]:
+    """The top-level ``|`` branches of ``xpath``, leaving those inside literals, predicates and calls."""
+    branches, depth, quote, start = [], 0, "", 0
+    for i, char in enumerate(xpath):
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif char in "[(":
+            depth += 1
+        elif char in "])":
+            depth -= 1
+        elif char == "|" and depth == 0:
+            branches.append(xpath[start:i])
+            start = i + 1
+    return [*branches, xpath[start:]]
+
+
+def web_xpath(xpath: str) -> str | None:
+    """The branches of ``xpath`` a web page's DOM can answer, or ``None`` when every branch is native."""
+    web = [branch.strip() for branch in _union_branches(xpath) if not is_native_xpath(branch)]
+    return " | ".join(web) or None
+
+
 def resolve_locator(element: str) -> str:
     """``element``, with an ``id:`` locator written as the XPath that finds that id on the web, Android, iOS and desktop."""
     stripped = element.strip()
@@ -415,8 +439,9 @@ def resolve_locator(element: str) -> str:
         raise OpticsError(Code.E0205, message=f"'{element}' names no id; write it as id:<id>.")
     value = xpath_literal(element_id)
     return (
-        f"//*[@id={value} or @resource-id={value} or substring-after(@resource-id, ':id/')={value}"
-        f" or (starts-with(name(), 'XCUIElementType') and @name={value})]"
+        f"//*[@id={value}]"
+        f" | //*[@resource-id={value} or substring-after(@resource-id, ':id/')={value}]"
+        f" | //*[starts-with(name(), 'XCUIElementType') and @name={value}]"
     )
 
 
