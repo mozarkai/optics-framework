@@ -90,8 +90,9 @@ _optics_completions() {
         dry_run|dry-run|execute)
           _arguments \
             '--runner=[Runner]:runner:(${runners[@]})' \
-            '--use-printer[Enable printer]' \
-            '--no-use-printer[Disable printer]' \
+            '--output=[Progress output]:output:(auto tree plain jsonl none)' \
+            '--use-printer[Same as --output tree]' \
+            '--no-use-printer[Same as --output none]' \
             '*--include=[Run only these test cases]:test case:' \
             '*--exclude=[Skip these test cases]:test case:' \
             '--help[-h]'
@@ -217,8 +218,10 @@ _optics_completions() {
     dry_run|dry-run|execute)
       if [[ $prev == "--runner" ]]; then
         _optics_words "$runner_options"
+      elif [[ $prev == "--output" ]]; then
+        _optics_words "auto tree plain jsonl none"
       else
-        _optics_words "--runner --use-printer --no-use-printer --include --exclude -h --help"
+        _optics_words "--runner --output --use-printer --no-use-printer --include --exclude -h --help"
       fi
       ;;
 
