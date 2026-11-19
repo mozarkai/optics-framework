@@ -1001,6 +1001,12 @@ class TestRunner(Runner):
         """Resolve a keyword's params without running it; raise what a run would fail on before acting."""
         written, store_as = utils.split_store_as(keyword_node.params)
         method = self.keyword_map.get("_".join(keyword_node.name.split()).lower())
+        if method is None:
+            # As a run does, check the keyword first: an unknown one has no params to resolve, so a ${variable}
+            # it names would hide the "Did you mean" hint behind an unrelated "Element not found".
+            if isinstance(keyword_result, KeywordResult):
+                keyword_result.resolved_name = mask_secrets(f"{keyword_node.name} ({', '.join(written)})" if written else keyword_node.name)
+            raise keyword_not_found(keyword_node.name, self.keyword_map)
         params = utils.substitute_inline(method, written, self.elements)
         raw = utils.raw_param_indices(method)
         resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
@@ -1016,8 +1022,6 @@ class TestRunner(Runner):
             keyword_result.resolved_name = mask_secrets(
                 f"{keyword_node.name} ({', '.join(resolved_params)})" if resolved_params else keyword_node.name
             )
-        if method is None:
-            raise keyword_not_found(keyword_node.name, self.keyword_map)
         self._check_params(keyword_node.name, method, written)
 
     def _check_params(self, name: str, method: Callable, params: List[str]) -> None:
