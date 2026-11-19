@@ -69,10 +69,12 @@ from optics_framework.common.screen_snapshot import (
     render_row,
     render_rows,
 )
+from optics_framework.common.models import ElementData
 from optics_framework.common.session_manager import Session
 from optics_framework.engines.drivers import playwright_profiles
 from optics_framework.engines.elementsources import camera_screenshot
 from optics_framework.engines.vision_models.ocr_models import installed_local_engines
+from optics_framework.helper import feedback, updates
 from optics_framework.helper.abort import MissingExtraError
 from optics_framework.helper.onboarding import optics_home
 from optics_framework.helper.version import VERSION
@@ -113,7 +115,7 @@ def _sized_camera(capabilities: dict[str, Any]) -> dict[str, Any]:
 try:
     from fastmcp import FastMCP
     from fastmcp.exceptions import ToolError
-    from fastmcp.server.dependencies import get_http_headers
+    from fastmcp.server.dependencies import get_context, get_http_headers
     from fastmcp.tools import Tool, ToolResult
     from fastmcp.utilities.types import Image
     from mcp.types import TextContent, ToolAnnotations
@@ -122,7 +124,7 @@ try:
 except ImportError as _e:  # pragma: no cover - exercised only without the extra
     FastMCP = None  # type: ignore[assignment,misc]
     ToolError = RuntimeError  # type: ignore[assignment,misc]
-    Tool = ToolResult = Image = TextContent = ToolAnnotations = get_http_headers = None  # type: ignore[assignment,misc]
+    Tool = ToolResult = Image = TextContent = ToolAnnotations = get_context = get_http_headers = None  # type: ignore[assignment,misc]
     _FASTMCP_IMPORT_ERROR = _e
 
 SERVER_NAME = "Optics MCP"
@@ -133,6 +135,9 @@ _DOCS_PAGES = {
     "unsupported": "docs/reference/keywords/index.md",
     "other": "docs/reference/errors.md",
 }
+# Failures where Optics itself may be at fault, so its maintainers want to hear about them.
+_FEEDBACK_KINDS = frozenset({"unsupported", "silent_failure", "loop", "other", "session_lost"})
+_FEEDBACK_HINT = " If Optics got this wrong, tell its maintainers with send_feedback."
 _DRIVER_HINT = (
     'The driver is appium, playwright or selenium. A desktop app uses driver="appium" with '
     'capabilities {"platformName": "Mac"} (or "Windows", "Linux") and the app name in app.'
@@ -305,13 +310,32 @@ class _Ended:
     owner: str
     steps: dict[str, Any]
     why: str
+    secrets: frozenset[str] = frozenset()
 
 
 _STATES: dict[str, _Slot] = {}
 _CALL: contextvars.ContextVar["_Call"] = contextvars.ContextVar("optics_mcp_call")
 _ENDED: dict[str, _Ended] = {}
 _ENDED_KEPT = 64
+_update_told = False
 _SAVED_DAYS = 7
+
+
+def _client_name() -> str:
+    try:
+        return get_context().session.client_params.client_info.name
+    except (RuntimeError, AttributeError):
+        return ""
+
+
+def _update_line() -> list[str]:
+    """The update notice once per server process; it reads only the cached check."""
+    global _update_told
+    if _update_told:
+        return []
+    lines = updates.notice_lines(wait=False)
+    _update_told = bool(lines)
+    return [f"Tell the user once: {lines[0]}"] if lines else []
 
 
 def _caller() -> str:
@@ -348,7 +372,8 @@ def _fail_lines(fail: Fail) -> list[str]:
     page = _DOCS_PAGES.get(fail.kind)
     docs = f" Docs: {DOCS_URL}/{page}" if page else ""
     fact = _fact(fail)
-    return [f"[{fail.code}] {fact}" if fail.code else fact, f"Next: {ADVICE[fail.kind]}{docs}"]
+    ask = _FEEDBACK_HINT if fail.kind in _FEEDBACK_KINDS and feedback.enabled() else ""
+    return [f"[{fail.code}] {fact}" if fail.code else fact, f"Next: {ADVICE[fail.kind]}{docs}{ask}"]
 
 
 def _failure_reply(fail: Fail) -> Any:
@@ -452,9 +477,27 @@ async def _settle(slot: _Slot) -> bool:
     return True
 
 
+def _slot_secrets(sid: str, slot: _Slot) -> set[str]:
+    """The secret values a session holds: its elements' and those its agent typed into secret fields."""
+    recorder = slot.session.recorder
+    typed = {value for name in recorder.secrets for value in recorder.elements.get(name, ())}
+    elements = getattr(expose_api.session_manager.get_session(sid), "elements", None)
+    return typed | (set(elements.secrets) if isinstance(elements, ElementData) else set())
+
+
+def _caller_secrets() -> set[str]:
+    """Every secret value the caller's sessions, open or ended, have held."""
+    known = {secret for ended in _ENDED.values() if ended.owner == _caller() for secret in ended.secrets}
+    for sid, slot in list(_STATES.items()):
+        if _owned(sid) is slot:
+            known |= _slot_secrets(sid, slot)
+    return known
+
+
 def _keep_steps(sid: str, slot: _Slot, why: str) -> None:
     """Keep the steps of an ended session for its owner: a suite is often written after the app is closed."""
-    _ENDED[sid] = _Ended(slot.owner, _steps(slot.session), why)
+    kept = _ENDED[sid].secrets if sid in _ENDED else frozenset()
+    _ENDED[sid] = _Ended(slot.owner, _steps(slot.session), why, kept | _slot_secrets(sid, slot))
     if len(_ENDED) > _ENDED_KEPT:
         del _ENDED[next(iter(_ENDED))]
     _save(sid, slot, why)
@@ -969,7 +1012,7 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig) -> Any
         # A session without a slot cannot be reached, yet it holds a browser or device until the server stops.
         await _end(sid)
         raise
-    head = [f"session {sid} ({driver}){_lease_note()}"]
+    head = [f"session {sid} ({driver}){_lease_note()}", *_update_line()]
     unsupported = sorted(_STATES[sid].unsupported & _reachable().keys())
     if unsupported:
         head.append(f"run_keyword cannot run here: {', '.join(unsupported)}")
@@ -1116,7 +1159,10 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         finally:
             if settled:
                 slot.lock.release()
-        return _reply([f"session {sid} terminated. {_steps_line(sid, _ENDED[sid].steps)}"])
+        lines = [f"session {sid} terminated. {_steps_line(sid, _ENDED[sid].steps)}"]
+        if feedback.enabled():
+            lines.append("If Optics got in your way, or did well, tell its maintainers with send_feedback.")
+        return _reply(lines)
 
     async def observe(
         query: Annotated[str, Field(description="Only rows whose text, name, id or role holds this, or one ref.")] = "",
@@ -1200,6 +1246,20 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         action = Action("keyword", keyword=keyword, params=dict(params), present=expect_present, absent=expect_absent)
         return await _act(action, "diff", session_id)
 
+    async def send_feedback(
+        kind: Annotated[feedback.Kind, Field(description="worked: something went well.")],
+        impact: Annotated[feedback.Impact, Field(description="What it did to your task.")],
+        task: Annotated[str, Field(max_length=200, description="What you were doing.")],
+        description: Annotated[str, Field(max_length=4000, description="What happened and what you tried.")],
+        tool: Annotated[str, Field(max_length=100, description="Tool or keyword involved.")] = "",
+        error: Annotated[str, Field(max_length=1000, description="Error text.")] = "",
+        suggestion: Annotated[str, Field(max_length=1000, description="What would have helped.")] = "",
+    ) -> Any:
+        report = {"kind": kind, "impact": impact, "task": task, "description": description, "tool": tool,
+                  "error": error, "suggestion": suggestion, "client": _client_name()}
+        sent = await asyncio.to_thread(feedback.send, report, "http" if _caller() else "stdio", _caller_secrets())
+        return _reply([sent])
+
     async def screenshot(session_id: str) -> "Image":
         """Capture the current screen and return it as a rendered PNG image."""
         raw = _decode_screenshot(await _observe(session_id, "capture_screenshot"))
@@ -1223,6 +1283,11 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         (run_keyword, _annotations(destructive=True),
          "Run another optics keyword when no other tool does the job, such as select_dropdown_option."),
     ]
+    if feedback.enabled():
+        core.append((send_feedback, _annotations(), (
+            "Tell the Optics maintainers what broke, was missing, confused you or worked well, "
+            "when you are stuck or a task ends. Leave out personal data."
+        )))
     reflected: set[str] = set()
     if toolset == "full":
         reflected = _add_keyword_tools(mcp)
@@ -1246,6 +1311,7 @@ def run_mcp_server(
         # A stdio client may never read stderr; a full pipe must not block the logger.
         decouple_console_logs()
         expose_api.server_reads_allowed = True
+    updates.refresh_in_background("mcp")
     mcp = build_server(toolset)
     internal_logger.info(
         "Starting Optics MCP server (transport=%s%s)",

@@ -4,6 +4,7 @@ import time
 import re
 import atexit
 import threading
+from collections.abc import Collection
 from contextlib import contextmanager
 from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
@@ -220,9 +221,9 @@ def is_secret_value(text: str) -> bool:
     return text.startswith(SENSITIVE_PREFIX) or text in (_active_secrets.get() or ())
 
 
-def mask_secrets(text: str) -> str:
-    active = _active_secrets.get()
-    ordered = sorted({*active, *_process_order}, key=len, reverse=True) if active else _process_order
+def mask_secrets(text: str, extra: Collection[str] = ()) -> str:
+    known = {*(_active_secrets.get() or ()), *filter(None, extra)}
+    ordered = sorted({*known, *_process_order}, key=len, reverse=True) if known else _process_order
     for secret in ordered:
         text = text.replace(secret, "****")
     text = _URL_PASSWORD.sub(r"\1****@", text)
