@@ -485,8 +485,7 @@ def drain_console_logs() -> bool:
 
 def console_logs_to_stderr():
     """Write console log records to stderr, so stdout carries only run progress lines."""
-    for handler in (logging_manager.internal_console_handler, logging_manager.execution_console_handler):
-        handler.console = Console(stderr=True)
+    logging_manager.internal_console_handler.console = Console(stderr=True)
 
 
 def restore_console_logs():
