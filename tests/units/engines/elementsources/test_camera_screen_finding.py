@@ -27,6 +27,7 @@ def _content() -> np.ndarray:
 
 
 CONTENT = _content()
+DARK = np.where(CONTENT == 215, 0, 255 - CONTENT).astype(np.uint8)
 BACKGROUND = cv2.GaussianBlur(
     np.random.default_rng(1).integers(0, 160, (CAMERA[1], CAMERA[0], 3)).astype(np.uint8), (0, 0), 3
 )
@@ -38,7 +39,7 @@ def _placement(angle: float, centre: tuple[float, float]) -> np.ndarray:
     return np.vstack([turn, [0, 0, 1]])
 
 
-def _scene(level: float, placement: np.ndarray | None, screen_on: bool = True) -> np.ndarray:
+def _scene(level: float, placement: np.ndarray | None, screen_on: bool = True, content=CONTENT, pointer=None) -> np.ndarray:
     frame = BACKGROUND.astype(np.float32)
     if placement is not None:
         bezel = 14
@@ -46,7 +47,10 @@ def _scene(level: float, placement: np.ndarray | None, screen_on: bool = True) -
         shift = np.array([[1, 0, -bezel], [0, 1, -bezel], [0, 0, 1]], np.float64)
         cover = cv2.warpPerspective(body, placement @ shift, CAMERA) > 0
         frame[cover] = 25
-        lit = CONTENT.astype(np.float32) * (level if screen_on else 0)
+        shown = content.copy()
+        if pointer is not None:
+            cv2.circle(shown, (round(pointer[0]), round(pointer[1])), 4, (150, 150, 150), -1)
+        lit = shown.astype(np.float32) * (level if screen_on else 0)
         screen = cv2.warpPerspective(lit, placement, CAMERA)
         inside = cv2.warpPerspective(np.full((SCREEN_H, SCREEN_W), 255, np.uint8), placement, CAMERA) > 0
         frame[inside] = screen[inside]
@@ -61,14 +65,18 @@ class _Phone:
         self.keys: list[str] = []
         self.placement: np.ndarray | None = _placement(6, (480, 270))
         self.screen_on = True
+        self.content, self.pointer = CONTENT, None
         self.event_sdk = SimpleNamespace(config_handler=SimpleNamespace(config=SimpleNamespace(capture_dir=capture_dir)))
 
     def press_keycode(self, keycode: str, event_name=None) -> None:
         self.keys.append(keycode)
         self.level = min(1.0, max(0.3, self.level + (0.1 if keycode == "brightnessup" else -0.1)))
 
+    def point_at(self, point) -> None:
+        self.pointer = point
+
     def frame(self) -> np.ndarray:
-        return _scene(self.level, self.placement, self.screen_on)
+        return _scene(self.level, self.placement, self.screen_on, self.content, self.pointer)
 
 
 @pytest.fixture
@@ -104,10 +112,10 @@ def _source(url: str, driver, find_screen: str) -> CameraScreenshot:
     return CameraScreenshot({"capabilities": capabilities}, driver=driver)
 
 
-def _shows_the_screen(frame: np.ndarray) -> bool:
-    if frame.shape != CONTENT.shape:
+def _shows_the_screen(frame: np.ndarray, content: np.ndarray = CONTENT) -> bool:
+    if frame.shape != content.shape:
         return False
-    wrong = np.abs(frame.astype(np.int16) - CONTENT.astype(np.int16)).max(axis=2) > 60
+    wrong = np.abs(frame.astype(np.int16) - content.astype(np.int16)).max(axis=2) > 60
     return float(wrong.mean()) < 0.1
 
 
@@ -172,6 +180,15 @@ def test_an_assertion_keeps_reading_the_native_tree_while_the_camera_is_blind(ca
     assert strategies.assert_presence(["Settings"], "Text", timeout=5)
     assert tree.looks == 2
 
+
+@pytest.mark.parametrize("rotation", [None, "clockwise", "counterclockwise"])
+def test_the_pointer_finds_a_screen_black_to_its_edges(camera, phone, rotation, monkeypatch):
+    monkeypatch.setattr(camera_screenshot, "POINTER_SETTLE_SECONDS", 0)
+    phone.content = DARK
+    size = (SCREEN_H, SCREEN_W) if rotation else (SCREEN_W, SCREEN_H)
+    capabilities = {"url": camera, "find_screen": "pointer", "out_width": size[0], "out_height": size[1], "rotation": rotation}
+    source = CameraScreenshot({"capabilities": capabilities}, driver=phone)
+    assert _shows_the_screen(source.capture(), DARK) and phone.pointer is None
 
 
 class _Webcam:

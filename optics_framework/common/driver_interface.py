@@ -313,6 +313,10 @@ class DriverInterface(ABC):
     def go_back(self, event_name: Optional[str] = None) -> None:
         self._unsupported("go_back")
 
+    def point_at(self, point: Optional[tuple[float, float]]) -> None:
+        """Show the pointer at ``point`` in screen pixels without pressing, or move it off the screen with ``None``."""
+        self._unsupported("point_at")
+
     def select_option(self, element: Any, option: str, event_name: Optional[str] = None) -> bool:
         """Choose ``option`` in a native list control; False when ``element`` is not one, so it is opened like a dropdown."""
         return False

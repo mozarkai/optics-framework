@@ -28,6 +28,11 @@ GAIN_RANGE = (-1.0, 3.0)
 GAIN_MODE_SHARE = 0.05
 # A brightness change smaller than about 1.4x is not a screen at another level.
 GAIN_MODE_GAP = 13
+POINTER_GRID = tuple((x, y) for y in (0.12, 0.5, 0.88) for x in (0.15, 0.5, 0.85))
+# Where the pointer waits before and after the grid, away from every grid place.
+POINTER_EDGES = ((0.33, 0.31), (0.67, 0.69))
+MIN_POINTER_PLACES = 6
+POINTER_FIT_PX = 3.0
 
 
 class ScreenNotFound(ValueError):
@@ -290,6 +295,36 @@ def _rectangle_aspect(corners: np.ndarray, shape: tuple) -> float:
     across = n2[0] ** 2 + n2[1] ** 2 + n2[2] ** 2 * focal_sq
     down = n3[0] ** 2 + n3[1] ** 2 + n3[2] ** 2 * focal_sq
     return float(np.sqrt(across / down))
+
+
+def pointer_spot(before: np.ndarray, at: np.ndarray, after: np.ndarray) -> np.ndarray:
+    """Where the pointer is in ``at``: what changed from both neighbour frames, whose pointer is elsewhere."""
+    now = _gray(at)
+    change = np.minimum(_spots(now, _gray(before)), _spots(now, _gray(after)))
+    _, peak, _, (x, y) = cv2.minMaxLoc(change)
+    top, left = max(0, y - 12), max(0, x - 12)
+    window = change[top:y + 13, left:x + 13]
+    weight = np.clip(window - peak / 2, 0, None)
+    if not weight.any():
+        return np.array([x, y], np.float32)
+    rows, columns = np.mgrid[top:top + window.shape[0], left:left + window.shape[1]]
+    return np.array([(columns * weight).sum(), (rows * weight).sum()], np.float32) / weight.sum()
+
+
+def _spots(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    diff = np.abs(a - b)
+    return np.clip(cv2.GaussianBlur(diff, (0, 0), 2) - cv2.GaussianBlur(diff, (0, 0), 15), 0, None)
+
+
+def pointer_corners(places: np.ndarray, seen: np.ndarray, screen: np.ndarray, aspect: float, shape: tuple) -> np.ndarray:
+    """The camera corners of ``screen``, in the pixels the pointer was sent to, from the ``places`` it was seen at."""
+    to_camera, fits = cv2.findHomography(places, seen, cv2.RANSAC, POINTER_FIT_PX)
+    if to_camera is None or int(fits.sum()) < MIN_POINTER_PLACES:
+        found = 0 if fits is None else int(fits.sum())
+        raise ScreenNotFound(f"the pointer was seen at only {found} of {len(places)} places on one flat screen")
+    corners = cv2.perspectiveTransform(screen.reshape(1, -1, 2).astype(np.float32), to_camera)[0]
+    _check_shape(corners, aspect, shape)
+    return corners
 
 
 class ViewGuard:

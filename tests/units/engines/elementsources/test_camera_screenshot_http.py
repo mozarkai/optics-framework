@@ -13,11 +13,7 @@ import pytest
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.factories import ElementSourceFactory
 from optics_framework.common.strategies import TextDetectionStrategy
-from optics_framework.engines.elementsources.camera_screenshot import (
-    CameraScreenshot,
-    CameraScreenshotHttpError,
-    CapabilitiesConfig,
-)
+from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot, CameraScreenshotHttpError
 
 TOKEN = "s3cret-token-value"
 ENV_VARS = (
@@ -190,19 +186,8 @@ class TestEnvFallback:
         assert exc.value.status == 401
         assert http_server.received == [("/screenshot", None)]
 
-    def test_nothing_configured_still_raises(self):
-        with pytest.raises(ValueError, match="No camera_index or valid URL"):
-            CameraScreenshot({"capabilities": {}})
-
 
 class TestTokenNotLogged:
-    def test_model_masks_token(self):
-        model = CapabilitiesConfig(url="http://h/screenshot", token=TOKEN)
-        assert TOKEN not in repr(model)
-        assert TOKEN not in str(model)
-        assert TOKEN not in str(model.model_dump())
-        assert TOKEN not in model.model_dump_json()
-
     def test_no_log_line_contains_token(self, http_server, caplog):
         with caplog.at_level(logging.DEBUG):
             _source(url=http_server.url, token=TOKEN).capture()

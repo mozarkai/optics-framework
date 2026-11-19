@@ -46,6 +46,7 @@ AVERAGED_FRAMES = 3
 SCREEN_OFF_SECONDS = 3.0
 SCREEN_OFF_POLL_SECONDS = 0.5
 LENS_SETTLE_SECONDS = 0.15
+POINTER_SETTLE_SECONDS = 0.6
 # The focus sweep also looks this far past the screen's edges, at the phone's body, so a dark screen still has edges.
 FOCUS_MARGIN = 0.1
 
@@ -116,11 +117,12 @@ class CapabilitiesConfig(BaseModel):
         None,
         description="The screen's corners in the camera frame as 'x,y': top-left, top-right, bottom-right, bottom-left",
     )
-    find_screen: Optional[Literal["brightness", "frame"]] = Field(
+    find_screen: Optional[Literal["brightness", "frame", "pointer"]] = Field(
         None,
         description=(
             "Find the screen's corners in the camera frame instead of deskew_corners: 'brightness' with the driver's"
-            " brightness keys, 'frame' from one frame of a bright screen"
+            " brightness keys, 'frame' from one frame of a bright screen, 'pointer' from where the camera sees the"
+            " driver's pointer, whatever the screen shows"
         ),
     )
     camera_width: Optional[int] = Field(None, gt=0, description="Width the webcam captures at; the largest it gives when unset")
@@ -358,25 +360,61 @@ class CameraScreenshot(ElementSourceInterface):
         return cv2.warpPerspective(frame, self._deskew, (self.out_width, self.out_height))
 
     def _calibrate(self, frame: np.ndarray) -> None:
-        aspect = self.out_width / self.out_height
-        reasons = []
-        for name, signals in self._screen_signals(frame):
-            try:
-                region, edge = signals()
-                corners = screen_finder.find_screen(region, edge, aspect)
-                break
-            except screen_finder.ScreenNotFound as exc:
-                internal_logger.info(f"No screen found by {name}: {exc}")
-                reasons.append(str(exc))
-        else:
-            raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
+        name, corners = self._pointer_corners(frame) if self.find_screen == "pointer" else self._lit_corners(frame)
         self._use_corners(corners)
-        self._found_on = region.shape[:2]
+        self._found_on = frame.shape[:2]
         found = ", ".join(f'"{x:.0f},{y:.0f}"' for x, y in corners)
         internal_logger.info(f"Found the screen in the camera frame by {name}: deskew_corners: [{found}]")
         marked = frame.copy()
         cv2.polylines(marked, [corners.astype(np.int32)], True, (0, 255, 0), 2)
         self._save(marked, "camera_screen_found")
+
+    def _lit_corners(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
+        reasons = []
+        for name, signals in self._screen_signals(frame):
+            try:
+                region, edge = signals()
+                return name, screen_finder.find_screen(region, edge, self.out_width / self.out_height)
+            except screen_finder.ScreenNotFound as exc:
+                internal_logger.info(f"No screen found by {name}: {exc}")
+                reasons.append(str(exc))
+        raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
+
+    def _pointer_corners(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
+        """The corners from frames with the driver's pointer at known screen pixels, each between two frames with it elsewhere."""
+        if self.driver is None:
+            raise OpticsError(Code.E0501, message="find_screen: pointer moves the pointer of a driver; enable one, or set deskew_corners")
+        width, height = (self.out_height, self.out_width) if self.rotation else (self.out_width, self.out_height)
+        start, end = screen_finder.POINTER_EDGES
+        places = np.float32([(x * width, y * height) for x, y in (start, *screen_finder.POINTER_GRID, end)])
+        try:
+            frames = [self._at_pointer(place) for place in places]
+            self.driver.point_at(None)
+        except OpticsError as exc:
+            if exc.code != Code.E0105:
+                raise
+            raise OpticsError(Code.E0501, message=f"find_screen: pointer needs a driver that shows a pointer ({exc.message}); set deskew_corners") from exc
+        seen = np.float32([screen_finder.pointer_spot(*frames[i - 1:i + 2]) for i in range(1, len(frames) - 1)])
+        try:
+            corners = screen_finder.pointer_corners(places[1:-1], seen, self._unrotated_corners(), self.out_width / self.out_height, frame.shape)
+        except screen_finder.ScreenNotFound as exc:
+            raise self._blind(f"no screen found: {exc}", frames[0].astype(np.uint8)) from exc
+        return "pointer", corners
+
+    def _at_pointer(self, place: np.ndarray) -> np.ndarray:
+        self.driver.point_at((float(place[0]), float(place[1])))
+        time.sleep(POINTER_SETTLE_SECONDS)
+        return np.mean([self._capture_frame().astype(np.float32) for _ in range(AVERAGED_FRAMES)], axis=0)
+
+    def _unrotated_corners(self) -> np.ndarray:
+        """The corners of the deskewed frame, before its rotation, in the screen pixels the driver uses."""
+        right, bottom = self.out_width - 1, self.out_height - 1
+        x, y = np.float32([0, right, right, 0]), np.float32([0, 0, bottom, bottom])
+        if self.rotation == "clockwise":
+            return np.stack([bottom - y, x], axis=1)
+        if self.rotation == "counterclockwise":
+            return np.stack([y, right - x], axis=1)
+        return np.stack([x, y], axis=1)
 
     def _screen_signals(self, frame: np.ndarray) -> list[tuple[str, Callable[[], tuple[np.ndarray, np.ndarray]]]]:
         """The ways to find the screen, best first; brightness falls back to one frame when the keys do nothing."""
