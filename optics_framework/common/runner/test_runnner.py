@@ -5,6 +5,7 @@ import os
 import time
 import uuid
 import asyncio
+import contextlib
 import contextvars
 import tempfile
 import shutil
@@ -1509,15 +1510,19 @@ def runner():
                 del sys.modules[module_name]
 
         junit_path = f"{self.session.config.execution_output_path}/junit_output.xml"
-        result = pytest.main(
-            [
-                temp_dir,
-                "-q",
-                "--disable-warnings",
-                f"--junitxml={junit_path}",
-                "--no-cov",
-            ]
-        )
+        # stdout carries the run's progress lines, bound before pytest starts: pytest
+        # reports on stderr and captures at sys level, so neither one lands in it.
+        with contextlib.redirect_stdout(sys.stderr):
+            result = pytest.main(
+                [
+                    temp_dir,
+                    "-q",
+                    "--capture=sys",
+                    "--disable-warnings",
+                    f"--junitxml={junit_path}",
+                    "--no-cov",
+                ]
+            )
         shutil.rmtree(temp_dir)
         if self._stop is not None:
             raise self._stop

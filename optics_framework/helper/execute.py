@@ -14,7 +14,7 @@ from pydantic import BaseModel, field_validator
 from pathlib import Path
 from optics_framework.api import ActionKeyword, AppManagement, Verifier
 from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
-from optics_framework.common.logging_config import internal_logger, initialize_handlers
+from optics_framework.common.logging_config import console_logs_to_stderr, internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
@@ -25,6 +25,7 @@ from optics_framework.common.session_manager import SessionManager
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.Junit_eventhandler import get_junit_handler_registry, run_plan
 from optics_framework.common.execution import ExecutionEngine, ExecutionParams
+from optics_framework.common.runner.event_stream import OutputMode, output_mode_for, prints_lines
 from optics_framework.common.models import (
     CaseKind,
     TestCaseNode,
@@ -661,6 +662,7 @@ class RunnerArgs(BaseModel):
     folder_path: str
     runner: str = "test_runner"
     use_printer: bool = True
+    output: OutputMode | None = None
     include: list[str] | None = None
     exclude: list[str] | None = None
 
@@ -686,7 +688,7 @@ class BaseRunner:
     def __init__(self, args: RunnerArgs):
         self.folder_path = args.folder_path
         self.runner = args.runner
-        self.use_printer = args.use_printer
+        self.output = output_mode_for(args.output, args.use_printer)
         self.selection_override = args.include is not None or args.exclude is not None
         internal_logger.debug(f"Using runner: {self.runner}")
 
@@ -920,10 +922,10 @@ class BaseRunner:
                 session_id=self.session_id,
                 mode=mode,
                 runner_type=self.runner,
-                use_printer=self.use_printer,
+                output=self.output,
             )
             internal_logger.debug(
-                f"Executing with runner_type: {self.runner}, use_printer: {self.use_printer}"
+                f"Executing with runner_type: {self.runner}, output: {self.output.value}"
             )
             return await self.engine.execute(params)
         except Exception as e:
@@ -966,15 +968,25 @@ def _has_failed_results(results: Any) -> bool:
     )
 
 
+def _output_for_process(output: OutputMode | None, use_printer: bool) -> OutputMode:
+    # Only the entry points that own the process move the consoles, so a run_project caller keeps its own.
+    mode = output_mode_for(output, use_printer)
+    if prints_lines(mode):
+        console_logs_to_stderr()
+    return mode
+
+
 def execute_main(
     folder_path: str,
     runner: str = "test_runner",
     use_printer: bool = True,
     include: list[str] | None = None,
     exclude: list[str] | None = None,
+    output: OutputMode | None = None,
 ):
     """Entry point for execute command."""
-    if not run_project(folder_path, runner, use_printer, include, exclude):
+    output = _output_for_process(output, use_printer)
+    if not run_project(folder_path, runner, use_printer, include, exclude, output):
         sys.exit(1)
 
 
@@ -984,16 +996,18 @@ def run_project(
     use_printer: bool = True,
     include: list[str] | None = None,
     exclude: list[str] | None = None,
+    output: OutputMode | None = None,
 ) -> bool:
     """Execute a project; True when nothing failed.
 
     ``include``/``exclude`` replace the selection in config.yaml when either
-    is given. Split out of ``execute_main`` so an in-process caller can read
-    the outcome instead of catching the ``SystemExit`` the CLI reports
-    failure with."""
+    is given. ``output`` picks how progress is shown; without it ``use_printer``
+    picks ``auto`` or ``none``. Split out of ``execute_main`` so an in-process
+    caller can read the outcome instead of catching the ``SystemExit`` the CLI
+    reports failure with."""
     args = RunnerArgs(
         folder_path=folder_path, runner=runner, use_printer=use_printer,
-        include=include, exclude=exclude,
+        output=output, include=include, exclude=exclude,
     )
     runner_instance = ExecuteRunner(args)
     problem = _preflight(getattr(runner_instance, "config", None), folder_path)
@@ -1034,15 +1048,18 @@ def dryrun_main(
     use_printer: bool = True,
     include: list[str] | None = None,
     exclude: list[str] | None = None,
+    output: OutputMode | None = None,
 ):
     """Entry point for dry run command."""
+    output = _output_for_process(output, use_printer)
     args = RunnerArgs(
         folder_path=folder_path, runner=runner, use_printer=use_printer,
-        include=include, exclude=exclude,
+        output=output, include=include, exclude=exclude,
     )
     runner_instance = DryRunRunner(args)
     results = _run_until_stopped(runner_instance.execute())
+    note_stream = sys.stderr if prints_lines(output) else sys.stdout
     print("\ndry_run checks the keywords, their params and the names they use. "
-          "It does not check locators, the app or the device: optics execute does.")
+          "It does not check locators, the app or the device: optics execute does.", file=note_stream)
     if _has_failed_results(results):
         sys.exit(1)

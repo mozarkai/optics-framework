@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
+from optics_framework.common.runner.event_stream import (
+    EVENT_STREAM_SUBSCRIBER_ID, EventStreamPrinter, OutputMode, prints_lines, resolve_output_mode,
+)
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner, heal_extra, pop_heal
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
@@ -28,7 +31,7 @@ class ExecutionParams(BaseModel):
     params: List[str] = Field(default_factory=list)
     # test_cases, modules, elements, apis are now part of Session
     runner_type: str = "test_runner"
-    use_printer: bool = True
+    output: OutputMode = OutputMode.AUTO
 
 
 class Executor(ABC):
@@ -391,12 +394,11 @@ class ExecutionEngine:
             raise RuntimeError("session must not be None after _validate_execution_params")
 
         event_manager.start()
-        use_printer = params.use_printer
-        internal_logger.debug(
-            "Using printer: %s for runner: %s",
-            "TreeResultPrinter" if use_printer else "NullResultPrinter",
-            params.runner_type,
-        )
+        output = resolve_output_mode(params.output)
+        use_printer = output is OutputMode.TREE
+        internal_logger.debug("Using output: %s for runner: %s", output.value, params.runner_type)
+        if prints_lines(output):
+            event_manager.subscribe(EVENT_STREAM_SUBSCRIBER_ID, EventStreamPrinter(output))
         runner_type = "keyword_runner" if params.mode == "keyword" else params.runner_type
 
         with LoggerContext(params.session_id):

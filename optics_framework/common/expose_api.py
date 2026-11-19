@@ -30,6 +30,7 @@ from optics_framework.common import fallback
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import Config, DependencyConfig, env_names
 from optics_framework.common.caller_policy import refuse_local_capabilities
+from optics_framework.common.runner.event_stream import OutputMode
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, redact_url
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
@@ -679,7 +680,7 @@ def _keyword_execution_params(session_id: str, keyword: str, param_list: List[st
         keyword=keyword,
         params=param_list,
         runner_type=RUNNER_TYPE_KEYWORD,
-        use_printer=False,
+        output=OutputMode.NONE,
     )
 
 
