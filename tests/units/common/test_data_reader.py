@@ -4,6 +4,7 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     merge_dicts,
+    parse_module_step,
 )
 
 
@@ -52,8 +53,8 @@ class TestYAMLDataReader:
         }
 
     def test_parse_module_step_prefers_a_module_of_the_same_name(self):
-        assert self.reader._parse_module_step("Sleep Well", {"Sleep Well"}) == ("Sleep Well", [])
-        assert self.reader._parse_module_step("Sleep Well") == ("Sleep", ["Well"])
+        assert parse_module_step("Sleep Well", {"Sleep Well"}) == ("Sleep Well", [])
+        assert parse_module_step("Sleep Well") == ("Sleep", ["Well"])
 
     def test_read_modules_takes_module_names_from_other_files(self, tmp_path):
         caller = _write(tmp_path, "a.yaml", "Modules:\n  - Caller:\n      - Sleep Well\n")

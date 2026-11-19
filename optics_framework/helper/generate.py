@@ -18,6 +18,7 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader as RunnerCSVReader,
     is_elements_header,
     named_locators,
+    parse_module_step,
 )
 from optics_framework.common.utils import unescape_csv_value
 
@@ -234,78 +235,14 @@ class YAMLDataReader(DataReader):
             test_cases = test_cases_list
         return test_cases
 
-    def _parse_step(self, step: str, keyword_registry: set) -> Tuple[str, List[str]]:
-        parts = step.split(maxsplit=1)
-        keyword = parts[0] if parts else ""
-        params = []
-        if len(parts) > 1:
-            # Sort keywords by length in descending order to match longer keywords first
-            for reg_keyword in sorted(keyword_registry, key=len, reverse=True):
-                if step.startswith(reg_keyword):
-                    keyword = reg_keyword
-                    params = (
-                        step[len(reg_keyword) :].strip().split()
-                        if step[len(reg_keyword) :].strip()
-                        else []
-                    )
-                    break
-            else:
-                params = parts[1].split() if parts[1] else []
-        return keyword, params
-
     def read_modules(self, source: str) -> Modules:
         data = load_project_yaml(source) or {}
-        modules = {}
-        keyword_registry = {
-            "Launch App",
-            "Launch Other App",
-            "Start Appium Session",
-            "Close and Terminate App",
-            "Get App Version",
-            "Press Element",
-            "Press By Percentage",
-            "Press By Coordinates",
-            "Press Element With Index",
-            "Detect and Press",
-            "Swipe",
-            "Swipe Until Element Appears",
-            "Swipe From Element",
-            "Scroll",
-            "Scroll Until Element Appears",
-            "Scroll From Element",
-            "Enter Text",
-            "Enter Text Direct",
-            "Enter Text Using Keyboard",
-            "Enter Number",
-            "Press Keycode",
-            "Go Back",
-            "Clear Element Text",
-            "Get Text",
-            "Sleep",
-            "Validate Element",
-            "Assert Presence",
-            "Assert Visibility",
-            "Validate Screen",
-            "Assert Text",
-            "Get Interactive Elements",
-            "Capture Screenshot",
-            "Capture Pagesource",
-            "Quit",
-        }
         modules_list = data.get("Modules", [])
-        if isinstance(modules_list, list):
-            for item in modules_list:
-                if isinstance(item, dict):
-                    for module_name, steps in item.items():
-                        modules[module_name] = [
-                            self._parse_step(step, keyword_registry) for step in steps
-                        ]
-        elif isinstance(modules_list, dict):
-            for module_name, steps in modules_list.items():
-                modules[module_name] = [
-                    self._parse_step(step, keyword_registry) for step in steps
-                ]
-        return modules
+        if isinstance(modules_list, dict):
+            modules_list = [modules_list]
+        items = [entry for item in modules_list if isinstance(item, dict) for entry in item.items()]
+        names = {str(name).strip() for name, _ in items}
+        return {name: [parse_module_step(step, names) for step in steps] for name, steps in items}
 
     def read_elements(self, source: str) -> Elements:
         data = load_project_yaml(source) or {}
@@ -320,42 +257,6 @@ class TestFrameworkGenerator(ABC):
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.keyword_registry = {
-            "Launch App": "launch_app",
-            "Launch Other App": "launch_other_app",
-            "Start Appium Session": "start_appium_session",
-            "Close and Terminate App": "close_and_terminate_app",
-            "Get App Version": "get_app_version",
-            "Press Element": "press_element",
-            "Press By Percentage": "press_by_percentage",
-            "Press By Coordinates": "press_by_coordinates",
-            "Press Element With Index": "press_element_with_index",
-            "Detect and Press": "detect_and_press",
-            "Swipe": "swipe",
-            "Swipe Until Element Appears": "swipe_until_element_appears",
-            "Swipe From Element": "swipe_from_element",
-            "Scroll": "scroll",
-            "Scroll Until Element Appears": "scroll_until_element_appears",
-            "Scroll From Element": "scroll_from_element",
-            "Enter Text": "enter_text",
-            "Enter Text Direct": "enter_text_direct",
-            "Enter Text Using Keyboard": "enter_text_using_keyboard",
-            "Enter Number": "enter_number",
-            "Press Keycode": "press_keycode",
-            "Go Back": "go_back",
-            "Clear Element Text": "clear_element_text",
-            "Get Text": "get_text",
-            "Sleep": "sleep",
-            "Validate Element": "validate_element",
-            "Assert Presence": "assert_presence",
-            "Assert Visibility": "assert_visibility",
-            "Validate Screen": "validate_screen",
-            "Assert Text": "assert_text",
-            "Get Interactive Elements": "get_interactive_elements",
-            "Capture Screenshot": "capture_screenshot",
-            "Capture Pagesource": "capture_pagesource",
-            "Quit": "quit",
-        }
 
     @abstractmethod
     def generate(
@@ -368,7 +269,7 @@ class TestFrameworkGenerator(ABC):
         pass
 
     def _method_name(self, keyword: str) -> str:
-        method = self.keyword_registry.get(keyword, "_".join(keyword.lower().split()))
+        method = "_".join(keyword.lower().split())
         if not method.isidentifier() or keyword_module.iskeyword(method) or method.startswith("_"):
             raise ValueError(f"'{keyword}' is not a keyword name.")
         return method
