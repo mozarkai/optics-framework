@@ -183,32 +183,18 @@ class TestExpressionCondition:
         assert run.calls == []
 
 
-class TestModuleCondition:
-    def test_truthy_module_runs_target(self, flow_control):
-        run = _module_runner({"cond": ["c"], "target": ["T"], "els": ["E"]})
-        _register(flow_control, run, "cond", "target", "els")
-        assert flow_control.condition("cond", "target", "els") == ["T"]
-        assert run.calls == ["cond", "target"]
-
-    def test_raising_module_runs_else(self, flow_control):
-        run = _module_runner({"cond": RuntimeError("boom"), "target": ["T"], "els": ["E"]})
-        _register(flow_control, run, "cond", "target", "els")
-        assert flow_control.condition("cond", "target", "els") == ["E"]
-        assert "target" not in run.calls
-
-    @pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)
-    def test_falsy_module_skips_target_runs_else(self, flow_control):
-        run = _module_runner({"cond": [], "target": ["T"], "els": ["E"]})
-        _register(flow_control, run, "cond", "target", "els")
-        assert flow_control.condition("cond", "target", "els") == ["E"]
-        assert "target" not in run.calls
-
-    @pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)
-    def test_falsy_module_no_else_returns_none(self, flow_control):
-        run = _module_runner({"cond": [], "target": ["T"]})
-        _register(flow_control, run, "cond", "target")
-        assert flow_control.condition("cond", "target") is None
-        assert "target" not in run.calls
+@pytest.mark.parametrize("cond, els, result", [
+    (["c"], ["E"], ["T"]),
+    (RuntimeError("boom"), ["E"], ["E"]),
+    pytest.param([], ["E"], ["E"], marks=pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)),
+    pytest.param([], None, None, marks=pytest.mark.xfail(reason=_MODULE_CONDITION_BUG, strict=True)),
+], ids=["truthy runs target", "raising runs else", "falsy runs else", "falsy without else"])
+def test_a_module_condition_runs_the_target_only_when_the_module_holds(flow_control, cond, els, result):
+    modules = {"cond": cond, "target": ["T"], **({"els": els} if els else {})}
+    run = _module_runner(modules)
+    _register(flow_control, run, *modules)
+    assert flow_control.condition(*modules) == result
+    assert ("target" in run.calls) == (result == ["T"])
 
 
 class TestRunLoop:
