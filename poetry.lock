@@ -18,19 +18,22 @@ caio = ">=0.9.0,<0.10.0"
 
 [[package]]
 name = "airhand"
-version = "0.1.2"
+version = "0.1.5"
 description = "Drive any device that accepts a Bluetooth keyboard and mouse from Python, through an nRF52840 dongle."
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"ble\" or extra == \"all\""
 files = [
-    {file = "airhand-0.1.2-py3-none-any.whl", hash = "sha256:3f771e1528115b7cb288d820374ed6750da0472057d2f935462ca1b5c45604a2"},
-    {file = "airhand-0.1.2.tar.gz", hash = "sha256:c2b12c5ccd4dacc792a24616c8424c7edc2db7e32cea7a836431de7e870408bf"},
+    {file = "airhand-0.1.5-py3-none-any.whl", hash = "sha256:7cc05aac46b6cc572d82481ec0bc84fe317fd9ade2beb2651bdf16a143ba1de9"},
+    {file = "airhand-0.1.5.tar.gz", hash = "sha256:f2bd8abd3db170bff2c11ae27a79b63f331a0ff0f458e6dd36a4b0f662816569"},
 ]
 
 [package.dependencies]
 pyserial = ">=3.5"
+
+[package.extras]
+update = ["smpclient[serial] (>=7.4,<8)"]
 
 [[package]]
 name = "annotated-doc"
@@ -6436,4 +6439,4 @@ web = ["playwright", "selenium"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "87aa1edc333ddc6dcc7990196e9449b01df13a676e2d54ebdb99ed22fd55c502"
+content-hash = "f12ba6e07524c85be95d636a2809761ecd6a72cfbab892abe19fc3476078c483"
