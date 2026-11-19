@@ -207,6 +207,8 @@ class BLEDriver(DriverInterface):
     def supports(self, capability: str) -> bool:
         if capability == "go_back":
             return self.platform.back is not None
+        if capability == "point_at":
+            return not self.platform.finger
         opens_apps = bool(self.capabilities.launch_methods)
         if capability in ("launch_app", "launch_other_app"):
             return opens_apps
@@ -222,6 +224,15 @@ class BLEDriver(DriverInterface):
         with _mapped():
             self._dongle.tap(*self._to_fractions(coor_x, coor_y))
             self._park()
+
+    def point_at(self, point: Optional[tuple[float, float]]) -> None:
+        if self.platform.finger:
+            self._unsupported("point_at")
+        with _mapped():
+            if point is None:
+                self._park()
+            else:
+                self._dongle.move(*self._to_fractions(*point))
 
     def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int, event_name: Optional[str] = None) -> None:
         self._capture(event_name)
