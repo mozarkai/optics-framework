@@ -235,7 +235,6 @@ def test_a_blurred_webcam_focuses_on_the_screen_and_again_on_a_moved_phone(webca
     camera, source = webcam(phone.frame, find_screen="frame")
     assert _shows_the_screen(source.capture()) and camera.value == 35
     phone.placement, camera.peak = _placement(-4, (430, 290)), 60
-    source.capture()
     assert _shows_the_screen(source.capture()) and camera.value == 60
 
 
