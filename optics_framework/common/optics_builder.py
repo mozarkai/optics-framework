@@ -6,6 +6,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common.llm_interface import LLMInterface
+from optics_framework.common.database_interface import DatabaseInterface
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.factories import (
     DeviceFactory,
@@ -13,6 +14,7 @@ from optics_framework.common.factories import (
     ImageFactory,
     TextFactory,
     LLMFactory,
+    DatabaseFactory,
 )
 
 T = TypeVar("T")  # Generic type for the build method
@@ -26,6 +28,7 @@ class OpticsConfig(BaseModel):
     image_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
     text_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
     llm_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
+    database_config: List[Dict[Any, Any]] = []
 
 
 class OpticsBuilder:
@@ -110,6 +113,10 @@ class OpticsBuilder:
         self.config.llm_config = self.normalise_config(config)
         return self
 
+    def add_database(self, config: List[Dict[Any, Any]]) -> "OpticsBuilder":
+        self.config.database_config = config
+        return self
+
     # Instantiation methods
     def instantiate_driver(self) -> InstanceFallback[DriverInterface]:
         if not self.config.driver_config:
@@ -188,6 +195,24 @@ class OpticsBuilder:
         if "llm" not in self._instances:
             self.instantiate_llm()
         return self._instances.get("llm", None)
+
+    def get_database(self) -> DatabaseInterface:
+        """The project's one database, connected on first use."""
+        if "database" not in self._instances:
+            configs = self.config.database_config
+            if len(configs) != 1:
+                found = "none is" if not configs else f"{len(configs)} are"
+                raise OpticsError(
+                    Code.E0501,
+                    message=f"Database keywords need exactly one enabled entry under 'databases' in config.yaml, and {found}.",
+                )
+            self._instances["database"] = DatabaseFactory.get_database(configs[0])
+        return self._instances["database"]
+
+    def close_database(self) -> None:
+        database = self._instances.pop("database", None)
+        if database is not None:
+            database.close()
 
     def build(self, cls: Type[T]) -> T:
         """

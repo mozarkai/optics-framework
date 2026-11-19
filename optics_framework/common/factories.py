@@ -9,6 +9,7 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.common.llm_interface import LLMInterface
+from optics_framework.common.database_interface import DatabaseInterface
 
 
 class DeviceFactory(GenericFactory[DriverInterface]):
@@ -120,3 +121,11 @@ class LLMFactory(GenericFactory[LLMInterface]):
     def get_driver(cls, name: List[dict]) -> InstanceFallback[LLMInterface]:
         instances = [cls.create_instance_dynamic(config_dict, LLMInterface, cls.DEFAULT_PACKAGE) for config_dict in name]
         return InstanceFallback(instances)
+
+
+class DatabaseFactory(GenericFactory[DatabaseInterface]):
+    DEFAULT_PACKAGE = "optics_framework.engines.databases"
+
+    @classmethod
+    def get_database(cls, config_dict: dict) -> DatabaseInterface:
+        return cls.create_instance_dynamic(config_dict, DatabaseInterface, cls.DEFAULT_PACKAGE)
