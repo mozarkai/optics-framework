@@ -23,6 +23,7 @@ try:
     from optics_framework.helper.initialize import create_project, available_templates
     from optics_framework.helper.version import VERSION
     from optics_framework.helper.execute import execute_main, dryrun_main
+    from optics_framework.common.runner.event_stream import OutputMode
     from optics_framework.helper.live import live_main
     from optics_framework.helper.generate import generate_test_file as generate_framework_code
     from optics_framework.helper.setup import EngineInstallerApp, SetupError, list_engines, install_extras, resolve_engines, print_install_next_steps
@@ -413,11 +414,41 @@ def _add_selection_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--output",
+        type=OutputMode,
+        choices=list(OutputMode),
+        default=OutputMode.AUTO,
+        metavar="{" + ",".join(mode.value for mode in OutputMode) + "}",
+        help=(
+            "How to show progress: auto (default) is the live tree on a terminal and plain "
+            "lines otherwise; plain is one line per step; jsonl is one JSON event per line; "
+            "none shows nothing. Plain and jsonl send logs to stderr."
+        ),
+    )
+    output_group.add_argument(
+        "--use-printer",
+        dest="output",
+        action="store_const",
+        const=OutputMode.TREE,
+        help="Same as --output tree",
+    )
+    output_group.add_argument(
+        "--no-use-printer",
+        dest="output",
+        action="store_const",
+        const=OutputMode.NONE,
+        help="Same as --output none",
+    )
+
+
 class DryRunArgs(BaseModel):
     """Arguments for the dry_run command."""
     folder_path: str
     runner: str = "test_runner"
-    use_printer: bool = True
+    output: OutputMode = OutputMode.AUTO
     include: list[str] | None = None
     exclude: list[str] | None = None
 
@@ -436,34 +467,22 @@ class DryRunCommand(Command):
             default="test_runner",
             help="Test runner to use (default: test_runner)"
         )
-        printer_group = parser.add_mutually_exclusive_group()
-        printer_group.add_argument(
-            "--use-printer",
-            dest="use_printer",
-            action="store_true",
-            help="Enable live result printer (default)"
-        )
-        printer_group.add_argument(
-            "--no-use-printer",
-            dest="use_printer",
-            action="store_false",
-            help="Disable live result printer"
-        )
+        _add_output_arguments(parser)
         _add_selection_arguments(parser)
-        parser.set_defaults(func=self.execute, use_printer=True)
+        parser.set_defaults(func=self.execute)
 
     def execute(self, args):
         dry_run_args = DryRunArgs(
             folder_path=args.folder_path,
             runner=args.runner,
-            use_printer=args.use_printer,
+            output=args.output,
             include=args.include,
             exclude=args.exclude,
         )
         dryrun_main(
             dry_run_args.folder_path,
             dry_run_args.runner,
-            use_printer=dry_run_args.use_printer,
+            output=dry_run_args.output,
             include=dry_run_args.include,
             exclude=dry_run_args.exclude,
         )
@@ -473,7 +492,7 @@ class ExecuteArgs(BaseModel):
     """Arguments for the execute command."""
     folder_path: str
     runner: str = "test_runner"
-    use_printer: bool = True
+    output: OutputMode = OutputMode.AUTO
     include: list[str] | None = None
     exclude: list[str] | None = None
 
@@ -492,34 +511,22 @@ class ExecuteCommand(Command):
             default="test_runner",
             help="Test runner to use (default: test_runner)"
         )
-        printer_group = parser.add_mutually_exclusive_group()
-        printer_group.add_argument(
-            "--use-printer",
-            dest="use_printer",
-            action="store_true",
-            help="Enable live result printer (default)"
-        )
-        printer_group.add_argument(
-            "--no-use-printer",
-            dest="use_printer",
-            action="store_false",
-            help="Disable live result printer"
-        )
+        _add_output_arguments(parser)
         _add_selection_arguments(parser)
-        parser.set_defaults(func=self.execute, use_printer=True)
+        parser.set_defaults(func=self.execute)
 
     def execute(self, args):
         execute_args = ExecuteArgs(
             folder_path=args.folder_path,
             runner=args.runner,
-            use_printer=args.use_printer,
+            output=args.output,
             include=args.include,
             exclude=args.exclude,
         )
         execute_main(
             execute_args.folder_path,
             execute_args.runner,
-            use_printer=execute_args.use_printer,
+            output=execute_args.output,
             include=execute_args.include,
             exclude=execute_args.exclude,
         )

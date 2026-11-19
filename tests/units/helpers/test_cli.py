@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from optics_framework.common.runner.event_stream import OutputMode
 from optics_framework.helper import abort, cli
 from optics_framework.helper.environment import EnvKind, Environment
 
@@ -86,3 +87,19 @@ class TestCommandForwarding:
         with patch.object(cli, "configure_project") as configure:
             _run(["configure", "myproj"])
         configure.assert_called_once_with(folder="myproj", edit=False)
+
+    @pytest.mark.parametrize(
+        ("flags", "expected"),
+        [
+            ([], OutputMode.AUTO),
+            (["--output", "plain"], OutputMode.PLAIN),
+            (["--output", "jsonl"], OutputMode.JSONL),
+            (["--use-printer"], OutputMode.TREE),
+            (["--no-use-printer"], OutputMode.NONE),
+        ],
+    )
+    @pytest.mark.parametrize(("command", "entry"), [("execute", "execute_main"), ("dry_run", "dryrun_main")])
+    def test_execute_and_dry_run_forward_the_output_mode(self, command, entry, flags, expected):
+        with patch.object(cli, entry) as run:
+            _run([command, "myproj", *flags])
+        assert run.call_args.kwargs["output"] is expected

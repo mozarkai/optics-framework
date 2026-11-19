@@ -8,6 +8,7 @@ from collections.abc import Collection
 from contextlib import contextmanager
 from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
+from rich.console import Console
 from rich.logging import RichHandler
 from pydantic import BaseModel
 from typing import Any, Optional, Tuple
@@ -500,6 +501,12 @@ def drain_console_logs() -> bool:
     return thread is None or not thread.is_alive()
 
 
+def console_logs_to_stderr():
+    """Write console log records to stderr, so stdout carries only run progress lines."""
+    for handler in (logging_manager.internal_console_handler, logging_manager.execution_console_handler):
+        handler.console = Console(stderr=True)
+
+
 def restore_console_logs():
     """
     Restore console handler levels (used when a new live render starts so
@@ -510,6 +517,6 @@ def restore_console_logs():
 
 
 __all__ = ["internal_logger","execution_logger",
-           "reconfigure_logging", "quiet_console_logs", "restore_console_logs",
+           "reconfigure_logging", "quiet_console_logs", "restore_console_logs", "console_logs_to_stderr",
            "decouple_console_logs", "drain_console_logs",
            "LoggerContext", "SessionLoggerAdapter"]

@@ -1,4 +1,6 @@
 import asyncio
+import json
+import re
 import xml.etree.ElementTree as ET  # nosec B405
 
 import pytest
@@ -8,6 +10,7 @@ from optics_framework.api.verifier import Verifier
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.runner.event_stream import OutputMode
 from optics_framework.helper.execute import DryRunRunner, ExecuteRunner, RunnerArgs
 
 CONFIG = """\
@@ -68,10 +71,10 @@ def device(monkeypatch):
 
 @pytest.fixture
 def run(tmp_path, device):
-    def run(modules, tests, elements=ELEMENTS, dry=False, runner="test_runner"):
-        (tmp_path / "config.yaml").write_text(CONFIG)
+    def run(modules, tests, elements=ELEMENTS, dry=False, runner="test_runner", output=None):
+        (tmp_path / "config.yaml").write_text(CONFIG, encoding="utf-8")
         (tmp_path / "elements.csv").write_text(
-            "Element_Name,Element_ID\n" + "".join(f"{k},{v}\n" for k, v in elements.items()))
+            "Element_Name,Element_ID\n" + "".join(f"{k},{v}\n" for k, v in elements.items()), encoding="utf-8")
         width = max(len(step) for steps in modules.values() for step in steps) - 1
         rows = [",".join(["module_name", "module_step"] + [f"param_{i}" for i in range(1, width + 1)])]
         for name, steps in modules.items():
@@ -79,11 +82,12 @@ def run(tmp_path, device):
                 cells = [name, keyword, *[f'"{p}"' if "," in p or '"' in p else p for p in
                                           (q.replace('"', '""') for q in params)]]
                 rows.append(",".join(cells + [""] * (width - len(params))))
-        (tmp_path / "modules.csv").write_text("\n".join(rows) + "\n")
+        (tmp_path / "modules.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
         (tmp_path / "test_cases.csv").write_text(
-            "test_case,test_step\n" + "".join(f"{tc},{m}\n" for tc, mods in tests.items() for m in mods))
+            "test_case,test_step\n" + "".join(f"{tc},{m}\n" for tc, mods in tests.items() for m in mods),
+            encoding="utf-8")
         runner_cls = DryRunRunner if dry else ExecuteRunner
-        args = RunnerArgs(folder_path=str(tmp_path), runner=runner, use_printer=False)
+        args = RunnerArgs(folder_path=str(tmp_path), runner=runner, use_printer=False, output=output)
         return asyncio.run(runner_cls(args).execute())
     return run
 
@@ -203,3 +207,54 @@ def test_the_report_shows_a_heal_with_steps_that_name_the_suite_elements(run, de
     assert healed.find("heal").get("summary") == "AI self-heal recovered 'press_element' after 2 steps"
     assert [(s.get("keyword"), [a.text for a in s.iter("arg")]) for s in healed.iter("step")] == [
         ("scroll", ["down"]), ("press_element", ["${title_label}"])]
+
+
+
+def _progress(out, mark):
+    return [line for line in out.splitlines() if mark(line)]
+
+
+def test_a_piped_run_prints_one_line_per_step_and_each_reason_once(run, device, capsys):
+    device.heals["#title"] = {"summary": "AI self-heal recovered 'press_element' after 1 step", "suggested_steps": []}
+    run({"Ok": [("Press Element", "${title_label}")], "Broken": [("Get Text", "#missing")]},
+        {"Café": ["Ok"], "Broken case": ["Broken"]}, output=OutputMode.PLAIN)
+
+    lines = _progress(capsys.readouterr().out, lambda line: re.match(r"\d\d:\d\d:\d\d (RUNNING|PASS|HEALED|FAIL) ", line))
+    assert [re.sub(r" \(\d+\.\ds\)", "", line[9:]) for line in lines] == [
+        'RUNNING  test case "Café"',
+        'RUNNING    module "Ok"',
+        'RUNNING      keyword "Press Element"',
+        "HEALED       keyword \"Press Element\": AI self-heal recovered 'press_element' after 1 step",
+        'PASS       module "Ok"',
+        'PASS     test case "Café"',
+        'RUNNING  test case "Broken case"',
+        'RUNNING    module "Broken"',
+        'RUNNING      keyword "Get Text"',
+        "FAIL         keyword \"Get Text\": Keyword 'Get Text' failed after fallback attempts; last error: Code.E0201: No element #missing",
+        'FAIL       module "Broken": E0201',
+        'FAIL     test case "Broken case": E0201',
+        'FAIL     run "Execution": Some test cases failed',
+    ]
+
+
+def test_a_jsonl_run_prints_each_event_as_one_ascii_json_line(run, device, capsys):
+    device.heals["#title"] = {"summary": "healed", "suggested_steps": []}
+    run({"Ok": [("Press Element", "${title_label}")]}, {"Café": ["Ok"]}, output=OutputMode.JSONL)
+
+    lines = _progress(capsys.readouterr().out, lambda line: line.startswith("{"))
+    events = [json.loads(line) for line in lines]
+    assert all(line.isascii() for line in lines)
+    assert [(e["entity_type"], e["name"], e["status"]) for e in events] == [
+        ("test_case", "Café", "RUNNING"), ("module", "Ok", "RUNNING"), ("keyword", "Press Element", "RUNNING"),
+        ("keyword", "Press Element", "PASS"), ("module", "Ok", "PASS"), ("test_case", "Café", "PASS"),
+    ]
+    assert events[3]["extra"]["healed"] == "true"
+
+
+def test_the_pytest_runner_prints_its_steps_and_one_run_failure(run, device, capsys):
+    with pytest.raises(OpticsError):
+        run({"Ok": [("Press Element", "${title_label}")], "Broken": [("Get Text", "#missing")]},
+            {"TC": ["Ok"], "TC2": ["Broken"]}, runner="pytest", output=OutputMode.PLAIN)
+    out = capsys.readouterr().out
+    assert 'PASS         keyword "Press Element"' in out
+    assert len(re.findall(r"FAIL +run ", out)) == 1
