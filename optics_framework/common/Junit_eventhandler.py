@@ -166,6 +166,18 @@ def _set_step_result(element: ET.Element, event: Event) -> None:
         element.set("elapsed", f"{event.elapsed:.2f}")
 
 
+def _add_heal(element: ET.Element, event: Event) -> None:
+    """Mark a keyword that AI self-heal completed, with the summary and the steps that did it."""
+    if not event.extra or event.extra.get("healed") != "true":
+        return
+    element.set("healed", "true")
+    heal = ET.SubElement(element, "heal", summary=event.extra.get("heal_summary", ""))
+    for step in json.loads(event.extra.get("heal_steps") or "[]"):
+        step_element = ET.SubElement(heal, "step", keyword=str(step.get("keyword", "")))
+        for param in step.get("params", []):
+            ET.SubElement(step_element, "arg").text = str(param)
+
+
 class JUnitEventHandler(EventSubscriber):
     def __init__(self, output_path: Path, json_output_path: Optional[Path] = None, suite_name: str | None = None):
         self.output_path = output_path
@@ -291,6 +303,7 @@ class JUnitEventHandler(EventSubscriber):
         if event.status == EventStatus.RUNNING:
             self.active_keyword_elements[event.entity_id] = kw_element
         _set_step_result(kw_element, event)
+        _add_heal(kw_element, event)
 
         if event.args:
             args_element = ET.SubElement(kw_element, "arguments")

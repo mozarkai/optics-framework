@@ -18,6 +18,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.runner.keyword_register import keyword_not_found, suggest_keyword
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.logging_config import (
+    SENSITIVE_PREFIX,
     mask_secret_values,
     mask_secrets,
     use_secrets,
@@ -157,6 +158,22 @@ class SetupGuard:
             self._blocked.update(dict.fromkeys((CaseKind.SETUP, CaseKind.TEST, CaseKind.TEARDOWN), reason))
         elif kind is CaseKind.SETUP:
             self._blocked[CaseKind.TEST] = f"Setup failed: {failure}"
+
+
+def pop_heal(keyword_map: Dict[str, Callable[..., Any]]) -> dict[str, Any] | None:
+    """Read and clear the AI self-heal record, wherever in the keyword's run it healed."""
+    owners = {getattr(method, "__self__", None) for method in keyword_map.values()}
+    heals = [owner._pop_last_heal_info() for owner in owners if hasattr(owner, "_pop_last_heal_info")]
+    return next((heal for heal in heals if heal), None)
+
+
+def heal_extra(heal: dict[str, Any], steps: list[dict[str, Any]]) -> dict[str, str]:
+    # Masked before json.dumps, whose escapes would hide a secret from the masking at publish.
+    return {
+        "healed": "true",
+        "heal_summary": heal["summary"],
+        "heal_steps": json.dumps(mask_secret_values(steps)),
+    }
 
 
 def failure_reason(keyword: str, exc: BaseException) -> str:
@@ -375,6 +392,7 @@ class TestRunner(Runner):
         logs: Optional[List[logging.LogRecord]] = None,
         stored: dict[str, str] | None = None,
         code: Optional[str] = None,
+        healed: dict[str, str] | None = None,
     ) -> None:
         log_messages = None
         if logs is not None:
@@ -396,6 +414,7 @@ class TestRunner(Runner):
                 "session_id": self.session_id,
                 **({"kind": node.kind.value} if isinstance(node, TestCaseNode) else {}),
                 **({"stored": json.dumps(stored)} if stored else {}),
+                **(healed or {}),
             },
             args=args,
             start_time=start_time,
@@ -551,11 +570,14 @@ class TestRunner(Runner):
             positional, keywords = self._resolve_candidate_params(method, candidate_args)
             return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
 
+        pop_heal(self.keyword_map)
         try:
             stored = fallback.run(param_candidates, attempt, f"keyword '{keyword_node.name}'")
         except Exception as exc:
             await self._handle_keyword_failure(keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler)
             return None if isinstance(exc, fallback.FallbackExhausted) else False
+        finally:
+            heal = pop_heal(self.keyword_map)
         keyword_result.stored = stored
         keyword_node.state = State.COMPLETED_PASSED
         await self._send_event(
@@ -568,9 +590,21 @@ class TestRunner(Runner):
             elapsed=time.time() - start_time,
             logs=capture_handler.records,
             stored=stored,
+            healed=heal_extra(heal, self._steps_with_refs(heal, keyword_node.params)) if heal else None,
         )
         self._update_status(keyword_result, "PASS", time.time() - start_time, test_case_result.name)
         return True
+
+    def _steps_with_refs(self, heal: dict[str, Any], params: List[str]) -> list[dict[str, Any]]:
+        """The heal's steps with each value of the keyword's ``${name}`` params written back as ``${name}``."""
+        refs = {}
+        for name in filter(None, map(utils.whole_var_name, params)):
+            for value in self.elements.get_element(name) or []:
+                refs.setdefault(utils.without_prefix(value, SENSITIVE_PREFIX), f"${{{name}}}")
+        return [
+            {**step, "params": [refs.get(param, param) for param in step.get("params", [])]}
+            for step in heal.get("suggested_steps", [])
+        ]
 
     async def _handle_keyword_failure(self, keyword_node, module_node, keyword_result, start_time, test_case_result, exc, capture_handler):
         keyword_node.state = State.COMPLETED_FAILED

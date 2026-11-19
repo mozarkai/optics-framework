@@ -368,11 +368,7 @@ class ActionKeyword:
         return keyword if not params else f"{keyword} {' '.join(str(p) for p in params)}"
 
     def _pop_last_heal_info(self) -> Optional[Dict[str, Any]]:
-        """Return and clear the heal info for the most recently completed call.
-
-        The sole consumer, ``KeywordExecutor.execute``, must call this after every
-        keyword (healed or not) so one call's heal never leaks onto the next.
-        """
+        """Return and clear the heal info of the most recent call."""
         info, self._last_heal_info = self._last_heal_info, None
         return info
 
