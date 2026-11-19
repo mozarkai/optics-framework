@@ -174,7 +174,7 @@ class TestModuleStepResolution:
         ok = await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
         assert ok is False
         assert module_result.status == "FAIL"
-        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
 
     async def test_unknown_step_fails_batch(self):
         runner = _make_runner(keyword_map={"known": lambda: None})
@@ -183,7 +183,7 @@ class TestModuleStepResolution:
         ok = await runner._process_module(_mod_node(name=step), tc_result, {})
         assert ok is False
         assert module_result.status == "FAIL"
-        assert module_result.reason == f"Code.E0402: Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
 
 
 class TestFailureDetailsSection:

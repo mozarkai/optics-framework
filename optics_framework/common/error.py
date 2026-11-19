@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import Dict, Optional, Any
 from pydantic import BaseModel
 from rich import get_console
@@ -20,7 +20,7 @@ from rich.text import Text
 from optics_framework.common.logging_config import internal_logger
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     DRIVER = "driver"
     ELEMENT = "element"
     SCREENSHOT = "screenshot"
@@ -32,7 +32,7 @@ class Category(str, Enum):
     GENERAL = "general"
 
 
-class Code(str, Enum):
+class Code(StrEnum):
     # Driver issue
     E0101 = "E0101"
     E0102 = "E0102"
@@ -471,15 +471,17 @@ class OpticsError(Exception):
         cause = self.cause_text
         return f"{self.code}: {self.message} (cause: {cause})" if cause else f"{self.code}: {self.message}"
 
-    def log(self, logger=None, level=None, extra=None, use_rich: bool = True):
+    def log(self, logger=None, level=None, extra=None, use_rich: bool | None = None):
         """
-        Log the error using the provided logger (defaults to internal_logger), or print a rich, colored message if use_rich is True.
+        Print the error as a rich panel, or log it when ``logger``, ``level`` or ``extra`` is given.
         Args:
             logger: logging.Logger instance or compatible. Defaults to internal_logger from logging_config.
             level: log level (default: ERROR for E/X, WARNING for W).
             extra: dict of extra metadata for structured logging.
-            use_rich: if True, print a colored, structured error message using rich (for CLI or interactive use).
+            use_rich: force the rich panel (True) or the logger (False).
         """
+        if use_rich is None:
+            use_rich = logger is None and level is None and extra is None
         code_prefix = str(self.code)[0] if self.code else "E"
         resolved_level = self._resolve_log_level(level, code_prefix)
         log_msg, log_extra = self._build_log_message(extra)
