@@ -197,6 +197,6 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         if element_type == "CSS":
             return AppiumBy.CSS_SELECTOR, utils.without_prefix(element, "css=")
         if element_type == "XPath":
-            xpath = utils.without_prefix(element, "xpath=")
-            return None if utils.is_native_xpath(xpath) else (AppiumBy.XPATH, xpath)
+            xpath = utils.web_xpath(utils.without_prefix(element, "xpath="))
+            return None if xpath is None else (AppiumBy.XPATH, xpath)
         return None
