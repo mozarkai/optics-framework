@@ -56,6 +56,16 @@ An auto-discovered `error_definitions.csv` (`error_code,match_string,description
 
 This is automatic. Library/Robot users get on-demand equivalents, `Add Error Definitions` (`optics.py:520`) and `Capture And Detect Errors` (`optics.py:562`), which exist **only** on the `Optics` facade, so the CSV/YAML runner, `optics serve`, `optics mcp` and `optics list` don't see them.
 
+## Database checks (`Run Query` / `Assert Query`)
+
+A test can read the application's own database to check what a UI step stored. The database is a resource of the one `Session`, beside the driver, so the checks are ordinary keywords in the same test, event stream and JUnit file as the UI steps.
+
+- **Config:** a `databases:` list in `config.yaml` (`Config.databases`, same `DependencyConfig` shape as the other sources), e.g. `- sqlalchemy: {enabled: true, url: ${APP_DB_URL}}`. Exactly one entry may be enabled; `OpticsBuilder.get_database` (`optics_builder.py:199`) raises `E0501` otherwise, connects on first use, and `SessionManager.terminate_session` closes it through `close_database` (`optics_builder.py:212`).
+- **Engine:** `DatabaseInterface` (`common/database_interface.py:5`; `query` and `close`) with engines in `engines/databases/<config key>.py`, built by `DatabaseFactory` (`factories.py:126`). `SQLAlchemyDatabase` (`engines/databases/sqlalchemy.py:19`) covers every SQL database SQLAlchemy has a dialect for; it never commits and refuses a statement that returns no rows, so the keywords cannot change data. The extra is `optics-framework[sqlalchemy]`, and the database's own driver (psycopg, pymysql) is installed beside it.
+- **Keywords:** `Database` (`api/database.py:84`), registered by `RunnerFactory.create_runner` and `LiveController._build_registry` only, so it is in the CSV/YAML runner and `optics live` but not in `optics serve`, `optics mcp` or the `Optics` facade (a remote caller must not pick the database the server reads). `run_query` (`api/database.py:102`) returns a single cell's value or the rows, kept with `store_as=`. `assert_query` (`api/database.py:116`) re-runs the query every `POLL_INTERVAL_S` until its one value matches `expected` (a value, or `>=`, `<=`, `>`, `<`, `!=`, `==` and a value; `_expectation`, `api/database.py:36`) or `timeout` passes, because the application writes after the UI step returns. A `${name}` inside the query is substituted by the runner like any inline variable.
+- **Errors:** `E1001` cannot connect, `E1002` query failed or has the wrong shape, `E1003` the value did not match. None is in the `E02*` family, so none advances the element fallback ladder.
+- **Report:** `QueryReport` (`common/query_report.py:12`) rewrites `db_queries.json` in the execution output after each query: the query, expected, rows (first 20), attempts, duration and `pass`/`fail`/`error`, with secrets masked. The verdicts are also in `junit_output.xml`, as each query is a keyword.
+
 ## Live session journey (`optics live`)
 
 `optics live` runs keywords against a running target without a test folder. It is a **separate path from execute** (no `ExecutionEngine`, `EventManager` or JUnit) but reuses the keyword and element machinery.
