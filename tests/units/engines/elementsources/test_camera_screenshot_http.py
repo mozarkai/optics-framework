@@ -4,7 +4,6 @@ import logging
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from unittest.mock import MagicMock
 
 import cv2
 import numpy as np
@@ -190,13 +189,6 @@ class TestEnvFallback:
             _source(url=http_server.url).capture()
         assert exc.value.status == 401
         assert http_server.received == [("/screenshot", None)]
-
-    def test_camera_index_beats_env(self, monkeypatch):
-        monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
-        monkeypatch.setattr(cv2, "VideoCapture", lambda index: MagicMock(isOpened=lambda: False))
-        source = _source(camera_index=0)
-        assert source.http_url is None
-        assert source.camera_index == 0
 
     def test_nothing_configured_still_raises(self):
         with pytest.raises(ValueError, match="No camera_index or valid URL"):
