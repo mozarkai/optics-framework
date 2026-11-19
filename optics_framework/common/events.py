@@ -45,7 +45,7 @@ class Event(BaseModel):
         default=None, description="ID of the parent entity (e.g., module for keyword, test_case for module)")
     extra: Dict[str, str] = Field(
         default_factory=dict, description="Additional metadata (e.g., session_id for test_case)")
-    timestamp: float = Field(default_factory=time.time, description="Event creation time in seconds")
+    timestamp: float = Field(default_factory=lambda: time.time(), description="Event creation time in seconds")  # looked up late, so a patched time.time applies
     # NEW FIELDS
     args: Optional[Union[List[Any], Dict[str, Any]]] = Field(default=None, description="Arguments passed to the keyword (if applicable)")
     start_time: Optional[float] = Field(default=None, description="Start time of keyword/module execution (seconds since epoch)")
