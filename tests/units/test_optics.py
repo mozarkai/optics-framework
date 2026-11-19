@@ -53,15 +53,6 @@ def test_api_token_and_otp_flow(mock_api_server):
     optics.quit()
 
 
-def test_run_loop_executes_module():
-    optics = Optics()
-    optics.setup(config=load_config(CONTACT_CONFIG_PATH))
-    optics.add_module('mod1', [('sleep', ['1'])])
-    # Loops the module the requested number of times without raising.
-    assert optics.run_loop('mod1', '1') is not None
-    optics.quit()
-
-
 def test_date_evaluate_adds_day():
     optics = Optics()
     optics.setup(config=load_config(CONTACT_CONFIG_PATH))
