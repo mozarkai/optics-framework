@@ -29,6 +29,7 @@ class Category(StrEnum):
     MODULE = "module"
     TEST = "test"
     LIVE = "live"
+    DATABASE = "database"
     GENERAL = "general"
 
 
@@ -92,6 +93,11 @@ class Code(StrEnum):
 
     # Live (interactive session) issues
     E0901 = "E0901"
+
+    # Database issues
+    E1001 = "E1001"
+    E1002 = "E1002"
+    E1003 = "E1003"
 
 
 class ErrorSpec(BaseModel):
@@ -376,6 +382,25 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Named element not defined in this project",
         category=Category.LIVE,
         default_status=404,
+    ),
+    # Database issues
+    "E1001": ErrorSpec(
+        code=Code.E1001,
+        default_message="Cannot connect to the database",
+        category=Category.DATABASE,
+        default_status=500,
+    ),
+    "E1002": ErrorSpec(
+        code=Code.E1002,
+        default_message="Database query failed",
+        category=Category.DATABASE,
+        default_status=500,
+    ),
+    "E1003": ErrorSpec(
+        code=Code.E1003,
+        default_message="Database query result did not match",
+        category=Category.DATABASE,
+        default_status=500,
     ),
 }
 

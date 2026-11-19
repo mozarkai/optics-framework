@@ -224,6 +224,7 @@ class Config(BaseModel):
     text_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     image_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     llm_models: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
+    databases: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
     file_log: bool = False
     json_log: bool = False
     save_captures: bool = True
@@ -337,7 +338,8 @@ class ConfigHandler:
         "elements_sources",
         "text_detection",
         "image_detection",
-        "llm_models"
+        "llm_models",
+        "databases",
     ]
 
     def __init__(self, config: Config):

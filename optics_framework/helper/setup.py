@@ -99,6 +99,11 @@ LLM_ENGINES = EngineCategory(
     }
 )
 
+DATABASE_ENGINES = EngineCategory(
+    name="Database Engine",
+    engines={"SQLAlchemy": EngineBackend(name="SQLAlchemy", extra="sqlalchemy", packages=["sqlalchemy"])},
+)
+
 SERVERS = EngineCategory(
     name="Server",
     engines={"MCP server": EngineBackend(name="MCP server", extra="mcp", packages=["fastmcp"])},
@@ -106,7 +111,7 @@ SERVERS = EngineCategory(
 
 # Keyed by the checkbox-id prefix of the TUI.
 _CATEGORIES: Dict[str, EngineCategory] = {
-    "action": ACTION_DRIVERS, "text": TEXT_ENGINES, "llm": LLM_ENGINES, "server": SERVERS,
+    "action": ACTION_DRIVERS, "text": TEXT_ENGINES, "llm": LLM_ENGINES, "database": DATABASE_ENGINES, "server": SERVERS,
 }
 
 ALL_ENGINES: Dict[str, EngineBackend] = {

@@ -141,6 +141,7 @@ class Session:
             enabled_image_configs, self.config.project_path or "", self._template_resolver
         )
         self.optics.add_llm(enabled_llm_configs)
+        self.optics.add_database(_get_enabled_config_list(self.config, "databases"))
         _maybe_setup_junit(config, self.session_id, self.config.execution_output_path)
 
         self.driver = self.optics.get_driver() if enabled_driver_configs else None
@@ -181,6 +182,10 @@ class SessionManager(SessionHandler):
                 except Exception as e:
                     internal_logger.warning("Failed to terminate driver %s: %s", driver, e)
             session.inline_templates.clear()
+            try:
+                session.optics.close_database()
+            except Exception as e:
+                internal_logger.warning("Failed to close the database: %s", e)
         cleanup_junit(session_id)
         base_dir = getattr(session, "_session_dir", None)
         if base_dir:

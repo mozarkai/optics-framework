@@ -65,7 +65,7 @@ from optics_framework.common.nl_agent import (
     AgentStep,
     AgentResult,
 )
-from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.api import ActionKeyword, AppManagement, Database, FlowControl, Verifier
 from optics_framework.helper.execute import discover_templates, identify_file_content
 
 
@@ -437,6 +437,7 @@ class LiveController:
         registry.register(action_keyword)
         registry.register(self.session.optics.build(AppManagement))
         registry.register(self.session.optics.build(Verifier))
+        registry.register(self.session.optics.build(Database))
         registry.register(FlowControl(session=self.session, keyword_map=registry.keyword_map))
         self.keyword_map = registry.keyword_map
         self._action_keyword = action_keyword

@@ -17,7 +17,7 @@ from optics_framework.common.logging_config import LoggerContext, internal_logge
 from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.utils import _is_list_type
-from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.api import ActionKeyword, AppManagement, Database, FlowControl, Verifier
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
@@ -247,6 +247,7 @@ class RunnerFactory:
         if session.driver is not None:
             for api_class in (ActionKeyword, AppManagement, Verifier):
                 registry.register(session.optics.build(api_class))
+        registry.register(session.optics.build(Database))
         registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
 
         if runner_type == "test_runner":
