@@ -67,7 +67,7 @@ poetry run pre-commit run --files $(git diff --name-only main)
 poetry run pytest
 ```
 
-CI runs the test suite, CodeQL, Scorecard and SonarQube analysis on every PR anyway, so a red build is never a disaster — just fix and push. Reviews usually land within a few days; if yours sits quietly longer, a friendly ping on the thread is completely fine.
+CI runs the test suite, pre-commit, CodeQL and SonarCloud on every PR anyway, so a red build is never a disaster — just fix and push. Reviews usually land within a few days; if yours sits quietly longer, a friendly ping on the thread is completely fine.
 
 ## Questions?
 
