@@ -293,7 +293,7 @@ class CameraScreenshot(ElementSourceInterface):
             if not self.find_screen:
                 raise self._blind("the phone or the camera moved since the first frame; set deskew_corners again", frame)
             internal_logger.warning("The phone or the camera moved; focusing and finding the screen again")
-            self._focused = False
+            self._deskew, self._focused = None, False
             frame = self._find_screen(frame)
         deadline = time.monotonic() + SCREEN_OFF_SECONDS
         screen = self._warp(frame)
@@ -307,7 +307,11 @@ class CameraScreenshot(ElementSourceInterface):
 
     def _find_screen(self, frame: np.ndarray) -> np.ndarray:
         """A frame taken after the screen is found in a sharp frame and the lens is held on it."""
-        self._calibrate(self._focus(frame))
+        try:
+            self._calibrate(self._focus(frame))
+        except BaseException:
+            self._focused = False
+            raise
         return self._focus(self._capture_frame())
 
     def _focus(self, frame: np.ndarray) -> np.ndarray:
