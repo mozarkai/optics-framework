@@ -11,7 +11,7 @@ WORKDIR /app
 ARG VISION_BACKEND=easyocr
 ENV VISION_BACKEND=${VISION_BACKEND}
 
-ARG OPTICS_FRAMEWORK_VERSION=1.11.4
+ARG OPTICS_FRAMEWORK_VERSION=1.11.5
 
 # Install system dependencies (first layer for cache)
 RUN apt-get update && apt-get install --no-install-recommends -y \
