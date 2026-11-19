@@ -14,7 +14,7 @@ VIDEO, VIDEO_CONTROL = 14, 1
 CS_INTERFACE, INPUT_TERMINAL, CAMERA_TERMINAL = 0x24, 0x02, 0x0201
 FOCUS_ABSOLUTE, FOCUS_AUTO = 0x06, 0x08
 FOCUS_ABSOLUTE_BIT, FOCUS_AUTO_BIT = 5, 17
-SET_CUR, GET_MIN, GET_MAX, GET_RES = 0x01, 0x82, 0x83, 0x84
+SET_CUR, GET_CUR, GET_MIN, GET_MAX, GET_RES = 0x01, 0x81, 0x82, 0x83, 0x84
 TO_INTERFACE, FROM_INTERFACE = 0x21, 0xA1
 UTF8 = 0x08000100
 SINT64 = 4
@@ -180,6 +180,7 @@ class _MacUvc:
         self._terminal, self.can_focus = self._camera_terminal()
         self.span = range(0)
         self._manual = False
+        self._auto_before: int | None = None
         if self.can_focus:
             low, high, step = (self._get(kind, FOCUS_ABSOLUTE, 2) for kind in (GET_MIN, GET_MAX, GET_RES))
             self.span = range(low, high + 1, max(step, 1))
@@ -233,10 +234,18 @@ class _MacUvc:
             self._manual = False
             return
         if not self._manual:
+            if self._auto_before is None:
+                self._auto_before = self._get(GET_CUR, FOCUS_AUTO, 1)
             self._set(FOCUS_AUTO, 0, 1)
             self._manual = True
         self._set(FOCUS_ABSOLUTE, value, 2)
 
     def __del__(self) -> None:
-        if getattr(self, "_release", None):
-            self._release()
+        if not getattr(self, "_release", None):
+            return
+        if self._manual and self._auto_before is not None:
+            try:
+                self._set(FOCUS_AUTO, self._auto_before, 1)
+            except OSError as exc:
+                internal_logger.warning(f"The camera's focus mode could not be set back: {exc}")
+        self._release()
