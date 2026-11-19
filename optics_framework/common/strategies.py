@@ -872,6 +872,7 @@ class StrategyManager:
     def locate(self, element: str, aoi_x=None, aoi_y=None, aoi_width=None, aoi_height=None, index: int = 0) -> Generator[LocateResult, None, None]:
         self.require_screen()
         effective_element, text_only = utils.parse_text_only_prefix(element)
+        effective_element = utils.resolve_locator(effective_element)
         element_type = utils.determine_element_type(element)
         internal_logger.info(f"Locating element: {element} of type: {element_type}...")
         use_aoi = self._validate_aoi(aoi_x, aoi_y, aoi_width, aoi_height)
@@ -927,7 +928,7 @@ class StrategyManager:
             f"Asserting ({method_name}) elements: {elements} with rule: {rule} and timeout: {timeout}s")
 
         parsed = [utils.parse_text_only_prefix(el) for el in elements]
-        effective_elements = [element for element, _ in parsed]
+        effective_elements = [utils.resolve_locator(element) for element, _ in parsed]
         text_only = any(flag for _, flag in parsed)
         strategies = [
             s for s in self._assertion_strategies(element_type, method_name, text_only)
