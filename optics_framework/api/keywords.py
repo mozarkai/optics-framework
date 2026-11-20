@@ -9,6 +9,8 @@ from optics_framework.api.verifier import Verifier
 from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.session_manager import Session
 
+KEYWORD_SOURCES = (ActionKeyword, AppManagement, FlowControl, Verifier)
+
 
 @dataclass
 class Keywords:
