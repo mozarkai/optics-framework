@@ -107,10 +107,13 @@ class EventStreamPrinter(EventSubscriber):
         """The failure's message and code; a parent that failed for its step's reason shows only the code."""
         message = " ".join(event.message.split())
         code = f" [{event.code}]" if event.code else ""
-        if event.entity_type != "keyword" and message and message == self._last_reason:
-            return code
-        if event.entity_type == "keyword":
+        repeated = event.entity_type != "keyword" and message and message == self._last_reason
+        if event.entity_type == "test_case":
+            self._last_reason = None
+        elif message:
             self._last_reason = message
+        if repeated:
+            return code
         return f": {message}{code}" if message else code
 
     def _write(self, line: str) -> None:
