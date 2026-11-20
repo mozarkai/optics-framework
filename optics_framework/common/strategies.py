@@ -58,6 +58,14 @@ def changing_screen() -> Iterator[None]:
         _held_frames.reset(token)
 
 
+def checked_rule(rule: str) -> str:
+    """``rule`` in lower case, or E0205 when it is not ``any`` or ``all``."""
+    rule = rule.lower()
+    if rule not in ("any", "all"):
+        raise OpticsError(Code.E0205, message="Invalid rule. Use 'any' or 'all'.")
+    return rule
+
+
 def screen_of(source: ElementSourceInterface) -> Any:
     """``source``'s screen: the frame held for it, else a new capture."""
     held = _held_frames.get()
@@ -982,8 +990,7 @@ class StrategyManager:
     def _assert(self, elements: list, element_type: str, timeout: int, rule: str, method_name: str):
         """Poll every applicable strategy once per round until the rule is met or ``timeout`` runs out."""
         self.require_screen()
-        self._validate_rule(rule)
-        rule = rule.lower()
+        rule = checked_rule(rule)
         execution_logger.info(
             f"Asserting ({method_name}) elements: {elements} with rule: {rule} and timeout: {timeout}s")
 
@@ -1123,12 +1130,6 @@ class StrategyManager:
         if annotated_frame is None:
             annotated_frame = strategy._annotated_screen(hit_elements)
         return True, timestamp, annotated_frame
-
-    def _validate_rule(self, rule: str):
-        """Validate the rule parameter."""
-        rule = rule.lower()
-        if rule not in ("any", "all"):
-            raise OpticsError(Code.E0205, message="Invalid rule. Use 'any' or 'all'.")
 
     def _can_strategy_assert_elements(self, strategy, element_type: str, method_name: str = "assert_elements") -> bool:
         """Check if strategy can assert elements for the given element type."""

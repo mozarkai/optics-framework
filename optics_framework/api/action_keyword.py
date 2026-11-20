@@ -545,7 +545,7 @@ class ActionKeyword:
             try:
                 return look()
             except OpticsError as e:
-                if is_element_not_found(e.code):
+                if is_element_not_found(e.code) and e.code != Code.E0205:
                     self._popup_before_self_heal()
                 raise
 

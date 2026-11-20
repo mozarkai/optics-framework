@@ -375,6 +375,49 @@ def test_an_invisible_check_passes_on_a_screen_with_no_popup_after_one_event_say
     assert [e["verdict"] for e in popups().drain()] == ["none"]
 
 
+BAD_ARGUMENTS = {
+    "assert_presence rule": (lambda v: v.assert_presence("Balance card", "1", rule="both"), OpticsError),
+    "assert_visibility rule": (lambda v: v.assert_visibility("Balance card", "1", rule="both"), OpticsError),
+    "validate_element rule": (lambda v: v.validate_element("Balance card", "1", rule="both"), OpticsError),
+    "assert_presence timeout": (lambda v: v.assert_presence("Balance card", "soon"), ValueError),
+    "assert_text timeout": (lambda v: v.assert_text("Balance card", "Balance", "soon"), ValueError),
+    "is_element timeout": (lambda v: v.is_element("Balance card", "visible", "soon"), ValueError),
+}
+
+
+@pytest.mark.parametrize("name", BAD_ARGUMENTS)
+def test_an_assertion_it_cannot_run_is_refused_before_any_popup_rule_acts(name):
+    phone = Screen()
+    check, popups = verifier(phone, rule(check="before_every_step"))
+    call, error = BAD_ARGUMENTS[name]
+    with pytest.raises(error):
+        call(check)
+    assert phone.pressed == []
+    assert popups().drain() == []
+
+
+def test_validate_screen_with_a_bad_rule_returns_false_before_any_popup_rule_acts():
+    phone = Screen()
+    check, popups = verifier(phone, rule(check="before_every_step"))
+    assert check.validate_screen("Balance card", "1", rule="both") is False
+    assert phone.pressed == []
+
+
+def test_an_assertion_on_a_locator_that_is_not_valid_asks_no_popup_rule():
+    phone = Screen()
+
+    def not_valid(element, *args, **kwargs):
+        raise OpticsError(Code.E0205, message="'id:' names no id; write it as id:<id>.")
+        yield  # a generator, so the error comes on the first step of the iteration as it does for a real lookup
+
+    phone.locate = not_valid
+    check, popups = verifier(phone, rule())
+    with pytest.raises(OpticsError) as caught:
+        check.assert_presence("id:", "1")
+    assert caught.value.code == Code.E0205
+    assert phone.pressed == []
+    assert popups().drain() == []
+
 def test_an_assertion_without_rules_never_reads_the_page_source():
     phone = Screen()
     check, _ = verifier(phone)
