@@ -1,4 +1,3 @@
-import inspect
 import json
 import re
 import os
@@ -52,7 +51,7 @@ from optics_framework.common.events import (
     Event,
     redact_event,
 )
-from optics_framework.common.runner.data_reader import DataReader
+from optics_framework.common.runner.data_reader import DataReader, readable_signature
 from optics_framework.common.popup_guard import PopupRun, Verdict
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import fallback, utils
@@ -212,8 +211,11 @@ def heal_extra(heal: dict[str, Any], steps: list[dict[str, Any]]) -> dict[str, s
 
 def bind_params(name: str, method: Callable, positional: List[Any], keywords: Dict[str, Any]) -> None:
     """Refuse params the keyword cannot take, before it runs, instead of a TypeError from inside it."""
+    signature = readable_signature(method)
+    if signature is None:
+        return
     try:
-        inspect.signature(method).bind(*positional, **keywords)
+        signature.bind(*positional, **keywords)
     except TypeError as e:
         raise OpticsError(
             Code.E0403, message=f"{name} cannot take these params: {e}", hint=f"Run 'optics list {name}' to see its params."
