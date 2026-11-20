@@ -1,6 +1,8 @@
 import asyncio
 import json
 import re
+import subprocess  # nosec B404
+import sys
 import xml.etree.ElementTree as ET  # nosec B405
 
 import pytest
@@ -298,3 +300,18 @@ def test_a_jsonl_run_reports_the_error_screen_as_a_failed_test_case(run, error_s
     detection = [e for e in events if e["name"] == "on-screen-error-detection"]
     assert [(e["entity_type"], e["status"], e["message"]) for e in detection] == [
         ("test_case", "FAIL", "PAY_FAIL | high | payment failed | Payment was declined")]
+
+
+@pytest.mark.parametrize("output", ["tree", "plain"])
+def test_the_cli_prints_a_failure_reason_only_in_its_output(tmp_path, output):
+    config = CONFIG.replace("file_log: true\nlog_level: DEBUG\n", "")
+    (tmp_path / "config.yaml").write_text(config, encoding="utf-8")
+    (tmp_path / "modules.csv").write_text("module_name,module_step\nBroken,Press Elemnt\n", encoding="utf-8")
+    (tmp_path / "test_cases.csv").write_text("test_case,test_step\nTC,Broken\nTC2,Ghost\n", encoding="utf-8")
+    cli = [sys.executable, "-c", "from optics_framework.helper.cli import main; main()"]
+    done = subprocess.run([*cli, "dry_run", str(tmp_path), "--output", output],  # nosec B603
+                          capture_output=True, text=True, timeout=120, check=False)
+
+    for reason in ("'Press Elemnt' is not a keyword", "'Ghost' is not a keyword or a module"):
+        assert reason in done.stdout
+        assert reason not in done.stderr
