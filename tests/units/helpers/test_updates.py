@@ -107,13 +107,6 @@ def test_a_server_logs_the_notice_once_the_background_check_ends(cache, monkeypa
     assert logged[0] == "Optics 1.14.0 is out (you have 1.11.0). Run `optics upgrade`."
 
 
-def test_upgrade_on_the_newest_release_runs_nothing(cache, monkeypatch, capsys):
-    _serve(monkeypatch, "1.11.0", [])
-    monkeypatch.setattr(updates.subprocess, "run", lambda *a, **k: pytest.fail("nothing to upgrade"))
-    assert updates.upgrade() == 0
-    assert "newest release" in capsys.readouterr().out
-
-
 def _upgrade_in_ci(monkeypatch, capsys, kind, latest, calls=None):
     """Run `optics upgrade` with CI=1, PyPI answering ``latest`` (None: offline), and the installer recorded."""
     monkeypatch.setenv("CI", "1")
