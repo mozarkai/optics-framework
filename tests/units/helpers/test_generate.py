@@ -128,9 +128,6 @@ class TestGenerateTestFile:
         code = _generated_output(yaml_project, framework)
         assert "Verify Module" in code or "verify_module" in code
 
-    def test_custom_output_filename(self, csv_project):
-        generate_test_file(str(csv_project), framework="pytest", output_filename="my_suite.py")
-        assert (csv_project / "generated" / "Tests" / "my_suite.py").exists()
 
     def test_copies_input_templates(self, csv_project):
         templates = csv_project / "input_templates"

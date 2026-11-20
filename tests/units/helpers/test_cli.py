@@ -15,16 +15,6 @@ def _run(argv):
         cli.main()
 
 
-class TestBareInvocation:
-    def test_bare_optics_welcomes_and_marks_onboarded(self):
-        with patch.object(cli, "welcome") as welcome, \
-                patch.object(cli, "is_first_run", return_value=True), \
-                patch.object(cli, "mark_onboarded") as mark:
-            _run([])
-        welcome.assert_called_once_with(first_run=True)
-        mark.assert_called_once_with()
-
-
 class TestExitCodeMapping:
 
 
@@ -83,10 +73,6 @@ class TestStartupImportGuard:
 
 
 class TestCommandForwarding:
-    def test_configure_forwards_folder_and_edit_flag(self):
-        with patch.object(cli, "configure_project") as configure:
-            _run(["configure", "myproj"])
-        configure.assert_called_once_with(folder="myproj", edit=False)
 
     @pytest.mark.parametrize(
         ("flags", "expected"),

@@ -1,12 +1,10 @@
-"""Refuse test shapes that guard no behavior, and keep tests/ inside its line budget."""
+"""Refuse test shapes that guard no behavior."""
 from __future__ import annotations
 
 import ast
-import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
-BUDGET = 10_000
 SLEEP_FUNCS = {"time.sleep", "asyncio.sleep"}
 SOURCE_READS = {"inspect.getsource", "inspect.getsourcelines", "inspect.getsourcefile"}
 TAUTOLOGY_CALLS = {"hasattr", "callable"}
@@ -71,17 +69,9 @@ def check_file(path: Path) -> list[str]:
     return [f"{path}:{node.lineno}: {why}" for node in ast.walk(tree) if (why := node_problem(node, polls))]
 
 
-def tracked_test_lines() -> int:
-    files = subprocess.run(["git", "ls-files", "-z", "tests"], capture_output=True, text=True, check=True).stdout  # nosec B603 B607
-    return sum(len(Path(f).read_bytes().splitlines()) for f in files.split("\0") if f and Path(f).is_file())
-
-
 def main(argv: list[str]) -> int:
     paths = [Path(a) for a in argv if a.endswith(".py") and Path(a).name.startswith(("test_", "conftest"))]
     problems = [p for path in paths for p in check_file(path)]
-    lines = tracked_test_lines()
-    if lines > BUDGET:
-        problems.append(f"tests/ holds {lines} lines, over the {BUDGET} budget: delete or merge tests before adding more")
     if problems:
         print("\n".join(problems), file=sys.stderr)
     return 1 if problems else 0

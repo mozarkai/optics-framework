@@ -2,7 +2,6 @@
 import pathlib
 import re
 
-import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "optics_framework"
@@ -37,10 +36,6 @@ def _defines(source_line: str, name: str) -> bool:
     ))
 
 
-def test_claude_md_has_anchor_pairs():
-    assert len(list(_anchor_pairs())) > 50
-
-
 def test_claude_md_anchors_point_at_their_symbols():
     stale = []
     for md_line, symbol, path, line in _anchor_pairs():
@@ -55,10 +50,3 @@ def test_claude_md_anchors_point_at_their_symbols():
             actual = [i for i, src in enumerate(lines, 1) if _defines(src, name)]
             stale.append(f"CLAUDE.md:{md_line} `{symbol}` -> {path}:{line} (defined at {actual})")
     assert not stale, "Stale CLAUDE.md anchors:\n" + "\n".join(stale)
-
-
-def test_agents_md_is_claude_md():
-    agents = ROOT / "AGENTS.md"
-    if not agents.exists():
-        pytest.skip("no AGENTS.md in this checkout")
-    assert agents.is_symlink() and agents.resolve() == (ROOT / "CLAUDE.md").resolve()

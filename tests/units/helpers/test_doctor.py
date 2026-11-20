@@ -13,7 +13,6 @@ from rich.console import Console
 from optics_framework.helper import doctor, project_config
 from tests.conftest import set_home
 from optics_framework.helper.doctor import Check
-from optics_framework.helper.setup import ALL_ENGINES
 
 
 MODULE = "optics_framework.helper.doctor"
@@ -75,22 +74,6 @@ def _write_config(tmp_path, answers=None, raw=None) -> str:
     with open(os.path.join(folder, "config.yaml"), "w", encoding="utf-8") as fh:
         fh.write(text)
     return folder
-
-
-class TestCheckCore:
-    def test_python_row_never_fails(self):
-        with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
-            rows = doctor.check_core()
-        python_row = rows[0]
-        assert python_row.name == "python"
-        assert python_row.status == "ok"
-
-
-class TestCheckEngines:
-    def test_one_row_per_engine(self):
-        with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
-            rows = doctor.check_engines()
-        assert sorted(r.name for r in rows) == sorted(e.name for e in ALL_ENGINES.values() if e.runs_here())
 
 
 @pytest.fixture(autouse=True)

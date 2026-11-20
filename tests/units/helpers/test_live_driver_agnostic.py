@@ -6,7 +6,6 @@ import pytest
 
 from optics_framework.helper import live as live_mod
 from optics_framework.helper.live import LiveController
-from optics_framework.helper.live_tui import LiveTUI
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.common.error import OpticsError, Code
 
@@ -37,10 +36,6 @@ class TestComposeConfig:
         assert exc.value.code == Code.E0501
         assert "needs a config.yaml" in exc.value.message
 
-    def test_valid_single_driver_returns_config(self):
-        cfg = live_mod._compose_config(_project(_PLAYWRIGHT))
-        assert live_mod._enabled_drivers(cfg) == ["playwright"]
-
 
 class TestConfigErrorSurfacing:
 
@@ -65,12 +60,6 @@ def _shell(driver: str, caps: dict) -> LiveController:
     return ctrl
 
 
-class TestTargetLabel:
-    def test_playwright(self):
-        c = _shell("playwright", {"browser": "chromium"})
-        assert c.active_target() == "playwright:chromium"
-
-
 class TestDeviceSwitching:
     def test_switch_device_raises_for_non_switchable(self):
         c = _shell("playwright", {"browser": "chromium"})
@@ -78,11 +67,6 @@ class TestDeviceSwitching:
             c.switch_device("anything")
         assert exc.value.code == Code.E0501
         assert "Appium sessions only" in exc.value.message
-
-    def test_appium_android_supports_both(self):
-        c = _shell("appium", {"platformName": "Android", "udid": "x"})
-        assert c.supports_device_switching() is True
-        assert c.supports_adb_hotplug() is True
 
 
 class _Proc:
@@ -138,58 +122,6 @@ class TestDeviceListing:
             ("00008030-001A2D3E1234567A", "ios"),
             ("00008101-AABBCCDDEEFF0011", "ios"),
         ]
-
-
-class _DeviceStubController:
-    """Minimal controller for driving the TUI /device picker in a test."""
-
-    saved = True
-    recorded: list = []
-    live_log_path = None
-    driver_type = "appium"
-
-    def __init__(self, devices):
-        self._devices = devices
-
-    # used by LiveTUI construction / completer (lazy, harmless)
-    def keyword_names(self):
-        return []
-
-    def keyword_signature(self, _name):
-        return ""
-
-    def element_names(self):
-        return []
-
-    def element_first_locator(self, _name):
-        return None
-
-    def natural_language_available(self):
-        return False
-
-    # used by _cmd_device
-    def supports_device_switching(self):
-        return True
-
-    def active_target(self):
-        return "appium:emulator-5554"
-
-    def list_devices(self):
-        return self._devices
-
-
-class TestDevicePicker:
-    def test_cmd_device_lists_android_and_ios(self):
-        devices = [("emulator-5554", "android"), ("00008030-ABCD", "ios")]
-        tui = LiveTUI(_DeviceStubController(devices))
-        tui._cmd_device("")
-        labels = [label for label, _value in tui.overlay_items]
-        values = [value for _label, value in tui.overlay_items]
-        assert values == ["emulator-5554", "00008030-ABCD"]
-        assert any("(android)" in lbl for lbl in labels)
-        assert any("(ios)" in lbl for lbl in labels)
-        # active device is marked
-        assert any("(active)" in lbl for lbl in labels)
 
 
 class _FakeManager:

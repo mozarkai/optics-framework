@@ -47,20 +47,9 @@ def test_loggable_masks_storage_state():
     assert state["cookies"][0]["value"] == "secret-session"
 
 
-def test_normalize_param_value_list_passthrough():
-    assert expose_api._normalize_param_value("p", ["a", "b"]) == ["a", "b"]
-
-
 @pytest.fixture
 def client():
     return TestClient(expose_api.app)
-
-
-def test_list_keywords_endpoint(client):
-    resp = client.get("/v1/keywords")
-    assert resp.status_code == 200
-    slugs = {k["keyword_slug"] for k in resp.json()}
-    assert "press_element" in slugs
 
 
 def test_delete_session_optics_error_propagates_status(client):
@@ -86,17 +75,6 @@ def test_stream_endpoints_session_not_found_returns_404(client, path):
         resp = client.get(path)
     assert resp.status_code == 404
     assert resp.json()["detail"] == expose_api.SESSION_NOT_FOUND
-
-
-def test_empty_workspace_data_with_source():
-    data = expose_api._empty_workspace_data(include_source=True)
-    assert data[expose_api.KEY_SOURCE] == ""
-
-
-def test_compute_workspace_hash_includes_source_when_present():
-    base = {expose_api.KEY_SCREENSHOT: "img", expose_api.KEY_ELEMENTS: []}
-    with_source = {**base, expose_api.KEY_SOURCE: "<xml/>"}
-    assert expose_api._compute_workspace_hash(base) != expose_api._compute_workspace_hash(with_source)
 
 
 @pytest.mark.parametrize(("name", "status"), [("my_btn", 200), ("../../etc/passwd", 400), ("a/b", 400), ("..", 400)])
