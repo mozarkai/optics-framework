@@ -79,13 +79,15 @@ class Runner:
         self._last_failure_hint: Optional[str] = None
 
     def _note_failure(self, reason: str, code: str, status: EventStatus = EventStatus.FAIL, hint: Optional[str] = None) -> None:
-        """Record the latest failure reason and log it so failures aren't silent."""
+        """Record the latest failure reason, and log it where logs are kept."""
         self._last_failure_reason = reason
         self._last_failure_code = code
         self._last_failure_status = status
         spec = ERROR_REGISTRY.get(code)
         self._last_failure_hint = hint or (spec.hint if spec else None)
-        execution_logger.error(reason)
+        # With no handler, Python writes the bare reason to stderr, a second copy of what the output shows.
+        if execution_logger.hasHandlers():
+            execution_logger.error(reason)
 
     def _unknown_step_reason(self, name: str) -> str:
         """Reason for a step that resolves to neither a module nor a keyword."""
