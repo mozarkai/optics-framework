@@ -27,6 +27,7 @@ def build_keywords(session: Session, device: bool = True) -> Keywords:
         action_keyword = session.optics.build(ActionKeyword)
         app_management = session.optics.build(AppManagement)
         verifier = session.optics.build(Verifier)
+        verifier._popup_step = action_keyword._assert_step
         for instance in (action_keyword, app_management, verifier):
             registry.register(instance)
     flow_control = FlowControl(session=session, keyword_map=registry.keyword_map)

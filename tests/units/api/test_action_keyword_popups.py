@@ -1,4 +1,4 @@
-"""press_element with popup rules: a fake screen, a fake strategy manager and a fake driver, no device."""
+"""Keywords with popup rules: a fake screen, a fake strategy manager and a fake driver, no device."""
 import os
 import tempfile
 from types import SimpleNamespace
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from optics_framework.api import ActionKeyword
+from optics_framework.api import ActionKeyword, Verifier
 from optics_framework.api.keywords import build_keywords
 from optics_framework.common.config_handler import Config
 from optics_framework.common.error import Code, OpticsError
@@ -65,11 +65,16 @@ class Phone:
         return np.zeros((8, 8, 3), dtype="uint8")
 
 
-def keyword(phone, *rules):
+def _builder(phone, rules):
     out = tempfile.mkdtemp()
     builder = MagicMock()
     builder.session_config = Config(popup_rules=list(rules), execution_output_path=out)
     builder.get_driver.return_value = phone.driver
+    return builder, out
+
+
+def keyword(phone, *rules):
+    builder, out = _builder(phone, rules)
     ak = ActionKeyword(builder)
     ak.strategy_manager = phone
     ak._ai_self_heal = MagicMock(return_value=False)
@@ -117,7 +122,7 @@ def test_a_step_whose_action_ran_and_failed_is_never_retried_after_the_popup_is_
 
 def _with_modules(ak, phone, modules):
     session = SimpleNamespace(
-        optics=SimpleNamespace(build=lambda cls: ak if cls is ActionKeyword else object()),
+        optics=SimpleNamespace(build=lambda cls: ak if cls is ActionKeyword else SimpleNamespace()),
         modules=ModuleData(modules=modules), elements=ElementData(), config_handler=MagicMock(), driver=phone.driver,
     )
     return build_keywords(session).action_keyword
@@ -245,3 +250,135 @@ def test_a_screen_without_a_popup_is_left_to_self_heal_after_one_event_saying_so
     assert caught.value.code == Code.E0201
     ak._ai_self_heal.assert_called_once()
     assert [e["verdict"] for e in ak._popup_run().drain()] == ["none"]
+
+
+CARD_NODE = "card node"
+
+
+class Screen(Phone):
+    """The phone as the assertions read it: the card is a page-source node with text and a state."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.driver.get_text_element.return_value = "Balance"
+        self.driver.is_element_enabled.return_value = True
+
+    def locate(self, element, *args, **kwargs):
+        for result in Phone.locate(self, element, *args, **kwargs):
+            yield LocateResult(CARD_NODE, result.strategy) if result.value == CARD else result
+
+    def assert_presence(self, elements, element_type, timeout=30, rule="any"):
+        for element in elements:
+            next(self.locate(element))
+        return True, "ts", None
+
+    assert_visibility = assert_presence
+
+
+def verifier(phone, *rules):
+    """A Verifier built by build_keywords, as every entry point builds it."""
+    builder, _ = _builder(phone, rules)
+    session = SimpleNamespace(
+        optics=SimpleNamespace(build=lambda cls: cls(builder) if cls in (ActionKeyword, Verifier) else object()),
+        modules=ModuleData(modules={}), elements=ElementData(), config_handler=MagicMock(), driver=phone.driver,
+    )
+    keywords = build_keywords(session)
+    keywords.action_keyword.strategy_manager = keywords.verifier.strategy_manager = phone
+    return keywords.verifier, keywords.action_keyword._popup_run
+
+
+ASSERTIONS = {
+    "assert_presence": lambda v: v.assert_presence("Balance card", "1"),
+    "assert_visibility": lambda v: v.assert_visibility("Balance card", "1"),
+    "assert_text": lambda v: v.assert_text("Balance card", "Balance", "1"),
+    "is_element": lambda v: v.is_element("Balance card", "visible", 1),
+    "validate_screen": lambda v: v.validate_screen("Balance card", "1"),
+}
+
+
+@pytest.mark.parametrize("name", ASSERTIONS)
+def test_an_assertion_that_finds_nothing_dismisses_the_popup_and_passes_on_the_next_look(name):
+    phone = Screen()
+    check, popups = verifier(phone, rule())
+    assert ASSERTIONS[name](check) in (None, True)
+    assert phone.pressed == [MAYBE_LATER]
+    event, = popups().drain()
+    assert (event["check"], event["verdict"], event["keyword"], event["element"]) == ("on_failure", "handled", name, "Balance card")
+
+
+def test_an_assertion_runs_the_before_each_step_rules_before_it_looks():
+    phone = Screen()
+    check, popups = verifier(phone, rule(check="before_every_step"))
+    check.is_element("Balance card", "enabled", 1)
+    assert phone.looked_up[0] == "Maybe Later", "the popup went first, so the assertion's own lookup never failed"
+    assert [(e["check"], e["verdict"]) for e in popups().drain()] == [("before_every_step", "handled")]
+
+
+SOFT_CHECKS = {
+    "assert_presence": ASSERTIONS["assert_presence"],
+    "validate_screen": ASSERTIONS["validate_screen"],
+    "is_element visible": ASSERTIONS["is_element"],
+    "is_element invisible": lambda v: v.is_element("Balance card", "invisible", 1),
+}
+
+
+@pytest.mark.parametrize("name", SOFT_CHECKS)
+def test_an_assertion_behind_a_dialog_no_rule_covers_fails_with_e0206(name):
+    phone = Screen()
+    check, _ = verifier(phone, rule("Other", detect={"text_contains": ["something else"]}))
+    with pytest.raises(OpticsError) as caught:
+        SOFT_CHECKS[name](check)
+    assert caught.value.code == Code.E0206
+    assert phone.pressed == []
+
+
+@pytest.mark.parametrize("name", SOFT_CHECKS)
+def test_an_assertion_behind_a_sensitive_popup_ends_the_run_with_e0408(name):
+    phone = Screen()
+    check, popups = verifier(phone, rule(sensitive=True))
+    with pytest.raises(OpticsError) as caught:
+        SOFT_CHECKS[name](check)
+    assert caught.value.code == Code.E0408
+    assert phone.pressed == []
+    assert popups().stop
+
+
+@pytest.mark.parametrize("name", SOFT_CHECKS)
+def test_an_assertion_whose_popup_module_the_session_does_not_have_fails_with_e0601(name):
+    phone = Screen()
+    check, _ = verifier(phone, rule(action={"type": "module", "target": "Close Rate Us"}))
+    with pytest.raises(OpticsError) as caught:
+        SOFT_CHECKS[name](check)
+    assert caught.value.code == Code.E0601
+
+
+def test_an_invisible_check_does_not_pass_on_an_element_a_popup_hides():
+    phone = Screen()
+    check, popups = verifier(phone, rule())
+    with pytest.raises(OpticsError) as caught:
+        check.is_element("Balance card", "invisible", 1)
+    assert caught.value.code == Code.E0401
+    assert phone.pressed == [MAYBE_LATER]
+    assert [e["verdict"] for e in popups().drain()] == ["handled"]
+
+
+def test_an_invisible_check_passes_on_a_screen_with_no_popup_after_one_event_saying_so():
+    phone = Screen(popup=False)
+
+    def nothing(element, *args, **kwargs):
+        raise OpticsError(Code.E0201, message="gone")
+        yield  # a generator, so the error comes on the first step of the iteration as it does for a real lookup
+
+    phone.locate = nothing
+    check, popups = verifier(phone, rule())
+    check.is_element("Balance card", "invisible", 1)
+    assert [e["verdict"] for e in popups().drain()] == ["none"]
+
+
+def test_an_assertion_without_rules_never_reads_the_page_source():
+    phone = Screen()
+    check, _ = verifier(phone)
+    with pytest.raises(OpticsError) as caught:
+        check.assert_presence("Balance card", "1")
+    assert caught.value.code == Code.E0201
+    assert phone.source_reads == 0

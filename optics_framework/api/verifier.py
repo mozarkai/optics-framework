@@ -1,14 +1,19 @@
 import time
-from typing import Optional, Any, List, Tuple, Union
+from typing import Callable, Optional, Any, List, Tuple, Union
 
 from optics_framework.common.error import ElementNotFound, OpticsError, Code, is_element_not_found
 from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
+from optics_framework.common.popup_guard import STOPS as POPUP_STOPS
 from optics_framework.common.strategies import LocateResult, StrategyManager
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.session_liveness import raise_if_session_dead
+
+# E0601: a popup rule names a module this session does not have, so the screen was never checked.
+_POPUP_ENDS = (*POPUP_STOPS, Code.E0601)
+
 
 class Verifier:
     """
@@ -37,6 +42,7 @@ class Verifier:
         self.event_sdk: EventSDK = builder.event_sdk
         self.capture_output_dir = builder.session_config.capture_dir
         self.session = builder.session
+        self._popup_step: Callable[[str, Any, Callable[[], Any]], Any] = lambda keyword, element, look: look()
 
     def validate_element(
         self,
@@ -55,7 +61,8 @@ class Verifier:
         """
         internal_logger.debug(f"Validating element: {element}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
-        self.assert_presence(element, timeout, rule, event_name=event_name)
+        self._popup_step("validate_element", element, lambda: self._assert_common(
+            element, timeout, rule, event_name, True, method_name="assert_presence"))
 
     def is_element(
         self,
@@ -78,7 +85,7 @@ class Verifier:
         if state in ("visible", "invisible"):
             self._check_visibility(element, state, timeout)
         elif state in self._ELEMENT_STATES:
-            self._check_state(element, state)
+            self._popup_step("is_element", element, lambda: self._check_state(element, state))
         else:
             raise OpticsError(
                 Code.E0403,
@@ -90,8 +97,11 @@ class Verifier:
 
     def _check_visibility(self, element: str, state: str, timeout: int) -> None:
         try:
-            present = self.assert_presence(element, str(timeout), "any", event_name=None, fail=False)
-        except OpticsError:
+            present = self._popup_step("is_element", element, lambda: self._assert_common(
+                element, str(timeout), "any", None, False, method_name="assert_presence"))
+        except OpticsError as e:
+            if e.code in _POPUP_ENDS:
+                raise
             present = False
         if state == "visible" and not present:
             raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
@@ -142,18 +152,21 @@ class Verifier:
         :param event_name: The name of the event associated with the check, if any.
         """
         expected = str(expected).strip()
+        self._popup_step("assert_text", element, lambda: self._wait_for_text(element, expected, float(timeout)))
+        if event_name:
+            self.event_sdk.capture_event(event_name)
+
+    def _wait_for_text(self, element: str, expected: str, timeout: float) -> None:
         sensitive = expected.startswith(SENSITIVE_PREFIX)
         want = utils.strip_sensitive_prefix(expected).strip()
-        deadline = time.monotonic() + float(timeout)
+        deadline = time.monotonic() + timeout
         while True:
             actual, result, miss = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
             if actual is not None and actual.strip() == want:
-                break
+                return
             if time.monotonic() >= deadline:
                 raise self._text_failure(element, want, sensitive, actual, result, miss)
             time.sleep(self._TEXT_POLL_INTERVAL_S)
-        if event_name:
-            self.event_sdk.capture_event(event_name)
 
     def _text_failure(
         self, element: str, want: str, sensitive: bool,
@@ -227,7 +240,8 @@ class Verifier:
             this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
-        return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_presence")
+        return self._popup_step("assert_presence", elements, lambda: self._assert_common(
+            elements, timeout_str, rule, event_name, fail, method_name="assert_presence"))
 
     def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
@@ -243,7 +257,8 @@ class Verifier:
             this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
-        return self._assert_common(elements, timeout_str, rule, event_name, fail, method_name="assert_visibility")
+        return self._popup_step("assert_visibility", elements, lambda: self._assert_common(
+            elements, timeout_str, rule, event_name, fail, method_name="assert_visibility"))
 
     def _assert_common(
         self, elements: str, timeout_str: str, rule: str,
@@ -336,9 +351,12 @@ class Verifier:
         internal_logger.debug(f"Validating screen for elements: {elements}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         try:
-            self.assert_presence(elements, timeout, rule, event_name=event_name, fail=False)
+            self._popup_step("validate_screen", elements, lambda: self._assert_common(
+                elements, timeout, rule, event_name, False, method_name="assert_presence"))
             return True
         except OpticsError as e:
+            if e.code in _POPUP_ENDS:
+                raise
             internal_logger.info(f"Validate Screen: Elements not found. Error: {e}")
             return False
         except Exception as e:

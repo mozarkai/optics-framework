@@ -63,6 +63,10 @@ class Device:
         nodes = "".join(f'<node text="{text}"/>' for text in SCREEN.values())
         return f"<hierarchy>{nodes}</hierarchy>", "20260101000000"
 
+    @staticmethod
+    def _assert_step(keyword, element, look):
+        return look()
+
     def validate_element(self, element, timeout="10", rule="all", event_name=None):
         self.calls.append(("validate_element", element))
         if element not in SCREEN.values() and element not in SCREEN:
